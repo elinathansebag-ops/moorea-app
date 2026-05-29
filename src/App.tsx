@@ -465,9 +465,9 @@ export default function App() {
         </div>` : "";
 
     const photosHTML = r.photos && r.photos.length > 0
-      ? `<div style="padding:16px 24px;">
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-            ${r.photos.slice(0, 6).map((p: any) => `<img src="${p.url}" style="width:100%;border-radius:8px;aspect-ratio:1;object-fit:cover;" />`).join("")}
+      ? `<div style="padding:12px 24px;">
+          <div style="background:#f5f3ee;border-radius:10px;padding:12px 16px;border:1px solid #e8e0d0;font-size:13px;color:#6b7280;">
+            📷 ${r.photos.length} photo${r.photos.length > 1 ? "s" : ""} jointe${r.photos.length > 1 ? "s" : ""} au rapport — disponibles dans le PDF
           </div>
         </div>` : "";
 
@@ -585,7 +585,9 @@ export default function App() {
   const envoyerEmail = async (r: any) => {
     setSendingId(r.id || r.firebaseKey || "new");
     try {
-      const htmlContent = buildEmailHTML(r);
+      // On retire les photos du rapport pour l'email (trop lourd en base64)
+      const rSansPhotos = { ...r, photos: r.photos ? r.photos.map((_: any) => ({ name: "photo", url: "" })) : [] };
+      const htmlContent = buildEmailHTML({ ...r, photos: r.photos?.length ? [{ name: `${r.photos.length} photo(s)`, url: "" }] : [] });
       const scoreLabel = r.score ? NOTE_LABELS[Math.round(parseFloat(r.score))] : "Non évalué";
       const dLabel = r.decision === "stock" ? "✅ Entrée en stock" : r.decision === "reserve" ? "⚠️ Réserve" : "❌ Refus";
 
