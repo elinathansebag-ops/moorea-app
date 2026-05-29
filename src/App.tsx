@@ -241,28 +241,24 @@ export default function App() {
       lotMoorea, lotFournisseur, temperature, notes,
       conformite, decision: decisionFinale, pourcentage, nbColisTotal,
       nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
-      nbPhotos: photos.length, // on stocke juste le nombre, pas les base64
+      nbPhotos: photos.length,
       poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
       observations, score, date, heure,
       timestamp: Date.now(),
       id: Date.now().toString(),
     };
 
-    // rapport complet avec photos pour le PDF et l'email (en mémoire seulement)
     const rapportAvecPhotos = { ...rapport, photos };
 
-    setSendingId("new");
     try {
       const rapportsRef = ref(db, "rapports");
-      await push(rapportsRef, rapport); // Firebase sans photos
-      showToast("⏳ Envoi de l'email en cours…");
-      await envoyerEmail(rapportAvecPhotos); // email avec photos pour le PDF
+      await push(rapportsRef, rapport);
+      showToast("✓ Rapport enregistré");
+      envoyerEmail(rapportAvecPhotos);
       reset();
       setVue("historique");
     } catch {
-      showToast("Erreur lors de l'envoi", "error");
-    } finally {
-      setSendingId(null);
+      showToast("Erreur lors de l'enregistrement", "error");
     }
   };
 
@@ -623,35 +619,42 @@ export default function App() {
   };
 
   // ─── ENVOYER EMAIL via RESEND ───
-  const envoyerEmail = async (r: any) => {
-    setSendingId(r.id || r.firebaseKey || "new");
-    try {
-      const htmlContent = buildEmailHTML(r);
-      const subject = `🍃 Rapport Agréage Moorea — ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "—"} | ${r.date}`;
+  const envoyerEmail = (r: any) => {
+    const dLabel = r.decision === "stock" ? "Entrée en stock" : r.decision === "reserve" ? "Réserve" : "Refus";
+    const subject = encodeURIComponent(`Rapport Agréage Moorea — ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "—"} | ${r.date}`);
+    const body = encodeURIComponent(
+`RAPPORT AGRÉAGE MOOREA
+======================
+Date : ${r.date} à ${r.heure}
+Agréeur : ${r.agreeur || "—"}
 
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer re_Rgn9PcgZ_AMcZjZh9dck6b914YcaTpUDC",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "Moorea Agréage <onboarding@resend.dev>",
-          to: ["agreage@moorea.fr"],
-          subject,
-          html: htmlContent,
-        }),
-      });
+PRODUIT : ${r.produit}
+Fournisseur : ${r.fournisseur}
+Origine : ${r.origine || "—"}
+Lot Moorea : ${r.lotMoorea || "—"}
+Lot Fournisseur : ${r.lotFournisseur || "—"}
+Température : ${r.temperature ? r.temperature + "°C" : "—"}
+Colis attendus : ${r.nbColisAttendu || "—"}
+Colis reçus : ${r.nbColisRecu || "—"}
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Erreur Resend");
-      showToast("✉ Email envoyé avec succès");
-    } catch (err: any) {
-      console.error(err);
-      showToast(`Erreur : ${err.message || "Envoi échoué"}`, "error");
-    } finally {
-      setSendingId(null);
-    }
+CONFORMITÉ : ${r.conformite === "conforme" ? "✓ CONFORME" : "✗ NON CONFORME"}
+DÉCISION : ${dLabel.toUpperCase()}
+${r.nbColisRefuses !== null && r.nbColisRefuses !== undefined ? `Colis ${r.decision === "reserve" ? "en réserve" : "refusés"} : ${r.nbColisRefuses} / ${r.nbColisTotal} (${r.pourcentage}%)` : ""}
+
+QUALITÉ VISUELLE : ${r.score ? r.score + "/5" : "—"}
+
+ÉTIQUETTE : ${r.etiquetteAbsente ? "Absente" : "Conforme"}
+POIDS : ${r.poidsStatut === "ok" ? "OK" : r.poidsStatut === "ecart" ? "Écart" + (r.poidsEcart ? " : " + r.poidsEcart : "") : "—"}
+
+COMMENTAIRE : ${r.observations || "Aucun"}
+
+Photos : ${r.nbPhotos || 0} photo(s) disponibles dans le PDF
+
+—
+Généré par Moorea · Agréage Rungis · ${r.date}`
+    );
+    const to = "commercial@moorea.fr,qualite@moorea.fr,agreage@moorea.fr";
+    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
   };
 
   // ─── GÉNÉRER + TÉLÉCHARGER PDF ───
@@ -1069,8 +1072,8 @@ export default function App() {
               )}
             </div>
 
-            <button className="btn-primary" onClick={soumettre} disabled={sendingId === "new"} style={{ opacity: sendingId === "new" ? 0.7 : 1, cursor: sendingId === "new" ? "not-allowed" : "pointer" }}>
-              {sendingId === "new" ? "⏳ Envoi en cours…" : "✉ Envoyer le rapport"}
+            <button className="btn-primary" onClick={soumettre}>
+              ✉ Envoyer le rapport
             </button>
           </div>
         )}
@@ -1155,8 +1158,8 @@ export default function App() {
                   <button onClick={() => downloadPDF(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     📄 PDF
                   </button>
-                  <button onClick={() => envoyerEmail(r)} disabled={sendingId === (r.id || r.firebaseKey)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: sendingId === (r.id || r.firebaseKey) ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sendingId === (r.id || r.firebaseKey) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: sendingId === (r.id || r.firebaseKey) ? "none" : "0 2px 8px rgba(200,168,75,0.3)", touchAction: "manipulation" }}>
-                    {sendingId === (r.id || r.firebaseKey) ? "⏳ Envoi…" : "✉ Renvoyer"}
+                  <button onClick={() => envoyerEmail(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: "0 2px 8px rgba(200,168,75,0.3)", touchAction: "manipulation" }}>
+                    ✉ Renvoyer
                   </button>
                 </div>
               </div>
