@@ -29,13 +29,15 @@ const initialEtiquette = { nom_produit: true, poids_etiq: true, origine: true, g
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #f5f3ee; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { background: #f5f3ee; -webkit-tap-highlight-color: transparent; }
   .app { min-height: 100vh; background: #f5f3ee; }
   input, select, textarea {
     font-family: 'DM Sans', sans-serif;
-    width: 100%; padding: 10px 14px; border-radius: 10px;
-    border: 1.5px solid #e8e0d0; font-size: 14px; outline: none;
+    width: 100%; padding: 12px 14px; border-radius: 10px;
+    border: 1.5px solid #e8e0d0; font-size: 16px; outline: none;
     background: #fff; color: #1a2e1a; transition: border 0.2s, box-shadow 0.2s;
+    -webkit-appearance: none; appearance: none;
   }
   input:focus, select:focus, textarea:focus {
     border-color: #c8a84b; box-shadow: 0 0 0 3px rgba(200,168,75,0.15);
@@ -43,21 +45,43 @@ const styles = `
   input::placeholder, textarea::placeholder { color: #9ca3af; }
   .card { background: #fff; border-radius: 20px; border: 1.5px solid #e8e0d0; box-shadow: 0 4px 24px rgba(22,163,74,0.07); }
   .btn-primary {
-    width: 100%; padding: 14px; background: linear-gradient(135deg, #c8a84b, #a8882b);
-    color: #fff; border: none; border-radius: 12px; font-family: 'Syne', sans-serif;
-    font-weight: 700; font-size: 15px; cursor: pointer; letter-spacing: 0.3px;
+    width: 100%; padding: 16px; background: linear-gradient(135deg, #c8a84b, #a8882b);
+    color: #fff; border: none; border-radius: 14px; font-family: 'Syne', sans-serif;
+    font-weight: 700; font-size: 16px; cursor: pointer; letter-spacing: 0.3px;
     box-shadow: 0 4px 16px rgba(200,168,75,0.4); transition: transform 0.15s, box-shadow 0.15s;
+    -webkit-appearance: none; touch-action: manipulation;
   }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(200,168,75,0.5); }
+  .btn-primary:active { transform: scale(0.98); }
   .note-btn {
-    width: 42px; height: 42px; border-radius: 10px; border: 1.5px solid #e5e7eb;
-    background: transparent; cursor: pointer; font-size: 15px; font-weight: 500;
+    width: 52px; height: 52px; border-radius: 12px; border: 1.5px solid #e5e7eb;
+    background: transparent; cursor: pointer; font-size: 17px; font-weight: 500;
     color: #9ca3af; transition: all 0.15s; font-family: 'Syne', sans-serif;
+    touch-action: manipulation; -webkit-appearance: none;
   }
-  .note-btn:hover { border-color: #c8a84b; color: #c8a84b; background: #faf8f3; }
-  .section-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #8a6f2e; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-  .section-title::before { content: ''; display: block; width: 4px; height: 16px; background: linear-gradient(180deg, #c8a84b, #e8c87b); border-radius: 2px; }
-  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; font-family: 'DM Sans', sans-serif; }
+  .note-btn:active { transform: scale(0.95); }
+  .section-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #8a6f2e; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .section-title::before { content: ''; display: block; width: 4px; height: 16px; background: linear-gradient(180deg, #c8a84b, #e8c87b); border-radius: 2px; flex-shrink: 0; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; font-family: 'DM Sans', sans-serif; }
+  .header-inner { max-width: 800px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .content-wrap { max-width: 800px; margin: 0 auto; padding: 20px 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .decision-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .action-row { display: flex; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+  @media (max-width: 600px) {
+    .grid-2 { grid-template-columns: 1fr; gap: 0; }
+    .decision-row { flex-direction: column; gap: 10px; }
+    .header-inner { flex-wrap: wrap; gap: 10px; }
+    .photo-grid { grid-template-columns: repeat(2, 1fr); }
+    .action-row { flex-direction: column; }
+    .card { border-radius: 16px; }
+  }
+  @media (min-width: 600px) and (max-width: 1024px) {
+    .content-wrap { padding: 24px 24px; }
+    .note-btn { width: 56px; height: 56px; font-size: 18px; }
+    .btn-primary { font-size: 17px; padding: 18px; }
+    input, select, textarea { font-size: 16px; padding: 14px; }
+  }
   @keyframes slideIn { from { opacity:0; transform: translateY(-8px); } to { opacity:1; transform: translateY(0); } }
   .toast { animation: slideIn 0.25s ease; }
   @keyframes fadeUp { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
@@ -141,7 +165,7 @@ export default function App() {
   const [etiquetteAbsente, setEtiquetteAbsente] = useState(false);
   const [etiquette, setEtiquette] = useState(initialEtiquette);
   const [observations, setObservations] = useState("");
-  const [sending, setSending] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   // ─── FIREBASE: écoute en temps réel ───
   useEffect(() => {
@@ -178,7 +202,7 @@ export default function App() {
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
   };
 
-  const decisionLabel = (d: string) => d === "stock" ? "✓ ENTRÉE EN STOCK" : d === "reserve" ? "⚠ RÉSERVE" : "✗ REFUS";
+  const decisionLabel = (d: string) => d === "stock" ? "ENTREE EN STOCK" : d === "reserve" ? "RESERVE" : "REFUS";
   const decisionColor = (d: string): [number, number, number] => d === "stock" ? [22, 163, 74] : d === "reserve" ? [217, 119, 6] : [220, 38, 38];
   const decisionHex = (d: string) => d === "stock" ? "#16a34a" : d === "reserve" ? "#d97706" : "#dc2626";
 
@@ -213,14 +237,18 @@ export default function App() {
       id: Date.now().toString(),
     };
 
+    setSendingId("new");
     try {
       const rapportsRef = ref(db, "rapports");
       await push(rapportsRef, rapport);
-      showToast("✓ Rapport enregistré");
+      showToast("⏳ Envoi de l'email en cours…");
+      await envoyerEmail(rapport);
       reset();
       setVue("historique");
     } catch {
-      showToast("Erreur lors de l'enregistrement", "error");
+      showToast("Erreur lors de l'envoi", "error");
+    } finally {
+      setSendingId(null);
     }
   };
 
@@ -555,7 +583,7 @@ export default function App() {
 
   // ─── ENVOYER EMAIL ───
   const envoyerEmail = async (r: any) => {
-    setSending(true);
+    setSendingId(r.id || r.firebaseKey || "new");
     try {
       const htmlContent = buildEmailHTML(r);
       const scoreLabel = r.score ? NOTE_LABELS[Math.round(parseFloat(r.score))] : "Non évalué";
@@ -595,7 +623,7 @@ export default function App() {
       console.error(err);
       showToast("Erreur lors de l'envoi de l'email", "error");
     } finally {
-      setSending(false);
+      setSendingId(null);
     }
   };
 
@@ -639,16 +667,16 @@ export default function App() {
       doc.text(value || "—", M + 45, y); doc.setFont("helvetica", "normal"); y += 6;
     };
 
-    section("📦 Informations du colis");
+    section("INFORMATIONS DU COLIS");
     row("Fournisseur", r.fournisseur, true); row("Produit", r.produit, true);
     row("Origine", r.origine); if (r.poids) row("Poids", r.poids);
     if (r.conditionnement) row("Conditionnement", r.conditionnement);
     if (r.lotMoorea) row("N° Lot Moorea", r.lotMoorea);
     if (r.lotFournisseur) row("N° Lot Fournisseur", r.lotFournisseur);
-    if (r.temperature) row("Température réception", r.temperature + " °C");
+    if (r.temperature) row("Temperature reception", r.temperature + " °C");
     y += 4;
 
-    section("👁 Qualité visuelle");
+    section("QUALITE VISUELLE");
     const noteLabels2: Record<number,string> = { 1:"Insuffisant",2:"Passable",3:"Correct",4:"Bon",5:"Excellent" };
     const noteColors2: Record<number,[number,number,number]> = { 1:[239,68,68],2:[249,115,22],3:[234,179,8],4:[34,197,94],5:[21,128,61] };
     const q = r.notes?.qualite;
@@ -660,19 +688,19 @@ export default function App() {
       doc.text(`${q}/5 — ${noteLabels2[q]}`,M+6,y+4.5); y+=12;
     }
 
-    section("⚖️ Poids");
+    section("POIDS");
     if (r.poidsStatut==="ok") {
       doc.setFillColor(240,253,244); doc.roundedRect(M+2,y-2,50,9,2,2,"F");
       doc.setTextColor(22,163,74); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.text("✓ Poids OK",M+6,y+4.5);
+      doc.text("Poids OK",M+6,y+4.5);
     } else if (r.poidsStatut==="ecart") {
       doc.setFillColor(255,251,235); doc.roundedRect(M+2,y-2,80,9,2,2,"F");
       doc.setTextColor(217,119,6); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.text(`⚠ Écart${r.poidsEcart?" : "+r.poidsEcart:""}`,M+6,y+4.5);
+      doc.text(`Ecart${r.poidsEcart?" : "+r.poidsEcart:""}`,M+6,y+4.5);
     }
     y+=12;
 
-    section("🏷️ Conformité étiquette colis");
+    section("CONFORMITE ETIQUETTE COLIS");
     if (r.etiquetteAbsente) {
       doc.setFillColor(254,242,242); doc.roundedRect(M+2,y-2,50,9,2,2,"F");
       doc.setTextColor(220,38,38); doc.setFont("helvetica","bold"); doc.setFontSize(9);
@@ -687,7 +715,7 @@ export default function App() {
         doc.roundedRect(ix,iy-1,itemW-2,7,1.5,1.5,"F");
         doc.setTextColor(ok?22:220,ok?163:38,ok?74:38);
         doc.setFont("helvetica",ok?"normal":"bold"); doc.setFontSize(7.5);
-        doc.text(`${ok?"✓":"✕"} ${item.label}`,ix+3,iy+4);
+        doc.text(`${ok?"OK":"X"} ${item.label}`,ix+3,iy+4);
       });
       y+=Math.ceil(ETIQUETTE_ITEMS.length/3)*8+6;
     }
@@ -704,7 +732,7 @@ export default function App() {
     }
 
     if (r.observations) {
-      checkY(20); section("💬 Observations");
+      checkY(20); section("OBSERVATIONS");
       const lines=doc.splitTextToSize(r.observations,CW-8);
       doc.setFillColor(250,248,245); doc.roundedRect(M,y-2,CW,lines.length*5+8,3,3,"F");
       doc.setTextColor(107,114,128); doc.setFont("helvetica","italic"); doc.setFontSize(8.5);
@@ -712,7 +740,7 @@ export default function App() {
     }
 
     if (r.photos&&r.photos.length>0) {
-      checkY(60); section("📷 Photos");
+      checkY(60); section("PHOTOS");
       const imgW=(CW-8)/3; const imgH=imgW*0.75;
       for (let i=0;i<Math.min(r.photos.length,6);i++) {
         const col=i%3; const rowI=Math.floor(i/3);
@@ -741,23 +769,21 @@ export default function App() {
       )}
 
       {/* HEADER */}
-      <div style={{ background: "#0a0a0a", padding: "20px 24px", marginBottom: 0, borderBottom: "3px solid #c8a84b" }}>
-        <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div>
-              <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, color: "#c8a84b", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: 1 }}>🍃 Moorea · Rapport Qualité</p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Arrivages · Fruits & Légumes</p>
-            </div>
+      <div style={{ background: "#0a0a0a", padding: "16px 20px", marginBottom: 0, borderBottom: "3px solid #c8a84b" }}>
+        <div className="header-inner">
+          <div>
+            <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: "#c8a84b", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: 2 }}>🍃 Moorea · Rapport Qualité</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Arrivages · Fruits & Légumes</p>
           </div>
-          <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.06)", padding: 4, borderRadius: 12 }}>
+          <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.06)", padding: 4, borderRadius: 12, flexShrink: 0 }}>
             {[["form", "✦ Nouveau"], ["historique", `Rapports${rapports.length ? ` (${rapports.length})` : ""}`]].map(([v, label]) => (
-              <button key={v} onClick={() => setVue(v)} style={{ padding: "7px 14px", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: vue === v ? 700 : 400, fontFamily: "'Syne', sans-serif", background: vue === v ? "#c8a84b" : "transparent", color: vue === v ? "#0a0a0a" : "rgba(255,255,255,0.6)", border: "none", transition: "all 0.2s" }}>{label}</button>
+              <button key={v} onClick={() => setVue(v)} style={{ padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: vue === v ? 700 : 400, fontFamily: "'Syne', sans-serif", background: vue === v ? "#c8a84b" : "transparent", color: vue === v ? "#0a0a0a" : "rgba(255,255,255,0.6)", border: "none", transition: "all 0.2s", touchAction: "manipulation" }}>{label}</button>
             ))}
           </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px" }}>
+      <div className="content-wrap">
 
         {/* FORMULAIRE */}
         {vue === "form" && (
@@ -765,7 +791,7 @@ export default function App() {
             <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
               <div className="section-title">📦 Informations du colis</div>
               <F label="Fournisseur" required><input value={fournisseur} onChange={e => setFournisseur(e.target.value)} placeholder="Nom du fournisseur" /></F>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+              <div className="grid-2">
                 <F label="Produit" required><input value={produit} onChange={e => setProduit(e.target.value)} placeholder="Ex: Tomates, Fraises…" /></F>
                 <F label="Origine" required><input value={origine} onChange={e => setOrigine(e.target.value)} placeholder="Ex: Espagne, France…" /></F>
                 <F label="Poids"><input value={poids} onChange={e => setPoids(e.target.value)} placeholder="Ex: 5kg, 10kg…" /></F>
@@ -904,21 +930,21 @@ export default function App() {
                 <textarea value={observations} onChange={e => setObservations(e.target.value)} placeholder="Remarques sur la qualité, état du lot, anomalies constatées…" rows={3} style={{ resize: "vertical" }} />
               </F>
               <p style={{ fontSize: 12, color: "#6b7280", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>Décision finale</p>
-              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <div className="decision-row">
                 {[
                   { id: "stock", label: "✓ Entrée en stock", bg: "linear-gradient(135deg, #16a34a, #15803d)", bgOff: "#f0fdf4", colorOff: "#16a34a", border: "#bbf7d0", shadow: "rgba(22,163,74,0.35)" },
                   { id: "reserve", label: "⚠ Réserve", bg: "linear-gradient(135deg, #d97706, #b45309)", bgOff: "#fffbeb", colorOff: "#d97706", border: "#fcd34d", shadow: "rgba(217,119,6,0.35)" },
                   { id: "refus", label: "✗ Refus", bg: "linear-gradient(135deg, #dc2626, #b91c1c)", bgOff: "#fef2f2", colorOff: "#dc2626", border: "#fca5a5", shadow: "rgba(220,38,38,0.3)" },
                 ].map(d => (
                   <button key={d.id} onClick={() => { setDecision(d.id); setPourcentage(""); }} style={{
-                    flex: 1, padding: "14px 6px", borderRadius: 12, cursor: "pointer",
-                    fontFamily: "'Syne', sans-serif", fontWeight: decision === d.id ? 700 : 600, fontSize: 13,
+                    flex: 1, padding: "16px 6px", borderRadius: 12, cursor: "pointer",
+                    fontFamily: "'Syne', sans-serif", fontWeight: decision === d.id ? 700 : 600, fontSize: 15,
                     background: decision === d.id ? d.bg : d.bgOff,
                     color: decision === d.id ? "#fff" : d.colorOff,
                     border: `2px solid ${decision === d.id ? "transparent" : d.border}`,
                     boxShadow: decision === d.id ? `0 4px 14px ${d.shadow}` : "none",
                     transform: decision === d.id ? "translateY(-1px)" : "none",
-                    transition: "all 0.2s",
+                    transition: "all 0.2s", touchAction: "manipulation",
                   }}>{d.label}</button>
                 ))}
               </div>
@@ -928,7 +954,7 @@ export default function App() {
                   <p style={{ fontSize: 12, fontWeight: 600, color: decision === "reserve" ? "#92400e" : "#991b1b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
                     {decision === "reserve" ? "⚠ Détail de la réserve" : "✗ Détail du refus"}
                   </p>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+                  <div className="grid-2">
                     <F label="Nombre de colis total">
                       <input type="number" value={nbColisTotal} onChange={e => setNbColisTotal(e.target.value)} placeholder="Ex: 50" min="0" style={{ border: `1.5px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }} />
                     </F>
@@ -948,7 +974,9 @@ export default function App() {
               )}
             </div>
 
-            <button className="btn-primary" onClick={soumettre}>Enregistrer le rapport →</button>
+            <button className="btn-primary" onClick={soumettre} disabled={sendingId === "new"} style={{ opacity: sendingId === "new" ? 0.7 : 1, cursor: sendingId === "new" ? "not-allowed" : "pointer" }}>
+              {sendingId === "new" ? "⏳ Envoi en cours…" : "✉ Envoyer le rapport"}
+            </button>
           </div>
         )}
 
@@ -1028,12 +1056,12 @@ export default function App() {
 
                 {r.observations && <p style={{ fontSize: 13, color: "#6b7280", fontStyle: "italic", borderTop: "1px solid #f0fdf4", paddingTop: 8, marginTop: 8 }}>"{r.observations}"</p>}
 
-                <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 10, borderTop: "1px solid #f0f0f0" }}>
-                  <button onClick={() => downloadPDF(r)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    📄 Télécharger PDF
+                <div className="action-row" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f0f0f0" }}>
+                  <button onClick={() => downloadPDF(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
+                    📄 PDF
                   </button>
-                  <button onClick={() => envoyerEmail(r)} disabled={sending} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: "none", background: sending ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sending ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: sending ? "none" : "0 2px 8px rgba(200,168,75,0.3)" }}>
-                    {sending ? "⏳ Envoi…" : "✉ Envoyer par mail"}
+                  <button onClick={() => envoyerEmail(r)} disabled={sendingId === (r.id || r.firebaseKey)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: sendingId === (r.id || r.firebaseKey) ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sendingId === (r.id || r.firebaseKey) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: sendingId === (r.id || r.firebaseKey) ? "none" : "0 2px 8px rgba(200,168,75,0.3)", touchAction: "manipulation" }}>
+                    {sendingId === (r.id || r.firebaseKey) ? "⏳ Envoi…" : "✉ Renvoyer"}
                   </button>
                 </div>
               </div>
