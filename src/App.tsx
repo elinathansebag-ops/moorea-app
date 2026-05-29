@@ -149,6 +149,8 @@ export default function App() {
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
   const [fournisseur, setFournisseur] = useState("");
   const [agreeur, setAgreeur] = useState("");
+  const [nbColisRecu, setNbColisRecu] = useState("");
+  const [nbColisAttendu, setNbColisAttendu] = useState("");
   const [produit, setProduit] = useState("");
   const [conditionnement, setConditionnement] = useState("");
   const [poids, setPoids] = useState("");
@@ -197,7 +199,8 @@ export default function App() {
   };
 
   const reset = () => {
-    setFournisseur(""); setAgreeur(""); setProduit(""); setConditionnement(""); setPoids("");
+    setFournisseur(""); setAgreeur(""); setNbColisRecu(""); setNbColisAttendu("");
+    setProduit(""); setConditionnement(""); setPoids("");
     setOrigine(""); setLotMoorea(""); setLotFournisseur(""); setTemperature("");
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal("");
     setPhotos([]); setPoidsStatut(""); setPoidsEcart("");
@@ -234,7 +237,7 @@ export default function App() {
     const { date, heure } = now();
     const decisionFinale = conformite === "conforme" ? "stock" : decision;
     const rapport = {
-      fournisseur, agreeur, produit, conditionnement, poids, origine,
+      fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
       lotMoorea, lotFournisseur, temperature, notes,
       conformite, decision: decisionFinale, pourcentage, nbColisTotal,
       nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
@@ -807,8 +810,34 @@ export default function App() {
               </div>
             </div>
 
+            {/* COLIS RECU / ATTENDU */}
+            <div style={{ marginBottom: 16, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 20, padding: "20px 24px" }}>
+              <div className="section-title">📦 Colis</div>
+              <div className="grid-2">
+                <F label="Nombre de colis reçus" required>
+                  <input type="number" value={nbColisRecu} onChange={e => setNbColisRecu(e.target.value)} placeholder="Ex: 48" min="0" />
+                </F>
+                <F label="Nombre de colis attendus">
+                  <input type="number" value={nbColisAttendu} onChange={e => setNbColisAttendu(e.target.value)} placeholder="Ex: 50" min="0" />
+                </F>
+              </div>
+              {nbColisRecu && nbColisAttendu && parseInt(nbColisRecu) !== parseInt(nbColisAttendu) && (
+                <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>⚠️</span>
+                  <span style={{ fontSize: 13, color: "#92400e", fontWeight: 600 }}>
+                    Écart : {Math.abs(parseInt(nbColisRecu) - parseInt(nbColisAttendu))} colis {parseInt(nbColisRecu) < parseInt(nbColisAttendu) ? "manquants" : "en surplus"}
+                  </span>
+                </div>
+              )}
+              {nbColisRecu && nbColisAttendu && parseInt(nbColisRecu) === parseInt(nbColisAttendu) && (
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>✅</span>
+                  <span style={{ fontSize: 13, color: "#15803d", fontWeight: 600 }}>Quantité conforme</span>
+                </div>
+              )}
+            </div>
+
             <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
-              <div className="section-title">📦 Informations du colis</div>
               <F label="Fournisseur" required><input value={fournisseur} onChange={e => setFournisseur(e.target.value)} placeholder="Nom du fournisseur" /></F>
               <div className="grid-2">
                 <F label="Produit" required><input value={produit} onChange={e => setProduit(e.target.value)} placeholder="Ex: Tomates, Fraises…" /></F>
