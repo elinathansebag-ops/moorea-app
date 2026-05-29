@@ -451,139 +451,169 @@ export default function App() {
   const buildEmailHTML = (r: any): string => {
     const dColor = decisionHex(r.decision);
     const dLabel = r.decision === "stock" ? "✅ ENTRÉE EN STOCK" : r.decision === "reserve" ? "⚠️ RÉSERVE" : "❌ REFUS";
+    const dBg = r.decision === "stock" ? "#f0fdf4" : r.decision === "reserve" ? "#fffbeb" : "#fef2f2";
     const scoreColor = r.score ? NOTE_COLORS[Math.round(parseFloat(r.score))] : "#aaa";
     const scoreLabel = r.score ? NOTE_LABELS[Math.round(parseFloat(r.score))] : "—";
 
     const etiqHTML = r.etiquetteAbsente
-      ? `<span style="color:#dc2626;font-weight:700;">🏷️ Étiquette absente</span>`
+      ? `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;">✕ Étiquette absente</span>`
       : ETIQUETTE_ITEMS.map(item => {
           const ok = r.etiquette?.[item.id] !== false;
-          return `<span style="display:inline-block;margin:2px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:${ok ? "#f0fdf4" : "#fef2f2"};color:${ok ? "#16a34a" : "#dc2626"};border:1px solid ${ok ? "#bbf7d0" : "#fca5a5"};">${ok ? "✓" : "✕"} ${item.label}</span>`
+          return `<span style="display:inline-block;margin:3px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;background:${ok ? "#f0fdf4" : "#fef2f2"};color:${ok ? "#16a34a" : "#dc2626"};border:1px solid ${ok ? "#bbf7d0" : "#fca5a5"};">${ok ? "✓" : "✕"} ${item.label}</span>`
         }).join("");
 
     const poidsHTML = r.poidsStatut === "ok"
-      ? `<span style="background:#f0fdf4;color:#16a34a;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid #bbf7d0;">⚖️ Poids OK</span>`
+      ? `<span style="background:#f0fdf4;color:#16a34a;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #bbf7d0;">✓ Poids OK</span>`
       : r.poidsStatut === "ecart"
-      ? `<span style="background:#fffbeb;color:#d97706;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid #fcd34d;">⚠️ Écart${r.poidsEcart ? " : " + r.poidsEcart : ""}</span>`
-      : `<span style="color:#9ca3af;font-size:12px;">Non renseigné</span>`;
+      ? `<span style="background:#fffbeb;color:#d97706;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #fcd34d;">⚠ Écart${r.poidsEcart ? " : " + r.poidsEcart : ""}</span>`
+      : `<span style="color:#9ca3af;font-size:13px;">Non renseigné</span>`;
+
+    const colisHTML = r.nbColisRecu || r.nbColisAttendu ? `
+    <tr>
+      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
+        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Colis attendus</div>
+        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.nbColisAttendu || "—"}</div>
+      </td>
+      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
+        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Colis reçus</div>
+        <div style="font-size:14px;color:${r.nbColisRecu && r.nbColisAttendu && r.nbColisRecu !== r.nbColisAttendu ? "#d97706" : "#1a2e1a"};font-weight:600;">${r.nbColisRecu || "—"}${r.nbColisRecu && r.nbColisAttendu && r.nbColisRecu !== r.nbColisAttendu ? " ⚠" : ""}</div>
+      </td>
+    </tr>` : "";
 
     const reserveHTML = (r.decision === "reserve" || r.decision === "refus") && r.nbColisRefuses !== null
-      ? `<div style="background:${r.decision === "reserve" ? "#fffbeb" : "#fef2f2"};border:1.5px solid ${r.decision === "reserve" ? "#fcd34d" : "#fca5a5"};border-radius:10px;padding:14px 18px;margin:12px 0;text-align:center;">
-          <span style="font-size:13px;color:#6b7280;">Colis ${r.decision === "reserve" ? "en réserve" : "refusés"} :</span>
-          <span style="font-size:22px;font-weight:900;color:${dColor};margin:0 8px;">${r.nbColisRefuses}</span>
-          <span style="font-size:13px;color:#6b7280;">/ ${r.nbColisTotal} (${r.pourcentage}%)</span>
+      ? `<div style="background:${r.decision === "reserve" ? "#fffbeb" : "#fef2f2"};border:2px solid ${r.decision === "reserve" ? "#fcd34d" : "#fca5a5"};border-radius:12px;padding:16px 20px;margin:0 24px 16px;text-align:center;">
+          <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">Colis ${r.decision === "reserve" ? "en réserve" : "refusés"}</div>
+          <div style="font-size:32px;font-weight:900;color:${dColor};">${r.nbColisRefuses} <span style="font-size:16px;font-weight:400;color:#9ca3af;">/ ${r.nbColisTotal} (${r.pourcentage}%)</span></div>
         </div>` : "";
 
-    const photosHTML = r.photos && r.photos.length > 0
-      ? `<div style="padding:12px 24px;">
-          <div style="background:#f5f3ee;border-radius:10px;padding:12px 16px;border:1px solid #e8e0d0;font-size:13px;color:#6b7280;">
-            📷 ${r.photos.length} photo${r.photos.length > 1 ? "s" : ""} jointe${r.photos.length > 1 ? "s" : ""} au rapport — disponibles dans le PDF
-          </div>
-        </div>` : "";
+    const photosHTML = r.photos && r.photos.filter((p: any) => p.url).length > 0
+      ? `<table width="100%" cellpadding="4" cellspacing="0" style="padding:0 20px 16px;">
+          <tr>${r.photos.filter((p: any) => p.url).slice(0, 3).map((p: any) =>
+            `<td style="width:33%"><img src="${p.url}" style="width:100%;border-radius:10px;aspect-ratio:1;object-fit:cover;display:block;" /></td>`
+          ).join("")}</tr>
+          ${r.photos.filter((p: any) => p.url).length > 3 ? `<tr>${r.photos.filter((p: any) => p.url).slice(3, 6).map((p: any) =>
+            `<td style="width:33%"><img src="${p.url}" style="width:100%;border-radius:10px;aspect-ratio:1;object-fit:cover;display:block;" /></td>`
+          ).join("")}</tr>` : ""}
+        </table>` : "";
 
-    return `
-<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:20px;background:#f5f3ee;font-family:Arial,sans-serif;">
-<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+<body style="margin:0;padding:0;background:#f0ede6;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.12);">
 
   <!-- HEADER -->
-  <div style="background:#0a0a0a;padding:18px 24px;border-bottom:3px solid #c8a84b;">
-    <table width="100%"><tr>
-      <td><div style="color:#c8a84b;font-size:20px;font-weight:900;letter-spacing:1px;">🍃 MOOREA</div>
-      <div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:2px;">Rapport Agréage — Marché de Rungis</div></td>
-      <td align="right"><div style="color:#9ca3af;font-size:11px;">${r.date} à ${r.heure}</div></td>
+  <div style="background:#0a0a0a;padding:22px 28px;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <div style="color:#c8a84b;font-size:22px;font-weight:900;letter-spacing:2px;font-family:Georgia,serif;">🍃 MOOREA</div>
+        <div style="color:rgba(255,255,255,0.45);font-size:11px;margin-top:3px;letter-spacing:0.5px;">RAPPORT AGRÉAGE · MARCHÉ DE RUNGIS</div>
+      </td>
+      <td align="right" style="vertical-align:top;">
+        <div style="color:#c8a84b;font-size:12px;font-weight:600;">${r.date}</div>
+        <div style="color:rgba(255,255,255,0.4);font-size:11px;">${r.heure}</div>
+        ${r.agreeur ? `<div style="color:rgba(255,255,255,0.6);font-size:11px;margin-top:4px;">👤 ${r.agreeur}</div>` : ""}
+      </td>
     </tr></table>
   </div>
+  <div style="height:4px;background:linear-gradient(90deg,#c8a84b,#e8c87b,#c8a84b);"></div>
 
-  <!-- DECISION -->
-  <div style="background:${dColor};padding:14px 24px;text-align:center;font-size:15px;font-weight:700;color:#fff;letter-spacing:0.5px;">${dLabel}</div>
+  <!-- DECISION BANNER -->
+  <div style="background:${dColor};padding:18px 28px;text-align:center;">
+    <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:1px;">${dLabel}</div>
+    ${r.conformite === "conforme" ? `<div style="font-size:12px;color:rgba(255,255,255,0.8);margin-top:4px;">Lot validé pour mise en stock</div>` : ""}
+  </div>
 
-  <!-- INFOS COLIS -->
-  <div style="background:#f5f3ee;padding:8px 24px;font-size:11px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1px;border-left:4px solid #c8a84b;">📦 Informations du colis</div>
-  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-    <tr>
-      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;width:50%;">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Produit</div>
-        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.produit}</div>
-      </td>
-      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Fournisseur</div>
-        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.fournisseur}</div>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Origine</div>
-        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.origine || "—"}</div>
-      </td>
-      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Température</div>
-        <div style="font-size:14px;color:#1d4ed8;font-weight:600;">🌡️ ${r.temperature ? r.temperature + "°C" : "—"}</div>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Lot Moorea</div>
-        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.lotMoorea || "—"}</div>
-      </td>
-      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Lot Fournisseur</div>
-        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.lotFournisseur || "—"}</div>
-      </td>
-    </tr>
-    ${r.poids || r.conditionnement ? `<tr>
-      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Poids</div>
-        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.poids || "—"}</div>
-      </td>
-      <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
-        <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Conditionnement</div>
-        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.conditionnement || "—"}</div>
-      </td>
-    </tr>` : ""}
-  </table>
+  <!-- INFOS -->
+  <div style="padding:0 0 8px;">
+    <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Informations du colis</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+      <tr>
+        <td style="padding:14px 28px 10px;width:50%;vertical-align:top;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Produit</div>
+          <div style="font-size:16px;color:#1a2e1a;font-weight:700;">${r.produit}</div>
+        </td>
+        <td style="padding:14px 28px 10px;vertical-align:top;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Fournisseur</div>
+          <div style="font-size:16px;color:#1a2e1a;font-weight:700;">${r.fournisseur}</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Origine</div>
+          <div style="font-size:14px;color:#374151;font-weight:500;">${r.origine || "—"}</div>
+        </td>
+        <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Température</div>
+          <div style="font-size:14px;color:${r.temperature && parseFloat(r.temperature) > 8 ? "#d97706" : "#1d4ed8"};font-weight:600;">🌡️ ${r.temperature ? r.temperature + "°C" : "—"}</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Lot Moorea</div>
+          <div style="font-size:14px;color:#374151;font-weight:600;">${r.lotMoorea || "—"}</div>
+        </td>
+        <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Lot Fournisseur</div>
+          <div style="font-size:14px;color:#374151;font-weight:500;">${r.lotFournisseur || "—"}</div>
+        </td>
+      </tr>
+      ${colisHTML}
+      ${r.poids || r.conditionnement ? `<tr>
+        <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Poids</div>
+          <div style="font-size:14px;color:#374151;">${r.poids || "—"}</div>
+        </td>
+        <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Conditionnement</div>
+          <div style="font-size:14px;color:#374151;">${r.conditionnement || "—"}</div>
+        </td>
+      </tr>` : ""}
+    </table>
+  </div>
 
-  <!-- SCORE -->
-  <div style="background:#f5f3ee;padding:8px 24px;font-size:11px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1px;border-left:4px solid #c8a84b;">⭐ Qualité visuelle</div>
-  <div style="padding:16px 24px;">
-    <div style="background:#f9fafb;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border:1px solid #e8e0d0;">
-      <div>
-        <div style="font-size:11px;color:#8a6f2e;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">Score qualité</div>
-        <div style="font-size:13px;color:#6b7280;">${scoreLabel}</div>
-      </div>
-      <div style="text-align:center;">
-        <div style="font-size:28px;font-weight:900;color:${scoreColor};">${r.score || "—"}</div>
-        <div style="font-size:11px;color:#9ca3af;">/ 5</div>
-      </div>
-    </div>
+  <!-- SCORE QUALITE -->
+  <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Qualité visuelle</div>
+  <div style="padding:16px 28px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:12px;border:1px solid #e8e0d0;overflow:hidden;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <div style="font-size:11px;color:#8a6f2e;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;">Score qualité</div>
+          <div style="font-size:13px;color:#6b7280;">${scoreLabel}</div>
+        </td>
+        <td align="right" style="padding:16px 20px;">
+          <span style="font-size:36px;font-weight:900;color:${scoreColor};">${r.score || "—"}</span>
+          <span style="font-size:14px;color:#9ca3af;"> / 5</span>
+        </td>
+      </tr>
+    </table>
   </div>
 
   <!-- ETIQUETTE -->
-  <div style="background:#f5f3ee;padding:8px 24px;font-size:11px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1px;border-left:4px solid #c8a84b;">🏷️ Conformité étiquette</div>
-  <div style="padding:12px 24px;">${etiqHTML}</div>
+  <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Conformité étiquette</div>
+  <div style="padding:14px 28px;">${etiqHTML}</div>
 
   <!-- POIDS -->
-  <div style="background:#f5f3ee;padding:8px 24px;font-size:11px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1px;border-left:4px solid #c8a84b;">⚖️ Contrôle poids</div>
-  <div style="padding:12px 24px;">${poidsHTML}</div>
+  <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Contrôle poids</div>
+  <div style="padding:14px 28px;">${poidsHTML}</div>
 
-  ${reserveHTML ? `<div style="padding:0 24px;">${reserveHTML}</div>` : ""}
+  ${reserveHTML}
 
-  <!-- OBSERVATIONS -->
-  <div style="background:#f5f3ee;padding:8px 24px;font-size:11px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1px;border-left:4px solid #c8a84b;">💬 Observations</div>
-  <div style="padding:16px 24px;">
-    <div style="background:#faf8f5;border-radius:10px;padding:14px 18px;font-size:13px;color:#6b7280;font-style:italic;border:1px solid #e8e0d0;">${r.observations || "Aucune observation"}</div>
+  <!-- COMMENTAIRE -->
+  <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Commentaire</div>
+  <div style="padding:16px 28px;">
+    <div style="background:#faf8f5;border-radius:10px;padding:14px 18px;font-size:13px;color:#6b7280;font-style:italic;border:1px solid #e8e0d0;line-height:1.6;">${r.observations || "Aucun commentaire"}</div>
   </div>
 
   <!-- PHOTOS -->
-  ${r.photos && r.photos.length > 0 ? `
-  <div style="background:#f5f3ee;padding:8px 24px;font-size:11px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1px;border-left:4px solid #c8a84b;">📷 Photos</div>
-  ${photosHTML}` : ""}
+  ${r.photos && r.photos.filter((p: any) => p.url).length > 0 ? `
+  <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Photos (${r.photos.filter((p: any) => p.url).length})</div>
+  <div style="padding:16px 28px 8px;">${photosHTML}</div>` : ""}
 
   <!-- FOOTER -->
-  <div style="background:#0a0a0a;padding:14px 24px;text-align:center;font-size:11px;color:#666;border-top:2px solid #c8a84b;">
-    Généré automatiquement par Moorea · Agréage Rungis · ${r.date} à ${r.heure}${r.lotMoorea ? " · Lot " + r.lotMoorea : ""}
+  <div style="background:#0a0a0a;padding:16px 28px;text-align:center;border-top:3px solid #c8a84b;">
+    <div style="color:#c8a84b;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:4px;">MOOREA · MARCHÉ DE RUNGIS</div>
+    <div style="color:rgba(255,255,255,0.4);font-size:11px;">Rapport généré le ${r.date} à ${r.heure}${r.lotMoorea ? " · Lot " + r.lotMoorea : ""}${r.agreeur ? " · Agréeur : " + r.agreeur : ""}</div>
   </div>
 
 </div>
@@ -591,49 +621,36 @@ export default function App() {
 </html>`;
   };
 
-  // ─── ENVOYER EMAIL ───
+  // ─── ENVOYER EMAIL via RESEND ───
   const envoyerEmail = async (r: any) => {
     setSendingId(r.id || r.firebaseKey || "new");
     try {
-      // On retire les photos du rapport pour l'email (trop lourd en base64)
-      const rSansPhotos = { ...r, photos: r.photos ? r.photos.map((_: any) => ({ name: "photo", url: "" })) : [] };
-      const htmlContent = buildEmailHTML({ ...r, photos: r.photos?.length ? [{ name: `${r.photos.length} photo(s)`, url: "" }] : [] });
-      const scoreLabel = r.score ? NOTE_LABELS[Math.round(parseFloat(r.score))] : "Non évalué";
-      const dLabel = r.decision === "stock" ? "✅ Entrée en stock" : r.decision === "reserve" ? "⚠️ Réserve" : "❌ Refus";
+      const htmlContent = buildEmailHTML(r);
+      const subject = `🍃 Rapport Agréage Moorea — ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "—"} | ${r.date}`;
 
-      await emailjs.send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
-        {
-          to_email: DESTINATAIRES,
-          produit: r.produit,
-          fournisseur: r.fournisseur,
-          lot_moorea: r.lotMoorea || "—",
-          lot_fournisseur: r.lotFournisseur || "—",
-          date: r.date,
-          heure: r.heure,
-          origine: r.origine || "—",
-          temperature: r.temperature ? r.temperature + "°C" : "—",
-          decision: dLabel,
-          decision_color: decisionHex(r.decision),
-          decision_label: dLabel,
-          score: r.score || "—",
-          score_label: scoreLabel,
-          score_color: r.score ? NOTE_COLORS[Math.round(parseFloat(r.score))] : "#aaa",
-          observations: r.observations || "Aucune observation",
-          poids: r.poids || "—",
-          conditionnement: r.conditionnement || "—",
-          etiquette_html: r.etiquetteAbsente ? "Étiquette absente" : ETIQUETTE_ITEMS.map(item => `${r.etiquette?.[item.id] !== false ? "✓" : "✕"} ${item.label}`).join(" | "),
-          poids_html: r.poidsStatut === "ok" ? "✓ Poids OK" : r.poidsStatut === "ecart" ? `⚠ Écart${r.poidsEcart ? " : " + r.poidsEcart : ""}` : "—",
-          reserve_html: (r.decision !== "stock" && r.nbColisRefuses !== null) ? `${r.nbColisRefuses} / ${r.nbColisTotal} colis (${r.pourcentage}%)` : "",
-          message_html: htmlContent,
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer re_Rgn9PcgZ_AMcZjZh9dck6b914YcaTpUDC`,
+          "Content-Type": "application/json",
         },
-        EMAILJS_PUBLIC_KEY
-      );
+        body: JSON.stringify({
+          from: "Moorea Agréage <onboarding@resend.dev>",
+          to: ["agreage@moorea.fr"],
+          subject,
+          html: htmlContent,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Erreur Resend");
+      }
+
       showToast("✉ Email envoyé avec succès");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      showToast("Erreur lors de l'envoi de l'email", "error");
+      showToast(`Erreur : ${err.message || "Envoi échoué"}`, "error");
     } finally {
       setSendingId(null);
     }
