@@ -1,29 +1,34 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  const { to, subject, html } = req.body;
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer re_Rgn9PcgZ_AMcZjZh9dck6b914YcaTpUDC`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'Moorea Agréage <onboarding@resend.dev>',
-        to,
-        subject,
-        html,
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) return res.status(400).json({ error: data.message });
-    return res.status(200).json({ success: true, id: data.id });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+export const config = { runtime: 'edge' };
+ 
+export default async function handler(req: Request) {
+  if (req.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
   }
+ 
+  const { to, subject, html } = await req.json();
+ 
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer re_Rgn9PcgZ_AMcZjZh9dck6b914YcaTpUDC',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'Moorea Agréage <onboarding@resend.dev>',
+      to,
+      subject,
+      html,
+    }),
+  });
+ 
+  const data = await response.json();
+ 
+  return new Response(JSON.stringify(data), {
+    status: response.status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
 }
+ 
