@@ -621,40 +621,42 @@ export default function App() {
   // ─── ENVOYER EMAIL via RESEND ───
   const envoyerEmail = (r: any) => {
     const dLabel = r.decision === "stock" ? "Entrée en stock" : r.decision === "reserve" ? "Réserve" : "Refus";
-    const subject = encodeURIComponent(`Rapport Agréage Moorea — ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "—"} | ${r.date}`);
-    const body = encodeURIComponent(
+    const subject = `Rapport Agréage Moorea - ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "-"} | ${r.date}`;
+    const body =
 `RAPPORT AGRÉAGE MOOREA
 ======================
 Date : ${r.date} à ${r.heure}
-Agréeur : ${r.agreeur || "—"}
+Agréeur : ${r.agreeur || "-"}
 
 PRODUIT : ${r.produit}
 Fournisseur : ${r.fournisseur}
-Origine : ${r.origine || "—"}
-Lot Moorea : ${r.lotMoorea || "—"}
-Lot Fournisseur : ${r.lotFournisseur || "—"}
-Température : ${r.temperature ? r.temperature + "°C" : "—"}
-Colis attendus : ${r.nbColisAttendu || "—"}
-Colis reçus : ${r.nbColisRecu || "—"}
+Origine : ${r.origine || "-"}
+Lot Moorea : ${r.lotMoorea || "-"}
+Lot Fournisseur : ${r.lotFournisseur || "-"}
+Température : ${r.temperature ? r.temperature + "°C" : "-"}
+Colis attendus : ${r.nbColisAttendu || "-"}
+Colis reçus : ${r.nbColisRecu || "-"}
 
-CONFORMITÉ : ${r.conformite === "conforme" ? "✓ CONFORME" : "✗ NON CONFORME"}
+CONFORMITÉ : ${r.conformite === "conforme" ? "CONFORME" : "NON CONFORME"}
 DÉCISION : ${dLabel.toUpperCase()}
 ${r.nbColisRefuses !== null && r.nbColisRefuses !== undefined ? `Colis ${r.decision === "reserve" ? "en réserve" : "refusés"} : ${r.nbColisRefuses} / ${r.nbColisTotal} (${r.pourcentage}%)` : ""}
 
-QUALITÉ VISUELLE : ${r.score ? r.score + "/5" : "—"}
-
+QUALITÉ VISUELLE : ${r.score ? r.score + "/5" : "-"}
 ÉTIQUETTE : ${r.etiquetteAbsente ? "Absente" : "Conforme"}
-POIDS : ${r.poidsStatut === "ok" ? "OK" : r.poidsStatut === "ecart" ? "Écart" + (r.poidsEcart ? " : " + r.poidsEcart : "") : "—"}
+POIDS : ${r.poidsStatut === "ok" ? "OK" : r.poidsStatut === "ecart" ? "Écart" + (r.poidsEcart ? " : " + r.poidsEcart : "") : "-"}
 
 COMMENTAIRE : ${r.observations || "Aucun"}
 
 Photos : ${r.nbPhotos || 0} photo(s) disponibles dans le PDF
 
-—
-Généré par Moorea · Agréage Rungis · ${r.date}`
-    );
+--
+Généré par Moorea · Agréage Rungis · ${r.date}`;
+
     const to = "commercial@moorea.fr,qualite@moorea.fr,agreage@moorea.fr";
-    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+    const mailtoLink = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const a = document.createElement("a");
+    a.href = mailtoLink;
+    a.click();
   };
 
   // ─── GÉNÉRER + TÉLÉCHARGER PDF ───
