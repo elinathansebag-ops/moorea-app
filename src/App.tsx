@@ -851,7 +851,24 @@ _PDF joint_`;
     doc.roundedRect(M, y, CW, 12, 3, 3, "F");
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
     doc.text(decisionLabel(r.decision), W / 2, y + 8, { align: "center" });
-    y += 18;
+    y += 14;
+
+    // Colis en réserve/refus juste sous le bandeau
+    if (r.decision !== "stock" && r.nbColisRefuses !== null) {
+      const dc2 = decisionColor(r.decision);
+      doc.setFillColor(dc2[0], dc2[1], dc2[2], 0.15);
+      doc.setFillColor(dc2[0] > 100 ? 255 : 254, dc2[1] > 100 ? 251 : 242, dc2[2] > 100 ? 235 : 242);
+      doc.roundedRect(M, y, CW, 10, 2, 2, "F");
+      doc.setFillColor(dc2[0], dc2[1], dc2[2]);
+      doc.rect(M, y, 3, 10, "F");
+      doc.setTextColor(dc2[0], dc2[1], dc2[2]);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+      const label2 = r.decision === "reserve" ? "Colis en reserve" : "Colis refuses";
+      doc.text(`${label2} : ${r.nbColisRefuses} / ${r.nbColisTotal} colis  (${r.pourcentage}%)`, M + 6, y + 6.5);
+      y += 14;
+    } else {
+      y += 4;
+    }
 
     const section = (title: string) => {
       checkY(14);
@@ -860,34 +877,44 @@ _PDF joint_`;
       doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
       doc.text(title, M + 6, y + 5.5); y += 12;
     };
-    const row = (label: string, value: string, bold = false) => {
-      checkY(7);
-      doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-      doc.text(label + " :", M + 2, y);
-      doc.setTextColor(26, 46, 26); if (bold) doc.setFont("helvetica", "bold");
-      doc.text(value || "-", M + 45, y); doc.setFont("helvetica", "normal"); y += 6;
-    };
 
+    // INFORMATIONS EN 2 COLONNES
     section("INFORMATIONS DU COLIS");
-    row("Fournisseur", r.fournisseur, true); row("Produit", r.produit, true);
-    if (r.agreeur) row("Agreeur", r.agreeur);
-    row("Origine", r.origine);
-    if (r.poids) row("Poids", r.poids + " kg");
-    if (r.conditionnement) row("Conditionnement", r.conditionnement);
-    if (r.lotMoorea) row("N Lot Moorea", r.lotMoorea);
-    if (r.lotFournisseur) row("N Lot Fournisseur", r.lotFournisseur);
-    if (r.temperature) row("Temperature reception", r.temperature + " C");
-    if (r.nbColisAttendu) row("Colis attendus", r.nbColisAttendu);
-    if (r.nbColisRecu) row("Colis recus", r.nbColisRecu);
-    y += 4;
+    const col1 = M + 2; const col2 = M + CW / 2 + 2;
+    const colW = CW / 2 - 6;
+    const infoItems: [string, string][] = [];
+    infoItems.push(["Fournisseur", r.fournisseur]);
+    infoItems.push(["Produit", r.produit]);
+    if (r.agreeur) infoItems.push(["Agreeur", r.agreeur]);
+    infoItems.push(["Origine", r.origine || "-"]);
+    if (r.poids) infoItems.push(["Poids", r.poids + " kg"]);
+    if (r.conditionnement) infoItems.push(["Conditionnement", r.conditionnement]);
+    if (r.lotMoorea) infoItems.push(["N Lot Moorea", r.lotMoorea]);
+    if (r.lotFournisseur) infoItems.push(["N Lot Fournisseur", r.lotFournisseur]);
+    if (r.temperature) infoItems.push(["Temperature", r.temperature + " C"]);
+    if (r.nbColisAttendu) infoItems.push(["Colis attendus", r.nbColisAttendu]);
+    if (r.nbColisRecu) infoItems.push(["Colis recus", r.nbColisRecu]);
 
-    section("CONFORMITE");
-    const conf = r.conformite === "conforme" ? "CONFORME" : "NON CONFORME";
-    const confColors: [number,number,number] = r.conformite === "conforme" ? [22,163,74] : [220,38,38];
-    doc.setFillColor(...confColors);
-    doc.roundedRect(M+2, y-2, 70, 9, 2, 2, "F");
-    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-    doc.text(conf, M+6, y+4.5); y+=12;
+    for (let i = 0; i < infoItems.length; i += 2) {
+      checkY(7);
+      // Colonne gauche
+      doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+      doc.text(infoItems[i][0] + " :", col1, y);
+      doc.setTextColor(26, 46, 26); doc.setFont("helvetica", "bold");
+      const val1 = doc.splitTextToSize(infoItems[i][1] || "-", colW - 20);
+      doc.text(val1[0], col1 + 30, y);
+      // Colonne droite
+      if (infoItems[i + 1]) {
+        doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal");
+        doc.text(infoItems[i + 1][0] + " :", col2, y);
+        doc.setTextColor(26, 46, 26); doc.setFont("helvetica", "bold");
+        const val2 = doc.splitTextToSize(infoItems[i + 1][1] || "-", colW - 20);
+        doc.text(val2[0], col2 + 30, y);
+      }
+      doc.setFont("helvetica", "normal");
+      y += 6;
+    }
+    y += 4;
 
     section("EVALUATION QUALITE");
     const noteLabels: Record<number,string> = {1:"Insuffisant",2:"Passable",3:"Correct",4:"Bon",5:"Excellent"};
@@ -916,7 +943,7 @@ _PDF joint_`;
       const scoreColor2: [number,number,number] = scoreNum >= 4 ? [22,163,74] : scoreNum >= 3 ? [217,119,6] : [220,38,38];
       const suggestion = scoreNum >= 4 ? "Conforme" : scoreNum >= 3 ? "Reserve" : "Non conforme";
       doc.setFillColor(...scoreColor2);
-      doc.roundedRect(M+2, y-2, 90, 9, 2, 2, "F");
+      doc.roundedRect(M+2, y-2, 100, 9, 2, 2, "F");
       doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
       doc.text(`Score moyen : ${r.score}/5 - Suggestion : ${suggestion}`, M+6, y+4.5);
       y += 14;
@@ -930,7 +957,9 @@ _PDF joint_`;
     } else if (r.poidsStatut==="ecart") {
       doc.setFillColor(255,251,235); doc.roundedRect(M+2,y-2,80,9,2,2,"F");
       doc.setTextColor(217,119,6); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.text(`Ecart${r.poidsEcart?" : "+r.poidsEcart:""}`,M+6,y+4.5);
+      // Ecart en grammes seulement
+      const ecartVal = r.poidsEcart ? r.poidsEcart.toString().replace(/[^0-9]/g, "") : "";
+      doc.text(`Ecart${ecartVal ? " : " + ecartVal + " g" : ""}`,M+6,y+4.5);
     }
     y+=12;
 
@@ -952,17 +981,6 @@ _PDF joint_`;
         doc.text(`${ok?"OK":"X"} ${item.label}`,ix+3,iy+4);
       });
       y+=Math.ceil(ETIQUETTE_ITEMS.length/3)*8+6;
-    }
-
-    if (r.decision!=="stock"&&r.nbColisRefuses!==null) {
-      checkY(20);
-      const dc2=decisionColor(r.decision);
-      doc.setFillColor(dc2[0],dc2[1],dc2[2]);
-      doc.roundedRect(M,y,CW,18,3,3,"F");
-      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(10);
-      const label2=r.decision==="reserve"?"Colis en reserve":"Colis refuses";
-      doc.text(`${label2} : ${r.nbColisRefuses} / ${r.nbColisTotal} (${r.pourcentage}%)`,W/2,y+11,{align:"center"});
-      y+=24;
     }
 
     if (r.observations) {
@@ -1128,8 +1146,8 @@ _PDF joint_`;
                 </div>
                 {poidsStatut === "ecart" && (
                   <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 10, padding: "12px 14px" }}>
-                    <label style={{ fontSize: 12, color: "#92400e", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6 }}>Écart moyen par colis</label>
-                    <input type="text" value={poidsEcart} onChange={e => setPoidsEcart(e.target.value)} placeholder="Ex: −120g par colis" style={{ border: "1.5px solid #fcd34d" }} />
+                    <label style={{ fontSize: 12, color: "#92400e", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6 }}>Écart moyen par colis (g)</label>
+                    <input type="number" min="0" value={poidsEcart} onChange={e => setPoidsEcart(e.target.value)} placeholder="Ex: 120" style={{ border: "1.5px solid #fcd34d" }} />
                   </div>
                 )}
               </div>
