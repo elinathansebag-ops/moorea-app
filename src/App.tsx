@@ -334,14 +334,22 @@ _PDF joint_`;
 
       const rapportAvecPhotos = { ...rapport, photos };
 
-      // 1. Enregistre dans Firebase
-      const rapportsRef = ref(db, "rapports");
-      await push(rapportsRef, rapport);
+      // 1. Upload photos ImgBB en parallèle (fire and forget)
+      let photoUrls: string[] = [];
+      if (photos.length > 0) {
+        showToast("⏳ Upload des photos…");
+        photoUrls = await uploadPhotosImgBB(photos);
+      }
 
-      // 2. Envoie email avec PDF (avec photos)
+      // 2. Enregistre dans Firebase avec URLs photos
+      const rapportsRef = ref(db, "rapports");
+      const newRef = await push(rapportsRef, { ...rapport, photoUrls });
+
+      // 3. Envoie email avec PDF (avec photos base64)
+      showToast("⏳ Envoi de l'email…");
       await envoyerEmail(rapportAvecPhotos);
 
-      // 3. Reset et navigation
+      // 4. Reset et navigation
       reset();
       setVue("historique");
 
@@ -1407,11 +1415,11 @@ _PDF joint_`;
                   </div>
                 )}
 
-                {r.photos && r.photos.length > 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
-                    {r.photos.map((p: any, pi: number) => (
-                      <div key={pi} style={{ borderRadius: 8, overflow: "hidden", aspectRatio: "1" }}>
-                        <img src={p.url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                {(r.photoUrls?.length > 0 || r.photos?.length > 0) && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 10 }}>
+                    {(r.photoUrls?.length > 0 ? r.photoUrls : r.photos?.map((p: any) => p.url) || []).slice(0, 6).map((url: string, pi: number) => (
+                      <div key={pi} style={{ borderRadius: 8, overflow: "hidden", aspectRatio: "4/3" }}>
+                        <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       </div>
                     ))}
                   </div>
