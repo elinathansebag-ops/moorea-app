@@ -170,6 +170,9 @@ export default function App() {
   const [etiquette, setEtiquette] = useState(initialEtiquette);
   const [observations, setObservations] = useState("");
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [searchDate, setSearchDate] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // ─── FIREBASE: écoute en temps réel ───
   useEffect(() => {
@@ -207,6 +210,17 @@ export default function App() {
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
   };
 
+  const supprimerRapport = async (firebaseKey: string) => {
+    try {
+      const rapportRef = ref(db, `rapports/${firebaseKey}`);
+      await remove(rapportRef);
+      setConfirmDelete(null);
+      showToast("🗑 Rapport supprimé");
+    } catch {
+      showToast("Erreur lors de la suppression", "error");
+    }
+  };
+
   const decisionLabel = (d: string) => d === "stock" ? "ENTREE EN STOCK" : d === "reserve" ? "RESERVE" : "REFUS";
   const decisionColor = (d: string): [number, number, number] => d === "stock" ? [22, 163, 74] : d === "reserve" ? [217, 119, 6] : [220, 38, 38];
   const decisionHex = (d: string) => d === "stock" ? "#16a34a" : d === "reserve" ? "#d97706" : "#dc2626";
@@ -224,6 +238,26 @@ export default function App() {
 
   const score = scoreGlobal(notes);
 
+  // ─── UPLOAD PHOTOS VERS IMGBB ───
+  const uploadPhotosImgBB = async (photosList: { name: string; url: string }[]) => {
+    const IMGBB_KEY = "06c9cef29906bf8f060e882ed5540240";
+    const uploaded: string[] = [];
+    for (const photo of photosList) {
+      try {
+        const base64 = photo.url.split(",")[1];
+        const formData = new FormData();
+        formData.append("image", base64);
+        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (data.success) uploaded.push(data.data.url);
+      } catch {}
+    }
+    return uploaded;
+  };
+
   // ─── SOUMETTRE ───
   const soumettre = async () => {
     if (!fournisseur || !produit || !conformite) {
@@ -236,24 +270,32 @@ export default function App() {
     }
     const { date, heure } = now();
     const decisionFinale = conformite === "conforme" ? "stock" : decision;
-    const rapport = {
-      fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
-      lotMoorea, lotFournisseur, temperature, notes,
-      conformite, decision: decisionFinale, pourcentage, nbColisTotal,
-      nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
-      nbPhotos: photos.length,
-      poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
-      observations, score, date, heure,
-      timestamp: Date.now(),
-      id: Date.now().toString(),
-    };
-
-    const rapportAvecPhotos = { ...rapport, photos };
 
     setSendingId("new");
+    showToast("⏳ Upload des photos…");
+
     try {
+      // Upload photos sur ImgBB
+      const photoUrls = photos.length > 0 ? await uploadPhotosImgBB(photos) : [];
+
+      const rapport = {
+        fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
+        lotMoorea, lotFournisseur, temperature, notes,
+        conformite, decision: decisionFinale, pourcentage, nbColisTotal,
+        nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
+        nbPhotos: photos.length,
+        photoUrls, // liens ImgBB
+        poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
+        observations, score, date, heure,
+        timestamp: Date.now(),
+        id: Date.now().toString(),
+      };
+
+      const rapportAvecPhotos = { ...rapport, photos }; // avec base64 pour le PDF
+
       const rapportsRef = ref(db, "rapports");
       await push(rapportsRef, rapport);
+      showToast("⏳ Envoi de l'email…");
       await envoyerEmail(rapportAvecPhotos);
       reset();
       setVue("historique");
@@ -488,18 +530,22 @@ export default function App() {
           <div style="font-size:32px;font-weight:900;color:${dColor};">${r.nbColisRefuses} <span style="font-size:16px;font-weight:400;color:#9ca3af;">/ ${r.nbColisTotal} (${r.pourcentage}%)</span></div>
         </div>` : "";
 
-    const photosHTML = r.photos?.filter((p: any) => p.url).length > 0
+    const imgUrls = r.photoUrls?.length > 0 ? r.photoUrls : [];
+    const photosHTML = imgUrls.length > 0
       ? `<div style="padding:8px 28px 16px;">
           <div style="font-size:11px;color:#8a6f2e;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:10px 0 8px;border-top:1px solid #f0ede6;">📷 Photos</div>
           <table width="100%" cellpadding="4" cellspacing="0">
-            <tr>${r.photos.filter((p: any) => p.url).slice(0, 3).map((p: any) =>
-              `<td style="width:33%;vertical-align:top;"><img src="${p.url}" style="width:100%;border-radius:8px;display:block;" /></td>`
+            <tr>${imgUrls.slice(0, 3).map((url: string) =>
+              `<td style="width:33%;vertical-align:top;"><img src="${url}" style="width:100%;border-radius:8px;display:block;" /></td>`
             ).join("")}</tr>
-            ${r.photos.filter((p: any) => p.url).length > 3 ? `<tr>${r.photos.filter((p: any) => p.url).slice(3, 6).map((p: any) =>
-              `<td style="width:33%;vertical-align:top;"><img src="${p.url}" style="width:100%;border-radius:8px;display:block;" /></td>`
+            ${imgUrls.length > 3 ? `<tr>${imgUrls.slice(3, 6).map((url: string) =>
+              `<td style="width:33%;vertical-align:top;"><img src="${url}" style="width:100%;border-radius:8px;display:block;" /></td>`
             ).join("")}</tr>` : ""}
           </table>
-        </div>` : "";
+        </div>`
+      : r.nbPhotos > 0
+      ? `<div style="padding:14px 28px;"><div style="background:#f8f6f2;border-radius:10px;padding:12px 16px;border:1px solid #e8e0d0;font-size:13px;color:#6b7280;text-align:center;">📷 ${r.nbPhotos} photo(s) dans le PDF</div></div>`
+      : "";
 
     return `<!DOCTYPE html>
 <html>
@@ -1080,14 +1126,53 @@ export default function App() {
         {/* HISTORIQUE */}
         {vue === "historique" && (
           <div className="fade-up">
-            {rapports.length === 0 ? (
-              <div style={{ textAlign: "center", marginTop: 60, color: "#9ca3af" }}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, color: "#374151", marginBottom: 6 }}>Aucun rapport</p>
-                <p style={{ fontSize: 14, marginBottom: 20 }}>Créez votre premier rapport qualité</p>
-                <button onClick={() => setVue("form")} style={{ padding: "10px 24px", borderRadius: 10, border: "1.5px solid #d1fae5", background: "#fff", cursor: "pointer", fontSize: 14, color: "#15803d", fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>Nouveau rapport</button>
-              </div>
-            ) : rapports.map((r, i) => (
+            {/* BARRE DE RECHERCHE */}
+            <div style={{ marginBottom: 16, display: "flex", gap: 10 }}>
+              <input
+                type="text"
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                placeholder="🔍 Rechercher produit, fournisseur…"
+                style={{ flex: 2 }}
+              />
+              <input
+                type="date"
+                value={searchDate}
+                onChange={e => setSearchDate(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              {(searchText || searchDate) && (
+                <button onClick={() => { setSearchText(""); setSearchDate(""); }} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 13, color: "#6b7280", whiteSpace: "nowrap" }}>
+                  ✕ Effacer
+                </button>
+              )}
+            </div>
+
+            {(() => {
+              const filtered = rapports.filter(r => {
+                const matchText = !searchText || 
+                  r.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
+                  r.fournisseur?.toLowerCase().includes(searchText.toLowerCase()) ||
+                  r.lotMoorea?.toLowerCase().includes(searchText.toLowerCase()) ||
+                  r.agreeur?.toLowerCase().includes(searchText.toLowerCase());
+                const matchDate = !searchDate || r.date === new Date(searchDate).toLocaleDateString("fr-FR");
+                return matchText && matchDate;
+              });
+
+              if (filtered.length === 0) return (
+                <div style={{ textAlign: "center", marginTop: 60, color: "#9ca3af" }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, color: "#374151", marginBottom: 6 }}>
+                    {rapports.length === 0 ? "Aucun rapport" : "Aucun résultat"}
+                  </p>
+                  <p style={{ fontSize: 14, marginBottom: 20 }}>
+                    {rapports.length === 0 ? "Créez votre premier rapport qualité" : "Modifiez votre recherche"}
+                  </p>
+                  {rapports.length === 0 && <button onClick={() => setVue("form")} style={{ padding: "10px 24px", borderRadius: 10, border: "1.5px solid #d1fae5", background: "#fff", cursor: "pointer", fontSize: 14, color: "#15803d", fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>Nouveau rapport</button>}
+                </div>
+              );
+
+              return filtered.map((r, i) => (
               <div key={r.firebaseKey || r.id} className="card fade-up" style={{ padding: "1rem 1.25rem", marginBottom: 12, animationDelay: `${i * 0.04}s`, borderLeft: `4px solid ${r.decision === "stock" ? "#22c55e" : r.decision === "reserve" ? "#f59e0b" : "#ef4444"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
@@ -1160,9 +1245,27 @@ export default function App() {
                   <button onClick={() => envoyerEmail(r)} disabled={sendingId === (r.id || r.firebaseKey)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: sendingId === (r.id || r.firebaseKey) ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sendingId === (r.id || r.firebaseKey) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     {sendingId === (r.id || r.firebaseKey) ? "⏳ Envoi…" : "✉ Renvoyer"}
                   </button>
+                  <button onClick={() => setConfirmDelete(r.firebaseKey)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
+                    🗑
+                  </button>
                 </div>
+
+                {confirmDelete === r.firebaseKey && (
+                  <div style={{ marginTop: 10, background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "14px 16px" }}>
+                    <p style={{ fontSize: 13, color: "#991b1b", fontWeight: 600, marginBottom: 10 }}>Supprimer ce rapport ?</p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => supprimerRapport(r.firebaseKey)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                        Oui, supprimer
+                      </button>
+                      <button onClick={() => setConfirmDelete(null)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: 13, cursor: "pointer" }}>
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+              ));
+            })()}
           </div>
         )}
       </div>
