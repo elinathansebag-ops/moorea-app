@@ -165,6 +165,7 @@ export default function App() {
   const [decision, setDecision] = useState("");
   const [pourcentage, setPourcentage] = useState("");
   const [nbColisTotal, setNbColisTotal] = useState("");
+  const [nbColisAEcarter, setNbColisAEcarter] = useState("");
   const [photos, setPhotos] = useState<{ name: string; url: string }[]>([]);
   const [poidsStatut, setPoidsStatut] = useState("");
   const [poidsEcart, setPoidsEcart] = useState("");
@@ -208,7 +209,7 @@ export default function App() {
     setFournisseur(""); setAgreeur(""); setNbColisRecu(""); setNbColisAttendu("");
     setProduit(""); setConditionnement(""); setPoids("");
     setOrigine(""); setLotMoorea(""); setLotFournisseur(""); setTemperature("");
-    setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal("");
+    setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
     setPhotos([]); setPoidsStatut(""); setPoidsEcart("");
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
   };
@@ -228,25 +229,32 @@ export default function App() {
   };
 
   const partagerWhatsApp = async (r: any) => {
-    const dLabel = r.decision === "stock" ? "✅ Entrée en stock" : r.decision === "reserve" ? "⚠️ Réserve" : "❌ Refus";
-    const msg = `🍃 *Rapport Agréage Moorea*
-━━━━━━━━━━━━━━
-📦 *${r.produit}* — ${r.fournisseur}
+    const dLabel = r.decision === "stock" ? "✅ CONFORME — Entrée en stock" : r.decision === "reserve" ? "⚠️ NON CONFORME — Réserve" : "❌ NON CONFORME — Refus";
+    const scoreNum = r.score ? parseFloat(r.score) : null;
+    const suggestion = scoreNum ? (scoreNum >= 4 ? "✅ Conforme" : scoreNum >= 3 ? "⚠️ Réserve" : "❌ Non conforme") : "";
+    const msg = `🍃 *RAPPORT AGRÉAGE MOOREA*
+━━━━━━━━━━━━━━━━━
+📅 ${r.date} à ${r.heure}${r.agreeur ? ` · 👤 ${r.agreeur}` : ""}
+📦 *${r.produit}*
+🏭 Fournisseur : ${r.fournisseur}
 🌍 Origine : ${r.origine || "—"}
 🌡️ Température : ${r.temperature ? r.temperature + "°C" : "—"}
 📋 Lot Moorea : ${r.lotMoorea || "—"}
-${r.nbColisAttendu || r.nbColisRecu ? `📦 Colis : ${r.nbColisRecu || "—"}/${r.nbColisAttendu || "—"}` : ""}
-⭐ Qualité : ${r.score ? r.score + "/5" : "—"}
+📦 Colis : ${r.nbColisRecu || "—"}/${r.nbColisAttendu || "—"}
+⚖️ Poids : ${r.poids ? r.poids + " kg" : "—"}
+━━━━━━━━━━━━━━━━━
+${scoreNum ? `⭐ Score qualité : *${r.score}/5* ${suggestion}` : ""}
+${r.notes?.qualite ? `👁 Qualité visuelle : ${r.notes.qualite}/5` : ""}
+${r.notes?.couleur ? `🎨 Couleur : ${r.notes.couleur}/5` : ""}
+${r.notes?.emballage ? `📦 Emballage : ${r.notes.emballage}/5` : ""}
+━━━━━━━━━━━━━━━━━
+*${dLabel}*
+${r.nbColisRefuses ? `⚠️ ${r.nbColisRefuses} colis ${r.decision === "reserve" ? "en réserve" : "refusés"} / ${r.nbColisTotal} (${r.pourcentage}%)` : ""}
+${r.observations ? `💬 _${r.observations}_` : ""}
+━━━━━━━━━━━━━━━━━
+_PDF joint_`;
 
-${dLabel}
-${r.nbColisRefuses ? `⚠️ ${r.nbColisRefuses} colis ${r.decision === "reserve" ? "en réserve" : "refusés"} (${r.pourcentage}%)` : ""}
-${r.observations ? `💬 ${r.observations}` : ""}
-
-📅 ${r.date} à ${r.heure}${r.agreeur ? ` · 👤 ${r.agreeur}` : ""}`;
-
-    // D'abord télécharger le PDF
     await downloadPDF(r);
-    // Puis ouvrir WhatsApp
     setTimeout(() => {
       window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
     }, 500);
@@ -263,8 +271,10 @@ ${r.observations ? `💬 ${r.observations}` : ""}
     return { date, heure };
   };
 
-  const nbColisRefuses = nbColisTotal && pourcentage
-    ? Math.round((parseFloat(nbColisTotal) * parseFloat(pourcentage)) / 100)
+  const totalColis = nbColisRecu || nbColisTotal;
+  const nbColisRefuses = nbColisAEcarter ? parseInt(nbColisAEcarter) : null;
+  const pourcentageCalc = nbColisRefuses !== null && totalColis
+    ? Math.round((nbColisRefuses / parseFloat(totalColis)) * 100)
     : null;
 
   const score = scoreGlobal(notes);
@@ -310,7 +320,9 @@ ${r.observations ? `💬 ${r.observations}` : ""}
         numeroRapport,
         fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
         lotMoorea, lotFournisseur, temperature, notes,
-        conformite, decision: decisionFinale, pourcentage, nbColisTotal,
+        conformite, decision: decisionFinale, nbColisAEcarter,
+        pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
+        nbColisTotal: totalColis,
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
         nbPhotos: photos.length,
         photoUrls: [],
@@ -358,6 +370,7 @@ ${r.observations ? `💬 ${r.observations}` : ""}
     setDecision(r.decision === "stock" ? "" : r.decision || "");
     setPourcentage(r.pourcentage || "");
     setNbColisTotal(r.nbColisTotal || "");
+    setNbColisAEcarter(r.nbColisAEcarter || r.nbColisRefuses?.toString() || "");
     setPoidsStatut(r.poidsStatut || "");
     setPoidsEcart(r.poidsEcart || "");
     setEtiquetteAbsente(r.etiquetteAbsente || false);
@@ -380,7 +393,9 @@ ${r.observations ? `💬 ${r.observations}` : ""}
       const updates = {
         fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
         lotMoorea, lotFournisseur, temperature, notes,
-        conformite, decision: decisionFinale, pourcentage, nbColisTotal,
+        conformite, decision: decisionFinale, nbColisAEcarter,
+        pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
+        nbColisTotal: totalColis,
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
         poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
         observations, score,
@@ -971,161 +986,15 @@ ${r.observations ? `💬 ${r.observations}` : ""}
     return doc.output("datauristring");
   };
 
+
   // ─── GÉNÉRER + TÉLÉCHARGER PDF ───
   const downloadPDF = async (r: any) => {
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const W = 210; const M = 14; const CW = W - M * 2;
-    let y = 0;
-    const addPage = () => { doc.addPage(); y = 14; };
-    const checkY = (needed = 10) => { if (y + needed > 275) addPage(); };
-
-    doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
-    doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
-    doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-    doc.text("MOOREA", M, 14);
-    doc.setTextColor(255, 255, 255); doc.setFontSize(10);
-    doc.text("Rapport Qualité — Arrivages", M + 32, 14);
-    doc.setTextColor(150, 150, 150); doc.setFontSize(8);
-    doc.text(`${r.date} à ${r.heure}`, W - M, 14, { align: "right" });
-    y = 32;
-
-    const dc = decisionColor(r.decision);
-    doc.setFillColor(dc[0], dc[1], dc[2]);
-    doc.roundedRect(M, y, CW, 12, 3, 3, "F");
-    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-    doc.text(decisionLabel(r.decision), W / 2, y + 8, { align: "center" });
-    y += 18;
-
-    const section = (title: string) => {
-      checkY(14);
-      doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
-      doc.setFillColor(200, 168, 75); doc.rect(M, y, 3, 8, "F");
-      doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-      doc.text(title.toUpperCase(), M + 6, y + 5.5); y += 12;
-    };
-    const row = (label: string, value: string, bold = false) => {
-      checkY(7);
-      doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-      doc.text(label + " :", M + 2, y);
-      doc.setTextColor(26, 46, 26); if (bold) doc.setFont("helvetica", "bold");
-      doc.text(value || "—", M + 45, y); doc.setFont("helvetica", "normal"); y += 6;
-    };
-
-    section("INFORMATIONS DU COLIS");
-    row("Fournisseur", r.fournisseur, true); row("Produit", r.produit, true);
-    if (r.agreeur) row("Agreeur", r.agreeur);
-    row("Origine", r.origine); if (r.poids) row("Poids", r.poids + " kg");
-    if (r.conditionnement) row("Conditionnement", r.conditionnement);
-    if (r.lotMoorea) row("N° Lot Moorea", r.lotMoorea);
-    if (r.lotFournisseur) row("N° Lot Fournisseur", r.lotFournisseur);
-    if (r.temperature) row("Temperature reception", r.temperature + " °C");
-    if (r.nbColisAttendu) row("Colis attendus", r.nbColisAttendu);
-    if (r.nbColisRecu) row("Colis recus", r.nbColisRecu);
-    y += 4;
-
-    section("EVALUATION QUALITE");
-    const noteLabels2: Record<number,string> = { 1:"Insuffisant",2:"Passable",3:"Correct",4:"Bon",5:"Excellent" };
-    const noteColors2: Record<number,[number,number,number]> = { 1:[239,68,68],2:[249,115,22],3:[234,179,8],4:[34,197,94],5:[21,128,61] };
-    const criteresLabels2: Record<string,string> = { qualite: "Qualite visuelle", couleur: "Couleur", emballage: "Etat emballage" };
-    const cols3b = 3; const cw3b = CW / cols3b;
-    let hasCritere2 = false;
-    Object.entries(criteresLabels2).forEach(([key, label], idx) => {
-      const val = r.notes?.[key];
-      if (val > 0) {
-        hasCritere2 = true;
-        const col = idx % cols3b;
-        const ix = M + col * cw3b;
-        const nc = noteColors2[val];
-        doc.setFillColor(...nc);
-        doc.roundedRect(ix, y-1, cw3b-2, 12, 2, 2, "F");
-        doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
-        doc.text(label, ix+3, y+4);
-        doc.setFontSize(9);
-        doc.text(`${val}/5 - ${noteLabels2[val]}`, ix+3, y+9);
-      }
-    });
-    if (hasCritere2) y += 16;
-    if (r.score) {
-      const scoreNum = parseFloat(r.score);
-      const scoreColor3: [number,number,number] = scoreNum >= 4 ? [22,163,74] : scoreNum >= 3 ? [217,119,6] : [220,38,38];
-      const suggestion2 = scoreNum >= 4 ? "Conforme" : scoreNum >= 3 ? "Reserve" : "Non conforme";
-      doc.setFillColor(...scoreColor3);
-      doc.roundedRect(M+2, y-2, 100, 9, 2, 2, "F");
-      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.text(`Score moyen : ${r.score}/5 - Suggestion : ${suggestion2}`, M+6, y+4.5);
-      y += 14;
-    }
-
-    section("POIDS");
-    if (r.poidsStatut==="ok") {
-      doc.setFillColor(240,253,244); doc.roundedRect(M+2,y-2,50,9,2,2,"F");
-      doc.setTextColor(22,163,74); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.text("Poids OK",M+6,y+4.5);
-    } else if (r.poidsStatut==="ecart") {
-      doc.setFillColor(255,251,235); doc.roundedRect(M+2,y-2,80,9,2,2,"F");
-      doc.setTextColor(217,119,6); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.text(`Ecart${r.poidsEcart?" : "+r.poidsEcart:""}`,M+6,y+4.5);
-    }
-    y+=12;
-
-    section("CONFORMITE ETIQUETTE COLIS");
-    if (r.etiquetteAbsente) {
-      doc.setFillColor(254,242,242); doc.roundedRect(M+2,y-2,50,9,2,2,"F");
-      doc.setTextColor(220,38,38); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.text("✕ Étiquette absente",M+6,y+4.5); y+=12;
-    } else {
-      const cols=3; const itemW=CW/cols;
-      ETIQUETTE_ITEMS.forEach((item,idx) => {
-        const col=idx%cols; const rowIdx=Math.floor(idx/cols);
-        const ix=M+col*itemW; const iy=y+rowIdx*8; checkY(8);
-        const ok=r.etiquette?.[item.id]!==false;
-        doc.setFillColor(ok?240:254,ok?253:242,ok?244:242);
-        doc.roundedRect(ix,iy-1,itemW-2,7,1.5,1.5,"F");
-        doc.setTextColor(ok?22:220,ok?163:38,ok?74:38);
-        doc.setFont("helvetica",ok?"normal":"bold"); doc.setFontSize(7.5);
-        doc.text(`${ok?"OK":"X"} ${item.label}`,ix+3,iy+4);
-      });
-      y+=Math.ceil(ETIQUETTE_ITEMS.length/3)*8+6;
-    }
-
-    if (r.decision!=="stock"&&r.nbColisRefuses!==null) {
-      checkY(20);
-      const dc2=decisionColor(r.decision);
-      doc.setFillColor(dc2[0],dc2[1],dc2[2]);
-      doc.roundedRect(M,y,CW,18,3,3,"F");
-      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(10);
-      const label2=r.decision==="reserve"?"Colis en réserve":"Colis refusés";
-      doc.text(`${label2} : ${r.nbColisRefuses} / ${r.nbColisTotal} (${r.pourcentage}%)`,W/2,y+11,{align:"center"});
-      y+=24;
-    }
-
-    if (r.observations) {
-      checkY(20); section("OBSERVATIONS");
-      const lines=doc.splitTextToSize(r.observations,CW-8);
-      doc.setFillColor(250,248,245); doc.roundedRect(M,y-2,CW,lines.length*5+8,3,3,"F");
-      doc.setTextColor(107,114,128); doc.setFont("helvetica","italic"); doc.setFontSize(8.5);
-      doc.text(lines,M+4,y+4); y+=lines.length*5+12;
-    }
-
-    if (r.photos&&r.photos.length>0) {
-      checkY(60); section("PHOTOS");
-      const imgW=(CW-8)/3;
-      const imgH=imgW*0.75; // ratio 4:3 par defaut
-      for (let i=0;i<Math.min(r.photos.length,6);i++) {
-        const col=i%3; const rowI=Math.floor(i/3);
-        if (rowI>0&&col===0) checkY(imgH+4);
-        const px=M+col*(imgW+4); const py=y+rowI*(imgH+4);
-        try { doc.addImage(r.photos[i].url,"JPEG",px,py,imgW,imgH,"photo"+i,"MEDIUM"); } catch {}
-      }
-      y+=Math.ceil(Math.min(r.photos.length,6)/3)*(imgH+4)+8;
-    }
-
-    doc.setFillColor(10,10,10); doc.rect(0,285,W,12,"F");
-    doc.setFillColor(200,168,75); doc.rect(0,285,W,1,"F");
-    doc.setTextColor(150,150,150); doc.setFont("helvetica","normal"); doc.setFontSize(7);
-    doc.text(`Généré automatiquement par Moorea · Agréage Rungis · ${r.date} à ${r.heure}${r.lotMoorea?" · Lot "+r.lotMoorea:""}`,W/2,291,{align:"center"});
-
-    doc.save(`rapport-qualite-${r.produit}-${r.date}.pdf`);
+    const pdfDataUri = await generatePDFBase64(r);
+    const pdfName = `rapport-${(r.produit || "").replace(/[^a-zA-Z0-9]/g, "-")}-${(r.date || "").replace(/\//g, "-")}.pdf`;
+    const link = document.createElement("a");
+    link.href = pdfDataUri;
+    link.download = pdfName;
+    link.click();
     showToast("📄 PDF téléchargé");
   };
 
@@ -1421,19 +1290,20 @@ ${r.observations ? `💬 ${r.observations}` : ""}
                       <p style={{ fontSize: 11, fontWeight: 600, color: decision === "reserve" ? "#92400e" : "#991b1b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
                         {decision === "reserve" ? "Détail de la réserve" : "Détail du refus"}
                       </p>
-                      <div className="grid-2">
-                        <F label="Nombre de colis total">
-                          <input type="number" value={nbColisTotal} onChange={e => setNbColisTotal(e.target.value)} placeholder="Ex: 50" min="0" style={{ border: `1.5px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }} />
-                        </F>
-                        <F label={`% ${decision === "reserve" ? "en réserve" : "refusé"}`}>
-                          <input type="number" value={pourcentage} onChange={e => setPourcentage(e.target.value)} placeholder="Ex: 20" min="0" max="100" style={{ border: `1.5px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }} />
-                        </F>
+                      {/* Total = colis reçus */}
+                      <div style={{ background: "#fff", borderRadius: 10, padding: "10px 14px", marginBottom: 12, border: `1px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 13, color: "#6b7280" }}>Total colis</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{totalColis || "—"}</span>
                       </div>
-                      {nbColisRefuses !== null && (
+                      <F label={`Nombre de colis à ${decision === "reserve" ? "mettre en réserve" : "refuser"}`}>
+                        <input type="number" value={nbColisAEcarter} onChange={e => setNbColisAEcarter(e.target.value)} placeholder={`Ex: ${totalColis ? Math.round(parseFloat(totalColis) * 0.2) : 10}`} min="0" max={totalColis || undefined} style={{ border: `1.5px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }} />
+                      </F>
+                      {nbColisRefuses !== null && totalColis && (
                         <div style={{ background: "#fff", borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", border: `1px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }}>
                           <span style={{ fontSize: 13, color: "#6b7280" }}>Colis {decision === "reserve" ? "en réserve" : "refusés"}</span>
                           <span style={{ fontSize: 22, fontWeight: 800, color: decision === "reserve" ? "#d97706" : "#dc2626", fontFamily: "'Syne', sans-serif" }}>
-                            {nbColisRefuses} <span style={{ fontSize: 13, fontWeight: 400 }}>/ {nbColisTotal}</span>
+                            {nbColisRefuses} <span style={{ fontSize: 13, fontWeight: 400 }}>/ {totalColis}</span>
+                            <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 8, color: decision === "reserve" ? "#d97706" : "#dc2626" }}>({pourcentageCalc}%)</span>
                           </span>
                         </div>
                       )}
