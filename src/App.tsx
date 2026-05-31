@@ -991,17 +991,22 @@ _PDF joint_`;
       doc.text(lines,M+4,y+4); y+=lines.length*5+12;
     }
 
-    if (r.photos&&r.photos.length>0) {
+    // Photos : utilise photoUrls (ImgBB) si disponibles, sinon base64
+    const allPhotos = r.photoUrls?.length > 0
+      ? r.photoUrls.map((url: string) => ({ url }))
+      : r.photos || [];
+
+    if (allPhotos.length > 0) {
       checkY(60); section("PHOTOS");
       const imgW=(CW-8)/3;
-      const imgH=imgW*0.75; // ratio 4:3 par defaut
-      for (let i=0;i<Math.min(r.photos.length,6);i++) {
+      const imgH=imgW*0.75;
+      for (let i=0;i<Math.min(allPhotos.length,6);i++) {
         const col=i%3; const rowI=Math.floor(i/3);
         if (rowI>0&&col===0) checkY(imgH+4);
         const px=M+col*(imgW+4); const py=y+rowI*(imgH+4);
-        try { doc.addImage(r.photos[i].url,"JPEG",px,py,imgW,imgH,"photo"+i,"MEDIUM"); } catch {}
+        try { doc.addImage(allPhotos[i].url,"JPEG",px,py,imgW,imgH,"photo"+i,"MEDIUM"); } catch {}
       }
-      y+=Math.ceil(Math.min(r.photos.length,6)/3)*(imgH+4)+8;
+      y+=Math.ceil(Math.min(allPhotos.length,6)/3)*(imgH+4)+8;
     }
 
     doc.setFillColor(10,10,10); doc.rect(0,285,W,12,"F");
