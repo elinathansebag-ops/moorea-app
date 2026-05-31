@@ -18,7 +18,18 @@ export default async function handler(req: Request) {
 
   try {
     const body = await req.json();
-    const { to, subject, html } = body;
+    const { to, subject, html, attachments } = body;
+
+    const emailPayload: any = {
+      from: 'Moorea Agréage <onboarding@resend.dev>',
+      to,
+      subject,
+      html,
+    };
+
+    if (attachments && attachments.length > 0) {
+      emailPayload.attachments = attachments;
+    }
 
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -26,12 +37,7 @@ export default async function handler(req: Request) {
         'Authorization': 'Bearer re_Rgn9PcgZ_AMcZjZh9dck6b914YcaTpUDC',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from: 'Moorea Agréage <onboarding@resend.dev>',
-        to,
-        subject,
-        html,
-      }),
+      body: JSON.stringify(emailPayload),
     });
 
     const data = await response.json();
