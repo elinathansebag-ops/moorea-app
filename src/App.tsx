@@ -250,15 +250,17 @@ export default function App() {
 
     const rapportAvecPhotos = { ...rapport, photos };
 
+    setSendingId("new");
     try {
       const rapportsRef = ref(db, "rapports");
       await push(rapportsRef, rapport);
-      showToast("✓ Rapport enregistré");
-      envoyerEmail(rapportAvecPhotos);
+      await envoyerEmail(rapportAvecPhotos);
       reset();
       setVue("historique");
     } catch {
-      showToast("Erreur lors de l'enregistrement", "error");
+      showToast("Erreur lors de l'envoi", "error");
+    } finally {
+      setSendingId(null);
     }
   };
 
@@ -619,44 +621,33 @@ export default function App() {
   };
 
   // ─── ENVOYER EMAIL via RESEND ───
-  const envoyerEmail = (r: any) => {
-    const dLabel = r.decision === "stock" ? "Entrée en stock" : r.decision === "reserve" ? "Réserve" : "Refus";
-    const subject = `Rapport Agréage Moorea - ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "-"} | ${r.date}`;
-    const body =
-`RAPPORT AGRÉAGE MOOREA
-======================
-Date : ${r.date} à ${r.heure}
-Agréeur : ${r.agreeur || "-"}
+  const envoyerEmail = async (r: any) => {
+    setSendingId(r.id || r.firebaseKey || "new");
+    try {
+      const htmlContent = buildEmailHTML(r);
+      const subject = `Rapport Agréage Moorea - ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "-"} | ${r.date}`;
 
-PRODUIT : ${r.produit}
-Fournisseur : ${r.fournisseur}
-Origine : ${r.origine || "-"}
-Lot Moorea : ${r.lotMoorea || "-"}
-Lot Fournisseur : ${r.lotFournisseur || "-"}
-Température : ${r.temperature ? r.temperature + "°C" : "-"}
-Colis attendus : ${r.nbColisAttendu || "-"}
-Colis reçus : ${r.nbColisRecu || "-"}
+      const response = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: ["agreage@moorea.fr"],
+          subject,
+          html: htmlContent,
+        }),
+      });
 
-CONFORMITÉ : ${r.conformite === "conforme" ? "CONFORME" : "NON CONFORME"}
-DÉCISION : ${dLabel.toUpperCase()}
-${r.nbColisRefuses !== null && r.nbColisRefuses !== undefined ? `Colis ${r.decision === "reserve" ? "en réserve" : "refusés"} : ${r.nbColisRefuses} / ${r.nbColisTotal} (${r.pourcentage}%)` : ""}
-
-QUALITÉ VISUELLE : ${r.score ? r.score + "/5" : "-"}
-ÉTIQUETTE : ${r.etiquetteAbsente ? "Absente" : "Conforme"}
-POIDS : ${r.poidsStatut === "ok" ? "OK" : r.poidsStatut === "ecart" ? "Écart" + (r.poidsEcart ? " : " + r.poidsEcart : "") : "-"}
-
-COMMENTAIRE : ${r.observations || "Aucun"}
-
-Photos : ${r.nbPhotos || 0} photo(s) disponibles dans le PDF
-
---
-Généré par Moorea · Agréage Rungis · ${r.date}`;
-
-    const to = "commercial@moorea.fr,qualite@moorea.fr,agreage@moorea.fr";
-    const mailtoLink = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    const a = document.createElement("a");
-    a.href = mailtoLink;
-    a.click();
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Erreur envoi");
+      }
+      showToast("✉ Email envoyé avec succès");
+    } catch (err: any) {
+      console.error(err);
+      showToast(`Erreur : ${err.message || "Envoi échoué"}`, "error");
+    } finally {
+      setSendingId(null);
+    }
   };
 
   // ─── GÉNÉRER + TÉLÉCHARGER PDF ───
@@ -1074,8 +1065,8 @@ Généré par Moorea · Agréage Rungis · ${r.date}`;
               )}
             </div>
 
-            <button className="btn-primary" onClick={soumettre}>
-              ✉ Envoyer le rapport
+            <button className="btn-primary" onClick={soumettre} disabled={sendingId === "new"} style={{ opacity: sendingId === "new" ? 0.7 : 1 }}>
+              {sendingId === "new" ? "⏳ Envoi en cours…" : "✉ Envoyer le rapport"}
             </button>
           </div>
         )}
@@ -1160,8 +1151,8 @@ Généré par Moorea · Agréage Rungis · ${r.date}`;
                   <button onClick={() => downloadPDF(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     📄 PDF
                   </button>
-                  <button onClick={() => envoyerEmail(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: "0 2px 8px rgba(200,168,75,0.3)", touchAction: "manipulation" }}>
-                    ✉ Renvoyer
+                  <button onClick={() => envoyerEmail(r)} disabled={sendingId === (r.id || r.firebaseKey)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: sendingId === (r.id || r.firebaseKey) ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sendingId === (r.id || r.firebaseKey) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
+                    {sendingId === (r.id || r.firebaseKey) ? "⏳ Envoi…" : "✉ Renvoyer"}
                   </button>
                 </div>
               </div>
