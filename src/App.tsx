@@ -10,7 +10,9 @@ const EMAILJS_PUBLIC_KEY = "ZwcIMzI6JE0IkLZ8O";
 const DESTINATAIRES = "commercial@moorea.fr,qualite@moorea.fr,agreage@moorea.fr";
 
 const CRITERES = [
-  { id: "qualite", label: "Qualité visuelle", icon: "👁", desc: "Aspect, couleur, fermeté", accent: "#22c55e" },
+  { id: "qualite", label: "Qualité visuelle", icon: "👁", desc: "Aspect général", accent: "#22c55e" },
+  { id: "couleur", label: "Couleur", icon: "🎨", desc: "Teinte, homogénéité", accent: "#f59e0b" },
+  { id: "emballage", label: "État emballage", icon: "📦", desc: "Intégrité, propreté", accent: "#3b82f6" },
 ];
 
 const ETIQUETTE_ITEMS = [
@@ -23,7 +25,7 @@ const ETIQUETTE_ITEMS = [
 
 const NOTE_LABELS: Record<number, string> = { 1: "Insuffisant", 2: "Passable", 3: "Correct", 4: "Bon", 5: "Excellent" };
 const NOTE_COLORS: Record<number, string> = { 1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#22c55e", 5: "#15803d" };
-const initialNotes = { qualite: 0 };
+const initialNotes = { qualite: 0, couleur: 0, emballage: 0 };
 const initialEtiquette = { nom_produit: true, poids_etiq: true, origine: true, ggn: true, num_lot: true };
 
 const styles = `
@@ -1152,10 +1154,10 @@ ${r.observations ? `💬 ${r.observations}` : ""}
               <div className="grid-2">
                 <F label="Produit" required><input value={produit} onChange={e => setProduit(e.target.value)} placeholder="Ex: Tomates, Fraises…" /></F>
                 <F label="Origine" required><input value={origine} onChange={e => setOrigine(e.target.value)} placeholder="Ex: Espagne, France…" /></F>
-                <F label="Poids"><input value={poids} onChange={e => setPoids(e.target.value)} placeholder="Ex: 5kg, 10kg…" /></F>
+                <F label="Poids (kg)"><input type="number" step="0.1" min="0" value={poids} onChange={e => setPoids(e.target.value)} placeholder="Ex: 5.5" /></F>
                 <F label="Conditionnement"><input value={conditionnement} onChange={e => setConditionnement(e.target.value)} placeholder="Ex: Barquette 500g, Filet…" /></F>
-                <F label="N° Lot Moorea"><input value={lotMoorea} onChange={e => setLotMoorea(e.target.value)} placeholder="Ex: MOR-2024-001" /></F>
-                <F label="N° Lot Fournisseur"><input value={lotFournisseur} onChange={e => setLotFournisseur(e.target.value)} placeholder="N° lot fournisseur" /></F>
+                <F label="N° Lot Moorea"><input type="number" value={lotMoorea} onChange={e => setLotMoorea(e.target.value)} placeholder="Ex: 123456" /></F>
+                <F label="N° Lot Fournisseur"><input type="number" value={lotFournisseur} onChange={e => setLotFournisseur(e.target.value)} placeholder="N° lot fournisseur" /></F>
               </div>
             </div>
 
@@ -1240,12 +1242,28 @@ ${r.observations ? `💬 ${r.observations}` : ""}
               </div>
 
               {score && (
-                <div style={{ marginTop: 20, background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderRadius: 14, padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #e0d0a0" }}>
-                  <div>
-                    <p style={{ fontSize: 11, color: "#8a6f2e", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 2 }}>Score qualité visuelle</p>
-                    <p style={{ fontSize: 12, color: "#6b7280" }}>{NOTE_LABELS[Math.round(parseFloat(score))]}</p>
+                <div style={{ marginTop: 20, background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderRadius: 14, padding: "14px 18px", border: "1px solid #e0d0a0" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div>
+                      <p style={{ fontSize: 11, color: "#8a6f2e", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 2 }}>Score qualité moyen</p>
+                      <p style={{ fontSize: 12, color: "#6b7280" }}>{NOTE_LABELS[Math.round(parseFloat(score))]}</p>
+                    </div>
+                    <ScoreCircle score={score} />
                   </div>
-                  <ScoreCircle score={score} />
+                  {/* Suggestion automatique */}
+                  <div style={{
+                    background: parseFloat(score) >= 4 ? "#f0fdf4" : parseFloat(score) >= 3 ? "#fffbeb" : "#fef2f2",
+                    border: `1px solid ${parseFloat(score) >= 4 ? "#bbf7d0" : parseFloat(score) >= 3 ? "#fcd34d" : "#fca5a5"}`,
+                    borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10
+                  }}>
+                    <span style={{ fontSize: 18 }}>{parseFloat(score) >= 4 ? "✅" : parseFloat(score) >= 3 ? "⚠️" : "❌"}</span>
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: parseFloat(score) >= 4 ? "#15803d" : parseFloat(score) >= 3 ? "#92400e" : "#991b1b" }}>
+                        {parseFloat(score) >= 4 ? "Suggestion : Conforme" : parseFloat(score) >= 3 ? "Suggestion : Réserve" : "Suggestion : Non conforme"}
+                      </p>
+                      <p style={{ fontSize: 11, color: "#6b7280" }}>L'agréeur décide en dernier</p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
