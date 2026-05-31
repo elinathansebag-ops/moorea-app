@@ -170,6 +170,10 @@ export default function App() {
   const [etiquette, setEtiquette] = useState(initialEtiquette);
   const [observations, setObservations] = useState("");
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [searchDate, setSearchDate] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [editRapport, setEditRapport] = useState<any | null>(null); // rapport en cours d'édition
 
   // ─── FIREBASE: écoute en temps réel ───
   useEffect(() => {
@@ -207,6 +211,17 @@ export default function App() {
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
   };
 
+  const supprimerRapport = async (firebaseKey: string) => {
+    try {
+      const rapportRef = ref(db, `rapports/${firebaseKey}`);
+      await remove(rapportRef);
+      setConfirmDelete(null);
+      showToast("🗑 Rapport supprimé");
+    } catch {
+      showToast("Erreur lors de la suppression", "error");
+    }
+  };
+
   const decisionLabel = (d: string) => d === "stock" ? "ENTREE EN STOCK" : d === "reserve" ? "RESERVE" : "REFUS";
   const decisionColor = (d: string): [number, number, number] => d === "stock" ? [22, 163, 74] : d === "reserve" ? [217, 119, 6] : [220, 38, 38];
   const decisionHex = (d: string) => d === "stock" ? "#16a34a" : d === "reserve" ? "#d97706" : "#dc2626";
@@ -224,6 +239,26 @@ export default function App() {
 
   const score = scoreGlobal(notes);
 
+  // ─── UPLOAD PHOTOS VERS IMGBB ───
+  const uploadPhotosImgBB = async (photosList: { name: string; url: string }[]) => {
+    const IMGBB_KEY = "06c9cef29906bf8f060e882ed5540240";
+    const uploaded: string[] = [];
+    for (const photo of photosList) {
+      try {
+        const base64 = photo.url.split(",")[1];
+        const formData = new FormData();
+        formData.append("image", base64);
+        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (data.success) uploaded.push(data.data.url);
+      } catch {}
+    }
+    return uploaded;
+  };
+
   // ─── SOUMETTRE ───
   const soumettre = async () => {
     if (!fournisseur || !produit || !conformite) {
@@ -234,29 +269,102 @@ export default function App() {
       showToast("⚠ Précisez Réserve ou Refus", "error");
       return;
     }
-    const { date, heure } = now();
-    const decisionFinale = conformite === "conforme" ? "stock" : decision;
-    const rapport = {
-      fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
-      lotMoorea, lotFournisseur, temperature, notes,
-      conformite, decision: decisionFinale, pourcentage, nbColisTotal,
-      nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
-      photos, poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
-      observations, score, date, heure,
-      timestamp: Date.now(),
-      id: Date.now().toString(),
-    };
-
     setSendingId("new");
+
     try {
+      const { date, heure } = now();
+      const decisionFinale = conformite === "conforme" ? "stock" : decision;
+      const numeroRapport = `MQ-${Date.now().toString().slice(-6)}`;
+
+      const rapport = {
+        numeroRapport,
+        fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
+        lotMoorea, lotFournisseur, temperature, notes,
+        conformite, decision: decisionFinale, pourcentage, nbColisTotal,
+        nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
+        nbPhotos: photos.length,
+        photoUrls: [],
+        poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
+        observations, score, date, heure,
+        timestamp: Date.now(),
+        id: Date.now().toString(),
+      };
+
+      const rapportAvecPhotos = { ...rapport, photos };
+
+      // 1. Enregistre dans Firebase
       const rapportsRef = ref(db, "rapports");
       await push(rapportsRef, rapport);
-      showToast("⏳ Envoi de l'email en cours…");
-      await envoyerEmail(rapport);
+
+      // 2. Envoie email avec PDF (avec photos)
+      await envoyerEmail(rapportAvecPhotos);
+
+      // 3. Reset et navigation
       reset();
       setVue("historique");
+
     } catch {
       showToast("Erreur lors de l'envoi", "error");
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  // ─── CHARGER RAPPORT POUR EDITION ───
+  const chargerRapportEdition = (r: any) => {
+    setFournisseur(r.fournisseur || "");
+    setAgreeur(r.agreeur || "");
+    setNbColisRecu(r.nbColisRecu || "");
+    setNbColisAttendu(r.nbColisAttendu || "");
+    setProduit(r.produit || "");
+    setConditionnement(r.conditionnement || "");
+    setPoids(r.poids || "");
+    setOrigine(r.origine || "");
+    setLotMoorea(r.lotMoorea || "");
+    setLotFournisseur(r.lotFournisseur || "");
+    setTemperature(r.temperature || "");
+    setNotes(r.notes || initialNotes);
+    setConformite(r.conformite || "");
+    setDecision(r.decision === "stock" ? "" : r.decision || "");
+    setPourcentage(r.pourcentage || "");
+    setNbColisTotal(r.nbColisTotal || "");
+    setPoidsStatut(r.poidsStatut || "");
+    setPoidsEcart(r.poidsEcart || "");
+    setEtiquetteAbsente(r.etiquetteAbsente || false);
+    setEtiquette(r.etiquette || initialEtiquette);
+    setObservations(r.observations || "");
+    setPhotos([]);
+    setEditRapport(r);
+    setVue("form");
+  };
+
+  // ─── SAUVEGARDER EDITION ───
+  const sauvegarderEdition = async () => {
+    if (!fournisseur || !produit || !conformite) {
+      showToast("⚠ Champs requis manquants", "error");
+      return;
+    }
+    setSendingId("edit");
+    try {
+      const decisionFinale = conformite === "conforme" ? "stock" : decision;
+      const updates = {
+        fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
+        lotMoorea, lotFournisseur, temperature, notes,
+        conformite, decision: decisionFinale, pourcentage, nbColisTotal,
+        nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
+        poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
+        observations, score,
+        modifiedAt: Date.now(),
+      };
+      const rapportRef = ref(db, `rapports/${editRapport.firebaseKey}`);
+      const { set } = await import("firebase/database");
+      await set(rapportRef, { ...editRapport, ...updates });
+      showToast("✓ Rapport modifié");
+      reset();
+      setEditRapport(null);
+      setVue("historique");
+    } catch {
+      showToast("Erreur lors de la modification", "error");
     } finally {
       setSendingId(null);
     }
@@ -486,12 +594,22 @@ export default function App() {
           <div style="font-size:32px;font-weight:900;color:${dColor};">${r.nbColisRefuses} <span style="font-size:16px;font-weight:400;color:#9ca3af;">/ ${r.nbColisTotal} (${r.pourcentage}%)</span></div>
         </div>` : "";
 
-    const photosHTML = r.photos && r.photos.filter((p: any) => p.url).length > 0
-      ? `<div style="padding:14px 28px;">
-          <div style="background:#f8f6f2;border-radius:10px;padding:12px 16px;border:1px solid #e8e0d0;font-size:13px;color:#6b7280;text-align:center;">
-            📷 ${r.photos.filter((p: any) => p.url).length} photo${r.photos.filter((p: any) => p.url).length > 1 ? "s" : ""} — disponible${r.photos.filter((p: any) => p.url).length > 1 ? "s" : ""} dans le PDF
-          </div>
-        </div>` : "";
+    const imgUrls = r.photoUrls?.length > 0 ? r.photoUrls : [];
+    const photosHTML = imgUrls.length > 0
+      ? `<div style="padding:8px 28px 16px;">
+          <div style="font-size:11px;color:#8a6f2e;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:10px 0 8px;border-top:1px solid #f0ede6;">📷 Photos</div>
+          <table width="100%" cellpadding="4" cellspacing="0">
+            <tr>${imgUrls.slice(0, 3).map((url: string) =>
+              `<td style="width:33%;vertical-align:top;"><img src="${url}" style="width:100%;border-radius:8px;display:block;" /></td>`
+            ).join("")}</tr>
+            ${imgUrls.length > 3 ? `<tr>${imgUrls.slice(3, 6).map((url: string) =>
+              `<td style="width:33%;vertical-align:top;"><img src="${url}" style="width:100%;border-radius:8px;display:block;" /></td>`
+            ).join("")}</tr>` : ""}
+          </table>
+        </div>`
+      : r.nbPhotos > 0
+      ? `<div style="padding:14px 28px;"><div style="background:#f8f6f2;border-radius:10px;padding:12px 16px;border:1px solid #e8e0d0;font-size:13px;color:#6b7280;text-align:center;">📷 ${r.nbPhotos} photo(s) dans le PDF</div></div>`
+      : "";
 
     return `<!DOCTYPE html>
 <html>
@@ -623,7 +741,12 @@ export default function App() {
     setSendingId(r.id || r.firebaseKey || "new");
     try {
       const htmlContent = buildEmailHTML(r);
-      const subject = `🍃 Rapport Agréage Moorea — ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "—"} | ${r.date}`;
+      const subject = `Rapport Agréage Moorea - ${r.produit} | ${r.fournisseur} | Lot ${r.lotMoorea || "-"} | ${r.date}`;
+
+      // Générer le PDF en base64
+      const pdfDataUri = await generatePDFBase64(r);
+      const pdfBase64 = pdfDataUri.split(",")[1];
+      const pdfName = `rapport-${r.produit}-${r.date}.pdf`.replace(/\//g, "-");
 
       const response = await fetch("/api/send-email", {
         method: "POST",
@@ -632,6 +755,10 @@ export default function App() {
           to: ["agreage@moorea.fr"],
           subject,
           html: htmlContent,
+          attachments: [{
+            filename: pdfName,
+            content: pdfBase64,
+          }],
         }),
       });
 
@@ -639,14 +766,157 @@ export default function App() {
         const err = await response.json();
         throw new Error(err.error || "Erreur envoi");
       }
-
-      showToast("✉ Email envoyé avec succès");
+      showToast("✉ Email envoyé avec PDF !");
     } catch (err: any) {
       console.error(err);
       showToast(`Erreur : ${err.message || "Envoi échoué"}`, "error");
     } finally {
       setSendingId(null);
     }
+  };
+
+  // ─── GÉNÉRER PDF EN BASE64 (pour email) ───
+  const generatePDFBase64 = async (r: any): Promise<string> => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const W = 210; const M = 14; const CW = W - M * 2;
+    let y = 0;
+    const addPage = () => { doc.addPage(); y = 14; };
+    const checkY = (needed = 10) => { if (y + needed > 275) addPage(); };
+
+    doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
+    doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
+    doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+    doc.text("MOOREA", M, 14);
+    doc.setTextColor(255, 255, 255); doc.setFontSize(10);
+    doc.text("Rapport Qualite - Arrivages", M + 32, 14);
+    doc.setTextColor(150, 150, 150); doc.setFontSize(8);
+    doc.text(`${r.date} a ${r.heure}`, W - M, 14, { align: "right" });
+    y = 32;
+
+    const dc = decisionColor(r.decision);
+    doc.setFillColor(dc[0], dc[1], dc[2]);
+    doc.roundedRect(M, y, CW, 12, 3, 3, "F");
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.text(decisionLabel(r.decision), W / 2, y + 8, { align: "center" });
+    y += 18;
+
+    const section = (title: string) => {
+      checkY(14);
+      doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
+      doc.setFillColor(200, 168, 75); doc.rect(M, y, 3, 8, "F");
+      doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+      doc.text(title, M + 6, y + 5.5); y += 12;
+    };
+    const row = (label: string, value: string, bold = false) => {
+      checkY(7);
+      doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+      doc.text(label + " :", M + 2, y);
+      doc.setTextColor(26, 46, 26); if (bold) doc.setFont("helvetica", "bold");
+      doc.text(value || "-", M + 45, y); doc.setFont("helvetica", "normal"); y += 6;
+    };
+
+    section("INFORMATIONS DU COLIS");
+    row("Fournisseur", r.fournisseur, true); row("Produit", r.produit, true);
+    if (r.agreeur) row("Agreeur", r.agreeur);
+    row("Origine", r.origine);
+    if (r.poids) row("Poids", r.poids);
+    if (r.conditionnement) row("Conditionnement", r.conditionnement);
+    if (r.lotMoorea) row("N Lot Moorea", r.lotMoorea);
+    if (r.lotFournisseur) row("N Lot Fournisseur", r.lotFournisseur);
+    if (r.temperature) row("Temperature reception", r.temperature + " C");
+    if (r.nbColisAttendu) row("Colis attendus", r.nbColisAttendu);
+    if (r.nbColisRecu) row("Colis recus", r.nbColisRecu);
+    y += 4;
+
+    section("CONFORMITE");
+    const conf = r.conformite === "conforme" ? "CONFORME" : "NON CONFORME";
+    const confColors: [number,number,number] = r.conformite === "conforme" ? [22,163,74] : [220,38,38];
+    doc.setFillColor(...confColors);
+    doc.roundedRect(M+2, y-2, 70, 9, 2, 2, "F");
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    doc.text(conf, M+6, y+4.5); y+=12;
+
+    section("QUALITE VISUELLE");
+    const noteLabels: Record<number,string> = {1:"Insuffisant",2:"Passable",3:"Correct",4:"Bon",5:"Excellent"};
+    const noteColors2: Record<number,[number,number,number]> = {1:[239,68,68],2:[249,115,22],3:[234,179,8],4:[34,197,94],5:[21,128,61]};
+    const q = r.notes?.qualite;
+    if (q > 0) {
+      const nc = noteColors2[q];
+      doc.setFillColor(...nc);
+      doc.roundedRect(M+2,y-2,60,9,2,2,"F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      doc.text(`${q}/5 - ${noteLabels[q]}`,M+6,y+4.5); y+=12;
+    }
+
+    section("POIDS");
+    if (r.poidsStatut==="ok") {
+      doc.setFillColor(240,253,244); doc.roundedRect(M+2,y-2,50,9,2,2,"F");
+      doc.setTextColor(22,163,74); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      doc.text("Poids OK",M+6,y+4.5);
+    } else if (r.poidsStatut==="ecart") {
+      doc.setFillColor(255,251,235); doc.roundedRect(M+2,y-2,80,9,2,2,"F");
+      doc.setTextColor(217,119,6); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      doc.text(`Ecart${r.poidsEcart?" : "+r.poidsEcart:""}`,M+6,y+4.5);
+    }
+    y+=12;
+
+    section("CONFORMITE ETIQUETTE");
+    if (r.etiquetteAbsente) {
+      doc.setFillColor(254,242,242); doc.roundedRect(M+2,y-2,50,9,2,2,"F");
+      doc.setTextColor(220,38,38); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      doc.text("Etiquette absente",M+6,y+4.5); y+=12;
+    } else {
+      const cols=3; const itemW=CW/cols;
+      ETIQUETTE_ITEMS.forEach((item,idx) => {
+        const col=idx%cols; const rowIdx=Math.floor(idx/cols);
+        const ix=M+col*itemW; const iy=y+rowIdx*8; checkY(8);
+        const ok=r.etiquette?.[item.id]!==false;
+        doc.setFillColor(ok?240:254,ok?253:242,ok?244:242);
+        doc.roundedRect(ix,iy-1,itemW-2,7,1.5,1.5,"F");
+        doc.setTextColor(ok?22:220,ok?163:38,ok?74:38);
+        doc.setFont("helvetica",ok?"normal":"bold"); doc.setFontSize(7.5);
+        doc.text(`${ok?"OK":"X"} ${item.label}`,ix+3,iy+4);
+      });
+      y+=Math.ceil(ETIQUETTE_ITEMS.length/3)*8+6;
+    }
+
+    if (r.decision!=="stock"&&r.nbColisRefuses!==null) {
+      checkY(20);
+      const dc2=decisionColor(r.decision);
+      doc.setFillColor(dc2[0],dc2[1],dc2[2]);
+      doc.roundedRect(M,y,CW,18,3,3,"F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+      const label2=r.decision==="reserve"?"Colis en reserve":"Colis refuses";
+      doc.text(`${label2} : ${r.nbColisRefuses} / ${r.nbColisTotal} (${r.pourcentage}%)`,W/2,y+11,{align:"center"});
+      y+=24;
+    }
+
+    if (r.observations) {
+      checkY(20); section("COMMENTAIRE");
+      const lines=doc.splitTextToSize(r.observations,CW-8);
+      doc.setFillColor(250,248,245); doc.roundedRect(M,y-2,CW,lines.length*5+8,3,3,"F");
+      doc.setTextColor(107,114,128); doc.setFont("helvetica","italic"); doc.setFontSize(8.5);
+      doc.text(lines,M+4,y+4); y+=lines.length*5+12;
+    }
+
+    if (r.photos&&r.photos.length>0) {
+      checkY(60); section("PHOTOS");
+      const imgW=(CW-8)/3; const imgH=imgW*0.75;
+      for (let i=0;i<Math.min(r.photos.length,6);i++) {
+        const col=i%3; const rowI=Math.floor(i/3);
+        if (rowI>0&&col===0) checkY(imgH+4);
+        const px=M+col*(imgW+4); const py=y+rowI*(imgH+4);
+        try { doc.addImage(r.photos[i].url,"JPEG",px,py,imgW,imgH,undefined,"FAST"); } catch {}
+      }
+      y+=Math.ceil(Math.min(r.photos.length,6)/3)*(imgH+4)+8;
+    }
+
+    doc.setFillColor(10,10,10); doc.rect(0,285,W,12,"F");
+    doc.setFillColor(200,168,75); doc.rect(0,285,W,1,"F");
+    doc.setTextColor(150,150,150); doc.setFont("helvetica","normal"); doc.setFontSize(7);
+    doc.text(`Genere par Moorea - Agreage Rungis - ${r.date}${r.lotMoorea?" - Lot "+r.lotMoorea:""}`,W/2,291,{align:"center"});
+
+    return doc.output("datauristring");
   };
 
   // ─── GÉNÉRER + TÉLÉCHARGER PDF ───
@@ -1064,27 +1334,72 @@ export default function App() {
               )}
             </div>
 
-            <button className="btn-primary" onClick={soumettre} disabled={sendingId === "new"} style={{ opacity: sendingId === "new" ? 0.7 : 1, cursor: sendingId === "new" ? "not-allowed" : "pointer" }}>
-              {sendingId === "new" ? "⏳ Envoi en cours…" : "✉ Envoyer le rapport"}
+            <button className="btn-primary" onClick={editRapport ? sauvegarderEdition : soumettre} disabled={sendingId === "new" || sendingId === "edit"} style={{ opacity: (sendingId === "new" || sendingId === "edit") ? 0.7 : 1 }}>
+              {sendingId === "new" ? "⏳ Envoi en cours…" : sendingId === "edit" ? "⏳ Modification…" : editRapport ? "💾 Sauvegarder les modifications" : "✉ Envoyer le rapport"}
             </button>
+            {editRapport && (
+              <button onClick={() => { reset(); setEditRapport(null); setVue("historique"); }} style={{ width: "100%", marginTop: 8, padding: "14px", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 15, color: "#6b7280", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
+                Annuler
+              </button>
+            )}
           </div>
         )}
 
         {/* HISTORIQUE */}
         {vue === "historique" && (
           <div className="fade-up">
-            {rapports.length === 0 ? (
-              <div style={{ textAlign: "center", marginTop: 60, color: "#9ca3af" }}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, color: "#374151", marginBottom: 6 }}>Aucun rapport</p>
-                <p style={{ fontSize: 14, marginBottom: 20 }}>Créez votre premier rapport qualité</p>
-                <button onClick={() => setVue("form")} style={{ padding: "10px 24px", borderRadius: 10, border: "1.5px solid #d1fae5", background: "#fff", cursor: "pointer", fontSize: 14, color: "#15803d", fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>Nouveau rapport</button>
-              </div>
-            ) : rapports.map((r, i) => (
+            {/* BARRE DE RECHERCHE */}
+            <div style={{ marginBottom: 16, display: "flex", gap: 10 }}>
+              <input
+                type="text"
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                placeholder="🔍 Rechercher produit, fournisseur…"
+                style={{ flex: 2 }}
+              />
+              <input
+                type="date"
+                value={searchDate}
+                onChange={e => setSearchDate(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              {(searchText || searchDate) && (
+                <button onClick={() => { setSearchText(""); setSearchDate(""); }} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 13, color: "#6b7280", whiteSpace: "nowrap" }}>
+                  ✕ Effacer
+                </button>
+              )}
+            </div>
+
+            {(() => {
+              const filtered = rapports.filter(r => {
+                const matchText = !searchText || 
+                  r.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
+                  r.fournisseur?.toLowerCase().includes(searchText.toLowerCase()) ||
+                  r.lotMoorea?.toLowerCase().includes(searchText.toLowerCase()) ||
+                  r.agreeur?.toLowerCase().includes(searchText.toLowerCase());
+                const matchDate = !searchDate || r.date === new Date(searchDate).toLocaleDateString("fr-FR");
+                return matchText && matchDate;
+              });
+
+              if (filtered.length === 0) return (
+                <div style={{ textAlign: "center", marginTop: 60, color: "#9ca3af" }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 16, color: "#374151", marginBottom: 6 }}>
+                    {rapports.length === 0 ? "Aucun rapport" : "Aucun résultat"}
+                  </p>
+                  <p style={{ fontSize: 14, marginBottom: 20 }}>
+                    {rapports.length === 0 ? "Créez votre premier rapport qualité" : "Modifiez votre recherche"}
+                  </p>
+                  {rapports.length === 0 && <button onClick={() => setVue("form")} style={{ padding: "10px 24px", borderRadius: 10, border: "1.5px solid #d1fae5", background: "#fff", cursor: "pointer", fontSize: 14, color: "#15803d", fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>Nouveau rapport</button>}
+                </div>
+              );
+
+              return filtered.map((r, i) => (
               <div key={r.firebaseKey || r.id} className="card fade-up" style={{ padding: "1rem 1.25rem", marginBottom: 12, animationDelay: `${i * 0.04}s`, borderLeft: `4px solid ${r.decision === "stock" ? "#22c55e" : r.decision === "reserve" ? "#f59e0b" : "#ef4444"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
                     <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, color: "#1a2e1a", marginBottom: 3 }}>{r.produit}</p>
+                    {r.numeroRapport && <p style={{ fontSize: 11, color: "#c8a84b", fontWeight: 700, marginBottom: 2, letterSpacing: "0.5px" }}>#{r.numeroRapport}</p>}
                     <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 2 }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}{r.conditionnement ? ` · ${r.conditionnement}` : ""}{r.poids ? ` · ${r.poids}` : ""}</p>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                       {r.lotMoorea && <span style={{ fontSize: 11, background: "#faf8f0", color: "#8a6f2e", border: "1px solid #e0d0a0", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Lot Moorea: {r.lotMoorea}</span>}
@@ -1150,12 +1465,33 @@ export default function App() {
                   <button onClick={() => downloadPDF(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     📄 PDF
                   </button>
-                  <button onClick={() => envoyerEmail(r)} disabled={sendingId === (r.id || r.firebaseKey)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: sendingId === (r.id || r.firebaseKey) ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sendingId === (r.id || r.firebaseKey) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: sendingId === (r.id || r.firebaseKey) ? "none" : "0 2px 8px rgba(200,168,75,0.3)", touchAction: "manipulation" }}>
+                  <button onClick={() => envoyerEmail(r)} disabled={sendingId === (r.id || r.firebaseKey)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: sendingId === (r.id || r.firebaseKey) ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sendingId === (r.id || r.firebaseKey) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     {sendingId === (r.id || r.firebaseKey) ? "⏳ Envoi…" : "✉ Renvoyer"}
                   </button>
+                  <button onClick={() => chargerRapportEdition(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #bfdbfe", background: "#eff6ff", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
+                    ✏️
+                  </button>
+                  <button onClick={() => setConfirmDelete(r.firebaseKey)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
+                    🗑
+                  </button>
                 </div>
+
+                {confirmDelete === r.firebaseKey && (
+                  <div style={{ marginTop: 10, background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "14px 16px" }}>
+                    <p style={{ fontSize: 13, color: "#991b1b", fontWeight: 600, marginBottom: 10 }}>Supprimer ce rapport ?</p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => supprimerRapport(r.firebaseKey)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                        Oui, supprimer
+                      </button>
+                      <button onClick={() => setConfirmDelete(null)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: 13, cursor: "pointer" }}>
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+              ));
+            })()}
           </div>
         )}
       </div>
