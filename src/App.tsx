@@ -448,7 +448,8 @@ _PDF joint_`;
     setEtiquetteAbsente(r.etiquetteAbsente || false);
     setEtiquette(r.etiquette || initialEtiquette);
     setObservations(r.observations || "");
-    setPhotos([]);
+    // Charge les photos existantes depuis ImgBB pour les afficher
+    setPhotos(r.photoUrls?.length > 0 ? r.photoUrls.map((url: string) => ({ name: "photo", url })) : []);
     setEditRapport(r);
     setVue("form");
   };
@@ -463,13 +464,17 @@ _PDF joint_`;
     try {
       const decisionFinale = conformite === "conforme" ? "stock" : decision;
 
-      // Upload nouvelles photos si ajoutées
+      // Upload uniquement les nouvelles photos (celles sans URL ImgBB)
       let photoUrls = editRapport.photoUrls || [];
-      if (photos.length > 0) {
+      const newPhotos = photos.filter((p: any) => !p.url?.startsWith("http"));
+      if (newPhotos.length > 0) {
         showToast("⏳ Upload des photos…");
-        const newUrls = await uploadPhotosImgBB(photos);
+        const newUrls = await uploadPhotosImgBB(newPhotos);
         photoUrls = [...photoUrls, ...newUrls];
       }
+      // Garde aussi les photos ImgBB déjà dans le state
+      const existingImgBB = photos.filter((p: any) => p.url?.startsWith("http")).map((p: any) => p.url);
+      photoUrls = [...new Set([...existingImgBB, ...photoUrls])];
 
       const updates = {
         fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
@@ -1070,10 +1075,11 @@ _PDF joint_`;
       doc.text(lines,M+4,y+4); y+=lines.length*5+12;
     }
 
-    // Photos : utilise photoUrls (ImgBB) si disponibles, sinon base64
-    const allPhotos = r.photoUrls?.length > 0
-      ? r.photoUrls.map((url: string) => ({ url }))
-      : r.photos || [];
+    // Photos : combine photoUrls (ImgBB) ET photos base64 si disponibles
+    const allPhotos = [
+      ...(r.photoUrls?.length > 0 ? r.photoUrls.map((url: string) => ({ url })) : []),
+      ...(r.photos?.length > 0 ? r.photos.filter((p: any) => p.url) : []),
+    ];
 
     if (allPhotos.length > 0) {
       checkY(60); section("PHOTOS");
