@@ -1178,28 +1178,10 @@ _PDF joint_`;
         reader.readAsDataURL(file);
       });
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/api/scan-etiquette", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 500,
-          messages: [{
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: file.type, data: base64 }
-              },
-              {
-                type: "text",
-                text: `Tu es un assistant d'agréage au marché de Rungis. Analyse cette étiquette de colis et extrait uniquement ces informations en JSON strict (pas de markdown, pas d'explication) :
-{"produit":"nom du produit","origine":"pays d'origine","fournisseur":"nom du fournisseur ou producteur","lotFournisseur":"numéro de lot fournisseur chiffres seulement","poids":"poids en kg chiffres seulement sans unité"}
-Si une info est absente mets "". Ne mets que ce que tu vois clairement.`
-              }
-            ]
-          }]
-        })
+        body: JSON.stringify({ base64, mediaType: file.type }),
       });
 
       const data = await response.json();
