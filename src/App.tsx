@@ -1100,12 +1100,12 @@ _PDF joint_`;
   // ─── GÉNÉRER + TÉLÉCHARGER PDF ───
   const downloadPDF = async (r: any) => {
     const pdfDataUri = await generatePDFBase64(r);
-    const pdfName = `rapport-${(r.produit || "").replace(/[^a-zA-Z0-9]/g, "-")}-${(r.date || "").replace(/\//g, "-")}.pdf`;
-    const link = document.createElement("a");
-    link.href = pdfDataUri;
-    link.download = pdfName;
-    link.click();
-    showToast("📄 PDF téléchargé");
+    const win = window.open();
+    if (win) {
+      win.document.write(`<iframe src="${pdfDataUri}" style="width:100%;height:100%;border:none;position:fixed;top:0;left:0;" />`);
+      win.document.title = `Rapport ${r.numeroRapport || r.produit}`;
+    }
+    showToast("📄 PDF ouvert");
   };
 
   return (
