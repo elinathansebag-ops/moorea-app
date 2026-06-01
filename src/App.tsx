@@ -462,6 +462,15 @@ _PDF joint_`;
     setSendingId("edit");
     try {
       const decisionFinale = conformite === "conforme" ? "stock" : decision;
+
+      // Upload nouvelles photos si ajoutées
+      let photoUrls = editRapport.photoUrls || [];
+      if (photos.length > 0) {
+        showToast("⏳ Upload des photos…");
+        const newUrls = await uploadPhotosImgBB(photos);
+        photoUrls = [...photoUrls, ...newUrls];
+      }
+
       const updates = {
         fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
         lotMoorea, lotFournisseur, temperature, notes,
@@ -471,6 +480,8 @@ _PDF joint_`;
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
         poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
         observations, score,
+        photoUrls,
+        nbPhotos: photoUrls.length,
         modifiedAt: Date.now(),
       };
       const rapportRef = ref(db, `rapports/${editRapport.firebaseKey}`);
@@ -869,7 +880,7 @@ _PDF joint_`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: ["agreage@moorea.fr"],
+          to: ["agreage@moorea.fr", "commercial@moorea.fr", "qualite@moorea.fr"],
           subject,
           html: htmlContent,
           attachments: [{
