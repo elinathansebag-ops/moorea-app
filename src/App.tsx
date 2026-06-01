@@ -207,6 +207,9 @@ export default function App() {
   const [etiquetteAbsente, setEtiquetteAbsente] = useState(false);
   const [etiquette, setEtiquette] = useState(initialEtiquette);
   const [observations, setObservations] = useState("");
+  const [controles, setControles] = useState<Record<string, string>>({
+    temperature: "", fraicheur: "", sanitaire: "", maturite: "", coloration: ""
+  });
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [searchDate, setSearchDate] = useState("");
   const [searchText, setSearchText] = useState("");
@@ -247,6 +250,7 @@ export default function App() {
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
     setPhotos([]); setPoidsStatut(""); setPoidsEcart("");
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
+    setControles({ temperature: "", fraicheur: "", sanitaire: "", maturite: "", coloration: "" });
   };
 
   const supprimerRapport = async (firebaseKey: string) => {
@@ -390,8 +394,7 @@ _PDF joint_`;
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
         nbPhotos: photos.length,
         photoUrls: [],
-        poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
-        observations, score, date, heure,
+        poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
         timestamp: Date.now(),
         id: Date.now().toString(),
       };
@@ -448,6 +451,7 @@ _PDF joint_`;
     setEtiquetteAbsente(r.etiquetteAbsente || false);
     setEtiquette(r.etiquette || initialEtiquette);
     setObservations(r.observations || "");
+    setControles(r.controles || { temperature: "", fraicheur: "", sanitaire: "", maturite: "", coloration: "" });
     // Charge les photos existantes depuis ImgBB pour les afficher
     setPhotos(r.photoUrls?.length > 0 ? r.photoUrls.map((url: string) => ({ name: "photo", url })) : []);
     setEditRapport(r);
@@ -483,8 +487,7 @@ _PDF joint_`;
         pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
         nbColisTotal: totalColis,
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
-        poidsStatut, poidsEcart, etiquetteAbsente, etiquette,
-        observations, score,
+        poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
         photoUrls,
         nbPhotos: photoUrls.length,
         modifiedAt: Date.now(),
@@ -1075,6 +1078,43 @@ _PDF joint_`;
       doc.text(lines,M+4,y+4); y+=lines.length*5+12;
     }
 
+    // TABLEAU CONTROLES
+    if (r.controles && Object.values(r.controles).some((v: any) => v)) {
+      checkY(50); section("CONTROLES QUALITE");
+      const controleItems = [
+        { id: "temperature", label: "Temperature" },
+        { id: "fraicheur", label: "Fraicheur" },
+        { id: "sanitaire", label: "Sanitaire" },
+        { id: "maturite", label: "Maturite" },
+        { id: "coloration", label: "Coloration" },
+      ];
+      const colW2 = CW / 3;
+      // Header
+      doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
+      doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+      doc.text("Critere", M + 4, y + 5.5);
+      doc.setTextColor(22, 163, 74); doc.text("C", M + colW2 * 1.5, y + 5.5, { align: "center" });
+      doc.setTextColor(220, 38, 38); doc.text("NC", M + colW2 * 2.5, y + 5.5, { align: "center" });
+      y += 10;
+      controleItems.forEach((item, idx) => {
+        const bg = idx % 2 === 0 ? [250, 248, 245] : [255, 255, 255];
+        doc.setFillColor(bg[0], bg[1], bg[2]);
+        doc.rect(M, y - 1, CW, 8, "F");
+        doc.setTextColor(55, 65, 81); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+        doc.text(item.label, M + 4, y + 4.5);
+        const val = r.controles[item.id];
+        if (val === "C") {
+          doc.setTextColor(22, 163, 74); doc.setFont("helvetica", "bold");
+          doc.text("✓", M + colW2 * 1.5, y + 4.5, { align: "center" });
+        } else if (val === "NC") {
+          doc.setTextColor(220, 38, 38); doc.setFont("helvetica", "bold");
+          doc.text("✕", M + colW2 * 2.5, y + 4.5, { align: "center" });
+        }
+        y += 8;
+      });
+      y += 4;
+    }
+
     // Photos : combine photoUrls (ImgBB) ET photos base64 si disponibles
     const allPhotos = [
       ...(r.photoUrls?.length > 0 ? r.photoUrls.map((url: string) => ({ url })) : []),
@@ -1244,11 +1284,49 @@ _PDF joint_`;
                 )}
               </div>
 
-              <div>
+              {/* TABLEAU CONTROLES C/NC */}
+              <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #f0f0f0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f5f3ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🏷️</div>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>Conformité étiquette colis</span>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f0f4ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✅</div>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>Contrôles qualité</span>
                 </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                  <thead>
+                    <tr style={{ background: "#f5f3ee" }}>
+                      <th style={{ padding: "10px 14px", textAlign: "left", fontFamily: "'Syne', sans-serif", fontSize: 12, color: "#8a6f2e", textTransform: "uppercase", letterSpacing: "0.5px", borderRadius: "8px 0 0 0" }}>Critère</th>
+                      <th style={{ padding: "10px 14px", textAlign: "center", fontFamily: "'Syne', sans-serif", fontSize: 12, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.5px", width: 70 }}>C</th>
+                      <th style={{ padding: "10px 14px", textAlign: "center", fontFamily: "'Syne', sans-serif", fontSize: 12, color: "#dc2626", textTransform: "uppercase", letterSpacing: "0.5px", width: 70, borderRadius: "0 8px 0 0" }}>NC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { id: "temperature", label: "Température" },
+                      { id: "fraicheur", label: "Fraîcheur" },
+                      { id: "sanitaire", label: "Sanitaire" },
+                      { id: "maturite", label: "Maturité" },
+                      { id: "coloration", label: "Coloration" },
+                    ].map((item, idx) => (
+                      <tr key={item.id} style={{ background: idx % 2 === 0 ? "#faf8f5" : "#fff", borderBottom: "1px solid #f0ede6" }}>
+                        <td style={{ padding: "12px 14px", fontWeight: 500, color: "#374151" }}>{item.label}</td>
+                        <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                          <button onClick={() => setControles(prev => ({ ...prev, [item.id]: prev[item.id] === "C" ? "" : "C" }))}
+                            style={{ width: 36, height: 36, borderRadius: 8, border: `2px solid ${controles[item.id] === "C" ? "#16a34a" : "#e5e7eb"}`, background: controles[item.id] === "C" ? "#16a34a" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto", transition: "all 0.15s", touchAction: "manipulation" }}>
+                            {controles[item.id] === "C" && <span style={{ color: "#fff", fontSize: 16, fontWeight: 700 }}>✓</span>}
+                          </button>
+                        </td>
+                        <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                          <button onClick={() => setControles(prev => ({ ...prev, [item.id]: prev[item.id] === "NC" ? "" : "NC" }))}
+                            style={{ width: 36, height: 36, borderRadius: 8, border: `2px solid ${controles[item.id] === "NC" ? "#dc2626" : "#e5e7eb"}`, background: controles[item.id] === "NC" ? "#dc2626" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto", transition: "all 0.15s", touchAction: "manipulation" }}>
+                            {controles[item.id] === "NC" && <span style={{ color: "#fff", fontSize: 16, fontWeight: 700 }}>✕</span>}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
                 <label onClick={() => { setEtiquetteAbsente(v => !v); setEtiquette(initialEtiquette); }}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, cursor: "pointer", marginBottom: 10, background: etiquetteAbsente ? "#fef2f2" : "#f9fafb", border: `2px solid ${etiquetteAbsente ? "#dc2626" : "#e5e7eb"}`, transition: "all 0.15s" }}>
                   <div style={{ width: 24, height: 24, borderRadius: 7, background: etiquetteAbsente ? "#dc2626" : "#fff", border: `2px solid ${etiquetteAbsente ? "#dc2626" : "#d1d5db"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
