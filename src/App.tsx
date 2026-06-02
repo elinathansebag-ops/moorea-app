@@ -499,6 +499,7 @@ _PDF joint_`;
         nbColisTotal: totalColis,
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
         poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
+        observations, score,
         photoUrls,
         nbPhotos: photoUrls.length,
         modifiedAt: Date.now(),
