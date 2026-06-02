@@ -430,8 +430,7 @@ _PDF joint_`;
       // 4. Reset et navigation
       reset();
       setVue("historique");
-
-    } catch {
+      window.scrollTo(0, 0);
       showToast("Erreur lors de l'envoi", "error");
     } finally {
       setSendingId(null);
@@ -511,6 +510,7 @@ _PDF joint_`;
       reset();
       setEditRapport(null);
       setVue("historique");
+      window.scrollTo(0, 0);
     } catch {
       showToast("Erreur lors de la modification", "error");
     } finally {
@@ -1603,7 +1603,7 @@ _PDF joint_`;
               {sendingId === "new" ? "⏳ Envoi en cours…" : sendingId === "edit" ? "⏳ Modification…" : editRapport ? "💾 Sauvegarder les modifications" : "✉ Envoyer le rapport"}
             </button>
             {editRapport && (
-              <button onClick={() => { reset(); setEditRapport(null); setVue("historique"); }} style={{ width: "100%", marginTop: 8, padding: "14px", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 15, color: "#6b7280", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
+              <button onClick={() => { reset(); setEditRapport(null); setVue("historique"); window.scrollTo(0, 0); }} style={{ width: "100%", marginTop: 8, padding: "14px", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 15, color: "#6b7280", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
                 Annuler
               </button>
             )}
