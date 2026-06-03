@@ -30,4 +30,8 @@ export default async function handler(req) {
     });
 
     const data = await response.json();
-    return new Response(JSON.stringify(data), { status: response.status, head
+    return new Response(JSON.stringify(data), { status: response.status, headers: corsHeaders });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+  }
+}
