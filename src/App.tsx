@@ -891,22 +891,13 @@ _PDF joint_`;
       const htmlContent = buildEmailHTML(r);
       const subject = `${r.numeroRapport ? "[" + r.numeroRapport + "] " : ""}Rapport Agréage Moorea - ${r.produit} | ${r.fournisseur} | ${r.date}`;
 
-      // Générer le PDF en base64
-      const pdfDataUri = await generatePDFBase64(r);
-      const pdfBase64 = pdfDataUri.split(",")[1];
-      const pdfName = `rapport-${(r.produit || "").replace(/[^a-zA-Z0-9]/g, "-")}-${(r.date || "").replace(/\//g, "-")}.pdf`;
-
       const response = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: ["agreage@moorea.fr", "commercial@moorea.fr", "qualite@moorea.fr"],
+          to: ["agreage@moorea.fr"],
           subject,
           html: htmlContent,
-          attachments: [{
-            filename: pdfName,
-            content: pdfBase64,
-          }],
         }),
       });
 
