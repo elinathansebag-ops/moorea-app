@@ -1157,7 +1157,7 @@ _PDF joint_`;
     doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
     doc.text("MOOREA", M, 14);
     doc.setTextColor(255, 255, 255); doc.setFontSize(10);
-    doc.text("Bon de Retour Transporteur", M + 32, 14);
+    doc.text("Bon de Reprise Fournisseur", M + 32, 14);
     doc.setTextColor(150, 150, 150); doc.setFontSize(8);
     doc.text(`${r.date} a ${r.heure}`, W - M, 14, { align: "right" });
 
@@ -1167,15 +1167,18 @@ _PDF joint_`;
     doc.setFillColor(220, 38, 38);
     doc.roundedRect(M, y, CW, 14, 3, 3, "F");
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
-    doc.text("MARCHANDISE REFUSEE - BON DE REPRISE", W / 2, y + 9, { align: "center" });
+    doc.text("MARCHANDISE REFUSEE - BON DE REPRISE FOURNISSEUR", W / 2, y + 9, { align: "center" });
     y += 20;
 
-    // Numéro rapport
+    // Numéro rapport + date
+    doc.setTextColor(26, 46, 26); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
     if (r.numeroRapport) {
-      doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(200, 168, 75);
       doc.text(`Rapport N° ${r.numeroRapport}`, M, y);
-      y += 8;
     }
+    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal");
+    doc.text(`Date : ${r.date} a ${r.heure}`, W - M, y, { align: "right" });
+    y += 10;
 
     // Section infos
     const section = (title: string) => {
@@ -1226,32 +1229,24 @@ _PDF joint_`;
     }
     y += 6;
 
-    // Signatures
-    section("SIGNATURES");
+    // Zone transporteur
+    section("TRANSPORTEUR - PRISE EN CHARGE DE LA MARCHANDISE");
+    doc.setFillColor(248, 248, 248); doc.roundedRect(M, y, CW, 60, 3, 3, "F");
+    doc.setDrawColor(200, 200, 200); doc.roundedRect(M, y, CW, 60, 3, 3, "S");
+    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+    doc.text("Nom du transporteur : _________________________________", M + 6, y + 12);
+    doc.text("Immatriculation : _____________________________________", M + 6, y + 22);
+    doc.text("Motif retour accepte : ________________________________", M + 6, y + 32);
+    doc.text("Date de reprise : ____________________________________", M + 6, y + 42);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text("Signature transporteur :", M + 6, y + 52);
+    y += 68;
+
+    // Date et lieu
     y += 4;
-
-    // Transporteur
-    doc.setFillColor(248, 248, 248); doc.roundedRect(M, y, CW / 2 - 4, 52, 3, 3, "F");
-    doc.setDrawColor(200, 200, 200); doc.roundedRect(M, y, CW / 2 - 4, 52, 3, 3, "S");
-    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    doc.text("TRANSPORTEUR", M + 4, y + 8);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text("Nom : ___________________________", M + 4, y + 18);
-    doc.text("Societe : _______________________", M + 4, y + 26);
-    doc.text("Date : __________________________", M + 4, y + 34);
-    doc.text("Signature :", M + 4, y + 44);
-
-    // Agreeur
-    const col2x = M + CW / 2 + 4;
-    doc.setFillColor(248, 248, 248); doc.roundedRect(col2x, y, CW / 2 - 4, 52, 3, 3, "F");
-    doc.setDrawColor(200, 200, 200); doc.roundedRect(col2x, y, CW / 2 - 4, 52, 3, 3, "S");
-    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    doc.text("AGREEUR MOOREA", col2x + 4, y + 8);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text(`Nom : ${r.agreeur || "___________________________"}`, col2x + 4, y + 18);
-    doc.text("Date : __________________________", col2x + 4, y + 26);
-    doc.text("Signature :", col2x + 4, y + 44);
-    y += 60;
+    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    doc.text(`Fait a Rungis, le ___________________________`, M, y);
+    y += 14;
 
     // Footer
     doc.setFillColor(10, 10, 10); doc.rect(0, 285, W, 12, "F");
@@ -1266,7 +1261,7 @@ _PDF joint_`;
     for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
     const blob = new Blob([byteArr], { type: "application/pdf" });
     window.open(URL.createObjectURL(blob), "_blank");
-    showToast("📄 Bon de retour généré");
+    showToast("📄 Bon de reprise généré");
   };
   const downloadPDF = async (r: any) => {
     const pdfDataUri = await generatePDFBase64(r);
