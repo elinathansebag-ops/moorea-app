@@ -190,6 +190,7 @@ export default function App() {
   const [nbColisAttendu, setNbColisAttendu] = useState("");
   const [produit, setProduit] = useState("");
   const [conditionnement, setConditionnement] = useState("");
+  const [calibre, setCalibre] = useState("");
   const [poids, setPoids] = useState("");
   const [origine, setOrigine] = useState("");
   const [lotMoorea, setLotMoorea] = useState("");
@@ -254,7 +255,7 @@ export default function App() {
 
   const reset = () => {
     setFournisseur(""); setAgreeur(""); setNbColisRecu(""); setNbColisAttendu("");
-    setProduit(""); setConditionnement(""); setPoids("");
+    setProduit(""); setConditionnement(""); setCalibre(""); setPoids("");
     setOrigine(""); setLotMoorea(""); setLotFournisseur(""); setTemperature("");
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
     setPhotos([]); setPoidsStatut(""); setPoidsEcart("");
@@ -345,6 +346,8 @@ _PDF joint_`;
   const suggestionsProduits = [...new Set(rapports.map(r => r.produit).filter(Boolean))];
   const suggestionsFournisseurs = [...new Set(rapports.map(r => r.fournisseur).filter(Boolean))];
   const suggestionsOrigines = [...new Set(rapports.map(r => r.origine).filter(Boolean))];
+  const suggestionsCalibres = [...new Set(rapports.map(r => r.calibre).filter(Boolean))];
+  const suggestionsConditionnements = [...new Set(rapports.map(r => r.conditionnement).filter(Boolean))];
 
   // ─── UPLOAD PHOTOS VERS IMGBB ───
   const uploadPhotosImgBB = async (photosList: { name: string; url: string }[]) => {
@@ -395,14 +398,7 @@ _PDF joint_`;
 
       const rapport = {
         numeroRapport,
-        fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
-        lotMoorea, lotFournisseur, temperature, notes,
-        conformite, decision: decisionFinale, nbColisAEcarter,
-        pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
-        nbColisTotal: totalColis,
-        nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
-        nbPhotos: photos.length,
-        photoUrls: [],
+        fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, calibre, poids, origine,
         poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
         observations, score,
         date, heure,
@@ -445,6 +441,7 @@ _PDF joint_`;
     setNbColisAttendu(r.nbColisAttendu || "");
     setProduit(r.produit || "");
     setConditionnement(r.conditionnement || "");
+    setCalibre(r.calibre || "");
     setPoids(r.poids || "");
     setOrigine(r.origine || "");
     setLotMoorea(r.lotMoorea || "");
@@ -491,13 +488,7 @@ _PDF joint_`;
       photoUrls = [...new Set([...existingImgBB, ...photoUrls])];
 
       const updates = {
-        fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, poids, origine,
-        lotMoorea, lotFournisseur, temperature, notes,
-        conformite, decision: decisionFinale, nbColisAEcarter,
-        pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
-        nbColisTotal: totalColis,
-        nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
-        poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
+        fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, calibre, poids, origine,
         observations, score,
         photoUrls,
         nbPhotos: photoUrls.length,
@@ -582,6 +573,7 @@ _PDF joint_`;
     row("Fournisseur", r.fournisseur, true);
     row("Produit", r.produit, true);
     row("Origine", r.origine);
+    if (r.calibre) row("Calibre", r.calibre);
     if (r.poids) row("Poids", r.poids);
     if (r.conditionnement) row("Conditionnement", r.conditionnement);
     if (r.lotMoorea) row("N° Lot Moorea", r.lotMoorea);
@@ -891,13 +883,23 @@ _PDF joint_`;
       const htmlContent = buildEmailHTML(r);
       const subject = `${r.numeroRapport ? "[" + r.numeroRapport + "] " : ""}Rapport Agréage Moorea - ${r.produit} | ${r.fournisseur} | ${r.date}`;
 
+      // Générer PDF en base64
+      const pdfDataUri = await generatePDFBase64(r);
+      const pdfBase64 = pdfDataUri.split(",")[1];
+      const pdfFilename = `rapport-${r.numeroRapport || r.date}-${r.produit}.pdf`.replace(/\s+/g, "-");
+
+      // CC : agréeur si email connu
+      const ccList: string[] = [];
+      if (r.agreeur && r.agreeur.includes("@")) ccList.push(r.agreeur);
+
       const response = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: ["commercial@moorea.fr"],
           subject,
           html: htmlContent,
+          cc: ccList,
+          attachments: [{ filename: pdfFilename, content: pdfBase64 }],
         }),
       });
 
@@ -1190,6 +1192,7 @@ _PDF joint_`;
       ["Produit", r.produit],
       ["Fournisseur", r.fournisseur],
       ["Origine", r.origine || "-"],
+      ["Calibre", r.calibre || "-"],
       ["Poids", r.poids ? r.poids + " kg" : "-"],
       ["N Lot Fournisseur", r.lotFournisseur || "-"],
       ["N Lot Moorea", r.lotMoorea || "-"],
@@ -1412,8 +1415,9 @@ _PDF joint_`;
               <div className="grid-2">
                 <F label="Produit" required><AutocompleteInput value={produit} onChange={setProduit} suggestions={suggestionsProduits} placeholder="Ex: Tomates, Fraises…" required /></F>
                 <F label="Origine" required><AutocompleteInput value={origine} onChange={setOrigine} suggestions={suggestionsOrigines} placeholder="Ex: Espagne, France…" required /></F>
+                <F label="Calibre"><AutocompleteInput value={calibre} onChange={setCalibre} suggestions={suggestionsCalibres} placeholder="Ex: 47/53, cal 48…" /></F>
                 <F label="Poids (kg)"><input type="number" step="0.1" min="0" value={poids} onChange={e => setPoids(e.target.value)} placeholder="Ex: 5.5" /></F>
-                <F label="Conditionnement"><input value={conditionnement} onChange={e => setConditionnement(e.target.value)} placeholder="Ex: Barquette 500g, Filet…" /></F>
+                <F label="Conditionnement"><AutocompleteInput value={conditionnement} onChange={setConditionnement} suggestions={suggestionsConditionnements} placeholder="Ex: Barquette 500g, Filet…" /></F>
                 <F label="N° Lot Moorea"><input type="number" value={lotMoorea} onChange={e => setLotMoorea(e.target.value)} placeholder="Ex: 123456" /></F>
                 <F label="N° Lot Fournisseur"><input value={lotFournisseur} onChange={e => setLotFournisseur(e.target.value)} placeholder="N° lot fournisseur" /></F>
               </div>
