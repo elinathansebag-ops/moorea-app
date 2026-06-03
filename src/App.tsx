@@ -895,7 +895,7 @@ _PDF joint_`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          to: ["agreage@moorea.fr"],
+          to: ["commercial@moorea.fr"],
           subject,
           html: htmlContent,
         }),
@@ -1725,7 +1725,7 @@ _PDF joint_`;
                     WhatsApp
                   </button>
                   <button onClick={() => envoyerEmail(r)} disabled={sendingId === (r.id || r.firebaseKey)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: sendingId === (r.id || r.firebaseKey) ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sendingId === (r.id || r.firebaseKey) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
-                    {sendingId === (r.id || r.firebaseKey) ? "⏳…" : "✉ Mail"}
+                    {sendingId === (r.id || r.firebaseKey) ? "⏳…" : "✉ Mail commercial"}
                   </button>
                   <button onClick={() => chargerRapportEdition(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #bfdbfe", background: "#eff6ff", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
                     ✏️
