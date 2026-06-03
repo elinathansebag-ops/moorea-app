@@ -1174,8 +1174,6 @@ _PDF joint_`;
       doc.setFont("helvetica", "bold"); doc.setTextColor(200, 168, 75);
       doc.text(`Rapport N° ${r.numeroRapport}`, M, y);
     }
-    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal");
-    doc.text(`Date : ${r.date} a ${r.heure}`, W - M, y, { align: "right" });
     y += 10;
 
     // Section infos
@@ -1238,12 +1236,6 @@ _PDF joint_`;
     doc.text("Immatriculation : _____________________________", M + 8, y + 32);
     doc.text("Signature :", M + 8, y + 50);
     y += 66;
-
-    // Date et lieu
-    y += 4;
-    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-    doc.text(`Fait a Rungis, le ___________________________`, M, y);
-    y += 14;
 
     // Footer
     doc.setFillColor(10, 10, 10); doc.rect(0, 285, W, 12, "F");
