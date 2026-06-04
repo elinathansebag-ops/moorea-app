@@ -1804,9 +1804,9 @@ _PDF joint_`;
                 )}
 
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", borderTop: "1px solid #f0f0f0", paddingTop: 10, marginBottom: 8 }}>
-                  {CRITERES.map(c => r.notes[c.id] > 0 && (
+                  {CRITERES.map(c => r.notes?.[c.id] > 0 && (
                     <span key={c.id} className="pill" style={{ background: c.accent + "12", color: c.accent, border: `1px solid ${c.accent}30` }}>
-                      {c.icon} {c.label} <strong>{r.notes[c.id]}/5</strong>
+                      {c.icon} {c.label} <strong>{r.notes?.[c.id]}/5</strong>
                     </span>
                   ))}
                   {r.poidsStatut === "ok" && <span className="pill" style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>⚖️ Poids OK</span>}
@@ -1817,7 +1817,7 @@ _PDF joint_`;
                   <div style={{ marginBottom: 8 }}>
                     <p style={{ fontSize: 11, color: "#dc2626", fontWeight: 600, marginBottom: 4 }}>🏷️ {r.etiquetteAbsente ? "Étiquette absente" : "Étiquette — éléments manquants :"}</p>
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                      {ETIQUETTE_ITEMS.filter(item => !r.etiquette[item.id]).map(item => (
+                      {ETIQUETTE_ITEMS.filter(item => !r.etiquette?.[item.id]).map(item => (
                         <span key={item.id} style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 6, padding: "2px 8px" }}>{item.label}</span>
                       ))}
                     </div>
