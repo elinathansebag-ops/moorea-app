@@ -214,6 +214,13 @@ export default function App() {
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [searchDate, setSearchDate] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [filterDecision, setFilterDecision] = useState("");
+  const [filterFournisseur, setFilterFournisseur] = useState("");
+  const [filterProduit, setFilterProduit] = useState("");
+  const [filterDateDebut, setFilterDateDebut] = useState("");
+  const [filterDateFin, setFilterDateFin] = useState("");
+  const [showStats, setShowStats] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editRapport, setEditRapport] = useState<any | null>(null);
   const [signatureModal, setSignatureModal] = useState<any | null>(null); // rapport en attente de signature
@@ -1852,7 +1859,8 @@ _PDF joint_`;
         {vue === "historique" && (
           <div className="fade-up">
             {/* BARRE DE RECHERCHE */}
-            <div style={{ marginBottom: 16, display: "flex", gap: 10 }}>
+            {/* BARRE RECHERCHE + BOUTONS */}
+            <div style={{ marginBottom: 10, display: "flex", gap: 8 }}>
               <input
                 type="text"
                 value={searchText}
@@ -1860,29 +1868,181 @@ _PDF joint_`;
                 placeholder="🔍 Rechercher produit, fournisseur…"
                 style={{ flex: 2 }}
               />
-              <input
-                type="date"
-                value={searchDate}
-                onChange={e => setSearchDate(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              {(searchText || searchDate) && (
-                <button onClick={() => { setSearchText(""); setSearchDate(""); }} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 13, color: "#6b7280", whiteSpace: "nowrap" }}>
-                  ✕ Effacer
-                </button>
-              )}
+              <button onClick={() => { setShowFilters(!showFilters); setShowStats(false); }} style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${showFilters ? "#c8a84b" : "#e5e7eb"}`, background: showFilters ? "#faf8f0" : "#fff", cursor: "pointer", fontSize: 13, color: showFilters ? "#8a6f2e" : "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>
+                🔽 Filtres
+              </button>
+              <button onClick={() => { setShowStats(!showStats); setShowFilters(false); }} style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${showStats ? "#c8a84b" : "#e5e7eb"}`, background: showStats ? "#faf8f0" : "#fff", cursor: "pointer", fontSize: 13, color: showStats ? "#8a6f2e" : "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>
+                📊 Stats
+              </button>
             </div>
 
+            {/* PANNEAU FILTRES */}
+            {showFilters && (
+              <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 14 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>DÉCISION</label>
+                    <select value={filterDecision} onChange={e => setFilterDecision(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+                      <option value="">Toutes</option>
+                      <option value="refus">❌ Refus</option>
+                      <option value="reserve">⚠️ Réserve</option>
+                      <option value="stock">✅ Stock</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>FOURNISSEUR</label>
+                    <select value={filterFournisseur} onChange={e => setFilterFournisseur(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+                      <option value="">Tous</option>
+                      {[...new Set(rapports.map(r => r.fournisseur).filter(Boolean))].sort().map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>PRODUIT</label>
+                    <select value={filterProduit} onChange={e => setFilterProduit(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
+                      <option value="">Tous</option>
+                      {[...new Set(rapports.map(r => r.produit).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+                  <div style={{ flex: 1, minWidth: 130 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>DATE DÉBUT</label>
+                    <input type="date" value={filterDateDebut} onChange={e => setFilterDateDebut(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 13, boxSizing: "border-box" }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 130 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>DATE FIN</label>
+                    <input type="date" value={filterDateFin} onChange={e => setFilterDateFin(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 13, boxSizing: "border-box" }} />
+                  </div>
+                  <button onClick={() => { setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setSearchText(""); }} style={{ padding: "9px 14px", borderRadius: 9, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, color: "#dc2626", fontWeight: 600, whiteSpace: "nowrap" }}>
+                    ✕ Réinitialiser
+                  </button>
+                </div>
+              </div>
+            )}
+
             {(() => {
+              // ─── FILTRAGE ───
+              const parseDate = (dateStr: string) => {
+                if (!dateStr) return null;
+                const [d, m, y] = dateStr.split("/");
+                return new Date(`${y}-${m}-${d}`);
+              };
               const filtered = rapports.filter(r => {
-                const matchText = !searchText || 
+                const matchText = !searchText ||
                   r.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
                   r.fournisseur?.toLowerCase().includes(searchText.toLowerCase()) ||
                   r.lotMoorea?.toLowerCase().includes(searchText.toLowerCase()) ||
                   r.agreeur?.toLowerCase().includes(searchText.toLowerCase());
-                const matchDate = !searchDate || r.date === new Date(searchDate).toLocaleDateString("fr-FR");
-                return matchText && matchDate;
+                const matchDecision = !filterDecision || r.decision === filterDecision;
+                const matchFournisseur = !filterFournisseur || r.fournisseur === filterFournisseur;
+                const matchProduit = !filterProduit || r.produit === filterProduit;
+                const rDate = parseDate(r.date);
+                const matchDebut = !filterDateDebut || (rDate && rDate >= new Date(filterDateDebut));
+                const matchFin = !filterDateFin || (rDate && rDate <= new Date(filterDateFin));
+                return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin;
               });
+
+              // ─── STATS ───
+              if (showStats) {
+                const total = filtered.length;
+                const nbRefus = filtered.filter(r => r.decision === "refus").length;
+                const nbReserve = filtered.filter(r => r.decision === "reserve").length;
+                const nbStock = filtered.filter(r => r.decision === "stock").length;
+                const tauxRefus = total > 0 ? Math.round((nbRefus / total) * 100) : 0;
+                const tauxReserve = total > 0 ? Math.round((nbReserve / total) * 100) : 0;
+
+                // Stats par fournisseur
+                const statsFourn: Record<string, { total: number; refus: number; reserve: number }> = {};
+                filtered.forEach(r => {
+                  if (!r.fournisseur) return;
+                  if (!statsFourn[r.fournisseur]) statsFourn[r.fournisseur] = { total: 0, refus: 0, reserve: 0 };
+                  statsFourn[r.fournisseur].total++;
+                  if (r.decision === "refus") statsFourn[r.fournisseur].refus++;
+                  if (r.decision === "reserve") statsFourn[r.fournisseur].reserve++;
+                });
+                const topFourn = Object.entries(statsFourn).sort((a, b) => b[1].refus - a[1].refus).slice(0, 5);
+
+                // Stats par produit
+                const statsProd: Record<string, { total: number; refus: number }> = {};
+                filtered.forEach(r => {
+                  if (!r.produit) return;
+                  if (!statsProd[r.produit]) statsProd[r.produit] = { total: 0, refus: 0 };
+                  statsProd[r.produit].total++;
+                  if (r.decision === "refus") statsProd[r.produit].refus++;
+                });
+                const topProd = Object.entries(statsProd).sort((a, b) => b[1].refus - a[1].refus).slice(0, 5);
+
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {/* Chiffres clés */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+                      {[
+                        { label: "Total rapports", value: total, color: "#1a2e1a", bg: "#f0fdf4" },
+                        { label: "Taux de refus", value: `${tauxRefus}%`, color: "#dc2626", bg: "#fef2f2" },
+                        { label: "Taux de réserve", value: `${tauxReserve}%`, color: "#d97706", bg: "#fffbeb" },
+                        { label: "Bons signés", value: filtered.filter(r => r.bonRepriseSigné).length, color: "#7c3aed", bg: "#f5f3ff" },
+                      ].map(s => (
+                        <div key={s.label} style={{ background: s.bg, borderRadius: 14, padding: "16px", textAlign: "center" }}>
+                          <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: "'Syne', sans-serif" }}>{s.value}</div>
+                          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Répartition */}
+                    <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>Répartition</p>
+                      {[
+                        { label: "✅ Entrée stock", count: nbStock, color: "#22c55e" },
+                        { label: "⚠️ Réserve", count: nbReserve, color: "#f59e0b" },
+                        { label: "❌ Refus", count: nbRefus, color: "#ef4444" },
+                      ].map(s => (
+                        <div key={s.label} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ fontSize: 13, color: "#374151" }}>{s.label}</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{s.count} ({total > 0 ? Math.round(s.count / total * 100) : 0}%)</span>
+                          </div>
+                          <div style={{ height: 8, background: "#f3f4f6", borderRadius: 4 }}>
+                            <div style={{ height: 8, background: s.color, borderRadius: 4, width: `${total > 0 ? s.count / total * 100 : 0}%`, transition: "width 0.5s" }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Top fournisseurs */}
+                    {topFourn.length > 0 && (
+                      <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>Top fournisseurs (refus)</p>
+                        {topFourn.map(([nom, s]) => (
+                          <div key={nom} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                            <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{nom}</span>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <span style={{ fontSize: 12, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 6, padding: "2px 8px" }}>❌ {s.refus}</span>
+                              <span style={{ fontSize: 12, background: "#f3f4f6", color: "#6b7280", borderRadius: 6, padding: "2px 8px" }}>{s.total} total</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Top produits */}
+                    {topProd.length > 0 && (
+                      <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>Top produits (refus)</p>
+                        {topProd.map(([nom, s]) => (
+                          <div key={nom} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                            <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{nom}</span>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <span style={{ fontSize: 12, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 6, padding: "2px 8px" }}>❌ {s.refus}</span>
+                              <span style={{ fontSize: 12, background: "#f3f4f6", color: "#6b7280", borderRadius: 6, padding: "2px 8px" }}>{s.total} total</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
 
               if (filtered.length === 0) return (
                 <div style={{ textAlign: "center", marginTop: 60, color: "#9ca3af" }}>
