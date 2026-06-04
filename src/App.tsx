@@ -1313,6 +1313,7 @@ _PDF joint_`;
             prenom: sigPrenom,
             immatriculation: sigImat,
             signéLe: new Date().toLocaleDateString("fr-FR"),
+            signatureBase64: signatureDataUrl || "",
           },
         });
       }
@@ -2141,7 +2142,27 @@ _PDF joint_`;
                   </button>
                   {r.decision === "refus" && (
                     r.bonRepriseSigné
-                      ? <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #16a34a", background: "#f0fdf4", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#16a34a", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
+                      ? <button onClick={() => {
+                          setSigNom(r.transporteur?.nom || "");
+                          setSigPrenom(r.transporteur?.prenom || "");
+                          setSigImat(r.transporteur?.immatriculation || "");
+                          setSignatureModal(r);
+                          setTimeout(() => {
+                            const canvas = signatureCanvasRef.current;
+                            if (canvas) {
+                              const ctx = canvas.getContext("2d");
+                              if (ctx) {
+                                ctx.fillStyle = "#fff";
+                                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                if (r.transporteur?.signatureBase64) {
+                                  const img = new Image();
+                                  img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                  img.src = r.transporteur.signatureBase64;
+                                }
+                              }
+                            }
+                          }, 100);
+                        }} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #16a34a", background: "#f0fdf4", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#16a34a", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
                           ✅ BL SIGNÉ PAR {r.transporteur?.nom?.toUpperCase() || "LE TRANSPORTEUR"}
                         </button>
                       : <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
