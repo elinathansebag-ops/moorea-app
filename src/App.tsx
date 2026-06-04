@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import jsPDF from "jspdf";
 import emailjs from "@emailjs/browser";
 import { db, ref, push, onValue, remove } from "./firebase";
@@ -215,7 +215,13 @@ export default function App() {
   const [searchDate, setSearchDate] = useState("");
   const [searchText, setSearchText] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [editRapport, setEditRapport] = useState<any | null>(null); // rapport en cours d'édition
+  const [editRapport, setEditRapport] = useState<any | null>(null);
+  const [signatureModal, setSignatureModal] = useState<any | null>(null); // rapport en attente de signature
+  const [sigNom, setSigNom] = useState("");
+  const [sigPrenom, setSigPrenom] = useState("");
+  const [sigImat, setSigImat] = useState("");
+  const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawing = useRef(false);
 
   // ─── FIREBASE: écoute en temps réel ───
   useEffect(() => {
@@ -1149,7 +1155,23 @@ _PDF joint_`;
 
 
   // ─── BON DE RETOUR TRANSPORTEUR ───
-  const genererBonRetour = async (r: any) => {
+  const genererBonRetour = (r: any) => {
+    setSigNom(""); setSigPrenom(""); setSigImat("");
+    setSignatureModal(r);
+    setTimeout(() => {
+      const canvas = signatureCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+      }
+    }, 100);
+  };
+
+  const genererBonRetourAvecSignature = async () => {
+    const r = signatureModal;
+    const canvas = signatureCanvasRef.current;
+    const signatureDataUrl = canvas ? canvas.toDataURL("image/png") : null;
+
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const W = 210; const M = 14; const CW = W - M * 2;
 
@@ -1230,15 +1252,20 @@ _PDF joint_`;
 
     // Zone transporteur
     y += 6;
-    doc.setFillColor(248, 248, 248); doc.roundedRect(M, y, CW, 58, 3, 3, "F");
-    doc.setDrawColor(200, 200, 200); doc.roundedRect(M, y, CW, 58, 3, 3, "S");
+    doc.setFillColor(248, 248, 248); doc.roundedRect(M, y, CW, 68, 3, 3, "F");
+    doc.setDrawColor(200, 200, 200); doc.roundedRect(M, y, CW, 68, 3, 3, "S");
     doc.setTextColor(26, 46, 26); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
     doc.text("VISA DU TRANSPORTEUR", W / 2, y + 10, { align: "center" });
     doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-    doc.text("Transporteur : _________________________________", M + 8, y + 22);
-    doc.text("Immatriculation : _____________________________", M + 8, y + 32);
-    doc.text("Signature :", M + 8, y + 50);
-    y += 66;
+    doc.setTextColor(60, 60, 60);
+    doc.text(`Nom : ${sigNom || "_________________________________"}`, M + 8, y + 22);
+    doc.text(`Prénom : ${sigPrenom || "_____________________________"}`, M + 8, y + 32);
+    doc.text(`Immatriculation : ${sigImat || "_______________________"}`, M + 8, y + 42);
+    doc.text("Signature :", M + 8, y + 54);
+    if (signatureDataUrl) {
+      doc.addImage(signatureDataUrl, "PNG", M + 35, y + 46, 60, 18);
+    }
+    y += 76;
 
     // Footer
     doc.setFillColor(10, 10, 10); doc.rect(0, 285, W, 12, "F");
@@ -1246,7 +1273,6 @@ _PDF joint_`;
     doc.setTextColor(150, 150, 150); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
     doc.text(`Moorea - Agreage Rungis - ${r.date}${r.numeroRapport ? " - " + r.numeroRapport : ""}`, W / 2, 291, { align: "center" });
 
-    // Ouvre le PDF
     const pdfBase64 = doc.output("datauristring").split(",")[1];
     const byteChars = atob(pdfBase64);
     const byteArr = new Uint8Array(byteChars.length);
@@ -1254,6 +1280,7 @@ _PDF joint_`;
     const blob = new Blob([byteArr], { type: "application/pdf" });
     window.open(URL.createObjectURL(blob), "_blank");
     showToast("📄 Bon de reprise généré");
+    setSignatureModal(null);
   };
   const downloadPDF = async (r: any) => {
     const pdfDataUri = await generatePDFBase64(r);
@@ -1328,6 +1355,83 @@ _PDF joint_`;
 
       {toast && (
         <div className="toast" style={{ position: "fixed", top: 20, right: 20, zIndex: 999, background: toast.type === "error" ? "#fef2f2" : "#f0fdf4", color: toast.type === "error" ? "#dc2626" : "#15803d", border: `1.5px solid ${toast.type === "error" ? "#fca5a5" : "#86efac"}`, borderRadius: 12, padding: "11px 20px", fontWeight: 500, fontSize: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>{toast.msg}</div>
+      )}
+
+      {/* MODAL SIGNATURE TRANSPORTEUR */}
+      {signatureModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 520, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif", margin: 0 }}>🖊 Visa Transporteur</h2>
+              <button onClick={() => setSignatureModal(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#6b7280" }}>✕</button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>NOM</label>
+                  <input value={sigNom} onChange={e => setSigNom(e.target.value)} placeholder="Ex: DUPONT" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, fontFamily: "'Syne', sans-serif", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>PRÉNOM</label>
+                  <input value={sigPrenom} onChange={e => setSigPrenom(e.target.value)} placeholder="Ex: Jean" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, fontFamily: "'Syne', sans-serif", boxSizing: "border-box" }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>IMMATRICULATION</label>
+                <input value={sigImat} onChange={e => setSigImat(e.target.value.toUpperCase())} placeholder="Ex: AB-123-CD" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, fontFamily: "'Syne', sans-serif", boxSizing: "border-box", textTransform: "uppercase" }} />
+              </div>
+            </div>
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 6 }}>SIGNATURE</label>
+            <div style={{ border: "2px dashed #d1d5db", borderRadius: 12, background: "#fafafa", marginBottom: 12, position: "relative" }}>
+              <canvas
+                ref={signatureCanvasRef}
+                width={472}
+                height={160}
+                style={{ display: "block", width: "100%", height: 160, borderRadius: 10, touchAction: "none", cursor: "crosshair" }}
+                onPointerDown={e => {
+                  isDrawing.current = true;
+                  const canvas = signatureCanvasRef.current!;
+                  const rect = canvas.getBoundingClientRect();
+                  const scaleX = canvas.width / rect.width;
+                  const scaleY = canvas.height / rect.height;
+                  const ctx = canvas.getContext("2d")!;
+                  ctx.beginPath();
+                  ctx.moveTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+                  canvas.setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={e => {
+                  if (!isDrawing.current) return;
+                  const canvas = signatureCanvasRef.current!;
+                  const rect = canvas.getBoundingClientRect();
+                  const scaleX = canvas.width / rect.width;
+                  const scaleY = canvas.height / rect.height;
+                  const ctx = canvas.getContext("2d")!;
+                  ctx.lineTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+                  ctx.strokeStyle = "#0a0a0a";
+                  ctx.lineWidth = 2.5;
+                  ctx.lineCap = "round";
+                  ctx.lineJoin = "round";
+                  ctx.stroke();
+                }}
+                onPointerUp={() => { isDrawing.current = false; }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => {
+                const canvas = signatureCanvasRef.current;
+                if (canvas) { const ctx = canvas.getContext("2d")!; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#fafafa"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+              }} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#6b7280", fontFamily: "'Syne', sans-serif" }}>
+                🗑 Effacer
+              </button>
+              <button onClick={genererBonRetourAvecSignature} style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0a0a0a, #2a2a2a)", cursor: "pointer", fontSize: 15, fontWeight: 700, color: "#c8a84b", fontFamily: "'Syne', sans-serif" }}>
+                📄 Générer le bon de reprise
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* HEADER */}
@@ -1836,7 +1940,7 @@ _PDF joint_`;
                   <button onClick={() => envoyerEmail(r)} disabled={sendingId === (r.id || r.firebaseKey)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: sendingId === (r.id || r.firebaseKey) ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)", cursor: sendingId === (r.id || r.firebaseKey) ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     {sendingId === (r.id || r.firebaseKey) ? "⏳…" : "✉ Mail commercial"}
                   </button>
-                  {r.decision === "refus" && (
+                  {(r.decision === "refus" || r.decision === "reserve") && (
                     <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
                       🔄 Bon retour
                     </button>
