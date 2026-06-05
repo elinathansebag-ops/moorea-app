@@ -221,6 +221,7 @@ export default function App() {
   const [filterDateFin, setFilterDateFin] = useState("");
   const [showStats, setShowStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [sortBy, setSortBy] = useState("date_desc"); // date_desc, date_asc, fournisseur, produit, decision, signé
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editRapport, setEditRapport] = useState<any | null>(null);
   const [user, setUser] = useState<any | null>(undefined);
@@ -1918,6 +1919,14 @@ _PDF joint_`;
                 placeholder="🔍 Rechercher produit, fournisseur…"
                 style={{ flex: 2 }}
               />
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: "10px 10px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#374151", background: "#fff", cursor: "pointer" }}>
+                <option value="date_desc">📅 Plus récent</option>
+                <option value="date_asc">📅 Plus ancien</option>
+                <option value="fournisseur">🏭 Fournisseur</option>
+                <option value="produit">🥦 Produit</option>
+                <option value="decision">📊 Décision</option>
+                <option value="signé">✅ Bon signé</option>
+              </select>
               <button onClick={() => { setShowFilters(!showFilters); setShowStats(false); }} style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${showFilters ? "#c8a84b" : "#e5e7eb"}`, background: showFilters ? "#faf8f0" : "#fff", cursor: "pointer", fontSize: 13, color: showFilters ? "#8a6f2e" : "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>
                 🔽 Filtres
               </button>
@@ -1990,6 +1999,20 @@ _PDF joint_`;
                 const matchDebut = !filterDateDebut || (rDate && rDate >= new Date(filterDateDebut));
                 const matchFin = !filterDateFin || (rDate && rDate <= new Date(filterDateFin));
                 return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin;
+              });
+
+              // ─── TRI ───
+              const decisionOrder: Record<string, number> = { refus: 0, reserve: 1, stock: 2 };
+              const sorted = [...filtered].sort((a, b) => {
+                switch (sortBy) {
+                  case "date_asc": return (parseDate(a.date)?.getTime() || 0) - (parseDate(b.date)?.getTime() || 0);
+                  case "date_desc": return (parseDate(b.date)?.getTime() || 0) - (parseDate(a.date)?.getTime() || 0);
+                  case "fournisseur": return (a.fournisseur || "").localeCompare(b.fournisseur || "");
+                  case "produit": return (a.produit || "").localeCompare(b.produit || "");
+                  case "decision": return (decisionOrder[a.decision] ?? 3) - (decisionOrder[b.decision] ?? 3);
+                  case "signé": return (b.bonRepriseSigné ? 1 : 0) - (a.bonRepriseSigné ? 1 : 0);
+                  default: return 0;
+                }
               });
 
               // ─── STATS ───
@@ -2107,7 +2130,7 @@ _PDF joint_`;
                 </div>
               );
 
-              return filtered.map((r, i) => (
+              return sorted.map((r, i) => (
               <div key={r.firebaseKey || r.id} className="card fade-up" style={{ padding: "1rem 1.25rem", marginBottom: 12, animationDelay: `${i * 0.04}s`, borderLeft: `4px solid ${r.decision === "stock" ? "#22c55e" : r.decision === "reserve" ? "#f59e0b" : "#ef4444"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
@@ -2214,9 +2237,25 @@ _PDF joint_`;
                         }} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #16a34a", background: "#f0fdf4", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#16a34a", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
                           ✅ BL SIGNÉ PAR {r.transporteur?.nom?.toUpperCase() || "LE TRANSPORTEUR"}
                         </button>
-                      : <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
-                          🔄 Bon retour
-                        </button>
+                      : r.recupereSansSig
+                        ? <span style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #d1d5db", background: "#f9fafb", fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>
+                            📦 Récupéré sans signature
+                          </span>
+                        : <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
+                              🔄 Bon retour
+                            </button>
+                            <button onClick={async () => {
+                              if (!window.confirm("Confirmer que la marchandise a été récupérée sans signature ?")) return;
+                              try {
+                                const { set } = await import("firebase/database");
+                                await set(ref(db, `rapports/${r.firebaseKey}`), { ...r, recupereSansSig: true, recuperéLe: new Date().toLocaleDateString("fr-FR") });
+                                showToast("📦 Marqué comme récupéré sans signature");
+                              } catch { showToast("Erreur", "error"); }
+                            }} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #d1d5db", background: "#f9fafb", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6b7280", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
+                              📦 Sans signature
+                            </button>
+                          </div>
                   )}
                   <button onClick={() => chargerRapportEdition(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #bfdbfe", background: "#eff6ff", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
                     ✏️
