@@ -1027,6 +1027,7 @@ _PDF joint_`;
     infoItems.push(["Produit", r.produit]);
     if (r.agreeur) infoItems.push(["Agreeur", r.agreeur]);
     infoItems.push(["Origine", r.origine || "-"]);
+    if (r.calibre) infoItems.push(["Calibre", r.calibre]);
     if (r.poids) infoItems.push(["Poids", r.poids + " kg"]);
     if (r.conditionnement) infoItems.push(["Conditionnement", r.conditionnement]);
     if (r.lotMoorea) infoItems.push(["N Lot Moorea", r.lotMoorea]);
@@ -2112,7 +2113,7 @@ _PDF joint_`;
                   <div>
                     <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, color: "#1a2e1a", marginBottom: 3 }}>{r.produit}</p>
                     {r.numeroRapport && <p style={{ fontSize: 11, color: "#c8a84b", fontWeight: 700, marginBottom: 2, letterSpacing: "0.5px" }}>#{r.numeroRapport}</p>}
-                    <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 2 }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}{r.conditionnement ? ` · ${r.conditionnement}` : ""}{r.poids ? ` · ${r.poids}` : ""}</p>
+                    <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 2 }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}{r.calibre ? ` · ${r.calibre}` : ""}{r.conditionnement ? ` · ${r.conditionnement}` : ""}{r.poids ? ` · ${r.poids}` : ""}</p>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                       {r.lotMoorea && <span style={{ fontSize: 11, background: "#faf8f0", color: "#8a6f2e", border: "1px solid #e0d0a0", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Lot Moorea: {r.lotMoorea}</span>}
                       {r.lotFournisseur && <span style={{ fontSize: 11, background: "#f5f5f5", color: "#6b7280", border: "1px solid #e5e7eb", borderRadius: 6, padding: "2px 8px" }}>Lot Fourn.: {r.lotFournisseur}</span>}
