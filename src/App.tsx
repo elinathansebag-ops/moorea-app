@@ -221,7 +221,8 @@ export default function App() {
   const [filterDateFin, setFilterDateFin] = useState("");
   const [showStats, setShowStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [sortBy, setSortBy] = useState("date_desc"); // date_desc, date_asc, fournisseur, produit, decision, signé
+  const [sortBy, setSortBy] = useState("date_desc");
+  const [showArchives, setShowArchives] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editRapport, setEditRapport] = useState<any | null>(null);
   const [user, setUser] = useState<any | null>(undefined);
@@ -474,6 +475,15 @@ _PDF joint_`;
     } finally {
       setSendingId(null);
     }
+  };
+
+  // ─── ARCHIVER / DÉSARCHIVER ───
+  const archiverRapport = async (r: any, archiver: boolean) => {
+    try {
+      const { set } = await import("firebase/database");
+      await set(ref(db, `rapports/${r.firebaseKey}`), { ...r, archivé: archiver });
+      showToast(archiver ? "📁 Rapport archivé" : "↩ Rapport restauré");
+    } catch { showToast("Erreur", "error"); }
   };
 
   // ─── CHARGER RAPPORT POUR EDITION ───
@@ -1332,6 +1342,7 @@ _PDF joint_`;
         await set(rapportRef, {
           ...r,
           bonRepriseSigné: true,
+          archivé: true,
           transporteur: {
             nom: sigNom,
             prenom: sigPrenom,
@@ -1531,7 +1542,7 @@ _PDF joint_`;
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Arrivages · Fruits & Légumes</p>
           </div>
           <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.06)", padding: 4, borderRadius: 12, flexShrink: 0 }}>
-            {[["form", "✦ Nouveau"], ["historique", `Rapports${rapports.length ? ` (${rapports.length})` : ""}`]].map(([v, label]) => (
+            {[["form", "✦ Nouveau"], ["historique", `Rapports${rapports.filter(r => !r.archivé).length ? ` (${rapports.filter(r => !r.archivé).length})` : ""}`], ["archives", `📁 Archives${rapports.filter(r => r.archivé).length ? ` (${rapports.filter(r => r.archivé).length})` : ""}`]].map(([v, label]) => (
               <button key={v} onClick={() => setVue(v)} style={{ padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: vue === v ? 700 : 400, fontFamily: "'Syne', sans-serif", background: vue === v ? "#c8a84b" : "transparent", color: vue === v ? "#0a0a0a" : "rgba(255,255,255,0.6)", border: "none", transition: "all 0.2s", touchAction: "manipulation" }}>{label}</button>
             ))}
           </div>
@@ -1987,6 +1998,7 @@ _PDF joint_`;
                 return new Date(`${y}-${m}-${d}`);
               };
               const filtered = rapports.filter(r => {
+                if (r.archivé) return false; // exclure archivés de l'historique
                 const matchText = !searchText ||
                   r.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
                   r.fournisseur?.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -2260,6 +2272,9 @@ _PDF joint_`;
                   <button onClick={() => chargerRapportEdition(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #bfdbfe", background: "#eff6ff", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
                     ✏️
                   </button>
+                  <button onClick={() => archiverRapport(r, true)} title="Archiver" style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
+                    📁
+                  </button>
                   <button onClick={() => setConfirmDelete(r.firebaseKey)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
                     🗑
                   </button>
@@ -2281,6 +2296,48 @@ _PDF joint_`;
               </div>
               ));
             })()}
+          </div>
+        )}
+
+        {/* ARCHIVES */}
+        {vue === "archives" && (
+          <div className="fade-up">
+            <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, color: "#374151", marginBottom: 16 }}>
+              📁 Archives <span style={{ fontSize: 13, fontWeight: 400, color: "#9ca3af" }}>({rapports.filter(r => r.archivé).length} rapports)</span>
+            </p>
+            {rapports.filter(r => r.archivé).length === 0 && (
+              <p style={{ textAlign: "center", color: "#9ca3af", marginTop: 40 }}>Aucun rapport archivé</p>
+            )}
+            {rapports.filter(r => r.archivé).map((r, i) => (
+              <div key={r.firebaseKey || r.id} className="card fade-up" style={{ padding: "1rem 1.25rem", marginBottom: 12, animationDelay: `${i * 0.04}s`, borderLeft: `4px solid ${r.bonRepriseSigné ? "#16a34a" : "#9ca3af"}`, opacity: 0.85 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: "#374151", marginBottom: 2 }}>{r.produit}</p>
+                    {r.numeroRapport && <p style={{ fontSize: 11, color: "#c8a84b", fontWeight: 700, marginBottom: 2 }}>#{r.numeroRapport}</p>}
+                    <p style={{ fontSize: 13, color: "#9ca3af", marginBottom: 2 }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}{r.calibre ? ` · ${r.calibre}` : ""}</p>
+                    <p style={{ fontSize: 11, color: "#d1d5db" }}>{r.date} à {r.heure}</p>
+                    {r.bonRepriseSigné && r.transporteur && (
+                      <div style={{ marginTop: 4, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#16a34a" }}>
+                        ✅ Signé · {r.transporteur.nom} {r.transporteur.prenom} · {r.transporteur.immatriculation}
+                      </div>
+                    )}
+                    {r.recupereSansSig && (
+                      <div style={{ marginTop: 4, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#6b7280" }}>
+                        📦 Récupéré sans signature · {r.recuperéLe}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                    <span className="pill" style={{ background: r.decision === "stock" ? "#f0fdf4" : r.decision === "reserve" ? "#fffbeb" : "#fef2f2", color: r.decision === "stock" ? "#15803d" : r.decision === "reserve" ? "#d97706" : "#dc2626", border: `1px solid ${r.decision === "stock" ? "#bbf7d0" : r.decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }}>
+                      {r.decision === "stock" ? "✓ En stock" : r.decision === "reserve" ? "⚠ Réserve" : "✗ Refusé"}
+                    </span>
+                    <button onClick={() => archiverRapport(r, false)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 12, color: "#6b7280", fontWeight: 600 }}>
+                      ↩ Restaurer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
