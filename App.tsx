@@ -2237,9 +2237,25 @@ _PDF joint_`;
                         }} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #16a34a", background: "#f0fdf4", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#16a34a", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
                           ✅ BL SIGNÉ PAR {r.transporteur?.nom?.toUpperCase() || "LE TRANSPORTEUR"}
                         </button>
-                      : <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
-                          🔄 Bon retour
-                        </button>
+                      : r.recupereSansSig
+                        ? <span style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #d1d5db", background: "#f9fafb", fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>
+                            📦 Récupéré sans signature
+                          </span>
+                        : <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
+                              🔄 Bon retour
+                            </button>
+                            <button onClick={async () => {
+                              if (!window.confirm("Confirmer que la marchandise a été récupérée sans signature ?")) return;
+                              try {
+                                const { set } = await import("firebase/database");
+                                await set(ref(db, `rapports/${r.firebaseKey}`), { ...r, recupereSansSig: true, recuperéLe: new Date().toLocaleDateString("fr-FR") });
+                                showToast("📦 Marqué comme récupéré sans signature");
+                              } catch { showToast("Erreur", "error"); }
+                            }} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #d1d5db", background: "#f9fafb", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6b7280", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
+                              📦 Sans signature
+                            </button>
+                          </div>
                   )}
                   <button onClick={() => chargerRapportEdition(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #bfdbfe", background: "#eff6ff", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
                     ✏️
