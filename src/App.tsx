@@ -1530,6 +1530,18 @@ _PDF joint_`;
                 📄 Générer le bon de reprise
               </button>
             </div>
+            <button onClick={async () => {
+              const r = signatureModal;
+              if (!window.confirm("Confirmer que la marchandise a été récupérée sans signature ?")) return;
+              try {
+                const { set } = await import("firebase/database");
+                await set(ref(db, `rapports/${r.firebaseKey}`), { ...r, recupereSansSig: true, archivé: true, recuperéLe: new Date().toLocaleDateString("fr-FR") });
+                showToast("📦 Marqué comme récupéré sans signature");
+                setSignatureModal(null);
+              } catch { showToast("Erreur", "error"); }
+            }} style={{ width: "100%", marginTop: 8, padding: "12px 0", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#6b7280", fontFamily: "'Syne', sans-serif" }}>
+              📦 Récupéré sans signature
+            </button>
           </div>
         </div>
       )}
@@ -1542,7 +1554,7 @@ _PDF joint_`;
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Arrivages · Fruits & Légumes</p>
           </div>
           <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.06)", padding: 4, borderRadius: 12, flexShrink: 0 }}>
-            {[["form", "✦ Nouveau"], ["historique", `Rapports${rapports.filter(r => !r.archivé).length ? ` (${rapports.filter(r => !r.archivé).length})` : ""}`], ["archives", `📁 Archives${rapports.filter(r => r.archivé).length ? ` (${rapports.filter(r => r.archivé).length})` : ""}`]].map(([v, label]) => (
+            {[["form", "✦ Nouveau"], ["historique", `Rapports${rapports.filter(r => !r.archivé).length ? ` (${rapports.filter(r => !r.archivé).length})` : ""}`]].map(([v, label]) => (
               <button key={v} onClick={() => setVue(v)} style={{ padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: vue === v ? 700 : 400, fontFamily: "'Syne', sans-serif", background: vue === v ? "#c8a84b" : "transparent", color: vue === v ? "#0a0a0a" : "rgba(255,255,255,0.6)", border: "none", transition: "all 0.2s", touchAction: "manipulation" }}>{label}</button>
             ))}
           </div>
@@ -2253,21 +2265,9 @@ _PDF joint_`;
                         ? <span style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #d1d5db", background: "#f9fafb", fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>
                             📦 Récupéré sans signature
                           </span>
-                        : <div style={{ display: "flex", gap: 6 }}>
-                            <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
+                        : <button onClick={() => genererBonRetour(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
                               🔄 Bon retour
                             </button>
-                            <button onClick={async () => {
-                              if (!window.confirm("Confirmer que la marchandise a été récupérée sans signature ?")) return;
-                              try {
-                                const { set } = await import("firebase/database");
-                                await set(ref(db, `rapports/${r.firebaseKey}`), { ...r, recupereSansSig: true, recuperéLe: new Date().toLocaleDateString("fr-FR") });
-                                showToast("📦 Marqué comme récupéré sans signature");
-                              } catch { showToast("Erreur", "error"); }
-                            }} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #d1d5db", background: "#f9fafb", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6b7280", fontFamily: "'Syne', sans-serif", touchAction: "manipulation", whiteSpace: "nowrap" }}>
-                              📦 Sans signature
-                            </button>
-                          </div>
                   )}
                   <button onClick={() => chargerRapportEdition(r)} style={{ padding: "13px 14px", borderRadius: 12, border: "1.5px solid #bfdbfe", background: "#eff6ff", cursor: "pointer", fontSize: 16, touchAction: "manipulation" }}>
                     ✏️
@@ -2296,22 +2296,32 @@ _PDF joint_`;
               </div>
               ));
             })()}
+            {rapports.filter(r => r.archivé).length > 0 && (
+              <button onClick={() => setVue("archives")} style={{ width: "100%", marginTop: 10, padding: "12px 0", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 13, color: "#6b7280", fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>
+                📁 Voir les archives ({rapports.filter(r => r.archivé).length})
+              </button>
+            )}
           </div>
         )}
 
         {/* ARCHIVES */}
         {vue === "archives" && (
           <div className="fade-up">
-            <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, color: "#374151", marginBottom: 16 }}>
-              📁 Archives <span style={{ fontSize: 13, fontWeight: 400, color: "#9ca3af" }}>({rapports.filter(r => r.archivé).length} rapports)</span>
-            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <button onClick={() => setVue("historique")} style={{ padding: "8px 14px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>
+                ← Retour
+              </button>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, color: "#374151", margin: 0 }}>
+                📁 Archives <span style={{ fontSize: 13, fontWeight: 400, color: "#9ca3af" }}>({rapports.filter(r => r.archivé).length})</span>
+              </p>
+            </div>
             {rapports.filter(r => r.archivé).length === 0 && (
               <p style={{ textAlign: "center", color: "#9ca3af", marginTop: 40 }}>Aucun rapport archivé</p>
             )}
             {rapports.filter(r => r.archivé).map((r, i) => (
               <div key={r.firebaseKey || r.id} className="card fade-up" style={{ padding: "1rem 1.25rem", marginBottom: 12, animationDelay: `${i * 0.04}s`, borderLeft: `4px solid ${r.bonRepriseSigné ? "#16a34a" : "#9ca3af"}`, opacity: 0.85 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: "#374151", marginBottom: 2 }}>{r.produit}</p>
                     {r.numeroRapport && <p style={{ fontSize: 11, color: "#c8a84b", fontWeight: 700, marginBottom: 2 }}>#{r.numeroRapport}</p>}
                     <p style={{ fontSize: 13, color: "#9ca3af", marginBottom: 2 }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}{r.calibre ? ` · ${r.calibre}` : ""}</p>
@@ -2327,11 +2337,14 @@ _PDF joint_`;
                       </div>
                     )}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", marginLeft: 10 }}>
                     <span className="pill" style={{ background: r.decision === "stock" ? "#f0fdf4" : r.decision === "reserve" ? "#fffbeb" : "#fef2f2", color: r.decision === "stock" ? "#15803d" : r.decision === "reserve" ? "#d97706" : "#dc2626", border: `1px solid ${r.decision === "stock" ? "#bbf7d0" : r.decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }}>
                       {r.decision === "stock" ? "✓ En stock" : r.decision === "reserve" ? "⚠ Réserve" : "✗ Refusé"}
                     </span>
-                    <button onClick={() => archiverRapport(r, false)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 12, color: "#6b7280", fontWeight: 600 }}>
+                    <button onClick={() => downloadPDF(r)} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 12, color: "#374151", fontWeight: 600 }}>
+                      📄 PDF
+                    </button>
+                    <button onClick={() => archiverRapport(r, false)} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 12, color: "#6b7280", fontWeight: 600 }}>
                       ↩ Restaurer
                     </button>
                   </div>
