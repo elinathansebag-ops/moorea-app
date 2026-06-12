@@ -2080,19 +2080,51 @@ _PDF joint_`;
               </div>
             </div>
 
-            {/* Stats rapides */}
-            <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-              <StatCardArr label="À traiter" value={arrivages.filter(a=>a.statut==="en attente").length} color="#d97706" />
-              <StatCardArr label="Validés" value={arrivages.filter(a=>a.statut==="validé").length} color="#1a6b3a" />
-            </div>
-            {/* Actions */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-              <label style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-block", fontFamily: "'Syne', sans-serif" }}>
-                📊 Import (.xlsx / .pdf)
-                <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
-              </label>
-              <button onClick={() => setHorsListeMode(true)} style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #ffcc80", background: "#fff3e0", color: "#e65100", fontFamily: "'Syne', sans-serif" }}>⚠️ Litige hors liste</button>
-            </div>
+            {/* Stats par jour */}
+            {(() => {
+              const today = new Date().toLocaleDateString("fr-FR");
+              const byDate: Record<string, { total: number; traites: number; litiges: number }> = {};
+              arrivages.forEach((a: any) => {
+                const d = a.date || "—";
+                if (!byDate[d]) byDate[d] = { total: 0, traites: 0, litiges: 0 };
+                byDate[d].total++;
+                if (a.statut !== "en attente") byDate[d].traites++;
+                if (a.statut === "refusé" || a.statut === "sous réserve" || a.litige) byDate[d].litiges++;
+              });
+              const dates = Object.entries(byDate).sort((a, b) => {
+                const parse = (s: string) => { const [d,m,y] = s.split("/"); return new Date(+y,+m-1,+d).getTime(); };
+                return parse(b[0]) - parse(a[0]);
+              });
+              if (!dates.length) return null;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                  {dates.map(([date, s]) => {
+                    const isToday = date === today;
+                    const pct = s.total > 0 ? Math.round(s.traites / s.total * 100) : 0;
+                    return (
+                      <div key={date} style={{ background: "#fff", borderRadius: 14, padding: "12px 16px", border: `1.5px solid ${isToday ? "#c8a84b" : "#e8e0d0"}`, display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ minWidth: 90 }}>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: isToday ? "#c8a84b" : "#374151", fontFamily: "'Syne', sans-serif" }}>{isToday ? "Aujourd'hui" : date}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{s.total} article{s.total > 1 ? "s" : ""}</p>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ fontSize: 11, color: "#6b7280" }}>{s.traites}/{s.total} traités</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: pct === 100 ? "#16a34a" : "#d97706" }}>{pct}%</span>
+                          </div>
+                          <div style={{ height: 6, background: "#f3f4f6", borderRadius: 4 }}>
+                            <div style={{ height: 6, background: pct === 100 ? "#16a34a" : "#c8a84b", borderRadius: 4, width: `${pct}%`, transition: "width 0.4s" }} />
+                          </div>
+                        </div>
+                        {s.litiges > 0 && <span style={{ fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", padding: "3px 10px", borderRadius: 20, flexShrink: 0 }}>⚠️ {s.litiges} litige{s.litiges > 1 ? "s" : ""}</span>}
+                        {pct === 100 && <span style={{ fontSize: 16, flexShrink: 0 }}>✅</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            {/* Actions — Import déplacé dans le filtre */}
             {/* Preview import */}
             {previewArr && (
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "16px", marginBottom: 16 }}>
@@ -2108,17 +2140,15 @@ _PDF joint_`;
               </div>
             )}
             {/* Filtre + actions */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
-              <select value={filtersArr.statut} onChange={e => setFiltersArr({...filtersArr, statut:e.target.value})} style={{ padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 13, width: 150, background: "#fff" }}>
-                <option value="tous">Tous statuts</option>
-                <option value="en attente">En attente</option>
-                <option value="validé">Validés</option>
-                <option value="refusé">Litiges refus</option>
-                <option value="sous réserve">Sous réserve</option>
-              </select>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+                📊 Import
+                <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
+              </label>
+              <button onClick={() => setHorsListeMode(true)} style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #ffcc80", background: "#fff3e0", color: "#e65100", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>⚠️ Hors liste</button>
+              <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
               <button onClick={() => { setSelectMode(!selectMode); setSelectedArrivages(new Set()); }} style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${selectMode ? "#fca5a5" : "#e8e0d0"}`, background: selectMode ? "#fef2f2" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: selectMode ? "#dc2626" : "#6b7280", whiteSpace: "nowrap" }}>
-                {selectMode ? "✕ Annuler" : "☑ Sélectionner"}
+                {selectMode ? "✕" : "☑"}
               </button>
             </div>
 
@@ -2164,12 +2194,13 @@ _PDF joint_`;
               if (enAttente.length > 0) {
                 const byDate: Record<string, any[]> = {};
                 enAttente.forEach((a: any) => { const d = a.date || "—"; if (!byDate[d]) byDate[d] = []; byDate[d].push(a); });
-                return (<>
-                  <p style={{ fontWeight: 700, fontSize: 12, color: "#d97706", margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>⏳ En attente d'agrément · {enAttente.length}</p>
-                  {Object.entries(byDate).sort((a,b)=>b[0].localeCompare(a[0])).map(([date, arr]) => (
-                    <DateBlock key={date} date={date} arrivages={arr} onValidate={handleAgrement} onDelete={deleteArrivageItem} onOuvreRapport={ouvrirRapportDepuisArrivage} selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={(id: string) => { const next = new Set(selectedArrivages); if (next.has(id)) next.delete(id); else next.add(id); setSelectedArrivages(next); }} />
-                  ))}
-                </>);
+                return (
+                  <>
+                    {Object.entries(byDate).sort((a,b)=>b[0].localeCompare(a[0])).map(([date, arr]) => (
+                      <DateBlock key={date} date={date} arrivages={arr} onValidate={handleAgrement} onDelete={deleteArrivageItem} onOuvreRapport={ouvrirRapportDepuisArrivage} selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={(id: string) => { const next = new Set(selectedArrivages); if (next.has(id)) next.delete(id); else next.add(id); setSelectedArrivages(next); }} />
+                    ))}
+                  </>
+                );
               }
               return null;
             })()}
