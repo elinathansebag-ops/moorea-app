@@ -1853,9 +1853,16 @@ _PDF joint_`;
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Arrivages · Fruits & Légumes</p>
           </div>
           <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.06)", padding: 4, borderRadius: 12, flexShrink: 0 }}>
-            {[["form", "✦ Nouveau"], ["historique", `Rapports${rapports.filter(r => !r.archivé).length ? ` (${rapports.filter(r => !r.archivé).length})` : ""}`]].map(([v, label]) => (
-              <button key={v} onClick={() => setVue(v)} style={{ padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: vue === v ? 700 : 400, fontFamily: "'Syne', sans-serif", background: vue === v ? "#c8a84b" : "transparent", color: vue === v ? "#0a0a0a" : "rgba(255,255,255,0.6)", border: "none", transition: "all 0.2s", touchAction: "manipulation" }}>{label}</button>
-            ))}
+            {[["arrivages_tab", "📋 Arrivages"], ["form", "✦ Rapport"], ["historique", "Rapports"]].map(([v, label]) => {
+              const isActive = (v === "arrivages_tab" && (pageMode === "arrivages" || pageMode === "saisie_arr" || pageMode === "historique_arr" || pageMode === "stats_arr") && vue !== "form" && vue !== "historique") || (v === "form" && vue === "form") || (v === "historique" && vue === "historique");
+              return (
+                <button key={v} onClick={() => {
+                  if (v === "arrivages_tab") { setPageMode("arrivages"); setVue("__none__" as any); }
+                  else if (v === "historique") { setVue("historique"); setPageMode("arrivages"); }
+                  else { setVue("form"); setPageMode("arrivages"); }
+                }} style={{ padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: isActive ? 700 : 400, fontFamily: "'Syne', sans-serif", background: isActive ? "#c8a84b" : "transparent", color: isActive ? "#0a0a0a" : "rgba(255,255,255,0.6)", border: "none", transition: "all 0.2s", touchAction: "manipulation" }}>{label}</button>
+              );
+            })}
           </div>
           <button onClick={() => signOut(auth)} title={user.email} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
             {user.displayName?.split(" ")[0] || user.email?.split("@")[0]} · Déco
