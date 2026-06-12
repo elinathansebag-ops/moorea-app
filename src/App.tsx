@@ -260,7 +260,6 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
           </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={(e) => { e.stopPropagation(); onOuvreRapport(arrivage); }} style={{ background: "#faf8f3", border: "1px solid #e8e0d0", color: "#c8a84b", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>📋 Rapport</button>
           <button onClick={() => onDelete(arrivage.id)} style={{ background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>🗑</button>
         </div>
       </div>
@@ -2029,6 +2028,58 @@ _PDF joint_`;
         {/* ══ VUE ARRIVAGES ══ */}
         {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
+            {/* Scanner étiquette → recherche arrivage */}
+            <div style={{ marginBottom: 16, background: "#0a0a0a", border: "2px solid #3b82f6", borderRadius: 16, padding: "14px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: "#3b82f622", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🔍</div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#93c5fd", fontFamily: "'Syne', sans-serif", margin: "0 0 2px" }}>Scanner une étiquette</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", margin: 0 }}>L'IA identifie le lot et le retrouve dans les arrivages</p>
+              </div>
+              <div>
+                <input type="file" accept="image/*" id="scan-arrivage-input" style={{ display: "none" }}
+                  onChange={async e => {
+                    const f = e.target.files?.[0]; if (!f) return;
+                    showToast("⏳ Analyse de l'étiquette…");
+                    try {
+                      const base64 = await new Promise<string>((resolve) => {
+                        const img = new Image();
+                        img.onload = () => {
+                          const canvas = document.createElement("canvas");
+                          const MAX = 800; let w = img.width, h = img.height;
+                          if (w > MAX || h > MAX) { if (w > h) { h = Math.round(h * MAX / w); w = MAX; } else { w = Math.round(w * MAX / h); h = MAX; } }
+                          canvas.width = w; canvas.height = h;
+                          canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+                          resolve(canvas.toDataURL("image/jpeg", 0.8).split(",")[1]);
+                        };
+                        img.src = URL.createObjectURL(f);
+                      });
+                      const response = await fetch("/api/scan-etiquette", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base64, mediaType: f.type }) });
+                      const data = await response.json();
+                      const text = data.content?.[0]?.text || "";
+                      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+                      // Cherche dans les arrivages par lot ou produit
+                      const lotMatch = parsed.lotFournisseur || parsed.lot || "";
+                      const produitMatch = parsed.produit || "";
+                      const found = arrivages.find((a: any) =>
+                        (lotMatch && (a.lot_interne === lotMatch || a.lot_fournisseur === lotMatch)) ||
+                        (produitMatch && a.produit?.toLowerCase().includes(produitMatch.toLowerCase()))
+                      );
+                      if (found) {
+                        setFiltersArr({ q: found.produit, statut: "tous" });
+                        showToast(`✅ Lot trouvé : ${found.produit} · ${found.fournisseur}`);
+                      } else {
+                        setFiltersArr({ q: produitMatch || lotMatch, statut: "tous" });
+                        showToast(produitMatch ? `🔍 Recherche : ${produitMatch}` : "Lot non trouvé dans les arrivages", produitMatch ? "success" : "error");
+                      }
+                    } catch { showToast("Erreur analyse étiquette", "error"); }
+                    e.target.value = "";
+                  }} />
+                <label htmlFor="scan-arrivage-input" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 16px", background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", color: "#fff", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 8px rgba(59,130,246,0.4)" }}>
+                  📷 Scanner
+                </label>
+              </div>
+            </div>
+
             {/* Stats rapides */}
             <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
               <StatCardArr label="À traiter" value={arrivages.filter(a=>a.statut==="en attente").length} color="#d97706" />
@@ -2540,39 +2591,6 @@ _PDF joint_`;
               </div>
             )}
 
-            {/* AGREEUR */}
-            <div style={{ marginBottom: 16, background: "#0a0a0a", border: "2px solid #c8a84b", borderRadius: 20, padding: "16px 24px", display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: "#c8a84b22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>👤</div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, color: "#c8a84b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.8px", display: "block", marginBottom: 6 }}>Nom de l'agréeur</label>
-                <input value={agreeur} onChange={e => setAgreeur(e.target.value)} placeholder="Votre nom" style={{ border: "1.5px solid #c8a84b44", background: "#1a1a1a", color: "#fff" }} />
-              </div>
-            </div>
-
-            {/* SCANNER ÉTIQUETTE */}
-            <div style={{ marginBottom: 16, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 20, padding: "16px 24px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: scanning ? 12 : 0 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: "#f0f4ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🔍</div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif", marginBottom: 2 }}>Scanner l'étiquette</p>
-                  <p style={{ fontSize: 11, color: "#9ca3af" }}>L'IA remplit automatiquement produit, origine, fournisseur, lot et poids</p>
-                </div>
-                <div>
-                  <input type="file" accept="image/*" id="scan-input" style={{ display: "none" }}
-                    onChange={e => { const f = e.target.files?.[0]; if (f) scannerEtiquette(f); e.target.value = ""; }} />
-                  <label htmlFor="scan-input" style={{
-                    display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 18px",
-                    background: scanning ? "#d1d5db" : "linear-gradient(135deg, #3b82f6, #1d4ed8)",
-                    color: "#fff", borderRadius: 10, cursor: scanning ? "not-allowed" : "pointer",
-                    fontSize: 14, fontWeight: 700, fontFamily: "'Syne', sans-serif",
-                    boxShadow: scanning ? "none" : "0 2px 8px rgba(59,130,246,0.4)",
-                    pointerEvents: scanning ? "none" : "auto"
-                  }}>
-                    {scanning ? "⏳ Analyse…" : "📷 Scanner"}
-                  </label>
-                </div>
-              </div>
-            </div>
             <div style={{ marginBottom: 16, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 20, padding: "20px 24px" }}>
               <div className="section-title">📦 Colis</div>
               <div className="grid-2">
