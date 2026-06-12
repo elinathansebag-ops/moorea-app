@@ -2951,8 +2951,10 @@ _PDF joint_`;
         {/* HISTORIQUE */}
         {vue === "historique" && (
           <div className="fade-up">
-            {/* BARRE DE RECHERCHE */}
-            {/* BARRE RECHERCHE + BOUTONS */}
+            {/* BOUTON RAPPORT MANUEL */}
+            <button onClick={() => { reset(); setRapportArrivage(null); setVue("form"); window.scrollTo(0,0); }} style={{ width: "100%", marginBottom: 14, padding: "13px", borderRadius: 14, border: "2px solid #c8a84b", background: "#0a0a0a", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#c8a84b", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              ✦ Nouveau rapport manuel
+            </button>
             <div style={{ marginBottom: 10, display: "flex", gap: 8 }}>
               <input
                 type="text"
