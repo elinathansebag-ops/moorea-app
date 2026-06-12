@@ -546,15 +546,10 @@ export default function App() {
     setNbColisRecu(String(arrivage.quantite || ""));
     setConditionnement(arrivage.unite || "");
     setRapportArrivage(arrivage);
-    if (avecLitige) {
-      setConformite("non_conforme");
-      setDecision("refus");
-    } else {
-      setConformite("");
-      setDecision("");
-    }
-    setPageMode("__form__" as any); // couper toutes les vues arrivages
+    setConformite(avecLitige ? "non_conforme" : "");
+    setDecision(avecLitige ? "refus" : "");
     setVue("form");
+    setPageMode("arrivages");
     window.scrollTo(0, 0);
   };
 
@@ -2075,9 +2070,11 @@ _PDF joint_`;
                       {/* Bouton litige disponible même sur arrivage validé */}
                       {!a.litige && (
                         <button onClick={() => {
+                          // 1. Naviguer vers le formulaire d'abord
                           ouvrirRapportDepuisArrivage(a, true);
+                          // 2. Créer le litige dans Firebase
                           update(ref(db, `arrivages/${a.id}`), {
-                            statut: a.statut === "validé" ? "sous réserve" : a.statut,
+                            statut: "sous réserve",
                             litige: {
                               type: "sous réserve",
                               raison: "",
@@ -2090,7 +2087,6 @@ _PDF joint_`;
                               ouvertApresValidation: a.statut === "validé",
                             }
                           });
-                          showToast("⚠️ Litige ouvert — complète le rapport");
                         }}
                           style={{ padding: "8px 16px", borderRadius: 10, border: "1.5px solid #fcd34d", background: "#fffbeb", color: "#d97706", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
                           ⚠️ Ouvrir litige
