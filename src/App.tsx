@@ -1852,15 +1852,21 @@ _PDF joint_`;
             <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: "#c8a84b", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: 2 }}>🍃 Moorea · Rapport Qualité</p>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Arrivages · Fruits & Légumes</p>
           </div>
-          <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.06)", padding: 4, borderRadius: 12, flexShrink: 0 }}>
-            {[["arrivages_tab", "📋 Arrivages"], ["form", "✦ Rapport"], ["historique", "Rapports"]].map(([v, label]) => {
-              const isActive = (v === "arrivages_tab" && (pageMode === "arrivages" || pageMode === "saisie_arr" || pageMode === "historique_arr" || pageMode === "stats_arr") && vue !== "form" && vue !== "historique") || (v === "form" && vue === "form") || (v === "historique" && vue === "historique");
+          <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.06)", padding: 4, borderRadius: 12, flexShrink: 0, flexWrap: "wrap" }}>
+            {[
+              ["arrivages_tab", "📋 Arrivages"],
+              ["form", "✦ Rapport"],
+              ["historique", "Rapports"],
+              ["stock_refus_tab", `🔴 Stock Refus${arrivages.filter(a => a.statut === "refusé" && !a.recupere && !a.destruction?.recupere).length > 0 ? ` (${arrivages.filter(a => a.statut === "refusé" && !a.recupere && !a.destruction?.recupere).length})` : ""}`],
+            ].map(([v, label]) => {
+              const isActive = (v === "arrivages_tab" && (pageMode === "arrivages" || pageMode === "saisie_arr" || pageMode === "historique_arr" || pageMode === "stats_arr") && vue !== "form" && vue !== "historique" && vue !== "stock_refus") || (v === "form" && vue === "form") || (v === "historique" && vue === "historique") || (v === "stock_refus_tab" && vue === "stock_refus");
               return (
                 <button key={v} onClick={() => {
                   if (v === "arrivages_tab") { setPageMode("arrivages"); setVue("__none__" as any); }
                   else if (v === "historique") { setVue("historique"); setPageMode("arrivages"); }
+                  else if (v === "stock_refus_tab") { setVue("stock_refus" as any); setPageMode("arrivages"); }
                   else { setVue("form"); setPageMode("arrivages"); }
-                }} style={{ padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: isActive ? 700 : 400, fontFamily: "'Syne', sans-serif", background: isActive ? "#c8a84b" : "transparent", color: isActive ? "#0a0a0a" : "rgba(255,255,255,0.6)", border: "none", transition: "all 0.2s", touchAction: "manipulation" }}>{label}</button>
+                }} style={{ padding: "9px 14px", borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: isActive ? 700 : 400, fontFamily: "'Syne', sans-serif", background: isActive ? (v === "stock_refus_tab" ? "#dc2626" : "#c8a84b") : "transparent", color: isActive ? "#fff" : "rgba(255,255,255,0.6)", border: "none", transition: "all 0.2s", touchAction: "manipulation", whiteSpace: "nowrap" }}>{label}</button>
               );
             })}
           </div>
@@ -2061,6 +2067,41 @@ _PDF joint_`;
                           📋 Faire un rapport
                         </button>
                       )}
+                      {/* Bouton litige disponible même sur arrivage validé */}
+                      {!a.litige && (
+                        <button onClick={() => {
+                          const raison = window.prompt("Raison du litige (ex: qualité dégradée J+2, réclamation client...) :");
+                          if (!raison) return;
+                          const type = window.confirm("Refus total ? OK = Refus | Annuler = Réserve") ? "refusé" : "sous réserve";
+                          const pct = window.prompt("% de marchandise concernée (laisser vide si 100%) :") || "100";
+                          update(ref(db, `arrivages/${a.id}`), {
+                            statut: type,
+                            litige: {
+                              type,
+                              raison,
+                              pct,
+                              lot_moorea: a.lot_interne || "",
+                              lot_fournisseur: a.lot_fournisseur || "",
+                              date: new Date().toLocaleDateString("fr-FR"),
+                              statut: "ouvert",
+                              createdAt: Date.now(),
+                              ouvertApresValidation: a.statut === "validé",
+                            }
+                          }).then(() => showToast("⚠️ Litige ouvert sur ce lot"));
+                        }}
+                          style={{ padding: "8px 16px", borderRadius: 10, border: "1.5px solid #fcd34d", background: "#fffbeb", color: "#d97706", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+                          ⚠️ Ouvrir litige
+                        </button>
+                      )}
+                      {a.litige && a.litige.statut === "ouvert" && (
+                        <button onClick={() => {
+                          update(ref(db, `arrivages/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") })
+                            .then(() => showToast("✅ Litige clôturé"));
+                        }}
+                          style={{ padding: "8px 16px", borderRadius: 10, border: "1.5px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+                          ✅ Clôturer litige
+                        </button>
+                      )}
                       {!a.destruction && (
                         <button onClick={async () => {
                           const qte = window.prompt(`Quantité à détruire (sur ${a.quantite} ${a.unite}) :`);
@@ -2155,6 +2196,133 @@ _PDF joint_`;
                 <button onClick={submitHorsListe} className="btn-primary" style={{ background:horsListe.type==="refusé"?"#dc2626":"#d97706" }}>📋 Enregistrer →</button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ══ VUE STOCK REFUS ══ */}
+        {(vue as any) === "stock_refus" && (
+          <div className="fade-up">
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, color: "#dc2626", margin: "0 0 4px" }}>🔴 Stock Refus</p>
+              <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Lots refusés en attente de récupération par le fournisseur</p>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              {[
+                { label: "En attente", value: arrivages.filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere).length, color: "#dc2626" },
+                { label: "Récupérés", value: arrivages.filter(a => a.recupere).length, color: "#16a34a" },
+                { label: "Détruits", value: arrivages.filter(a => a.destruction?.effectuee).length, color: "#6b7280" },
+              ].map(s => <StatCardArr key={s.label} label={s.label} value={s.value} color={s.color} />)}
+            </div>
+
+            {/* Lots en attente */}
+            {arrivages.filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee).length === 0 && (
+              <div style={{ textAlign: "center", padding: "3rem", background: "#f0fdf4", borderRadius: 20, border: "1px solid #bbf7d0" }}>
+                <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
+                <p style={{ margin: 0, fontWeight: 700, color: "#16a34a", fontFamily: "'Syne', sans-serif" }}>Aucun lot en attente !</p>
+              </div>
+            )}
+
+            {arrivages
+              .filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee)
+              .map(a => {
+                const rapport = rapports.find(r => r.arrivage_id === a.id);
+                return (
+                  <div key={a.id} style={{ background: "#fff", borderRadius: 16, boxShadow: "0 2px 16px rgba(220,38,38,0.08)", marginBottom: 12, overflow: "hidden", borderLeft: "4px solid #dc2626" }}>
+                    <div style={{ padding: "14px 18px" }}>
+                      {/* Header lot */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                        <div>
+                          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 15, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{a.produit}</p>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            <PillArr>🏭 {a.fournisseur}</PillArr>
+                            <PillArr>📦 {a.quantite} {a.unite}</PillArr>
+                            {a.lot_interne && <span style={{ fontSize: 11, background: "#faf8f0", color: "#8a6f2e", border: "1px solid #e0d0a0", padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>🔖 Lot Moorea: {a.lot_interne}</span>}
+                            {a.origine && <PillArr>🌍 {a.origine}</PillArr>}
+                          </div>
+                          <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Arrivage du {a.date}</p>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", padding: "4px 10px", borderRadius: 20 }}>❌ À récupérer</span>
+                      </div>
+
+                      {/* Raison du litige */}
+                      {a.litige && (
+                        <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 10 }}>
+                          <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: "#991b1b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Motif du refus</p>
+                          <p style={{ margin: 0, fontSize: 13, color: "#dc2626" }}>{a.litige.raison}</p>
+                          {a.litige.pct && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>{a.litige.pct}% concerné · Litige du {a.litige.date}</p>}
+                          {a.litige.ouvertApresValidation && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#d97706", fontWeight: 600 }}>⚠️ Litige ouvert après validation initiale</p>}
+                        </div>
+                      )}
+
+                      {/* Rapport lié */}
+                      {rapport && (
+                        <div style={{ background: "#faf8f3", border: "1px solid #e8e0d0", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", gap: 10, alignItems: "center" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#8a6f2e" }}>📋 {rapport.numeroRapport}</span>
+                          {rapport.score && <span style={{ fontSize: 12, color: NOTE_COLORS[Math.round(parseFloat(rapport.score))], fontWeight: 700 }}>Score {rapport.score}/5</span>}
+                          <button onClick={() => downloadPDF(rapport)} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📄 PDF</button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ borderTop: "1px solid #f0f0f0", padding: "10px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button onClick={() => ouvrirRapportDepuisArrivage(a)} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+                        📋 {rapport ? "Nouveau rapport" : "Faire un rapport"}
+                      </button>
+                      <button onClick={async () => {
+                        if (!window.confirm(`Confirmer que le fournisseur ${a.fournisseur} a récupéré le lot ${a.lot_interne || a.produit} ?`)) return;
+                        const date = new Date().toLocaleDateString("fr-FR");
+                        await update(ref(db, `arrivages/${a.id}`), {
+                          recupere: true,
+                          recupereLe: date,
+                          recuperePar: user?.displayName || user?.email || "—",
+                        });
+                        showToast("✅ Lot marqué comme récupéré par le fournisseur");
+                      }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+                        ✅ Fournisseur a récupéré
+                      </button>
+                      <button onClick={async () => {
+                        const qte = window.prompt(`Quantité à détruire (sur ${a.quantite} ${a.unite}) :`);
+                        if (!qte) return;
+                        const raison = window.prompt("Raison de la destruction :");
+                        if (!raison) return;
+                        await update(ref(db, `arrivages/${a.id}`), {
+                          destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName || user?.email || "—", effectuee: true }
+                        });
+                        showToast("🗑 Destruction enregistrée");
+                      }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+                        🗑 Détruire
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+            {/* Lots récupérés */}
+            {arrivages.filter(a => a.recupere || a.destruction?.effectuee).length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <p style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>
+                  ✅ Traités · {arrivages.filter(a => a.recupere || a.destruction?.effectuee).length}
+                </p>
+                {arrivages.filter(a => a.recupere || a.destruction?.effectuee).map(a => (
+                  <div key={a.id} style={{ background: "#fff", borderRadius: 12, padding: "10px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", opacity: 0.7, borderLeft: "3px solid #16a34a" }}>
+                    <div>
+                      <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 600, color: "#374151" }}>{a.produit} · {a.fournisseur}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>
+                        {a.lot_interne ? `Lot Moorea: ${a.lot_interne} · ` : ""}{a.date}
+                        {a.recupere ? ` · ✅ Récupéré le ${a.recupereLe}` : ""}
+                        {a.destruction?.effectuee ? ` · 🗑 Détruit le ${a.destruction.date}` : ""}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 600, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", padding: "3px 10px", borderRadius: 20 }}>
+                      {a.recupere ? "✅ Récupéré" : "🗑 Détruit"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
