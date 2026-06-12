@@ -536,7 +536,7 @@ export default function App() {
     showToast("Litige hors liste enregistré ✓");
   };
 
-  const ouvrirRapportDepuisArrivage = (arrivage: any) => {
+  const ouvrirRapportDepuisArrivage = (arrivage: any, avecLitige = false) => {
     // Pré-remplir le formulaire qualité avec les données de l'arrivage
     setFournisseur(arrivage.fournisseur || "");
     setProduit(arrivage.produit || "");
@@ -547,6 +547,10 @@ export default function App() {
     setNbColisRecu(String(arrivage.quantite || ""));
     setConditionnement(arrivage.unite || "");
     setRapportArrivage(arrivage);
+    if (avecLitige) {
+      setConformite("non_conforme");
+      setDecision("refus");
+    }
     setVue("form");
     window.scrollTo(0, 0);
   };
@@ -2070,16 +2074,13 @@ _PDF joint_`;
                       {/* Bouton litige disponible même sur arrivage validé */}
                       {!a.litige && (
                         <button onClick={() => {
-                          const raison = window.prompt("Raison du litige (ex: qualité dégradée J+2, réclamation client...) :");
-                          if (!raison) return;
-                          const type = window.confirm("Refus total ? OK = Refus | Annuler = Réserve") ? "refusé" : "sous réserve";
-                          const pct = window.prompt("% de marchandise concernée (laisser vide si 100%) :") || "100";
+                          ouvrirRapportDepuisArrivage(a, true);
                           update(ref(db, `arrivages/${a.id}`), {
-                            statut: type,
+                            statut: a.statut === "validé" ? "sous réserve" : a.statut,
                             litige: {
-                              type,
-                              raison,
-                              pct,
+                              type: "sous réserve",
+                              raison: "",
+                              pct: "",
                               lot_moorea: a.lot_interne || "",
                               lot_fournisseur: a.lot_fournisseur || "",
                               date: new Date().toLocaleDateString("fr-FR"),
@@ -2087,7 +2088,8 @@ _PDF joint_`;
                               createdAt: Date.now(),
                               ouvertApresValidation: a.statut === "validé",
                             }
-                          }).then(() => showToast("⚠️ Litige ouvert sur ce lot"));
+                          });
+                          showToast("⚠️ Litige ouvert — complète le rapport");
                         }}
                           style={{ padding: "8px 16px", borderRadius: 10, border: "1.5px solid #fcd34d", background: "#fffbeb", color: "#d97706", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
                           ⚠️ Ouvrir litige
