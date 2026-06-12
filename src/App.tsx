@@ -236,6 +236,10 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport }: { arriva
     const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", observations: "" };
     await onValidate(arrivage, ctrl, litige ? "non_conforme" : "conforme", litige ? "sous réserve" : "", raison, "");
     setSaving(false);
+    // Si litige → ouvrir le formulaire rapport pré-rempli
+    if (litige) {
+      onOuvreRapport(arrivage, true);
+    }
   };
 
   const statusColor = litige ? "#dc2626" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
@@ -252,7 +256,7 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport }: { arriva
           </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => onOuvreRapport(arrivage)} style={{ background: "#faf8f3", border: "1px solid #e8e0d0", color: "#c8a84b", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>📋 Rapport</button>
+          <button onClick={(e) => { e.stopPropagation(); onOuvreRapport(arrivage); }} style={{ background: "#faf8f3", border: "1px solid #e8e0d0", color: "#c8a84b", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>📋 Rapport</button>
           <button onClick={() => onDelete(arrivage.id)} style={{ background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>🗑</button>
         </div>
       </div>
