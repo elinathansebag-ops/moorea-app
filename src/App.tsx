@@ -488,18 +488,97 @@ export default function App() {
         try {
           const lib = await loadPDF();
           const pdf = await lib.getDocument({ data: evt.target!.result }).promise;
-          let text = "";
-          for (let p = 1; p <= pdf.numPages; p++) { const pg = await pdf.getPage(p); const tc = await pg.getTextContent(); text += tc.items.map((i: any) => i.str).join(" ") + "\n"; }
-          const arr: any[] = []; let curLot = "", curFourn = "", curDate = now2.toLocaleDateString("fr-FR");
-          text.split("\n").forEach((line: string) => {
-            const lm = line.match(/Lot\s+(\d+)\s+Fournisseur\s+\d+\s+(.+?)\s+Date arriv[eé]e\s+(\d{2}\/\d{2}\/\d{4})/i);
-            if (lm) { curLot = lm[1]; curFourn = lm[2].trim().toUpperCase(); curDate = lm[3]; return; }
-            const pm = line.match(/^(\d{2})\s+(\S+)\s+(.+?)\s+(\d+)\s+/);
-            if (pm && parseInt(pm[1]) >= 1 && parseInt(pm[4]) > 0 && pm[3].trim().length > 3) arr.push({ fournisseur: curFourn, produit: pm[3].trim(), lot_interne: curLot, lot_fournisseur: "", quantite: parseInt(pm[4]), unite: "colis", poids_net: "", origine: "", variete: "", date: curDate, timestamp: Date.now() });
+
+          // Récupère tous les items de texte avec leur position X/Y
+          const allItems: { str: string; x: number; y: number; page: number }[] = [];
+          for (let p = 1; p <= pdf.numPages; p++) {
+            const pg = await pdf.getPage(p);
+            const tc = await pg.getTextContent();
+            tc.items.forEach((i: any) => {
+              if (i.str?.trim()) allItems.push({ str: i.str.trim(), x: Math.round(i.transform[4]), y: Math.round(i.transform[5]), page: p });
+            });
+          }
+
+          // Regroupe par ligne (même Y ± 3px)
+          const lines: string[][] = [];
+          const lineMap: Record<string, string[]> = {};
+          allItems.forEach(item => {
+            const key = `${item.page}_${Math.round(item.y / 4) * 4}`;
+            if (!lineMap[key]) { lineMap[key] = []; lines.push(lineMap[key]); }
+            lineMap[key].push(item.str);
           });
-          if (!arr.length) { showToast("Aucun arrivage détecté", "error"); setImportingArr(false); return; }
+
+          const arr: any[] = [];
+          let curLot = "", curFourn = "", curDate = now2.toLocaleDateString("fr-FR");
+
+          lines.forEach(tokens => {
+            const line = tokens.join(" ");
+
+            // Détecte ligne de lot : "Lot 26064412 Fournisseur 1473 GREENYARD FRESH Date arrivée 11/06/2026"
+            const lotMatch = line.match(/Lot\s+(\d{8,})\s+Fournisseur\s+\d+\s+(.+?)\s+Date\s+arriv[eé]e\s+(\d{2}\/\d{2}\/\d{4})/i);
+            if (lotMatch) {
+              curLot = lotMatch[1];
+              curFourn = lotMatch[2].trim().toUpperCase();
+              // Parse date dd/mm/yyyy
+              const [dd, mm, yyyy] = lotMatch[3].split("/");
+              const d = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+              curDate = d.toLocaleDateString("fr-FR");
+              return;
+            }
+
+            // Détecte ligne article : commence par "01", "02"... suivi du nb colis
+            // Format: "01 [code] LIBELLE ... Rec. NB_COLIS ..."
+            // On cherche un numéro de séquence 2 chiffres en début
+            const slMatch = tokens[0]?.match(/^(\d{2})$/);
+            if (slMatch && parseInt(slMatch[1]) >= 1 && parseInt(slMatch[1]) <= 99 && curFourn) {
+              // Reconstruit le libellé : tout sauf le premier token (SL) et les nombres finaux
+              // On cherche le nb de colis = premier nombre entier après le libellé
+              let libelle = "";
+              let nbColis = 0;
+
+              // Cherche le nb colis : dans les tokens, c'est un entier > 0 qui apparaît après le libellé
+              // Dans le PDF Geslot : SL | code article | libellé | Rec. | Nb colis | ...
+              // On prend tous les tokens non-numériques comme libellé, puis le premier nombre entier = nb colis
+              const textTokens = tokens.slice(1); // retire le SL
+              let foundColis = false;
+              const libParts: string[] = [];
+              for (const t of textTokens) {
+                if (!foundColis && /^\d+$/.test(t) && parseInt(t) > 0 && libParts.length > 0) {
+                  nbColis = parseInt(t);
+                  foundColis = true;
+                } else if (!foundColis) {
+                  // Ignore codes articles (majuscules+chiffres sans espaces, courts)
+                  if (t.length <= 12 && /^[A-Z0-9]+$/.test(t) && libParts.length === 0) continue;
+                  libParts.push(t);
+                }
+              }
+
+              libelle = libParts.join(" ").trim();
+              // Nettoie le libellé : retire trailing numbers/codes
+              libelle = libelle.replace(/\s+\d[\d,\.]*$/, "").trim();
+
+              if (nbColis > 0 && libelle.length > 3) {
+                // Extrait origine depuis le libellé (dernier mot majuscule souvent = pays)
+                const origineMatch = libelle.match(/\b(FRANCE|ESPAGNE|MAROC|KENYA|COLOMBIE|BRESIL|EGYPTE|PEROU|ISRAEL|PAYS-BAS|ITALIE|ALLEMAGNE|BELGIQUE|GHANA|SENEGAL|HONDURAS|CHINE|THAÏLANDE|INDE)\b/i);
+                arr.push({
+                  fournisseur: curFourn,
+                  produit: libelle,
+                  lot_interne: curLot,
+                  lot_fournisseur: "",
+                  quantite: nbColis,
+                  unite: "colis",
+                  origine: origineMatch ? origineMatch[1] : "",
+                  variete: "",
+                  date: curDate,
+                  timestamp: Date.now(),
+                });
+              }
+            }
+          });
+
+          if (!arr.length) { showToast("Aucun arrivage détecté dans le PDF", "error"); setImportingArr(false); return; }
           setPreviewArr(arr); setImportingArr(false);
-        } catch { showToast("Erreur PDF", "error"); setImportingArr(false); }
+        } catch (e) { console.error(e); showToast("Erreur PDF", "error"); setImportingArr(false); }
       };
       reader.readAsArrayBuffer(file);
     } else {
