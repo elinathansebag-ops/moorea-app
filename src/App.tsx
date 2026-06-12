@@ -322,10 +322,14 @@ function DateBlock({ date, arrivages, onValidate, onDelete, onOuvreRapport }: an
   arrivages.forEach((a: any) => { if (!byFournisseur[a.fournisseur]) byFournisseur[a.fournisseur] = []; byFournisseur[a.fournisseur].push(a); });
   return (
     <div style={{ marginBottom: 16 }}>
-      <div onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, cursor: "pointer", userSelect: "none" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.5px", fontFamily: "'Syne', sans-serif" }}>📅 {date}</span>
-        <span style={{ fontSize: 12, background: "#fffbeb", color: "#d97706", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>{arrivages.length} en attente</span>
-        <span style={{ fontSize: 16, color: "#d97706", marginLeft: "auto", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, userSelect: "none" }}>
+        <div onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flex: 1 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.5px", fontFamily: "'Syne', sans-serif" }}>📅 {date}</span>
+          <span style={{ fontSize: 16, color: "#d97706", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
+        </div>
+        <span onClick={() => setOpen(!open)} style={{ fontSize: 12, background: open ? "#d97706" : "#fffbeb", color: open ? "#fff" : "#d97706", padding: "4px 12px", borderRadius: 20, fontWeight: 700, cursor: "pointer", border: "1.5px solid #fcd34d", transition: "all 0.15s" }}>
+          {arrivages.length} en attente
+        </span>
       </div>
       {open && Object.entries(byFournisseur).map(([f, p]) => <FournisseurBlock key={f} fournisseur={f} produits={p} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} />)}
     </div>
