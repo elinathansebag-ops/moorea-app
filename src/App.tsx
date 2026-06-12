@@ -223,7 +223,7 @@ function NoteBtnArr({ n, selected, onChange }: { n: number; selected: number; on
   );
 }
 
-function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any }) {
+function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode, selected, onToggleSelect }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void }) {
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
   const [poidsOk, setPoidsOk] = useState(true);
@@ -245,9 +245,13 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport }: { arriva
   const statusColor = litige ? "#dc2626" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
 
   return (
-    <div style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${litige ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
+    <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : litige ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <div>
+        {selectMode && (
+          <input type="checkbox" checked={!!selected} onChange={() => onToggleSelect?.(arrivage.id)}
+            style={{ width: 18, height: 18, cursor: "pointer", marginRight: 10, marginTop: 2, flexShrink: 0 }} />
+        )}
+        <div style={{ flex: 1 }}>
           <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{arrivage.produit}{arrivage.variete ? ` · ${arrivage.variete}` : ""}</p>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             <PillArr>📦 {arrivage.quantite} {arrivage.unite}</PillArr>
@@ -298,7 +302,7 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport }: { arriva
   );
 }
 
-function FournisseurBlock({ fournisseur, produits, onValidate, onDelete, onOuvreRapport }: any) {
+function FournisseurBlock({ fournisseur, produits, onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect }: any) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ background: "#fff", borderRadius: 14, marginBottom: 10, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
@@ -310,12 +314,12 @@ function FournisseurBlock({ fournisseur, produits, onValidate, onDelete, onOuvre
         </div>
         <span style={{ fontSize: 18, color: "#c8a84b", fontWeight: 700, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
       </div>
-      {open && <div style={{ padding: "12px 14px" }}>{produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} />)}</div>}
+      {open && <div style={{ padding: "12px 14px" }}>{produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} />)}</div>}
     </div>
   );
 }
 
-function DateBlock({ date, arrivages, onValidate, onDelete, onOuvreRapport }: any) {
+function DateBlock({ date, arrivages, onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const byFournisseur: Record<string, any[]> = {};
@@ -337,7 +341,7 @@ function DateBlock({ date, arrivages, onValidate, onDelete, onOuvreRapport }: an
           <span style={{ fontSize: 18, color: "#c8a84b", fontWeight: 700, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
         </div>
       </div>
-      {open && Object.entries(byFournisseur).map(([f, p]) => <FournisseurBlock key={f} fournisseur={f} produits={p} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} />)}
+      {open && Object.entries(byFournisseur).map(([f, p]) => <FournisseurBlock key={f} fournisseur={f} produits={p} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect} />)}
     </div>
   );
 }
@@ -345,7 +349,7 @@ function DateBlock({ date, arrivages, onValidate, onDelete, onOuvreRapport }: an
 // ═══════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
-  const [vue, setVue] = useState("form");
+  const [vue, setVue] = useState("__none__");
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
   const [fournisseur, setFournisseur] = useState("");
   const [agreeur, setAgreeur] = useState("");
@@ -386,6 +390,8 @@ export default function App() {
   const [horsListe, setHorsListe] = useState({ produit: "", fournisseur: "", lot_interne: "", lot_fournisseur: "", origine: "", quantite: "", unite: "colis", type: "refusé", raison: "", pct: "" });
   const [rapportArrivage, setRapportArrivage] = useState<any | null>(null);
   const [filtersArr, setFiltersArr] = useState({ q: "", statut: "tous" });
+  const [selectedArrivages, setSelectedArrivages] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const [histSearchArr, setHistSearchArr] = useState("");
   const [searchDate, setSearchDate] = useState("");
   const [searchText, setSearchText] = useState("");
@@ -2007,7 +2013,6 @@ _PDF joint_`;
             </div>
             {/* Actions */}
             <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-              <button onClick={() => setPageMode("saisie_arr")} style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#c8a84b", color: "#fff", fontFamily: "'Syne', sans-serif" }}>➕ Nouvel arrivage</button>
               <label style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-block", fontFamily: "'Syne', sans-serif" }}>
                 📊 Import (.xlsx / .pdf)
                 <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
@@ -2028,7 +2033,7 @@ _PDF joint_`;
                 </button>
               </div>
             )}
-            {/* Filtre */}
+            {/* Filtre + actions */}
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
               <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
               <select value={filtersArr.statut} onChange={e => setFiltersArr({...filtersArr, statut:e.target.value})} style={{ padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 13, width: 150, background: "#fff" }}>
@@ -2038,7 +2043,41 @@ _PDF joint_`;
                 <option value="refusé">Litiges refus</option>
                 <option value="sous réserve">Sous réserve</option>
               </select>
+              <button onClick={() => { setSelectMode(!selectMode); setSelectedArrivages(new Set()); }} style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${selectMode ? "#fca5a5" : "#e8e0d0"}`, background: selectMode ? "#fef2f2" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: selectMode ? "#dc2626" : "#6b7280", whiteSpace: "nowrap" }}>
+                {selectMode ? "✕ Annuler" : "☑ Sélectionner"}
+              </button>
             </div>
+
+            {/* Barre d'actions selection */}
+            {selectMode && (
+              <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 16px", marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151" }}>
+                  <input type="checkbox"
+                    checked={selectedArrivages.size === arrivages.length && arrivages.length > 0}
+                    onChange={e => {
+                      if (e.target.checked) setSelectedArrivages(new Set(arrivages.map((a: any) => a.id)));
+                      else setSelectedArrivages(new Set());
+                    }}
+                    style={{ width: 18, height: 18, cursor: "pointer" }}
+                  />
+                  Tout sélectionner ({arrivages.length})
+                </label>
+                {selectedArrivages.size > 0 && (
+                  <button onClick={async () => {
+                    if (!window.confirm(`Supprimer ${selectedArrivages.size} arrivage(s) ?`)) return;
+                    const { remove: fbRemove } = await import("firebase/database");
+                    for (const id of selectedArrivages) {
+                      await fbRemove(ref(db, `arrivages/${id}`));
+                    }
+                    setSelectedArrivages(new Set());
+                    setSelectMode(false);
+                    showToast(`🗑 ${selectedArrivages.size} arrivage(s) supprimé(s)`);
+                  }} style={{ marginLeft: "auto", padding: "8px 16px", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+                    🗑 Supprimer {selectedArrivages.size} sélectionné(s)
+                  </button>
+                )}
+              </div>
+            )}
             {/* Accordéon date/fournisseur */}
             {(() => {
               const enAttente = arrivages.filter(a => a.statut === "en attente" && (!filtersArr.q || `${a.produit} ${a.fournisseur}`.toLowerCase().includes(filtersArr.q.toLowerCase())));
@@ -2054,7 +2093,7 @@ _PDF joint_`;
                 return (<>
                   <p style={{ fontWeight: 700, fontSize: 12, color: "#d97706", margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>⏳ En attente d'agrément · {enAttente.length}</p>
                   {Object.entries(byDate).sort((a,b)=>b[0].localeCompare(a[0])).map(([date, arr]) => (
-                    <DateBlock key={date} date={date} arrivages={arr} onValidate={handleAgrement} onDelete={deleteArrivageItem} onOuvreRapport={ouvrirRapportDepuisArrivage} />
+                    <DateBlock key={date} date={date} arrivages={arr} onValidate={handleAgrement} onDelete={deleteArrivageItem} onOuvreRapport={ouvrirRapportDepuisArrivage} selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={(id: string) => { const next = new Set(selectedArrivages); if (next.has(id)) next.delete(id); else next.add(id); setSelectedArrivages(next); }} />
                   ))}
                 </>);
               }
@@ -2067,8 +2106,18 @@ _PDF joint_`;
               return (<>
                 <p style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", margin: "24px 0 10px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>📁 Archivés · {archivesFiltered.length}</p>
                 {archivesFiltered.slice(0,15).map(a => (
-                  <div key={a.id} style={{ background: "#fff", borderRadius: 12, padding: "10px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 6px rgba(0,0,0,0.04)", borderLeft: `3px solid ${a.statut==="validé"?"#27ae60":a.statut==="refusé"?"#dc2626":"#d97706"}` }}>
-                    <div>
+                  <div key={a.id} style={{ background: selectedArrivages.has(a.id) ? "#fef2f2" : "#fff", borderRadius: 12, padding: "10px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 6px rgba(0,0,0,0.04)", borderLeft: `3px solid ${a.statut==="validé"?"#27ae60":a.statut==="refusé"?"#dc2626":"#d97706"}`, border: selectedArrivages.has(a.id) ? "1.5px solid #fca5a5" : undefined }}>
+                    {selectMode && (
+                      <input type="checkbox" checked={selectedArrivages.has(a.id)}
+                        onChange={e => {
+                          const next = new Set(selectedArrivages);
+                          if (e.target.checked) next.add(a.id); else next.delete(a.id);
+                          setSelectedArrivages(next);
+                        }}
+                        style={{ width: 18, height: 18, cursor: "pointer", marginRight: 10, flexShrink: 0 }}
+                      />
+                    )}
+                    <div style={{ flex: 1 }}>
                       <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 600, color: "#1a2e1a" }}>{a.produit} · {a.fournisseur}{a.hors_liste ? <span style={{ marginLeft: 8, fontSize: 10, background: "#fff3e0", color: "#e65100", padding: "1px 6px", borderRadius: 10, fontWeight: 600 }}>Hors liste</span> : null}</p>
                       <p style={{ margin: 0, fontSize: 11, color: "#6b7280" }}>{a.date}{a.rapport?.qualite ? ` · Note ${a.rapport.qualite}/5` : ""}{a.litige?.raison ? ` · ${a.litige.raison}` : ""}</p>
                     </div>
