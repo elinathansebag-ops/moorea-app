@@ -1954,7 +1954,23 @@ _PDF joint_`;
     </div>
   );
 
-  // ─── PAGE ACCUEIL ───
+  // Load stock overrides from moorea-stock Firestore
+  useEffect(() => {
+    if (!showStock) return;
+    const loadOv = async () => {
+      try {
+        const { initializeApp, getApps } = await import("firebase/app");
+        const { getFirestore, doc, getDoc } = await import("firebase/firestore");
+        const cfg = { apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8", authDomain: "moorea-stock.firebaseapp.com", projectId: "moorea-stock", storageBucket: "moorea-stock.firebasestorage.app", messagingSenderId: "639598259840", appId: "1:639598259840:web:ff3c048f9aac1b99f40065" };
+        const existing = getApps().find(a => a.name === "moorea-stock");
+        const app = existing ?? initializeApp(cfg, "moorea-stock");
+        const fsdb = getFirestore(app);
+        const snap = await getDoc(doc(fsdb, "config", "overrides"));
+        if (snap.exists()) setStockOverrides((snap.data() as any).data || {});
+      } catch {}
+    };
+    loadOv();
+  }, [showStock]);
   if (showAccueil) {
     const getHello = () => {
       const h = new Date().getHours();
@@ -2282,6 +2298,23 @@ _PDF joint_`;
     const resetAll = () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); };
     const goHome = () => { setStockPage("home"); setStockTeam(null); };
 
+    // ── Firestore moorea-stock ──
+    const getStockDb = async () => {
+      const { initializeApp, getApps, getApp } = await import("firebase/app");
+      const { getFirestore } = await import("firebase/firestore");
+      const stockConfig = {
+        apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8",
+        authDomain: "moorea-stock.firebaseapp.com",
+        projectId: "moorea-stock",
+        storageBucket: "moorea-stock.firebasestorage.app",
+        messagingSenderId: "639598259840",
+        appId: "1:639598259840:web:ff3c048f9aac1b99f40065"
+      };
+      const existing = getApps().find(a => a.name === "moorea-stock");
+      const app = existing ?? initializeApp(stockConfig, "moorea-stock");
+      return getFirestore(app);
+    };
+
     // ── Helpers équipe ──
     const getEquipe = (art: any): "GMS"|"PRESTIGE" => {
       const ov = stockOverrides[art.article];
@@ -2328,8 +2361,9 @@ _PDF joint_`;
         const importId = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
         setStockCurrentImportId(importId);
         try {
-          const { ref: fbRef, set } = await import("firebase/database");
-          await set(fbRef(db, `stock_imports/${importId}`), {
+          const { doc, setDoc } = await import("firebase/firestore");
+          const fsdb = await getStockDb();
+          await setDoc(doc(fsdb, "stocks", importId), {
             filename: file.name, importId,
             date: new Date().toISOString(),
             dateLabel: new Date().toLocaleString("fr-FR"),
@@ -2350,13 +2384,13 @@ _PDF joint_`;
     const loadStockSessions = async () => {
       if (stockSessionsLoaded) return;
       try {
-        const { ref: fbRef, get } = await import("firebase/database");
-        const snap = await get(fbRef(db, "stock_imports"));
-        if (snap.exists()) {
-          const data = snap.val();
-          const list = Object.values(data).sort((a: any, b: any) => b.importId.localeCompare(a.importId));
-          setStockSessions(list as any[]);
-        } else setStockSessions([]);
+        const { collection, getDocs } = await import("firebase/firestore");
+        const fsdb = await getStockDb();
+        const snap = await getDocs(collection(fsdb, "stocks"));
+        const list: any[] = [];
+        snap.forEach((d: any) => list.push({ id: d.id, ...d.data() }));
+        list.sort((a: any, b: any) => b.id.localeCompare(a.id));
+        setStockSessions(list);
         setStockSessionsLoaded(true);
       } catch { setStockSessions([]); setStockSessionsLoaded(true); }
     };
@@ -2364,10 +2398,11 @@ _PDF joint_`;
     // ── Load session ──
     const loadSession = async (importId: string, team: "GMS"|"PRESTIGE") => {
       try {
-        const { ref: fbRef, get } = await import("firebase/database");
-        const snap = await get(fbRef(db, `stock_imports/${importId}`));
+        const { doc, getDoc } = await import("firebase/firestore");
+        const fsdb = await getStockDb();
+        const snap = await getDoc(doc(fsdb, "stocks", importId));
         if (!snap.exists()) { showToast("Session introuvable", "error"); return; }
-        const data = snap.val();
+        const data = snap.data() as any;
         const arts: any[] = (data.articles || []).map((a: any) => ({
           ...a, compte: null, compte1: null, compte2: null, compte3: null,
           compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null,
@@ -2375,9 +2410,9 @@ _PDF joint_`;
         setStockAllArticles(arts);
         setStockCurrentImportId(importId);
         // Load comptages
-        const cSnap = await get(fbRef(db, `stock_comptages/${importId}_${team}`));
+        const cSnap = await getDoc(doc(fsdb, "comptages", `${importId}_${team}`));
         if (cSnap.exists()) {
-          const cData = cSnap.val().data || {};
+          const cData = (cSnap.data() as any).data || {};
           let n = 0;
           arts.forEach((a: any) => {
             const d = cData[a.article];
@@ -2404,16 +2439,17 @@ _PDF joint_`;
     const saveComptages = async (arts: any[]) => {
       if (!stockTeam || !stockCurrentImportId) return;
       try {
-        const { ref: fbRef, set } = await import("firebase/database");
+        const { doc, setDoc } = await import("firebase/firestore");
+        const fsdb = await getStockDb();
         const data: Record<string, any> = {};
         arts.forEach((a: any, idx: number) => {
           if (a.compte !== null && a.compte !== undefined) {
             const locs: Record<string, any> = {};
             for (let i = 1; i <= 8; i++) if (a[`compte${i}`] !== null && a[`compte${i}`] !== undefined) locs[`c${i}`] = a[`compte${i}`];
-            data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _idx: idx };
+            data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: Date.now(), _idx: idx };
           }
         });
-        await set(fbRef(db, `stock_comptages/${stockCurrentImportId}_${stockTeam}`), {
+        await setDoc(doc(fsdb, "comptages", `${stockCurrentImportId}_${stockTeam}`), {
           data, team: stockTeam, date: new Date().toISOString().slice(0, 10), ts: Date.now(), sessionId: stockCurrentSessionId
         });
       } catch {}
@@ -2438,10 +2474,11 @@ _PDF joint_`;
     const deleteSession = async (importId: string) => {
       if (!window.confirm("Supprimer ce stock et ses comptages ?")) return;
       try {
-        const { ref: fbRef, remove } = await import("firebase/database");
-        await remove(fbRef(db, `stock_imports/${importId}`));
-        await remove(fbRef(db, `stock_comptages/${importId}_GMS`));
-        await remove(fbRef(db, `stock_comptages/${importId}_PRESTIGE`));
+        const { doc, deleteDoc } = await import("firebase/firestore");
+        const fsdb = await getStockDb();
+        await deleteDoc(doc(fsdb, "stocks", importId));
+        await deleteDoc(doc(fsdb, "comptages", `${importId}_GMS`));
+        await deleteDoc(doc(fsdb, "comptages", `${importId}_PRESTIGE`));
         setStockSessions(prev => prev.filter((s: any) => s.importId !== importId));
         showToast("Stock supprimé");
       } catch { showToast("Erreur suppression", "error"); }
@@ -2451,15 +2488,25 @@ _PDF joint_`;
     const cloturerSession = async (importId: string) => {
       if (!window.confirm("Clôturer ce stock ? Il ne sera plus modifiable.")) return;
       try {
-        const { ref: fbRef, get, set } = await import("firebase/database");
-        const snap = await get(fbRef(db, `stock_imports/${importId}`));
-        if (snap.exists()) await set(fbRef(db, `stock_imports/${importId}`), { ...snap.val(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") });
+        const { doc, getDoc, setDoc } = await import("firebase/firestore");
+        const fsdb = await getStockDb();
+        const snap = await getDoc(doc(fsdb, "stocks", importId));
+        if (snap.exists()) await setDoc(doc(fsdb, "stocks", importId), { ...snap.data(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") });
         setStockSessions(prev => prev.map((s: any) => s.importId === importId ? { ...s, cloture: true } : s));
         showToast("✅ Stock clôturé");
       } catch {}
     };
 
-    // ── Export CSV ──
+    // ── Toggle équipe article ──
+    const toggleArticleEquipe = async (article: string, newEquipe: "GMS"|"PRESTIGE") => {
+      const newOv = { ...stockOverrides, [article]: newEquipe };
+      setStockOverrides(newOv);
+      try {
+        const { doc, setDoc } = await import("firebase/firestore");
+        const fsdb = await getStockDb();
+        await setDoc(doc(fsdb, "config", "overrides"), { data: newOv });
+      } catch {}
+    };
     const exportStockCSV = () => {
       const now = new Date().toLocaleString("fr-FR");
       let csv = `Inventaire ${stockTeam} — ${now}\nArticle,Famille,Stock sys.,Compté,Détruire,Écart,Statut\n`;
@@ -2498,17 +2545,7 @@ _PDF joint_`;
       if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
     };
 
-    // ── Toggle équipe article ──
-    const toggleArticleEquipe = async (article: string, newEquipe: "GMS"|"PRESTIGE") => {
-      const newOv = { ...stockOverrides, [article]: newEquipe };
-      setStockOverrides(newOv);
-      try {
-        const { ref: fbRef, set } = await import("firebase/database");
-        await set(fbRef(db, "stock_config/overrides"), { data: newOv });
-      } catch {}
-    };
-
-    // ── Calculatrice ──
+    // ── Export CSV ──
     const calcNum = (n: string) => {
       if (calcJustEvaled) { setCalcCurrent(""); setCalcJustEvaled(false); }
       if (n === "." && calcCurrent.includes(".")) return;
