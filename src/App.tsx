@@ -406,6 +406,7 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [editRapport, setEditRapport] = useState<any | null>(null);
   const [user, setUser] = useState<any | null>(undefined);
+  const [showAccueil, setShowAccueil] = useState(true);
   const [signatureModal, setSignatureModal] = useState<any | null>(null);
   const [sigNom, setSigNom] = useState("");
   const [sigPrenom, setSigPrenom] = useState("");
@@ -1897,6 +1898,81 @@ _PDF joint_`;
     </div>
   );
 
+  // ─── PAGE ACCUEIL ───
+  if (showAccueil) {
+    const getHello = () => {
+      const h = new Date().getHours();
+      if (h < 12) return "Bonjour";
+      if (h < 18) return "Bon après-midi";
+      return "Bonsoir";
+    };
+    const nbAttente = arrivages.filter(a => a.statut === "en attente").length;
+    const nbLitiges = arrivages.filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee).length;
+    const buttons = [
+      { icon: "📋", label: "Pointer les arrivages", sub: "Contrôler et valider les arrivages du jour", color: "#c8a84b", badge: nbAttente || null, action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
+      { icon: "⚠️", label: "Litiges Moorea", sub: "Refus et réserves en attente de traitement", color: "#dc2626", badge: nbLitiges || null, action: () => { setShowAccueil(false); setVue("stock_refus" as any); setPageMode("arrivages"); } },
+      { icon: "📊", label: "Rapports qualité", sub: "Historique et envoi des rapports d'agrément", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
+      { icon: "🔍", label: "Chercher un lot", sub: "Retrouver un arrivage par produit ou numéro de lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); setFiltersArr({ q: "", statut: "tous" }); } },
+      { icon: "✦", label: "Nouveau rapport manuel", sub: "Saisir un rapport sans arrivage lié", color: "#8b5cf6", badge: null, action: () => { reset(); setRapportArrivage(null); setShowAccueil(false); setVue("form"); window.scrollTo(0, 0); } },
+    ];
+    return (
+      <div style={{ minHeight: "100vh", background: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>
+        <style>{styles}</style>
+        <div style={{ background: "#0a0a0a", padding: "20px 24px", borderBottom: "2px solid #c8a84b" }}>
+          <p style={{ color: "#c8a84b", fontWeight: 800, fontSize: 18, letterSpacing: 2, margin: 0 }}>🍃 MOOREA</p>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, margin: "2px 0 0", letterSpacing: 1 }}>CONTRÔLE QUALITÉ · AGRÉAGE RUNGIS</p>
+        </div>
+        <div style={{ padding: "36px 24px 48px", textAlign: "center", borderBottom: "1px solid #1a1a1a" }}>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>🌿</div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>
+            {getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋
+          </h1>
+          <p style={{ margin: "8px 0 0", fontSize: 14, color: "rgba(255,255,255,0.5)" }}>Que voulez-vous faire aujourd'hui ?</p>
+          {nbAttente > 0 && (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 16, background: "rgba(200,168,75,0.15)", border: "1px solid rgba(200,168,75,0.4)", borderRadius: 20, padding: "6px 16px" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#c8a84b", flexShrink: 0, display: "inline-block" }} />
+              <span style={{ fontSize: 13, color: "#c8a84b", fontWeight: 600 }}>{nbAttente} arrivage{nbAttente > 1 ? "s" : ""} en attente de pointage</span>
+            </div>
+          )}
+        </div>
+        <div style={{ maxWidth: 520, margin: "-20px auto 0", padding: "0 20px 60px", position: "relative" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {buttons.map((b, idx) => (
+              <button key={idx} onClick={b.action}
+                style={{ display: "flex", alignItems: "center", gap: 16, padding: "18px 20px", borderRadius: 16, cursor: "pointer", border: "1.5px solid #1e1e1e", background: "#111", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", transition: "all 0.15s" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = b.color; (e.currentTarget as HTMLElement).style.background = b.color + "18"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#1e1e1e"; (e.currentTarget as HTMLElement).style.background = "#111"; }}
+              >
+                <span style={{ fontSize: 26, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "22", borderRadius: 12, flexShrink: 0 }}>{b.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#fff" }}>{b.label}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{b.sub}</p>
+                </div>
+                {b.badge ? <span style={{ background: b.color, color: "#fff", fontSize: 12, fontWeight: 700, padding: "3px 9px", borderRadius: 20, flexShrink: 0 }}>{b.badge}</span> : null}
+                <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 20, flexShrink: 0 }}>›</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+            {[
+              { label: "Arrivages", value: arrivages.length, color: "#c8a84b" },
+              { label: "En attente", value: nbAttente, color: "#d97706" },
+              { label: "Litiges ouverts", value: nbLitiges, color: "#dc2626" },
+            ].map(s => (
+              <div key={s.label} style={{ flex: 1, background: "#111", border: "1px solid #1e1e1e", borderRadius: 14, padding: "14px 10px", textAlign: "center", borderTop: `3px solid ${s.color}` }}>
+                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: s.color, letterSpacing: "-1px" }}>{s.value}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => signOut(auth)} style={{ width: "100%", marginTop: 20, padding: "12px", borderRadius: 12, border: "1px solid #222", background: "transparent", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.3)", fontFamily: "'Syne', sans-serif" }}>
+            {user?.displayName || user?.email} · Déconnexion
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <style>{styles}</style>
@@ -1997,7 +2073,7 @@ _PDF joint_`;
       {/* HEADER */}
       <div style={{ background: "#0a0a0a", padding: "16px 20px", marginBottom: 0, borderBottom: "3px solid #c8a84b" }}>
         <div className="header-inner">
-          <div>
+          <div onClick={() => setShowAccueil(true)} style={{ cursor: "pointer" }}>
             <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: "#c8a84b", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: 2 }}>🍃 Moorea · Rapport Qualité</p>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Arrivages · Fruits & Légumes</p>
           </div>
