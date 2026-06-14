@@ -2329,7 +2329,14 @@ _PDF joint_`;
       setStockUploading(true);
       try {
         const buf = await file.arrayBuffer();
-        const XLSX = (window as any).XLSX;
+        const XLSX: any = await new Promise((res, rej) => {
+          if ((window as any).XLSX) { res((window as any).XLSX); return; }
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+          s.onload = () => res((window as any).XLSX);
+          s.onerror = rej;
+          document.head.appendChild(s);
+        });
         if (!XLSX) { showToast("SheetJS non disponible", "error"); setStockUploading(false); return; }
         const wb = XLSX.read(buf, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
