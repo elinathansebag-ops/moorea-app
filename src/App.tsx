@@ -623,7 +623,7 @@ export default function App() {
                 arr.push({
                   fournisseur: curFourn,
                   produit: libelleFinal,
-                  lot_interne: curLot,
+                  lot_interne: curLot.length >= 8 ? curLot.slice(4, 8) : curLot,
                   lot_fournisseur: "",
                   quantite: nbColis,
                   unite: "colis",
@@ -692,7 +692,7 @@ export default function App() {
               curDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toLocaleDateString("fr-FR") : curDate;
             }catch{}}}
             const nb=parseInt(String(row[4]||"0"));
-            if(/^0[0-9]$/.test(c0)&&c1&&c2&&nb>0) arr.push({fournisseur:curFourn,produit:c2,lot_interne:curLot,lot_fournisseur:"",quantite:nb,unite:"colis",poids_net:String(row[10]||""),origine:"",variete:"",date:curDate,timestamp:Date.now()});
+            if(/^0[0-9]$/.test(c0)&&c1&&c2&&nb>0) arr.push({fournisseur:curFourn,produit:c2,lot_interne:curLot.length>=8?curLot.slice(4,8):curLot,lot_fournisseur:"",quantite:nb,unite:"colis",poids_net:String(row[10]||""),origine:"",variete:"",date:curDate,timestamp:Date.now()});
           });
           if(!arr.length){showToast("Aucun arrivage détecté","error");setImportingArr(false);return;}
           setPreviewArr(arr); setImportingArr(false);
