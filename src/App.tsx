@@ -442,6 +442,11 @@ export default function App() {
   const [showAccueil, setShowAccueil] = useState(true);
   const [showLitiges, setShowLitiges] = useState(false);
   const [showRecherche, setShowRecherche] = useState(false);
+  const [showStock, setShowStock] = useState(false);
+  const [stockArticles, setStockArticles] = useState<any[]>([]);
+  const [stockTeam, setStockTeam] = useState<"GMS"|"PRESTIGE"|null>(null);
+  const [stockFilter, setStockFilter] = useState("");
+  const [stockEcartFilter, setStockEcartFilter] = useState("tous");
   const [searchLotQuery, setSearchLotQuery] = useState("");
   const [signatureModal, setSignatureModal] = useState<any | null>(null);
   const [sigNom, setSigNom] = useState("");
@@ -1949,6 +1954,7 @@ _PDF joint_`;
       { icon: "⚠️", label: "Litiges Moorea", sub: "Refus et réserves en attente de traitement", color: "#dc2626", badge: nbLitiges || null, action: () => { setShowAccueil(false); setShowLitiges(true); } },
       { icon: "📊", label: "Rapports qualité", sub: "Historique et envoi des rapports d'agrément", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
       { icon: "🔍", label: "Chercher un lot", sub: "Retrouver un arrivage par produit ou numéro de lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
+      { icon: "📦", label: "Compter le stock", sub: "Inventaire GMS & Prestige avec écarts", color: "#0891b2", badge: null, action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
       { icon: "✦", label: "Nouveau rapport manuel", sub: "Saisir un rapport sans arrivage lié", color: "#8b5cf6", badge: null, action: () => { reset(); setRapportArrivage(null); setShowAccueil(false); setVue("form"); window.scrollTo(0, 0); } },
     ];
     return (
@@ -2255,7 +2261,277 @@ _PDF joint_`;
     );
   }
 
-  return (
+  // ─── PAGE STOCK INVENTAIRE ───
+  if (showStock) {
+    const goBack = () => { setShowStock(false); setShowAccueil(true); };
+    const resetAll = () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); };
+
+    // Import Excel
+    const handleStockExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]; if (!file) return;
+      try {
+        const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs" as any);
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        const hdrs = (json[0] || []).map((h: any) => String(h || "").toLowerCase().trim());
+        const findCol = (kws: string[]) => { for (const kw of kws) { const i = hdrs.findIndex((h: string) => h.includes(kw)); if (i >= 0) return i; } return -1; };
+        const colFam = findCol(["famille"]);
+        const colArt = findCol(["article", "designation", "désignation"]);
+        const colQty = findCol(["nb colis", "quantit", "colis", "qte"]);
+        const colEquipe = findCol(["equipe", "équipe", "team"]);
+        const rows = json.slice(1);
+        const grouped: Record<string, any> = {};
+        rows.forEach((r: any[]) => {
+          const art = String(r[colArt] || "").trim();
+          if (!art || art.length < 2 || !isNaN(Number(art))) return;
+          const qty = parseInt(String(r[colQty] || "0")) || 0;
+          const fam = colFam >= 0 ? String(r[colFam] || "").trim() : "";
+          const rawEquipe = colEquipe >= 0 ? String(r[colEquipe] || "").trim().toUpperCase() : "";
+          const equipe = rawEquipe === "GMS" ? "GMS" : "PRESTIGE";
+          // Fallback: col A = GMS marker
+          const colAval = String(r[0] || "").toUpperCase().trim();
+          const finalEquipe = rawEquipe ? equipe : (colAval === "GMS" ? "GMS" : "PRESTIGE");
+          const lotFull = colEquipe < 0 ? String(r[0] || "").trim() : "";
+          const lot = lotFull.length >= 6 ? lotFull.slice(-6, -2) : lotFull.slice(-4);
+          if (!grouped[art]) grouped[art] = { article: art, famille: fam, equipe: finalEquipe, nb_colis: 0, lots: [] as string[], compte: null as number | null };
+          grouped[art].nb_colis += qty;
+          if (lot && !grouped[art].lots.includes(lot)) grouped[art].lots.push(lot);
+        });
+        const arts = Object.values(grouped).map((a: any, i: number) => ({ ...a, id: i + 1 }));
+        setStockArticles(arts);
+        setStockTeam(null);
+        showToast(`✅ ${arts.length} articles importés`);
+      } catch (err) { showToast("Erreur lecture Excel", "error"); }
+      e.target.value = "";
+    };
+
+    // Match avec arrivages Firebase par nom de produit
+    const getArrivageLots = (artName: string) => {
+      const q = artName.toLowerCase();
+      return arrivages.filter((a: any) =>
+        a.produit?.toLowerCase().includes(q) || q.includes(a.produit?.toLowerCase() || "XXXX")
+      );
+    };
+
+    // Update compte
+    const setCompte = (id: number, val: string) => {
+      const v = val === "" ? null : Math.max(0, parseInt(val) || 0);
+      setStockArticles(prev => prev.map(a => a.id === id ? { ...a, compte: v } : a));
+    };
+
+    const teamArticles = stockTeam ? stockArticles.filter(a => a.equipe === stockTeam) : [];
+    const counted = teamArticles.filter(a => a.compte !== null);
+    const pct = teamArticles.length ? Math.round(counted.length / teamArticles.length * 100) : 0;
+
+    const filteredArts = teamArticles.filter(a => {
+      const q = stockFilter.toLowerCase();
+      if (q && !a.article.toLowerCase().includes(q)) return false;
+      if (stockEcartFilter === "ecart") return a.compte !== null && a.compte !== a.nb_colis;
+      if (stockEcartFilter === "ok") return a.compte !== null && a.compte === a.nb_colis;
+      if (stockEcartFilter === "nc") return a.compte === null;
+      return true;
+    });
+
+    const exportCSV = () => {
+      const now = new Date().toLocaleString("fr-FR");
+      let csv = `Inventaire ${stockTeam} — ${now}\nArticle,Famille,Stock sys.,Compté,Écart,Statut,Lots arrivages\n`;
+      teamArticles.forEach(a => {
+        const e = a.compte !== null ? a.compte - a.nb_colis : "";
+        const st = a.compte === null ? "Non compté" : a.compte === a.nb_colis ? "OK" : a.compte > a.nb_colis ? "Surplus" : "Manque";
+        const lotsArr = getArrivageLots(a.article).map((x: any) => x.lot_interne).filter(Boolean).join(" | ");
+        csv += `"${a.article}","${a.famille}",${a.nb_colis},${a.compte ?? ""},${e},"${st}","${lotsArr}"\n`;
+      });
+      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const lnk = document.createElement("a"); lnk.href = url;
+      lnk.download = `inventaire_${stockTeam?.toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`;
+      lnk.click(); URL.revokeObjectURL(url);
+      showToast("📥 CSV téléchargé");
+    };
+
+    // PAGE : choix équipe
+    if (!stockTeam) return (
+      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+        <style>{styles}</style>
+        <div style={{ background: "linear-gradient(135deg, #0c4a6e 0%, #0891b2 60%, #06b6d4 100%)", padding: "40px 24px 56px", textAlign: "center", position: "relative" }}>
+          <button onClick={goBack} style={{ position: "absolute", top: 16, left: 16, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 12, color: "#fff", fontFamily: "'Syne', sans-serif" }}>‹ Accueil</button>
+          <div style={{ fontSize: 44, marginBottom: 10 }}>📦</div>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#fff" }}>Inventaire Stock</h1>
+          <p style={{ margin: "8px 0 0", fontSize: 14, color: "rgba(255,255,255,0.65)" }}>Importe le fichier Excel puis choisis ton équipe</p>
+        </div>
+        <div style={{ maxWidth: 520, margin: "-24px auto 0", padding: "0 20px 60px" }}>
+          {/* Upload */}
+          <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", border: "1.5px solid #e8e0d0" }}>
+            <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>📊 Fichier stock du jour</p>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "#f5f3ee", borderRadius: 12, cursor: "pointer", border: "2px dashed #c8a84b" }}>
+              <span style={{ fontSize: 24 }}>📁</span>
+              <div>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#1a2e1a" }}>Importer un fichier Excel</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>.xlsx — colonnes : Famille, Article, Nb colis, Équipe</p>
+              </div>
+              <input type="file" accept=".xlsx,.xls" onChange={handleStockExcel} style={{ display: "none" }} />
+            </label>
+            {stockArticles.length > 0 && (
+              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[
+                  { label: "GMS", count: stockArticles.filter(a => a.equipe === "GMS").length, color: "#92710a", bg: "#fffbeb" },
+                  { label: "PRESTIGE", count: stockArticles.filter(a => a.equipe === "PRESTIGE").length, color: "#7c3aed", bg: "#f5f3ff" },
+                ].map(s => (
+                  <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: "8px 12px", textAlign: "center", border: `1px solid ${s.color}33` }}>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 18, color: s.color }}>{s.count}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: s.color, textTransform: "uppercase" }}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Choix équipe */}
+          {stockArticles.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {([
+                { team: "GMS" as const, icon: "🌿", color: "#92710a", bg: "#fffbeb", border: "#fde68a", desc: "Comptage 19h00" },
+                { team: "PRESTIGE" as const, icon: "✨", color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe", desc: "Comptage nuit" },
+              ]).map(t => (
+                <button key={t.team} onClick={() => setStockTeam(t.team)}
+                  style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 20px", borderRadius: 16, cursor: "pointer", border: `2px solid ${t.border}`, background: t.bg, textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
+                  <span style={{ fontSize: 32, width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", borderRadius: 14, flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>{t.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: t.color }}>{t.team}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 13, color: "#6b7280" }}>{stockArticles.filter(a => a.equipe === t.team).length} articles · {t.desc}</p>
+                  </div>
+                  <span style={{ color: t.color, fontSize: 24 }}>›</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {stockArticles.length === 0 && (
+            <div style={{ textAlign: "center", padding: "2rem", color: "#9ca3af" }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>
+              <p style={{ margin: 0, fontWeight: 600 }}>Importe un fichier Excel pour commencer</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
+    // PAGE : comptage
+    const ecartManq = teamArticles.filter(a => a.compte !== null && a.compte < a.nb_colis).length;
+    const ecartSurp = teamArticles.filter(a => a.compte !== null && a.compte > a.nb_colis).length;
+    const ecartOk = teamArticles.filter(a => a.compte !== null && a.compte === a.nb_colis).length;
+
+    return (
+      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+        <style>{styles}</style>
+
+        {/* Header */}
+        <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", position: "sticky", top: 0, zIndex: 100 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 800, margin: "0 auto" }}>
+            <button onClick={() => setStockTeam(null)} style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 12, color: "#fff", fontFamily: "'Syne', sans-serif" }}>‹ Équipe</button>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>
+                {stockTeam === "GMS" ? "🌿" : "✨"} Stock {stockTeam}
+              </p>
+              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{counted.length}/{teamArticles.length} comptés · {pct}%</p>
+            </div>
+            <button onClick={() => resetAll()} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>🏠</button>
+          </div>
+          {/* Barre de progression */}
+          <div style={{ maxWidth: 800, margin: "10px auto 0", height: 5, background: "rgba(255,255,255,0.1)", borderRadius: 4 }}>
+            <div style={{ height: 5, background: "#0891b2", borderRadius: 4, width: `${pct}%`, transition: "width 0.3s" }} />
+          </div>
+        </div>
+
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px" }}>
+          {/* Stats rapides */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            {[
+              { label: "Manquants", value: ecartManq, color: "#dc2626", bg: "#fef2f2" },
+              { label: "Surplus", value: ecartSurp, color: "#d97706", bg: "#fffbeb" },
+              { label: "OK", value: ecartOk, color: "#16a34a", bg: "#f0fdf4" },
+              { label: "Non comptés", value: teamArticles.length - counted.length, color: "#6b7280", bg: "#f9fafb" },
+            ].map(s => (
+              <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 12, padding: "10px 8px", textAlign: "center", border: `1px solid ${s.color}33` }}>
+                <p style={{ margin: 0, fontWeight: 800, fontSize: 20, color: s.color }}>{s.value}</p>
+                <p style={{ margin: 0, fontSize: 10, color: s.color, textTransform: "uppercase", letterSpacing: "0.3px" }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Filtres + export */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <input value={stockFilter} onChange={e => setStockFilter(e.target.value)} placeholder="🔍 Rechercher un article..." style={{ flex: 1, minWidth: 160, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
+            <button onClick={exportCSV} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>📥 CSV</button>
+          </div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+            {[
+              { id: "tous", label: "Tous" },
+              { id: "ecart", label: "Avec écart" },
+              { id: "ok", label: "OK" },
+              { id: "nc", label: "Non comptés" },
+            ].map(f => (
+              <button key={f.id} onClick={() => setStockEcartFilter(f.id)}
+                style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", border: "1.5px solid", borderColor: stockEcartFilter === f.id ? "#0891b2" : "#e8e0d0", background: stockEcartFilter === f.id ? "#0891b2" : "#fff", color: stockEcartFilter === f.id ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Liste articles */}
+          {filteredArts.map(a => {
+            const ecart = a.compte !== null ? a.compte - a.nb_colis : null;
+            const ecartColor = ecart === null ? "#9ca3af" : ecart < 0 ? "#dc2626" : ecart > 0 ? "#d97706" : "#16a34a";
+            const arrivagesLies = getArrivageLots(a.article);
+            return (
+              <div key={a.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 8, padding: "12px 16px", boxShadow: "0 1px 6px rgba(0,0,0,0.05)", borderLeft: `4px solid ${ecartColor}`, display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.article}</p>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: "#9ca3af" }}>{a.famille}</span>
+                    {arrivagesLies.length > 0 && (
+                      <span style={{ fontSize: 10, background: "#faf8f0", color: "#8a6f2e", border: "1px solid #e0d0a0", padding: "1px 6px", borderRadius: 10, fontWeight: 700 }}>
+                        🔖 Lot {arrivagesLies.map((x: any) => x.lot_interne).filter(Boolean).join(", ") || arrivagesLies[0].produit}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  <div style={{ textAlign: "center" }}>
+                    <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Stock</p>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#374151" }}>{a.nb_colis}</p>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Compté</p>
+                    <input
+                      type="number" min="0"
+                      value={a.compte ?? ""}
+                      onChange={e => setCompte(a.id, e.target.value)}
+                      placeholder="—"
+                      style={{ width: 64, padding: "5px 8px", border: `1.5px solid ${a.compte !== null ? ecartColor : "#e8e0d0"}`, borderRadius: 8, textAlign: "center", fontSize: 15, fontWeight: 700, outline: "none", fontFamily: "'Syne', sans-serif", color: ecartColor }}
+                    />
+                  </div>
+                  <div style={{ textAlign: "center", minWidth: 40 }}>
+                    <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Écart</p>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: ecartColor }}>
+                      {ecart === null ? "—" : (ecart > 0 ? "+" : "") + ecart}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredArts.length === 0 && (
+            <div style={{ textAlign: "center", padding: "3rem", color: "#9ca3af" }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
+              <p style={{ margin: 0 }}>Aucun article</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
     <div className="app">
       <style>{styles}</style>
 
@@ -2355,7 +2631,7 @@ _PDF joint_`;
       {/* HEADER */}
       <div style={{ background: "#0a0a0a", padding: "14px 20px", marginBottom: 0, borderBottom: "3px solid #c8a84b" }}>
         <div className="header-inner">
-          <div onClick={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); }} style={{ cursor: "pointer" }}>
+          <div onClick={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }} style={{ cursor: "pointer" }}>
             <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 15, color: "#c8a84b", textTransform: "uppercase", letterSpacing: "2px", marginBottom: 2 }}>🍃 Moorea</p>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
               {vue === "form" ? "Nouveau rapport" :
@@ -2369,7 +2645,7 @@ _PDF joint_`;
                "Hub Moorea"}
             </p>
           </div>
-          <button onClick={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); }} style={{ padding: "9px 18px", borderRadius: 10, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+          <button onClick={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }} style={{ padding: "9px 18px", borderRadius: 10, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
             🏠 Accueil
           </button>
           <button onClick={() => signOut(auth)} title={user.email} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
