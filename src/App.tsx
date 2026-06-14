@@ -520,6 +520,24 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // ─── LOAD STOCK OVERRIDES ───
+  useEffect(() => {
+    if (!showStock) return;
+    const loadOv = async () => {
+      try {
+        const { initializeApp, getApps } = await import("firebase/app");
+        const { getFirestore, doc, getDoc } = await import("firebase/firestore");
+        const cfg = { apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8", authDomain: "moorea-stock.firebaseapp.com", projectId: "moorea-stock", storageBucket: "moorea-stock.firebasestorage.app", messagingSenderId: "639598259840", appId: "1:639598259840:web:ff3c048f9aac1b99f40065" };
+        const existing = getApps().find((a: any) => a.name === "moorea-stock");
+        const app = existing ?? initializeApp(cfg, "moorea-stock");
+        const fsdb = getFirestore(app);
+        const snap = await getDoc(doc(fsdb, "config", "overrides"));
+        if (snap.exists()) setStockOverrides((snap.data() as any).data || {});
+      } catch {}
+    };
+    loadOv();
+  }, [showStock]);
+
   // ─── HANDLERS ARRIVAGES ───
   const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string) => {
     const now2 = new Date();
@@ -1954,23 +1972,6 @@ _PDF joint_`;
     </div>
   );
 
-  // Load stock overrides from moorea-stock Firestore
-  useEffect(() => {
-    if (!showStock) return;
-    const loadOv = async () => {
-      try {
-        const { initializeApp, getApps } = await import("firebase/app");
-        const { getFirestore, doc, getDoc } = await import("firebase/firestore");
-        const cfg = { apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8", authDomain: "moorea-stock.firebaseapp.com", projectId: "moorea-stock", storageBucket: "moorea-stock.firebasestorage.app", messagingSenderId: "639598259840", appId: "1:639598259840:web:ff3c048f9aac1b99f40065" };
-        const existing = getApps().find(a => a.name === "moorea-stock");
-        const app = existing ?? initializeApp(cfg, "moorea-stock");
-        const fsdb = getFirestore(app);
-        const snap = await getDoc(doc(fsdb, "config", "overrides"));
-        if (snap.exists()) setStockOverrides((snap.data() as any).data || {});
-      } catch {}
-    };
-    loadOv();
-  }, [showStock]);
   if (showAccueil) {
     const getHello = () => {
       const h = new Date().getHours();
