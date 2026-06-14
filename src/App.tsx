@@ -1916,58 +1916,68 @@ _PDF joint_`;
       { icon: "✦", label: "Nouveau rapport manuel", sub: "Saisir un rapport sans arrivage lié", color: "#8b5cf6", badge: null, action: () => { reset(); setRapportArrivage(null); setShowAccueil(false); setVue("form"); window.scrollTo(0, 0); } },
     ];
     return (
-      <div style={{ minHeight: "100vh", background: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
-        <div style={{ background: "#0a0a0a", padding: "20px 24px", borderBottom: "2px solid #c8a84b" }}>
-          <p style={{ color: "#c8a84b", fontWeight: 800, fontSize: 18, letterSpacing: 2, margin: 0 }}>🍃 MOOREA</p>
-          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, margin: "2px 0 0", letterSpacing: 1 }}>CONTRÔLE QUALITÉ · AGRÉAGE RUNGIS</p>
-        </div>
-        <div style={{ padding: "36px 24px 48px", textAlign: "center", borderBottom: "1px solid #1a1a1a" }}>
-          <div style={{ fontSize: 44, marginBottom: 12 }}>🌿</div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>
+
+        {/* BANDEAU GRADIENT VERT → DORÉ */}
+        <div style={{ background: "linear-gradient(135deg, #1a3a1a 0%, #2d5a1e 40%, #8a6f2e 100%)", padding: "40px 24px 56px", textAlign: "center", position: "relative", overflow: "hidden" }}>
+          {/* Cercles décoratifs */}
+          <div style={{ position: "absolute", top: -40, right: -40, width: 180, height: 180, borderRadius: "50%", background: "rgba(200,168,75,0.12)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: -30, left: -30, width: 130, height: 130, borderRadius: "50%", background: "rgba(200,168,75,0.08)", pointerEvents: "none" }} />
+
+          <div style={{ fontSize: 46, marginBottom: 10 }}>🌿</div>
+          <h1 style={{ margin: 0, fontSize: 27, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>
             {getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋
           </h1>
-          <p style={{ margin: "8px 0 0", fontSize: 14, color: "rgba(255,255,255,0.5)" }}>Que voulez-vous faire aujourd'hui ?</p>
+          <p style={{ margin: "8px 0 0", fontSize: 14, color: "rgba(255,255,255,0.65)" }}>
+            Que voulez-vous faire aujourd'hui ?
+          </p>
           {nbAttente > 0 && (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 16, background: "rgba(200,168,75,0.15)", border: "1px solid rgba(200,168,75,0.4)", borderRadius: 20, padding: "6px 16px" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#c8a84b", flexShrink: 0, display: "inline-block" }} />
-              <span style={{ fontSize: 13, color: "#c8a84b", fontWeight: 600 }}>{nbAttente} arrivage{nbAttente > 1 ? "s" : ""} en attente de pointage</span>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 16, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20, padding: "6px 16px" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#e8c87b", flexShrink: 0, display: "inline-block" }} />
+              <span style={{ fontSize: 13, color: "#fff", fontWeight: 600 }}>{nbAttente} arrivage{nbAttente > 1 ? "s" : ""} en attente de pointage</span>
             </div>
           )}
+
+          {/* Déconnexion discrète en haut à droite */}
+          <button onClick={() => signOut(auth)} style={{ position: "absolute", top: 16, right: 16, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>
+            {user?.displayName?.split(" ")[0]} · Déco
+          </button>
         </div>
-        <div style={{ maxWidth: 520, margin: "-20px auto 0", padding: "0 20px 60px", position: "relative" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+        {/* BOUTONS */}
+        <div style={{ maxWidth: 520, margin: "-24px auto 0", padding: "0 20px 60px", position: "relative" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {buttons.map((b, idx) => (
               <button key={idx} onClick={b.action}
-                style={{ display: "flex", alignItems: "center", gap: 16, padding: "18px 20px", borderRadius: 16, cursor: "pointer", border: "1.5px solid #1e1e1e", background: "#111", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", transition: "all 0.15s" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = b.color; (e.currentTarget as HTMLElement).style.background = b.color + "18"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#1e1e1e"; (e.currentTarget as HTMLElement).style.background = "#111"; }}
+                style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 18px", borderRadius: 16, cursor: "pointer", border: `1.5px solid #e8e0d0`, background: "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", transition: "all 0.15s" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = b.color; (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 20px ${b.color}22`; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e8e0d0"; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 10px rgba(0,0,0,0.06)"; (e.currentTarget as HTMLElement).style.transform = "none"; }}
               >
-                <span style={{ fontSize: 26, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "22", borderRadius: 12, flexShrink: 0 }}>{b.icon}</span>
+                <span style={{ fontSize: 24, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "18", borderRadius: 12, flexShrink: 0 }}>{b.icon}</span>
                 <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#fff" }}>{b.label}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{b.sub}</p>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1a2e1a" }}>{b.label}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>{b.sub}</p>
                 </div>
                 {b.badge ? <span style={{ background: b.color, color: "#fff", fontSize: 12, fontWeight: 700, padding: "3px 9px", borderRadius: 20, flexShrink: 0 }}>{b.badge}</span> : null}
-                <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 20, flexShrink: 0 }}>›</span>
+                <span style={{ color: "#d1d5db", fontSize: 18, flexShrink: 0 }}>›</span>
               </button>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+
+          {/* STATS */}
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
             {[
               { label: "Arrivages", value: arrivages.length, color: "#c8a84b" },
               { label: "En attente", value: nbAttente, color: "#d97706" },
-              { label: "Litiges ouverts", value: nbLitiges, color: "#dc2626" },
+              { label: "Litiges", value: nbLitiges, color: "#dc2626" },
             ].map(s => (
-              <div key={s.label} style={{ flex: 1, background: "#111", border: "1px solid #1e1e1e", borderRadius: 14, padding: "14px 10px", textAlign: "center", borderTop: `3px solid ${s.color}` }}>
-                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: s.color, letterSpacing: "-1px" }}>{s.value}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</p>
+              <div key={s.label} style={{ flex: 1, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: "14px 10px", textAlign: "center", borderTop: `3px solid ${s.color}`, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: s.color, letterSpacing: "-1px" }}>{s.value}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</p>
               </div>
             ))}
           </div>
-          <button onClick={() => signOut(auth)} style={{ width: "100%", marginTop: 20, padding: "12px", borderRadius: 12, border: "1px solid #222", background: "transparent", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.3)", fontFamily: "'Syne', sans-serif" }}>
-            {user?.displayName || user?.email} · Déconnexion
-          </button>
         </div>
       </div>
     );
