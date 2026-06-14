@@ -443,10 +443,25 @@ export default function App() {
   const [showLitiges, setShowLitiges] = useState(false);
   const [showRecherche, setShowRecherche] = useState(false);
   const [showStock, setShowStock] = useState(false);
+  const [stockPage, setStockPage] = useState<"home"|"comptage"|"ecarts"|"config">("home");
+  const [stockAllArticles, setStockAllArticles] = useState<any[]>([]);
   const [stockArticles, setStockArticles] = useState<any[]>([]);
   const [stockTeam, setStockTeam] = useState<"GMS"|"PRESTIGE"|null>(null);
+  const [stockCurrentImportId, setStockCurrentImportId] = useState("");
+  const [stockCurrentSessionId, setStockCurrentSessionId] = useState("");
   const [stockFilter, setStockFilter] = useState("");
   const [stockEcartFilter, setStockEcartFilter] = useState("tous");
+  const [stockUploading, setStockUploading] = useState(false);
+  const [stockSessions, setStockSessions] = useState<any[]>([]);
+  const [stockSessionsLoaded, setStockSessionsLoaded] = useState(false);
+  const [stockCfgUnlocked, setStockCfgUnlocked] = useState(false);
+  const [stockCfgFilter, setStockCfgFilter] = useState("tous");
+  const [stockCfgSearch, setStockCfgSearch] = useState("");
+  const [stockOverrides, setStockOverrides] = useState<Record<string,string>>({});
+  const [stockShowCalc, setStockShowCalc] = useState(false);
+  const [calcExpr, setCalcExpr] = useState("");
+  const [calcCurrent, setCalcCurrent] = useState("0");
+  const [calcJustEvaled, setCalcJustEvaled] = useState(false);
   const [searchLotQuery, setSearchLotQuery] = useState("");
   const [signatureModal, setSignatureModal] = useState<any | null>(null);
   const [sigNom, setSigNom] = useState("");
@@ -2261,17 +2276,27 @@ _PDF joint_`;
     );
   }
 
-  // ─── PAGE STOCK INVENTAIRE ───
+  // ─── PAGE STOCK INVENTAIRE (COMPLET) ───
   if (showStock) {
-    const goBack = () => { setShowStock(false); setShowAccueil(true); };
+    const PIN_STOCK = "1709";
     const resetAll = () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); };
+    const goHome = () => { setStockPage("home"); setStockTeam(null); };
 
-    // Import Excel
+    // ── Helpers équipe ──
+    const getEquipe = (art: any): "GMS"|"PRESTIGE" => {
+      const ov = stockOverrides[art.article];
+      if (ov) return ov as "GMS"|"PRESTIGE";
+      return art.equipe || "PRESTIGE";
+    };
+
+    // ── Import Excel ──
     const handleStockExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]; if (!file) return;
+      setStockUploading(true);
       try {
-        const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs" as any);
         const buf = await file.arrayBuffer();
+        const XLSX = (window as any).XLSX;
+        if (!XLSX) { showToast("SheetJS non disponible", "error"); setStockUploading(false); return; }
         const wb = XLSX.read(buf, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const json: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
@@ -2279,259 +2304,616 @@ _PDF joint_`;
         const findCol = (kws: string[]) => { for (const kw of kws) { const i = hdrs.findIndex((h: string) => h.includes(kw)); if (i >= 0) return i; } return -1; };
         const colFam = findCol(["famille"]);
         const colArt = findCol(["article", "designation", "désignation"]);
-        const colQty = findCol(["nb colis", "quantit", "colis", "qte"]);
-        const colEquipe = findCol(["equipe", "équipe", "team"]);
+        const colQty = findCol(["nb colis", "quantit", "colis"]);
+        const colEq = findCol(["equipe", "équipe"]);
         const rows = json.slice(1);
         const grouped: Record<string, any> = {};
         rows.forEach((r: any[]) => {
           const art = String(r[colArt] || "").trim();
-          if (!art || art.length < 2 || !isNaN(Number(art))) return;
+          if (!art || art.length < 2) return;
           const qty = parseInt(String(r[colQty] || "0")) || 0;
-          const fam = colFam >= 0 ? String(r[colFam] || "").trim() : "";
-          const rawEquipe = colEquipe >= 0 ? String(r[colEquipe] || "").trim().toUpperCase() : "";
-          const equipe = rawEquipe === "GMS" ? "GMS" : "PRESTIGE";
-          // Fallback: col A = GMS marker
-          const colAval = String(r[0] || "").toUpperCase().trim();
-          const finalEquipe = rawEquipe ? equipe : (colAval === "GMS" ? "GMS" : "PRESTIGE");
-          const lotFull = colEquipe < 0 ? String(r[0] || "").trim() : "";
-          const lot = lotFull.length >= 6 ? lotFull.slice(-6, -2) : lotFull.slice(-4);
-          if (!grouped[art]) grouped[art] = { article: art, famille: fam, equipe: finalEquipe, nb_colis: 0, lots: [] as string[], compte: null as number | null };
+          const fam = colFam >= 0 ? String(r[colFam] || "") : "";
+          const rawEq = colEq >= 0 ? String(r[colEq] || "").toUpperCase().trim() : String(r[0] || "").toUpperCase().trim();
+          const equipe = rawEq === "GMS" ? "GMS" : "PRESTIGE";
+          const lotFull = colEq < 0 ? String(r[0] || "") : "";
+          const lot = lotFull.length >= 8 ? lotFull.slice(4, 8) : lotFull.length >= 4 ? lotFull.slice(-4) : "";
+          if (!grouped[art]) grouped[art] = { article: art, famille: fam, equipe, nb_colis: 0, lots: [] as string[], lotsQty: {} as Record<string,number>, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null };
           grouped[art].nb_colis += qty;
-          if (lot && !grouped[art].lots.includes(lot)) grouped[art].lots.push(lot);
+          if (lot && !grouped[art].lots.includes(lot)) { grouped[art].lots.push(lot); }
+          if (lot) grouped[art].lotsQty[lot] = (grouped[art].lotsQty[lot] || 0) + qty;
         });
         const arts = Object.values(grouped).map((a: any, i: number) => ({ ...a, id: i + 1 }));
-        setStockArticles(arts);
-        setStockTeam(null);
+        setStockAllArticles(arts);
+        // Save to Firebase
+        const importId = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
+        setStockCurrentImportId(importId);
+        try {
+          const { ref: fbRef, set } = await import("firebase/database");
+          await set(fbRef(db, `stock_imports/${importId}`), {
+            filename: file.name, importId,
+            date: new Date().toISOString(),
+            dateLabel: new Date().toLocaleString("fr-FR"),
+            nb: arts.length,
+            gms: arts.filter((a: any) => getEquipe(a) === "GMS").length,
+            prestige: arts.filter((a: any) => getEquipe(a) === "PRESTIGE").length,
+            articles: arts,
+          });
+        } catch {}
         showToast(`✅ ${arts.length} articles importés`);
+        setStockSessionsLoaded(false);
       } catch (err) { showToast("Erreur lecture Excel", "error"); }
+      setStockUploading(false);
       e.target.value = "";
     };
 
-    // Match avec arrivages Firebase par nom de produit
-    const getArrivageLots = (artName: string) => {
-      const q = artName.toLowerCase();
-      return arrivages.filter((a: any) =>
-        a.produit?.toLowerCase().includes(q) || q.includes(a.produit?.toLowerCase() || "XXXX")
-      );
+    // ── Load sessions from Firebase ──
+    const loadStockSessions = async () => {
+      if (stockSessionsLoaded) return;
+      try {
+        const { ref: fbRef, get } = await import("firebase/database");
+        const snap = await get(fbRef(db, "stock_imports"));
+        if (snap.exists()) {
+          const data = snap.val();
+          const list = Object.values(data).sort((a: any, b: any) => b.importId.localeCompare(a.importId));
+          setStockSessions(list as any[]);
+        } else setStockSessions([]);
+        setStockSessionsLoaded(true);
+      } catch { setStockSessions([]); setStockSessionsLoaded(true); }
     };
 
-    // Update compte
-    const setCompte = (id: number, val: string) => {
+    // ── Load session ──
+    const loadSession = async (importId: string, team: "GMS"|"PRESTIGE") => {
+      try {
+        const { ref: fbRef, get } = await import("firebase/database");
+        const snap = await get(fbRef(db, `stock_imports/${importId}`));
+        if (!snap.exists()) { showToast("Session introuvable", "error"); return; }
+        const data = snap.val();
+        const arts: any[] = (data.articles || []).map((a: any) => ({
+          ...a, compte: null, compte1: null, compte2: null, compte3: null,
+          compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null,
+        }));
+        setStockAllArticles(arts);
+        setStockCurrentImportId(importId);
+        // Load comptages
+        const cSnap = await get(fbRef(db, `stock_comptages/${importId}_${team}`));
+        if (cSnap.exists()) {
+          const cData = cSnap.val().data || {};
+          let n = 0;
+          arts.forEach((a: any) => {
+            const d = cData[a.article];
+            if (d) {
+              for (let i = 1; i <= 8; i++) a[`compte${i}`] = d[`c${i}`] ?? null;
+              a.detruire = d.cd ?? null;
+              a.compte = d.c;
+              n++;
+            }
+          });
+          if (n > 0) showToast(`${n} comptages récupérés`);
+        }
+        const sessionId = `CPT-${team}-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+        setStockCurrentSessionId(sessionId);
+        const teamArts = arts.filter((a: any) => getEquipe(a) === team);
+        setStockArticles(teamArts.map((a: any) => ({ ...a })));
+        setStockTeam(team);
+        setStockPage("comptage");
+        setStockFilter("");
+      } catch { showToast("Erreur chargement", "error"); }
+    };
+
+    // ── Save comptages ──
+    const saveComptages = async (arts: any[]) => {
+      if (!stockTeam || !stockCurrentImportId) return;
+      try {
+        const { ref: fbRef, set } = await import("firebase/database");
+        const data: Record<string, any> = {};
+        arts.forEach((a: any, idx: number) => {
+          if (a.compte !== null && a.compte !== undefined) {
+            const locs: Record<string, any> = {};
+            for (let i = 1; i <= 8; i++) if (a[`compte${i}`] !== null && a[`compte${i}`] !== undefined) locs[`c${i}`] = a[`compte${i}`];
+            data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _idx: idx };
+          }
+        });
+        await set(fbRef(db, `stock_comptages/${stockCurrentImportId}_${stockTeam}`), {
+          data, team: stockTeam, date: new Date().toISOString().slice(0, 10), ts: Date.now(), sessionId: stockCurrentSessionId
+        });
+      } catch {}
+    };
+
+    // ── Update compte ──
+    const setCompte = (id: number, loc: number, val: string) => {
       const v = val === "" ? null : Math.max(0, parseInt(val) || 0);
-      setStockArticles(prev => prev.map(a => a.id === id ? { ...a, compte: v } : a));
+      setStockArticles(prev => prev.map(a => {
+        if (a.id !== id) return a;
+        const updated = { ...a };
+        if (loc <= 8) updated[`compte${loc}`] = v;
+        else updated.detruire = v;
+        const hasCount = updated.compte1 !== null && updated.compte1 !== undefined;
+        if (hasCount) { let t = 0; for (let i = 1; i <= 8; i++) t += updated[`compte${i}`] ?? 0; updated.compte = t; }
+        else updated.compte = null;
+        return updated;
+      }));
     };
 
-    const teamArticles = stockTeam ? stockArticles.filter(a => a.equipe === stockTeam) : [];
-    const counted = teamArticles.filter(a => a.compte !== null);
-    const pct = teamArticles.length ? Math.round(counted.length / teamArticles.length * 100) : 0;
+    // ── Delete session ──
+    const deleteSession = async (importId: string) => {
+      if (!window.confirm("Supprimer ce stock et ses comptages ?")) return;
+      try {
+        const { ref: fbRef, remove } = await import("firebase/database");
+        await remove(fbRef(db, `stock_imports/${importId}`));
+        await remove(fbRef(db, `stock_comptages/${importId}_GMS`));
+        await remove(fbRef(db, `stock_comptages/${importId}_PRESTIGE`));
+        setStockSessions(prev => prev.filter((s: any) => s.importId !== importId));
+        showToast("Stock supprimé");
+      } catch { showToast("Erreur suppression", "error"); }
+    };
 
-    const filteredArts = teamArticles.filter(a => {
+    // ── Clôturer ──
+    const cloturerSession = async (importId: string) => {
+      if (!window.confirm("Clôturer ce stock ? Il ne sera plus modifiable.")) return;
+      try {
+        const { ref: fbRef, get, set } = await import("firebase/database");
+        const snap = await get(fbRef(db, `stock_imports/${importId}`));
+        if (snap.exists()) await set(fbRef(db, `stock_imports/${importId}`), { ...snap.val(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") });
+        setStockSessions(prev => prev.map((s: any) => s.importId === importId ? { ...s, cloture: true } : s));
+        showToast("✅ Stock clôturé");
+      } catch {}
+    };
+
+    // ── Export CSV ──
+    const exportStockCSV = () => {
+      const now = new Date().toLocaleString("fr-FR");
+      let csv = `Inventaire ${stockTeam} — ${now}\nArticle,Famille,Stock sys.,Compté,Détruire,Écart,Statut\n`;
+      stockArticles.forEach(a => {
+        const e = a.compte !== null ? a.compte - a.nb_colis : "";
+        const st = a.compte === null ? "Non compté" : a.compte === a.nb_colis ? "OK" : a.compte > a.nb_colis ? "Surplus" : "Manque";
+        csv += `"${a.article}","${a.famille}",${a.nb_colis},${a.compte ?? ""},${a.detruire ?? ""},${e},"${st}"\n`;
+      });
+      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const lnk = document.createElement("a"); lnk.href = url;
+      lnk.download = `inventaire_${stockTeam?.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`;
+      lnk.click(); URL.revokeObjectURL(url);
+      showToast("📥 CSV téléchargé");
+    };
+
+    // ── Export PDF (print overlay) ──
+    const exportStockPDF = () => {
+      const now = new Date().toLocaleString("fr-FR");
+      const sorted = [...stockArticles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
+      const manq = sorted.filter(a => a.compte !== null && a.compte < a.nb_colis);
+      const exc = sorted.filter(a => a.compte !== null && a.compte > a.nb_colis);
+      const ok = sorted.filter(a => a.compte !== null && a.compte === a.nb_colis);
+      const nc = sorted.filter(a => a.compte === null);
+      const row = (a: any, hl = false) => {
+        const e = a.compte !== null ? a.compte - a.nb_colis : null;
+        const sign = e !== null && e > 0 ? "+" : "";
+        const ec = e === null ? "#6b7280" : e < 0 ? "#dc2626" : e > 0 ? "#d97706" : "#16a34a";
+        const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q}`).join(" | ") : (a.lots?.join(", ") || "");
+        return `<tr style="${hl ? "background:#fff5f5" : ""}"><td style="padding:5px 8px;font-size:11px;border-bottom:1px solid #e8e0d0">${a.article}${lotsStr ? `<div style="font-size:9px;color:#6b7280">${lotsStr}</div>` : ""}</td><td style="padding:5px 8px;text-align:center;font-size:11px;border-bottom:1px solid #e8e0d0">${a.nb_colis}</td><td style="padding:5px 8px;text-align:center;font-size:11px;font-weight:600;border-bottom:1px solid #e8e0d0">${a.compte ?? "—"}</td><td style="padding:5px 8px;text-align:center;font-size:11px;color:#dc2626;border-bottom:1px solid #e8e0d0">${a.detruire || ""}</td><td style="padding:5px 8px;text-align:center;font-size:12px;font-weight:700;color:${ec};border-bottom:1px solid #e8e0d0">${e !== null ? sign + e : "—"}</td></tr>`;
+      };
+      const thead = `<tr style="background:#f5f3ee"><th style="padding:6px 8px;text-align:left;font-size:10px;border-bottom:2px solid #c8a84b">Article</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #c8a84b">Stock</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #c8a84b">Compté</th><th style="padding:6px 8px;text-align:center;font-size:10px;color:#dc2626;border-bottom:2px solid #c8a84b">Détruire</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #c8a84b">Écart</th></tr>`;
+      const section = (title: string, color: string, arr: any[], hl = false) => arr.length ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:${color};padding:10px 0 4px">${title} (${arr.length})</div><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${arr.map(a => row(a, hl)).join("")}</tbody></table>` : "";
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Inventaire ${stockTeam}</title><style>body{font-family:-apple-system,sans-serif;margin:0;padding:16px}@media print{body{padding:8px}}</style></head><body><h2 style="margin:0;font-size:16px;color:#c8a84b">🌿 Moorea · Inventaire ${stockTeam}</h2><p style="font-size:11px;color:#6b7280;margin:4px 0 16px">${now} · ${sorted.length} articles · Manquants: ${manq.length} · Surplus: ${exc.length} · Non comptés: ${nc.length}</p>${section("▼ Manquants", "#dc2626", manq, true)}${section("▲ Surplus", "#d97706", exc, true)}${section("? Non comptés", "#6b7280", nc)}${section("✓ OK", "#16a34a", ok)}</body></html>`;
+      const w = window.open("", "_blank");
+      if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
+    };
+
+    // ── Toggle équipe article ──
+    const toggleArticleEquipe = async (article: string, newEquipe: "GMS"|"PRESTIGE") => {
+      const newOv = { ...stockOverrides, [article]: newEquipe };
+      setStockOverrides(newOv);
+      try {
+        const { ref: fbRef, set } = await import("firebase/database");
+        await set(fbRef(db, "stock_config/overrides"), { data: newOv });
+      } catch {}
+    };
+
+    // ── Calculatrice ──
+    const calcNum = (n: string) => {
+      if (calcJustEvaled) { setCalcCurrent(""); setCalcJustEvaled(false); }
+      if (n === "." && calcCurrent.includes(".")) return;
+      setCalcCurrent(prev => (prev === "0" && n !== ".") ? n : prev + n);
+    };
+    const calcOp = (op: string) => {
+      setCalcJustEvaled(false);
+      if (op === "±") { setCalcCurrent(prev => String(parseFloat(prev) * -1)); return; }
+      if (op === "%") { setCalcCurrent(prev => String(parseFloat(prev) / 100)); return; }
+      setCalcExpr(prev => prev + calcCurrent + " " + op + " ");
+      setCalcCurrent("0");
+    };
+    const calcEqual = () => {
+      try {
+        const full = calcExpr + calcCurrent;
+        // eslint-disable-next-line no-new-func
+        const res = Function('"use strict";return (' + full + ')')();
+        const r = Math.round(res * 100) / 100;
+        setCalcCurrent(String(r)); setCalcExpr(""); setCalcJustEvaled(true);
+      } catch { setCalcCurrent("Err"); setCalcExpr(""); }
+    };
+    const calcClear = () => { setCalcCurrent("0"); setCalcExpr(""); setCalcJustEvaled(false); };
+
+    // ── Computed ──
+    const counted = stockArticles.filter(a => a.compte !== null);
+    const pct = stockArticles.length ? Math.round(counted.length / stockArticles.length * 100) : 0;
+    const ecartManq = stockArticles.filter(a => a.compte !== null && a.compte < a.nb_colis).length;
+    const ecartSurp = stockArticles.filter(a => a.compte !== null && a.compte > a.nb_colis).length;
+    const ecartOk = stockArticles.filter(a => a.compte !== null && a.compte === a.nb_colis).length;
+
+    const filteredArts = stockArticles.filter(a => {
       const q = stockFilter.toLowerCase();
-      if (q && !a.article.toLowerCase().includes(q)) return false;
+      if (q && !a.article.toLowerCase().includes(q) && !a.famille?.toLowerCase().includes(q)) return false;
       if (stockEcartFilter === "ecart") return a.compte !== null && a.compte !== a.nb_colis;
       if (stockEcartFilter === "ok") return a.compte !== null && a.compte === a.nb_colis;
       if (stockEcartFilter === "nc") return a.compte === null;
       return true;
     });
 
-    const exportCSV = () => {
-      const now = new Date().toLocaleString("fr-FR");
-      let csv = `Inventaire ${stockTeam} — ${now}\nArticle,Famille,Stock sys.,Compté,Écart,Statut,Lots arrivages\n`;
-      teamArticles.forEach(a => {
-        const e = a.compte !== null ? a.compte - a.nb_colis : "";
-        const st = a.compte === null ? "Non compté" : a.compte === a.nb_colis ? "OK" : a.compte > a.nb_colis ? "Surplus" : "Manque";
-        const lotsArr = getArrivageLots(a.article).map((x: any) => x.lot_interne).filter(Boolean).join(" | ");
-        csv += `"${a.article}","${a.famille}",${a.nb_colis},${a.compte ?? ""},${e},"${st}","${lotsArr}"\n`;
-      });
-      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const lnk = document.createElement("a"); lnk.href = url;
-      lnk.download = `inventaire_${stockTeam?.toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`;
-      lnk.click(); URL.revokeObjectURL(url);
-      showToast("📥 CSV téléchargé");
-    };
-
-    // PAGE : choix équipe
-    if (!stockTeam) return (
-      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-        <style>{styles}</style>
-        <div style={{ background: "linear-gradient(135deg, #0c4a6e 0%, #0891b2 60%, #06b6d4 100%)", padding: "40px 24px 56px", textAlign: "center", position: "relative" }}>
-          <button onClick={goBack} style={{ position: "absolute", top: 16, left: 16, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 12, color: "#fff", fontFamily: "'Syne', sans-serif" }}>‹ Accueil</button>
-          <div style={{ fontSize: 44, marginBottom: 10 }}>📦</div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#fff" }}>Inventaire Stock</h1>
-          <p style={{ margin: "8px 0 0", fontSize: 14, color: "rgba(255,255,255,0.65)" }}>Importe le fichier Excel puis choisis ton équipe</p>
-        </div>
-        <div style={{ maxWidth: 520, margin: "-24px auto 0", padding: "0 20px 60px" }}>
-          {/* Upload */}
-          <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", border: "1.5px solid #e8e0d0" }}>
-            <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>📊 Fichier stock du jour</p>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: "#f5f3ee", borderRadius: 12, cursor: "pointer", border: "2px dashed #c8a84b" }}>
-              <span style={{ fontSize: 24 }}>📁</span>
-              <div>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#1a2e1a" }}>Importer un fichier Excel</p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>.xlsx — colonnes : Famille, Article, Nb colis, Équipe</p>
-              </div>
-              <input type="file" accept=".xlsx,.xls" onChange={handleStockExcel} style={{ display: "none" }} />
-            </label>
-            {stockArticles.length > 0 && (
-              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {[
-                  { label: "GMS", count: stockArticles.filter(a => a.equipe === "GMS").length, color: "#92710a", bg: "#fffbeb" },
-                  { label: "PRESTIGE", count: stockArticles.filter(a => a.equipe === "PRESTIGE").length, color: "#7c3aed", bg: "#f5f3ff" },
-                ].map(s => (
-                  <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: "8px 12px", textAlign: "center", border: `1px solid ${s.color}33` }}>
-                    <p style={{ margin: 0, fontWeight: 800, fontSize: 18, color: s.color }}>{s.count}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: s.color, textTransform: "uppercase" }}>{s.label}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+    // ── PAGE HOME stock ──
+    if (stockPage === "home") {
+      if (!stockSessionsLoaded) loadStockSessions();
+      return (
+        <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+          <style>{styles}</style>
+          {/* Header */}
+          <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", display: "flex", alignItems: "center", gap: 12 }}>
+            <button onClick={resetAll} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>📦 Inventaire Stock</p>
+              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>GMS & Prestige</p>
+            </div>
+            <button onClick={() => setStockPage("config")} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.6)" }}>⚙️ Config</button>
           </div>
-          {/* Choix équipe */}
-          {stockArticles.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {([
-                { team: "GMS" as const, icon: "🌿", color: "#92710a", bg: "#fffbeb", border: "#fde68a", desc: "Comptage 19h00" },
-                { team: "PRESTIGE" as const, icon: "✨", color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe", desc: "Comptage nuit" },
-              ]).map(t => (
-                <button key={t.team} onClick={() => setStockTeam(t.team)}
-                  style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 20px", borderRadius: 16, cursor: "pointer", border: `2px solid ${t.border}`, background: t.bg, textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
-                  <span style={{ fontSize: 32, width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", borderRadius: 14, flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>{t.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: t.color }}>{t.team}</p>
-                    <p style={{ margin: "2px 0 0", fontSize: 13, color: "#6b7280" }}>{stockArticles.filter(a => a.equipe === t.team).length} articles · {t.desc}</p>
+          <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px 60px" }}>
+            {/* Upload */}
+            <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1.5px solid #e8e0d0" }}>
+              <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>📊 Nouveau stock</p>
+              <label style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: stockUploading ? "#f0f0f0" : "#faf8f3", borderRadius: 12, cursor: "pointer", border: "2px dashed #c8a84b" }}>
+                <span style={{ fontSize: 28 }}>{stockUploading ? "⏳" : "📁"}</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#1a2e1a" }}>{stockUploading ? "Import en cours..." : "Importer un fichier Excel"}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>.xlsx — colonnes Famille / Article / Nb colis (/ Équipe optionnel)</p>
+                </div>
+                <input type="file" accept=".xlsx,.xls" onChange={handleStockExcel} style={{ display: "none" }} disabled={stockUploading} />
+              </label>
+              {stockAllArticles.length > 0 && (
+                <>
+                  <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                    {(["GMS", "PRESTIGE"] as const).map(team => {
+                      const nb = stockAllArticles.filter(a => getEquipe(a) === team).length;
+                      return (
+                        <button key={team} onClick={() => { setStockArticles(stockAllArticles.filter(a => getEquipe(a) === team).map(a => ({ ...a }))); setStockTeam(team); setStockCurrentSessionId(`CPT-${team}-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,6).toUpperCase()}`); setStockPage("comptage"); setStockFilter(""); }}
+                          style={{ flex: 1, padding: "16px 12px", borderRadius: 14, border: `2px solid ${team === "GMS" ? "#fde68a" : "#ddd6fe"}`, background: team === "GMS" ? "#fffbeb" : "#f5f3ff", cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                          <p style={{ margin: 0, fontSize: 24 }}>{team === "GMS" ? "🌿" : "✨"}</p>
+                          <p style={{ margin: "4px 0 0", fontWeight: 800, fontSize: 16, color: team === "GMS" ? "#92710a" : "#7c3aed" }}>{team}</p>
+                          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{nb} articles</p>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <span style={{ color: t.color, fontSize: 24 }}>›</span>
-                </button>
+                </>
+              )}
+            </div>
+            {/* Sessions passées */}
+            <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1.5px solid #e8e0d0" }}>
+              <p style={{ margin: "0 0 14px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>📁 Stocks importés</p>
+              {!stockSessionsLoaded ? (
+                <p style={{ color: "#9ca3af", fontSize: 13 }}>Chargement...</p>
+              ) : stockSessions.length === 0 ? (
+                <p style={{ color: "#9ca3af", fontSize: 13, textAlign: "center", padding: "1rem 0" }}>Aucun stock importé</p>
+              ) : stockSessions.map((s: any) => (
+                <div key={s.importId} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#374151" }}>📅 {s.dateLabel}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>{s.filename} · {s.nb} articles · {s.gms} GMS · {s.prestige} Prestige</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {!s.cloture && (["GMS", "PRESTIGE"] as const).map(team => (
+                        <button key={team} onClick={() => loadSession(s.importId, team)}
+                          style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: team === "GMS" ? "#c8a84b" : "#7c3aed", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                          {team === "GMS" ? "🌿" : "✨"} {team}
+                        </button>
+                      ))}
+                      {s.cloture && <span style={{ fontSize: 11, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#15803d", padding: "4px 10px", borderRadius: 8, fontWeight: 600 }}>✓ Clôturé</span>}
+                      {!s.cloture && <button onClick={() => cloturerSession(s.importId)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#15803d", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🔒</button>}
+                      <button onClick={() => deleteSession(s.importId)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
-          )}
-          {stockArticles.length === 0 && (
-            <div style={{ textAlign: "center", padding: "2rem", color: "#9ca3af" }}>
-              <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>
-              <p style={{ margin: 0, fontWeight: 600 }}>Importe un fichier Excel pour commencer</p>
-            </div>
-          )}
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
 
-    // PAGE : comptage
-    const ecartManq = teamArticles.filter(a => a.compte !== null && a.compte < a.nb_colis).length;
-    const ecartSurp = teamArticles.filter(a => a.compte !== null && a.compte > a.nb_colis).length;
-    const ecartOk = teamArticles.filter(a => a.compte !== null && a.compte === a.nb_colis).length;
+    // ── PAGE CONFIG ──
+    if (stockPage === "config") {
+      const cfgArts = stockAllArticles.filter(a => {
+        if (stockCfgFilter === "GMS" && getEquipe(a) !== "GMS") return false;
+        if (stockCfgFilter === "PRESTIGE" && getEquipe(a) !== "PRESTIGE") return false;
+        if (stockCfgSearch && !a.article.toLowerCase().includes(stockCfgSearch.toLowerCase())) return false;
+        return true;
+      });
+      return (
+        <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+          <style>{styles}</style>
+          <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", display: "flex", alignItems: "center", gap: 12 }}>
+            <button onClick={() => setStockPage("home")} style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "#fff" }}>← Retour</button>
+            <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#0891b2", flex: 1, textTransform: "uppercase", letterSpacing: 1 }}>⚙️ Config équipes</p>
+          </div>
+          <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px 60px" }}>
+            {!stockCfgUnlocked ? (
+              <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+                <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
+                <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 20 }}>Entrez le code pour modifier les attributions</p>
+                <input type="password" maxLength={4} placeholder="••••" autoFocus
+                  style={{ width: 100, padding: "10px", textAlign: "center", fontSize: 20, border: "1.5px solid #e8e0d0", borderRadius: 10, outline: "none", letterSpacing: 6, display: "block", margin: "0 auto" }}
+                  onChange={e => { if (e.target.value === PIN_STOCK) { setStockCfgUnlocked(true); } }}
+                />
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                  {["tous", "GMS", "PRESTIGE"].map(f => (
+                    <button key={f} onClick={() => setStockCfgFilter(f)} style={{ padding: "7px 16px", borderRadius: 20, cursor: "pointer", border: "1.5px solid", borderColor: stockCfgFilter === f ? "#0891b2" : "#e8e0d0", background: stockCfgFilter === f ? "#0891b2" : "#fff", color: stockCfgFilter === f ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 600 }}>{f === "tous" ? "Tous" : f}</button>
+                  ))}
+                  <input value={stockCfgSearch} onChange={e => setStockCfgSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{ flex: 1, minWidth: 140, padding: "7px 12px", border: "1.5px solid #e8e0d0", borderRadius: 20, fontSize: 13, outline: "none" }} />
+                </div>
+                <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+                  {cfgArts.length === 0 ? <p style={{ padding: "2rem", textAlign: "center", color: "#9ca3af" }}>Aucun article</p> : cfgArts.map(a => {
+                    const eq = getEquipe(a);
+                    return (
+                      <div key={a.id} style={{ display: "flex", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f0f0f0" }}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1a2e1a" }}>{a.article}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{a.famille}</p>
+                        </div>
+                        <div style={{ display: "inline-flex", border: "1.5px solid #e8e0d0", borderRadius: 20, overflow: "hidden" }}>
+                          {(["GMS", "PRESTIGE"] as const).map(t => (
+                            <button key={t} onClick={() => toggleArticleEquipe(a.article, t)}
+                              style={{ padding: "5px 14px", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: eq === t ? (t === "GMS" ? "#c8a84b" : "#7c3aed") : "transparent", color: eq === t ? "#fff" : "#9ca3af" }}>
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── PAGE ECARTS ──
+    if (stockPage === "ecarts") {
+      const sortedArts = [...stockArticles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
+      const ecartsArts = sortedArts.filter(a => {
+        const q = stockFilter.toLowerCase();
+        if (q && !a.article.toLowerCase().includes(q)) return false;
+        if (stockEcartFilter === "ecart") return a.compte !== null && a.compte !== a.nb_colis;
+        if (stockEcartFilter === "ok") return a.compte !== null && a.compte === a.nb_colis;
+        if (stockEcartFilter === "nc") return a.compte === null;
+        return true;
+      });
+      return (
+        <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+          <style>{styles}</style>
+          <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", position: "sticky", top: 0, zIndex: 100 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 800, margin: "0 auto" }}>
+              <button onClick={() => setStockPage("comptage")} style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "#fff" }}>← Comptage</button>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#0891b2", flex: 1, textTransform: "uppercase", letterSpacing: 1 }}>📊 Écarts {stockTeam}</p>
+              <button onClick={exportStockCSV} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>CSV</button>
+              <button onClick={exportStockPDF} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "#fff" }}>PDF</button>
+              <button onClick={resetAll} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
+            </div>
+          </div>
+          <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              {[{ label: "Sans écart", value: ecartOk, color: "#16a34a", bg: "#f0fdf4" }, { label: "Manquants", value: ecartManq, color: "#dc2626", bg: "#fef2f2" }, { label: "Surplus", value: ecartSurp, color: "#d97706", bg: "#fffbeb" }, { label: "Non comptés", value: stockArticles.length - counted.length, color: "#6b7280", bg: "#f9fafb" }].map(s => (
+                <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 12, padding: "10px 6px", textAlign: "center", border: `1px solid ${s.color}33` }}>
+                  <p style={{ margin: 0, fontWeight: 800, fontSize: 20, color: s.color }}>{s.value}</p>
+                  <p style={{ margin: 0, fontSize: 10, color: s.color, textTransform: "uppercase" }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              <input value={stockFilter} onChange={e => setStockFilter(e.target.value)} placeholder="🔍 Rechercher..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+              {[{ id: "tous", label: "Tous" }, { id: "ecart", label: "Avec écart" }, { id: "ok", label: "OK" }, { id: "nc", label: "Non comptés" }].map(f => (
+                <button key={f.id} onClick={() => setStockEcartFilter(f.id)} style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", border: "1.5px solid", borderColor: stockEcartFilter === f.id ? "#0891b2" : "#e8e0d0", background: stockEcartFilter === f.id ? "#0891b2" : "#fff", color: stockEcartFilter === f.id ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 600 }}>{f.label}</button>
+              ))}
+            </div>
+            {ecartsArts.map(a => {
+              const e = a.compte !== null ? a.compte - a.nb_colis : null;
+              const ec = e === null ? "#9ca3af" : e < 0 ? "#dc2626" : e > 0 ? "#d97706" : "#16a34a";
+              const badge = e === null ? "Non compté" : e === 0 ? "✓ OK" : e < 0 ? `▼ ${e}` : `▲ +${e}`;
+              const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" | ") : (a.lots?.join(", ") || "");
+              return (
+                <div key={a.id} style={{ background: "#fff", borderRadius: 12, marginBottom: 6, padding: "10px 16px", display: "flex", alignItems: "center", gap: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", borderLeft: `4px solid ${ec}` }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{a.article}</p>
+                    {lotsStr && <p style={{ margin: "2px 0 0", fontSize: 10, color: "#9ca3af" }}>{lotsStr}</p>}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>Stock: <b style={{ color: "#374151" }}>{a.nb_colis}</b></p>
+                  <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>Compté: <b style={{ color: "#374151" }}>{a.compte ?? "—"}</b></p>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: ec, minWidth: 60, textAlign: "right" }}>{badge}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ── PAGE COMPTAGE ──
+    let saveTimeout: ReturnType<typeof setTimeout>;
+    const schedSave = (arts: any[]) => {
+      clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(() => saveComptages(arts), 1500);
+    };
 
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
-
         {/* Header */}
         <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", position: "sticky", top: 0, zIndex: 100 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 800, margin: "0 auto" }}>
-            <button onClick={() => setStockTeam(null)} style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 12, color: "#fff", fontFamily: "'Syne', sans-serif" }}>‹ Équipe</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 800, margin: "0 auto" }}>
+            <button onClick={goHome} style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "#fff" }}>← Stocks</button>
             <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>
-                {stockTeam === "GMS" ? "🌿" : "✨"} Stock {stockTeam}
-              </p>
-              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{counted.length}/{teamArticles.length} comptés · {pct}%</p>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>{stockTeam === "GMS" ? "🌿" : "✨"} {stockTeam}</p>
+              <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{counted.length}/{stockArticles.length} · {pct}% · {stockCurrentSessionId}</p>
             </div>
-            <button onClick={() => resetAll()} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>🏠</button>
+            <button onClick={() => { setStockPage("ecarts"); setStockEcartFilter("tous"); }} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#0891b2", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#fff" }}>📊 Écarts</button>
+            <button onClick={resetAll} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
           </div>
-          {/* Barre de progression */}
-          <div style={{ maxWidth: 800, margin: "10px auto 0", height: 5, background: "rgba(255,255,255,0.1)", borderRadius: 4 }}>
-            <div style={{ height: 5, background: "#0891b2", borderRadius: 4, width: `${pct}%`, transition: "width 0.3s" }} />
+          <div style={{ maxWidth: 800, margin: "8px auto 0", height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 4 }}>
+            <div style={{ height: 4, background: "#0891b2", borderRadius: 4, width: `${pct}%`, transition: "width 0.3s" }} />
           </div>
         </div>
 
-        <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px" }}>
-          {/* Stats rapides */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            {[
-              { label: "Manquants", value: ecartManq, color: "#dc2626", bg: "#fef2f2" },
-              { label: "Surplus", value: ecartSurp, color: "#d97706", bg: "#fffbeb" },
-              { label: "OK", value: ecartOk, color: "#16a34a", bg: "#f0fdf4" },
-              { label: "Non comptés", value: teamArticles.length - counted.length, color: "#6b7280", bg: "#f9fafb" },
-            ].map(s => (
-              <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 12, padding: "10px 8px", textAlign: "center", border: `1px solid ${s.color}33` }}>
-                <p style={{ margin: 0, fontWeight: 800, fontSize: 20, color: s.color }}>{s.value}</p>
-                <p style={{ margin: 0, fontSize: 10, color: s.color, textTransform: "uppercase", letterSpacing: "0.3px" }}>{s.label}</p>
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "14px 16px 100px" }}>
+          {/* Stats */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {[{ label: "Manq.", value: ecartManq, color: "#dc2626", bg: "#fef2f2" }, { label: "Surplus", value: ecartSurp, color: "#d97706", bg: "#fffbeb" }, { label: "OK", value: ecartOk, color: "#16a34a", bg: "#f0fdf4" }, { label: "Reste", value: stockArticles.length - counted.length, color: "#6b7280", bg: "#f9fafb" }].map(s => (
+              <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: "8px 6px", textAlign: "center", border: `1px solid ${s.color}33` }}>
+                <p style={{ margin: 0, fontWeight: 800, fontSize: 18, color: s.color }}>{s.value}</p>
+                <p style={{ margin: 0, fontSize: 10, color: s.color }}>{s.label}</p>
               </div>
             ))}
           </div>
 
-          {/* Filtres + export */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-            <input value={stockFilter} onChange={e => setStockFilter(e.target.value)} placeholder="🔍 Rechercher un article..." style={{ flex: 1, minWidth: 160, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
-            <button onClick={exportCSV} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>📥 CSV</button>
+          {/* Filtres */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <input value={stockFilter} onChange={e => setStockFilter(e.target.value)} placeholder="🔍 Rechercher..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none" }} />
+            <button onClick={() => { if (window.confirm("Réinitialiser tous les comptages ?")) { setStockArticles(prev => prev.map(a => ({ ...a, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null }))); } }} style={{ padding: "10px 12px", borderRadius: 10, border: "1.5px solid #fecaca", background: "#fff5f5", cursor: "pointer", fontSize: 12, color: "#dc2626", fontWeight: 700 }}>↺ Reset</button>
           </div>
           <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-            {[
-              { id: "tous", label: "Tous" },
-              { id: "ecart", label: "Avec écart" },
-              { id: "ok", label: "OK" },
-              { id: "nc", label: "Non comptés" },
-            ].map(f => (
-              <button key={f.id} onClick={() => setStockEcartFilter(f.id)}
-                style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", border: "1.5px solid", borderColor: stockEcartFilter === f.id ? "#0891b2" : "#e8e0d0", background: stockEcartFilter === f.id ? "#0891b2" : "#fff", color: stockEcartFilter === f.id ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>
-                {f.label}
-              </button>
+            {[{ id: "tous", label: "Tous" }, { id: "nc", label: "Non comptés" }, { id: "ecart", label: "Écarts" }, { id: "ok", label: "OK" }].map(f => (
+              <button key={f.id} onClick={() => setStockEcartFilter(f.id)} style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", border: "1.5px solid", borderColor: stockEcartFilter === f.id ? "#0891b2" : "#e8e0d0", background: stockEcartFilter === f.id ? "#0891b2" : "#fff", color: stockEcartFilter === f.id ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 600 }}>{f.label}</button>
             ))}
           </div>
 
-          {/* Liste articles */}
+          {/* Articles */}
           {filteredArts.map(a => {
-            const ecart = a.compte !== null ? a.compte - a.nb_colis : null;
+            const hasCount = a.compte1 !== null && a.compte1 !== undefined;
+            let total = 0; for (let i = 1; i <= 8; i++) total += a[`compte${i}`] ?? 0;
+            const ecart = hasCount ? total - a.nb_colis : null;
             const ecartColor = ecart === null ? "#9ca3af" : ecart < 0 ? "#dc2626" : ecart > 0 ? "#d97706" : "#16a34a";
-            const arrivagesLies = getArrivageLots(a.article);
+            const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" · ") : (a.lots?.join(" · ") || "");
+            // Count filled slots
+            const filledSlots: number[] = [];
+            for (let i = 1; i <= 8; i++) if (a[`compte${i}`] !== null && a[`compte${i}`] !== undefined) filledSlots.push(i);
+            const nextSlot = filledSlots.length === 0 ? 1 : Math.min(8, Math.max(...filledSlots) + 1);
             return (
-              <div key={a.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 8, padding: "12px 16px", boxShadow: "0 1px 6px rgba(0,0,0,0.05)", borderLeft: `4px solid ${ecartColor}`, display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: "0 0 2px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.article}</p>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontSize: 11, color: "#9ca3af" }}>{a.famille}</span>
-                    {arrivagesLies.length > 0 && (
-                      <span style={{ fontSize: 10, background: "#faf8f0", color: "#8a6f2e", border: "1px solid #e0d0a0", padding: "1px 6px", borderRadius: 10, fontWeight: 700 }}>
-                        🔖 Lot {arrivagesLies.map((x: any) => x.lot_interne).filter(Boolean).join(", ") || arrivagesLies[0].produit}
-                      </span>
-                    )}
+              <div key={a.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 8, padding: "12px 16px", boxShadow: "0 1px 6px rgba(0,0,0,0.05)", borderLeft: `4px solid ${ecartColor}` }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{a.article}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>{a.famille}{lotsStr ? ` · ${lotsStr}` : ""}</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>STOCK</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: "#374151" }}>{a.nb_colis}</p>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>TOTAL</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: ecartColor }}>{hasCount ? total : "—"}</p>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>ÉCART</p>
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: ecartColor }}>{ecart === null ? "—" : (ecart > 0 ? "+" : "") + ecart}</p>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                  <div style={{ textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Stock</p>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#374151" }}>{a.nb_colis}</p>
-                  </div>
-                  <div style={{ textAlign: "center" }}>
-                    <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Compté</p>
-                    <input
-                      type="number" min="0"
-                      value={a.compte ?? ""}
-                      onChange={e => setCompte(a.id, e.target.value)}
-                      placeholder="—"
-                      style={{ width: 64, padding: "5px 8px", border: `1.5px solid ${a.compte !== null ? ecartColor : "#e8e0d0"}`, borderRadius: 8, textAlign: "center", fontSize: 15, fontWeight: 700, outline: "none", fontFamily: "'Syne', sans-serif", color: ecartColor }}
+                {/* Emplacements */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {filledSlots.map(loc => (
+                    <div key={loc} style={{ textAlign: "center" }}>
+                      <p style={{ margin: "0 0 2px", fontSize: 9, color: "#9ca3af" }}>Emp.{loc}</p>
+                      <input type="number" min="0" inputMode="numeric"
+                        value={a[`compte${loc}`] ?? ""}
+                        onChange={e => {
+                          setCompte(a.id, loc, e.target.value);
+                          setStockArticles(prev => { schedSave(prev); return prev; });
+                        }}
+                        style={{ width: 58, padding: "6px 4px", border: "1.5px solid #e8e0d0", borderRadius: 8, textAlign: "center", fontSize: 14, fontWeight: 700, outline: "none", fontFamily: "'Syne', sans-serif" }}
+                      />
+                    </div>
+                  ))}
+                  {(filledSlots.length === 0 || (filledSlots.length < 8 && filledSlots.includes(nextSlot - 1))) && (
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ margin: "0 0 2px", fontSize: 9, color: "#9ca3af" }}>{filledSlots.length === 0 ? "Compter" : `Emp.${nextSlot}`}</p>
+                      <input type="number" min="0" inputMode="numeric"
+                        value=""
+                        placeholder="0"
+                        onChange={e => {
+                          if (e.target.value !== "") {
+                            setCompte(a.id, filledSlots.length === 0 ? 1 : nextSlot, e.target.value);
+                            setStockArticles(prev => { schedSave(prev); return prev; });
+                          }
+                        }}
+                        style={{ width: 58, padding: "6px 4px", border: "1.5px dashed #c8a84b", borderRadius: 8, textAlign: "center", fontSize: 14, fontWeight: 700, outline: "none", fontFamily: "'Syne', sans-serif", color: "#c8a84b" }}
+                      />
+                    </div>
+                  )}
+                  {/* Détruire */}
+                  <div style={{ textAlign: "center", marginLeft: 8 }}>
+                    <p style={{ margin: "0 0 2px", fontSize: 9, color: "#dc2626" }}>🗑 Détruire</p>
+                    <input type="number" min="0" inputMode="numeric"
+                      value={a.detruire ?? ""}
+                      placeholder="0"
+                      onChange={e => {
+                        setCompte(a.id, 9, e.target.value);
+                        setStockArticles(prev => { schedSave(prev); return prev; });
+                      }}
+                      style={{ width: 58, padding: "6px 4px", border: "1.5px solid #fecaca", borderRadius: 8, textAlign: "center", fontSize: 14, fontWeight: 700, outline: "none", fontFamily: "'Syne', sans-serif", color: "#dc2626" }}
                     />
-                  </div>
-                  <div style={{ textAlign: "center", minWidth: 40 }}>
-                    <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Écart</p>
-                    <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: ecartColor }}>
-                      {ecart === null ? "—" : (ecart > 0 ? "+" : "") + ecart}
-                    </p>
                   </div>
                 </div>
               </div>
             );
           })}
-
-          {filteredArts.length === 0 && (
-            <div style={{ textAlign: "center", padding: "3rem", color: "#9ca3af" }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
-              <p style={{ margin: 0 }}>Aucun article</p>
-            </div>
-          )}
+          {filteredArts.length === 0 && <div style={{ textAlign: "center", padding: "3rem", color: "#9ca3af" }}><p>Aucun article</p></div>}
         </div>
+
+        {/* Calculatrice FAB */}
+        <button onClick={() => setStockShowCalc(!stockShowCalc)}
+          style={{ position: "fixed", bottom: 24, right: 24, width: 52, height: 52, borderRadius: "50%", background: "#c8a84b", border: "none", cursor: "pointer", fontSize: 22, boxShadow: "0 4px 16px rgba(200,168,75,0.4)", zIndex: 300 }}>
+          🧮
+        </button>
+        {stockShowCalc && (
+          <div style={{ position: "fixed", bottom: 90, right: 24, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 18, padding: "1.25rem", width: 240, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", zIndex: 400 }}>
+            <div style={{ background: "#f5f3ee", border: "1.5px solid #e8e0d0", borderRadius: 10, padding: "8px 12px", marginBottom: 10 }}>
+              <p style={{ margin: 0, fontSize: 11, color: "#6b7280", minHeight: 14 }}>{calcExpr}</p>
+              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, textAlign: "right" }}>{calcCurrent}</p>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+              {[["C", "±", "%", "÷"], ["7", "8", "9", "×"], ["4", "5", "6", "−"], ["1", "2", "3", "+"], ["0", "0", ".", "="]].map((row, ri) =>
+                row.map((btn, ci) => {
+                  const isEq = btn === "="; const isOp = ["÷", "×", "−", "+", "±", "%"].includes(btn); const isClear = btn === "C";
+                  return (
+                    <button key={`${ri}-${ci}`}
+                      onClick={() => { if (btn === "C") calcClear(); else if (btn === "=") calcEqual(); else if (["÷", "×", "−", "+"].includes(btn)) calcOp(btn === "÷" ? "/" : btn === "×" ? "*" : btn === "−" ? "-" : "+"); else if (btn === "±") calcOp("±"); else if (btn === "%") calcOp("%"); else calcNum(btn); }}
+                      style={{ padding: "9px 0", border: "1.5px solid #e8e0d0", borderRadius: 8, background: isEq ? "#c8a84b" : isClear ? "#fff5f5" : isOp ? "#fffbeb" : "#fff", color: isEq ? "#0a0a0a" : isClear ? "#dc2626" : isOp ? "#c8a84b" : "#374151", cursor: "pointer", fontSize: 13, fontWeight: isEq || isOp ? 700 : 500, gridColumn: ri === 4 && ci === 0 ? "span 2" : "auto" }}>
+                      {btn}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
+
+  return (
     <div className="app">
       <style>{styles}</style>
 
