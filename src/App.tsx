@@ -228,24 +228,34 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
   const [tempOk, setTempOk] = useState(true);
   const [poidsOk, setPoidsOk] = useState(true);
   const [litige, setLitige] = useState(false);
-  const [raison, setRaison] = useState("");
+  const [colisRecus, setColisRecus] = useState<string>("");
+  const [poidsBrut, setPoidsBrut] = useState<string>("");
+  const [poidsNet, setPoidsNet] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  const colisAttendu = arrivage.quantite || 0;
+  const colisRecusNum = colisRecus === "" ? colisAttendu : parseInt(colisRecus) || 0;
+  const ecartColis = colisRecusNum - colisAttendu;
+  const hasEcartColis = colisRecus !== "" && ecartColis !== 0;
 
   const handleValider = async () => {
     setSaving(true);
-    const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", observations: "" };
-    await onValidate(arrivage, ctrl, litige ? "non_conforme" : "conforme", litige ? "sous réserve" : "", raison, "");
+    const hasLitige = litige || hasEcartColis;
+    const obs = [
+      colisRecus !== "" ? `Colis reçus : ${colisRecusNum}/${colisAttendu}` : "",
+      poidsBrut ? `Poids brut : ${poidsBrut} kg` : "",
+      poidsNet ? `Poids net : ${poidsNet} kg` : "",
+    ].filter(Boolean).join(" | ");
+    const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs };
+    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "");
     setSaving(false);
-    // Si litige → ouvrir le formulaire rapport pré-rempli
-    if (litige) {
-      onOuvreRapport(arrivage, true);
-    }
+    if (hasLitige) onOuvreRapport(arrivage, true);
   };
 
-  const statusColor = litige ? "#dc2626" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
+  const statusColor = (litige || hasEcartColis) ? "#dc2626" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
 
   return (
-    <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : litige ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
+    <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : (litige || hasEcartColis) ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
         {selectMode && (
           <input type="checkbox" checked={!!selected} onChange={() => onToggleSelect?.(arrivage.id)}
@@ -263,6 +273,52 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
           <button onClick={() => onDelete(arrivage.id)} style={{ background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>🗑</button>
         </div>
       </div>
+
+      {/* Colis reçus + Poids */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        {/* Colis reçus */}
+        <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 8, background: hasEcartColis ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Colis</span>
+          <button onClick={() => setColisRecus("")}
+            style={{ padding: "3px 9px", borderRadius: 7, border: `1.5px solid #27ae60`, background: colisRecus === "" ? "#27ae6018" : "#fff", color: "#27ae60", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
+            ✓ {colisAttendu}
+          </button>
+          <input type="number" min="0" inputMode="numeric"
+            value={colisRecus}
+            placeholder={String(colisAttendu)}
+            onChange={e => setColisRecus(e.target.value)}
+            style={{ width: 56, padding: "4px 6px", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: hasEcartColis ? "#dc2626" : "#1a2e1a" }}
+          />
+          {hasEcartColis && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: ecartColis < 0 ? "#dc2626" : "#d97706", whiteSpace: "nowrap" }}>
+              {ecartColis > 0 ? `+${ecartColis}` : `${ecartColis}`}
+            </span>
+          )}
+        </div>
+        {/* Poids brut */}
+        <div style={{ flex: 1, minWidth: 120, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>⚖️ Brut</span>
+          <input type="number" min="0" step="0.1" inputMode="decimal"
+            value={poidsBrut}
+            placeholder={arrivage.poids_brut || "kg"}
+            onChange={e => setPoidsBrut(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: "#1a2e1a" }}
+          />
+          <span style={{ fontSize: 11, color: "#9ca3af" }}>kg</span>
+        </div>
+        {/* Poids net */}
+        <div style={{ flex: 1, minWidth: 120, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🥬 Net</span>
+          <input type="number" min="0" step="0.1" inputMode="decimal"
+            value={poidsNet}
+            placeholder={arrivage.poids_net || "kg"}
+            onChange={e => setPoidsNet(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: "#1a2e1a" }}
+          />
+          <span style={{ fontSize: 11, color: "#9ca3af" }}>kg</span>
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr auto", gap: "0 12px", alignItems: "center", marginBottom: 8 }}>
         <div>
           <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.5px" }}>👁 Qualité</p>
@@ -293,9 +349,98 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
           </div>
         </div>
       </div>
-      {litige && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
-      <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : litige ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-        {saving ? "..." : litige ? "📋 Valider + litige →" : "✅ Valider →"}
+      {(litige || hasEcartColis) && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
+      <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
+        {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : "✅ Valider →"}
+      </button>
+    </div>
+  );
+}
+
+  const handleValider = async () => {
+    setSaving(true);
+    const hasLitige = litige || hasEcartColis;
+    const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", observations: colisRecus !== "" ? `Colis reçus : ${colisRecusNum}/${colisAttendu}` : "" };
+    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "");
+    setSaving(false);
+    if (hasLitige) onOuvreRapport(arrivage, true);
+  };
+
+  const statusColor = (litige || hasEcartColis) ? "#dc2626" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
+
+  return (
+    <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : (litige || hasEcartColis) ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+        {selectMode && (
+          <input type="checkbox" checked={!!selected} onChange={() => onToggleSelect?.(arrivage.id)}
+            style={{ width: 18, height: 18, cursor: "pointer", marginRight: 10, marginTop: 2, flexShrink: 0 }} />
+        )}
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{arrivage.produit}{arrivage.variete ? ` · ${arrivage.variete}` : ""}</p>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            <PillArr>📦 {arrivage.quantite} {arrivage.unite}</PillArr>
+            {arrivage.lot_interne && <PillArr>🔖 {arrivage.lot_interne}</PillArr>}
+            {arrivage.origine && <PillArr>🌍 {arrivage.origine}</PillArr>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={() => onDelete(arrivage.id)} style={{ background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>🗑</button>
+        </div>
+      </div>
+
+      {/* Colis reçus */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, background: hasEcartColis ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Colis reçus</span>
+        <button onClick={() => setColisRecus(String(colisAttendu))}
+          style={{ padding: "4px 10px", borderRadius: 8, border: `1.5px solid #27ae60`, background: colisRecus === String(colisAttendu) ? "#27ae6018" : "#fff", color: "#27ae60", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
+          ✓ {colisAttendu} OK
+        </button>
+        <input type="number" min="0" inputMode="numeric"
+          value={colisRecus}
+          placeholder={String(colisAttendu)}
+          onChange={e => setColisRecus(e.target.value)}
+          style={{ width: 64, padding: "5px 8px", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 8, fontSize: 14, fontWeight: 700, textAlign: "center", outline: "none", color: hasEcartColis ? "#dc2626" : "#1a2e1a" }}
+        />
+        {hasEcartColis && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: ecartColis < 0 ? "#dc2626" : "#d97706", whiteSpace: "nowrap" }}>
+            {ecartColis > 0 ? `+${ecartColis} surplus` : `${ecartColis} manquant${Math.abs(ecartColis) > 1 ? "s" : ""}`}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr auto", gap: "0 12px", alignItems: "center", marginBottom: 8 }}>
+        <div>
+          <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.5px" }}>👁 Qualité</p>
+          <div style={{ display: "flex", gap: 4 }}>{[1,2,3,4,5].map(n => <NoteBtnArr key={n} n={n} selected={qualite} onChange={setQualite} />)}</div>
+        </div>
+        <div>
+          <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>🌡 Temp.</p>
+          <div style={{ display: "flex", gap: 5 }}>
+            {[{v:true,l:"✓ Ok",c:"#27ae60"},{v:false,l:"✗ Non",c:"#dc2626"}].map(o => (
+              <button key={String(o.v)} onClick={() => setTempOk(o.v)} style={{ padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: tempOk===o.v ? 700 : 400, border: `1.5px solid ${tempOk===o.v ? o.c : "#e5e7eb"}`, background: tempOk===o.v ? o.c+"18" : "#fff", color: tempOk===o.v ? o.c : "#9ca3af" }}>{o.l}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>⚖️ Poids</p>
+          <div style={{ display: "flex", gap: 5 }}>
+            {[{v:true,l:"✓ Ok",c:"#27ae60"},{v:false,l:"✗ Non",c:"#dc2626"}].map(o => (
+              <button key={String(o.v)} onClick={() => setPoidsOk(o.v)} style={{ padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: poidsOk===o.v ? 700 : 400, border: `1.5px solid ${poidsOk===o.v ? o.c : "#e5e7eb"}`, background: poidsOk===o.v ? o.c+"18" : "#fff", color: poidsOk===o.v ? o.c : "#9ca3af" }}>{o.l}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>⚠️ Litige</p>
+          <div style={{ display: "flex", gap: 5 }}>
+            {[{v:false,l:"✓ Non",c:"#27ae60"},{v:true,l:"✗ Oui",c:"#dc2626"}].map(o => (
+              <button key={String(o.v)} onClick={() => setLitige(o.v)} style={{ padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: litige===o.v ? 700 : 400, border: `1.5px solid ${litige===o.v ? o.c : "#e5e7eb"}`, background: litige===o.v ? o.c+"18" : "#fff", color: litige===o.v ? o.c : "#9ca3af" }}>{o.l}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {(litige || hasEcartColis) && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
+      <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
+        {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : "✅ Valider →"}
       </button>
     </div>
   );
