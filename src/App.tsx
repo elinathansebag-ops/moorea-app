@@ -374,6 +374,235 @@ function FournisseurBlock({ fournisseur, produits, onValidate, onDelete, onOuvre
   );
 }
 
+function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLitige, onClotureLitige, onDestruction, onPDF, onWA, user }: any) {
+  const [open, setOpen] = useState(false);
+  const [perteQty, setPerteQty] = useState("");
+  const [perteRaison, setPerteRaison] = useState("");
+  const [savingPerte, setSavingPerte] = useState(false);
+
+  const handlePerte = async () => {
+    if (!perteQty || !perteRaison) return;
+    setSavingPerte(true);
+    await onDestruction(perteQty, perteRaison);
+    setPerteQty(""); setPerteRaison("");
+    setSavingPerte(false);
+  };
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.05)", marginBottom: 10, overflow: "hidden", borderLeft: `4px solid ${borderColor}` }}>
+      {/* Header — cliquable pour ouvrir */}
+      <div onClick={() => setOpen(!open)} style={{ padding: "13px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>
+            {a.lot_interne && <span style={{ color: "#c8a84b", fontWeight: 800, marginRight: 8 }}>#{a.lot_interne}</span>}
+            {a.produit}{a.variete ? ` · ${a.variete}` : ""}
+            {a.hors_liste && <span style={{ marginLeft: 8, fontSize: 10, background: "#fff3e0", color: "#e65100", padding: "2px 7px", borderRadius: 10, fontWeight: 600 }}>Hors liste</span>}
+            {a.destruction && <span style={{ marginLeft: 8, fontSize: 10, background: "#fef2f2", color: "#dc2626", padding: "2px 7px", borderRadius: 10, fontWeight: 600 }}>🗑 {a.destruction.quantite} détruits</span>}
+          </p>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+            <PillArr>🏭 {a.fournisseur}</PillArr>
+            <PillArr>📦 {a.quantite} {a.unite}</PillArr>
+            {a.origine && <PillArr>🌍 {a.origine}</PillArr>}
+            <span style={{ fontSize: 11, color: "#9ca3af" }}>📅 {a.date}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <BadgeArrivage status={a.statut} />
+          <span style={{ fontSize: 18, color: "#c8a84b", fontWeight: 700, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
+        </div>
+      </div>
+
+      {open && (
+        <div style={{ borderTop: "1px solid #f0f0f0" }}>
+          {/* Rapport rattaché */}
+          {rapport && (
+            <div style={{ padding: "10px 16px", background: "#faf8f3", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #e8e0d0" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6f2e" }}>📋 {rapport.numeroRapport}</span>
+              {rapport.notes?.qualite > 0 && <span style={{ fontSize: 12, color: NOTE_COLORS[rapport.notes.qualite], fontWeight: 700 }}>Note {rapport.notes.qualite}/5</span>}
+              {rapport.temperature && <span style={{ fontSize: 12, color: "#1d4ed8" }}>🌡 {rapport.temperature}°C</span>}
+              {rapport.score && <ScoreCircle score={rapport.score} />}
+              {rapport.observations && <span style={{ fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>"{rapport.observations}"</span>}
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                <button onClick={onPDF} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📤 PDF</button>
+                <button onClick={onWA} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: "#25d366", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>WhatsApp</button>
+              </div>
+            </div>
+          )}
+
+          {/* Litige existant */}
+          {a.litige && (
+            <div style={{ padding: "10px 16px", background: a.litige.type==="refusé" ? "#fef2f2" : "#fffbeb", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #e8e0d0" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: a.litige.type==="refusé" ? "#dc2626" : "#d97706" }}>{a.litige.type==="refusé" ? "❌ Litige refus" : "⚠️ Litige réserve"}</span>
+              {a.litige.raison && <span style={{ fontSize: 12, color: "#6b7280" }}>{a.litige.raison}</span>}
+              {a.litige.pct && <span style={{ fontSize: 11, color: "#6b7280" }}>{a.litige.pct}%</span>}
+              <span style={{ marginLeft: "auto", fontSize: 11, background: a.litige.statut==="ouvert" ? "#fef2f2" : "#f0fdf4", color: a.litige.statut==="ouvert" ? "#dc2626" : "#1a6b3a", padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>{a.litige.statut==="ouvert" ? "● Ouvert" : "✓ Clôturé"}</span>
+              {a.litige.statut === "ouvert" && <button onClick={onClotureLitige} style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✅ Clôturer</button>}
+            </div>
+          )}
+
+          {/* Destruction existante */}
+          {a.destruction && (
+            <div style={{ padding: "10px 16px", background: "#fef2f2", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #e8e0d0" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#dc2626" }}>🗑 Destruction</span>
+              <span style={{ fontSize: 12, color: "#dc2626" }}>{a.destruction.quantite} {a.unite} — {a.destruction.raison}</span>
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>{a.destruction.date}</span>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+
+            {/* Boutons actions rapides */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {!rapport && (
+                <button onClick={onRapport} style={{ padding: "7px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  📋 Faire un rapport
+                </button>
+              )}
+              {!a.litige && (
+                <button onClick={onLitige} style={{ padding: "7px 14px", borderRadius: 10, border: "1.5px solid #fcd34d", background: "#fffbeb", color: "#d97706", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  ⚠️ Rapport de réserve
+                </button>
+              )}
+            </div>
+
+            {/* Déclarer une perte */}
+            {!a.destruction && (
+              <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 12px" }}>
+                <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#dc2626" }}>🗑 Déclarer une perte / destruction</p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input type="number" min="1" value={perteQty} onChange={e => setPerteQty(e.target.value)}
+                    placeholder={`Nb colis (/ ${a.quantite})`}
+                    style={{ width: 130, padding: "6px 10px", border: "1px solid #fca5a5", borderRadius: 8, background: "#fff", fontSize: 13, outline: "none" }} />
+                  <input type="text" value={perteRaison} onChange={e => setPerteRaison(e.target.value)}
+                    placeholder="Raison (ex: avarie, DLC dépassée...)"
+                    style={{ flex: 1, minWidth: 160, padding: "6px 10px", border: "1px solid #fca5a5", borderRadius: 8, background: "#fff", fontSize: 13, outline: "none" }} />
+                  <button onClick={handlePerte} disabled={savingPerte || !perteQty || !perteRaison}
+                    style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: (!perteQty || !perteRaison) ? "#fca5a5" : "#dc2626", color: "#fff", cursor: (!perteQty || !perteRaison) ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700 }}>
+                    {savingPerte ? "..." : "Confirmer la perte"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { arrivage: any; onDelete: any; onOuvreRapport: any }) {
+  const [open, setOpen] = useState(false);
+  const [perteQty, setPerteQty] = useState("");
+  const [perteRaison, setPerteRaison] = useState("");
+  const [savingPerte, setSavingPerte] = useState(false);
+  const [savingReserve, setSavingReserve] = useState(false);
+  const borderColor = a.statut === "validé" ? "#27ae60" : a.statut === "refusé" ? "#dc2626" : "#d97706";
+
+  const handlePerte = async () => {
+    if (!perteQty || !perteRaison) { alert("Remplis la quantité et la raison"); return; }
+    setSavingPerte(true);
+    try {
+      const { ref: fbRef, update } = await import("firebase/database");
+      const { db: dbImport } = await import("./firebase");
+      await update(fbRef(dbImport, `arrivages/${a.id}`), {
+        destruction: { quantite: parseInt(perteQty), raison: perteRaison, date: new Date().toLocaleDateString("fr-FR"), effectuee: true }
+      });
+      setPerteQty(""); setPerteRaison(""); setOpen(false);
+    } catch { alert("Erreur"); }
+    setSavingPerte(false);
+  };
+
+  const handleReserve = async () => {
+    setSavingReserve(true);
+    try {
+      const { ref: fbRef, update } = await import("firebase/database");
+      const { db: dbImport } = await import("./firebase");
+      await update(fbRef(dbImport, `arrivages/${a.id}`), { statut: "sous réserve" });
+    } catch { alert("Erreur"); }
+    setSavingReserve(false);
+  };
+
+  return (
+    <div style={{ marginBottom: 6, borderRadius: 10, overflow: "hidden", border: `1px solid rgba(255,255,255,0.1)`, borderLeft: `3px solid ${borderColor}` }}>
+      {/* Header */}
+      <div onClick={() => setOpen(!open)} style={{ background: "rgba(255,255,255,0.06)", padding: "9px 12px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#fff" }}>
+            {a.lot_interne && <span style={{ color: "#c8a84b", marginRight: 8 }}>#{a.lot_interne}</span>}
+            {a.produit}
+            <span style={{ fontWeight: 400, color: "rgba(255,255,255,0.5)", marginLeft: 6, fontSize: 12 }}>· {a.fournisseur}</span>
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+            {a.quantite} {a.unite}
+            {a.destruction && <span style={{ color: "#ef4444", marginLeft: 8 }}>🗑 {a.destruction.quantite} détruits</span>}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <BadgeArrivage status={a.statut} />
+          <span style={{ fontSize: 14, color: "#c8a84b", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
+        </div>
+      </div>
+      {/* Accordéon */}
+      {open && (
+        <div style={{ background: "rgba(0,0,0,0.2)", padding: "12px" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            {a.rapport?.qualite && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>⭐ Qualité {a.rapport.qualite}/5</span>}
+            {a.rapport?.temperature && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>🌡 Temp {a.rapport.temperature}</span>}
+            {a.rapport?.poids_brut && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>⚖️ Brut {a.rapport.poids_brut} kg</span>}
+            {a.rapport?.poids_net && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>🥬 Net {a.rapport.poids_net} kg</span>}
+            {a.rapport?.observations && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>📝 {a.rapport.observations}</span>}
+          </div>
+
+          {/* Déclarer une perte */}
+          <div style={{ marginBottom: 10, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 12px" }}>
+            <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#fca5a5" }}>🗑 Déclarer une perte</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input type="number" min="1" max={a.quantite} value={perteQty} onChange={e => setPerteQty(e.target.value)}
+                placeholder={`Nb colis (/ ${a.quantite})`}
+                style={{ width: 120, padding: "6px 10px", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 8, background: "rgba(0,0,0,0.3)", color: "#fff", fontSize: 13, outline: "none" }} />
+              <input type="text" value={perteRaison} onChange={e => setPerteRaison(e.target.value)}
+                placeholder="Raison (ex: marchandise avariée)"
+                style={{ flex: 1, minWidth: 140, padding: "6px 10px", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 8, background: "rgba(0,0,0,0.3)", color: "#fff", fontSize: 13, outline: "none" }} />
+              <button onClick={handlePerte} disabled={savingPerte || !perteQty || !perteRaison}
+                style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: (!perteQty || !perteRaison) ? "rgba(239,68,68,0.3)" : "#ef4444", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                {savingPerte ? "..." : "Confirmer"}
+              </button>
+            </div>
+            {a.destruction && (
+              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#fca5a5" }}>
+                ✓ {a.destruction.quantite} colis détruits le {a.destruction.date} — {a.destruction.raison}
+              </p>
+            )}
+          </div>
+
+          {/* Rapport de réserve */}
+          <div style={{ marginBottom: 10, background: "rgba(217,119,6,0.1)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 10, padding: "10px 12px" }}>
+            <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 12, color: "#fcd34d" }}>⚠️ Rapport de réserve</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={() => onOuvreRapport(a, true)}
+                style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#d97706", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                📋 Créer un rapport de réserve
+              </button>
+              {a.statut !== "sous réserve" && (
+                <button onClick={handleReserve} disabled={savingReserve}
+                  style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(217,119,6,0.5)", background: "transparent", color: "#fcd34d", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                  {savingReserve ? "..." : "Passer en réserve"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button onClick={() => onDelete(a.id)} style={{ padding: "5px 10px", background: "transparent", border: "1px solid rgba(252,165,165,0.4)", color: "#fca5a5", borderRadius: 8, cursor: "pointer", fontSize: 11 }}>🗑 Supprimer</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect, onScan }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
@@ -452,16 +681,7 @@ function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, o
             <div style={{ marginTop: 10, borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 10 }}>
               <p style={{ fontWeight: 700, fontSize: 11, color: "rgba(255,255,255,0.4)", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.8px" }}>📁 Traités · {arrivagesArchives.length}</p>
               {arrivagesArchives.map((a: any) => (
-                <div key={a.id} style={{ background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "8px 12px", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center", borderLeft: `3px solid ${a.statut==="validé"?"#27ae60":a.statut==="refusé"?"#dc2626":"#d97706"}` }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: "0 0 1px", fontSize: 13, fontWeight: 600, color: "#fff" }}>{a.produit} · {a.fournisseur}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{a.litige?.raison ? a.litige.raison : a.rapport?.qualite ? `Note ${a.rapport.qualite}/5` : ""}</p>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <BadgeArrivage status={a.statut} />
-                    <button onClick={() => onDelete(a.id)} style={{ background: "transparent", border: "1px solid rgba(252,165,165,0.4)", color: "#fca5a5", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>🗑</button>
-                  </div>
-                </div>
+                <ArrivageTraiteRow key={a.id} arrivage={a} onDelete={onDelete} onOuvreRapport={onOuvreRapport} />
               ))}
             </div>
           )}
@@ -3950,123 +4170,17 @@ _PDF joint_`;
               .filter(a => !histSearchArr || `${a.produit} ${a.fournisseur} ${a.lot_interne}`.toLowerCase().includes(histSearchArr.toLowerCase()))
               .map(a => {
                 const rapport = rapports.find(r => r.arrivage_id === a.id);
-                const borderColor = a.statut==="validé" ? "#27ae60" : a.statut==="refusé" ? "#dc2626" : a.statut==="sous réserve" ? "#d97706" : "#d97706";
+                const borderColor = a.statut==="validé" ? "#27ae60" : a.statut==="refusé" ? "#dc2626" : a.statut==="sous réserve" ? "#d97706" : "#9ca3af";
                 return (
-                  <div key={a.id} style={{ background: "#fff", borderRadius: 16, boxShadow: "0 2px 16px rgba(0,0,0,0.05)", marginBottom: 12, overflow: "hidden", borderLeft: `4px solid ${borderColor}` }}>
-
-                    {/* Header arrivage */}
-                    <div style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: "0 0 5px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>
-                          {a.produit}{a.variete ? ` · ${a.variete}` : ""}
-                          {a.hors_liste && <span style={{ marginLeft: 8, fontSize: 10, background: "#fff3e0", color: "#e65100", padding: "2px 7px", borderRadius: 10, fontWeight: 600 }}>Hors liste</span>}
-                          {a.destruction && <span style={{ marginLeft: 8, fontSize: 10, background: "#fef2f2", color: "#dc2626", padding: "2px 7px", borderRadius: 10, fontWeight: 600 }}>🗑 Destruction demandée</span>}
-                        </p>
-                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                          <PillArr>🏭 {a.fournisseur}</PillArr>
-                          <PillArr>📦 {a.quantite} {a.unite}</PillArr>
-                          {a.lot_interne && <PillArr>🔖 {a.lot_interne}</PillArr>}
-                          {a.origine && <PillArr>🌍 {a.origine}</PillArr>}
-                          <span style={{ fontSize: 11, color: "#6b7280", alignSelf: "center" }}>📅 {a.date}</span>
-                        </div>
-                      </div>
-                      <BadgeArrivage status={a.statut} />
-                    </div>
-
-                    {/* Rapport rattaché */}
-                    {rapport && (
-                      <div style={{ borderTop: "1px solid #e8e0d0", padding: "10px 18px", background: "#faf8f3", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "#1a2e1a" }}>📋 {rapport.numeroRapport}</span>
-                        {rapport.notes?.qualite > 0 && <span style={{ fontSize: 12, color: NOTE_COLORS[rapport.notes.qualite], fontWeight: 700, background: NOTE_COLORS[rapport.notes.qualite]+"15", padding: "2px 8px", borderRadius: 20 }}>Note {rapport.notes.qualite}/5 — {NOTE_LABELS[rapport.notes.qualite]}</span>}
-                        {rapport.temperature && <span style={{ fontSize: 12, color: "#1d4ed8" }}>🌡 {rapport.temperature}°C</span>}
-                        {rapport.score && <ScoreCircle score={rapport.score} />}
-                        {rapport.observations && <span style={{ fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>"{rapport.observations}"</span>}
-                        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                          <button onClick={() => downloadPDF(rapport)} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📤 PDF</button>
-                          <button onClick={() => partagerWhatsApp(rapport)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: "#25d366", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>WhatsApp</button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Litige rattaché */}
-                    {a.litige && (
-                      <div style={{ borderTop: `1px solid ${a.litige.type==="refusé"?"#fca5a5":"#fcd34d"}`, padding: "10px 18px", background: a.litige.type==="refusé"?"#fef2f2":"#fffbeb", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: a.litige.type==="refusé"?"#dc2626":"#d97706" }}>{a.litige.type==="refusé"?"❌ Litige refus":"⚠️ Litige réserve"}</span>
-                        <span style={{ fontSize: 12, color: a.litige.type==="refusé"?"#dc2626":"#d97706" }}>{a.litige.raison}</span>
-                        {a.litige.pct && <span style={{ fontSize: 11, color: "#6b7280" }}>{a.litige.pct}% concerné</span>}
-                        <span style={{ marginLeft: "auto", fontSize: 11, background: a.litige.statut==="ouvert"?"#fef2f2":"#f0fdf4", color: a.litige.statut==="ouvert"?"#dc2626":"#1a6b3a", padding: "2px 8px", borderRadius: 20, fontWeight: 600, border: `1px solid ${a.litige.statut==="ouvert"?"#fca5a5":"#d4edda"}` }}>{a.litige.statut==="ouvert"?"● Ouvert":"✓ Clôturé"}</span>
-                      </div>
-                    )}
-
-                    {/* Destruction lot */}
-                    {a.destruction && (
-                      <div style={{ borderTop: "1px solid #fca5a5", padding: "10px 18px", background: "#fef2f2", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#dc2626" }}>🗑 Destruction lot</span>
-                        <span style={{ fontSize: 12, color: "#dc2626" }}>{a.destruction.quantite} {a.unite} — {a.destruction.raison}</span>
-                        <span style={{ fontSize: 11, color: "#6b7280" }}>Demandé le {a.destruction.date}</span>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div style={{ borderTop: "1px solid #f0f0f0", padding: "10px 16px", display: "flex", gap: 8 }}>
-                      {!rapport && (
-                        <button onClick={() => ouvrirRapportDepuisArrivage(a)}
-                          style={{ padding: "8px 16px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
-                          📋 Faire un rapport
-                        </button>
-                      )}
-                      {/* Bouton litige disponible même sur arrivage validé */}
-                      {!a.litige && (
-                        <button onClick={() => {
-                          // 1. Naviguer vers le formulaire d'abord
-                          ouvrirRapportDepuisArrivage(a, true);
-                          // 2. Créer le litige dans Firebase
-                          update(ref(db, `arrivages/${a.id}`), {
-                            statut: "sous réserve",
-                            litige: {
-                              type: "sous réserve",
-                              raison: "",
-                              pct: "",
-                              lot_moorea: a.lot_interne || "",
-                              lot_fournisseur: a.lot_fournisseur || "",
-                              date: new Date().toLocaleDateString("fr-FR"),
-                              statut: "ouvert",
-                              createdAt: Date.now(),
-                              ouvertApresValidation: a.statut === "validé",
-                            }
-                          });
-                        }}
-                          style={{ padding: "8px 16px", borderRadius: 10, border: "1.5px solid #fcd34d", background: "#fffbeb", color: "#d97706", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
-                          ⚠️ Ouvrir litige
-                        </button>
-                      )}
-                      {a.litige && a.litige.statut === "ouvert" && (
-                        <button onClick={() => {
-                          update(ref(db, `arrivages/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") })
-                            .then(() => showToast("✅ Litige clôturé"));
-                        }}
-                          style={{ padding: "8px 16px", borderRadius: 10, border: "1.5px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
-                          ✅ Clôturer litige
-                        </button>
-                      )}
-                      {!a.destruction && (
-                        <button onClick={async () => {
-                          const qte = window.prompt(`Quantité à détruire (sur ${a.quantite} ${a.unite}) :`);
-                          if (!qte) return;
-                          const raison = window.prompt("Raison de la destruction :");
-                          if (!raison) return;
-                          await update(ref(db, `arrivages/${a.id}`), {
-                            destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName || user?.email || "—" }
-                          });
-                          showToast("🗑 Destruction enregistrée");
-                        }}
-                          style={{ padding: "8px 16px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
-                          🗑 Demander destruction
-                        </button>
-                      )}
-                    </div>
-
-                  </div>
+                  <HistoriqueArrivageRow key={a.id} a={a} rapport={rapport} borderColor={borderColor}
+                    onRapport={() => ouvrirRapportDepuisArrivage(a)}
+                    onLitige={() => { ouvrirRapportDepuisArrivage(a, true); update(ref(db, `arrivages/${a.id}`), { statut: "sous réserve", litige: { type: "sous réserve", raison: "", pct: "", lot_moorea: a.lot_interne||"", lot_fournisseur: a.lot_fournisseur||"", date: new Date().toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now(), ouvertApresValidation: a.statut==="validé" } }); }}
+                    onClotureLitige={() => { update(ref(db, `arrivages/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") }).then(() => showToast("✅ Litige clôturé")); }}
+                    onDestruction={async (qte: string, raison: string) => { await update(ref(db, `arrivages/${a.id}`), { destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName||user?.email||"—" } }); showToast("🗑 Destruction enregistrée"); }}
+                    onPDF={() => rapport && downloadPDF(rapport)}
+                    onWA={() => rapport && partagerWhatsApp(rapport)}
+                    user={user}
+                  />
                 );
               })}
             {arrivages.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length === 0 && (
