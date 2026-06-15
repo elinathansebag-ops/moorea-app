@@ -3782,39 +3782,6 @@ _PDF joint_`;
         {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
 
-            {/* Stats par jour */}
-            {(() => {
-              const today = new Date().toLocaleDateString("fr-FR");
-              const byDate: Record<string, { total: number; traites: number; litiges: number }> = {};
-              arrivages.forEach((a: any) => {
-                const d = a.date || "—";
-                if (!byDate[d]) byDate[d] = { total: 0, traites: 0, litiges: 0 };
-                byDate[d].total++;
-                if (a.statut !== "en attente") byDate[d].traites++;
-                if (a.statut === "refusé" || a.statut === "sous réserve" || a.litige) byDate[d].litiges++;
-              });
-              const dates = Object.entries(byDate).sort((a, b) => {
-                const parse = (s: string) => { const [d,m,y] = s.split("/"); return new Date(+y,+m-1,+d).getTime(); };
-                return parse(b[0]) - parse(a[0]);
-              });
-              if (!dates.length) return null;
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-                  {dates.map(([date, s]) => {
-                    const isToday = date === today;
-                    return (
-                      <div key={date} style={{ background: "#fff", borderRadius: 14, padding: "12px 16px", border: `1.5px solid ${isToday ? "#c8a84b" : "#e8e0d0"}`, display: "flex", alignItems: "center", gap: 14 }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: isToday ? "#c8a84b" : "#374151", fontFamily: "'Syne', sans-serif" }}>{isToday ? "Aujourd'hui" : date}</p>
-                          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{s.total} article{s.total > 1 ? "s" : ""}</p>
-                        </div>
-                        {s.litiges > 0 && <span style={{ fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", padding: "3px 10px", borderRadius: 20, flexShrink: 0 }}>⚠️ {s.litiges} litige{s.litiges > 1 ? "s" : ""}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
             {/* Actions — Import déplacé dans le filtre */}
             {/* Preview import */}
             {previewArr && (
