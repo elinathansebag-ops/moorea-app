@@ -379,6 +379,1076 @@ function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, o
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ─── COMPOSANT STOCK APP EMBARQUÉE ───
+function StockApp({ onExit }: { onExit: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const el = containerRef.current;
+
+    // Inject CSS
+    const styleEl = document.createElement("style");
+    styleEl.id = "stock-app-styles";
+    styleEl.textContent = `
+#stock-root *{box-sizing:border-box;margin:0;padding:0}
+#stock-root{font-family:'DM Sans',sans-serif;font-size:14px;color:#0a0a0a;background:#f5f3ee;min-height:100vh}
+#stock-root .topbar{background:#0a0a0a;padding:0 2rem;height:62px;display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid rgba(200,168,75,0.3)}
+#stock-root .logo{font-size:15px;font-weight:700;color:#c8a84b;letter-spacing:1.5px;text-transform:uppercase}
+#stock-root .logo-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:1px}
+#stock-root .sync-pill{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:5px 12px;font-size:12px;color:rgba(255,255,255,.7)}
+#stock-root .sync-dot{width:7px;height:7px;border-radius:50%;background:#555;flex-shrink:0;display:inline-block}
+#stock-root .sync-dot.ok{background:#22c55e}
+#stock-root .sync-dot.loading{background:#c8a84b;animation:stock-pulse 1s infinite}
+#stock-root .sync-dot.error{background:#ef4444}
+@keyframes stock-pulse{0%,100%{opacity:1}50%{opacity:.2}}
+#stock-root .nav-wrap{background:#0a0a0a;border-bottom:1.5px solid rgba(200,168,75,0.3);padding:0 2rem}
+#stock-root .nav{display:flex;max-width:1100px;margin:0 auto}
+#stock-root .nav-btn{padding:13px 18px;background:transparent;border:none;border-bottom:2.5px solid transparent;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;color:rgba(255,255,255,.6);display:flex;align-items:center;gap:7px;white-space:nowrap;margin-bottom:-1.5px;transition:color .15s}
+#stock-root .nav-btn:hover{color:#fff}
+#stock-root .nav-btn.active{color:#fff;border-bottom-color:#c8a84b}
+#stock-root .nav-btn.hidden{display:none}
+#stock-root .app-inner{max-width:1100px;margin:0 auto;padding:1.5rem 1rem 4rem}
+#stock-root .card{background:#fff;border:1.5px solid #e8e0d0;border-radius:16px;padding:1.25rem;margin-bottom:1rem}
+#stock-root .section-title{font-size:12px;font-weight:700;color:#c8a84b;letter-spacing:1px;text-transform:uppercase;margin-bottom:1.25rem;display:flex;align-items:center;gap:8px}
+#stock-root .section-title::before{content:'';display:block;width:3px;height:14px;background:#c8a84b;border-radius:2px}
+#stock-root .btn{padding:9px 18px;border:1.5px solid #e8e0d0;border-radius:10px;background:#fff;color:#0a0a0a;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:all .15s}
+#stock-root .btn:hover{background:#f5f3ee}
+#stock-root .btn-gold{background:#c8a84b;color:#0a0a0a;border-color:#c8a84b;font-weight:700}
+#stock-root .btn-gold:hover{background:#d4a93a}
+#stock-root .btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
+#stock-root .btn-danger{border-color:#fecaca;color:#dc2626}
+#stock-root .btn-danger:hover{background:#fff5f5}
+#stock-root .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.5rem}
+#stock-root .stat-card{background:#fff;border:1.5px solid #e8e0d0;border-radius:12px;padding:.875rem;text-align:center}
+#stock-root .stat-card .num{font-size:22px;font-weight:700}
+#stock-root .stat-card .lbl{font-size:11px;color:#6b7280;margin-top:2px;text-transform:uppercase;letter-spacing:.3px}
+#stock-root .stat-card.green{border-color:#bbf7d0;background:#f0fdf4}
+#stock-root .stat-card.green .num{color:#15803d}
+#stock-root .stat-card.red{border-color:#fecaca;background:#fff5f5}
+#stock-root .stat-card.red .num{color:#dc2626}
+#stock-root .stat-card.amber{border-color:#fde68a;background:#fffbeb}
+#stock-root .stat-card.amber .num{color:#b45309}
+#stock-root .progress-label{display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-bottom:5px;font-weight:500}
+#stock-root .progress-bg{height:7px;background:#e8e0d0;border-radius:4px;overflow:hidden;margin-bottom:1.5rem}
+#stock-root .progress-bar{height:100%;background:#c8a84b;border-radius:4px;transition:width .3s}
+#stock-root table{width:100%;border-collapse:collapse;font-size:13px}
+#stock-root thead tr{border-bottom:2px solid #e8e0d0}
+#stock-root th{text-align:left;padding:9px 12px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+#stock-root td{padding:9px 12px;border-bottom:1px solid #e8e0d0;vertical-align:middle}
+#stock-root tr:last-child td{border-bottom:none}
+#stock-root tr:hover td{background:#faf9f6}
+#stock-root .search-input{padding:8px 14px;border:1.5px solid #e8e0d0;border-radius:20px;background:#fff;color:#0a0a0a;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;flex:1;min-width:200px}
+#stock-root .qty-in{width:72px;padding:6px 8px;border:1.5px solid #e8e0d0;border-radius:8px;text-align:center;font-size:13px;font-family:'DM Sans',sans-serif;background:#fff;color:#0a0a0a;outline:none}
+#stock-root .qty-in-destroy{width:60px;padding:6px 8px;border:1.5px solid #fecaca;border-radius:8px;text-align:center;font-size:13px;font-family:inherit;background:#fff;color:#dc2626;outline:none}
+#stock-root .add-loc-btn{width:26px;height:26px;border-radius:50%;border:1.5px solid #c8a84b;background:transparent;color:#c8a84b;cursor:pointer;font-size:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;padding:0}
+#stock-root .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+#stock-root .badge-ok{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0}
+#stock-root .badge-surplus{background:#fef3c7;color:#b45309;border:1px solid #fde68a}
+#stock-root .badge-manque{background:#fee2e2;color:#dc2626;border:1px solid #fecaca}
+#stock-root .badge-nc{background:#f5f3ee;color:#6b7280;border:1px solid #e8e0d0}
+#stock-root .ep{color:#15803d;font-weight:700}
+#stock-root .en{color:#dc2626;font-weight:700}
+#stock-root .ez{color:#6b7280}
+#stock-root .pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem}
+#stock-root .pill{padding:6px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1.5px solid #e8e0d0;background:#fff;color:#6b7280;font-family:'DM Sans',sans-serif;font-weight:500;white-space:nowrap}
+#stock-root .pill.active{background:#0a0a0a;color:#fff;border-color:#0a0a0a}
+#stock-root .team-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+#stock-root .team-card{border:2px solid #e8e0d0;border-radius:14px;padding:1.5rem;text-align:center;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+#stock-root .team-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px}
+#stock-root .team-card.gms::before{background:#c8a84b}
+#stock-root .team-card.prestige::before{background:#7c3aed}
+#stock-root .team-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.08)}
+#stock-root .team-card .ico{font-size:32px;margin-bottom:10px}
+#stock-root .team-card h2{font-size:17px;font-weight:700;margin-bottom:4px}
+#stock-root .team-card.gms h2{color:#92710a}
+#stock-root .team-card.prestige h2{color:#7c3aed}
+#stock-root .stock-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e8e0d0;flex-wrap:wrap;gap:8px}
+#stock-root .stock-item:last-child{border-bottom:none}
+#stock-root .stock-actions{display:flex;gap:6px}
+#stock-root .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;align-items:center;justify-content:center;padding:1rem}
+#stock-root .modal-bg.open{display:flex}
+#stock-root .modal-box{background:#fff;border-radius:20px;padding:2rem;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+#stock-root .empty-state{text-align:center;padding:2.5rem;color:#bbb}
+#stock-root .tbl-wrap{overflow-x:auto}
+#stock-toast{position:fixed;bottom:24px;right:24px;background:#0a0a0a;color:#c8a84b;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9999;border:1px solid rgba(200,168,75,0.3)}
+#stock-toast.show{opacity:1}
+#stock-calc-fab{position:fixed;bottom:24px;right:24px;width:50px;height:50px;background:#c8a84b;border:none;border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 16px rgba(200,168,75,.4);z-index:400}
+#stock-calc-fab.visible{display:flex}
+#stock-calc-modal{display:none;position:fixed;bottom:86px;right:24px;background:#fff;border:1.5px solid #e8e0d0;border-radius:18px;padding:1.25rem;width:236px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:500}
+#stock-calc-modal.open{display:block}
+#stock-calc-modal .calc-screen{background:#f5f3ee;border:1.5px solid #e8e0d0;border-radius:10px;padding:8px 12px;text-align:right;margin-bottom:10px;min-height:50px}
+#stock-calc-modal .calc-screen .expr{font-size:11px;color:#6b7280;min-height:14px}
+#stock-calc-modal .calc-screen .result{font-size:22px;font-weight:700}
+#stock-calc-modal .calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+#stock-calc-modal .calc-btn{padding:9px 0;border:1.5px solid #e8e0d0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-weight:500;text-align:center}
+#stock-calc-modal .calc-btn.op{color:#c8a84b;font-weight:700}
+#stock-calc-modal .calc-btn.eq{background:#c8a84b;color:#0a0a0a;border-color:#c8a84b;font-weight:700}
+#stock-calc-modal .calc-btn.clear{color:#dc2626}
+#stock-calc-modal .calc-btn.use{background:#0a0a0a;color:#fff;border-color:#0a0a0a;grid-column:span 4;font-size:11px}
+#stock-root .toggle-switch{position:relative;width:56px;height:28px;flex-shrink:0}
+#stock-root .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
+#stock-root .toggle-slider{position:absolute;inset:0;border-radius:28px;cursor:pointer;transition:.3s;background:#e8e0d0}
+#stock-root .toggle-slider:before{content:'';position:absolute;width:22px;height:22px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.3s;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+#stock-root .toggle-switch input:checked + .toggle-slider{background:#7c3aed}
+#stock-root .toggle-switch input:checked + .toggle-slider:before{transform:translateX(28px)}
+#stock-root .toggle-switch.gms input:checked + .toggle-slider{background:#c8a84b}
+#stock-root input[type=number]{-webkit-appearance:none;appearance:none}
+#stock-pdf-overlay{display:none;position:fixed;inset:0;background:#f5f3ee;z-index:700;overflow-y:auto}
+#stock-fusion-bar{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#fff;padding:12px 24px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.3);align-items:center;gap:12px;z-index:300;white-space:nowrap}
+    `;
+    document.head.appendChild(styleEl);
+
+    // Build HTML structure in container
+    el.innerHTML = `
+<div id="stock-root">
+  <div id="stock-pdf-overlay">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#0a0a0a;position:sticky;top:0;z-index:1">
+      <span style="color:#c8a84b;font-weight:700;font-size:14px">📄 Rapport PDF</span>
+      <div style="display:flex;gap:8px">
+        <button onclick="window.print()" style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🖨 Imprimer</button>
+        <button onclick="document.getElementById('stock-pdf-overlay').style.display='none'" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit">✕ Fermer</button>
+      </div>
+    </div>
+    <div id="stock-pdf-content" style="max-width:900px;margin:0 auto;padding:24px 20px;background:#fff;min-height:100vh"></div>
+  </div>
+
+  <div class="topbar">
+    <div>
+      <div class="logo">🌿 Moorea · Inventaire</div>
+      <div class="logo-sub">GMS & Prestige</div>
+    </div>
+    <div class="sync-pill">
+      <span class="sync-dot loading" id="s-sync-dot"></span>
+      <span id="s-sync-label">Connexion...</span>
+    </div>
+  </div>
+
+  <div class="nav-wrap">
+    <div class="nav">
+      <button class="nav-btn active" id="s-nav-home" onclick="sShowPage('home')">🏠 Stocks</button>
+      <button class="nav-btn hidden" id="s-nav-comptage" onclick="sShowPage('comptage')">📋 Comptage</button>
+      <button class="nav-btn hidden" id="s-nav-ecarts" onclick="sShowPage('ecarts')">📊 Écarts</button>
+      <button class="nav-btn" id="s-nav-config" onclick="sShowPage('config')">⚙️ Configuration</button>
+    </div>
+  </div>
+
+  <div class="app-inner">
+    <div id="s-page-home">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px">
+        <div class="section-title" style="margin:0">📦 Stocks importés</div>
+        <button class="btn btn-gold" onclick="document.getElementById('s-file-input').click()">⬆ Déposer un stock</button>
+      </div>
+      <input type="file" id="s-file-input" accept=".xlsx,.xls" style="display:none"/>
+      <input type="file" id="s-file-reimport" accept=".xlsx,.xls" style="display:none"/>
+      <div id="s-upload-status" style="font-size:13px;color:#6b7280;margin-bottom:1rem;min-height:18px"></div>
+      <div class="card"><div id="s-stock-list"><div class="empty-state">Aucun stock importé</div></div></div>
+    </div>
+    <div id="s-page-comptage" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px">
+        <div>
+          <div class="section-title" style="margin:0" id="s-comptage-title">Comptage</div>
+          <div id="s-session-id-display" style="font-size:11px;color:#6b7280;margin-top:3px"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" onclick="sChanterFichier()">📂 Changer fichier</button>
+          <button class="btn btn-gold" onclick="sTerminerComptage()">✓ Terminer et voir les écarts</button>
+        </div>
+      </div>
+      <div class="card" style="padding:.75rem 1.25rem;margin-bottom:1rem">
+        <div class="progress-label"><span>Avancement</span><span id="s-prog-label">0%</span></div>
+        <div class="progress-bg"><div class="progress-bar" id="s-prog" style="width:0%"></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input class="search-input" id="s-srch" placeholder="🔍 Rechercher..." style="min-width:160px"/>
+          <button class="btn btn-sm btn-danger" onclick="sResetCounts()" style="opacity:.5;font-size:11px">↺ Tout réinitialiser</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Article</th>
+              <th style="text-align:center">Comptage</th>
+              <th style="text-align:center">Total</th>
+              <th style="text-align:center">Écart</th>
+              <th style="text-align:center;color:#6b7280">Stock</th>
+            </tr></thead>
+            <tbody id="s-tbl-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #e8e0d0;flex-wrap:wrap;align-items:center">
+          <div style="flex:1;position:relative;min-width:180px">
+            <input class="search-input" id="s-add-art-input" placeholder="Ajouter un article non listé..." style="width:100%"/>
+            <div id="s-add-art-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid rgba(200,168,75,0.3);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.1);z-index:200;max-height:200px;overflow-y:auto;margin-top:3px"></div>
+          </div>
+          <input type="number" id="s-add-art-qty" min="0" placeholder="Qté" style="width:65px;padding:8px;border:1.5px solid #e8e0d0;border-radius:8px;font-size:13px;font-family:inherit;text-align:center;outline:none"/>
+          <input type="text" id="s-add-art-comment" placeholder="Commentaire..." style="flex:1;min-width:100px;padding:8px 12px;border:1.5px solid #e8e0d0;border-radius:8px;font-size:13px;font-family:inherit;outline:none"/>
+          <button class="btn btn-sm btn-gold" onclick="sAddArticleManuel()">+ Ajouter</button>
+        </div>
+      </div>
+    </div>
+    <div id="s-page-ecarts" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px">
+        <div class="section-title" style="margin:0" id="s-ecarts-title">Écarts</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" onclick="sShowPage('comptage')">← Modifier</button>
+          <button class="btn btn-sm btn-gold" onclick="sExportCSV()">⬇ CSV</button>
+          <button class="btn btn-sm" onclick="sExportPDF()">📄 PDF</button>
+        </div>
+      </div>
+      <div class="stat-grid" id="s-metrics-e"></div>
+      <div class="card">
+        <div class="pills">
+          <button class="pill active" id="s-ef-tous" onclick="sSetEF('tous')">Tous</button>
+          <button class="pill" id="s-ef-ecart" onclick="sSetEF('ecart')">Avec écart</button>
+          <button class="pill" id="s-ef-ok" onclick="sSetEF('ok')">OK</button>
+          <button class="pill" id="s-ef-nc" onclick="sSetEF('nc')">Non comptés</button>
+          <input class="search-input" id="s-srch2" placeholder="🔍 Rechercher..." oninput="sRenderEcarts()" style="max-width:220px"/>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Article</th>
+              <th style="text-align:right">Stock sys.</th>
+              <th style="text-align:right">Compté</th>
+              <th style="text-align:right">Écart</th>
+              <th>Statut</th>
+            </tr></thead>
+            <tbody id="s-etbl-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div id="s-page-config" style="display:none">
+      <div class="section-title">⚙️ Répartition GMS / Prestige</div>
+      <div id="s-config-pin-screen" style="text-align:center;padding:3rem 1rem">
+        <div style="font-size:40px;color:#c8a84b;display:block;margin-bottom:16px">🔒</div>
+        <p style="font-size:14px;color:#6b7280;margin-bottom:1.25rem">Entrez le code pour modifier les attributions</p>
+        <input type="password" id="s-config-pin-input" maxlength="4" placeholder="••••" style="width:100px;padding:10px;text-align:center;font-size:20px;border:1.5px solid #e8e0d0;border-radius:10px;font-family:inherit;outline:none;letter-spacing:6px;display:block;margin:0 auto" oninput="sCheckPin(this.value)"/>
+        <div id="s-config-pin-error" style="font-size:12px;color:#dc2626;margin-top:8px;min-height:18px"></div>
+      </div>
+      <div id="s-config-content" style="display:none">
+        <p style="font-size:13px;color:#6b7280;margin-bottom:1.25rem">Liste des articles et leur équipe.</p>
+        <div class="card">
+          <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
+            <button class="pill active" id="s-cf-tous" onclick="sSetCF('tous')">Tous</button>
+            <button class="pill" id="s-cf-gms" onclick="sSetCF('GMS')">GMS</button>
+            <button class="pill" id="s-cf-prestige" onclick="sSetCF('PRESTIGE')">Prestige</button>
+            <input class="search-input" id="s-cfg-srch" placeholder="🔍 Rechercher..." oninput="sRenderConfig()" style="max-width:200px"/>
+          </div>
+          <div class="tbl-wrap">
+            <table><thead><tr><th>Article</th><th>Famille</th><th>Équipe</th></tr></thead>
+            <tbody id="s-cfg-body"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="s-modal-team">
+    <div class="modal-box">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">Stock importé</div>
+      <div id="s-modal-stock-info" style="font-size:13px;color:#6b7280;margin-bottom:1.5rem"></div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px">Choisissez votre équipe pour compter :</div>
+      <div class="team-grid">
+        <div class="team-card gms" onclick="sStartSession('GMS')">
+          <div class="ico">🌿</div><h2>GMS</h2>
+          <p id="s-modal-gms-count">— articles</p>
+          <p style="margin-top:3px;font-size:11px">19h00</p>
+        </div>
+        <div class="team-card prestige" onclick="sStartSession('PRESTIGE')">
+          <div class="ico">✨</div><h2>Prestige</h2>
+          <p id="s-modal-prestige-count">— articles</p>
+          <p style="margin-top:3px;font-size:11px">Nuit</p>
+        </div>
+      </div>
+      <button class="btn" style="margin-top:1.25rem;width:100%;justify-content:center" onclick="document.getElementById('s-modal-team').classList.remove('open')">Annuler</button>
+    </div>
+  </div>
+
+  <div id="s-fusion-bar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#fff;padding:12px 24px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.3);align-items:center;gap:12px;z-index:300;white-space:nowrap">
+    <span id="s-fusion-label">Sélectionnez 2 articles à fusionner</span>
+    <button class="btn btn-sm btn-gold" onclick="sConfirmerFusion()">Fusionner</button>
+    <button class="btn btn-sm" style="color:#fff;border-color:rgba(255,255,255,.3)" onclick="sAnnulerFusion()">Annuler</button>
+  </div>
+</div>
+
+<div id="stock-toast"></div>
+<button id="stock-calc-fab" onclick="document.getElementById('stock-calc-modal').classList.toggle('open')">🧮</button>
+<div id="stock-calc-modal">
+  <div class="calc-screen"><div class="expr" id="s-calc-expr"></div><div class="result" id="s-calc-result">0</div></div>
+  <div class="calc-grid">
+    <button class="calc-btn clear" onclick="sCalcClear()">C</button>
+    <button class="calc-btn op" onclick="sCalcOp('±')">±</button>
+    <button class="calc-btn op" onclick="sCalcOp('%')">%</button>
+    <button class="calc-btn op" onclick="sCalcOp('/')">÷</button>
+    <button class="calc-btn" onclick="sCalcNum('7')">7</button>
+    <button class="calc-btn" onclick="sCalcNum('8')">8</button>
+    <button class="calc-btn" onclick="sCalcNum('9')">9</button>
+    <button class="calc-btn op" onclick="sCalcOp('*')">×</button>
+    <button class="calc-btn" onclick="sCalcNum('4')">4</button>
+    <button class="calc-btn" onclick="sCalcNum('5')">5</button>
+    <button class="calc-btn" onclick="sCalcNum('6')">6</button>
+    <button class="calc-btn op" onclick="sCalcOp('-')">−</button>
+    <button class="calc-btn" onclick="sCalcNum('1')">1</button>
+    <button class="calc-btn" onclick="sCalcNum('2')">2</button>
+    <button class="calc-btn" onclick="sCalcNum('3')">3</button>
+    <button class="calc-btn op" onclick="sCalcOp('+')">+</button>
+    <button class="calc-btn" style="grid-column:span 2" onclick="sCalcNum('0')">0</button>
+    <button class="calc-btn" onclick="sCalcNum('.')">.</button>
+    <button class="calc-btn eq" onclick="sCalcEqual()">=</button>
+    <button class="calc-btn use" onclick="sCalcUse()">↑ Utiliser</button>
+  </div>
+</div>
+    `;
+
+    // Load SheetJS then init Firebase + JS logic
+    const loadScript = (src: string): Promise<void> => new Promise((res, rej) => {
+      if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+      const s = document.createElement("script");
+      s.src = src; s.onload = () => res(); s.onerror = rej;
+      document.head.appendChild(s);
+    });
+
+    loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js").then(async () => {
+      const { initializeApp, getApps } = await import("firebase/app");
+      const { getFirestore, doc, setDoc, deleteDoc, getDoc, getDocs, collection } = await import("firebase/firestore");
+
+      const stockCfg = {
+        apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8",
+        authDomain: "moorea-stock.firebaseapp.com",
+        projectId: "moorea-stock",
+        storageBucket: "moorea-stock.firebasestorage.app",
+        messagingSenderId: "639598259840",
+        appId: "1:639598259840:web:ff3c048f9aac1b99f40065"
+      };
+      const existing = getApps().find((a: any) => a.name === "moorea-stock");
+      const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
+      const db = getFirestore(stockApp);
+
+      const TODAY = new Date().toISOString().slice(0, 10);
+      let allArticles: any[] = [];
+      let articles: any[] = [];
+      let currentTeam = "";
+      let currentImportId = "";
+      let currentSessionId = "";
+      let ecartFilter = "tous";
+      let cfFilter = "tous";
+      let cfgUnlocked = false;
+      let comptageTimeout: any = null;
+      let calcExpr = "", calcCurrent = "0", calcJustEvaled = false;
+      let fusionMode = false;
+      let fusionSelected: string[] = [];
+      let histoCache: any[] = [];
+      let _byArticle: any = null;
+      let calcLastFocused: any = null;
+
+      // Sync status
+      const setSyncStatus = (s: string, l: string) => {
+        const dot = document.getElementById("s-sync-dot");
+        const lbl = document.getElementById("s-sync-label");
+        if (dot) dot.className = "sync-dot " + s;
+        if (lbl) lbl.textContent = l;
+      };
+      setSyncStatus("ok", "Synchronisé");
+
+      // Toast
+      const toast = (msg: string) => {
+        const t = document.getElementById("stock-toast");
+        if (!t) return;
+        t.textContent = msg; t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 2500);
+      };
+
+      const counted = (a: any) => a.compte !== null && a.compte !== undefined;
+      const ecart = (a: any) => a.compte - a.nb_colis;
+
+      // getEquipe
+      const getEquipe = (a: any): string => {
+        if (_byArticle) {
+          const eq = _byArticle[a.article?.toLowerCase().trim()];
+          if (eq) return eq;
+        }
+        return a.equipe || "PRESTIGE";
+      };
+
+      // Load overrides
+      const loadOverrides = async () => {
+        try {
+          const snap = await getDoc(doc(db, "config", "overrides"));
+          if (snap.exists()) {
+            const ov = (snap.data() as any).data || {};
+            if (!_byArticle) _byArticle = {};
+            Object.entries(ov).forEach(([art, eq]) => { _byArticle[art.toLowerCase().trim()] = eq; });
+          }
+        } catch {}
+      };
+      await loadOverrides();
+
+      // Pages
+      (window as any).sShowPage = (p: string) => {
+        ["home", "comptage", "ecarts", "config"].forEach(id => {
+          const pg = document.getElementById("s-page-" + id);
+          const btn = document.getElementById("s-nav-" + id);
+          if (pg) pg.style.display = id === p ? "block" : "none";
+          if (btn) btn.classList.toggle("active", id === p);
+        });
+        const fab = document.getElementById("stock-calc-fab");
+        if (fab) fab.classList.toggle("visible", p === "comptage");
+        if (p === "home") renderStockList();
+        if (p === "ecarts") { updateMetricsE(); sRenderEcarts(); }
+        if (p === "config") {
+          if (!cfgUnlocked) {
+            const pin = document.getElementById("s-config-pin-screen");
+            const cnt = document.getElementById("s-config-content");
+            if (pin) pin.style.display = "block";
+            if (cnt) cnt.style.display = "none";
+          }
+          sRenderConfig();
+        }
+      };
+
+      // Save stock to Firestore
+      const saveStock = async (filename: string, arts: any[]) => {
+        const importId = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
+        setSyncStatus("loading", "Enregistrement...");
+        await setDoc(doc(db, "stocks", importId), {
+          filename, importId,
+          date: new Date().toISOString(),
+          dateLabel: new Date().toLocaleString("fr-FR"),
+          nb: arts.length,
+          gms: arts.filter(a => getEquipe(a) === "GMS").length,
+          prestige: arts.filter(a => getEquipe(a) === "PRESTIGE").length,
+          articles: arts.map(a => ({ id: a.id, equipe: getEquipe(a), famille: a.famille, code: a.code || "", article: a.article, nb_colis: a.nb_colis, lot: a.lot || "", lots: a.lots || [], lotsQty: a.lotsQty || {} }))
+        });
+        setSyncStatus("ok", "Synchronisé");
+        currentImportId = importId;
+        return importId;
+      };
+
+      // Save comptages
+      const saveComptages = async () => {
+        if (!currentTeam || !currentImportId) return;
+        setSyncStatus("loading", "Sauvegarde...");
+        const data: any = {};
+        articles.forEach((a, idx) => {
+          if (counted(a)) {
+            const locs: any = {};
+            for (let i = 1; i <= 8; i++) if (a["compte" + i] !== null && a["compte" + i] !== undefined) locs["c" + i] = a["compte" + i];
+            data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: a._saisieTs || Date.now(), _idx: idx };
+          }
+        });
+        await setDoc(doc(db, "comptages", currentImportId + "_" + currentTeam), { data, team: currentTeam, date: TODAY, ts: Date.now(), sessionId: currentSessionId });
+        setSyncStatus("ok", "Sauvegardé");
+      };
+
+      const loadComptages = async (team: string) => {
+        try {
+          const snap = await getDoc(doc(db, "comptages", currentImportId + "_" + team));
+          if (snap.exists()) {
+            const data = (snap.data() as any).data || {};
+            let n = 0;
+            articles.forEach(a => {
+              const d = data[a.article];
+              if (d) {
+                for (let i = 1; i <= 8; i++) a["compte" + i] = d["c" + i] ?? null;
+                a.detruire = d.cd ?? null;
+                a.compte = d.c; n++;
+              }
+            });
+            if (n > 0) toast(n + " comptages récupérés");
+          }
+        } catch {}
+      };
+
+      // Parse Excel
+      const parseExcel = (file: File) => new Promise<void>(resolve => {
+        const reader = new FileReader();
+        reader.onload = async (e: any) => {
+          const XLSX = (window as any).XLSX;
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+          const rows = json.slice(1);
+          const hdrs = (json[0] || []).map((h: any) => String(h || "").toLowerCase().trim());
+          const findExact = (kws: string[]) => { for (const kw of kws) { const i = hdrs.findIndex((h: string) => h === kw); if (i >= 0) return i; } return -1; };
+          const findPartial = (kws: string[]) => { for (const kw of kws) { const i = hdrs.findIndex((h: string) => h.includes(kw)); if (i >= 0) return i; } return -1; };
+          const isNum = (ci: number) => { const v = rows.slice(0, 15).map(r => r[ci]).filter(v => v !== "" && v != null); return v.length > 0 && v.filter(v => !isNaN(parseFloat(v))).length / v.length > 0.6; };
+          let colFamille = findExact(["famille"]); if (colFamille < 0) colFamille = findPartial(["famille"]);
+          let colCode = findExact(["code article", "code art"]); if (colCode < 0) colCode = findPartial(["code"]);
+          let colArticle = findExact(["article", "designation", "désignation"]); if (colArticle < 0) colArticle = findPartial(["designation", "désignation"]);
+          if (colArticle === colCode) colArticle = colCode + 1;
+          let colQty = findExact(["nb colis"]); if (colQty < 0) colQty = findPartial(["nb colis", "quantit", "colis"]);
+          if (colQty < 0) { for (let i = (colArticle + 1); i < (hdrs.length || 10); i++) { if (isNum(i)) { colQty = i; break; } } }
+          const grouped: any = {};
+          rows.forEach(r => {
+            const art = String(r[colArticle] || "").trim();
+            if (!art || art.length < 3 || !isNaN(Number(art))) return;
+            if (["total", "article", ""].includes(art.toLowerCase())) return;
+            if (colCode >= 0 && art === String(r[colCode] || "").trim()) return;
+            const qty = parseInt(r[colQty]) || 0; if (qty < 0) return;
+            const lotFull = r[0] ? String(r[0]).trim() : "";
+            const lot = lotFull ? (lotFull.length >= 6 ? lotFull.slice(-6, -2) : lotFull.slice(-4)) : "";
+            const fam = colFamille >= 0 ? String(r[colFamille] || "").trim() : "";
+            if (!grouped[art]) grouped[art] = { article: art, famille: fam, nb_colis: 0, lots: [], lotsQty: {} };
+            grouped[art].nb_colis += qty;
+            if (lot) { if (!grouped[art].lots.includes(lot)) grouped[art].lots.push(lot); grouped[art].lotsQty[lot] = (grouped[art].lotsQty[lot] || 0) + qty; }
+          });
+          allArticles = Object.values(grouped).map((a: any, i: number) => ({ id: i + 1, equipe: "PRESTIGE", famille: a.famille, code: "", article: a.article, nb_colis: a.nb_colis, lots: a.lots, lot: a.lots.join(" "), lotsQty: a.lotsQty, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
+          const statusEl = document.getElementById("s-upload-status");
+          if (statusEl) statusEl.textContent = "⏳ Enregistrement...";
+          await saveStock(file.name, allArticles);
+          if (statusEl) statusEl.textContent = "✓ " + file.name + " — " + allArticles.length + " articles enregistrés";
+          const gms = allArticles.filter(a => getEquipe(a) === "GMS").length;
+          const pres = allArticles.filter(a => getEquipe(a) === "PRESTIGE").length;
+          const mi = document.getElementById("s-modal-stock-info");
+          const mg = document.getElementById("s-modal-gms-count");
+          const mp = document.getElementById("s-modal-prestige-count");
+          if (mi) mi.textContent = file.name + " · " + allArticles.length + " articles · " + gms + " GMS · " + pres + " Prestige";
+          if (mg) mg.textContent = gms + " articles";
+          if (mp) mp.textContent = pres + " articles";
+          document.getElementById("s-modal-team")?.classList.add("open");
+          renderStockList();
+          toast(allArticles.length + " articles importés");
+          resolve();
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
+      // File input
+      const fileInput = document.getElementById("s-file-input") as HTMLInputElement;
+      if (fileInput) fileInput.addEventListener("change", e => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) parseExcel(f); });
+
+      // Start session
+      (window as any).sStartSession = (team: string) => {
+        currentTeam = team;
+        document.getElementById("s-modal-team")?.classList.remove("open");
+        currentSessionId = "CPT-" + team + "-" + TODAY + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
+        articles = allArticles.filter(a => getEquipe(a) === team).map(a => ({ ...a, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
+        ecartFilter = "tous";
+        const ct = document.getElementById("s-comptage-title");
+        const et = document.getElementById("s-ecarts-title");
+        const sid = document.getElementById("s-session-id-display");
+        if (ct) ct.textContent = "Comptage " + team;
+        if (et) et.textContent = "Écarts " + team;
+        if (sid) sid.textContent = "📋 Session : " + currentSessionId;
+        document.getElementById("s-nav-comptage")?.classList.remove("hidden");
+        document.getElementById("s-nav-ecarts")?.classList.add("hidden");
+        loadComptages(team).then(() => { updateMetricsC(); sRenderTable(); });
+        const srchEl = document.getElementById("s-srch");
+        if (srchEl) {
+          (srchEl as HTMLInputElement).value = "";
+          const newEl = srchEl.cloneNode(true) as HTMLElement;
+          srchEl.parentNode?.replaceChild(newEl, srchEl);
+          newEl.addEventListener("input", () => sRenderTable());
+        }
+        (window as any).sShowPage("comptage");
+      };
+
+      // Recompter depuis stock existant
+      (window as any).sRecompterDepuis = async (stockId: string, team: string) => {
+        setSyncStatus("loading", "Chargement...");
+        try {
+          const snap = await getDoc(doc(db, "stocks", stockId));
+          if (snap.exists()) {
+            const data = snap.data() as any;
+            allArticles = data.articles.map((a: any) => ({ ...a, lots: a.lots || [], lot: a.lot || "", lotsQty: a.lotsQty || {}, equipe: a.equipe || getEquipe(a), compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
+            currentImportId = stockId;
+            setSyncStatus("ok", "Synchronisé");
+            (window as any).sStartSession(team);
+          }
+        } catch { setSyncStatus("error", "Erreur"); }
+      };
+
+      // Stock list
+      const renderStockList = async () => {
+        const list = document.getElementById("s-stock-list");
+        if (!list) return;
+        list.innerHTML = "<div class='empty-state'>Chargement...</div>";
+        try {
+          const snap = await getDocs(collection(db, "stocks"));
+          const stocks: any[] = [];
+          snap.forEach(d => stocks.push({ id: d.id, ...d.data() }));
+          stocks.sort((a, b) => b.id.localeCompare(a.id));
+          if (!stocks.length) { list.innerHTML = "<div class='empty-state'>Aucun stock importé</div>"; return; }
+          const comptSnap = await getDocs(collection(db, "comptages"));
+          const comptages: any = {};
+          comptSnap.forEach(d => { comptages[d.id] = d.data(); });
+          const makeItem = (s: any, team: string) => {
+            const c = comptages[s.id + "_" + team];
+            const done = c && c.data ? Object.keys(c.data).length : 0;
+            const total = team === "GMS" ? (s.gms || 0) : (s.prestige || 0);
+            const pct = total ? Math.round(done / total * 100) : 0;
+            const color = team === "GMS" ? "#92710a" : "#7c3aed";
+            const sid = s.id.replace(/'/g, "\\'");
+            return `<div class="stock-item">
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:700">📅 ${s.dateLabel}</div>
+                <div style="font-size:12px;color:#6b7280;margin-top:2px">${s.filename} · ${total} articles</div>
+                <div style="margin-top:6px;height:5px;background:#e8e0d0;border-radius:3px;overflow:hidden;max-width:180px">
+                  <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
+                </div>
+                <div style="font-size:11px;color:#6b7280;margin-top:3px">${done}/${total} · ${pct}%</div>
+              </div>
+              <div class="stock-actions">
+                ${s.cloture ? "" : `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>`}
+                ${s.cloture
+                  ? `<span style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 10px;border-radius:8px;font-weight:600">✓ Clôturé</span>
+                     <button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>`
+                  : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>`}
+                <button class="btn btn-sm" onclick="sDupliquer('${sid}')" title="Dupliquer">📋</button>
+                <button class="btn btn-sm btn-danger" onclick="sDeleteStock('${sid}')">🗑</button>
+              </div>
+            </div>`;
+          };
+          const gmsStocks = stocks.filter(s => s.team === "GMS" || !s.team);
+          const presStocks = stocks.filter(s => s.team === "PRESTIGE");
+          let html = `<div style="font-size:12px;font-weight:700;color:#92710a;text-transform:uppercase;padding:6px 0 8px;display:flex;align-items:center;gap:6px">🌿 GMS</div>`;
+          if (gmsStocks.length) gmsStocks.forEach(s => { html += makeItem(s, "GMS"); });
+          else html += `<div style="font-size:13px;color:#6b7280;padding:10px 0">Aucun stock GMS</div>`;
+          html += `<div style="font-size:12px;font-weight:700;color:#7c3aed;text-transform:uppercase;padding:16px 0 8px;margin-top:8px;border-top:1.5px solid #e8e0d0;display:flex;align-items:center;gap:6px">✨ Prestige</div>`;
+          if (presStocks.length) presStocks.forEach(s => { html += makeItem(s, "PRESTIGE"); });
+          else html += `<div style="font-size:13px;color:#6b7280;padding:10px 0">Aucun stock Prestige</div>`;
+          list.innerHTML = html;
+        } catch (err: any) { list.innerHTML = `<div class="empty-state">Erreur: ${err.message}</div>`; }
+      };
+
+      // Clôturer
+      (window as any).sCloturerStock = async (sid: string) => {
+        if (!confirm("Clôturer ce stock ?")) return;
+        try {
+          const snap = await getDoc(doc(db, "stocks", sid));
+          if (snap.exists()) await setDoc(doc(db, "stocks", sid), { ...snap.data(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") });
+          toast("Stock clôturé"); renderStockList();
+        } catch { toast("Erreur"); }
+      };
+
+      // Dupliquer
+      (window as any).sDupliquer = async (sid: string) => {
+        if (!confirm("Dupliquer ce stock ?")) return;
+        try {
+          const snap = await getDoc(doc(db, "stocks", sid));
+          if (!snap.exists()) { toast("Stock introuvable"); return; }
+          const data = snap.data() as any;
+          const newId = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
+          await setDoc(doc(db, "stocks", newId), { ...data, importId: newId, date: new Date().toISOString(), dateLabel: new Date().toLocaleString("fr-FR"), cloture: false, filename: "📋 " + (data.filename || "stock") });
+          for (const team of ["GMS", "PRESTIGE"]) {
+            const cSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
+            if (cSnap.exists()) await setDoc(doc(db, "comptages", newId + "_" + team), { ...cSnap.data(), date: TODAY, ts: Date.now() });
+          }
+          toast("Stock dupliqué !"); renderStockList();
+        } catch { toast("Erreur duplication"); }
+      };
+
+      // Delete
+      (window as any).sDeleteStock = async (id: string) => {
+        if (!confirm("Supprimer ce stock et ses comptages ?")) return;
+        await deleteDoc(doc(db, "stocks", id));
+        await deleteDoc(doc(db, "comptages", id + "_GMS"));
+        await deleteDoc(doc(db, "comptages", id + "_PRESTIGE"));
+        toast("Stock supprimé"); renderStockList();
+      };
+
+      // Comptage
+      (window as any).sSetCount = (id: number, loc: number, val: string) => {
+        const a = articles.find(x => x.id === id); if (!a) return;
+        const v = val === "" ? null : Math.max(0, parseFloat(val) || 0);
+        if (loc <= 8) a["compte" + loc] = v; else a.detruire = v;
+        if (!a._saisieTs && v !== null) a._saisieTs = Date.now();
+        const hasCount = a.compte1 !== null && a.compte1 !== undefined;
+        if (hasCount) { let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0; a.compte = t; } else a.compte = null;
+        updateMetricsC();
+        const row = document.querySelector(`tr[data-id="${id}"]`);
+        if (row) {
+          const totCell = row.querySelector(".s-tot-cell");
+          const ecartCell = row.querySelector(".s-ecart-cell");
+          if (totCell) {
+            let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0;
+            const hasCnt = a.compte1 !== null && a.compte1 !== undefined;
+            (totCell as any).textContent = hasCnt ? t : "-";
+            if (ecartCell) {
+              if (!hasCnt) { (ecartCell as any).textContent = "—"; (ecartCell as HTMLElement).style.color = "#6b7280"; }
+              else { const e = t - a.nb_colis; (ecartCell as any).textContent = (e > 0 ? "+" : "") + e; (ecartCell as HTMLElement).style.color = e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d"; }
+            }
+          }
+        }
+        clearTimeout(comptageTimeout);
+        comptageTimeout = setTimeout(saveComptages, 1500);
+      };
+
+      (window as any).sAddLoc = (id: number, loc: number) => {
+        const a = articles.find(x => x.id === id); if (!a) return;
+        a["compte" + loc] = 0;
+        clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);
+        const btn = document.querySelector(`button.add-loc-btn[data-id="${id}"][data-loc="${loc}"]`) as HTMLElement;
+        if (btn) {
+          const inp = document.createElement("input");
+          inp.className = "qty-in"; inp.type = "number"; inp.min = "0"; inp.value = "";
+          (inp as any).onchange = function () { (window as any).sSetCount(id, loc, (this as any).value); };
+          btn.parentNode?.insertBefore(inp, btn);
+          if (loc < 8) btn.setAttribute("onclick", `sAddLoc(${id},${loc + 1})`);
+          else btn.remove();
+          inp.focus();
+        } else sRenderTable();
+      };
+
+      const updateMetricsC = () => {
+        const tot = articles.length, done = articles.filter(counted).length;
+        const pct = tot ? Math.round(done / tot * 100) : 0;
+        const pg = document.getElementById("s-prog");
+        const pl = document.getElementById("s-prog-label");
+        if (pg) pg.style.width = pct + "%";
+        if (pl) pl.textContent = pct + "% · " + done + "/" + tot;
+      };
+
+      const sRenderTable = () => {
+        const srchEl = document.getElementById("s-srch") as HTMLInputElement;
+        const q = srchEl ? srchEl.value.toLowerCase().trim() : "";
+        const rows = articles.filter(a => {
+          if (!a || !a.article) return false;
+          if (!q) return true;
+          return (a.article + " " + (a.famille || "")).toLowerCase().includes(q);
+        });
+        const tbody = document.getElementById("s-tbl-body");
+        if (!tbody) return;
+        if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
+        let html = "";
+        rows.forEach(a => {
+          const q1 = a.compte1 !== null && a.compte1 !== undefined ? a.compte1 : "";
+          const qd = a.detruire !== null && a.detruire !== undefined ? a.detruire : "";
+          let tot = 0; for (let i = 1; i <= 8; i++) tot += parseFloat(a["compte" + i] ?? 0) || 0;
+          const showTot = q1 !== "";
+          const other = currentTeam === "GMS" ? "Prestige" : "GMS";
+          const moveBtn = `<button onclick="sMoveToOther(${a.id})" style="padding:2px 7px;border:1px solid #e8e0d0;border-radius:6px;background:transparent;color:#6b7280;cursor:pointer;font-size:11px">${other} →</button>`;
+          const locs = [a.compte1, a.compte2, a.compte3, a.compte4, a.compte5, a.compte6, a.compte7, a.compte8];
+          let inp = `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${q1}" onchange="sSetCount(${a.id},1,this.value)">`;
+          let lastFilled = 1;
+          locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v}" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
+          if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" data-loc="${q1 !== "" ? lastFilled + 1 : 1}" onclick="sAddLoc(${a.id},${q1 !== "" ? lastFilled + 1 : 1})">+</button>`;
+          const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="0" value="${qd}" onchange="sSetCount(${a.id},9,this.value)">`;
+          const ecartVal = showTot ? (tot - a.nb_colis) : null;
+          const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
+          const ecartStr = ecartVal === null ? "—" : (ecartVal > 0 ? "+" : "") + ecartVal;
+          const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, qty]: any) => `lot ${l} · ${qty} col.`).join(" | ") : (a.lots?.join(" ") || "");
+          html += `<tr data-id="${a.id}">
+            <td style="font-weight:500">${a.article}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}<br>${moveBtn}</td>
+            <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}${destroy}</div></td>
+            <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
+            <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>
+            <td style="text-align:center;color:#6b7280;font-size:12px">${a.nb_colis}</td>
+          </tr>`;
+        });
+        tbody.innerHTML = html;
+      };
+      (window as any).sRenderTable = sRenderTable;
+
+      (window as any).sTerminerComptage = () => {
+        document.getElementById("s-nav-ecarts")?.classList.remove("hidden");
+        (window as any).sShowPage("ecarts");
+      };
+
+      (window as any).sResetCounts = () => {
+        if (!confirm("Réinitialiser tous les comptages ?")) return;
+        articles.forEach(a => { a.compte = null; for (let i = 1; i <= 8; i++) a["compte" + i] = null; a.detruire = null; });
+        updateMetricsC(); sRenderTable(); saveComptages();
+      };
+
+      (window as any).sMoveToOther = async (id: number) => {
+        const a = articles.find(x => x.id === id); if (!a) return;
+        const newTeam = currentTeam === "GMS" ? "PRESTIGE" : "GMS";
+        articles = articles.filter(x => x.id !== id);
+        updateMetricsC(); sRenderTable();
+        clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 500);
+        try {
+          const snap = await getDoc(doc(db, "config", "overrides"));
+          const ov = snap.exists() ? (snap.data() as any).data || {} : {};
+          ov[a.article] = newTeam;
+          await setDoc(doc(db, "config", "overrides"), { data: ov });
+          toast(a.article.split(" ").slice(0, 3).join(" ") + " → " + newTeam);
+        } catch { toast("Déplacé"); }
+      };
+
+      // Changer fichier reimport
+      (window as any).sChanterFichier = () => {
+        if (!currentTeam) { toast("Aucun comptage en cours"); return; }
+        document.getElementById("s-file-reimport")?.click();
+      };
+      const reimportInput = document.getElementById("s-file-reimport") as HTMLInputElement;
+      if (reimportInput) reimportInput.addEventListener("change", async e => {
+        const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return;
+        await saveComptages();
+        const savedCounts: any = {};
+        articles.forEach(a => { if (counted(a)) savedCounts[a.article] = { compte: a.compte, compte1: a.compte1, compte2: a.compte2, compte3: a.compte3, compte4: a.compte4, compte5: a.compte5, compte6: a.compte6, compte7: a.compte7, compte8: a.compte8, detruire: a.detruire }; });
+        const savedTeam = currentTeam; const savedSession = currentSessionId;
+        await parseExcel(file);
+        currentSessionId = savedSession; currentTeam = savedTeam;
+        articles = allArticles.filter(a => getEquipe(a) === savedTeam).map(a => ({ ...a, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
+        let restored = 0;
+        articles.forEach(a => { const s = savedCounts[a.article]; if (s) { Object.assign(a, s); restored++; } });
+        updateMetricsC(); sRenderTable(); await saveComptages();
+        toast(restored + " comptages restaurés");
+        (e.target as HTMLInputElement).value = "";
+      });
+
+      // Ajouter article manuel
+      (window as any).sAddArticleManuel = () => {
+        const inp = document.getElementById("s-add-art-input") as HTMLInputElement;
+        const val = inp.value.trim();
+        const qty = parseFloat((document.getElementById("s-add-art-qty") as HTMLInputElement).value) || 0;
+        const comment = (document.getElementById("s-add-art-comment") as HTMLInputElement).value.trim();
+        if (!val) { toast("Entrez le nom de l'article"); return; }
+        const stockRef = allArticles.find(x => x.article === val);
+        const newArt = { id: Date.now(), equipe: currentTeam, famille: "AUTRE", code: "", article: val, nb_colis: stockRef?.nb_colis || 0, lots: stockRef?.lots || [], lotsQty: stockRef?.lotsQty || {}, lot: stockRef?.lot || "", comment, compte: qty, compte1: qty, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null, _extra: true };
+        articles.push(newArt);
+        inp.value = "";
+        (document.getElementById("s-add-art-qty") as HTMLInputElement).value = "";
+        (document.getElementById("s-add-art-comment") as HTMLInputElement).value = "";
+        updateMetricsC(); sRenderTable();
+        clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);
+        toast(val + " ajouté");
+      };
+
+      // Écarts
+      const updateMetricsE = () => {
+        const c = articles.filter(counted), we = c.filter(a => ecart(a) !== 0);
+        const surp = c.filter(a => ecart(a) > 0), manq = c.filter(a => ecart(a) < 0), nc = articles.filter(a => !counted(a));
+        const el = document.getElementById("s-metrics-e");
+        if (el) el.innerHTML = `
+          <div class="stat-card green"><div class="num">${c.length - we.length}</div><div class="lbl">Sans écart</div></div>
+          <div class="stat-card red"><div class="num">${we.length}</div><div class="lbl">Avec écart</div></div>
+          <div class="stat-card amber"><div class="num">${surp.length}</div><div class="lbl">Surplus</div></div>
+          <div class="stat-card red"><div class="num">${manq.length}</div><div class="lbl">Manquants</div></div>`;
+      };
+
+      (window as any).sSetEF = (f: string) => {
+        ecartFilter = f;
+        ["tous", "ecart", "ok", "nc"].forEach(t => { const el = document.getElementById("s-ef-" + t); if (el) el.classList.toggle("active", t === f); });
+        sRenderEcarts();
+      };
+
+      const sRenderEcarts = () => {
+        const q = (document.getElementById("s-srch2") as HTMLInputElement)?.value.toLowerCase() || "";
+        let rows = articles.filter(a => {
+          if (q && !a.article.toLowerCase().includes(q)) return false;
+          if (ecartFilter === "ecart") return counted(a) && ecart(a) !== 0;
+          if (ecartFilter === "ok") return counted(a) && ecart(a) === 0;
+          if (ecartFilter === "nc") return !counted(a);
+          return true;
+        });
+        const tbody = document.getElementById("s-etbl-body");
+        if (!tbody) return;
+        if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
+        tbody.innerHTML = rows.map(a => {
+          if (!counted(a)) return `<tr><td style="font-weight:500">${a.article}</td><td style="text-align:right">${a.nb_colis}</td><td style="color:#6b7280;text-align:right">—</td><td>—</td><td><span class="badge badge-nc">Non compté</span></td></tr>`;
+          const e = ecart(a), sign = e > 0 ? "+" : "";
+          const cls = e > 0 ? "ep" : e < 0 ? "en" : "ez";
+          const badge = e === 0 ? `<span class="badge badge-ok">OK</span>` : e > 0 ? `<span class="badge badge-surplus">Surplus</span>` : `<span class="badge badge-manque">Manque</span>`;
+          let lotsHtml = "";
+          if (e !== 0 && a.lotsQty && Object.keys(a.lotsQty).length > 0) lotsHtml = `<div style="margin-top:3px;font-size:10px;color:#6b7280">${Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" | ")}</div>`;
+          return `<tr><td style="font-weight:500">${a.article}${lotsHtml}</td><td style="text-align:right">${a.nb_colis}</td><td style="text-align:right;font-weight:700">${a.compte}</td><td class="${cls}" style="text-align:right">${sign + e}</td><td>${badge}</td></tr>`;
+        }).join("");
+      };
+      (window as any).sRenderEcarts = sRenderEcarts;
+
+      // CSV
+      (window as any).sExportCSV = () => {
+        const now = new Date().toLocaleString("fr-FR");
+        let csv = `Inventaire ${currentTeam} — ${now}\nArticle,Stock sys.,Empl.1,Détruit,Total,Écart,Statut\n`;
+        articles.forEach(a => { const e = counted(a) ? ecart(a) : ""; const st = !counted(a) ? "Non compté" : e === 0 ? "OK" : (e as number) > 0 ? "Surplus" : "Manque"; csv += `"${a.article}",${a.nb_colis},${a.compte1 ?? ""},${a.detruire ?? ""},${counted(a) ? a.compte : ""},${e},"${st}"\n`; });
+        const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const lnk = document.createElement("a"); lnk.href = url; lnk.download = `inventaire_${currentTeam.toLowerCase()}_${TODAY}.csv`; lnk.click(); URL.revokeObjectURL(url);
+        toast("CSV téléchargé");
+      };
+
+      // PDF
+      (window as any).sExportPDF = () => {
+        const now = new Date().toLocaleString("fr-FR");
+        const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
+        const thead = `<tr style="background:#f0f0f0"><th style="padding:6px 8px;font-size:10px;border-bottom:2px solid #333;width:28px">Statut</th><th style="padding:6px 8px;font-size:10px;border-bottom:2px solid #333">Article</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #333">Stock</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #333">Compté</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #333">Écart</th></tr>`;
+        const row = (a: any) => {
+          const e = counted(a) ? ecart(a) : null;
+          const statut = !counted(a) ? "?" : e === 0 ? "✓" : e! < 0 ? "▼ " + e : "▲ +" + e;
+          const bg = e !== null && e !== 0 ? "background:#f8f8f8" : "";
+          const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `${l} (${q})`).join("  ") : (a.lots?.join("  ") || "");
+          return `<tr style="${bg}"><td style="padding:5px 8px;text-align:center;font-size:11px;font-weight:700;border-bottom:1px solid #ddd">${statut}</td><td style="padding:5px 8px;font-size:11px;border-bottom:1px solid #ddd">${a.article}${lotsStr ? `<br><span style="font-size:9px;color:#666">${lotsStr}</span>` : ""}</td><td style="padding:5px 8px;text-align:center;font-size:11px;border-bottom:1px solid #ddd">${a.nb_colis}</td><td style="padding:5px 8px;text-align:center;font-size:11px;font-weight:600;border-bottom:1px solid #ddd">${counted(a) ? a.compte : "—"}</td><td style="padding:5px 8px;text-align:center;font-size:11px;font-weight:700;border-bottom:1px solid #ddd">${e !== null ? (e > 0 ? "+" + e : e) : "—"}</td></tr>`;
+        };
+        const manq = sorted.filter(a => counted(a) && ecart(a) < 0).length;
+        const exc = sorted.filter(a => counted(a) && ecart(a) > 0).length;
+        const nc = sorted.filter(a => !counted(a)).length;
+        const html = `<h1 style="font-size:14px;font-weight:bold;margin:0">Moorea · Inventaire ${currentTeam}</h1><div style="font-size:10px;color:#444;margin:3px 0 10px">${now} · ${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</div><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${sorted.map(row).join("")}</tbody></table>`;
+        const pdfContent = document.getElementById("stock-pdf-content");
+        const pdfOverlay = document.getElementById("stock-pdf-overlay");
+        if (pdfContent) pdfContent.innerHTML = html;
+        if (pdfOverlay) pdfOverlay.style.display = "block";
+      };
+
+      // PDF depuis stock existant
+      (window as any).sPrintPDF = async (sid: string, team: string) => {
+        try {
+          const stockSnap = await getDoc(doc(db, "stocks", sid));
+          const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
+          if (!stockSnap.exists()) { toast("Stock introuvable"); return; }
+          const s = stockSnap.data() as any;
+          const arts = s.articles || [];
+          const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
+          const teamArts = arts.filter((a: any) => a.equipe === team);
+          const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
+          const getCompte = (a: any) => { const d = comptData[a.article]; if (!d) return null; return typeof d === "object" ? d.c : d; };
+          const getDetruire = (a: any) => { const d = comptData[a.article]; if (!d || typeof d !== "object") return null; return d.cd; };
+          const ecartFn = (a: any) => { const c = getCompte(a); return c !== null ? c - a.nb_colis : null; };
+          const manq = teamArts.filter((a: any) => isCounted(a) && ecartFn(a)! < 0);
+          const exc = teamArts.filter((a: any) => isCounted(a) && ecartFn(a)! > 0);
+          const ok = teamArts.filter((a: any) => isCounted(a) && ecartFn(a) === 0);
+          const nc = teamArts.filter((a: any) => !isCounted(a));
+          const thead = `<tr style="background:#f5f3ee"><th style="padding:6px 10px;text-align:left;font-size:11px;color:#6b7280;border-bottom:2px solid #c8a84b">Article</th><th style="padding:6px 10px;text-align:center;font-size:11px;border-bottom:2px solid #c8a84b">Stock</th><th style="padding:6px 10px;text-align:center;font-size:11px;border-bottom:2px solid #c8a84b">Compté</th><th style="padding:6px 10px;text-align:center;font-size:11px;color:#dc2626;border-bottom:2px solid #c8a84b">Détruire</th><th style="padding:6px 10px;text-align:center;font-size:11px;border-bottom:2px solid #c8a84b">Écart</th></tr>`;
+          const row = (a: any, hl: boolean) => {
+            const e = ecartFn(a); const sign = e !== null && e > 0 ? "+" : ""; const ec = e === null ? "#6b7280" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
+            const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" | ") : (a.lots?.join(" | ") || "");
+            const c = getCompte(a); const cd = getDetruire(a);
+            return `<tr style="${hl ? "background:#fff5f5" : ""}"><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #e8e0d0">${a.article}${lotsStr ? `<div style="margin-top:3px;font-size:10px;color:#6b7280">${lotsStr}</div>` : ""}</td><td style="padding:5px 10px;text-align:center;font-size:12px;border-bottom:1px solid #e8e0d0">${a.nb_colis}</td><td style="padding:5px 10px;text-align:center;font-size:12px;font-weight:600;border-bottom:1px solid #e8e0d0">${c !== null ? c : "—"}</td><td style="padding:5px 10px;text-align:center;font-size:12px;color:#dc2626;border-bottom:1px solid #e8e0d0">${cd || ""}</td><td style="padding:5px 10px;text-align:center;font-size:12px;font-weight:700;color:${ec};border-bottom:1px solid #e8e0d0">${e !== null ? sign + e : "—"}</td></tr>`;
+          };
+          const section = (title: string, color: string, arr: any[], hl: boolean) => arr.length ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:${color};padding:12px 0 6px">${title} (${arr.length})</div><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${arr.map(a => row(a, hl)).join("")}</tbody></table>` : "";
+          const now = new Date().toLocaleString("fr-FR");
+          const html = `<h1 style="font-size:17px;font-weight:700;color:#c8a84b;margin:0">🌿 Moorea · Inventaire ${team}</h1><div style="font-size:12px;color:#6b7280;margin:3px 0 18px">${s.dateLabel} · ${teamArts.length} articles · Imprimé le ${now}</div>${section("▼ Manquants", "#dc2626", manq, true)}${section("▲ Excédents", "#b45309", exc, true)}${manq.length === 0 && exc.length === 0 ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 13px;font-size:13px;color:#15803d;margin-bottom:14px">✓ Aucun écart</div>` : ""}${section("⚡ Non comptés", "#6b7280", nc, false)}${section("✓ Articles OK", "#15803d", ok, false)}`;
+          const pdfContent = document.getElementById("stock-pdf-content");
+          const pdfOverlay = document.getElementById("stock-pdf-overlay");
+          if (pdfContent) pdfContent.innerHTML = html;
+          if (pdfOverlay) pdfOverlay.style.display = "block";
+        } catch { toast("Erreur PDF"); }
+      };
+
+      // Config
+      (window as any).sCheckPin = (val: string) => {
+        if (val.length === 4) {
+          if (val === "1709") {
+            cfgUnlocked = true;
+            const ps = document.getElementById("s-config-pin-screen");
+            const cc = document.getElementById("s-config-content");
+            if (ps) ps.style.display = "none";
+            if (cc) cc.style.display = "block";
+            sRenderConfig();
+          } else {
+            const err = document.getElementById("s-config-pin-error");
+            if (err) err.textContent = "Code incorrect";
+            (document.getElementById("s-config-pin-input") as HTMLInputElement).value = "";
+          }
+        }
+      };
+
+      (window as any).sSetCF = (f: string) => {
+        cfFilter = f;
+        ["tous", "gms", "prestige"].forEach(t => { const el = document.getElementById("s-cf-" + t); if (el) el.classList.toggle("active", (f === "tous" && t === "tous") || (f === "GMS" && t === "gms") || (f === "PRESTIGE" && t === "prestige")); });
+        sRenderConfig();
+      };
+
+      const sRenderConfig = () => {
+        const q = (document.getElementById("s-cfg-srch") as HTMLInputElement)?.value.toLowerCase() || "";
+        const tbody = document.getElementById("s-cfg-body");
+        if (!tbody) return;
+        const source = allArticles.length ? allArticles : [];
+        if (!source.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-state">Importez un fichier stock d'abord</td></tr>`; return; }
+        let rows = source.filter(a => {
+          if (q && !a.article.toLowerCase().includes(q)) return false;
+          if (cfFilter === "GMS" && getEquipe(a) !== "GMS") return false;
+          if (cfFilter === "PRESTIGE" && getEquipe(a) !== "PRESTIGE") return false;
+          return true;
+        });
+        const isGMSfn = (a: any) => getEquipe(a) === "GMS";
+        tbody.innerHTML = rows.map(a => {
+          const isGMS = isGMSfn(a);
+          const enc = encodeURIComponent(a.article);
+          const gmsStyle = `padding:5px 14px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;${isGMS ? "background:#c8a84b;color:#0a0a0a" : "background:transparent;color:#bbb"}`;
+          const presStyle = `padding:5px 14px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;${!isGMS ? "background:#7c3aed;color:#fff" : "background:transparent;color:#bbb"}`;
+          return `<tr><td style="font-weight:500">${a.article}<br><span style="font-size:11px;color:#6b7280">${a.famille}</span></td><td>${a.famille}</td><td><div style="display:inline-flex;border:1.5px solid #e8e0d0;border-radius:20px;overflow:hidden"><button data-enc="${enc}" onclick="sToggleEquipe(this.dataset.enc,true)" style="${gmsStyle}">GMS</button><button data-enc="${enc}" onclick="sToggleEquipe(this.dataset.enc,false)" style="${presStyle}">Prestige</button></div></td></tr>`;
+        }).join("");
+      };
+      (window as any).sRenderConfig = sRenderConfig;
+
+      (window as any).sToggleEquipe = async (enc: string, isGMS: boolean) => {
+        const article = decodeURIComponent(enc);
+        const newEquipe = isGMS ? "GMS" : "PRESTIGE";
+        if (!_byArticle) _byArticle = {};
+        _byArticle[article.toLowerCase().trim()] = newEquipe;
+        const a = allArticles.find(x => x.article === article);
+        if (a) a.equipe = newEquipe;
+        try {
+          const snap = await getDoc(doc(db, "config", "overrides"));
+          const ov = snap.exists() ? (snap.data() as any).data || {} : {};
+          ov[article] = newEquipe;
+          await setDoc(doc(db, "config", "overrides"), { data: ov });
+          toast(article.split(" ").slice(0, 3).join(" ") + " → " + newEquipe);
+        } catch { toast("Erreur sauvegarde"); }
+        sRenderConfig();
+      };
+
+      // Fusion (simplifié)
+      (window as any).sConfirmerFusion = () => { toast("Fusion non disponible dans cette version"); };
+      (window as any).sAnnulerFusion = () => { document.getElementById("s-fusion-bar")!.style.display = "none"; };
+
+      // Calculatrice
+      (window as any).sCalcNum = (n: string) => {
+        if (calcJustEvaled) { calcCurrent = ""; calcJustEvaled = false; }
+        if (n === "." && calcCurrent.includes(".")) return;
+        calcCurrent = calcCurrent === "0" && n !== "." ? n : calcCurrent + n;
+        const r = document.getElementById("s-calc-result"); if (r) r.textContent = calcCurrent;
+      };
+      (window as any).sCalcOp = (op: string) => {
+        calcJustEvaled = false;
+        if (op === "±") { calcCurrent = String(parseFloat(calcCurrent) * -1); const r = document.getElementById("s-calc-result"); if (r) r.textContent = calcCurrent; return; }
+        if (op === "%") { calcCurrent = String(parseFloat(calcCurrent) / 100); const r = document.getElementById("s-calc-result"); if (r) r.textContent = calcCurrent; return; }
+        calcExpr += calcCurrent + " " + op + " ";
+        const e = document.getElementById("s-calc-expr"); if (e) e.textContent = calcExpr;
+        calcCurrent = "0";
+      };
+      (window as any).sCalcEqual = () => {
+        try {
+          const full = calcExpr + calcCurrent;
+          // eslint-disable-next-line no-new-func
+          const res = Function('"use strict";return (' + full + ')')();
+          const r = Math.round(res * 100) / 100;
+          const e = document.getElementById("s-calc-expr"); if (e) e.textContent = full + " =";
+          const rd = document.getElementById("s-calc-result"); if (rd) rd.textContent = String(r);
+          calcCurrent = String(r); calcExpr = ""; calcJustEvaled = true;
+        } catch { const rd = document.getElementById("s-calc-result"); if (rd) rd.textContent = "Erreur"; calcCurrent = "0"; calcExpr = ""; }
+      };
+      (window as any).sCalcClear = () => {
+        calcCurrent = "0"; calcExpr = ""; calcJustEvaled = false;
+        const e = document.getElementById("s-calc-expr"); if (e) e.textContent = "";
+        const r = document.getElementById("s-calc-result"); if (r) r.textContent = "0";
+      };
+      (window as any).sCalcUse = () => {
+        const val = document.getElementById("s-calc-result")?.textContent;
+        if (calcLastFocused && document.contains(calcLastFocused)) { calcLastFocused.value = val; calcLastFocused.dispatchEvent(new Event("change")); }
+        document.getElementById("stock-calc-modal")?.classList.remove("open");
+      };
+      document.addEventListener("focusin", (e: Event) => { if ((e.target as HTMLElement).classList.contains("qty-in")) calcLastFocused = e.target; });
+
+      // Init
+      renderStockList();
+      (window as any).sShowPage("home");
+    });
+
+    return () => {
+      // Cleanup global functions
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddLoc","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcUse"].forEach(fn => { delete (window as any)[fn]; });
+      const styleEl = document.getElementById("stock-app-styles");
+      if (styleEl) styleEl.remove();
+    };
+  }, []);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 500, overflowY: "auto", background: "#f5f3ee" }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 600, background: "#0a0a0a", padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "2px solid #c8a84b" }}>
+        <button onClick={onExit} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>
+          🏠 Hub Moorea
+        </button>
+      </div>
+      <div ref={containerRef} />
+    </div>
+  );
+}
+
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
   const [vue, setVue] = useState("__none__");
@@ -2293,668 +3363,10 @@ _PDF joint_`;
     );
   }
 
-  // ─── PAGE STOCK INVENTAIRE (COMPLET) ───
+  // ─── PAGE STOCK INVENTAIRE (EMBARQUÉE) ───
   if (showStock) {
-    const PIN_STOCK = "1709";
-    const resetAll = () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); };
-    const goHome = () => { setStockPage("home"); setStockTeam(null); };
-
-    // ── Firestore moorea-stock ──
-    const getStockDb = async () => {
-      const { initializeApp, getApps, getApp } = await import("firebase/app");
-      const { getFirestore } = await import("firebase/firestore");
-      const stockConfig = {
-        apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8",
-        authDomain: "moorea-stock.firebaseapp.com",
-        projectId: "moorea-stock",
-        storageBucket: "moorea-stock.firebasestorage.app",
-        messagingSenderId: "639598259840",
-        appId: "1:639598259840:web:ff3c048f9aac1b99f40065"
-      };
-      const existing = getApps().find(a => a.name === "moorea-stock");
-      const app = existing ?? initializeApp(stockConfig, "moorea-stock");
-      return getFirestore(app);
-    };
-
-    // ── Helpers équipe ──
-    const getEquipe = (art: any): "GMS"|"PRESTIGE" => {
-      const ov = stockOverrides[art.article];
-      if (ov) return ov as "GMS"|"PRESTIGE";
-      return art.equipe || "PRESTIGE";
-    };
-
-    // ── Import Excel ──
-    const handleStockExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]; if (!file) return;
-      setStockUploading(true);
-      try {
-        const buf = await file.arrayBuffer();
-        const XLSX: any = await new Promise((res, rej) => {
-          if ((window as any).XLSX) { res((window as any).XLSX); return; }
-          const s = document.createElement("script");
-          s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
-          s.onload = () => res((window as any).XLSX);
-          s.onerror = rej;
-          document.head.appendChild(s);
-        });
-        if (!XLSX) { showToast("SheetJS non disponible", "error"); setStockUploading(false); return; }
-        const wb = XLSX.read(buf, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const json: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-        const hdrs = (json[0] || []).map((h: any) => String(h || "").toLowerCase().trim());
-        const findCol = (kws: string[]) => { for (const kw of kws) { const i = hdrs.findIndex((h: string) => h.includes(kw)); if (i >= 0) return i; } return -1; };
-        const colFam = findCol(["famille"]);
-        const colArt = findCol(["article", "designation", "désignation"]);
-        const colQty = findCol(["nb colis", "quantit", "colis"]);
-        const colEq = findCol(["equipe", "équipe"]);
-        const rows = json.slice(1);
-        const grouped: Record<string, any> = {};
-        rows.forEach((r: any[]) => {
-          const art = String(r[colArt] || "").trim();
-          if (!art || art.length < 2) return;
-          const qty = parseInt(String(r[colQty] || "0")) || 0;
-          const fam = colFam >= 0 ? String(r[colFam] || "") : "";
-          const rawEq = colEq >= 0 ? String(r[colEq] || "").toUpperCase().trim() : String(r[0] || "").toUpperCase().trim();
-          const equipe = rawEq === "GMS" ? "GMS" : "PRESTIGE";
-          const lotFull = colEq < 0 ? String(r[0] || "") : "";
-          const lot = lotFull.length >= 8 ? lotFull.slice(4, 8) : lotFull.length >= 4 ? lotFull.slice(-4) : "";
-          if (!grouped[art]) grouped[art] = { article: art, famille: fam, equipe, nb_colis: 0, lots: [] as string[], lotsQty: {} as Record<string,number>, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null };
-          grouped[art].nb_colis += qty;
-          if (lot && !grouped[art].lots.includes(lot)) { grouped[art].lots.push(lot); }
-          if (lot) grouped[art].lotsQty[lot] = (grouped[art].lotsQty[lot] || 0) + qty;
-        });
-        const arts = Object.values(grouped).map((a: any, i: number) => ({ ...a, id: i + 1 }));
-        setStockAllArticles(arts);
-        // Save to Firebase
-        const importId = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
-        setStockCurrentImportId(importId);
-        try {
-          const { doc, setDoc } = await import("firebase/firestore");
-          const fsdb = await getStockDb();
-          await setDoc(doc(fsdb, "stocks", importId), {
-            filename: file.name, importId,
-            date: new Date().toISOString(),
-            dateLabel: new Date().toLocaleString("fr-FR"),
-            nb: arts.length,
-            gms: arts.filter((a: any) => getEquipe(a) === "GMS").length,
-            prestige: arts.filter((a: any) => getEquipe(a) === "PRESTIGE").length,
-            articles: arts,
-          });
-        } catch {}
-        showToast(`✅ ${arts.length} articles importés`);
-        setStockSessionsLoaded(false);
-      } catch (err) { showToast("Erreur lecture Excel", "error"); }
-      setStockUploading(false);
-      e.target.value = "";
-    };
-
-    // ── Load sessions from Firebase ──
-    const loadStockSessions = async () => {
-      if (stockSessionsLoaded) return;
-      try {
-        const { collection, getDocs } = await import("firebase/firestore");
-        const fsdb = await getStockDb();
-        const snap = await getDocs(collection(fsdb, "stocks"));
-        const list: any[] = [];
-        snap.forEach((d: any) => list.push({ id: d.id, ...d.data() }));
-        list.sort((a: any, b: any) => b.id.localeCompare(a.id));
-        setStockSessions(list);
-        setStockSessionsLoaded(true);
-      } catch { setStockSessions([]); setStockSessionsLoaded(true); }
-    };
-
-    // ── Load session ──
-    const loadSession = async (importId: string, team: "GMS"|"PRESTIGE") => {
-      try {
-        const { doc, getDoc } = await import("firebase/firestore");
-        const fsdb = await getStockDb();
-        const snap = await getDoc(doc(fsdb, "stocks", importId));
-        if (!snap.exists()) { showToast("Session introuvable", "error"); return; }
-        const data = snap.data() as any;
-        const arts: any[] = (data.articles || []).map((a: any) => ({
-          ...a, compte: null, compte1: null, compte2: null, compte3: null,
-          compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null,
-        }));
-        setStockAllArticles(arts);
-        setStockCurrentImportId(importId);
-        // Load comptages
-        const cSnap = await getDoc(doc(fsdb, "comptages", `${importId}_${team}`));
-        if (cSnap.exists()) {
-          const cData = (cSnap.data() as any).data || {};
-          let n = 0;
-          arts.forEach((a: any) => {
-            const d = cData[a.article];
-            if (d) {
-              for (let i = 1; i <= 8; i++) a[`compte${i}`] = d[`c${i}`] ?? null;
-              a.detruire = d.cd ?? null;
-              a.compte = d.c;
-              n++;
-            }
-          });
-          if (n > 0) showToast(`${n} comptages récupérés`);
-        }
-        const sessionId = `CPT-${team}-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-        setStockCurrentSessionId(sessionId);
-        const teamArts = arts.filter((a: any) => getEquipe(a) === team);
-        setStockArticles(teamArts.map((a: any) => ({ ...a })));
-        setStockTeam(team);
-        setStockPage("comptage");
-        setStockFilter("");
-      } catch { showToast("Erreur chargement", "error"); }
-    };
-
-    // ── Save comptages ──
-    const saveComptages = async (arts: any[]) => {
-      if (!stockTeam || !stockCurrentImportId) return;
-      try {
-        const { doc, setDoc } = await import("firebase/firestore");
-        const fsdb = await getStockDb();
-        const data: Record<string, any> = {};
-        arts.forEach((a: any, idx: number) => {
-          if (a.compte !== null && a.compte !== undefined) {
-            const locs: Record<string, any> = {};
-            for (let i = 1; i <= 8; i++) if (a[`compte${i}`] !== null && a[`compte${i}`] !== undefined) locs[`c${i}`] = a[`compte${i}`];
-            data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: Date.now(), _idx: idx };
-          }
-        });
-        await setDoc(doc(fsdb, "comptages", `${stockCurrentImportId}_${stockTeam}`), {
-          data, team: stockTeam, date: new Date().toISOString().slice(0, 10), ts: Date.now(), sessionId: stockCurrentSessionId
-        });
-      } catch {}
-    };
-
-    // ── Update compte ──
-    const setCompte = (id: number, loc: number, val: string) => {
-      const v = val === "" ? null : Math.max(0, parseInt(val) || 0);
-      setStockArticles(prev => prev.map(a => {
-        if (a.id !== id) return a;
-        const updated = { ...a };
-        if (loc <= 8) updated[`compte${loc}`] = v;
-        else updated.detruire = v;
-        const hasCount = updated.compte1 !== null && updated.compte1 !== undefined;
-        if (hasCount) { let t = 0; for (let i = 1; i <= 8; i++) t += updated[`compte${i}`] ?? 0; updated.compte = t; }
-        else updated.compte = null;
-        return updated;
-      }));
-    };
-
-    // ── Delete session ──
-    const deleteSession = async (importId: string) => {
-      if (!window.confirm("Supprimer ce stock et ses comptages ?")) return;
-      try {
-        const { doc, deleteDoc } = await import("firebase/firestore");
-        const fsdb = await getStockDb();
-        await deleteDoc(doc(fsdb, "stocks", importId));
-        await deleteDoc(doc(fsdb, "comptages", `${importId}_GMS`));
-        await deleteDoc(doc(fsdb, "comptages", `${importId}_PRESTIGE`));
-        setStockSessions(prev => prev.filter((s: any) => s.importId !== importId));
-        showToast("Stock supprimé");
-      } catch { showToast("Erreur suppression", "error"); }
-    };
-
-    // ── Clôturer ──
-    const cloturerSession = async (importId: string) => {
-      if (!window.confirm("Clôturer ce stock ? Il ne sera plus modifiable.")) return;
-      try {
-        const { doc, getDoc, setDoc } = await import("firebase/firestore");
-        const fsdb = await getStockDb();
-        const snap = await getDoc(doc(fsdb, "stocks", importId));
-        if (snap.exists()) await setDoc(doc(fsdb, "stocks", importId), { ...snap.data(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") });
-        setStockSessions(prev => prev.map((s: any) => s.importId === importId ? { ...s, cloture: true } : s));
-        showToast("✅ Stock clôturé");
-      } catch {}
-    };
-
-    // ── Toggle équipe article ──
-    const toggleArticleEquipe = async (article: string, newEquipe: "GMS"|"PRESTIGE") => {
-      const newOv = { ...stockOverrides, [article]: newEquipe };
-      setStockOverrides(newOv);
-      try {
-        const { doc, setDoc } = await import("firebase/firestore");
-        const fsdb = await getStockDb();
-        await setDoc(doc(fsdb, "config", "overrides"), { data: newOv });
-      } catch {}
-    };
-    const exportStockCSV = () => {
-      const now = new Date().toLocaleString("fr-FR");
-      let csv = `Inventaire ${stockTeam} — ${now}\nArticle,Famille,Stock sys.,Compté,Détruire,Écart,Statut\n`;
-      stockArticles.forEach(a => {
-        const e = a.compte !== null ? a.compte - a.nb_colis : "";
-        const st = a.compte === null ? "Non compté" : a.compte === a.nb_colis ? "OK" : a.compte > a.nb_colis ? "Surplus" : "Manque";
-        csv += `"${a.article}","${a.famille}",${a.nb_colis},${a.compte ?? ""},${a.detruire ?? ""},${e},"${st}"\n`;
-      });
-      const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const lnk = document.createElement("a"); lnk.href = url;
-      lnk.download = `inventaire_${stockTeam?.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`;
-      lnk.click(); URL.revokeObjectURL(url);
-      showToast("📥 CSV téléchargé");
-    };
-
-    // ── Export PDF (print overlay) ──
-    const exportStockPDF = () => {
-      const now = new Date().toLocaleString("fr-FR");
-      const sorted = [...stockArticles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
-      const manq = sorted.filter(a => a.compte !== null && a.compte < a.nb_colis);
-      const exc = sorted.filter(a => a.compte !== null && a.compte > a.nb_colis);
-      const ok = sorted.filter(a => a.compte !== null && a.compte === a.nb_colis);
-      const nc = sorted.filter(a => a.compte === null);
-      const row = (a: any, hl = false) => {
-        const e = a.compte !== null ? a.compte - a.nb_colis : null;
-        const sign = e !== null && e > 0 ? "+" : "";
-        const ec = e === null ? "#6b7280" : e < 0 ? "#dc2626" : e > 0 ? "#d97706" : "#16a34a";
-        const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q}`).join(" | ") : (a.lots?.join(", ") || "");
-        return `<tr style="${hl ? "background:#fff5f5" : ""}"><td style="padding:5px 8px;font-size:11px;border-bottom:1px solid #e8e0d0">${a.article}${lotsStr ? `<div style="font-size:9px;color:#6b7280">${lotsStr}</div>` : ""}</td><td style="padding:5px 8px;text-align:center;font-size:11px;border-bottom:1px solid #e8e0d0">${a.nb_colis}</td><td style="padding:5px 8px;text-align:center;font-size:11px;font-weight:600;border-bottom:1px solid #e8e0d0">${a.compte ?? "—"}</td><td style="padding:5px 8px;text-align:center;font-size:11px;color:#dc2626;border-bottom:1px solid #e8e0d0">${a.detruire || ""}</td><td style="padding:5px 8px;text-align:center;font-size:12px;font-weight:700;color:${ec};border-bottom:1px solid #e8e0d0">${e !== null ? sign + e : "—"}</td></tr>`;
-      };
-      const thead = `<tr style="background:#f5f3ee"><th style="padding:6px 8px;text-align:left;font-size:10px;border-bottom:2px solid #c8a84b">Article</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #c8a84b">Stock</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #c8a84b">Compté</th><th style="padding:6px 8px;text-align:center;font-size:10px;color:#dc2626;border-bottom:2px solid #c8a84b">Détruire</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #c8a84b">Écart</th></tr>`;
-      const section = (title: string, color: string, arr: any[], hl = false) => arr.length ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:${color};padding:10px 0 4px">${title} (${arr.length})</div><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${arr.map(a => row(a, hl)).join("")}</tbody></table>` : "";
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Inventaire ${stockTeam}</title><style>body{font-family:-apple-system,sans-serif;margin:0;padding:16px}@media print{body{padding:8px}}</style></head><body><h2 style="margin:0;font-size:16px;color:#c8a84b">🌿 Moorea · Inventaire ${stockTeam}</h2><p style="font-size:11px;color:#6b7280;margin:4px 0 16px">${now} · ${sorted.length} articles · Manquants: ${manq.length} · Surplus: ${exc.length} · Non comptés: ${nc.length}</p>${section("▼ Manquants", "#dc2626", manq, true)}${section("▲ Surplus", "#d97706", exc, true)}${section("? Non comptés", "#6b7280", nc)}${section("✓ OK", "#16a34a", ok)}</body></html>`;
-      const w = window.open("", "_blank");
-      if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
-    };
-
-    // ── Export CSV ──
-    const calcNum = (n: string) => {
-      if (calcJustEvaled) { setCalcCurrent(""); setCalcJustEvaled(false); }
-      if (n === "." && calcCurrent.includes(".")) return;
-      setCalcCurrent(prev => (prev === "0" && n !== ".") ? n : prev + n);
-    };
-    const calcOp = (op: string) => {
-      setCalcJustEvaled(false);
-      if (op === "±") { setCalcCurrent(prev => String(parseFloat(prev) * -1)); return; }
-      if (op === "%") { setCalcCurrent(prev => String(parseFloat(prev) / 100)); return; }
-      setCalcExpr(prev => prev + calcCurrent + " " + op + " ");
-      setCalcCurrent("0");
-    };
-    const calcEqual = () => {
-      try {
-        const full = calcExpr + calcCurrent;
-        // eslint-disable-next-line no-new-func
-        const res = Function('"use strict";return (' + full + ')')();
-        const r = Math.round(res * 100) / 100;
-        setCalcCurrent(String(r)); setCalcExpr(""); setCalcJustEvaled(true);
-      } catch { setCalcCurrent("Err"); setCalcExpr(""); }
-    };
-    const calcClear = () => { setCalcCurrent("0"); setCalcExpr(""); setCalcJustEvaled(false); };
-
-    // ── Computed ──
-    const counted = stockArticles.filter(a => a.compte !== null);
-    const pct = stockArticles.length ? Math.round(counted.length / stockArticles.length * 100) : 0;
-    const ecartManq = stockArticles.filter(a => a.compte !== null && a.compte < a.nb_colis).length;
-    const ecartSurp = stockArticles.filter(a => a.compte !== null && a.compte > a.nb_colis).length;
-    const ecartOk = stockArticles.filter(a => a.compte !== null && a.compte === a.nb_colis).length;
-
-    const filteredArts = stockArticles.filter(a => {
-      const q = stockFilter.toLowerCase();
-      if (q && !a.article.toLowerCase().includes(q) && !a.famille?.toLowerCase().includes(q)) return false;
-      if (stockEcartFilter === "ecart") return a.compte !== null && a.compte !== a.nb_colis;
-      if (stockEcartFilter === "ok") return a.compte !== null && a.compte === a.nb_colis;
-      if (stockEcartFilter === "nc") return a.compte === null;
-      return true;
-    });
-
-    // ── PAGE HOME stock ──
-    if (stockPage === "home") {
-      if (!stockSessionsLoaded) loadStockSessions();
-      return (
-        <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-          <style>{styles}</style>
-          {/* Header */}
-          <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={resetAll} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>📦 Inventaire Stock</p>
-              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>GMS & Prestige</p>
-            </div>
-            <button onClick={() => setStockPage("config")} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.6)" }}>⚙️ Config</button>
-          </div>
-          <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px 60px" }}>
-            {/* Upload */}
-            <div style={{ background: "#fff", borderRadius: 16, padding: 20, marginBottom: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1.5px solid #e8e0d0" }}>
-              <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>📊 Nouveau stock</p>
-              <label style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: stockUploading ? "#f0f0f0" : "#faf8f3", borderRadius: 12, cursor: "pointer", border: "2px dashed #c8a84b" }}>
-                <span style={{ fontSize: 28 }}>{stockUploading ? "⏳" : "📁"}</span>
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#1a2e1a" }}>{stockUploading ? "Import en cours..." : "Importer un fichier Excel"}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>.xlsx — colonnes Famille / Article / Nb colis (/ Équipe optionnel)</p>
-                </div>
-                <input type="file" accept=".xlsx,.xls" onChange={handleStockExcel} style={{ display: "none" }} disabled={stockUploading} />
-              </label>
-              {stockAllArticles.length > 0 && (
-                <>
-                  <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                    {(["GMS", "PRESTIGE"] as const).map(team => {
-                      const nb = stockAllArticles.filter(a => getEquipe(a) === team).length;
-                      return (
-                        <button key={team} onClick={() => { setStockArticles(stockAllArticles.filter(a => getEquipe(a) === team).map(a => ({ ...a }))); setStockTeam(team); setStockCurrentSessionId(`CPT-${team}-${new Date().toISOString().slice(0,10)}-${Math.random().toString(36).slice(2,6).toUpperCase()}`); setStockPage("comptage"); setStockFilter(""); }}
-                          style={{ flex: 1, padding: "16px 12px", borderRadius: 14, border: `2px solid ${team === "GMS" ? "#fde68a" : "#ddd6fe"}`, background: team === "GMS" ? "#fffbeb" : "#f5f3ff", cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
-                          <p style={{ margin: 0, fontSize: 24 }}>{team === "GMS" ? "🌿" : "✨"}</p>
-                          <p style={{ margin: "4px 0 0", fontWeight: 800, fontSize: 16, color: team === "GMS" ? "#92710a" : "#7c3aed" }}>{team}</p>
-                          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{nb} articles</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-            {/* Sessions passées */}
-            <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1.5px solid #e8e0d0" }}>
-              <p style={{ margin: "0 0 14px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>📁 Stocks importés</p>
-              {!stockSessionsLoaded ? (
-                <p style={{ color: "#9ca3af", fontSize: 13 }}>Chargement...</p>
-              ) : stockSessions.length === 0 ? (
-                <p style={{ color: "#9ca3af", fontSize: 13, textAlign: "center", padding: "1rem 0" }}>Aucun stock importé</p>
-              ) : stockSessions.map((s: any) => (
-                <div key={s.importId} style={{ padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-                    <div>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#374151" }}>📅 {s.dateLabel}</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>{s.filename} · {s.nb} articles · {s.gms} GMS · {s.prestige} Prestige</p>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {!s.cloture && (["GMS", "PRESTIGE"] as const).map(team => (
-                        <button key={team} onClick={() => loadSession(s.importId, team)}
-                          style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: team === "GMS" ? "#c8a84b" : "#7c3aed", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                          {team === "GMS" ? "🌿" : "✨"} {team}
-                        </button>
-                      ))}
-                      {s.cloture && <span style={{ fontSize: 11, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#15803d", padding: "4px 10px", borderRadius: 8, fontWeight: 600 }}>✓ Clôturé</span>}
-                      {!s.cloture && <button onClick={() => cloturerSession(s.importId)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#15803d", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🔒</button>}
-                      <button onClick={() => deleteSession(s.importId)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", cursor: "pointer", fontSize: 12 }}>🗑</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // ── PAGE CONFIG ──
-    if (stockPage === "config") {
-      const cfgArts = stockAllArticles.filter(a => {
-        if (stockCfgFilter === "GMS" && getEquipe(a) !== "GMS") return false;
-        if (stockCfgFilter === "PRESTIGE" && getEquipe(a) !== "PRESTIGE") return false;
-        if (stockCfgSearch && !a.article.toLowerCase().includes(stockCfgSearch.toLowerCase())) return false;
-        return true;
-      });
-      return (
-        <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-          <style>{styles}</style>
-          <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={() => setStockPage("home")} style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "#fff" }}>← Retour</button>
-            <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#0891b2", flex: 1, textTransform: "uppercase", letterSpacing: 1 }}>⚙️ Config équipes</p>
-          </div>
-          <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px 60px" }}>
-            {!stockCfgUnlocked ? (
-              <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
-                <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
-                <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 20 }}>Entrez le code pour modifier les attributions</p>
-                <input type="password" maxLength={4} placeholder="••••" autoFocus
-                  style={{ width: 100, padding: "10px", textAlign: "center", fontSize: 20, border: "1.5px solid #e8e0d0", borderRadius: 10, outline: "none", letterSpacing: 6, display: "block", margin: "0 auto" }}
-                  onChange={e => { if (e.target.value === PIN_STOCK) { setStockCfgUnlocked(true); } }}
-                />
-              </div>
-            ) : (
-              <>
-                <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-                  {["tous", "GMS", "PRESTIGE"].map(f => (
-                    <button key={f} onClick={() => setStockCfgFilter(f)} style={{ padding: "7px 16px", borderRadius: 20, cursor: "pointer", border: "1.5px solid", borderColor: stockCfgFilter === f ? "#0891b2" : "#e8e0d0", background: stockCfgFilter === f ? "#0891b2" : "#fff", color: stockCfgFilter === f ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 600 }}>{f === "tous" ? "Tous" : f}</button>
-                  ))}
-                  <input value={stockCfgSearch} onChange={e => setStockCfgSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{ flex: 1, minWidth: 140, padding: "7px 12px", border: "1.5px solid #e8e0d0", borderRadius: 20, fontSize: 13, outline: "none" }} />
-                </div>
-                <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-                  {cfgArts.length === 0 ? <p style={{ padding: "2rem", textAlign: "center", color: "#9ca3af" }}>Aucun article</p> : cfgArts.map(a => {
-                    const eq = getEquipe(a);
-                    return (
-                      <div key={a.id} style={{ display: "flex", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f0f0f0" }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1a2e1a" }}>{a.article}</p>
-                          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{a.famille}</p>
-                        </div>
-                        <div style={{ display: "inline-flex", border: "1.5px solid #e8e0d0", borderRadius: 20, overflow: "hidden" }}>
-                          {(["GMS", "PRESTIGE"] as const).map(t => (
-                            <button key={t} onClick={() => toggleArticleEquipe(a.article, t)}
-                              style={{ padding: "5px 14px", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: eq === t ? (t === "GMS" ? "#c8a84b" : "#7c3aed") : "transparent", color: eq === t ? "#fff" : "#9ca3af" }}>
-                              {t}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // ── PAGE ECARTS ──
-    if (stockPage === "ecarts") {
-      const sortedArts = [...stockArticles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
-      const ecartsArts = sortedArts.filter(a => {
-        const q = stockFilter.toLowerCase();
-        if (q && !a.article.toLowerCase().includes(q)) return false;
-        if (stockEcartFilter === "ecart") return a.compte !== null && a.compte !== a.nb_colis;
-        if (stockEcartFilter === "ok") return a.compte !== null && a.compte === a.nb_colis;
-        if (stockEcartFilter === "nc") return a.compte === null;
-        return true;
-      });
-      return (
-        <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-          <style>{styles}</style>
-          <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", position: "sticky", top: 0, zIndex: 100 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: 800, margin: "0 auto" }}>
-              <button onClick={() => setStockPage("comptage")} style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "#fff" }}>← Comptage</button>
-              <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#0891b2", flex: 1, textTransform: "uppercase", letterSpacing: 1 }}>📊 Écarts {stockTeam}</p>
-              <button onClick={exportStockCSV} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>CSV</button>
-              <button onClick={exportStockPDF} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "#fff" }}>PDF</button>
-              <button onClick={resetAll} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
-            </div>
-          </div>
-          <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px" }}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              {[{ label: "Sans écart", value: ecartOk, color: "#16a34a", bg: "#f0fdf4" }, { label: "Manquants", value: ecartManq, color: "#dc2626", bg: "#fef2f2" }, { label: "Surplus", value: ecartSurp, color: "#d97706", bg: "#fffbeb" }, { label: "Non comptés", value: stockArticles.length - counted.length, color: "#6b7280", bg: "#f9fafb" }].map(s => (
-                <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 12, padding: "10px 6px", textAlign: "center", border: `1px solid ${s.color}33` }}>
-                  <p style={{ margin: 0, fontWeight: 800, fontSize: 20, color: s.color }}>{s.value}</p>
-                  <p style={{ margin: 0, fontSize: 10, color: s.color, textTransform: "uppercase" }}>{s.label}</p>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-              <input value={stockFilter} onChange={e => setStockFilter(e.target.value)} placeholder="🔍 Rechercher..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none" }} />
-            </div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-              {[{ id: "tous", label: "Tous" }, { id: "ecart", label: "Avec écart" }, { id: "ok", label: "OK" }, { id: "nc", label: "Non comptés" }].map(f => (
-                <button key={f.id} onClick={() => setStockEcartFilter(f.id)} style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", border: "1.5px solid", borderColor: stockEcartFilter === f.id ? "#0891b2" : "#e8e0d0", background: stockEcartFilter === f.id ? "#0891b2" : "#fff", color: stockEcartFilter === f.id ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 600 }}>{f.label}</button>
-              ))}
-            </div>
-            {ecartsArts.map(a => {
-              const e = a.compte !== null ? a.compte - a.nb_colis : null;
-              const ec = e === null ? "#9ca3af" : e < 0 ? "#dc2626" : e > 0 ? "#d97706" : "#16a34a";
-              const badge = e === null ? "Non compté" : e === 0 ? "✓ OK" : e < 0 ? `▼ ${e}` : `▲ +${e}`;
-              const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" | ") : (a.lots?.join(", ") || "");
-              return (
-                <div key={a.id} style={{ background: "#fff", borderRadius: 12, marginBottom: 6, padding: "10px 16px", display: "flex", alignItems: "center", gap: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", borderLeft: `4px solid ${ec}` }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{a.article}</p>
-                    {lotsStr && <p style={{ margin: "2px 0 0", fontSize: 10, color: "#9ca3af" }}>{lotsStr}</p>}
-                  </div>
-                  <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>Stock: <b style={{ color: "#374151" }}>{a.nb_colis}</b></p>
-                  <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>Compté: <b style={{ color: "#374151" }}>{a.compte ?? "—"}</b></p>
-                  <span style={{ fontWeight: 800, fontSize: 14, color: ec, minWidth: 60, textAlign: "right" }}>{badge}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      );
-    }
-
-    // ── PAGE COMPTAGE ──
-    let saveTimeout: ReturnType<typeof setTimeout>;
-    const schedSave = (arts: any[]) => {
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => saveComptages(arts), 1500);
-    };
-
     return (
-      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-        <style>{styles}</style>
-        {/* Header */}
-        <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #0891b2", position: "sticky", top: 0, zIndex: 100 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, maxWidth: 800, margin: "0 auto" }}>
-            <button onClick={goHome} style={{ padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "#fff" }}>← Stocks</button>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>{stockTeam === "GMS" ? "🌿" : "✨"} {stockTeam}</p>
-              <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{counted.length}/{stockArticles.length} · {pct}% · {stockCurrentSessionId}</p>
-            </div>
-            <button onClick={() => { setStockPage("ecarts"); setStockEcartFilter("tous"); }} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#0891b2", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#fff" }}>📊 Écarts</button>
-            <button onClick={resetAll} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
-          </div>
-          <div style={{ maxWidth: 800, margin: "8px auto 0", height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 4 }}>
-            <div style={{ height: 4, background: "#0891b2", borderRadius: 4, width: `${pct}%`, transition: "width 0.3s" }} />
-          </div>
-        </div>
-
-        <div style={{ maxWidth: 800, margin: "0 auto", padding: "14px 16px 100px" }}>
-          {/* Stats */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            {[{ label: "Manq.", value: ecartManq, color: "#dc2626", bg: "#fef2f2" }, { label: "Surplus", value: ecartSurp, color: "#d97706", bg: "#fffbeb" }, { label: "OK", value: ecartOk, color: "#16a34a", bg: "#f0fdf4" }, { label: "Reste", value: stockArticles.length - counted.length, color: "#6b7280", bg: "#f9fafb" }].map(s => (
-              <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: "8px 6px", textAlign: "center", border: `1px solid ${s.color}33` }}>
-                <p style={{ margin: 0, fontWeight: 800, fontSize: 18, color: s.color }}>{s.value}</p>
-                <p style={{ margin: 0, fontSize: 10, color: s.color }}>{s.label}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Filtres */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-            <input value={stockFilter} onChange={e => setStockFilter(e.target.value)} placeholder="🔍 Rechercher..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none" }} />
-            <button onClick={() => { if (window.confirm("Réinitialiser tous les comptages ?")) { setStockArticles(prev => prev.map(a => ({ ...a, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null }))); } }} style={{ padding: "10px 12px", borderRadius: 10, border: "1.5px solid #fecaca", background: "#fff5f5", cursor: "pointer", fontSize: 12, color: "#dc2626", fontWeight: 700 }}>↺ Reset</button>
-          </div>
-          <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-            {[{ id: "tous", label: "Tous" }, { id: "nc", label: "Non comptés" }, { id: "ecart", label: "Écarts" }, { id: "ok", label: "OK" }].map(f => (
-              <button key={f.id} onClick={() => setStockEcartFilter(f.id)} style={{ padding: "6px 14px", borderRadius: 20, cursor: "pointer", border: "1.5px solid", borderColor: stockEcartFilter === f.id ? "#0891b2" : "#e8e0d0", background: stockEcartFilter === f.id ? "#0891b2" : "#fff", color: stockEcartFilter === f.id ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 600 }}>{f.label}</button>
-            ))}
-          </div>
-
-          {/* Articles */}
-          {filteredArts.map(a => {
-            const hasCount = a.compte1 !== null && a.compte1 !== undefined;
-            let total = 0; for (let i = 1; i <= 8; i++) total += a[`compte${i}`] ?? 0;
-            const ecart = hasCount ? total - a.nb_colis : null;
-            const ecartColor = ecart === null ? "#9ca3af" : ecart < 0 ? "#dc2626" : ecart > 0 ? "#d97706" : "#16a34a";
-            const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" · ") : (a.lots?.join(" · ") || "");
-            // Count filled slots
-            const filledSlots: number[] = [];
-            for (let i = 1; i <= 8; i++) if (a[`compte${i}`] !== null && a[`compte${i}`] !== undefined) filledSlots.push(i);
-            const nextSlot = filledSlots.length === 0 ? 1 : Math.min(8, Math.max(...filledSlots) + 1);
-            return (
-              <div key={a.id} style={{ background: "#fff", borderRadius: 14, marginBottom: 8, padding: "12px 16px", boxShadow: "0 1px 6px rgba(0,0,0,0.05)", borderLeft: `4px solid ${ecartColor}` }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{a.article}</p>
-                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>{a.famille}{lotsStr ? ` · ${lotsStr}` : ""}</p>
-                  </div>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
-                    <div style={{ textAlign: "center" }}>
-                      <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>STOCK</p>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: "#374151" }}>{a.nb_colis}</p>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
-                      <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>TOTAL</p>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: ecartColor }}>{hasCount ? total : "—"}</p>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
-                      <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>ÉCART</p>
-                      <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: ecartColor }}>{ecart === null ? "—" : (ecart > 0 ? "+" : "") + ecart}</p>
-                    </div>
-                  </div>
-                </div>
-                {/* Emplacements */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  {filledSlots.map(loc => (
-                    <div key={loc} style={{ textAlign: "center" }}>
-                      <p style={{ margin: "0 0 2px", fontSize: 9, color: "#9ca3af" }}>Emp.{loc}</p>
-                      <input type="number" min="0" inputMode="numeric"
-                        value={a[`compte${loc}`] ?? ""}
-                        onChange={e => {
-                          setCompte(a.id, loc, e.target.value);
-                          setStockArticles(prev => { schedSave(prev); return prev; });
-                        }}
-                        style={{ width: 58, padding: "6px 4px", border: "1.5px solid #e8e0d0", borderRadius: 8, textAlign: "center", fontSize: 14, fontWeight: 700, outline: "none", fontFamily: "'Syne', sans-serif" }}
-                      />
-                    </div>
-                  ))}
-                  {(filledSlots.length === 0 || (filledSlots.length < 8 && filledSlots.includes(nextSlot - 1))) && (
-                    <div style={{ textAlign: "center" }}>
-                      <p style={{ margin: "0 0 2px", fontSize: 9, color: "#9ca3af" }}>{filledSlots.length === 0 ? "Compter" : `Emp.${nextSlot}`}</p>
-                      <input type="number" min="0" inputMode="numeric"
-                        value=""
-                        placeholder="0"
-                        onChange={e => {
-                          if (e.target.value !== "") {
-                            setCompte(a.id, filledSlots.length === 0 ? 1 : nextSlot, e.target.value);
-                            setStockArticles(prev => { schedSave(prev); return prev; });
-                          }
-                        }}
-                        style={{ width: 58, padding: "6px 4px", border: "1.5px dashed #c8a84b", borderRadius: 8, textAlign: "center", fontSize: 14, fontWeight: 700, outline: "none", fontFamily: "'Syne', sans-serif", color: "#c8a84b" }}
-                      />
-                    </div>
-                  )}
-                  {/* Détruire */}
-                  <div style={{ textAlign: "center", marginLeft: 8 }}>
-                    <p style={{ margin: "0 0 2px", fontSize: 9, color: "#dc2626" }}>🗑 Détruire</p>
-                    <input type="number" min="0" inputMode="numeric"
-                      value={a.detruire ?? ""}
-                      placeholder="0"
-                      onChange={e => {
-                        setCompte(a.id, 9, e.target.value);
-                        setStockArticles(prev => { schedSave(prev); return prev; });
-                      }}
-                      style={{ width: 58, padding: "6px 4px", border: "1.5px solid #fecaca", borderRadius: 8, textAlign: "center", fontSize: 14, fontWeight: 700, outline: "none", fontFamily: "'Syne', sans-serif", color: "#dc2626" }}
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {filteredArts.length === 0 && <div style={{ textAlign: "center", padding: "3rem", color: "#9ca3af" }}><p>Aucun article</p></div>}
-        </div>
-
-        {/* Calculatrice FAB */}
-        <button onClick={() => setStockShowCalc(!stockShowCalc)}
-          style={{ position: "fixed", bottom: 24, right: 24, width: 52, height: 52, borderRadius: "50%", background: "#c8a84b", border: "none", cursor: "pointer", fontSize: 22, boxShadow: "0 4px 16px rgba(200,168,75,0.4)", zIndex: 300 }}>
-          🧮
-        </button>
-        {stockShowCalc && (
-          <div style={{ position: "fixed", bottom: 90, right: 24, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 18, padding: "1.25rem", width: 240, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", zIndex: 400 }}>
-            <div style={{ background: "#f5f3ee", border: "1.5px solid #e8e0d0", borderRadius: 10, padding: "8px 12px", marginBottom: 10 }}>
-              <p style={{ margin: 0, fontSize: 11, color: "#6b7280", minHeight: 14 }}>{calcExpr}</p>
-              <p style={{ margin: 0, fontSize: 22, fontWeight: 700, textAlign: "right" }}>{calcCurrent}</p>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
-              {[["C", "±", "%", "÷"], ["7", "8", "9", "×"], ["4", "5", "6", "−"], ["1", "2", "3", "+"], ["0", "0", ".", "="]].map((row, ri) =>
-                row.map((btn, ci) => {
-                  const isEq = btn === "="; const isOp = ["÷", "×", "−", "+", "±", "%"].includes(btn); const isClear = btn === "C";
-                  return (
-                    <button key={`${ri}-${ci}`}
-                      onClick={() => { if (btn === "C") calcClear(); else if (btn === "=") calcEqual(); else if (["÷", "×", "−", "+"].includes(btn)) calcOp(btn === "÷" ? "/" : btn === "×" ? "*" : btn === "−" ? "-" : "+"); else if (btn === "±") calcOp("±"); else if (btn === "%") calcOp("%"); else calcNum(btn); }}
-                      style={{ padding: "9px 0", border: "1.5px solid #e8e0d0", borderRadius: 8, background: isEq ? "#c8a84b" : isClear ? "#fff5f5" : isOp ? "#fffbeb" : "#fff", color: isEq ? "#0a0a0a" : isClear ? "#dc2626" : isOp ? "#c8a84b" : "#374151", cursor: "pointer", fontSize: 13, fontWeight: isEq || isOp ? 700 : 500, gridColumn: ri === 4 && ci === 0 ? "span 2" : "auto" }}>
-                      {btn}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      <StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} />
     );
   }
 
