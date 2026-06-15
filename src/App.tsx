@@ -653,6 +653,137 @@ function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; onClose
   );
 }
 
+// ─── FICHE PALETTE PUBLIQUE (sans auth) ───
+function PalettePublique({ id }: { id: string }) {
+  const [arrivage, setArrivage] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const DB_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
+        const API_KEY = "AIzaSyBeIlrGq_s4Ol0sGW6Hq2oIXp4Rz_BXXX0";
+
+        // Essai 1 : lecture directe par ID via REST (pas besoin d'auth si règles publiques)
+        const r1 = await fetch(`${DB_URL}/arrivages/${id}.json`);
+        if (r1.ok) {
+          const data = await r1.json();
+          if (data) { setArrivage({ ...data, id }); setLoading(false); return; }
+        }
+
+        // Essai 2 : si connecté, utilise le SDK normal
+        const { db: dbImport } = await import("./firebase");
+        const { ref: fbRef, get } = await import("firebase/database");
+        const snap = await get(fbRef(dbImport, `arrivages/${id}`));
+        if (snap.exists()) {
+          setArrivage({ ...snap.val(), id });
+        } else {
+          // Fallback: cherche par lot_interne
+          const allSnap = await get(fbRef(dbImport, "arrivages"));
+          if (allSnap.exists()) {
+            const all = Object.entries(allSnap.val()).map(([k, v]: any) => ({ ...v, id: k }));
+            const found = all.find((a: any) => a.lot_interne === id);
+            if (found) setArrivage(found);
+          }
+        }
+      } catch {}
+      setLoading(false);
+    };
+    load();
+  }, [id]);
+
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: "#FFE600", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+      <div style={{ width: 40, height: 40, border: "4px solid #000", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <p style={{ fontWeight: 900, fontSize: 18, color: "#000", fontFamily: "Arial Black" }}>Chargement palette...</p>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if (!arrivage) return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ textAlign: "center", background: "#fff", borderRadius: 20, padding: 32, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🔎</div>
+        <p style={{ fontWeight: 800, fontSize: 18, color: "#374151", marginBottom: 8 }}>Palette introuvable</p>
+        <p style={{ fontSize: 14, color: "#9ca3af" }}>ID : {id}</p>
+      </div>
+    </div>
+  );
+
+  const borderColor = arrivage.statut === "validé" ? "#27ae60" : arrivage.statut === "refusé" ? "#dc2626" : "#d97706";
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      {/* Header jaune palette */}
+      <div style={{ background: "#FFE600", borderBottom: "4px solid #000", padding: "20px 20px 16px" }}>
+        <p style={{ margin: "0 0 4px", fontWeight: 900, fontSize: 13, color: "#555", textTransform: "uppercase", letterSpacing: 2, fontFamily: "Arial Black" }}>MOOREA · PALETTE</p>
+        <p style={{ margin: 0, fontWeight: 900, fontSize: 32, color: "#000", fontFamily: "Arial Black", letterSpacing: 1 }}>MRA.{String(arrivage.lot_interne || "").padStart(4, "0")}</p>
+      </div>
+
+      <div style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px 60px" }}>
+        {/* Fiche */}
+        <div style={{ background: "#fff", borderRadius: 20, padding: 20, marginBottom: 14, boxShadow: "0 4px 20px rgba(0,0,0,0.07)", borderLeft: `5px solid ${borderColor}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+            <div>
+              <p style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800, color: "#1a2e1a" }}>{arrivage.produit}</p>
+              <p style={{ margin: 0, fontSize: 14, color: "#6b7280" }}>{arrivage.fournisseur}</p>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: arrivage.statut === "validé" ? "#f0fdf4" : arrivage.statut === "refusé" ? "#fef2f2" : "#fffbeb", color: borderColor, border: `1px solid ${borderColor}33` }}>
+              {arrivage.statut || "en attente"}
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {[
+              { label: "Date arrivée", value: arrivage.date },
+              { label: "Quantité", value: `${arrivage.quantite} ${arrivage.unite}` },
+              { label: "Poids brut", value: arrivage.poids_brut ? `${arrivage.poids_brut} kg` : "—" },
+              { label: "Poids net", value: arrivage.poids_net ? `${arrivage.poids_net} kg` : "—" },
+              { label: "Origine", value: arrivage.origine || "—" },
+              { label: "Lot fournisseur", value: arrivage.lot_fournisseur || "—" },
+            ].map(f => (
+              <div key={f.label} style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px" }}>
+                <p style={{ margin: "0 0 2px", fontSize: 10, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.label}</p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#1a2e1a" }}>{f.value}</p>
+              </div>
+            ))}
+          </div>
+          {arrivage.rapport?.observations && (
+            <div style={{ marginTop: 12, background: "#fffbeb", borderRadius: 10, padding: "10px 12px", border: "1px solid #fde68a" }}>
+              <p style={{ margin: "0 0 2px", fontSize: 10, color: "#d97706", textTransform: "uppercase" }}>Observations</p>
+              <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.rapport.observations}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Litige */}
+        {arrivage.litige && (
+          <div style={{ background: arrivage.litige.type === "refusé" ? "#fef2f2" : "#fffbeb", borderRadius: 16, padding: 16, marginBottom: 14, border: `1.5px solid ${arrivage.litige.type === "refusé" ? "#fca5a5" : "#fde68a"}` }}>
+            <p style={{ margin: "0 0 4px", fontWeight: 700, color: arrivage.litige.type === "refusé" ? "#dc2626" : "#d97706" }}>
+              {arrivage.litige.type === "refusé" ? "❌ Litige refus" : "⚠️ Litige réserve"}
+            </p>
+            {arrivage.litige.raison && <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.litige.raison}</p>}
+          </div>
+        )}
+
+        {/* Destruction */}
+        {arrivage.destruction && (
+          <div style={{ background: "#fef2f2", borderRadius: 16, padding: 16, marginBottom: 14, border: "1.5px solid #fca5a5" }}>
+            <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#dc2626" }}>🗑 Destruction enregistrée</p>
+            <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.destruction.quantite} {arrivage.unite} — {arrivage.destruction.raison}</p>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Le {arrivage.destruction.date}</p>
+          </div>
+        )}
+
+        {/* Déclarer une perte */}
+        {!arrivage.destruction && <PalettePerteForm arrivage={arrivage} />}
+
+        <p style={{ textAlign: "center", fontSize: 11, color: "#9ca3af", marginTop: 24 }}>🌿 Moorea · Rungis · moorea-qualite.vercel.app</p>
+      </div>
+    </div>
+  );
+}
+
 function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLitige, onClotureLitige, onDestruction, onPDF, onWA, user }: any) {
   const [open, setOpen] = useState(false);
   const [perteQty, setPerteQty] = useState("");
@@ -3980,6 +4111,11 @@ _PDF joint_`;
   // ─── RENDER ───
 
   // Écran de chargement
+  // ─── PAGE FICHE PALETTE PUBLIQUE (scan QR — avant auth) ───
+  if (showPalette) {
+    return <PalettePublique id={showPalette} />;
+  }
+
   if (user === undefined) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0a0a" }}>
       <div style={{ width: 32, height: 32, border: "3px solid #c8a84b", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
@@ -4002,102 +4138,6 @@ _PDF joint_`;
   );
 
   // ─── PAGE FICHE PALETTE (scan QR) ───
-  if (showPalette) {
-    const arrivage = arrivages.find(a => a.id === showPalette) || arrivages.find(a => a.lot_interne === showPalette);
-    const rapport = arrivage ? rapports.find(r => r.arrivage_id === arrivage.id) : null;
-    return (
-      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-        <style>{styles}</style>
-        <div style={{ background: "#0a0a0a", padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, borderBottom: "3px solid #c8a84b", position: "sticky", top: 0, zIndex: 100 }}>
-          <button onClick={() => { setShowPalette(null); setShowAccueil(true); window.history.replaceState({}, "", window.location.pathname); }}
-            style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
-          <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#c8a84b", textTransform: "uppercase", letterSpacing: 1 }}>📦 Palette #{showPalette}</p>
-        </div>
-
-        <div style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px 60px" }}>
-          {!arrivage ? (
-            <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 20, border: "1.5px solid #e8e0d0" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🔎</div>
-              <p style={{ fontWeight: 700, color: "#374151" }}>Lot #{showPalette} introuvable</p>
-              <p style={{ fontSize: 13, color: "#9ca3af" }}>Ce lot n'existe pas ou n'a pas encore été importé</p>
-            </div>
-          ) : (
-            <>
-              {/* Fiche principale */}
-              <div style={{ background: "#fff", borderRadius: 20, padding: 20, marginBottom: 14, boxShadow: "0 4px 20px rgba(0,0,0,0.07)", borderLeft: `5px solid ${arrivage.statut === "validé" ? "#27ae60" : arrivage.statut === "refusé" ? "#dc2626" : "#d97706"}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                  <div>
-                    <p style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{arrivage.produit}</p>
-                    <p style={{ margin: 0, fontSize: 14, color: "#6b7280" }}>{arrivage.fournisseur}</p>
-                  </div>
-                  <BadgeArrivage status={arrivage.statut} />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  {[
-                    { icon: "🔖", label: "Lot interne", value: arrivage.lot_interne },
-                    { icon: "📅", label: "Date arrivée", value: arrivage.date },
-                    { icon: "📦", label: "Quantité", value: `${arrivage.quantite} ${arrivage.unite}` },
-                    { icon: "⚖️", label: "Poids brut", value: arrivage.poids_brut ? `${arrivage.poids_brut} kg` : "—" },
-                    { icon: "🥬", label: "Poids net", value: arrivage.poids_net ? `${arrivage.poids_net} kg` : "—" },
-                    { icon: "🌍", label: "Origine", value: arrivage.origine || "—" },
-                    { icon: "🏷", label: "Lot fournisseur", value: arrivage.lot_fournisseur || "—" },
-                    { icon: "🌡", label: "Température", value: arrivage.rapport?.temperature || "—" },
-                  ].map(f => (
-                    <div key={f.label} style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px" }}>
-                      <p style={{ margin: "0 0 2px", fontSize: 10, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.icon} {f.label}</p>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>{f.value}</p>
-                    </div>
-                  ))}
-                </div>
-                {arrivage.rapport?.observations && (
-                  <div style={{ marginTop: 10, background: "#fffbeb", borderRadius: 10, padding: "10px 12px", border: "1px solid #fde68a" }}>
-                    <p style={{ margin: "0 0 2px", fontSize: 10, color: "#d97706", textTransform: "uppercase" }}>📝 Observations</p>
-                    <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.rapport.observations}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Rapport qualité */}
-              {rapport && (
-                <div style={{ background: "#fff", borderRadius: 16, padding: 16, marginBottom: 14, boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-                  <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>📋 Rapport qualité · {rapport.numeroRapport}</p>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {rapport.notes?.qualite > 0 && <span style={{ fontSize: 12, background: "#f0fdf4", color: "#15803d", padding: "4px 10px", borderRadius: 20, fontWeight: 700 }}>⭐ {rapport.notes.qualite}/5</span>}
-                    {rapport.score && <ScoreCircle score={rapport.score} />}
-                    {rapport.temperature && <span style={{ fontSize: 12, background: "#eff6ff", color: "#1d4ed8", padding: "4px 10px", borderRadius: 20 }}>🌡 {rapport.temperature}°C</span>}
-                  </div>
-                </div>
-              )}
-
-              {/* Litige */}
-              {arrivage.litige && (
-                <div style={{ background: arrivage.litige.type === "refusé" ? "#fef2f2" : "#fffbeb", borderRadius: 16, padding: 16, marginBottom: 14, border: `1.5px solid ${arrivage.litige.type === "refusé" ? "#fca5a5" : "#fde68a"}` }}>
-                  <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 13, color: arrivage.litige.type === "refusé" ? "#dc2626" : "#d97706" }}>
-                    {arrivage.litige.type === "refusé" ? "❌ Litige refus" : "⚠️ Litige réserve"}
-                  </p>
-                  {arrivage.litige.raison && <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.litige.raison}</p>}
-                </div>
-              )}
-
-              {/* Destruction existante */}
-              {arrivage.destruction && (
-                <div style={{ background: "#fef2f2", borderRadius: 16, padding: 16, marginBottom: 14, border: "1.5px solid #fca5a5" }}>
-                  <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 13, color: "#dc2626" }}>🗑 Destruction enregistrée</p>
-                  <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.destruction.quantite} {arrivage.unite} — {arrivage.destruction.raison}</p>
-                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Le {arrivage.destruction.date}</p>
-                </div>
-              )}
-
-              {/* Action : Déclarer une perte */}
-              {!arrivage.destruction && (
-                <PalettePerteForm arrivage={arrivage} />
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   if (showScanner) {
     return (
