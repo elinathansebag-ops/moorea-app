@@ -232,8 +232,6 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
   const [poidsBrut, setPoidsBrut] = useState<string>(arrivage.poids_brut || "");
   const [poidsNet, setPoidsNet] = useState<string>(arrivage.poids_net || arrivage.poids_colis || "");
   const [saving, setSaving] = useState(false);
-  const [showEtiquette, setShowEtiquette] = useState(false);
-  const [arrivageValide, setArrivageValide] = useState<any>(null);
 
   const colisAttendu = arrivage.quantite || 0;
   const colisRecusNum = colisRecus === "" ? colisAttendu : parseInt(colisRecus) || 0;
@@ -249,38 +247,12 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
       poidsNet ? `Poids net : ${poidsNet} kg` : "",
     ].filter(Boolean).join(" | ");
     const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs };
-    const arrivageAvecPoids = { ...arrivage, poids_brut: poidsBrut || arrivage.poids_brut, poids_net: poidsNet || arrivage.poids_net };
     await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "");
     setSaving(false);
-    setArrivageValide(arrivageAvecPoids);
-    setShowEtiquette(true);
     if (hasLitige) onOuvreRapport(arrivage, true);
   };
 
   const statusColor = (litige || hasEcartColis) ? "#dc2626" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
-
-  if (showEtiquette && arrivageValide) {
-    return (
-      <div style={{ background: "#fff", borderRadius: 14, padding: 20, marginBottom: 8, border: "2px solid #c8a84b", boxShadow: "0 4px 20px rgba(200,168,75,0.2)" }}>
-        <div style={{ textAlign: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
-          <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 15, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{arrivageValide.produit} validé</p>
-          <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>Lot #{arrivageValide.lot_interne} · {arrivageValide.fournisseur}</p>
-        </div>
-        <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#374151", textAlign: "center" }}>🏷 Imprimer l'étiquette palette ?</p>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => { imprimerEtiquettePalette(arrivageValide); setShowEtiquette(false); }}
-            style={{ flex: 1, padding: "12px", borderRadius: 12, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 14, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
-            🖨 Oui, imprimer
-          </button>
-          <button onClick={() => setShowEtiquette(false)}
-            style={{ flex: 1, padding: "12px", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>
-            Non merci
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : (litige || hasEcartColis) ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
@@ -414,7 +386,7 @@ function FournisseurBlock({ fournisseur, produits, onValidate, onDelete, onOuvre
 // ─── QR CODE ÉTIQUETTE PALETTE ───
 async function imprimerEtiquettePalette(arrivage: any) {
   const lot = arrivage.lot_interne || arrivage.id;
-  const url = `${window.location.origin}${window.location.pathname}?lot=${lot}`;
+  const url = `${window.location.origin}${window.location.pathname}?id=${arrivage.id}`;
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Palette #${lot}</title>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
 <style>
@@ -2460,6 +2432,7 @@ export default function App() {
   const [showAccueil, setShowAccueil] = useState(true);
   const [showLitiges, setShowLitiges] = useState(false);
   const [showRecherche, setShowRecherche] = useState(false);
+  const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [showStock, setShowStock] = useState(false);
   const [showPalette, setShowPalette] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
@@ -2544,7 +2517,9 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const lot = params.get("lot");
-    if (lot) { setShowPalette(lot); setShowAccueil(false); }
+    const id = params.get("id");
+    if (id) { setShowPalette(id); setShowAccueil(false); }
+    else if (lot) { setShowPalette(lot); setShowAccueil(false); }
   }, []);
   useEffect(() => {
     if (!showStock) return;
@@ -2567,10 +2542,12 @@ export default function App() {
   const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string) => {
     const now2 = new Date();
     const statut = decision === "conforme" ? "validé" : ncType;
-    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, observations: ctrl.observations, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
+    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut, poids_net: ctrl.poids_net, observations: ctrl.observations, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: arrivage.lot_fournisseur || "", date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
     await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, ...(litige ? { litige } : {}), validatedAt: Date.now() });
-    showToast(decision === "conforme" ? "✅ Validé et archivé" : "📋 Rapport + litige créés");
+    showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
+    // Popup étiquette
+    setPopupEtiquette({ ...arrivage, poids_brut: ctrl.poids_brut || arrivage.poids_brut, poids_net: ctrl.poids_net || arrivage.poids_net });
   };
 
   const deleteArrivageItem = async (id: string) => { if (!window.confirm("Supprimer ?")) return; const { remove: fbRemove } = await import("firebase/database"); await fbRemove(ref(db, `arrivages/${id}`)); showToast("Supprimé"); };
@@ -4001,7 +3978,7 @@ _PDF joint_`;
 
   // ─── PAGE FICHE PALETTE (scan QR) ───
   if (showPalette) {
-    const arrivage = arrivages.find(a => a.lot_interne === showPalette);
+    const arrivage = arrivages.find(a => a.id === showPalette) || arrivages.find(a => a.lot_interne === showPalette);
     const rapport = arrivage ? rapports.find(r => r.arrivage_id === arrivage.id) : null;
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
@@ -4434,6 +4411,28 @@ _PDF joint_`;
   return (
     <div className="app">
       <style>{styles}</style>
+
+      {/* POPUP ETIQUETTE PALETTE */}
+      {popupEtiquette && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: 24, padding: 28, width: "100%", maxWidth: 380, boxShadow: "0 24px 60px rgba(0,0,0,0.3)", textAlign: "center" }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
+            <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 17, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{popupEtiquette.produit}</p>
+            <p style={{ margin: "0 0 6px", fontSize: 13, color: "#6b7280" }}>Lot #{popupEtiquette.lot_interne} · {popupEtiquette.fournisseur}</p>
+            <p style={{ margin: "0 0 20px", fontSize: 15, fontWeight: 700, color: "#374151" }}>🏷 Imprimer l'étiquette palette ?</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { imprimerEtiquettePalette(popupEtiquette); setPopupEtiquette(null); }}
+                style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 15, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
+                🖨 Oui
+              </button>
+              <button onClick={() => setPopupEtiquette(null)}
+                style={{ flex: 1, padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 15, fontWeight: 600, fontFamily: "'Syne', sans-serif" }}>
+                Non merci
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="toast" style={{ position: "fixed", top: 20, right: 20, zIndex: 999, background: toast.type === "error" ? "#fef2f2" : "#f0fdf4", color: toast.type === "error" ? "#dc2626" : "#15803d", border: `1.5px solid ${toast.type === "error" ? "#fca5a5" : "#86efac"}`, borderRadius: 12, padding: "11px 20px", fontWeight: 500, fontSize: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>{toast.msg}</div>
