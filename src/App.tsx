@@ -293,8 +293,8 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
           </div>
         </div>
       </div>
-      {litige && <input value={raison} onChange={e => setRaison(e.target.value)} placeholder="Raison du litige..." style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #fca5a5", borderRadius: 10, fontSize: 13, outline: "none", marginBottom: 8, boxSizing: "border-box" }} />}
-      <button onClick={handleValider} disabled={saving || (litige && !raison)} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : litige ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
+      {litige && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
+      <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : litige ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
         {saving ? "..." : litige ? "📋 Valider + litige →" : "✅ Valider →"}
       </button>
     </div>
@@ -321,9 +321,22 @@ function FournisseurBlock({ fournisseur, produits, onValidate, onDelete, onOuvre
 function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect, onScan }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
+  const [validatingAll, setValidatingAll] = useState(false);
   const scanInputId = `scan-date-${date.replace(/\//g, "-")}`;
   const byFournisseur: Record<string, any[]> = {};
   arrivages.forEach((a: any) => { if (!byFournisseur[a.fournisseur]) byFournisseur[a.fournisseur] = []; byFournisseur[a.fournisseur].push(a); });
+
+  const handleValiderTout = async () => {
+    const enAttente = arrivages.filter((a: any) => a.statut === "en attente");
+    if (!enAttente.length) return;
+    if (!window.confirm(`Valider les ${enAttente.length} arrivage${enAttente.length > 1 ? "s" : ""} en attente du ${date} ?`)) return;
+    setValidatingAll(true);
+    for (const a of enAttente) {
+      await onValidate(a, { qualite: 0, temperature: "ok", poids_mesure: "", observations: "" }, "conforme", "", "", "");
+    }
+    setValidatingAll(false);
+  };
+
   return (
     <div style={{ marginBottom: 16 }}>
       <div onClick={() => setOpen(!open)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none", background: open ? "#1a2e1a" : "#2d3a2d", borderRadius: open ? "14px 14px 0 0" : 14, padding: "12px 16px", boxShadow: "0 2px 10px rgba(0,0,0,0.12)", transition: "all 0.2s" }}>
@@ -343,14 +356,26 @@ function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, o
       </div>
       {open && (
         <div style={{ background: "#1a2e1a", borderRadius: "0 0 14px 14px", padding: "10px 14px 14px", marginBottom: 8 }}>
-          {/* Bouton scanner étiquette */}
-          <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 10, background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.4)", borderRadius: 10, padding: "8px 14px" }}>
-            <span style={{ fontSize: 16, flexShrink: 0 }}>🔍</span>
-            <p style={{ margin: 0, fontSize: 12, color: "#93c5fd", flex: 1 }}>Scanner une étiquette pour identifier le lot</p>
-            <input type="file" accept="image/*" id={scanInputId} style={{ display: "none" }} onChange={e => { onScan(e, arrivages); e.target.value = ""; }} />
-            <label htmlFor={scanInputId} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 14px", background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Syne', sans-serif", flexShrink: 0 }}>
-              📷 Scanner
-            </label>
+          {/* Barre d'actions */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {/* Bouton Tout valider */}
+            {arrivages.some((a: any) => a.statut === "en attente") && (
+              <button
+                onClick={e => { e.stopPropagation(); handleValiderTout(); }}
+                disabled={validatingAll}
+                style={{ flex: 1, padding: "9px 14px", borderRadius: 10, border: "none", background: validatingAll ? "rgba(39,174,96,0.4)" : "linear-gradient(135deg, #27ae60, #1e8449)", color: "#fff", cursor: validatingAll ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                {validatingAll ? "⏳ Validation..." : `✅ Tout valider (${arrivages.filter((a: any) => a.statut === "en attente").length})`}
+              </button>
+            )}
+            {/* Bouton scanner étiquette */}
+            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.4)", borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 14, flexShrink: 0 }}>🔍</span>
+              <p style={{ margin: 0, fontSize: 11, color: "#93c5fd", flex: 1 }}>Scanner une étiquette</p>
+              <input type="file" accept="image/*" id={scanInputId} style={{ display: "none" }} onChange={e => { onScan(e, arrivages); e.target.value = ""; }} />
+              <label htmlFor={scanInputId} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Syne', sans-serif", flexShrink: 0 }}>
+                📷 Scanner
+              </label>
+            </div>
           </div>
           {/* Fournisseurs en attente */}
           {Object.entries(byFournisseur).map(([f, p]) => <FournisseurBlock key={f} fournisseur={f} produits={p} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect} />)}
@@ -1989,15 +2014,17 @@ export default function App() {
           rows.forEach(row => {
             const c0 = String(row[0]||"").trim(), c1 = String(row[1]||"").trim(), c2 = String(row[2]||"").trim(), c3 = String(row[3]||"").trim(), c7 = String(row[7]||"").trim(), c9 = String(row[9]||"").trim();
             if (c0==="Lot"&&c1){curLot=c1; if(c2==="Fournisseur")curFourn=c3.toUpperCase(); if(c7==="Date arrivée"&&c9){try{
-              // Excel date serial : nombre de jours depuis 01/01/1900
-              const raw = c9;
+              const rawDate = row[9];
               let parsedDate: Date | null = null;
-              if (typeof raw === "number") {
-                // Numéro de série Excel → date réelle
+              if (typeof rawDate === "number" && rawDate > 1000 && rawDate < 100000) {
+                // Numéro de série Excel → date réelle (jours depuis 30/12/1899)
                 const excelEpoch = new Date(1899, 11, 30);
-                parsedDate = new Date(excelEpoch.getTime() + raw * 86400000);
-              } else {
-                parsedDate = new Date(raw);
+                parsedDate = new Date(excelEpoch.getTime() + rawDate * 86400000);
+              } else if (typeof rawDate === "string" && rawDate.includes("/")) {
+                const [dd, mm, yyyy] = rawDate.split("/");
+                parsedDate = new Date(+yyyy, +mm - 1, +dd);
+              } else if (rawDate) {
+                parsedDate = new Date(rawDate);
               }
               curDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toLocaleDateString("fr-FR") : curDate;
             }catch{}}}
