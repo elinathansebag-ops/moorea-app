@@ -4288,37 +4288,35 @@ _PDF joint_`;
         <style>{styles}</style>
 
         {/* HEADER compact */}
-        <div style={{ background: headerBg, padding: "20px 20px 36px", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", top: -40, right: -40, width: 140, height: 140, borderRadius: "50%", background: "rgba(200,168,75,0.12)", pointerEvents: "none" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ background: headerBg, padding: "16px 16px 20px", position: "relative", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.5)", letterSpacing: 1 }}>{today}</p>
-              <h1 style={{ margin: "2px 0 0", fontSize: 21, fontWeight: 800, color: "#fff" }}>
+              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{today}</p>
+              <h1 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: "#fff" }}>
                 {getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋
               </h1>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => setDarkMode(!darkMode)}
-                style={{ width: 34, height: 34, borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {darkMode ? "☀️" : "🌙"}
               </button>
-              <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>
+              <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>
                 Déco
               </button>
             </div>
           </div>
-
-          {/* STATS RAPIDES — 2 colonnes sur mobile */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 14 }}>
+          {/* STATS en ligne sous le titre */}
+          <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
             {[
               { label: "En attente", value: nbAttente, color: "#fbbf24" },
               { label: "Traités", value: nbTraitesAujourdHui, color: "#34d399" },
               { label: "Litiges", value: nbLitigesOuverts, color: "#f87171" },
               { label: "Rapports", value: nbRapports, color: "#c8a84b" },
             ].map(s => (
-              <div key={s.label} style={{ background: "rgba(255,255,255,0.1)", borderRadius: 12, padding: "10px 8px", textAlign: "center", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.15)" }}>
-                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</p>
-                <p style={{ margin: 0, fontSize: 9, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.3px" }}>{s.label}</p>
+              <div key={s.label} style={{ flex: 1, background: "rgba(255,255,255,0.1)", borderRadius: 10, padding: "7px 6px", textAlign: "center", border: "1px solid rgba(255,255,255,0.12)" }}>
+                <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 9, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.3px" }}>{s.label}</p>
               </div>
             ))}
           </div>
@@ -4344,7 +4342,7 @@ _PDF joint_`;
         )}
 
         {/* BOUTONS — plus compacts */}
-        <div style={{ maxWidth: 520, margin: "-18px auto 0", padding: "0 16px 100px", position: "relative" }}>
+        <div style={{ maxWidth: 520, margin: "0 auto", padding: "12px 16px 100px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {buttons.map((b, idx) => (
               <button key={idx} onClick={b.action}
