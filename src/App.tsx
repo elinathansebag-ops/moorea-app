@@ -2642,18 +2642,26 @@ function StockApp({ onExit }: { onExit: () => void }) {
 
 // ─── YUKON APP ───
 const YUKON_ARTICLES_DEFAULT = [
-  { id: "bett-jaune", nom: "Betterave Jaune", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "bett-rose", nom: "Betterave Rose", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "carotte-rouge", nom: "Carotte Rouge", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "fane-400", nom: "Fane 400", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "multi-200", nom: "Multi 200", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "courgette-jaune", nom: "Courgette Jaune 400", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "courgette-viol", nom: "Courgette Violette 400", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "courgette-femelle", nom: "Courgette Femelle Longue", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "fenouil-yellow", nom: "Fenouil Yellow", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "piment-rouge", nom: "Piment Rouge", unite: "colis", colisVente: 6, colisCommande: 12 },
-  { id: "pac-choi", nom: "Pac Choi Vert x12", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "aubergine-200", nom: "Aubergine 200", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "bett-jaune", nom: "Betterave Jaune", stockNom: "MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "bett-rose", nom: "Betterave Rose", stockNom: "MINI BETTERAVE ROSE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "bett-rouge", nom: "Betterave Rouge", stockNom: "MINI BETTERAVE ROUGE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-rouge", nom: "Carotte Rouge", stockNom: "MINI CAROTTE AFRIQUE DU SUD (BARQUETTE 200G X 8)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-fane-200", nom: "Carotte Fane 200g", stockNom: "MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-fane-400", nom: "Carotte Fane 400g", stockNom: "MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-jaune", nom: "Carotte Jaune 400g", stockNom: "MINI CAROTTE JAUNE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "multi-200", nom: "Multi 200g", stockNom: "MINI CAROTTE MULTICOLORE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-viol", nom: "Carotte Violette 400g", stockNom: "MINI CAROTTE VIOLETTE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "courgette-as", nom: "Courgette AS 200g", stockNom: "MINI COURGETTE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "fenouil-yellow", nom: "Fenouil Yellow", stockNom: "MINI FENOUIL ESPAGNE (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "legumes-mixte", nom: "Légumes Mixte 200g", stockNom: "MINI LEGUMES MIXTE (BARQUETTE 200G X 8)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "navet-as", nom: "Navet AS 200g", stockNom: "MINI NAVET AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "patisson-jaune", nom: "Patisson Jaune", stockNom: "MINI PATISSON JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "patisson-vert", nom: "Patisson Vert", stockNom: "MINI PATISSON VERT AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "poireaux-as", nom: "Poireaux AS 200g", stockNom: "MINI POIREAUX AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "poivron-mixte", nom: "Poivron Mixte 200g", stockNom: "MINI POIVRON MIXTE ESPAGNE (200 GR X 12)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "aubergine-200", nom: "Aubergine 200g", stockNom: "MINI AUBERGINE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "piment-rouge", nom: "Piment Rouge", stockNom: "MINI POIVRON MIXTE ESPAGNE 2€ (BARQUETTE 200G X 12)", unite: "colis", colisVente: 6, colisCommande: 12 },
+  { id: "pac-choi", nom: "Pac Choi Vert x12", stockNom: "", unite: "colis", colisVente: 1, colisCommande: 1 },
 ];
 
 function YukonApp({ onClose }: { onClose: () => void }) {
@@ -2721,15 +2729,18 @@ function YukonApp({ onClose }: { onClose: () => void }) {
 
   const calcCommande = (art: any) => {
     const venteJour = (ventes[art.id] || 0) / 7;
-    const joursCouverture = typeCommande === "mercredi" ? 4 : 5; // jours avant l'arrivage
-    const stockFinSemaine = Math.max(0, (stocks[art.id] || 0) - venteJour * joursCouverture);
-    const besoin = venteJour * 6; // un arrivage dure 6 jours
+    const joursCouverture = typeCommande === "mercredi" ? 4 : 5;
+    // Cherche le stock par nom exact moorea-stock
+    const stockQty = art.stockNom && stocks[art.stockNom] != null
+      ? stocks[art.stockNom]
+      : (stocks[art.id] || 0);
+    const stockFinSemaine = Math.max(0, stockQty - venteJour * joursCouverture);
+    const besoin = venteJour * 6;
     const aCommander = Math.max(0, besoin - stockFinSemaine);
-    // Arrondir au colis de commande supérieur
     const nbColis = art.colisCommande > 1
       ? Math.ceil(aCommander / art.colisCommande) * art.colisCommande
       : Math.ceil(aCommander);
-    return { venteJour: venteJour.toFixed(1), stockFinSemaine: stockFinSemaine.toFixed(0), besoin: besoin.toFixed(1), aCommander: nbColis };
+    return { venteJour: venteJour.toFixed(1), stockFinSemaine: stockFinSemaine.toFixed(0), besoin: besoin.toFixed(1), aCommander: nbColis, stockQty };
   };
 
   const bg = "#f5f3ee";
@@ -2790,17 +2801,32 @@ function YukonApp({ onClose }: { onClose: () => void }) {
               ))}
             </div>
 
-            {/* Stock info */}
-            <div style={{ background: "#fff", borderRadius: 12, padding: "10px 14px", marginBottom: 14, border: "1px solid #e8e0d0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>📦 Stock utilisé : {stockDate || "—"}</p>
-              <button onClick={() => {
-                const date = window.prompt("Date du stock (JJ/MM/AAAA) :", new Date().toLocaleDateString("fr-FR"));
-                if (!date) return;
-                // Ouvre un formulaire de saisie stock manuel
-                setPage("calcul");
-              }} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#f9fafb", cursor: "pointer", color: "#6b7280" }}>
-                Modifier
-              </button>
+            {/* Stock info + saisie manuelle */}
+            <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 14, border: "1px solid #e8e0d0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: stockDate ? 0 : 8 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a" }}>📦 Stock utilisé</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>{stockDate ? `Inventaire du ${stockDate}` : "Aucun stock saisi"}</p>
+                </div>
+                <button onClick={async () => {
+                  const date = window.prompt("Date de l'inventaire (JJ/MM/AAAA) :", new Date().toLocaleDateString("fr-FR"));
+                  if (!date) return;
+                  // Saisie rapide des stocks pour chaque article
+                  const newStocks: Record<string, number> = { ...stocks };
+                  for (const art of articles) {
+                    const key = art.stockNom || art.id;
+                    const val = window.prompt(`${art.nom}\nStock actuel (colis) :`, String(newStocks[key] || 0));
+                    if (val === null) break;
+                    newStocks[key] = parseInt(val) || 0;
+                  }
+                  setStocks(newStocks);
+                  setStockDate(date);
+                  const entryId = date.replace(/\//g, "-");
+                  await update(ref(db, `yukon/stocks_manuels/${entryId}`), { date, stocks: newStocks });
+                }} style={{ padding: "7px 14px", borderRadius: 9, border: "1.5px solid #c8a84b", background: "#faf8f0", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#8a6f2e" }}>
+                  {stockDate ? "✏️ Modifier" : "➕ Saisir le stock"}
+                </button>
+              </div>
             </div>
 
             {/* Tableau ventes + calcul */}
@@ -2812,7 +2838,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
               {articles.map((art, idx) => {
-                const { venteJour, stockFinSemaine, besoin, aCommander } = calcCommande(art);
+                const { venteJour, stockFinSemaine, besoin, aCommander, stockQty } = calcCommande(art);
                 const hasCommande = aCommander > 0;
                 return (
                   <div key={art.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 0, padding: "10px 14px", background: idx % 2 === 0 ? "#fff" : "#fafaf9", borderBottom: "1px solid #f0f0f0", alignItems: "center" }}>
@@ -2822,7 +2848,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                         onChange={e => saveVentes({ ...ventes, [art.id]: parseInt(e.target.value) || 0 })}
                         style={{ width: 60, padding: "4px 6px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, textAlign: "center", outline: "none" }} />
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, color: "#6b7280", textAlign: "center" }}>{stocks[art.id] || 0}</p>
+                    <p style={{ margin: 0, fontSize: 13, color: stockQty > 0 ? "#16a34a" : "#9ca3af", textAlign: "center", fontWeight: stockQty > 0 ? 700 : 400 }}>{stockQty}</p>
                     <p style={{ margin: 0, fontSize: 13, color: "#374151", textAlign: "center" }}>{besoin}</p>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: hasCommande ? "#16a34a" : "#9ca3af", textAlign: "center" }}>
                       {hasCommande ? aCommander : "—"}
