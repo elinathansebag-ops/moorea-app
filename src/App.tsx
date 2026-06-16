@@ -3012,8 +3012,34 @@ export default function App() {
   const confirmImportArr = async () => {
     if (!previewArr) return;
     setImportingArr(true);
-    for (const a of previewArr) await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now() });
-    setPreviewArr(null); setImportingArr(false); showToast(`${previewArr.length} arrivages importés ✓`); setPageMode("arrivages");
+
+    // Filtrer les doublons : garder seulement les articles pas encore dans Firebase
+    // Un doublon = même produit + même fournisseur + même date
+    const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
+    const clesExistantes = new Set(
+      existants.map((a: any) => `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`)
+    );
+
+    const nouveaux = previewArr.filter(a => {
+      const cle = `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`;
+      return !clesExistantes.has(cle);
+    });
+    const doublons = previewArr.length - nouveaux.length;
+
+    if (nouveaux.length === 0) {
+      showToast(`Tous les ${previewArr.length} arrivages existent déjà pour cette date`, "error");
+      setPreviewArr(null); setImportingArr(false); return;
+    }
+
+    for (const a of nouveaux) await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now() });
+    setPreviewArr(null); setImportingArr(false);
+
+    if (doublons > 0) {
+      showToast(`✅ ${nouveaux.length} nouveaux ajoutés · ${doublons} doublon${doublons > 1 ? "s" : ""} ignoré${doublons > 1 ? "s" : ""}`);
+    } else {
+      showToast(`${nouveaux.length} arrivages importés ✓`);
+    }
+    setPageMode("arrivages");
   };
 
   const submitHorsListe = async () => {
@@ -4767,19 +4793,40 @@ _PDF joint_`;
 
             {/* Actions — Import déplacé dans le filtre */}
             {/* Preview import */}
-            {previewArr && (
-              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "16px", marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                  <p style={{ margin: 0, fontWeight: 700, color: "#1a6b3a", fontFamily: "'Syne', sans-serif" }}>✅ {previewArr.length} arrivages détectés</p>
-                  <button onClick={() => setPreviewArr(null)} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8, cursor: "pointer", background: "transparent", border: "1px solid #fca5a5", color: "#dc2626" }}>Annuler</button>
+            {previewArr && (() => {
+              const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
+              const clesExistantes = new Set(existants.map((a: any) => `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`));
+              const nouveaux = previewArr.filter(a => !clesExistantes.has(`${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`));
+              const doublons = previewArr.length - nouveaux.length;
+              return (
+                <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "16px", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 700, color: "#1a6b3a", fontFamily: "'Syne', sans-serif" }}>✅ {previewArr.length} arrivages détectés</p>
+                      {doublons > 0 && (
+                        <p style={{ margin: "3px 0 0", fontSize: 12, color: "#d97706" }}>
+                          ⚠️ {doublons} déjà présent{doublons > 1 ? "s" : ""} · <span style={{ color: "#16a34a", fontWeight: 700 }}>{nouveaux.length} nouveaux</span> seront ajoutés
+                        </p>
+                      )}
+                    </div>
+                    <button onClick={() => setPreviewArr(null)} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8, cursor: "pointer", background: "transparent", border: "1px solid #fca5a5", color: "#dc2626" }}>Annuler</button>
+                  </div>
+                  {nouveaux.slice(0, 5).map((a, i) => (
+                    <div key={i} style={{ background: "#f0fdf4", borderRadius: 8, padding: "6px 12px", marginBottom: 4, fontSize: 13, borderLeft: "3px solid #27ae60" }}>
+                      <strong>{a.produit}</strong> · {a.fournisseur} · {a.quantite} {a.unite}
+                    </div>
+                  ))}
+                  {nouveaux.length > 5 && <p style={{ fontSize: 12, color: "#6b7280" }}>...et {nouveaux.length - 5} autres nouveaux</p>}
+                  {doublons > 0 && nouveaux.length === 0 && (
+                    <p style={{ fontSize: 13, color: "#d97706", textAlign: "center", padding: "8px 0" }}>Tous les arrivages de cette date sont déjà présents.</p>
+                  )}
+                  <button onClick={confirmImportArr} disabled={importingArr || nouveaux.length === 0}
+                    style={{ width: "100%", marginTop: 10, padding: "11px", background: importingArr || nouveaux.length === 0 ? "#ccc" : "#27ae60", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: nouveaux.length === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>
+                    {importingArr ? "Import..." : nouveaux.length === 0 ? "Aucun nouvel arrivage" : `Ajouter ${nouveaux.length} nouvel${nouveaux.length > 1 ? "s" : ""} arrivage${nouveaux.length > 1 ? "s" : ""} →`}
+                  </button>
                 </div>
-                {previewArr.slice(0,5).map((a,i) => <div key={i} style={{ background: "#fafffe", borderRadius: 8, padding: "6px 12px", marginBottom: 4, fontSize: 13 }}><strong>{a.produit}</strong> · {a.fournisseur} · {a.quantite} {a.unite}</div>)}
-                {previewArr.length > 5 && <p style={{ fontSize: 12, color: "#6b7280" }}>...et {previewArr.length-5} autres</p>}
-                <button onClick={confirmImportArr} disabled={importingArr} style={{ width: "100%", marginTop: 10, padding: "11px", background: importingArr ? "#ccc" : "#27ae60", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
-                  {importingArr ? "Import..." : `Confirmer l'import de ${previewArr.length} arrivages →`}
-                </button>
-              </div>
-            )}
+              );
+            })()}
             {/* Filtre + actions */}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
