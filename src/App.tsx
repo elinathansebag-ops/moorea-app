@@ -661,10 +661,13 @@ function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; onClose
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000", zIndex: 999, display: "flex", flexDirection: "column" }}>
-      {/* Header */}
-      <div style={{ background: "#0a0a0a", padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, borderBottom: "2px solid #c8a84b", flexShrink: 0 }}>
-        <button onClick={onClose} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>✕ Fermer</button>
-        <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#c8a84b", textTransform: "uppercase", letterSpacing: 1 }}>📷 Scanner QR palette</p>
+      {/* Header uniforme */}
+      <div style={{ background: "#0a0a0a", borderBottom: "3px solid #c8a84b", flexShrink: 0 }}>
+        <div style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
+          <div style={{ width: 100 }}><button onClick={onClose} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}>← Retour</button></div>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#c8a84b", fontFamily: "'Syne', sans-serif", textAlign: "center" }}>📷 Scanner QR palette</p>
+          <div style={{ width: 100, display: "flex", justifyContent: "flex-end" }}><button onClick={onClose} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button></div>
+        </div>
       </div>
 
       {/* Caméra */}
@@ -779,10 +782,18 @@ function PalettePublique({ id }: { id: string }) {
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      {/* Header jaune palette */}
-      <div style={{ background: "#FFE600", borderBottom: "4px solid #000", padding: "20px 20px 16px" }}>
-        <p style={{ margin: "0 0 4px", fontWeight: 900, fontSize: 13, color: "#555", textTransform: "uppercase", letterSpacing: 2, fontFamily: "Arial Black" }}>MOOREA · PALETTE</p>
-        <p style={{ margin: 0, fontWeight: 900, fontSize: 32, color: "#000", fontFamily: "Arial Black", letterSpacing: 1 }}>MRA.{String(arrivage.lot_interne || "").padStart(4, "0")}</p>
+      {/* Header uniforme noir */}
+      <div style={{ background: "#0a0a0a", borderBottom: "3px solid #c8a84b" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
+          <div style={{ width: 100 }}>
+            <button onClick={() => { window.history.replaceState({}, "", window.location.pathname); window.location.reload(); }}
+              style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}>← Retour</button>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#c8a84b", fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1 }}>
+            📦 MRA.{String(arrivage.lot_interne || "").padStart(4, "0")}
+          </p>
+          <div style={{ width: 100 }} />
+        </div>
       </div>
 
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px 60px" }}>
@@ -4398,15 +4409,15 @@ _PDF joint_`;
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
-        <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #dc2626", display: "flex", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 100 }}>
-          <button onClick={() => { setShowLitiges(false); setShowAccueil(true); }} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>🏠 Accueil</button>
-          <div style={{ flex: 1 }}>
-            <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#dc2626", textTransform: "uppercase", letterSpacing: 1, fontFamily: "'Syne', sans-serif" }}>⚠️ Litiges Moorea</p>
-            <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Gestion des refus et réserves</p>
+        <div style={{ background: "#0a0a0a", borderBottom: "3px solid #dc2626", position: "sticky", top: 0, zIndex: 100 }}>
+          <div style={{ maxWidth: 800, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
+            <div style={{ width: 100 }}><button onClick={() => { setShowLitiges(false); setShowAccueil(true); }} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}>← Retour</button></div>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#dc2626", fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1 }}>⚠️ Litiges Moorea</p>
+            <div style={{ width: 100, display: "flex", justifyContent: "flex-end", gap: 6 }}>
+              <button onClick={() => { setShowLitiges(false); setShowAccueil(true); }} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
+              <button onClick={() => signOut(auth)} style={{ padding: "7px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>Déco</button>
+            </div>
           </div>
-          <button onClick={() => signOut(auth)} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>
-            {user?.displayName?.split(" ")[0]} · Déco
-          </button>
         </div>
 
         {/* 2 gros boutons */}
@@ -4478,11 +4489,13 @@ _PDF joint_`;
         <style>{styles}</style>
 
         {/* Header uniforme */}
-        <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #3b82f6", display: "flex", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 100 }}>
-          <button onClick={() => { setShowRecherche(false); setShowAccueil(true); }} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>🏠 Accueil</button>
-          <div style={{ flex: 1 }}>
-            <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 1, fontFamily: "'Syne', sans-serif" }}>🔍 Chercher un lot</p>
-            <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>N° lot, produit ou fournisseur</p>
+        <div style={{ background: "#0a0a0a", borderBottom: "3px solid #3b82f6", position: "sticky", top: 0, zIndex: 100 }}>
+          <div style={{ maxWidth: 800, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
+            <div style={{ width: 100 }}><button onClick={() => { setShowRecherche(false); setShowAccueil(true); }} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}>← Retour</button></div>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#3b82f6", fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1 }}>🔍 Chercher un lot</p>
+            <div style={{ width: 100, display: "flex", justifyContent: "flex-end", gap: 6 }}>
+              <button onClick={() => { setShowRecherche(false); setShowAccueil(true); }} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
+            </div>
           </div>
         </div>
 
@@ -4748,40 +4761,38 @@ _PDF joint_`;
         </div>
       )}
 
-      {/* HEADER */}
-      <div style={{ background: "#0a0a0a", padding: "14px 20px", marginBottom: 0, borderBottom: "3px solid #c8a84b" }}>
-        <div className="header-inner">
-          <div onClick={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }} style={{ cursor: "pointer" }}>
-            <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 15, color: "#c8a84b", textTransform: "uppercase", letterSpacing: "2px", marginBottom: 2 }}>🍃 Moorea</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-              {vue === "form" ? "Nouveau rapport" :
-               vue === "historique" ? "Rapports qualité" :
-               vue === "archives" ? "Archives" :
-               (vue as any) === "stock_refus" ? "Stock refus" :
-               pageMode === "arrivages" ? "Pointer arrivage" :
-               pageMode === "saisie_arr" ? "Nouvel arrivage" :
-               pageMode === "historique_arr" ? "Historique arrivages" :
-               pageMode === "stats_arr" ? "Statistiques" :
-               "Hub Moorea"}
-            </p>
+      {/* HEADER UNIFORME */}
+      <div style={{ background: "#0a0a0a", padding: "0 16px", marginBottom: 0, borderBottom: "3px solid #c8a84b", position: "sticky", top: 0, zIndex: 200 }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          {/* GAUCHE — bouton retour contextuel */}
+          <div style={{ width: 100, display: "flex", justifyContent: "flex-start" }}>
+            {vue === "form" && (
+              <button onClick={() => setVue("historique" as any)} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>← Retour</button>
+            )}
+            {vue === "historique" && (
+              <button onClick={() => { setVue("__none__" as any); setPageMode("arrivages"); }} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>← Retour</button>
+            )}
+            {vue !== "form" && vue !== "historique" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 18 }}>🍃</span>
+                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 13, color: "#c8a84b", textTransform: "uppercase", letterSpacing: "1.5px" }}>Moorea</span>
+              </div>
+            )}
           </div>
-          {/* Bouton retour contextuel */}
-          {vue === "form" && (
-            <button onClick={() => { setVue("historique" as any); }} style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.7)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
-              ← Retour
-            </button>
-          )}
-          {vue === "historique" && (
-            <button onClick={() => { setVue("__none__" as any); setPageMode("arrivages"); }} style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.7)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
-              ← Retour
-            </button>
-          )}
-          <button onClick={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }} style={{ padding: "9px 18px", borderRadius: 10, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
-            🏠 Accueil
-          </button>
-          <button onClick={() => signOut(auth)} title={user.email} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
-            {user.displayName?.split(" ")[0] || user.email?.split("@")[0]} · Déco
-          </button>
+          {/* CENTRE — titre page */}
+          <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1 }}>
+            {vue === "form" ? "Nouveau rapport" :
+             vue === "historique" ? "Rapports qualité" :
+             vue === "archives" ? "Archives" :
+             pageMode === "arrivages" ? "Pointer arrivage" :
+             pageMode === "historique_arr" ? "Historique arrivages" :
+             ""}
+          </p>
+          {/* DROITE — accueil + déco */}
+          <div style={{ width: 100, display: "flex", justifyContent: "flex-end", gap: 6 }}>
+            <button onClick={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>🏠</button>
+            <button onClick={() => signOut(auth)} title={user.email} style={{ padding: "7px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>Déco</button>
+          </div>
         </div>
       </div>
 
