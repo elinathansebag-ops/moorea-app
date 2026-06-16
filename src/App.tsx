@@ -1353,7 +1353,6 @@ function StockApp({ onExit }: { onExit: () => void }) {
       <button class="nav-btn hidden" id="s-nav-comptage" onclick="sShowPage('comptage')">📋 Comptage</button>
       <button class="nav-btn hidden" id="s-nav-ecarts" onclick="sShowPage('ecarts')">📊 Écarts</button>
       <button class="nav-btn" id="s-nav-config" onclick="sShowPage('config')">⚙️ Configuration</button>
-      <button class="nav-btn" onclick="sScannerPalette()">📷 Scanner</button>
     </div>
   </div>
 
@@ -1541,6 +1540,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
 </div>
 
 <div id="stock-toast"></div>
+<button id="stock-scan-fab" onclick="sScannerPalette()" style="display:none;position:fixed;bottom:90px;right:20px;width:52px;height:52px;border-radius:50%;background:#0a0a0a;border:2.5px solid #c8a84b;cursor:pointer;font-size:22px;z-index:299;box-shadow:0 4px 16px rgba(0,0,0,0.3)">📷</button>
 <button id="stock-calc-fab" onclick="document.getElementById('stock-calc-modal').classList.toggle('open')">🧮</button>
 <div id="stock-calc-modal">
   <div class="calc-screen"><div class="expr" id="s-calc-expr"></div><div class="result" id="s-calc-result">0</div></div>
@@ -1669,6 +1669,8 @@ function StockApp({ onExit }: { onExit: () => void }) {
         });
         const fab = document.getElementById("stock-calc-fab");
         if (fab) fab.classList.toggle("visible", p === "comptage");
+        const scanFab = document.getElementById("stock-scan-fab");
+        if (scanFab) scanFab.style.display = p === "comptage" ? "flex" : "none";
         if (p === "home") renderStockList();
         if (p === "ecarts") { updateMetricsE(); sRenderEcarts(); }
         if (p === "config") {
@@ -2638,6 +2640,343 @@ function StockApp({ onExit }: { onExit: () => void }) {
   );
 }
 
+// ─── YUKON APP ───
+const YUKON_ARTICLES_DEFAULT = [
+  { id: "bett-jaune", nom: "Betterave Jaune", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "bett-rose", nom: "Betterave Rose", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-rouge", nom: "Carotte Rouge", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "fane-400", nom: "Fane 400", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "multi-200", nom: "Multi 200", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "courgette-jaune", nom: "Courgette Jaune 400", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "courgette-viol", nom: "Courgette Violette 400", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "courgette-femelle", nom: "Courgette Femelle Longue", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "fenouil-yellow", nom: "Fenouil Yellow", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "piment-rouge", nom: "Piment Rouge", unite: "colis", colisVente: 6, colisCommande: 12 },
+  { id: "pac-choi", nom: "Pac Choi Vert x12", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "aubergine-200", nom: "Aubergine 200", unite: "colis", colisVente: 1, colisCommande: 1 },
+];
+
+function YukonApp({ onClose, db: dbP, ref_: refP, onValue_: onValueP, update_: updateP, push_: pushP, remove_: removeP }: any) {
+  const [page, setPage] = useState<"calcul" | "articles" | "recap">("calcul");
+  const [articles, setArticles] = useState<any[]>([]);
+  const [ventes, setVentes] = useState<Record<string, number>>({});
+  const [stocks, setStocks] = useState<Record<string, number>>({});
+  const [typeCommande, setTypeCommande] = useState<"mercredi" | "vendredi">(
+    new Date().getDay() === 5 ? "vendredi" : "mercredi"
+  );
+  const [editArticle, setEditArticle] = useState<any | null>(null);
+  const [nouvelArticle, setNouvelArticle] = useState({ nom: "", colisVente: 1, colisCommande: 1 });
+  const [loading, setLoading] = useState(true);
+  const [stockDate, setStockDate] = useState("");
+
+  // Charger articles depuis Firebase ou défaut
+  useEffect(() => {
+    const unsub = onValueP(refP(dbP, "yukon/articles"), (snap: any) => {
+      if (snap.exists()) setArticles(Object.values(snap.val()));
+      else {
+        setArticles(YUKON_ARTICLES_DEFAULT);
+        updateP(refP(dbP, "yukon/articles"), Object.fromEntries(YUKON_ARTICLES_DEFAULT.map(a => [a.id, a])));
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Charger ventes de la semaine passée depuis Firebase
+  useEffect(() => {
+    const weekKey = getWeekKey(-1);
+    const unsub = onValueP(refP(dbP, `yukon/ventes/${weekKey}`), (snap: any) => {
+      if (snap.exists()) setVentes(snap.val());
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // Charger le dernier stock moorea-stock
+  useEffect(() => {
+    const unsub = onValueP(refP(dbP, "yukon/stocks_manuels"), (snap: any) => {
+      if (snap.exists()) {
+        const all = Object.values(snap.val()) as any[];
+        all.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        if (all.length > 0) {
+          setStocks(all[0].stocks || {});
+          setStockDate(all[0].date || "");
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const getWeekKey = (offset = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offset * 7);
+    const yr = d.getFullYear();
+    const wk = Math.ceil(((d.getTime() - new Date(yr, 0, 1).getTime()) / 86400000 + new Date(yr, 0, 1).getDay() + 1) / 7);
+    return `${yr}-W${String(wk).padStart(2, "0")}`;
+  };
+
+  const saveVentes = async (newVentes: Record<string, number>) => {
+    setVentes(newVentes);
+    const weekKey = getWeekKey(-1);
+    await updateP(refP(dbP, `yukon/ventes/${weekKey}`), newVentes);
+  };
+
+  const calcCommande = (art: any) => {
+    const venteJour = (ventes[art.id] || 0) / 7;
+    const joursCouverture = typeCommande === "mercredi" ? 4 : 5; // jours avant l'arrivage
+    const stockFinSemaine = Math.max(0, (stocks[art.id] || 0) - venteJour * joursCouverture);
+    const besoin = venteJour * 6; // un arrivage dure 6 jours
+    const aCommander = Math.max(0, besoin - stockFinSemaine);
+    // Arrondir au colis de commande supérieur
+    const nbColis = art.colisCommande > 1
+      ? Math.ceil(aCommander / art.colisCommande) * art.colisCommande
+      : Math.ceil(aCommander);
+    return { venteJour: venteJour.toFixed(1), stockFinSemaine: stockFinSemaine.toFixed(0), besoin: besoin.toFixed(1), aCommander: nbColis };
+  };
+
+  const bg = "#f5f3ee";
+  const headerBg = "linear-gradient(135deg, #1a3a1a 0%, #2d5a1e 60%, #16a34a 100%)";
+
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #16a34a", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Syne', sans-serif" }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* HEADER */}
+      <div style={{ background: "#0a0a0a", borderBottom: "3px solid #16a34a" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
+          <div style={{ width: 100 }}>
+            <button onClick={onClose} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}>← Retour</button>
+          </div>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#16a34a", fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1 }}>🌿 Besoins Yukon</p>
+          <div style={{ width: 100, display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={onClose} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
+          </div>
+        </div>
+      </div>
+
+      {/* SOUS-NAV */}
+      <div style={{ background: "#fff", borderBottom: "1px solid #e8e0d0", display: "flex", justifyContent: "center", gap: 4, padding: "8px 16px" }}>
+        {[
+          { id: "calcul", label: "📊 Calcul" },
+          { id: "articles", label: "⚙️ Articles" },
+          { id: "recap", label: "📋 Récap commande" },
+        ].map(t => (
+          <button key={t.id} onClick={() => setPage(t.id as any)}
+            style={{ padding: "8px 16px", borderRadius: 20, border: `2px solid ${page === t.id ? "#16a34a" : "#e8e0d0"}`, background: page === t.id ? "#f0fdf4" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: page === t.id ? "#16a34a" : "#9ca3af", fontFamily: "'Syne', sans-serif" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ maxWidth: 680, margin: "0 auto", padding: "16px 16px 100px" }}>
+
+        {/* PAGE CALCUL */}
+        {page === "calcul" && (
+          <div>
+            {/* Type commande */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {(["mercredi", "vendredi"] as const).map(t => (
+                <button key={t} onClick={() => setTypeCommande(t)}
+                  style={{ flex: 1, padding: "12px", borderRadius: 12, border: `2px solid ${typeCommande === t ? "#16a34a" : "#e8e0d0"}`, background: typeCommande === t ? "#f0fdf4" : "#fff", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: typeCommande === t ? "#16a34a" : "#9ca3af" }}>
+                  {t === "mercredi" ? "📦 Commande mercredi" : "📦 Commande vendredi"}
+                  <p style={{ margin: "2px 0 0", fontSize: 11, fontWeight: 400, color: typeCommande === t ? "#16a34a" : "#9ca3af" }}>
+                    {t === "mercredi" ? "Départ samedi · Arrivée mardi" : "Départ mardi · Arrivée vendredi"}
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            {/* Stock info */}
+            <div style={{ background: "#fff", borderRadius: 12, padding: "10px 14px", marginBottom: 14, border: "1px solid #e8e0d0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>📦 Stock utilisé : {stockDate || "—"}</p>
+              <button onClick={() => {
+                const date = window.prompt("Date du stock (JJ/MM/AAAA) :", new Date().toLocaleDateString("fr-FR"));
+                if (!date) return;
+                // Ouvre un formulaire de saisie stock manuel
+                setPage("calcul");
+              }} style={{ fontSize: 12, padding: "5px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#f9fafb", cursor: "pointer", color: "#6b7280" }}>
+                Modifier
+              </button>
+            </div>
+
+            {/* Tableau ventes + calcul */}
+            <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
+              {/* Header */}
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 0, background: "#1a2e1a", padding: "10px 14px" }}>
+                {["Article", "Ventes/sem", "Stock", "Besoin", "Commander"].map(h => (
+                  <p key={h} style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", textAlign: h !== "Article" ? "center" : "left" }}>{h}</p>
+                ))}
+              </div>
+              {articles.map((art, idx) => {
+                const { venteJour, stockFinSemaine, besoin, aCommander } = calcCommande(art);
+                const hasCommande = aCommander > 0;
+                return (
+                  <div key={art.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 0, padding: "10px 14px", background: idx % 2 === 0 ? "#fff" : "#fafaf9", borderBottom: "1px solid #f0f0f0", alignItems: "center" }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1a2e1a" }}>{art.nom}</p>
+                    <div style={{ textAlign: "center" }}>
+                      <input type="number" min="0" value={ventes[art.id] || ""} placeholder="0"
+                        onChange={e => saveVentes({ ...ventes, [art.id]: parseInt(e.target.value) || 0 })}
+                        style={{ width: 60, padding: "4px 6px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, textAlign: "center", outline: "none" }} />
+                    </div>
+                    <p style={{ margin: 0, fontSize: 13, color: "#6b7280", textAlign: "center" }}>{stocks[art.id] || 0}</p>
+                    <p style={{ margin: 0, fontSize: 13, color: "#374151", textAlign: "center" }}>{besoin}</p>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: hasCommande ? "#16a34a" : "#9ca3af", textAlign: "center" }}>
+                      {hasCommande ? aCommander : "—"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button onClick={() => setPage("recap")}
+              style={{ width: "100%", padding: "14px", borderRadius: 14, border: "none", background: "linear-gradient(135deg, #16a34a, #166534)", color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
+              📋 Voir le récap commande →
+            </button>
+          </div>
+        )}
+
+        {/* PAGE ARTICLES */}
+        {page === "articles" && (
+          <div>
+            <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
+              {articles.map((art, idx) => (
+                <div key={art.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid #f0f0f0", background: idx % 2 === 0 ? "#fff" : "#fafaf9" }}>
+                  <div style={{ flex: 1 }}>
+                    {editArticle?.id === art.id ? (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <input value={editArticle.nom} onChange={e => setEditArticle({ ...editArticle, nom: e.target.value })}
+                          style={{ flex: 1, padding: "6px 10px", border: "1.5px solid #c8a84b", borderRadius: 8, fontSize: 13 }} />
+                        <input type="number" value={editArticle.colisVente} onChange={e => setEditArticle({ ...editArticle, colisVente: parseInt(e.target.value) || 1 })}
+                          style={{ width: 70, padding: "6px 8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12 }} placeholder="Vente/colis" />
+                        <input type="number" value={editArticle.colisCommande} onChange={e => setEditArticle({ ...editArticle, colisCommande: parseInt(e.target.value) || 1 })}
+                          style={{ width: 70, padding: "6px 8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12 }} placeholder="Cmd/colis" />
+                        <button onClick={async () => {
+                          const updated = articles.map(a => a.id === editArticle.id ? editArticle : a);
+                          setArticles(updated);
+                          await updateP(refP(dbP, `yukon/articles/${editArticle.id}`), editArticle);
+                          setEditArticle(null);
+                        }} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>✓</button>
+                        <button onClick={() => setEditArticle(null)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 12 }}>✕</button>
+                      </div>
+                    ) : (
+                      <div>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#1a2e1a" }}>{art.nom}</p>
+                        {art.colisCommande > 1 && <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Vendu ×{art.colisVente} · Commandé ×{art.colisCommande}</p>}
+                      </div>
+                    )}
+                  </div>
+                  {editArticle?.id !== art.id && (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => setEditArticle({ ...art })} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#f9fafb", cursor: "pointer", fontSize: 12, color: "#6b7280" }}>✏️</button>
+                      <button onClick={async () => {
+                        if (!window.confirm(`Supprimer "${art.nom}" ?`)) return;
+                        const updated = articles.filter(a => a.id !== art.id);
+                        setArticles(updated);
+                        await removeP(refP(dbP, `yukon/articles/${art.id}`));
+                      }} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fca5a5", background: "#fef2f2", cursor: "pointer", fontSize: 12, color: "#dc2626" }}>🗑</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Ajouter un article */}
+            <div style={{ background: "#fff", borderRadius: 16, padding: 16, border: "1.5px solid #c8a84b" }}>
+              <p style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>+ Ajouter un article</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input value={nouvelArticle.nom} onChange={e => setNouvelArticle({ ...nouvelArticle, nom: e.target.value })}
+                  placeholder="Nom de l'article" style={{ flex: 1, minWidth: 160, padding: "8px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 13 }} />
+                <input type="number" value={nouvelArticle.colisVente} onChange={e => setNouvelArticle({ ...nouvelArticle, colisVente: parseInt(e.target.value) || 1 })}
+                  style={{ width: 80, padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 12 }} placeholder="×vente" title="Unités par colis vendu" />
+                <input type="number" value={nouvelArticle.colisCommande} onChange={e => setNouvelArticle({ ...nouvelArticle, colisCommande: parseInt(e.target.value) || 1 })}
+                  style={{ width: 80, padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 12 }} placeholder="×cmd" title="Unités par colis commandé" />
+                <button onClick={async () => {
+                  if (!nouvelArticle.nom) return;
+                  const id = nouvelArticle.nom.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") + "-" + Date.now();
+                  const art = { ...nouvelArticle, id };
+                  const updated = [...articles, art];
+                  setArticles(updated);
+                  await updateP(refP(dbP, `yukon/articles/${id}`), art);
+                  setNouvelArticle({ nom: "", colisVente: 1, colisCommande: 1 });
+                }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+                  Ajouter
+                </button>
+              </div>
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>×vente = unités par colis vendu · ×cmd = unités par colis commandé (ex: Piment = ×6 vente, ×12 cmd)</p>
+            </div>
+          </div>
+        )}
+
+        {/* PAGE RÉCAP COMMANDE */}
+        {page === "recap" && (
+          <div>
+            <div style={{ background: "#1a2e1a", borderRadius: 16, padding: "16px 20px", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 18, color: "#c8a84b", fontFamily: "'Syne', sans-serif" }}>
+                📋 Commande Yukon — {typeCommande === "mercredi" ? "Mercredi" : "Vendredi"}
+              </p>
+              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                {new Date().toLocaleDateString("fr-FR")} · {typeCommande === "mercredi" ? "Départ samedi · Arrivée mardi" : "Départ mardi · Arrivée vendredi"}
+              </p>
+            </div>
+
+            {articles.filter(art => calcCommande(art).aCommander > 0).length === 0 ? (
+              <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 16, border: "1.5px solid #e8e0d0" }}>
+                <p style={{ fontSize: 32, marginBottom: 8 }}>✅</p>
+                <p style={{ fontWeight: 700, color: "#16a34a" }}>Aucune commande nécessaire</p>
+              </div>
+            ) : (
+              <>
+                <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
+                  {articles.filter(art => calcCommande(art).aCommander > 0).map((art, idx) => {
+                    const { aCommander } = calcCommande(art);
+                    return (
+                      <div key={art.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", borderBottom: "1px solid #f0f0f0", background: idx % 2 === 0 ? "#fff" : "#fafaf9" }}>
+                        <div>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#1a2e1a" }}>{art.nom}</p>
+                          {art.colisCommande > 1 && <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Conditionné ×{art.colisCommande}</p>}
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#16a34a", fontFamily: "'Syne', sans-serif" }}>{aCommander}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>colis</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Total */}
+                <div style={{ background: "#f0fdf4", borderRadius: 14, padding: "14px 18px", border: "1.5px solid #bbf7d0", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <p style={{ margin: 0, fontWeight: 700, color: "#16a34a", fontSize: 15 }}>Total colis</p>
+                  <p style={{ margin: 0, fontWeight: 900, color: "#16a34a", fontSize: 24, fontFamily: "'Syne', sans-serif" }}>
+                    {articles.reduce((sum, art) => sum + calcCommande(art).aCommander, 0)}
+                  </p>
+                </div>
+
+                {/* Copier */}
+                <button onClick={() => {
+                  const lignes = articles
+                    .filter(art => calcCommande(art).aCommander > 0)
+                    .map(art => `${art.nom} : ${calcCommande(art).aCommander} colis`)
+                    .join("\n");
+                  const texte = `COMMANDE YUKON — ${typeCommande === "mercredi" ? "Mercredi" : "Vendredi"} ${new Date().toLocaleDateString("fr-FR")}\n\n${lignes}\n\nTotal : ${articles.reduce((s, a) => s + calcCommande(a).aCommander, 0)} colis`;
+                  navigator.clipboard.writeText(texte).then(() => alert("✅ Copié dans le presse-papier !"));
+                }} style={{ width: "100%", padding: "14px", borderRadius: 14, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 15, fontWeight: 800, fontFamily: "'Syne', sans-serif", marginBottom: 10 }}>
+                  📋 Copier la commande
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
   const [vue, setVue] = useState("__none__");
@@ -2706,6 +3045,7 @@ export default function App() {
   const [showStock, setShowStock] = useState(false);
   const [showPalette, setShowPalette] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const [scannerMode, setScannerMode] = useState<"palette" | "rapport">("palette");
   const [stockPage, setStockPage] = useState<"home"|"comptage"|"ecarts"|"config">("home");
   const [stockAllArticles, setStockAllArticles] = useState<any[]>([]);
   const [stockArticles, setStockArticles] = useState<any[]>([]);
@@ -4272,7 +4612,7 @@ _PDF joint_`;
   // ─── FAB SCANNER GLOBAL ─── (avant tous les return de page)
   const fabScanner = !showScanner && !showPalette && (
     <button
-      onClick={() => { setShowScanner(true); setShowAccueil(false); }}
+      onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
       style={{ position: "fixed", bottom: 24, right: 24, width: 58, height: 58, borderRadius: "50%", background: "#0a0a0a", border: "2.5px solid #c8a84b", cursor: "pointer", fontSize: 24, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", zIndex: 9999, transition: "transform 0.15s" }}
       onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.1)")}
       onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
@@ -4316,10 +4656,35 @@ _PDF joint_`;
   if (showScanner) {
     return (
       <ScannerQR
-        onScan={(lot) => { setShowScanner(false); setShowPalette(lot); setShowAccueil(false); }}
+        onScan={(id) => {
+          setShowScanner(false);
+          if (scannerMode === "rapport") {
+            // Cherche l'arrivage et ouvre le formulaire rapport
+            const found = arrivages.find((a: any) => a.id === id || a.lot_interne === id);
+            if (found) {
+              ouvrirRapportDepuisArrivage(found);
+              setShowAccueil(false);
+              setPageMode("arrivages");
+            } else {
+              showToast("Arrivage introuvable pour ce QR", "error");
+              setShowAccueil(false);
+              setVue("historique");
+              setPageMode("arrivages");
+            }
+          } else {
+            setShowPalette(id);
+            setShowAccueil(false);
+          }
+        }}
         onClose={() => setShowScanner(false)}
       />
     );
+  }
+
+  const [showYukon, setShowYukon] = useState(false);
+
+  if (showYukon) {
+    return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} db={db} ref_={ref} onValue_={onValue} update_={update} push_={push} remove_={remove} /></>;
   }
 
   if (showAccueil) {
@@ -4348,6 +4713,7 @@ _PDF joint_`;
       { icon: "📊", label: "Rapports qualité", sub: "Historique et envoi des rapports d'agrément", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
       { icon: "🔍", label: "Chercher un lot", sub: "Retrouver un arrivage par produit ou numéro de lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
       { icon: "📦", label: "Compter le stock", sub: "Inventaire GMS & Prestige avec écarts", color: "#0891b2", badge: null, action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
+      { icon: "🌿", label: "Besoins Yukon", sub: "Calculer les commandes mini légumes Afrique du Sud", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setShowYukon(true); } },
     ];
 
     return (
@@ -5572,6 +5938,12 @@ _PDF joint_`;
         {/* HISTORIQUE */}
         {vue === "historique" && (
           <div className="fade-up">
+
+            {/* BOUTON SCANNER POUR RAPPORT */}
+            <button onClick={() => { setScannerMode("rapport"); setShowScanner(true); }}
+              style={{ width: "100%", marginBottom: 12, padding: "11px", borderRadius: 12, border: "1.5px solid #c8a84b", background: "#faf8f0", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              📷 Scanner une palette → Créer un rapport
+            </button>
 
             {/* TOGGLES DÉCISION — toujours visibles */}
             {(() => {
