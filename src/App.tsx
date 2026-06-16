@@ -4201,26 +4201,6 @@ _PDF joint_`;
                 <span style={{ color: "#d1d5db", fontSize: 18, flexShrink: 0 }}>›</span>
               </button>
             ))}
-
-            {/* Sous-boutons litiges sous Rapports qualité */}
-            <div style={{ display: "flex", gap: 8, marginTop: -4 }}>
-              <button onClick={() => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision(""); setSortBy("decision"); }}
-                style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: "1.5px solid #fca5a5", background: "#fff5f5", textAlign: "left", fontFamily: "'Syne', sans-serif" }}>
-                <span style={{ fontSize: 18 }}>📋</span>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#dc2626" }}>Historique des rapports</p>
-                  <p style={{ margin: 0, fontSize: 10, color: "#9ca3af" }}>Tous les refus et réserves</p>
-                </div>
-              </button>
-              <button onClick={() => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision("refus"); setSortBy("date_desc"); }}
-                style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: "1.5px solid #fcd34d", background: "#fffbeb", textAlign: "left", fontFamily: "'Syne', sans-serif" }}>
-                <span style={{ fontSize: 18 }}>🔄</span>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#d97706" }}>Refus à faire signer</p>
-                  {nbRefus > 0 && <p style={{ margin: 0, fontSize: 10, color: "#d97706", fontWeight: 700 }}>{nbRefus} en attente</p>}
-                </div>
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -4234,18 +4214,15 @@ _PDF joint_`;
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
-        {/* Bandeau */}
-        <div style={{ background: "linear-gradient(135deg, #7f1d1d 0%, #b91c1c 60%, #c8a84b 100%)", padding: "40px 24px 56px", textAlign: "center", position: "relative" }}>
-          <div style={{ position: "absolute", top: -40, right: -40, width: 180, height: 180, borderRadius: "50%", background: "rgba(200,168,75,0.1)", pointerEvents: "none" }} />
-          <button onClick={() => { setShowLitiges(false); setShowAccueil(true); }} style={{ position: "absolute", top: 16, left: 16, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 12, color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-            ‹ Accueil
-          </button>
-          <button onClick={() => signOut(auth)} style={{ position: "absolute", top: 16, right: 16, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>
+        <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #dc2626", display: "flex", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 100 }}>
+          <button onClick={() => { setShowLitiges(false); setShowAccueil(true); }} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>🏠 Accueil</button>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#dc2626", textTransform: "uppercase", letterSpacing: 1, fontFamily: "'Syne', sans-serif" }}>⚠️ Litiges Moorea</p>
+            <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Gestion des refus et réserves</p>
+          </div>
+          <button onClick={() => signOut(auth)} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>
             {user?.displayName?.split(" ")[0]} · Déco
           </button>
-          <div style={{ fontSize: 44, marginBottom: 10 }}>⚠️</div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#fff" }}>Litiges Moorea</h1>
-          <p style={{ margin: "8px 0 0", fontSize: 14, color: "rgba(255,255,255,0.65)" }}>Gestion des refus et réserves</p>
         </div>
 
         {/* 2 gros boutons */}
@@ -4316,17 +4293,16 @@ _PDF joint_`;
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
 
-        {/* Bandeau */}
-        <div style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 60%, #3b82f6 100%)", padding: "40px 24px 56px", textAlign: "center", position: "relative" }}>
-          <button onClick={() => { setShowRecherche(false); setShowAccueil(true); }} style={{ position: "absolute", top: 16, left: 16, padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 12, color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-            ‹ Accueil
-          </button>
-          <div style={{ fontSize: 44, marginBottom: 10 }}>🔍</div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, color: "#fff" }}>Chercher un lot</h1>
-          <p style={{ margin: "8px 0 0", fontSize: 14, color: "rgba(255,255,255,0.65)" }}>N° lot, produit ou fournisseur</p>
+        {/* Header uniforme */}
+        <div style={{ background: "#0a0a0a", padding: "14px 20px", borderBottom: "3px solid #3b82f6", display: "flex", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 100 }}>
+          <button onClick={() => { setShowRecherche(false); setShowAccueil(true); }} style={{ padding: "7px 14px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>🏠 Accueil</button>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 1, fontFamily: "'Syne', sans-serif" }}>🔍 Chercher un lot</p>
+            <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.4)" }}>N° lot, produit ou fournisseur</p>
+          </div>
         </div>
 
-        <div style={{ maxWidth: 600, margin: "-24px auto 0", padding: "0 20px 60px", position: "relative" }}>
+        <div style={{ maxWidth: 600, margin: "0 auto", padding: "16px 20px 60px" }}>
           {/* Barre de recherche */}
           <div style={{ background: "#fff", borderRadius: 16, padding: "16px", marginBottom: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
             <input
@@ -4609,6 +4585,17 @@ _PDF joint_`;
                "Hub Moorea"}
             </p>
           </div>
+          {/* Bouton retour contextuel */}
+          {vue === "form" && (
+            <button onClick={() => { setVue("historique" as any); }} style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.7)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+              ← Retour
+            </button>
+          )}
+          {vue === "historique" && (
+            <button onClick={() => { setVue("__none__" as any); setPageMode("arrivages"); }} style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.7)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+              ← Retour
+            </button>
+          )}
           <button onClick={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }} style={{ padding: "9px 18px", borderRadius: 10, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
             🏠 Accueil
           </button>
@@ -5350,6 +5337,44 @@ _PDF joint_`;
         {/* HISTORIQUE */}
         {vue === "historique" && (
           <div className="fade-up">
+
+            {/* TOGGLES DÉCISION — toujours visibles */}
+            {(() => {
+              const types = [
+                { id: "stock", label: "Conformes", color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
+                { id: "reserve", label: "Réserves", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+                { id: "refus", label: "Refus", color: "#dc2626", bg: "#fef2f2", border: "#fca5a5" },
+              ];
+              const activeFilters: string[] = filterDecision ? [filterDecision] : types.map(t => t.id);
+              const toggle = (id: string) => {
+                if (filterDecision === id) setFilterDecision("");
+                else setFilterDecision(id);
+              };
+              return (
+                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => setFilterDecision("")}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 20, border: `2px solid ${!filterDecision ? "#c8a84b" : "#e8e0d0"}`, background: !filterDecision ? "#faf8f0" : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: !filterDecision ? "#8a6f2e" : "#9ca3af" }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 4, background: !filterDecision ? "#c8a84b" : "#e8e0d0", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", flexShrink: 0 }}>{!filterDecision ? "✓" : ""}</span>
+                    Tous
+                  </button>
+                  {types.map(t => {
+                    const active = filterDecision === t.id || !filterDecision;
+                    const selected = filterDecision === t.id;
+                    return (
+                      <button key={t.id} onClick={() => toggle(t.id)}
+                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 20, border: `2px solid ${selected ? t.border : "#e8e0d0"}`, background: selected ? t.bg : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: selected ? t.color : "#9ca3af", transition: "all 0.15s" }}>
+                        <span style={{ width: 16, height: 16, borderRadius: 4, background: selected ? t.color : "#e8e0d0", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", flexShrink: 0 }}>{selected ? "✓" : ""}</span>
+                        {t.label}
+                        <span style={{ background: selected ? t.color + "22" : "#f3f4f6", color: selected ? t.color : "#9ca3af", fontSize: 11, fontWeight: 800, padding: "1px 7px", borderRadius: 20 }}>
+                          {rapports.filter(r => r.decision === t.id).length}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
             <div style={{ marginBottom: 10, display: "flex", gap: 8 }}>
               <input
                 type="text"
@@ -5378,15 +5403,6 @@ _PDF joint_`;
             {showFilters && (
               <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 14 }}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
-                  <div style={{ flex: 1, minWidth: 140 }}>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>DÉCISION</label>
-                    <select value={filterDecision} onChange={e => setFilterDecision(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
-                      <option value="">Toutes</option>
-                      <option value="refus">❌ Refus</option>
-                      <option value="reserve">⚠️ Réserve</option>
-                      <option value="stock">✅ Stock</option>
-                    </select>
-                  </div>
                   <div style={{ flex: 1, minWidth: 140 }}>
                     <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>FOURNISSEUR</label>
                     <select value={filterFournisseur} onChange={e => setFilterFournisseur(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 13, background: "#fff" }}>
