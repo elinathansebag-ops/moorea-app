@@ -2642,26 +2642,26 @@ function StockApp({ onExit }: { onExit: () => void }) {
 
 // ─── YUKON APP ───
 const YUKON_ARTICLES_DEFAULT = [
-  { id: "bett-jaune", nom: "Betterave Jaune", stockNom: "MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "bett-rose", nom: "Betterave Rose", stockNom: "MINI BETTERAVE ROSE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "bett-rouge", nom: "Betterave Rouge", stockNom: "MINI BETTERAVE ROUGE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "carotte-rouge", nom: "Carotte Rouge", stockNom: "MINI CAROTTE AFRIQUE DU SUD (BARQUETTE 200G X 8)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "carotte-fane-200", nom: "Carotte Fane 200g", stockNom: "MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "carotte-fane-400", nom: "Carotte Fane 400g", stockNom: "MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "carotte-jaune", nom: "Carotte Jaune 400g", stockNom: "MINI CAROTTE JAUNE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "multi-200", nom: "Multi 200g", stockNom: "MINI CAROTTE MULTICOLORE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "carotte-viol", nom: "Carotte Violette 400g", stockNom: "MINI CAROTTE VIOLETTE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "courgette-as", nom: "Courgette AS 200g", stockNom: "MINI COURGETTE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "fenouil-yellow", nom: "Fenouil Yellow", stockNom: "MINI FENOUIL ESPAGNE (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "legumes-mixte", nom: "Légumes Mixte 200g", stockNom: "MINI LEGUMES MIXTE (BARQUETTE 200G X 8)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "navet-as", nom: "Navet AS 200g", stockNom: "MINI NAVET AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "patisson-jaune", nom: "Patisson Jaune", stockNom: "MINI PATISSON JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "patisson-vert", nom: "Patisson Vert", stockNom: "MINI PATISSON VERT AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "poireaux-as", nom: "Poireaux AS 200g", stockNom: "MINI POIREAUX AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "poivron-mixte", nom: "Poivron Mixte 200g", stockNom: "MINI POIVRON MIXTE ESPAGNE (200 GR X 12)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "aubergine-200", nom: "Aubergine 200g", stockNom: "MINI AUBERGINE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
-  { id: "piment-rouge", nom: "Piment Rouge", stockNom: "MINI POIVRON MIXTE ESPAGNE 2E (BARQUETTE 200G X 12)", unite: "colis", colisVente: 6, colisCommande: 12 },
-  { id: "pac-choi", nom: "Pac Choi Vert x12", stockNom: "", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "bett-jaune", nom: "MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "bett-rose", nom: "MINI BETTERAVE ROSE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI BETTERAVE ROSE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "bett-rouge", nom: "MINI BETTERAVE ROUGE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI BETTERAVE ROUGE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-rouge", nom: "MINI CAROTTE AFRIQUE DU SUD (BARQUETTE 200G X 8)", stockNom: "MINI CAROTTE AFRIQUE DU SUD (BARQUETTE 200G X 8)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-fane-200", nom: "MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-fane-400", nom: "MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 400G X 4)", stockNom: "MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-jaune", nom: "MINI CAROTTE JAUNE AFRIQUE DU SUD (BARQUETTE 400G X 4)", stockNom: "MINI CAROTTE JAUNE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "multi-200", nom: "MINI CAROTTE MULTICOLORE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI CAROTTE MULTICOLORE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "carotte-viol", nom: "MINI CAROTTE VIOLETTE AFRIQUE DU SUD (BARQUETTE 400G X 4)", stockNom: "MINI CAROTTE VIOLETTE AFRIQUE DU SUD (BARQUETTE 400G X 4)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "courgette-as", nom: "MINI COURGETTE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI COURGETTE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "fenouil-yellow", nom: "MINI FENOUIL ESPAGNE (BARQUETTE 200G X 6)", stockNom: "MINI FENOUIL ESPAGNE (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "legumes-mixte", nom: "MINI LEGUMES MIXTE (BARQUETTE 200G X 8)", stockNom: "MINI LEGUMES MIXTE (BARQUETTE 200G X 8)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "navet-as", nom: "MINI NAVET AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI NAVET AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "patisson-jaune", nom: "MINI PATISSON JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI PATISSON JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "patisson-vert", nom: "MINI PATISSON VERT AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI PATISSON VERT AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "poireaux-as", nom: "MINI POIREAUX AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI POIREAUX AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "poivron-mixte", nom: "MINI POIVRON MIXTE ESPAGNE (200 GR X 12)", stockNom: "MINI POIVRON MIXTE ESPAGNE (200 GR X 12)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "aubergine-200", nom: "MINI AUBERGINE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI AUBERGINE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
+  { id: "piment-rouge", nom: "MINI POIVRON MIXTE ESPAGNE 2E (BARQUETTE 200G X 12)", stockNom: "MINI POIVRON MIXTE ESPAGNE 2E (BARQUETTE 200G X 12)", unite: "colis", colisVente: 6, colisCommande: 12 },
+  { id: "pac-choi", nom: "MINI CHOUX FLEURS FRANCE (2 P X 8)", stockNom: "MINI CHOUX FLEURS FRANCE (2 P X 8)", unite: "colis", colisVente: 1, colisCommande: 1 },
 ];
 
 // Liste complète des articles moorea-stock pour la liaison
@@ -2804,35 +2804,18 @@ function YukonApp({ onClose }: { onClose: () => void }) {
               ))}
             </div>
 
-            {/* Stock info + saisie manuelle */}
+            {/* Stock info + saisie inline */}
             <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 14, border: "1px solid #e8e0d0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: stockDate ? 0 : 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a" }}>📦 Stock utilisé</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>{stockDate ? `Inventaire du ${stockDate}` : "Aucun stock saisi"}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9ca3af" }}>{stockDate ? `Inventaire du ${stockDate}` : "Aucun stock saisi — modifiez directement dans le tableau"}</p>
                 </div>
-                <button onClick={async () => {
-                  const date = window.prompt("Date de l'inventaire (JJ/MM/AAAA) :", new Date().toLocaleDateString("fr-FR"));
-                  if (!date) return;
-                  // Saisie rapide des stocks pour chaque article
-                  const newStocks: Record<string, number> = { ...stocks };
-                  for (const art of articles) {
-                    const key = art.stockNom || art.id;
-                    const val = window.prompt(`${art.nom}\nStock actuel (colis) :`, String(newStocks[key] || 0));
-                    if (val === null) break;
-                    newStocks[key] = parseInt(val) || 0;
-                  }
-                  setStocks(newStocks);
-                  setStockDate(date);
-                  const entryId = date.replace(/\//g, "-");
-                  await update(ref(db, `yukon/stocks_manuels/${entryId}`), { date, stocks: newStocks });
-                }} style={{ padding: "7px 14px", borderRadius: 9, border: "1.5px solid #c8a84b", background: "#faf8f0", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#8a6f2e" }}>
-                  {stockDate ? "✏️ Modifier" : "➕ Saisir le stock"}
-                </button>
+                {stockDate && <span style={{ fontSize: 11, background: "#f0fdf4", color: "#16a34a", padding: "3px 8px", borderRadius: 8, fontWeight: 600 }}>✓ {stockDate}</span>}
               </div>
             </div>
 
-            {/* Tableau ventes + calcul */}
+            {/* Tableau ventes + stock + calcul */}
             <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
               {/* Header */}
               <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 0, background: "#1a2e1a", padding: "10px 14px" }}>
@@ -2843,6 +2826,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
               {articles.map((art, idx) => {
                 const { venteJour, stockFinSemaine, besoin, aCommander, stockQty } = calcCommande(art);
                 const hasCommande = aCommander > 0;
+                const stockKey = art.stockNom || art.id;
                 return (
                   <div key={art.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr", gap: 0, padding: "10px 14px", background: idx % 2 === 0 ? "#fff" : "#fafaf9", borderBottom: "1px solid #f0f0f0", alignItems: "center" }}>
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1a2e1a" }}>{art.nom}</p>
@@ -2851,7 +2835,19 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                         onChange={e => saveVentes({ ...ventes, [art.id]: parseInt(e.target.value) || 0 })}
                         style={{ width: 60, padding: "4px 6px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, textAlign: "center", outline: "none" }} />
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, color: stockQty > 0 ? "#16a34a" : "#9ca3af", textAlign: "center", fontWeight: stockQty > 0 ? 700 : 400 }}>{stockQty}</p>
+                    <div style={{ textAlign: "center" }}>
+                      <input type="number" min="0" value={stocks[stockKey] ?? ""} placeholder="0"
+                        onChange={async e => {
+                          const val = parseInt(e.target.value) || 0;
+                          const newStocks = { ...stocks, [stockKey]: val };
+                          setStocks(newStocks);
+                          const today = new Date().toLocaleDateString("fr-FR");
+                          setStockDate(today);
+                          const entryId = today.replace(/\//g, "-");
+                          await update(ref(db, `yukon/stocks_manuels/${entryId}`), { date: today, stocks: newStocks });
+                        }}
+                        style={{ width: 60, padding: "4px 6px", border: "1.5px solid #16a34a", borderRadius: 8, fontSize: 13, textAlign: "center", outline: "none", background: stockQty > 0 ? "#f0fdf4" : "#fff" }} />
+                    </div>
                     <p style={{ margin: 0, fontSize: 13, color: "#374151", textAlign: "center" }}>{besoin}</p>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: hasCommande ? "#16a34a" : "#9ca3af", textAlign: "center" }}>
                       {hasCommande ? aCommander : "—"}
