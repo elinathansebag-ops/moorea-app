@@ -2950,7 +2950,23 @@ function YukonApp({ onClose }: { onClose: () => void }) {
             <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 12, border: "1px solid #e8e0d0" }}>
               <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#1a2e1a" }}>📦 Dernier arrivage Yukon</p>
               {arrivagesYukon.length > 0 ? (
-                <select value={arrivageSelId} onChange={e => setArrivageSelId(e.target.value)}
+                <select value={arrivageSelId} onChange={async e => {
+                  const dateId = e.target.value;
+                  setArrivageSelId(dateId);
+                  if (!dateId) return;
+                  const groupe = arrivagesYukon.find(g => g.id === dateId);
+                  if (!groupe) return;
+                  // Remplir le stock avec les quantités de cet arrivage
+                  const newStocks = { ...stocks };
+                  groupe.articles.forEach((a: any) => {
+                    const nomUpper = (a.produit || a.article || "").toUpperCase().trim();
+                    const qte = a.quantite || a.nb_colis || 0;
+                    if (nomUpper && qte > 0) newStocks[nomUpper] = qte;
+                  });
+                  setStocks(newStocks);
+                  setStockDate(dateId);
+                  await update(ref(db, `yukon/stocks_manuels/${dateId.replace(/\//g, "-")}`), { date: dateId, stocks: newStocks });
+                }}
                   style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #c8a84b", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
                   <option value="">— Sélectionner une date d'arrivage —</option>
                   {arrivagesYukon.map(g => (
