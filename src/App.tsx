@@ -2714,6 +2714,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
 
   const [arrivagesYukon, setArrivagesYukon] = useState<any[]>([]);
   const [arrivageSelId, setArrivageSelId] = useState<string>("");
+  const [arrivageQty, setArrivageQty] = useState<Record<string, number>>({});
 
   // Charger les arrivages Yukon depuis Firebase — groupés par date
   useEffect(() => {
@@ -2956,28 +2957,23 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                   if (!dateId) return;
                   const groupe = arrivagesYukon.find(g => g.id === dateId);
                   if (!groupe) return;
-                  // Remplir le stock avec les quantités de cet arrivage
-                  const newStocks = { ...stocks };
+                  // Remplir arrivageQty avec les quantités de cet arrivage
+                  const newArrivageQty: Record<string, number> = {};
                   groupe.articles.forEach((a: any) => {
                     const nomArrivage = (a.produit || a.article || "").toUpperCase().trim();
                     const qte = a.quantite || a.nb_colis || 0;
                     if (!nomArrivage || !qte) return;
-                    // Cherche l'article Yukon correspondant par stockNom ou nom
                     const artYukon = articles.find((art: any) => {
                       const stockNom = (art.stockNom || art.nom || "").toUpperCase().trim();
                       return stockNom === nomArrivage || stockNom.includes(nomArrivage) || nomArrivage.includes(stockNom);
                     });
                     if (artYukon) {
-                      const stockKey = artYukon.stockNom || artYukon.id;
-                      newStocks[stockKey] = (newStocks[stockKey] || 0) + qte;
+                      newArrivageQty[artYukon.stockNom || artYukon.id] = (newArrivageQty[artYukon.stockNom || artYukon.id] || 0) + qte;
                     } else {
-                      // Fallback : enregistre avec le nom brut
-                      newStocks[nomArrivage] = (newStocks[nomArrivage] || 0) + qte;
+                      newArrivageQty[nomArrivage] = (newArrivageQty[nomArrivage] || 0) + qte;
                     }
                   });
-                  setStocks(newStocks);
-                  setStockDate(dateId);
-                  await update(ref(db, `yukon/stocks_manuels/${dateId.replace(/\//g, "-")}`), { date: dateId, stocks: newStocks });
+                  setArrivageQty(newArrivageQty);
                 }}
                   style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #c8a84b", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
                   <option value="">— Sélectionner une date d'arrivage —</option>
@@ -2994,11 +2990,12 @@ function YukonApp({ onClose }: { onClose: () => void }) {
             <div style={{ background: "#fff", borderRadius: 12, overflow: "auto", border: "1.5px solid #e8e0d0", marginBottom: 12 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" }}>
                 <colgroup>
-                  <col style={{ width: "30%" }} />
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "9%" }} />
                   <col style={{ width: "10%" }} />
                   <col style={{ width: "10%" }} />
-                  <col style={{ width: "11%" }} />
-                  <col style={{ width: "11%" }} />
                   <col style={{ width: "14%" }} />
                   <col style={{ width: "14%" }} />
                 </colgroup>
@@ -3006,6 +3003,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                   <tr style={{ background: "#1a2e1a" }}>
                     <th style={{ padding: "8px 8px", textAlign: "left", color: "rgba(255,255,255,0.7)", fontSize: 10, fontWeight: 700, textTransform: "uppercase" }}>Article</th>
                     <th style={{ padding: "8px 4px", textAlign: "center", color: "#c8a84b", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Stock<br/>inv.</th>
+                    <th style={{ padding: "8px 4px", textAlign: "center", color: "#60a5fa", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Dern.<br/>arrivage</th>
                     <th style={{ padding: "8px 4px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Ventes<br/>{joursVentes}j</th>
                     <th style={{ padding: "8px 4px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Back<br/>Stock</th>
                     <th style={{ padding: "8px 4px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>V.<br/>sem.</th>
@@ -3045,6 +3043,9 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                               await update(ref(db, `yukon/stocks_manuels/${today.replace(/\//g, "-")}`), { date: today, stocks: newStocks });
                             }}
                             style={{ width: "100%", maxWidth: 55, padding: "3px 4px", border: `1.5px solid ${stockMissing ? "#fca5a5" : "#c8a84b"}`, borderRadius: 6, fontSize: 12, textAlign: "center", outline: "none", background: stockMissing ? "#fff5f5" : "#fffbf0", fontWeight: 700 }} />
+                        </td>
+                        <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 700, fontSize: 13, color: arrivageQty[stockKey] > 0 ? "#60a5fa" : "#9ca3af" }}>
+                          {arrivageQty[stockKey] > 0 ? arrivageQty[stockKey] : "—"}
                         </td>
                         <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
                           <input type="number" min="0" value={ventes[art.id] || ""} placeholder="0"
