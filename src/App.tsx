@@ -100,7 +100,7 @@ const styles = `
 // ─── HEADER UNIFORME ───
 function PageHeader({ titre, couleur = "#c8a84b", onBack, onHome }: { titre: string; couleur?: string; onBack?: () => void; onHome?: () => void }) {
   return (
-    <div style={{ background: "#0a0a0a", borderBottom: `3px solid ${couleur}`, position: "sticky", top: 0, zIndex: 200 }}>
+    <div style={{ background: "#0a0a0a", borderBottom: `3px solid ${couleur}`, position: "sticky", top: 0, zIndex: 200, paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <div style={{ maxWidth: 800, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
         <div style={{ width: 80 }}>
           {onBack && (
@@ -1218,7 +1218,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
     styleEl.textContent = `
 #stock-root *{box-sizing:border-box;margin:0;padding:0}
 #stock-root{font-family:'DM Sans',sans-serif;font-size:14px;color:#0a0a0a;background:#f5f3ee;min-height:100vh}
-#stock-root .topbar{background:#0a0a0a;padding:0 2rem;height:62px;display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid rgba(200,168,75,0.3)}
+#stock-root .topbar{background:#0a0a0a;padding:env(safe-area-inset-top,0px) 2rem 0;height:calc(62px + env(safe-area-inset-top,0px));display:flex;align-items:flex-end;padding-bottom:10px;justify-content:space-between;border-bottom:1.5px solid rgba(200,168,75,0.3);position:sticky;top:0;z-index:100}
 #stock-root .logo{font-size:15px;font-weight:700;color:#c8a84b;letter-spacing:1.5px;text-transform:uppercase}
 #stock-root .logo-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:1px}
 #stock-root .sync-pill{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:5px 12px;font-size:12px;color:rgba(255,255,255,.7)}
@@ -1320,7 +1320,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
 #stock-root .toggle-switch.gms input:checked + .toggle-slider{background:#c8a84b}
 #stock-root input[type=number]{-webkit-appearance:none;appearance:none}
 #stock-pdf-overlay{display:none;position:fixed;inset:0;background:#f5f3ee;z-index:700;overflow-y:auto}
-@media print{#stock-pdf-overlay{display:block!important;position:static;background:#fff}#stock-root>*:not(#stock-pdf-overlay){display:none!important}@page{size:A4 landscape;margin:10mm}}
+@media print{#stock-pdf-overlay > div:first-child{display:none!important}#stock-pdf-overlay{display:block!important;position:static;background:#fff}body > *:not(#stock-pdf-overlay){display:none!important}@page{size:A4 landscape;margin:8mm}}
 #stock-fusion-bar{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#fff;padding:12px 24px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.3);align-items:center;gap:12px;z-index:300;white-space:nowrap}
     `;
     document.head.appendChild(styleEl);
@@ -1329,7 +1329,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
     el.innerHTML = `
 <div id="stock-root">
   <div id="stock-pdf-overlay">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#0a0a0a;position:sticky;top:0;z-index:1">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 12px) 20px 12px;background:#0a0a0a;position:sticky;top:0;z-index:1">
       <span style="color:#c8a84b;font-weight:700;font-size:14px">📄 Rapport PDF</span>
       <div style="display:flex;gap:8px">
         <button onclick="window.print()" style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🖨 Imprimer</button>
@@ -2212,47 +2212,28 @@ function StockApp({ onExit }: { onExit: () => void }) {
 
       // PDF
       const openPdfWindow = (html: string, title: string) => {
-        const w = window.open("", "_blank");
-        if (!w) return;
-        w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title><style>
-          *{margin:0;padding:0;box-sizing:border-box}
-          body{font-family:Arial,sans-serif;background:#fff;padding:16px;width:277mm}
-          @page{size:297mm 210mm;margin:8mm}
-          @media print{
-            html,body{width:297mm;height:210mm}
-            body{padding:0}
-            .print-btn{display:none!important}
-          }
-          .print-btn{position:fixed;top:10px;right:10px;display:flex;gap:8px;z-index:9999;background:#fff;padding:6px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15)}
-          .print-btn button{padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700}
-          table{border-collapse:collapse;width:100%}
-          th,td{font-size:11px}
-        </style></head><body>
-        <div class="print-btn">
-          <button onclick="window.print()" style="background:#c8a84b;color:#0a0a0a">🖨 Imprimer</button>
-          <button onclick="window.close()" style="background:#f0f0f0;color:#333">✕ Fermer</button>
-        </div>
-        ${html}
-        <script>window.onload=function(){window.print()}</script>
-        </body></html>`);
-        w.document.close();
+        const b1=html.indexOf('<body');const b2=html.indexOf('>',b1)+1;const b3=html.lastIndexOf('</body>');
+        const bodyContent=(b1>=0&&b3>=0)?html.slice(b2,b3):html;
+        const pdfContent=document.getElementById('stock-pdf-content');
+        const pdfOverlay=document.getElementById('stock-pdf-overlay');
+        if(pdfContent) pdfContent.innerHTML=bodyContent;
+        if(pdfOverlay) pdfOverlay.style.display='block';
       };
 
       (window as any).sExportPDF = () => {
         const now = new Date().toLocaleString("fr-FR");
         const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
-        const thead = `<tr style="background:#f0f0f0"><th style="padding:6px 8px;font-size:10px;border-bottom:2px solid #333;width:28px">Statut</th><th style="padding:6px 8px;font-size:10px;border-bottom:2px solid #333">Article</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #333">Stock</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #333">Compté</th><th style="padding:6px 8px;text-align:center;font-size:10px;border-bottom:2px solid #333">Écart</th></tr>`;
-        const row = (a: any) => {
+        const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}.nb{text-align:center}.ec{text-align:center;font-weight:700}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0}}`;
+        const rows = sorted.map(a => {
           const e = counted(a) ? ecart(a) : null;
-          const statut = !counted(a) ? "?" : e === 0 ? "✓" : e! < 0 ? "▼ " + e : "▲ +" + e;
-          const bg = e !== null && e !== 0 ? "background:#f8f8f8" : "";
-          const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `${l} (${q})`).join("  ") : (a.lots?.join("  ") || "");
-          return `<tr style="${bg}"><td style="padding:5px 8px;text-align:center;font-size:11px;font-weight:700;border-bottom:1px solid #ddd">${statut}</td><td style="padding:5px 8px;font-size:11px;border-bottom:1px solid #ddd">${a.article}${lotsStr ? `<br><span style="font-size:9px;color:#666">${lotsStr}</span>` : ""}</td><td style="padding:5px 8px;text-align:center;font-size:11px;border-bottom:1px solid #ddd">${a.nb_colis}</td><td style="padding:5px 8px;text-align:center;font-size:11px;font-weight:600;border-bottom:1px solid #ddd">${counted(a) ? a.compte : "—"}</td><td style="padding:5px 8px;text-align:center;font-size:11px;font-weight:700;border-bottom:1px solid #ddd">${e !== null ? (e > 0 ? "+" + e : e) : "—"}</td></tr>`;
-        };
+          const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q}`).join(" | ") : (a.lots?.join(" | ") || "");
+          const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
+          return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${counted(a) ? a.compte : "—"}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "—"}</td></tr>`;
+        });
         const manq = sorted.filter(a => counted(a) && ecart(a) < 0).length;
         const exc = sorted.filter(a => counted(a) && ecart(a) > 0).length;
         const nc = sorted.filter(a => !counted(a)).length;
-        const html = `<h1 style="font-size:14px;font-weight:bold;margin:0 0 4px">Moorea · Inventaire ${currentTeam}</h1><div style="font-size:10px;color:#444;margin:3px 0 10px">${now} · ${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</div><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${sorted.map(row).join("")}</tbody></table>`;
+        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>🌿 Moorea · Inventaire ${currentTeam}</h1><p>${now} · ${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
         openPdfWindow(html, `Moorea · Inventaire ${currentTeam}`);
       };
 
@@ -2263,27 +2244,25 @@ function StockApp({ onExit }: { onExit: () => void }) {
           const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
           if (!stockSnap.exists()) { toast("Stock introuvable"); return; }
           const s = stockSnap.data() as any;
-          const arts = s.articles || [];
+          const arts = (s.articles || []).filter((a: any) => a.equipe === team);
           const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
-          const teamArts = arts.filter((a: any) => a.equipe === team);
           const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
           const getCompte = (a: any) => { const d = comptData[a.article]; if (!d) return null; return typeof d === "object" ? d.c : d; };
           const getDetruire = (a: any) => { const d = comptData[a.article]; if (!d || typeof d !== "object") return null; return d.cd; };
           const ecartFn = (a: any) => { const c = getCompte(a); return c !== null ? c - a.nb_colis : null; };
-          const manq = teamArts.filter((a: any) => isCounted(a) && ecartFn(a)! < 0);
-          const exc = teamArts.filter((a: any) => isCounted(a) && ecartFn(a)! > 0);
-          const ok = teamArts.filter((a: any) => isCounted(a) && ecartFn(a) === 0);
-          const nc = teamArts.filter((a: any) => !isCounted(a));
-          const thead = `<tr style="background:#f5f3ee"><th style="padding:6px 10px;text-align:left;font-size:11px;color:#6b7280;border-bottom:2px solid #c8a84b">Article</th><th style="padding:6px 10px;text-align:center;font-size:11px;border-bottom:2px solid #c8a84b">Stock</th><th style="padding:6px 10px;text-align:center;font-size:11px;border-bottom:2px solid #c8a84b">Compté</th><th style="padding:6px 10px;text-align:center;font-size:11px;color:#dc2626;border-bottom:2px solid #c8a84b">Détruire</th><th style="padding:6px 10px;text-align:center;font-size:11px;border-bottom:2px solid #c8a84b">Écart</th></tr>`;
-          const row = (a: any, hl: boolean) => {
-            const e = ecartFn(a); const sign = e !== null && e > 0 ? "+" : ""; const ec = e === null ? "#6b7280" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
-            const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" | ") : (a.lots?.join(" | ") || "");
-            const c = getCompte(a); const cd = getDetruire(a);
-            return `<tr style="${hl ? "background:#fff5f5" : ""}"><td style="padding:5px 10px;font-size:12px;border-bottom:1px solid #e8e0d0">${a.article}${lotsStr ? `<div style="margin-top:3px;font-size:10px;color:#6b7280">${lotsStr}</div>` : ""}</td><td style="padding:5px 10px;text-align:center;font-size:12px;border-bottom:1px solid #e8e0d0">${a.nb_colis}</td><td style="padding:5px 10px;text-align:center;font-size:12px;font-weight:600;border-bottom:1px solid #e8e0d0">${c !== null ? c : "—"}</td><td style="padding:5px 10px;text-align:center;font-size:12px;color:#dc2626;border-bottom:1px solid #e8e0d0">${cd || ""}</td><td style="padding:5px 10px;text-align:center;font-size:12px;font-weight:700;color:${ec};border-bottom:1px solid #e8e0d0">${e !== null ? sign + e : "—"}</td></tr>`;
-          };
-          const section = (title: string, color: string, arr: any[], hl: boolean) => arr.length ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:${color};padding:12px 0 6px">${title} (${arr.length})</div><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${arr.map(a => row(a, hl)).join("")}</tbody></table>` : "";
+          const sorted = [...arts].sort((a: any, b: any) => a.article.localeCompare(b.article, "fr"));
           const now = new Date().toLocaleString("fr-FR");
-          const html = `<h1 style="font-size:17px;font-weight:700;color:#c8a84b;margin:0">🌿 Moorea · Inventaire ${team}</h1><div style="font-size:12px;color:#6b7280;margin:3px 0 18px">${s.dateLabel} · ${teamArts.length} articles · Imprimé le ${now}</div>${section("▼ Manquants", "#dc2626", manq, true)}${section("▲ Excédents", "#b45309", exc, true)}${manq.length === 0 && exc.length === 0 ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:9px 13px;font-size:13px;color:#15803d;margin-bottom:14px">✓ Aucun écart</div>` : ""}${section("⚡ Non comptés", "#6b7280", nc, false)}${section("✓ Articles OK", "#15803d", ok, false)}`;
+          const manq = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
+          const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
+          const nc = sorted.filter((a: any) => !isCounted(a)).length;
+          const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}.nb{text-align:center}.ec{text-align:center;font-weight:700}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0}}`;
+          const rows = sorted.map((a: any) => {
+            const e = ecartFn(a); const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
+            const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q} col.`).join(" | ") : (a.lots?.join(" | ") || "");
+            const c = getCompte(a); const cd = getDetruire(a);
+            return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${c !== null ? c : "—"}</td><td class="nb" style="color:#dc2626">${cd || ""}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "—"}</td></tr>`;
+          });
+          const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>🌿 Moorea · Inventaire ${team}</h1><p>${s.dateLabel} · ${arts.length} articles · Imprimé le ${now} · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="nb" style="color:#dc2626">Détruire</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
           openPdfWindow(html, `Moorea · Inventaire ${team}`);
         } catch { toast("Erreur PDF"); }
       };
@@ -4899,7 +4878,7 @@ _PDF joint_`;
         <style>{styles}</style>
 
         {/* HEADER compact */}
-        <div style={{ background: headerBg, padding: "16px 16px 20px", position: "relative", overflow: "hidden" }}>
+        <div style={{ background: headerBg, padding: "calc(env(safe-area-inset-top, 0px) + 16px) 16px 20px", position: "relative", overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{today}</p>
