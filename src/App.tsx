@@ -2990,25 +2990,27 @@ function YukonApp({ onClose }: { onClose: () => void }) {
             <div style={{ background: "#fff", borderRadius: 12, overflow: "auto", border: "1.5px solid #e8e0d0", marginBottom: 12 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" }}>
                 <colgroup>
-                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "22%" }} />
+                  <col style={{ width: "8%" }} />
+                  <col style={{ width: "8%" }} />
+                  <col style={{ width: "8%" }} />
                   <col style={{ width: "9%" }} />
                   <col style={{ width: "9%" }} />
                   <col style={{ width: "9%" }} />
-                  <col style={{ width: "10%" }} />
-                  <col style={{ width: "10%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "13%" }} />
                 </colgroup>
                 <thead>
                   <tr style={{ background: "#1a2e1a" }}>
                     <th style={{ padding: "8px 8px", textAlign: "left", color: "rgba(255,255,255,0.7)", fontSize: 10, fontWeight: 700, textTransform: "uppercase" }}>Article</th>
+                    <th style={{ padding: "8px 4px", textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Dern.<br/>cmd</th>
+                    <th style={{ padding: "8px 4px", textAlign: "center", color: "#60a5fa", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Qté<br/>reçue</th>
                     <th style={{ padding: "8px 4px", textAlign: "center", color: "#c8a84b", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Stock<br/>inv.</th>
-                    <th style={{ padding: "8px 4px", textAlign: "center", color: "#60a5fa", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Dern.<br/>arrivage</th>
                     <th style={{ padding: "8px 4px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Ventes<br/>{joursVentes}j</th>
                     <th style={{ padding: "8px 4px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Back<br/>Stock</th>
-                    <th style={{ padding: "8px 4px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>V.<br/>sem.</th>
-                    <th style={{ padding: "8px 4px", textAlign: "center", color: "#4ade80", fontSize: 9, fontWeight: 700, textTransform: "uppercase", borderLeft: "2px solid rgba(74,222,128,0.3)" }}>📦 Sam<br/>→ Mar</th>
-                    <th style={{ padding: "8px 4px", textAlign: "center", color: "#4ade80", fontSize: 9, fontWeight: 700, textTransform: "uppercase", borderLeft: "1px solid rgba(255,255,255,0.1)" }}>📦 Mar<br/>→ Ven</th>
+                    <th style={{ padding: "8px 4px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>V.<br/>semaine</th>
+                    <th style={{ padding: "8px 4px", textAlign: "center", color: "#4ade80", fontSize: 9, fontWeight: 700, textTransform: "uppercase", borderLeft: "2px solid rgba(74,222,128,0.3)" }}>📦 Cmd<br/>Sam</th>
+                    <th style={{ padding: "8px 4px", textAlign: "center", color: "#4ade80", fontSize: 9, fontWeight: 700, textTransform: "uppercase", borderLeft: "1px solid rgba(255,255,255,0.1)" }}>📦 Cmd<br/>Mar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3018,13 +3020,19 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                     const stockMissing = stockDate && stocks[stockKey] === undefined;
                     const ventesJours = ventes[art.id] || 0;
                     const venteJour = joursVentes > 0 ? ventesJours / joursVentes : 0;
+                    // Formules exactes du tableau Excel
+                    // Back Stock = Stock - Ventes (sur la période saisie)
+                    const backStock = Math.max(0, stockQty - ventesJours);
+                    // Weekly Sales = Ventes / joursVentes × 7
                     const ventesSemaine = Math.round(venteJour * 7);
-                    const backStockSam = Math.max(0, stockQty - venteJour * 4);
-                    const cmdSam = Math.max(0, Math.ceil(venteJour * 6 - backStockSam));
-                    const cmdSamArrondi = art.colisCommande > 1 ? Math.ceil(cmdSam / art.colisCommande) * art.colisCommande : cmdSam;
-                    const backStockMar = Math.max(0, stockQty - venteJour * 5);
-                    const cmdMar = Math.max(0, Math.ceil(venteJour * 6 - backStockMar));
-                    const cmdMarArrondi = art.colisCommande > 1 ? Math.ceil(cmdMar / art.colisCommande) * art.colisCommande : cmdMar;
+                    // Saturday Order = Weekly Sales - Back Stock (arrondi au colis)
+                    const cmdSamRaw = Math.max(0, ventesSemaine - backStock);
+                    const cmdSam = art.colisCommande > 1 ? Math.ceil(cmdSamRaw / art.colisCommande) * art.colisCommande : cmdSamRaw;
+                    // Tuesday Order = Weekly Sales - (Back Stock - Ventes sam→mar soit ~4j supplémentaires)
+                    const backStockMar = Math.max(0, backStock - venteJour * 4);
+                    const cmdMarRaw = Math.max(0, ventesSemaine - backStockMar);
+                    const cmdMar = art.colisCommande > 1 ? Math.ceil(cmdMarRaw / art.colisCommande) * art.colisCommande : cmdMarRaw;
+                    const dernQty = arrivageQty[stockKey];
                     const rowBg = stockMissing ? "#fff5f5" : idx % 2 === 0 ? "#fff" : "#fafaf9";
                     return (
                       <tr key={art.id} style={{ background: rowBg, borderLeft: stockMissing ? "3px solid #dc2626" : "none" }}>
@@ -3032,6 +3040,13 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                           {art.nom}
                           {stockMissing && <span style={{ display: "block", fontSize: 9, color: "#dc2626", fontWeight: 700 }}>⚠ Absent</span>}
                         </td>
+                        {/* Dernière commande — lecture seule */}
+                        <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#9ca3af", fontSize: 12 }}>—</td>
+                        {/* Quantité reçue (arrivage) — bleue */}
+                        <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 700, fontSize: 13, color: dernQty > 0 ? "#60a5fa" : "#9ca3af" }}>
+                          {dernQty > 0 ? dernQty : "—"}
+                        </td>
+                        {/* Stock inventaire — saisie manuelle */}
                         <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
                           <input type="number" min="0" value={stocks[stockKey] ?? ""} placeholder="0"
                             onChange={async e => {
@@ -3044,25 +3059,27 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                             }}
                             style={{ width: "100%", maxWidth: 55, padding: "3px 4px", border: `1.5px solid ${stockMissing ? "#fca5a5" : "#c8a84b"}`, borderRadius: 6, fontSize: 12, textAlign: "center", outline: "none", background: stockMissing ? "#fff5f5" : "#fffbf0", fontWeight: 700 }} />
                         </td>
-                        <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 700, fontSize: 13, color: arrivageQty[stockKey] > 0 ? "#60a5fa" : "#9ca3af" }}>
-                          {arrivageQty[stockKey] > 0 ? arrivageQty[stockKey] : "—"}
-                        </td>
+                        {/* Ventes X jours — saisie */}
                         <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
                           <input type="number" min="0" value={ventes[art.id] || ""} placeholder="0"
                             onChange={e => saveVentes({ ...ventes, [art.id]: parseInt(e.target.value) || 0 })}
                             style={{ width: "100%", maxWidth: 55, padding: "3px 4px", border: "1.5px solid #e8e0d0", borderRadius: 6, fontSize: 12, textAlign: "center", outline: "none" }} />
                         </td>
-                        <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 700, color: ventesJours > 0 ? (backStockSam > 0 ? "#15803d" : "#dc2626") : "#9ca3af", borderBottom: "1px solid #f0f0f0", fontSize: 13 }}>
-                          {ventesJours > 0 ? Math.round(backStockSam) : "—"}
+                        {/* Back Stock = Stock - Ventes */}
+                        <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 700, color: ventesJours > 0 ? (backStock > 0 ? "#15803d" : "#dc2626") : "#9ca3af", borderBottom: "1px solid #f0f0f0", fontSize: 13 }}>
+                          {ventesJours > 0 ? backStock : "—"}
                         </td>
+                        {/* Ventes semaine = Ventes/j × 7 */}
                         <td style={{ padding: "7px 4px", textAlign: "center", color: "#6b7280", borderBottom: "1px solid #f0f0f0", fontSize: 12 }}>
                           {ventesJours > 0 ? ventesSemaine : "—"}
                         </td>
-                        <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 800, fontSize: 15, color: cmdSamArrondi > 0 ? "#16a34a" : "#9ca3af", borderBottom: "1px solid #f0f0f0", borderLeft: "2px solid #bbf7d0", background: cmdSamArrondi > 0 ? "#f0fdf4" : "transparent" }}>
-                          {cmdSamArrondi > 0 ? cmdSamArrondi : "—"}
+                        {/* Cmd Samedi */}
+                        <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 800, fontSize: 15, color: cmdSam > 0 ? "#16a34a" : "#9ca3af", borderBottom: "1px solid #f0f0f0", borderLeft: "2px solid #bbf7d0", background: cmdSam > 0 ? "#f0fdf4" : "transparent" }}>
+                          {cmdSam > 0 ? cmdSam : "—"}
                         </td>
-                        <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 800, fontSize: 15, color: cmdMarArrondi > 0 ? "#16a34a" : "#9ca3af", borderBottom: "1px solid #f0f0f0", borderLeft: "1px solid #e8e0d0", background: cmdMarArrondi > 0 ? "#f0fdf4" : "transparent" }}>
-                          {cmdMarArrondi > 0 ? cmdMarArrondi : "—"}
+                        {/* Cmd Mardi */}
+                        <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 800, fontSize: 15, color: cmdMar > 0 ? "#16a34a" : "#9ca3af", borderBottom: "1px solid #f0f0f0", borderLeft: "1px solid #e8e0d0", background: cmdMar > 0 ? "#f0fdf4" : "transparent" }}>
+                          {cmdMar > 0 ? cmdMar : "—"}
                         </td>
                       </tr>
                     );
