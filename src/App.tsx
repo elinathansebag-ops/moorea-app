@@ -2633,11 +2633,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 500, overflowY: "auto", background: "#f5f3ee" }}>
-      <div style={{ position: "sticky", top: 0, zIndex: 600, background: "#0a0a0a", padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "2px solid #c8a84b" }}>
-        <button onClick={onExit} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif" }}>
-          🏠 Hub Moorea
-        </button>
-      </div>
+      <PageHeader titre="📦 Stock Moorea" onBack={onExit} onHome={onExit} />
       <div ref={containerRef} />
     </div>
   );
@@ -2740,8 +2736,8 @@ function YukonApp({ onClose }: { onClose: () => void }) {
           authDomain: "moorea-stock.firebaseapp.com",
           projectId: "moorea-stock",
           storageBucket: "moorea-stock.firebasestorage.app",
-          messagingSenderId: "254920745129",
-          appId: "1:254920745129:web:fa14e2d3b53a8e6b9c9f5a"
+          messagingSenderId: "639598259840",
+          appId: "1:639598259840:web:ff3c048f9aac1b99f40065"
         };
         const existing = getApps().find((a: any) => a.name === "moorea-stock");
         const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
@@ -2782,20 +2778,22 @@ function YukonApp({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const loadSessions = async () => {
       try {
-        const { getFirestore, collection, getDocs, query, orderBy, limit, doc, getDoc } = await import("firebase/firestore");
+        const { getFirestore, collection, getDocs } = await import("firebase/firestore");
         const { initializeApp, getApps } = await import("firebase/app");
-        const stockCfg = { apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8", authDomain: "moorea-stock.firebaseapp.com", projectId: "moorea-stock", storageBucket: "moorea-stock.firebasestorage.app", messagingSenderId: "254920745129", appId: "1:254920745129:web:fa14e2d3b53a8e6b9c9f5a" };
+        const stockCfg = { apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8", authDomain: "moorea-stock.firebaseapp.com", projectId: "moorea-stock", storageBucket: "moorea-stock.firebasestorage.app", messagingSenderId: "639598259840", appId: "1:639598259840:web:ff3c048f9aac1b99f40065" };
         const existing = getApps().find((a: any) => a.name === "moorea-stock");
         const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
         const db2 = getFirestore(stockApp);
-
-        // Charge la liste des sessions depuis la collection "stocks"
-        const stocksSnap = await getDocs(query(collection(db2, "stocks"), orderBy("ts", "desc"), limit(20)));
+        const stocksSnap = await getDocs(collection(db2, "stocks"));
         const loaded: any[] = [];
         stocksSnap.forEach(d => {
           const s = d.data();
-          loaded.push({ id: d.id, date: s.date || d.id, equipe: s.equipe || "", label: `${s.date || d.id}${s.equipe ? " · " + s.equipe : ""}` });
+          const date = s.dateLabel || s.date || d.id;
+          const team = s.team || "";
+          loaded.push({ id: d.id, date, equipe: team, label: `${date}${team ? " · " + team : ""}` });
         });
+        // Trier par ID décroissant (les IDs sont des timestamps)
+        loaded.sort((a, b) => b.id.localeCompare(a.id));
         setSessions(loaded);
       } catch (e) { console.log("moorea-stock sessions non disponibles", e); }
     };
@@ -2883,7 +2881,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                   try {
                     const { getFirestore, collection, getDocs, query, where } = await import("firebase/firestore");
                     const { initializeApp, getApps } = await import("firebase/app");
-                    const stockCfg = { apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8", authDomain: "moorea-stock.firebaseapp.com", projectId: "moorea-stock", storageBucket: "moorea-stock.firebasestorage.app", messagingSenderId: "254920745129", appId: "1:254920745129:web:fa14e2d3b53a8e6b9c9f5a" };
+                    const stockCfg = { apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8", authDomain: "moorea-stock.firebaseapp.com", projectId: "moorea-stock", storageBucket: "moorea-stock.firebasestorage.app", messagingSenderId: "639598259840", appId: "1:639598259840:web:ff3c048f9aac1b99f40065" };
                     const existing = getApps().find((a: any) => a.name === "moorea-stock");
                     const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
                     const db2 = getFirestore(stockApp);
