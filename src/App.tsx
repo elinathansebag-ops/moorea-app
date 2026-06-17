@@ -2736,7 +2736,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
           id: date,
           date,
           articles: arts,
-          label: `${date} · ${arts.length} article${arts.length > 1 ? "s" : ""} · ${arts.reduce((s: number, a: any) => s + (a.nb_colis || 0), 0)} colis`
+          label: `${date} · ${arts.length} article${arts.length > 1 ? "s" : ""} · ${arts.reduce((s: number, a: any) => s + (a.quantite || a.nb_colis || 0), 0)} colis`
         }));
       setArrivagesYukon(grouped);
     });
