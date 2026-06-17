@@ -2879,38 +2879,25 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                   const session = sessions.find(s => s.id === sessionId);
                   if (!session) return;
                   try {
-                    const { getFirestore, collection, getDocs, query, where } = await import("firebase/firestore");
+                    const { getFirestore, doc: fDoc, getDoc: fGetDoc } = await import("firebase/firestore");
                     const { initializeApp, getApps } = await import("firebase/app");
                     const stockCfg = { apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8", authDomain: "moorea-stock.firebaseapp.com", projectId: "moorea-stock", storageBucket: "moorea-stock.firebasestorage.app", messagingSenderId: "639598259840", appId: "1:639598259840:web:ff3c048f9aac1b99f40065" };
                     const existing = getApps().find((a: any) => a.name === "moorea-stock");
                     const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
                     const db2 = getFirestore(stockApp);
-                    // Charge les comptages de cette session (GMS + PRESTIGE)
-                    const snap = await getDocs(query(collection(db2, "comptages"), where("sessionId", "==", sessionId)));
                     const newStocks: Record<string, number> = {};
-                    snap.forEach(d => {
-                      const data = d.data();
-                      const arts = data.data || data.articles || [];
-                      arts.forEach((art: any) => {
-                        const nom = (art.article || "").toUpperCase().trim();
-                        const compte = art.compte ?? art.nb_colis ?? 0;
-                        if (nom && compte > 0) newStocks[nom] = (newStocks[nom] || 0) + compte;
-                      });
-                    });
-                    // Fallback : cherche par id_GMS et id_PRESTIGE
-                    if (Object.keys(newStocks).length === 0) {
-                      for (const team of ["GMS", "PRESTIGE"]) {
-                        const { doc: fDoc, getDoc: fGetDoc } = await import("firebase/firestore");
-                        const docSnap = await fGetDoc(fDoc(db2, "comptages", `${sessionId}_${team}`));
-                        if (docSnap.exists()) {
-                          const data = docSnap.data();
-                          const arts = data.data || data.articles || [];
-                          arts.forEach((art: any) => {
-                            const nom = (art.article || "").toUpperCase().trim();
-                            const compte = art.compte ?? art.nb_colis ?? 0;
-                            if (nom && compte > 0) newStocks[nom] = (newStocks[nom] || 0) + compte;
-                          });
-                        }
+                    // Charge GMS + PRESTIGE — les docs sont stockés sous sessionId_GMS et sessionId_PRESTIGE
+                    for (const team of ["GMS", "PRESTIGE"]) {
+                      const docSnap = await fGetDoc(fDoc(db2, "comptages", `${sessionId}_${team}`));
+                      if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        // data.data est un objet { "NOM ARTICLE": { c: compte, cd: detruire, ... } }
+                        const dataObj = data.data || {};
+                        Object.entries(dataObj).forEach(([nomArticle, val]: any) => {
+                          const nom = nomArticle.toUpperCase().trim();
+                          const compte = typeof val === "object" ? (val.c ?? 0) : (val ?? 0);
+                          if (nom && compte > 0) newStocks[nom] = (newStocks[nom] || 0) + compte;
+                        });
                       }
                     }
                     setStocks(newStocks);
