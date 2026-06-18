@@ -1033,7 +1033,7 @@ function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { arrivage
         <div style={{ flex: 1 }}>
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#fff" }}>
             {a.lot_interne && <span style={{ color: "#c8a84b", marginRight: 8 }}>#{a.lot_interne}</span>}
-            {a.produit}
+            {a.produit || a.article || a.nom || <span style={{ color: "rgba(255,255,255,0.3)", fontStyle: "italic" }}>Sans nom</span>}
             <span style={{ fontWeight: 400, color: "rgba(255,255,255,0.5)", marginLeft: 6, fontSize: 12 }}>· {a.fournisseur}</span>
           </p>
           <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
