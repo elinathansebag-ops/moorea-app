@@ -2707,102 +2707,84 @@ function RHApp({ onClose }: { onClose: () => void }) {
 
   const handleFileUpload = async (file: File) => {
     try {
-      // Charge XLSX si pas encore disponible
       let XLSX = (window as any).XLSX;
       if (!XLSX) {
         await new Promise<void>((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-          script.onload = () => resolve();
-          script.onerror = () => reject();
-          document.head.appendChild(script);
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          s.onload = () => resolve(); s.onerror = () => reject();
+          document.head.appendChild(s);
         });
         XLSX = (window as any).XLSX;
       }
-
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-      const result: any[] = [];
-      let curEmp: any = null;
-      let curSemaine: any = null;
-      let periodeLabel = "";
+      // Colonnes: Prénom(0) Nom(1) Date(2) Entrée(3) Sortie(5) Planifié(11) Travaillées(12) Balance(15)
+      const employsMap: Record<string, any> = {};
+      let periodeMin = "", periodeMax = "";
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i].map((c: any) => String(c || "").trim());
-        const line = row.join(" ").trim();
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const prenom = String(r[0] || "").trim();
+        const nom = String(r[1] || "").trim();
+        const date = String(r[2] || "").trim();
+        const entree = String(r[3] || "").trim();
+        const sortie = String(r[5] || "").trim();
+        const planifie = String(r[11] || "").trim();
+        const travaille = String(r[12] || "").trim();
+        const balance = String(r[15] || "").trim();
+        const dept = String(r[19] || "").trim();
 
-        // Détecter la période
-        if (line.includes("Rapport moorea") && !periodeLabel) {
-          periodeLabel = line.replace("Rapport moorea", "").trim();
+        if (!nom) continue; // ligne de continuation (2ème créneau)
+
+        const fullNom = `${prenom} ${nom}`.trim();
+        if (!employsMap[fullNom]) {
+          employsMap[fullNom] = { nom: fullNom, prenom, dept, jours: {} };
         }
+        const emp = employsMap[fullNom];
 
-        // Détecter un nouvel employé — ligne "Nom : XXXX"
-        const nomIdx = row.findIndex((c: string) => c.startsWith("Nom :") || c === "Nom :");
-        if (nomIdx >= 0 && row[nomIdx + 1]) {
-          const nom = row[nomIdx + 1];
-          const deptIdx = row.findIndex((c: string) => c.startsWith("Département") || c === "Département :");
-          const dept = deptIdx >= 0 ? row[deptIdx + 1] || "" : "";
-          const posteIdx = row.findIndex((c: string) => c.startsWith("Emploi du temps"));
-          const poste = posteIdx >= 0 ? row[posteIdx + 1] || "" : "";
-          if (nom && nom !== "Nom :") {
-            curEmp = { nom: nom.replace("Nom :", "").trim(), dept: dept.replace("Département :", "").trim(), poste: poste.replace("Emploi du temps :", "").trim(), semaines: [], totalPlanifie: 0, totalTravaille: 0, totalBalance: 0, supCourante: 0, supPrecedent: 0 };
-            result.push(curEmp);
-            curSemaine = null;
+        if (date && /\d{2}-\d{2}-\d{4}/.test(date)) {
+          if (!emp.jours[date]) {
+            emp.jours[date] = { date, creneaux: [], planifie, travaille, balance };
           }
-        }
-
-        // Détecter une semaine
-        if (row[0] && /^Semaine\d+/.test(row[0]) && curEmp) {
-          curSemaine = { label: `${row[0]} ${row[1] || ""}`.trim(), jours: [], planifie: 0, travaille: 0, balance: 0 };
-          curEmp.semaines.push(curSemaine);
-        }
-
-        // Détecter une ligne de jour (JJ/MM)
-        if (curEmp && curSemaine && /^\d{2}\/\d{2}$/.test(row[0])) {
-          curSemaine.jours.push({
-            date: row[0], jour: row[1] || "",
-            entrees: row[2] || "", sorties: row[3] || "",
-            planifie: row[4] || "", travaille: row[5] || "", balance: row[6] || ""
-          });
-        }
-
-        // Total de semaine — ligne avec chiffres uniquement (sans date)
-        if (curEmp && curSemaine && !row[0] && /^\d+:\d+$/.test(row[4] || "") && row[5]) {
-          curSemaine.planifie = parseHHMM(row[4]);
-          curSemaine.travaille = parseHHMM(row[5]);
-          curSemaine.balance = parseHHMM(row[6] || "");
-          curEmp.totalPlanifie += curSemaine.planifie;
-          curEmp.totalTravaille += curSemaine.travaille;
-          curEmp.totalBalance += curSemaine.balance;
-        }
-
-        // Heures sup — ligne "Congés compensatoires précédent XX:XX Courante : XX:XX"
-        if (curEmp && line.includes("Courante")) {
-          const matchCour = line.match(/Courante\s*:?\s*([+-]?\d+:\d+)/i);
-          if (matchCour) curEmp.supCourante = parseHHMM(matchCour[1]);
-          const matchPrev = line.match(/précédent\s+([+-]?\d+:\d+)/i);
-          if (matchPrev) curEmp.supPrecedent = parseHHMM(matchPrev[1]);
-        }
-
-        // Total final période (ligne avec 3 valeurs HH:MM)
-        if (curEmp && /^\d+:\d+$/.test(row[0] || "") && /^\d+:\d+$/.test(row[1] || "") && row[2]) {
-          curEmp.totalPlanifie = parseHHMM(row[0]);
-          curEmp.totalTravaille = parseHHMM(row[1]);
-          curEmp.totalBalance = parseHHMM(row[2]);
+          if (entree) emp.jours[date].creneaux.push({ entree, sortie });
+          // Période
+          if (!periodeMin || date < periodeMin) periodeMin = date;
+          if (!periodeMax || date > periodeMax) periodeMax = date;
         }
       }
 
-      // Debug
-      console.log("Employés parsés:", result.map(e => ({ nom: e.nom, semaines: e.semaines.length, jours: e.semaines.reduce((s: number, sem: any) => s + sem.jours.length, 0) })));
+      // Construire les employés avec totaux
+      const result = Object.values(employsMap).map((emp: any) => {
+        const jours = Object.values(emp.jours) as any[];
+        // Grouper par semaine
+        const semMap: Record<string, any> = {};
+        jours.forEach((j: any) => {
+          // Numéro de semaine
+          const parts = j.date.split("-");
+          const d = new Date(+parts[2], +parts[1] - 1, +parts[0]);
+          const wk = (() => { const jan1 = new Date(d.getFullYear(), 0, 1); return Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7); })();
+          const wkKey = `S${wk}`;
+          if (!semMap[wkKey]) semMap[wkKey] = { label: `Semaine ${wk}`, jours: [], planifie: 0, travaille: 0, balance: 0 };
+          semMap[wkKey].jours.push(j);
+          semMap[wkKey].planifie += parseHHMM(j.planifie);
+          semMap[wkKey].travaille += parseHHMM(j.travaille);
+          semMap[wkKey].balance += parseHHMM(j.balance);
+        });
+        const semaines = Object.values(semMap).sort((a: any, b: any) => a.label.localeCompare(b.label));
+        const totalBalance = jours.reduce((s, j) => s + parseHHMM(j.balance), 0);
+        const totalTravaille = jours.reduce((s, j) => s + parseHHMM(j.travaille), 0);
+        const totalPlanifie = jours.reduce((s, j) => s + parseHHMM(j.planifie), 0);
+        return { ...emp, jours, semaines, totalBalance, totalTravaille, totalPlanifie, supCourante: totalBalance };
+      });
 
-      setPeriode(periodeLabel);
-      setEmployes(result.filter(e => e.nom && e.nom.length > 2));
-    } catch (e) {
-      console.error("Erreur lecture fichier:", e);
-      alert("Erreur lors de la lecture du fichier: " + (e as any)?.message);
+      setPeriode(`${periodeMin} → ${periodeMax}`);
+      setEmployes(result);
+    } catch (e: any) {
+      alert("Erreur: " + e?.message);
     }
   };
 
