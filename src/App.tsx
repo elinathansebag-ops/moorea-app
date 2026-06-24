@@ -1320,12 +1320,12 @@ function StockApp({ onExit }: { onExit: () => void }) {
 #stock-root .team-card{border:2px solid #e8e0d0;border-radius:14px;padding:1.5rem;text-align:center;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
 #stock-root .team-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px}
 #stock-root .team-card.gms::before{background:#c8a84b}
-#stock-root .team-card.prestige::before{background:#7c3aed}
+#stock-root .team-card.prestige::before{background:#8b5cf6}
 #stock-root .team-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.08)}
 #stock-root .team-card .ico{font-size:32px;margin-bottom:10px}
 #stock-root .team-card h2{font-size:17px;font-weight:700;margin-bottom:4px}
 #stock-root .team-card.gms h2{color:#92710a}
-#stock-root .team-card.prestige h2{color:#7c3aed}
+#stock-root .team-card.prestige h2{color:#8b5cf6}
 #stock-root .stock-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e8e0d0;flex-wrap:wrap;gap:8px}
 #stock-root .stock-item:last-child{border-bottom:none}
 #stock-root .stock-actions{display:flex;gap:6px}
@@ -1353,7 +1353,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
 #stock-root .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
 #stock-root .toggle-slider{position:absolute;inset:0;border-radius:28px;cursor:pointer;transition:.3s;background:#e8e0d0}
 #stock-root .toggle-slider:before{content:'';position:absolute;width:22px;height:22px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.3s;box-shadow:0 1px 4px rgba(0,0,0,.2)}
-#stock-root .toggle-switch input:checked + .toggle-slider{background:#7c3aed}
+#stock-root .toggle-switch input:checked + .toggle-slider{background:#8b5cf6}
 #stock-root .toggle-switch input:checked + .toggle-slider:before{transform:translateX(28px)}
 #stock-root .toggle-switch.gms input:checked + .toggle-slider{background:#c8a84b}
 #stock-root input[type=number]{-webkit-appearance:none;appearance:none}
@@ -1939,7 +1939,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
             const done = c && c.data ? Object.keys(c.data).length : 0;
             const total = team === "GMS" ? (s.gms || 0) : (s.prestige || 0);
             const pct = total ? Math.round(done / total * 100) : 0;
-            const color = team === "GMS" ? "#92710a" : "#7c3aed";
+            const color = team === "GMS" ? "#92710a" : "#8b5cf6";
             const sid = s.id.replace(/'/g, "\\'");
             return `<div class="stock-item">
               <div style="flex:1">
@@ -1966,7 +1966,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
           let html = `<div style="font-size:12px;font-weight:700;color:#92710a;text-transform:uppercase;padding:6px 0 8px;display:flex;align-items:center;gap:6px">🌿 GMS</div>`;
           if (gmsStocks.length) gmsStocks.forEach(s => { html += makeItem(s, "GMS"); });
           else html += `<div style="font-size:13px;color:#6b7280;padding:10px 0">Aucun stock GMS</div>`;
-          html += `<div style="font-size:12px;font-weight:700;color:#7c3aed;text-transform:uppercase;padding:16px 0 8px;margin-top:8px;border-top:1.5px solid #e8e0d0;display:flex;align-items:center;gap:6px">✨ Prestige</div>`;
+          html += `<div style="font-size:12px;font-weight:700;color:#8b5cf6;text-transform:uppercase;padding:16px 0 8px;margin-top:8px;border-top:1.5px solid #e8e0d0;display:flex;align-items:center;gap:6px">✨ Prestige</div>`;
           if (presStocks.length) presStocks.forEach(s => { html += makeItem(s, "PRESTIGE"); });
           else html += `<div style="font-size:13px;color:#6b7280;padding:10px 0">Aucun stock Prestige</div>`;
           list.innerHTML = html;
@@ -2350,7 +2350,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
           const cursor = fusionMode ? "cursor:pointer" : "";
           const onclick = fusionMode ? `onclick="sToggleFusionSelect('${a.article.replace(/'/g, "\\'")}')"` : "";
           const gmsStyle = `padding:5px 14px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;${isGMS ? "background:#c8a84b;color:#0a0a0a" : "background:transparent;color:#bbb"}`;
-          const presStyle = `padding:5px 14px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;${!isGMS ? "background:#7c3aed;color:#fff" : "background:transparent;color:#bbb"}`;
+          const presStyle = `padding:5px 14px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;${!isGMS ? "background:#8b5cf6;color:#fff" : "background:transparent;color:#bbb"}`;
           const toggleHtml = fusionMode ? "" : `<div style="display:inline-flex;border:1.5px solid #e8e0d0;border-radius:20px;overflow:hidden" onclick="event.stopPropagation()"><button data-enc="${enc}" onclick="sToggleEquipe(this.dataset.enc,true)" style="${gmsStyle}">GMS</button><button data-enc="${enc}" onclick="sToggleEquipe(this.dataset.enc,false)" style="${presStyle}">Prestige</button></div>`;
           return `<tr style="${bg};${cursor}" ${onclick}><td style="font-weight:500">${a.article}${selected ? ' <span style="font-size:10px;color:#c8a84b;font-weight:700">✓</span>' : ""}<br><span style="font-size:11px;color:#6b7280">${a.famille}</span></td><td>${a.famille}</td><td>${toggleHtml}</td></tr>`;
         }).join("");
@@ -2705,7 +2705,17 @@ function RHApp({ onClose }: { onClose: () => void }) {
   const [sortBy, setSortBy] = useState<"nom" | "balance" | "sup">("balance");
   const [selectedEmp, setSelectedEmp] = useState<any | null>(null);
 
-  const handleFileUpload = async (file: File) => {
+  // Charger données RH depuis Firebase
+  useEffect(() => {
+    const unsub = onValue(ref(db, "rh/rapport"), (snap: any) => {
+      if (snap.exists()) {
+        const data = snap.val();
+        setEmployes(data.employes || []);
+        setPeriode(data.periode || "");
+      }
+    });
+    return () => unsub();
+  }, []);
     try {
       let XLSX = (window as any).XLSX;
       if (!XLSX) {
@@ -2783,6 +2793,8 @@ function RHApp({ onClose }: { onClose: () => void }) {
 
       setPeriode(`${periodeMin} → ${periodeMax}`);
       setEmployes(result);
+      // Sauvegarder dans Firebase
+      await update(ref(db, "rh/rapport"), { employes: result, periode: `${periodeMin} → ${periodeMax}`, updatedAt: new Date().toISOString() });
     } catch (e: any) {
       alert("Erreur: " + e?.message);
     }
@@ -2791,7 +2803,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
   if (!unlocked) {
     return (
       <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
-        <PageHeader titre="👥 RH · Pointeuse" couleur="#7c3aed" onBack={onClose} />
+        <PageHeader titre="👥 RH · Pointeuse" couleur="#8b5cf6" onBack={onClose} />
         <div style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
           <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, marginBottom: 24 }}>Accès restreint — entrez le code</p>
@@ -2804,7 +2816,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
               else { setPinError("Code incorrect"); setPin(""); }
             }
           }} placeholder="••••"
-            style={{ width: 120, padding: "12px", textAlign: "center", fontSize: 28, letterSpacing: 8, border: "2px solid #7c3aed", borderRadius: 12, background: "rgba(124,58,237,0.1)", color: "#fff", outline: "none" }}
+            style={{ width: 120, padding: "12px", textAlign: "center", fontSize: 28, letterSpacing: 8, border: "2px solid #8b5cf6", borderRadius: 12, background: "rgba(139,92,246,0.08)", color: "#fff", outline: "none" }}
             autoFocus />
           {pinError && <p style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>{pinError}</p>}
         </div>
@@ -2825,14 +2837,14 @@ function RHApp({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-      <PageHeader titre="👥 RH · Pointeuse" couleur="#7c3aed" onBack={onClose} onHome={onClose} />
+      <PageHeader titre="👥 RH · Pointeuse" couleur="#8b5cf6" onBack={onClose} onHome={onClose} />
 
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 12px 100px" }}>
 
         {/* Import fichier */}
         <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, border: "1.5px solid #e8e0d0" }}>
           <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>📂 Importer un rapport TimeMoto</p>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, border: "2px dashed #7c3aed", background: "#faf5ff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, border: "2px dashed #8b5cf6", background: "#f8f5ff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#8b5cf6" }}>
             📊 Choisir fichier Excel (.xlsx)
             <input type="file" accept=".xlsx,.xls" onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); }} style={{ display: "none" }} />
           </label>
@@ -2844,7 +2856,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
             {/* Stats globales */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
               <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #e8e0d0", textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#7c3aed" }}>{employes.length}</p>
+                <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#8b5cf6" }}>{employes.length}</p>
                 <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>Employés</p>
               </div>
               <div style={{ background: "#fff5f5", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #fecaca", textAlign: "center" }}>
@@ -2872,7 +2884,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               {[["balance", "⏱ Balance"], ["sup", "📈 Heures sup"], ["nom", "🔤 Nom"]].map(([k, l]) => (
                 <button key={k} onClick={() => setSortBy(k as any)}
-                  style={{ padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${sortBy === k ? "#7c3aed" : "#e8e0d0"}`, background: sortBy === k ? "#f5f3ff" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: sortBy === k ? "#7c3aed" : "#9ca3af" }}>
+                  style={{ padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${sortBy === k ? "#8b5cf6" : "#e8e0d0"}`, background: sortBy === k ? "#f5f3ff" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: sortBy === k ? "#8b5cf6" : "#9ca3af" }}>
                   {l}
                 </button>
               ))}
@@ -2894,10 +2906,10 @@ function RHApp({ onClose }: { onClose: () => void }) {
                 <tbody>
                   {sorted.map((emp, idx) => {
                     const balColor = emp.totalBalance < -60 ? "#dc2626" : emp.totalBalance < 0 ? "#d97706" : "#16a34a";
-                    const supColor = emp.supCourante > 0 ? "#7c3aed" : emp.supCourante < 0 ? "#dc2626" : "#9ca3af";
+                    const supColor = emp.supCourante > 0 ? "#8b5cf6" : emp.supCourante < 0 ? "#dc2626" : "#9ca3af";
                     return (
                       <tr key={emp.nom} onClick={() => setSelectedEmp(selectedEmp?.nom === emp.nom ? null : emp)}
-                        style={{ background: selectedEmp?.nom === emp.nom ? "#faf5ff" : idx % 2 === 0 ? "#fff" : "#fafaf9", cursor: "pointer", borderLeft: selectedEmp?.nom === emp.nom ? "3px solid #7c3aed" : "3px solid transparent" }}>
+                        style={{ background: selectedEmp?.nom === emp.nom ? "#f8f5ff" : idx % 2 === 0 ? "#fff" : "#fafaf9", cursor: "pointer", borderLeft: selectedEmp?.nom === emp.nom ? "3px solid #8b5cf6" : "3px solid transparent" }}>
                         <td style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0" }}>
                           <p style={{ margin: 0, fontWeight: 700, fontSize: 13 }}>{emp.nom}</p>
                           <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{emp.poste} · {emp.dept}</p>
@@ -2916,7 +2928,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
 
             {/* Détail employé sélectionné */}
             {selectedEmp && (
-              <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginTop: 16, border: "2px solid #7c3aed" }}>
+              <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginTop: 16, border: "2px solid #8b5cf6" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <div>
                     <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#1a2e1a" }}>{selectedEmp.nom}</p>
@@ -5225,7 +5237,7 @@ _PDF joint_`;
   };
 
   // ─── FAB SCANNER GLOBAL ─── (avant tous les return de page)
-  const fabScanner = !showScanner && !showPalette && !showStock && (
+  const fabScanner = !showScanner && !showPalette && !showStock && !showRH && (
     <button
       onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
       style={{ position: "fixed", bottom: 24, right: 24, width: 58, height: 58, borderRadius: "50%", background: "#0a0a0a", border: "2.5px solid #c8a84b", cursor: "pointer", fontSize: 24, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", zIndex: 9999, transition: "transform 0.15s" }}
@@ -5331,7 +5343,7 @@ _PDF joint_`;
       { icon: "🔍", label: "Chercher un lot", sub: "Retrouver un arrivage par produit ou numéro de lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
       { icon: "📦", label: "Compter le stock", sub: "Inventaire GMS & Prestige avec écarts", color: "#0891b2", badge: null, action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
       { icon: "🌿", label: "Besoins Yukon", sub: "Calculer les commandes mini légumes Afrique du Sud", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setShowYukon(true); } },
-      { icon: "👥", label: "RH · Pointeuse", sub: "Analyse des temps de présence et heures sup", color: "#7c3aed", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
+      { icon: "👥", label: "RH · Pointeuse", sub: "Analyse des temps de présence et heures sup", color: "#8b5cf6", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
     ];
 
     return (
@@ -5469,7 +5481,7 @@ _PDF joint_`;
             {[
               { label: "Rapports refus", value: rapports.filter(r => r.decision === "refus").length, color: "#dc2626" },
               { label: "Réserves", value: rapports.filter(r => r.decision === "reserve").length, color: "#d97706" },
-              { label: "À récupérer", value: nbRefusASigner, color: "#7c3aed" },
+              { label: "À récupérer", value: nbRefusASigner, color: "#8b5cf6" },
             ].map(s => (
               <div key={s.label} style={{ flex: 1, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: "14px 10px", textAlign: "center", borderTop: `3px solid ${s.color}`, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
                 <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: s.color, letterSpacing: "-1px" }}>{s.value}</p>
@@ -6717,7 +6729,7 @@ _PDF joint_`;
                         { label: "Total rapports", value: total, color: "#1a2e1a", bg: "#f0fdf4" },
                         { label: "Taux de refus", value: `${tauxRefus}%`, color: "#dc2626", bg: "#fef2f2" },
                         { label: "Taux de réserve", value: `${tauxReserve}%`, color: "#d97706", bg: "#fffbeb" },
-                        { label: "Bons signés", value: filtered.filter(r => r.bonRepriseSigné).length, color: "#7c3aed", bg: "#f5f3ff" },
+                        { label: "Bons signés", value: filtered.filter(r => r.bonRepriseSigné).length, color: "#8b5cf6", bg: "#f5f3ff" },
                       ].map(s => (
                         <div key={s.label} style={{ background: s.bg, borderRadius: 14, padding: "16px", textAlign: "center" }}>
                           <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: "'Syne', sans-serif" }}>{s.value}</div>
