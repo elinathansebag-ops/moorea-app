@@ -2677,6 +2677,291 @@ function StockApp({ onExit }: { onExit: () => void }) {
   );
 }
 
+// ─── RH APP ───
+const RH_PIN = "1709";
+
+function parseHHMM(str: string): number {
+  if (!str) return 0;
+  const neg = str.startsWith("-");
+  const clean = str.replace("-", "").trim();
+  const [h, m] = clean.split(":").map(Number);
+  const mins = (h || 0) * 60 + (m || 0);
+  return neg ? -mins : mins;
+}
+function fmtMins(mins: number): string {
+  const neg = mins < 0;
+  const abs = Math.abs(mins);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `${neg ? "-" : "+"}${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function RHApp({ onClose }: { onClose: () => void }) {
+  const [unlocked, setUnlocked] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [employes, setEmployes] = useState<any[]>([]);
+  const [periode, setPeriode] = useState("");
+  const [sortBy, setSortBy] = useState<"nom" | "balance" | "sup">("balance");
+  const [selectedEmp, setSelectedEmp] = useState<any | null>(null);
+
+  const handleFileUpload = async (file: File) => {
+    try {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs" as any);
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+      const result: any[] = [];
+      let curEmp: any = null;
+      let curSemaine: any = null;
+      let periodeLabel = "";
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i].map((c: any) => String(c || "").trim());
+        const line = row.join(" ").trim();
+
+        // Détecter la période
+        if (line.includes("Rapport moorea") && !periodeLabel) {
+          periodeLabel = line.replace("Rapport moorea", "").trim();
+        }
+
+        // Détecter un nouvel employé
+        if (row[0] === "Nom :" || (row[1] && row[1].startsWith("Nom :"))) {
+          const nomCell = rows[i].find((c: any) => String(c).startsWith("Nom :"));
+          const nom = String(nomCell || "").replace("Nom :", "").trim();
+          const deptRow = rows[i + 1] || [];
+          const dept = String(deptRow[1] || "").replace("Département :", "").trim();
+          const poste = String(deptRow[3] || "").replace("Emploi du temps :", "").trim();
+          if (nom) {
+            curEmp = { nom, dept, poste, semaines: [], totalPlanifie: 0, totalTravaille: 0, totalBalance: 0, supCourante: 0, supPrecedent: 0 };
+            result.push(curEmp);
+            curSemaine = null;
+          }
+        }
+
+        // Détecter une semaine
+        if (row[0] && row[0].startsWith("Semaine") && curEmp) {
+          curSemaine = { label: row[0] + " " + (row[1] || ""), jours: [], planifie: 0, travaille: 0, balance: 0 };
+          curEmp.semaines.push(curSemaine);
+        }
+
+        // Détecter une ligne de jour (format: JJ/MM jour HH:MM HH:MM 07:00 HH:MM ±HH:MM)
+        if (curEmp && curSemaine && row[0] && /^\d{2}\/\d{2}$/.test(row[0])) {
+          const jour = { date: row[0], jour: row[1], entrees: [], sorties: [], planifie: row[4], travaille: row[5], balance: row[6] };
+          curSemaine.jours.push(jour);
+        }
+
+        // Total semaine (ligne sans date avec HH:MM HH:MM ±HH:MM)
+        if (curEmp && curSemaine && !row[0] && row[4] && /^\d+:\d+$/.test(row[4]) && /[+-]?\d+:\d+/.test(row[6] || "")) {
+          curSemaine.planifie = parseHHMM(row[4]);
+          curSemaine.travaille = parseHHMM(row[5]);
+          curSemaine.balance = parseHHMM(row[6]);
+          curEmp.totalPlanifie += curSemaine.planifie;
+          curEmp.totalTravaille += curSemaine.travaille;
+          curEmp.totalBalance += curSemaine.balance;
+        }
+
+        // Heures sup courante
+        if (curEmp && line.includes("Courante :")) {
+          const match = line.match(/Courante\s*:\s*([+-]?\d+:\d+)/);
+          if (match) curEmp.supCourante = parseHHMM(match[1]);
+          const matchPrev = line.match(/précédent\s*([+-]?\d+:\d+)/i);
+          if (matchPrev) curEmp.supPrecedent = parseHHMM(matchPrev[1]);
+        }
+
+        // Total final
+        if (curEmp && /^\d+:\d+\s+\d+:\d+\s+[+-]?\d+:\d+$/.test(row.slice(0, 3).join(" ").trim()) && !curSemaine) {
+          curEmp.totalPlanifie = parseHHMM(row[0]);
+          curEmp.totalTravaille = parseHHMM(row[1]);
+          curEmp.totalBalance = parseHHMM(row[2]);
+        }
+      }
+
+      setPeriode(periodeLabel);
+      setEmployes(result.filter(e => e.nom));
+    } catch (e) {
+      console.error("Erreur lecture fichier:", e);
+      alert("Erreur lors de la lecture du fichier. Essaie avec le fichier Excel.");
+    }
+  };
+
+  if (!unlocked) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
+        <PageHeader titre="👥 RH · Pointeuse" couleur="#7c3aed" onBack={onClose} />
+        <div style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, marginBottom: 24 }}>Accès restreint — entrez le code</p>
+          <input type="password" maxLength={4} value={pin} onChange={e => {
+            const v = e.target.value;
+            setPin(v);
+            setPinError("");
+            if (v.length === 4) {
+              if (v === RH_PIN) setUnlocked(true);
+              else { setPinError("Code incorrect"); setPin(""); }
+            }
+          }} placeholder="••••"
+            style={{ width: 120, padding: "12px", textAlign: "center", fontSize: 28, letterSpacing: 8, border: "2px solid #7c3aed", borderRadius: 12, background: "rgba(124,58,237,0.1)", color: "#fff", outline: "none" }}
+            autoFocus />
+          {pinError && <p style={{ color: "#ef4444", fontSize: 13, marginTop: 8 }}>{pinError}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  const sorted = [...employes].sort((a, b) => {
+    if (sortBy === "balance") return a.totalBalance - b.totalBalance;
+    if (sortBy === "sup") return b.supCourante - a.supCourante;
+    return a.nom.localeCompare(b.nom);
+  });
+
+  // Stats globales
+  const totalRetard = employes.filter(e => e.totalBalance < 0).length;
+  const plusRetardataire = employes.length ? [...employes].sort((a, b) => a.totalBalance - b.totalBalance)[0] : null;
+  const plusSupp = employes.length ? [...employes].sort((a, b) => b.supCourante - a.supCourante)[0] : null;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      <PageHeader titre="👥 RH · Pointeuse" couleur="#7c3aed" onBack={onClose} onHome={onClose} />
+
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 12px 100px" }}>
+
+        {/* Import fichier */}
+        <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, border: "1.5px solid #e8e0d0" }}>
+          <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>📂 Importer un rapport TimeMoto</p>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 10, border: "2px dashed #7c3aed", background: "#faf5ff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>
+            📊 Choisir fichier Excel (.xlsx)
+            <input type="file" accept=".xlsx,.xls" onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); }} style={{ display: "none" }} />
+          </label>
+          {periode && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280" }}>Période : {periode} · {employes.length} employés chargés</p>}
+        </div>
+
+        {employes.length > 0 && (
+          <>
+            {/* Stats globales */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #e8e0d0", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#7c3aed" }}>{employes.length}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>Employés</p>
+              </div>
+              <div style={{ background: "#fff5f5", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #fecaca", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#dc2626" }}>{totalRetard}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>En retard</p>
+              </div>
+              <div style={{ background: "#f0fdf4", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #bbf7d0", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#16a34a" }}>{plusSupp ? plusSupp.nom.split(" ")[0] : "—"}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>+ d'heures sup</p>
+              </div>
+            </div>
+
+            {/* Alertes */}
+            {plusRetardataire && plusRetardataire.totalBalance < 0 && (
+              <div style={{ background: "#fff5f5", border: "1.5px solid #fecaca", borderRadius: 12, padding: "12px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 20 }}>⚠️</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#dc2626" }}>Plus grand retard : {plusRetardataire.nom}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Balance : {fmtMins(plusRetardataire.totalBalance)} sur la période</p>
+                </div>
+              </div>
+            )}
+
+            {/* Tri */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {[["balance", "⏱ Balance"], ["sup", "📈 Heures sup"], ["nom", "🔤 Nom"]].map(([k, l]) => (
+                <button key={k} onClick={() => setSortBy(k as any)}
+                  style={{ padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${sortBy === k ? "#7c3aed" : "#e8e0d0"}`, background: sortBy === k ? "#f5f3ff" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: sortBy === k ? "#7c3aed" : "#9ca3af" }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {/* Tableau employés */}
+            <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", border: "1.5px solid #e8e0d0" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#1a2e1a" }}>
+                    <th style={{ padding: "10px 12px", textAlign: "left", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Employé</th>
+                    <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Planifié</th>
+                    <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Travaillé</th>
+                    <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Balance</th>
+                    <th style={{ padding: "10px 8px", textAlign: "center", color: "#a78bfa", fontSize: 11 }}>H.Sup courante</th>
+                    <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: 11 }}>H.Sup cumulées</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((emp, idx) => {
+                    const balColor = emp.totalBalance < -60 ? "#dc2626" : emp.totalBalance < 0 ? "#d97706" : "#16a34a";
+                    const supColor = emp.supCourante > 0 ? "#7c3aed" : emp.supCourante < 0 ? "#dc2626" : "#9ca3af";
+                    return (
+                      <tr key={emp.nom} onClick={() => setSelectedEmp(selectedEmp?.nom === emp.nom ? null : emp)}
+                        style={{ background: selectedEmp?.nom === emp.nom ? "#faf5ff" : idx % 2 === 0 ? "#fff" : "#fafaf9", cursor: "pointer", borderLeft: selectedEmp?.nom === emp.nom ? "3px solid #7c3aed" : "3px solid transparent" }}>
+                        <td style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0" }}>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 13 }}>{emp.nom}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{emp.poste} · {emp.dept}</p>
+                        </td>
+                        <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280", fontSize: 12 }}>{fmtMins(emp.totalPlanifie)}</td>
+                        <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 600, fontSize: 12 }}>{fmtMins(emp.totalTravaille)}</td>
+                        <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 800, fontSize: 14, color: balColor }}>{fmtMins(emp.totalBalance)}</td>
+                        <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 700, fontSize: 13, color: supColor }}>{fmtMins(emp.supCourante)}</td>
+                        <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontSize: 12, color: emp.supPrecedent + emp.supCourante < 0 ? "#dc2626" : "#6b7280" }}>{fmtMins(emp.supPrecedent + emp.supCourante)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Détail employé sélectionné */}
+            {selectedEmp && (
+              <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginTop: 16, border: "2px solid #7c3aed" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#1a2e1a" }}>{selectedEmp.nom}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>{selectedEmp.poste} · {selectedEmp.dept}</p>
+                  </div>
+                  <button onClick={() => setSelectedEmp(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>✕</button>
+                </div>
+                {selectedEmp.semaines.map((sem: any, i: number) => (
+                  <div key={i} style={{ marginBottom: 10, background: "#faf9f6", borderRadius: 10, padding: "10px 12px", border: "1px solid #e8e0d0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{sem.label}</p>
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>Plan. {fmtMins(sem.planifie)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>Trav. {fmtMins(sem.travaille)}</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: sem.balance < 0 ? "#dc2626" : "#16a34a" }}>{fmtMins(sem.balance)}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                      {sem.jours.map((j: any, ji: number) => {
+                        const bal = parseHHMM(j.balance);
+                        return (
+                          <span key={ji} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 8, background: bal < 0 ? "#fff5f5" : bal > 0 ? "#f0fdf4" : "#f9fafb", border: `1px solid ${bal < 0 ? "#fecaca" : bal > 0 ? "#bbf7d0" : "#e8e0d0"}`, color: bal < 0 ? "#dc2626" : bal > 0 ? "#16a34a" : "#6b7280" }}>
+                            {j.date} {j.jour} {j.balance || "—"}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {employes.length === 0 && (
+          <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 14, border: "1.5px solid #e8e0d0" }}>
+            <p style={{ fontSize: 40, marginBottom: 8 }}>📊</p>
+            <p style={{ fontWeight: 700, color: "#1a2e1a", marginBottom: 4 }}>Aucun rapport chargé</p>
+            <p style={{ fontSize: 13, color: "#9ca3af" }}>Importe le fichier Excel exporté depuis TimeMoto</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── YUKON APP ───
 const YUKON_ARTICLES_DEFAULT = [
   { id: "bett-jaune", nom: "MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
@@ -3368,6 +3653,7 @@ export default function App() {
   const [showLitiges, setShowLitiges] = useState(false);
   const [showRecherche, setShowRecherche] = useState(false);
   const [showYukon, setShowYukon] = useState(false);
+  const [showRH, setShowRH] = useState(false);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [showStock, setShowStock] = useState(false);
@@ -5009,6 +5295,10 @@ _PDF joint_`;
     );
   }
 
+  if (showRH) {
+    return <>{fabScanner}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} /></>;
+  }
+
   if (showYukon) {
     return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
@@ -5040,6 +5330,7 @@ _PDF joint_`;
       { icon: "🔍", label: "Chercher un lot", sub: "Retrouver un arrivage par produit ou numéro de lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
       { icon: "📦", label: "Compter le stock", sub: "Inventaire GMS & Prestige avec écarts", color: "#0891b2", badge: null, action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
       { icon: "🌿", label: "Besoins Yukon", sub: "Calculer les commandes mini légumes Afrique du Sud", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setShowYukon(true); } },
+      { icon: "👥", label: "RH · Pointeuse", sub: "Analyse des temps de présence et heures sup", color: "#7c3aed", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
     ];
 
     return (
