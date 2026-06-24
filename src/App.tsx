@@ -2716,6 +2716,8 @@ function RHApp({ onClose }: { onClose: () => void }) {
     });
     return () => unsub();
   }, []);
+
+  const handleFileUpload = async (file: File) => {
     try {
       let XLSX = (window as any).XLSX;
       if (!XLSX) {
