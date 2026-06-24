@@ -2707,11 +2707,23 @@ function RHApp({ onClose }: { onClose: () => void }) {
 
   const handleFileUpload = async (file: File) => {
     try {
-      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs" as any);
+      // Charge XLSX si pas encore disponible
+      let XLSX = (window as any).XLSX;
+      if (!XLSX) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          script.onload = () => resolve();
+          script.onerror = () => reject();
+          document.head.appendChild(script);
+        });
+        XLSX = (window as any).XLSX;
+      }
+
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
       const result: any[] = [];
       let curEmp: any = null;
@@ -2727,63 +2739,70 @@ function RHApp({ onClose }: { onClose: () => void }) {
           periodeLabel = line.replace("Rapport moorea", "").trim();
         }
 
-        // Détecter un nouvel employé
-        if (row[0] === "Nom :" || (row[1] && row[1].startsWith("Nom :"))) {
-          const nomCell = rows[i].find((c: any) => String(c).startsWith("Nom :"));
-          const nom = String(nomCell || "").replace("Nom :", "").trim();
-          const deptRow = rows[i + 1] || [];
-          const dept = String(deptRow[1] || "").replace("Département :", "").trim();
-          const poste = String(deptRow[3] || "").replace("Emploi du temps :", "").trim();
-          if (nom) {
-            curEmp = { nom, dept, poste, semaines: [], totalPlanifie: 0, totalTravaille: 0, totalBalance: 0, supCourante: 0, supPrecedent: 0 };
+        // Détecter un nouvel employé — ligne "Nom : XXXX"
+        const nomIdx = row.findIndex((c: string) => c.startsWith("Nom :") || c === "Nom :");
+        if (nomIdx >= 0 && row[nomIdx + 1]) {
+          const nom = row[nomIdx + 1];
+          const deptIdx = row.findIndex((c: string) => c.startsWith("Département") || c === "Département :");
+          const dept = deptIdx >= 0 ? row[deptIdx + 1] || "" : "";
+          const posteIdx = row.findIndex((c: string) => c.startsWith("Emploi du temps"));
+          const poste = posteIdx >= 0 ? row[posteIdx + 1] || "" : "";
+          if (nom && nom !== "Nom :") {
+            curEmp = { nom: nom.replace("Nom :", "").trim(), dept: dept.replace("Département :", "").trim(), poste: poste.replace("Emploi du temps :", "").trim(), semaines: [], totalPlanifie: 0, totalTravaille: 0, totalBalance: 0, supCourante: 0, supPrecedent: 0 };
             result.push(curEmp);
             curSemaine = null;
           }
         }
 
         // Détecter une semaine
-        if (row[0] && row[0].startsWith("Semaine") && curEmp) {
-          curSemaine = { label: row[0] + " " + (row[1] || ""), jours: [], planifie: 0, travaille: 0, balance: 0 };
+        if (row[0] && /^Semaine\d+/.test(row[0]) && curEmp) {
+          curSemaine = { label: `${row[0]} ${row[1] || ""}`.trim(), jours: [], planifie: 0, travaille: 0, balance: 0 };
           curEmp.semaines.push(curSemaine);
         }
 
-        // Détecter une ligne de jour (format: JJ/MM jour HH:MM HH:MM 07:00 HH:MM ±HH:MM)
-        if (curEmp && curSemaine && row[0] && /^\d{2}\/\d{2}$/.test(row[0])) {
-          const jour = { date: row[0], jour: row[1], entrees: [], sorties: [], planifie: row[4], travaille: row[5], balance: row[6] };
-          curSemaine.jours.push(jour);
+        // Détecter une ligne de jour (JJ/MM)
+        if (curEmp && curSemaine && /^\d{2}\/\d{2}$/.test(row[0])) {
+          curSemaine.jours.push({
+            date: row[0], jour: row[1] || "",
+            entrees: row[2] || "", sorties: row[3] || "",
+            planifie: row[4] || "", travaille: row[5] || "", balance: row[6] || ""
+          });
         }
 
-        // Total semaine (ligne sans date avec HH:MM HH:MM ±HH:MM)
-        if (curEmp && curSemaine && !row[0] && row[4] && /^\d+:\d+$/.test(row[4]) && /[+-]?\d+:\d+/.test(row[6] || "")) {
+        // Total de semaine — ligne avec chiffres uniquement (sans date)
+        if (curEmp && curSemaine && !row[0] && /^\d+:\d+$/.test(row[4] || "") && row[5]) {
           curSemaine.planifie = parseHHMM(row[4]);
           curSemaine.travaille = parseHHMM(row[5]);
-          curSemaine.balance = parseHHMM(row[6]);
+          curSemaine.balance = parseHHMM(row[6] || "");
           curEmp.totalPlanifie += curSemaine.planifie;
           curEmp.totalTravaille += curSemaine.travaille;
           curEmp.totalBalance += curSemaine.balance;
         }
 
-        // Heures sup courante
-        if (curEmp && line.includes("Courante :")) {
-          const match = line.match(/Courante\s*:\s*([+-]?\d+:\d+)/);
-          if (match) curEmp.supCourante = parseHHMM(match[1]);
-          const matchPrev = line.match(/précédent\s*([+-]?\d+:\d+)/i);
+        // Heures sup — ligne "Congés compensatoires précédent XX:XX Courante : XX:XX"
+        if (curEmp && line.includes("Courante")) {
+          const matchCour = line.match(/Courante\s*:?\s*([+-]?\d+:\d+)/i);
+          if (matchCour) curEmp.supCourante = parseHHMM(matchCour[1]);
+          const matchPrev = line.match(/précédent\s+([+-]?\d+:\d+)/i);
           if (matchPrev) curEmp.supPrecedent = parseHHMM(matchPrev[1]);
         }
 
-        // Total final
-        if (curEmp && /^\d+:\d+\s+\d+:\d+\s+[+-]?\d+:\d+$/.test(row.slice(0, 3).join(" ").trim()) && !curSemaine) {
+        // Total final période (ligne avec 3 valeurs HH:MM)
+        if (curEmp && /^\d+:\d+$/.test(row[0] || "") && /^\d+:\d+$/.test(row[1] || "") && row[2]) {
           curEmp.totalPlanifie = parseHHMM(row[0]);
           curEmp.totalTravaille = parseHHMM(row[1]);
           curEmp.totalBalance = parseHHMM(row[2]);
         }
       }
 
+      // Debug
+      console.log("Employés parsés:", result.map(e => ({ nom: e.nom, semaines: e.semaines.length, jours: e.semaines.reduce((s: number, sem: any) => s + sem.jours.length, 0) })));
+
       setPeriode(periodeLabel);
-      setEmployes(result.filter(e => e.nom));
+      setEmployes(result.filter(e => e.nom && e.nom.length > 2));
     } catch (e) {
       console.error("Erreur lecture fichier:", e);
-      alert("Erreur lors de la lecture du fichier. Essaie avec le fichier Excel.");
+      alert("Erreur lors de la lecture du fichier: " + (e as any)?.message);
     }
   };
 
