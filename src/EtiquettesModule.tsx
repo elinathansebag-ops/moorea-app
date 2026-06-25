@@ -223,8 +223,15 @@ export default function EtiquettesModule({ onClose }: { onClose: () => void }) {
   // Lot d'impression — varForms par produit id
   const [lotSelects, setLotSelects] = useState<Set<string>>(new Set());
   const [lotVars, setLotVars] = useState<Record<string, Record<string, string>>>({});
+  const [libReady, setLibReady] = useState(!!(window as any).docx);
 
-  useEffect(() => { fetchProduits(); }, []);
+  useEffect(() => {
+    fetchProduits();
+    // Précharger la lib docx en arrière-plan
+    if (!(window as any).docx) {
+      loadDocxLib().then(() => setLibReady(true)).catch(() => {});
+    }
+  }, []);
 
   async function fetchProduits() {
     setLoading(true);
@@ -421,8 +428,8 @@ export default function EtiquettesModule({ onClose }: { onClose: () => void }) {
           onClick={() => setLotSelects(lotSelects.size === produits.length ? new Set() : new Set(produits.map(p => p.id)))}>
           {lotSelects.size === produits.length ? "Tout désélectionner" : "Tout sélectionner"}
         </button>
-        <button style={btnStyle("#16a34a")} onClick={genererLot} disabled={generating || lotSelects.size === 0}>
-          {generating ? "⏳ Génération..." : `⬇️ Générer ${lotSelects.size} étiquette${lotSelects.size > 1 ? "s" : ""}`}
+        <button style={btnStyle("#16a34a")} onClick={genererLot} disabled={generating || lotSelects.size === 0 || !libReady}>
+          {generating ? "⏳ Génération..." : !libReady ? "⏳ Chargement lib..." : `⬇️ Générer ${lotSelects.size} étiquette${lotSelects.size > 1 ? "s" : ""}`}
         </button>
       </>)}
 
@@ -438,9 +445,11 @@ export default function EtiquettesModule({ onClose }: { onClose: () => void }) {
             <div key={p.id} style={{ background: checked ? "#fff" : "#fafaf9", border: `1.5px solid ${checked ? "#f59e0b" : "#e8e0d0"}`, borderRadius: 12, padding: 14, marginBottom: 10, opacity: checked ? 1 : 0.5 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: checked ? 12 : 0 }}>
                 <input type="checkbox" checked={checked} onChange={() => {
-                  const s = new Set(lotSelects);
-                  checked ? s.delete(p.id) : s.add(p.id);
-                  setLotSelects(s);
+                  setLotSelects(prev => {
+                    const s = new Set(prev);
+                    checked ? s.delete(p.id) : s.add(p.id);
+                    return s;
+                  });
                 }} style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#f59e0b" }} />
                 <div style={{ flex: 1 }}>
                   <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{p.nomAnglais || "—"}</p>
