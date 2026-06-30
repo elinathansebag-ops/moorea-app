@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc as fsDoc } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
+import { initializeApp as initializeApp2 } from "firebase/app";
+import { getDatabase as getDatabase2, ref as ref2, onValue as onValue2, off as off2 } from "firebase/database";
 import jsPDF from "jspdf";
 import emailjs from "@emailjs/browser";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
@@ -3211,109 +3213,113 @@ function etqBuildPrint(produits: Record<string, string>[]): string {
   return `<style>${css}</style>${produits.map(p => etqHTML(p)).join("")}`;
 }
 async function etqParseDocx(file: File): Promise<Record<string, string>> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const JSZip = (window as any).JSZip;
-        if (!JSZip) { resolve({ ...ETQ_DEFAUT }); return; }
-        const zip = await JSZip.loadAsync(e.target?.result);
-        const xmlFile = zip.file("word/document.xml");
-        if (!xmlFile) { resolve({ ...ETQ_DEFAUT }); return; }
-        const xml = await xmlFile.async("string");
+  try {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
 
-        // Reconstituer les paragraphes (grouper les w:t par paragraphe w:p)
-        const paras: string[] = [];
-        const paraMatches = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || [];
-        paraMatches.forEach((p: string) => {
-          const tMatches = p.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
-          const text = tMatches.map((m: string) => m.replace(/<[^>]+>/g, "")).join("").trim();
-          if (text) paras.push(text);
-        });
+    // Lire le ZIP pour trouver word/document.xml
+    // Format ZIP : chaque fichier commence par PK\x03\x04
+    const target = "word/document.xml";
+    let xml = "";
 
-        const find = (pat: RegExp) => { for (const p of paras) { const m = p.match(pat); if (m) return m[1]?.trim() || ""; } return ""; };
-        const findLine = (pat: RegExp) => paras.find((p: string) => pat.test(p)) || "";
+    let i = 0;
+    while (i < bytes.length - 4) {
+      // Signature local file header
+      if (bytes[i] === 0x50 && bytes[i+1] === 0x4B && bytes[i+2] === 0x03 && bytes[i+3] === 0x04) {
+        const compression = bytes[i+8] | (bytes[i+9] << 8);
+        const compSize = bytes[i+18] | (bytes[i+19] << 8) | (bytes[i+20] << 16) | (bytes[i+21] << 24);
+        const fnLen = bytes[i+26] | (bytes[i+27] << 8);
+        const extraLen = bytes[i+28] | (bytes[i+29] << 8);
+        const fnBytes = bytes.slice(i+30, i+30+fnLen);
+        const fn = new TextDecoder().decode(fnBytes);
+        const dataStart = i + 30 + fnLen + extraLen;
 
-        // Nom arabe — ligne qui commence par "اسم المنتج:"
-        const nomArabeLine = findLine(/اسم المنتج:/);
-        const nomArabe = nomArabeLine.replace(/اسم المنتج:\s*/, "").trim();
-
-        // Nom anglais
-        const nomAnglaisLine = findLine(/Product Name:/i);
-        const nomAnglais = nomAnglaisLine.replace(/Product Name:\s*/i, "").trim();
-
-        // Origin + المنشأ sur la même ligne
-        const origineLine = findLine(/Origin:/i);
-        const origine = origineLine.match(/Origin:\s*([A-Za-z ]+)/i)?.[1]?.trim() || "";
-        const origineArabe = origineLine.match(/المنشأ:\s*(.+)/)?.[1]?.trim() || "";
-
-        // Lot No
-        const lotLine = findLine(/Lot No:/i);
-        const lotNo = lotLine.match(/Lot No:\s*([A-Z0-9\-]+)/i)?.[1]?.trim() || "";
-
-        // Ingrédients arabe
-        const ingAr = findLine(/المكونات:/).replace(/المكونات:\s*/, "").trim();
-
-        // Ingrédients anglais (peut être sur plusieurs lignes)
-        const ingEnIdx = paras.findIndex((p: string) => /^Ingredients:/i.test(p));
-        let ingEn = "";
-        if (ingEnIdx >= 0) {
-          ingEn = paras[ingEnIdx].replace(/^Ingredients:\s*/i, "").trim();
-          if (ingEnIdx + 1 < paras.length && !/^[A-Z]/.test(paras[ingEnIdx + 1][0] || "")) {
-            ingEn += " " + paras[ingEnIdx + 1].trim();
+        if (fn === target) {
+          const compData = bytes.slice(dataStart, dataStart + compSize);
+          if (compression === 0) {
+            // Stored (no compression)
+            xml = new TextDecoder("utf-8").decode(compData);
+          } else if (compression === 8) {
+            // Deflate
+            try {
+              const ds = new DecompressionStream("deflate-raw");
+              const writer = ds.writable.getWriter();
+              writer.write(compData);
+              writer.close();
+              const reader = ds.readable.getReader();
+              const chunks: Uint8Array[] = [];
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+              }
+              const total = chunks.reduce((a, c) => a + c.length, 0);
+              const out = new Uint8Array(total);
+              let offset = 0;
+              for (const c of chunks) { out.set(c, offset); offset += c.length; }
+              xml = new TextDecoder("utf-8").decode(out);
+            } catch { break; }
           }
+          break;
         }
-
-        // Taux matière / humidité
-        const tauxMLine = findLine(/الدسم/);
-        const tauxMatiere = tauxMLine.match(/(\d+)٪/)?.[1] || "";
-        const tauxHLine = findLine(/الرطوبة/);
-        const tauxHumidite = tauxHLine.match(/(\d+)٪/)?.[1] || "";
-
-        // Poids
-        const poidsLine = findLine(/Net Weight:/i);
-        const poids = poidsLine.match(/Net Weight:\s*([\d.,]+)/i)?.[1] || "";
-
-        // Dates
-        const prodLine = findLine(/Prod\.\s*Date/i);
-        const prodDate = prodLine.match(/([\d]{2}\/[\d]{2}\/[\d]{4})/)?.[1] || prodLine.match(/([\d]{2}\/[\d]{2}\/[\d]{2,4})/)?.[1] || "";
-        const expLine = findLine(/Exp\.\s*Date/i);
-        const expDate = expLine.match(/([\d]{2}\/[\d]{2}\/[\d]{4})/)?.[1] || expLine.match(/([\d]{2}\/[\d]{2}\/[\d]{2,4})/)?.[1] || "";
-
-        // Nutrition
-        const nutAr1 = findLine(/الطاقة/);
-        const nutAr2Idx = paras.findIndex((p: string) => /الطاقة/.test(p));
-        const nutArabe = nutAr2Idx >= 0 ? paras[nutAr2Idx] + (paras[nutAr2Idx + 1] ? " " + paras[nutAr2Idx + 1] : "") : "";
-        const nutEnIdx = paras.findIndex((p: string) => /^KJ\s/i.test(p) || /^Energy/i.test(p));
-        const nutAnglais = nutEnIdx >= 0 ? paras[nutEnIdx] + (paras[nutEnIdx + 1] ? " " + paras[nutEnIdx + 1] : "") : "";
-
-        // Exportateur / Importateur
-        const expLine2 = findLine(/Exporter:/i);
-        const exporteur = expLine2.match(/Exporter:\s*([^M]+)/i)?.[1]?.trim() || "";
-        const exporteurArabe = expLine2.match(/المصدر:\s*(.+)/)?.[1]?.trim() || "";
-        const impLine = findLine(/Importer:/i);
-        const importeur = impLine.match(/Importer:\s*([^\u0600-\u06FF]+)/i)?.[1]?.trim() || "";
-        const importeurArabe = impLine.match(/المستورد:\s*(.+)/)?.[1]?.trim() || "";
-
-        // Website
-        const website = find(/(www\.[a-z0-9.\-]+)/i);
-
-        resolve({
-          nomArabe, nomAnglais, origine, origineArabe, lotNo,
-          ingredientsArabe: ingAr, ingredientsAnglais: ingEn,
-          tauxMatiere, tauxHumidite, poids,
-          prodDate, expDate,
-          nutritionArabe: nutArabe, nutritionAnglais: nutAnglais,
-          exporteur, exporteurArabe, importeur, importeurArabe, website,
-        });
-      } catch (err) {
-        console.error("parseDocx:", err);
-        resolve({ ...ETQ_DEFAUT });
+        i = dataStart + compSize;
+      } else {
+        i++;
       }
+    }
+
+    if (!xml) return { ...ETQ_DEFAUT };
+
+    // Reconstituer les paragraphes
+    const paras: string[] = [];
+    const paraMatches = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) || [];
+    paraMatches.forEach((p: string) => {
+      const tMatches = p.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
+      const text = tMatches.map((m: string) => m.replace(/<[^>]+>/g, "")).join("").trim();
+      if (text) paras.push(text);
+    });
+
+    const find = (pat: RegExp) => { for (const p of paras) { const m = p.match(pat); if (m) return m[1]?.trim() || ""; } return ""; };
+    const findLine = (pat: RegExp) => paras.find((p: string) => pat.test(p)) || "";
+
+    const nomArabeLine = findLine(/اسم المنتج:/);
+    const nomAnglaisLine = findLine(/Product Name:/i);
+    const origineLine = findLine(/Origin:/i);
+    const lotLine = findLine(/Lot No:/i);
+    const poidsLine = findLine(/Net Weight:/i);
+    const prodLine = findLine(/Prod\.\s*Date/i);
+    const expLine = findLine(/Exp\.\s*Date/i);
+    const expLine2 = findLine(/Exporter:/i);
+    const impLine = findLine(/Importer:/i);
+    const ingEnIdx = paras.findIndex((p: string) => /^Ingredients:/i.test(p));
+    const nutArIdx = paras.findIndex((p: string) => /الطاقة/.test(p));
+    const nutEnIdx = paras.findIndex((p: string) => /^KJ\s|^Energy/i.test(p));
+
+    return {
+      nomArabe: nomArabeLine.replace(/اسم المنتج:\s*/, "").trim(),
+      nomAnglais: nomAnglaisLine.replace(/Product Name:\s*/i, "").trim(),
+      origine: origineLine.match(/Origin:\s*([A-Za-z ]+)/i)?.[1]?.trim() || "",
+      origineArabe: origineLine.match(/المنشأ:\s*(.+)/)?.[1]?.trim() || "",
+      lotNo: lotLine.match(/Lot No:\s*([A-Z0-9\-]+)/i)?.[1]?.trim() || "",
+      ingredientsArabe: findLine(/المكونات:/).replace(/المكونات:\s*/, "").trim(),
+      ingredientsAnglais: ingEnIdx >= 0 ? (paras[ingEnIdx].replace(/^Ingredients:\s*/i, "") + (paras[ingEnIdx+1] ? " " + paras[ingEnIdx+1] : "")).trim() : "",
+      tauxMatiere: findLine(/الدسم/).match(/(\d+)٪/)?.[1] || "",
+      tauxHumidite: findLine(/الرطوبة/).match(/(\d+)٪/)?.[1] || "",
+      poids: poidsLine.match(/Net Weight:\s*([\d.,]+)/i)?.[1] || "",
+      prodDate: prodLine.match(/([\d]{2}\/[\d]{2}\/[\d]{4})/)?.[1] || "",
+      expDate: expLine.match(/([\d]{2}\/[\d]{2}\/[\d]{4})/)?.[1] || "",
+      nutritionArabe: nutArIdx >= 0 ? (paras[nutArIdx] + (paras[nutArIdx+1] ? " " + paras[nutArIdx+1] : "")) : "",
+      nutritionAnglais: nutEnIdx >= 0 ? (paras[nutEnIdx] + (paras[nutEnIdx+1] ? " " + paras[nutEnIdx+1] : "")) : "",
+      exporteur: expLine2.match(/Exporter:\s*([^M\u0600-\u06FF]+)/i)?.[1]?.trim() || "",
+      exporteurArabe: expLine2.match(/المصدر:\s*(.+)/)?.[1]?.trim() || "",
+      importeur: impLine.match(/Importer:\s*([^\u0600-\u06FF]+)/i)?.[1]?.trim() || "",
+      importeurArabe: impLine.match(/المستورد:\s*(.+)/)?.[1]?.trim() || "",
+      website: find(/(www\.[a-z0-9.\-]+)/i),
     };
-    reader.onerror = () => resolve({ ...ETQ_DEFAUT });
-    reader.readAsArrayBuffer(file);
-  });
+  } catch (err) {
+    console.error("parseDocx:", err);
+    return { ...ETQ_DEFAUT };
+  }
 }
 
 function EtiquettesModule({ onClose }: { onClose: () => void }) {
@@ -3330,18 +3336,9 @@ function EtiquettesModule({ onClose }: { onClose: () => void }) {
   const [lotVars, setLotVars] = useState<Record<string, Record<string, string>>>({});
   const [printHTML, setPrintHTML] = useState<string | null>(null);
 
-  const [jsZipReady, setJsZipReady] = useState(!!(window as any).JSZip);
+  const [jsZipReady] = useState(true);
 
-  useEffect(() => {
-    fetchP();
-    // Précharger JSZip dès l'ouverture
-    if (!(window as any).JSZip) {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-      s.onload = () => setJsZipReady(true);
-      document.head.appendChild(s);
-    }
-  }, []);
+  useEffect(() => { fetchP(); }, []);
 
   async function fetchP() {
     setLoading(true);
@@ -3549,6 +3546,182 @@ function EtiquettesModule({ onClose }: { onClose: () => void }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ─── QR CODE DASHBOARD ───
+const qrTrackerConfig = {
+  apiKey: "AIzaSyAZ2t8LBQ8xtucGKkJAaFCdK4lpIrrGPEo",
+  authDomain: "leofresh-qrcode-tracker.firebaseapp.com",
+  databaseURL: "https://leofresh-qrcode-tracker-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "leofresh-qrcode-tracker",
+  storageBucket: "leofresh-qrcode-tracker.firebasestorage.app",
+  messagingSenderId: "213169910452",
+  appId: "1:213169910452:web:73fc2c45e7a170c6279de1"
+};
+const qrTrackerApp = initializeApp2(qrTrackerConfig, "qrTrackerApp");
+const qrTrackerDb = getDatabase2(qrTrackerApp);
+
+interface ScanRecord {
+  id: string;
+  timestamp: number;
+  userAgent: string;
+  referrer: string;
+}
+interface DayCount {
+  date: string;
+  count: number;
+}
+
+function parseUserAgent(ua: string): { browser: string; device: string } {
+  let browser = "Autre";
+  if (/Chrome/i.test(ua) && !/Edg/i.test(ua)) browser = "Chrome";
+  else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browser = "Safari";
+  else if (/Firefox/i.test(ua)) browser = "Firefox";
+  else if (/Edg/i.test(ua)) browser = "Edge";
+  else if (/Instagram/i.test(ua)) browser = "Instagram (in-app)";
+
+  let device = "Desktop";
+  if (/iPhone/i.test(ua)) device = "iPhone";
+  else if (/iPad/i.test(ua)) device = "iPad";
+  else if (/Android/i.test(ua)) device = "Android";
+
+  return { browser, device };
+}
+
+function QrCodeDashboard({ onClose }: { onClose: () => void }) {
+  const [scans, setScans] = useState<ScanRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const scansRef = ref2(qrTrackerDb, "scans");
+    const listener = onValue2(scansRef, (snapshot: any) => {
+      const data = snapshot.val();
+      if (!data) { setScans([]); setLoading(false); return; }
+      const list: ScanRecord[] = Object.entries(data).map(([id, val]: [string, any]) => ({
+        id, timestamp: val.timestamp || 0, userAgent: val.userAgent || "", referrer: val.referrer || "direct",
+      }));
+      list.sort((a, b) => b.timestamp - a.timestamp);
+      setScans(list);
+      setLoading(false);
+    });
+    return () => off2(scansRef, "value", listener);
+  }, []);
+
+  const total = scans.length;
+
+  const dayCounts: DayCount[] = (() => {
+    const map = new Map<string, number>();
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - i);
+      const key = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+      map.set(key, 0);
+    }
+    scans.forEach((s) => {
+      if (!s.timestamp) return;
+      const d = new Date(s.timestamp);
+      const key = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+      if (map.has(key)) map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([date, count]) => ({ date, count }));
+  })();
+
+  const maxCount = Math.max(1, ...dayCounts.map((d) => d.count));
+
+  const browserCounts = new Map<string, number>();
+  const deviceCounts = new Map<string, number>();
+  scans.forEach((s) => {
+    const { browser, device } = parseUserAgent(s.userAgent);
+    browserCounts.set(browser, (browserCounts.get(browser) || 0) + 1);
+    deviceCounts.set(device, (deviceCounts.get(device) || 0) + 1);
+  });
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      <PageHeader titre="📊 QR Code Leofresh" couleur="#27ae60" onBack={onClose} onHome={onClose} />
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 12px 80px" }}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>Chargement des données de scan...</div>
+        ) : (
+          <>
+            {/* TOTAL */}
+            <div style={{ background: "#27ae60", color: "#fff", borderRadius: 14, padding: "18px 24px", display: "inline-block", marginBottom: 20 }}>
+              <div style={{ fontSize: 12, opacity: 0.9 }}>Total des scans</div>
+              <div style={{ fontSize: 32, fontWeight: 800 }}>{total}</div>
+            </div>
+
+            {/* GRAPHIQUE 7 JOURS */}
+            <div style={{ background: "#fff", borderRadius: 14, padding: 16, border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: "#1a2e1a" }}>Scans — 7 derniers jours</p>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 160, borderBottom: "2px solid #f0f0f0", paddingBottom: 4 }}>
+                {dayCounts.map((d) => (
+                  <div key={d.date} style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ height: `${(d.count / maxCount) * 120}px`, background: "#27ae60", borderRadius: "6px 6px 0 0", minHeight: d.count > 0 ? 4 : 0, transition: "height .3s" }} />
+                    <div style={{ fontSize: 11, marginTop: 6, color: "#9ca3af" }}>{d.date}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{d.count}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* RÉPARTITION */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 200, background: "#fff", borderRadius: 14, padding: 16, border: "1.5px solid #e8e0d0" }}>
+                <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: "#1a2e1a" }}>Par navigateur</p>
+                {Array.from(browserCounts.entries()).map(([browser, count]) => (
+                  <div key={browser} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f5f5f5", fontSize: 13 }}>
+                    <span style={{ color: "#6b7280" }}>{browser}</span>
+                    <strong>{count}</strong>
+                  </div>
+                ))}
+              </div>
+              <div style={{ flex: 1, minWidth: 200, background: "#fff", borderRadius: 14, padding: 16, border: "1.5px solid #e8e0d0" }}>
+                <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: "#1a2e1a" }}>Par appareil</p>
+                {Array.from(deviceCounts.entries()).map(([device, count]) => (
+                  <div key={device} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #f5f5f5", fontSize: 13 }}>
+                    <span style={{ color: "#6b7280" }}>{device}</span>
+                    <strong>{count}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* DÉTAIL */}
+            <div style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #e8e0d0", overflow: "hidden" }}>
+              <p style={{ fontSize: 13, fontWeight: 700, padding: "14px 16px 0", color: "#1a2e1a" }}>Détail des scans (les plus récents)</p>
+              <div style={{ maxHeight: 400, overflowY: "auto", padding: "10px 0" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "#faf9f6", textAlign: "left" }}>
+                      <th style={{ padding: "8px 16px", fontSize: 11, color: "#9ca3af" }}>Date</th>
+                      <th style={{ padding: "8px 12px", fontSize: 11, color: "#9ca3af" }}>Heure</th>
+                      <th style={{ padding: "8px 12px", fontSize: 11, color: "#9ca3af" }}>Navigateur</th>
+                      <th style={{ padding: "8px 12px", fontSize: 11, color: "#9ca3af" }}>Appareil</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scans.slice(0, 100).map((s) => {
+                      const { browser, device } = parseUserAgent(s.userAgent);
+                      const d = s.timestamp ? new Date(s.timestamp) : null;
+                      return (
+                        <tr key={s.id} style={{ borderTop: "1px solid #f5f5f5" }}>
+                          <td style={{ padding: "8px 16px" }}>{d ? d.toLocaleDateString("fr-FR") : "—"}</td>
+                          <td style={{ padding: "8px 12px" }}>{d ? d.toLocaleTimeString("fr-FR") : "—"}</td>
+                          <td style={{ padding: "8px 12px" }}>{browser}</td>
+                          <td style={{ padding: "8px 12px" }}>{device}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -4247,6 +4420,7 @@ export default function App() {
   const [showYukon, setShowYukon] = useState(false);
   const [showRH, setShowRH] = useState(false);
   const [showEtiquettes, setShowEtiquettes] = useState(false);
+  const [showQrCode, setShowQrCode] = useState(false);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [showStock, setShowStock] = useState(false);
@@ -5888,6 +6062,10 @@ _PDF joint_`;
     );
   }
 
+  if (showQrCode) {
+    return <QrCodeDashboard onClose={() => { setShowQrCode(false); setShowAccueil(true); }} />;
+  }
+
   if (showEtiquettes) {
     return <EtiquettesModule onClose={() => { setShowEtiquettes(false); setShowAccueil(true); }} />;
   }
@@ -5929,6 +6107,7 @@ _PDF joint_`;
       { icon: "🌿", label: "Besoins Yukon", sub: "Calculer les commandes mini légumes Afrique du Sud", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setShowYukon(true); } },
       { icon: "👥", label: "RH · Pointeuse", sub: "Analyse des temps de présence et heures sup", color: "#0ea5e9", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
       { icon: "🏷️", label: "Leofresh · Étiquettes", sub: "Générer les étiquettes bilingues pour l'export", color: "#f59e0b", badge: null, action: () => { setShowAccueil(false); setShowEtiquettes(true); } },
+      { icon: "📊", label: "QR Code Leofresh", sub: "Statistiques de scan du QR code réseau social", color: "#27ae60", badge: null, action: () => { setShowAccueil(false); setShowQrCode(true); } },
     ];
 
     return (
