@@ -7130,45 +7130,50 @@ _PDF joint_`;
     const cardBorder = darkMode ? "#2d3148" : "#e8e0d0";
     const textMain = darkMode ? "#e8e6f0" : "#1a2e1a";
     const textSub = darkMode ? "#9b97b2" : "#9ca3af";
-    const headerBg = darkMode ? "#080a12" : "linear-gradient(135deg, #1a3a1a 0%, #2d5a1e 40%, #8a6f2e 100%)";
 
-    const buttons = [
+    const [showLeofresh, setShowLeofresh] = (React as any).useState(false);
+
+    const mooreaBtns = [
       { icon: "📋", label: "Pointer arrivage", sub: "Contrôler et valider les arrivages du jour", color: "#c8a84b", badge: nbAttente || null, action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
       { icon: "📊", label: "Rapports qualité", sub: "Historique et envoi des rapports d'agrément", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
       { icon: "🔍", label: "Chercher un lot", sub: "Retrouver un arrivage par produit ou numéro de lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
       { icon: "📦", label: "Compter le stock", sub: "Inventaire GMS & Prestige avec écarts", color: "#0891b2", badge: null, action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
       { icon: "🌿", label: "Besoins Yukon", sub: "Calculer les commandes mini légumes Afrique du Sud", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setShowYukon(true); } },
       { icon: "👥", label: "RH · Pointeuse", sub: "Analyse des temps de présence et heures sup", color: "#0ea5e9", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
-      { icon: "🏷️", label: "Leofresh · Étiquettes", sub: "Générer les étiquettes bilingues pour l'export", color: "#f59e0b", badge: null, action: () => { setShowAccueil(false); setShowEtiquettes(true); } },
-      { icon: "📊", label: "QR Code Leofresh", sub: "Statistiques de scan du QR code réseau social", color: "#27ae60", badge: null, action: () => { setShowAccueil(false); setShowQrCode(true); } },
       { icon: "📦", label: "Retours clients", sub: "Gestion des retours et réclamations", color: "#dc2626", badge: null, action: () => { setShowAccueil(false); setShowRetours(true); } },
     ];
 
+    const leofreshBtns = [
+      { icon: "🏷️", label: "Étiquettes export", sub: "Générer les étiquettes bilingues", color: "#f59e0b", stats: [{ label: "Produits", value: "—" }] },
+      { icon: "📊", label: "QR Code", sub: "Statistiques de scan", color: "#27ae60", stats: [{ label: "Scans", value: "—" }] },
+    ];
+
+    const leofreshActions: Record<string, () => void> = {
+      "Étiquettes export": () => { setShowAccueil(false); setShowEtiquettes(true); },
+      "QR Code": () => { setShowAccueil(false); setShowQrCode(true); },
+    };
+
     return (
       <>{fabScanner}
-      <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Syne', sans-serif", transition: "background 0.3s" }}>
+      <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
 
-        {/* HEADER compact */}
-        <div style={{ background: headerBg, padding: "calc(env(safe-area-inset-top, 0px) + 16px) 16px 20px", position: "relative", overflow: "hidden" }}>
+        {/* HEADER */}
+        <div style={{ background: darkMode ? "#080a12" : "linear-gradient(135deg, #1a3a1a 0%, #2d5a1e 40%, #8a6f2e 100%)", padding: "calc(env(safe-area-inset-top, 0px) + 16px) 16px 20px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{today}</p>
-              <h1 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: "#fff" }}>
-                {getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋
-              </h1>
+              <h1 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: "#fff" }}>{getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋</h1>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => setDarkMode(!darkMode)}
-                style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <button onClick={() => setDarkMode(!darkMode)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {darkMode ? "☀️" : "🌙"}
               </button>
-              <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>
-                Déco
-              </button>
+              <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>Déco</button>
             </div>
           </div>
-          {/* STATS en ligne sous le titre */}
+
+          {/* STATS Moorea */}
           <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
             {[
               { label: "En attente", value: nbAttente, color: "#fbbf24" },
@@ -7184,34 +7189,60 @@ _PDF joint_`;
           </div>
         </div>
 
-        {/* BANNIÈRE NOTIFICATIONS */}
+        {/* NOTIFS */}
         {notifLitiges.length > 0 && (
-          <div style={{ background: darkMode ? "#2d1a1a" : "#fef2f2", borderBottom: `3px solid #dc2626`, padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ background: darkMode ? "#2d1a1a" : "#fef2f2", borderBottom: "3px solid #dc2626", padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
             <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#dc2626" }}>
-                {notifLitiges.length} litige{notifLitiges.length > 1 ? "s" : ""} ouvert{notifLitiges.length > 1 ? "s" : ""} depuis plus de 3 jours
-              </p>
-              <p style={{ margin: 0, fontSize: 11, color: darkMode ? "#f87171" : "#9ca3af" }}>
-                {notifLitiges.slice(0, 2).map(a => a.produit).join(", ")}{notifLitiges.length > 2 ? ` +${notifLitiges.length - 2}` : ""}
-              </p>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#dc2626" }}>{notifLitiges.length} litige{notifLitiges.length > 1 ? "s" : ""} ouvert{notifLitiges.length > 1 ? "s" : ""} depuis plus de 3 jours</p>
+              <p style={{ margin: 0, fontSize: 11, color: darkMode ? "#f87171" : "#9ca3af" }}>{notifLitiges.slice(0, 2).map(a => a.produit).join(", ")}{notifLitiges.length > 2 ? ` +${notifLitiges.length - 2}` : ""}</p>
             </div>
             <button onClick={() => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision("refus"); }}
-              style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-              Voir
-            </button>
+              style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Voir</button>
           </div>
         )}
 
-        {/* BOUTONS — plus compacts */}
-        <div style={{ maxWidth: 520, margin: "0 auto", padding: "12px 16px 100px" }}>
+        <div style={{ maxWidth: 520, margin: "0 auto", padding: "16px 16px 100px" }}>
+
+          {/* TOGGLE LEOFRESH */}
+          <button onClick={() => setShowLeofresh(!showLeofresh)}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: 14, cursor: "pointer", border: `2px solid ${showLeofresh ? "#f59e0b" : cardBorder}`, background: showLeofresh ? (darkMode ? "#2a2010" : "#fffbeb") : cardBg, fontFamily: "'Syne', sans-serif", marginBottom: 14, transition: "all .2s" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 22, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", background: "#f59e0b22", borderRadius: 10 }}>🍋</span>
+              <div style={{ textAlign: "left" }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: showLeofresh ? "#f59e0b" : textMain }}>Leofresh</p>
+                <p style={{ margin: 0, fontSize: 11, color: textSub }}>Étiquettes, QR Code, Export</p>
+              </div>
+            </div>
+            <span style={{ fontSize: 18, color: showLeofresh ? "#f59e0b" : textSub, transition: "transform .2s", display: "inline-block", transform: showLeofresh ? "rotate(90deg)" : "none" }}>›</span>
+          </button>
+
+          {/* PANNEAU LEOFRESH */}
+          {showLeofresh && (
+            <div style={{ marginBottom: 20, background: darkMode ? "#1a1808" : "#fffbeb", borderRadius: 14, border: "1.5px solid #f59e0b44", padding: "12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: ".6px" }}>🍋 Modules Leofresh</p>
+              {leofreshBtns.map((b) => (
+                <button key={b.label} onClick={leofreshActions[b.label]}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: `1.5px solid ${b.color}33`, background: darkMode ? "#22200a" : "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif" }}>
+                  <span style={{ fontSize: 20, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "22", borderRadius: 9, flexShrink: 0 }}>{b.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: textMain }}>{b.label}</p>
+                    <p style={{ margin: "1px 0 0", fontSize: 11, color: textSub }}>{b.sub}</p>
+                  </div>
+                  <span style={{ color: b.color, fontSize: 16 }}>›</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* SECTION MOOREA */}
+          <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {buttons.map((b, idx) => (
+            {mooreaBtns.map((b, idx) => (
               <button key={idx} onClick={b.action}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderRadius: 14, cursor: "pointer", border: `1.5px solid ${cardBorder}`, background: cardBg, textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: darkMode ? "none" : "0 2px 8px rgba(0,0,0,0.05)", transition: "all 0.15s" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = b.color; (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = cardBorder; (e.currentTarget as HTMLElement).style.transform = "none"; }}
-              >
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderRadius: 14, cursor: "pointer", border: `1.5px solid ${cardBorder}`, background: cardBg, textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: darkMode ? "none" : "0 2px 8px rgba(0,0,0,0.04)" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = b.color; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = cardBorder; }}>
                 <span style={{ fontSize: 20, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "18", borderRadius: 10, flexShrink: 0 }}>{b.icon}</span>
                 <div style={{ flex: 1 }}>
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: textMain }}>{b.label}</p>
