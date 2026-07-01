@@ -5450,6 +5450,7 @@ export default function App() {
   const [showEtiquettes, setShowEtiquettes] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
+  const [showLeofresh, setShowLeofresh] = useState(false);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [showStock, setShowStock] = useState(false);
@@ -7110,8 +7111,6 @@ _PDF joint_`;
   if (showYukon) {
     return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
-
-  const [showLeofresh, setShowLeofresh] = useState(false);
 
   if (showAccueil) {
     const getHello = () => {
