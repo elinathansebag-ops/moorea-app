@@ -3853,8 +3853,6 @@ const _retoursApp = getApps2().find((a: any) => a.name === "moorea-retours") ?? 
 }, "moorea-retours");
 const dbRetours = getDatabase2(_retoursApp);
 
-const MOTIFS_RETOUR = ["Défaut sanitaire – moisissure", "Défaut sanitaire – pourriture", "Qualité insuffisante", "Erreur de préparation", "Colis abîmé", "Livraison incomplète", "Mauvais article", "Autre"];
-const ETATS_ENTREPOT = ["Bon état", "Emballage abîmé", "Produit endommagé", "Moisissure visible", "Pourriture partielle", "Autre"];
 
 async function getNextNumeroRetour(): Promise<string> {
   try {
@@ -3864,6 +3862,114 @@ async function getNextNumeroRetour(): Promise<string> {
     return "RC-" + new Date().getFullYear() + "-" + String(n).padStart(3, "0");
   } catch { return "RC-" + Date.now(); }
 }
+
+function FormSaisie({ mode, onClose: oc, onSubmit: os }: { mode:"prevu"|"entrepot", onClose:()=>void, onSubmit:(d:any)=>void }) {
+  const [client, setClient] = useState("");
+  const [bl, setBl] = useState("");
+  const [tra, setTra] = useState("");
+  const [dat, setDat] = useState("");
+  const [com, setCom] = useState("");
+  const [cmt, setCmt] = useState("");
+  const [agent, setAgent] = useState("");
+  const [datE, setDatE] = useState(new Date().toISOString().split("T")[0]);
+  const [cliE, setCliE] = useState("");
+  const [traE, setTraE] = useState("");
+  const [cmtE, setCmtE] = useState("");
+  const [rows, setRows] = useState<any[]>([emptyRow()]);
+
+  function emptyRow() { return { nom:"", lot:"", origine:"", qteAttendue:"", qteRecue:"", motif:"", decisionArticle:null }; }
+  function upRow(i:number, f:string, v:any) { setRows(rs => rs.map((r,j) => j===i ? {...r,[f]:v} : r)); }
+
+  function submit() {
+    const products = rows.filter(r => r.nom.trim());
+    if (mode==="prevu") {
+      if (!client.trim() || !bl.trim() || !products.length) { alert("Client, BL et au moins un produit requis."); return; }
+      os({ client:client.trim(), bl:bl.trim(), transporteur:tra.trim(), dateLiv:dat, commercial:com.trim(), comment:cmt.trim(), products });
+    } else {
+      if (!agent.trim() || !products.length) { alert("Reçu par et au moins un article requis."); return; }
+      os({ agent:agent.trim(), dateLiv:datE, clientConnu:cliE.trim()||null, transporteurConnu:traE.trim()||null, comment:cmtE.trim(), products });
+    }
+  }
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.55)", zIndex:500, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:16, overflowY:"auto" }}
+      onMouseDown={e => { if (e.target === e.currentTarget) oc(); }}>
+      <div style={{ background:"#fff", borderRadius:20, padding:24, maxWidth:680, width:"100%", marginTop:16, marginBottom:16 }}>
+        <p style={{ fontSize:15, fontWeight:700, marginBottom:14 }}>{mode==="prevu"?"📋 Nouveau retour prévu":"🏭 Retour inattendu"}</p>
+
+        {mode==="prevu" ? (
+          <>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+              <div><label style={L}>Client</label><input style={S} value={client} onChange={e=>setClient(e.target.value)} placeholder="ex : Carrefour" /></div>
+              <div><label style={L}>N° BL</label><input style={S} type="number" value={bl} onChange={e=>setBl(e.target.value)} /></div>
+              <div><label style={L}>Transporteur</label><input style={S} value={tra} onChange={e=>setTra(e.target.value)} /></div>
+              <div><label style={L}>Date livraison</label><input style={S} type="date" value={dat} onChange={e=>setDat(e.target.value)} /></div>
+            </div>
+            <div style={{ marginBottom:14 }}><label style={L}>Saisi par</label><input style={S} value={com} onChange={e=>setCom(e.target.value)} /></div>
+          </>
+        ) : (
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+            <div><label style={L}>Reçu par</label><input style={S} value={agent} onChange={e=>setAgent(e.target.value)} /></div>
+            <div><label style={L}>Date réception</label><input style={S} type="date" value={datE} onChange={e=>setDatE(e.target.value)} /></div>
+            <div><label style={L}>Client (optionnel)</label><input style={S} value={cliE} onChange={e=>setCliE(e.target.value)} /></div>
+            <div><label style={L}>Transporteur (optionnel)</label><input style={S} value={traE} onChange={e=>setTraE(e.target.value)} /></div>
+          </div>
+        )}
+
+        <p style={{ fontSize:11, fontWeight:700, color:"#9ca3af", textTransform:"uppercase", marginBottom:8 }}>
+          {mode==="prevu"?"Produits":"Articles reçus"}
+        </p>
+
+        {rows.map((row, i) => (
+          <div key={i} style={{ display:"grid", gridTemplateColumns: mode==="prevu" ? "2fr 1fr 1fr 0.8fr 0.8fr 1.8fr 28px" : "2fr 1fr 1fr 0.9fr 1.8fr 70px 28px", gap:5, marginBottom:6, alignItems:"center" }}>
+            <input style={S} list="produits-stock-list" placeholder="Produit" value={row.nom} onChange={e=>upRow(i,"nom",e.target.value)} autoComplete="off" />
+            <input style={S} placeholder="Lot" value={row.lot} onChange={e=>upRow(i,"lot",e.target.value)} />
+            <input style={S} placeholder="Origine" value={row.origine} onChange={e=>upRow(i,"origine",e.target.value)} />
+            {mode==="prevu" ? (
+              <>
+                <input style={{...S,textAlign:"center"}} type="number" placeholder="Att." value={row.qteAttendue} onChange={e=>upRow(i,"qteAttendue",e.target.value)} />
+                <input style={{...S,textAlign:"center"}} type="number" placeholder="Reçu" value={row.qteRecue} onChange={e=>upRow(i,"qteRecue",e.target.value)} />
+              </>
+            ) : (
+              <input style={{...S,textAlign:"center"}} type="number" placeholder="Qté" value={row.qteRecue} onChange={e=>upRow(i,"qteRecue",e.target.value)} />
+            )}
+            <select style={S} value={row.motif} onChange={e=>upRow(i,"motif",e.target.value)}>
+              <option value="">--</option>
+              {(mode==="prevu"?MOTIFS_RETOUR:ETATS_ENTREPOT).map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            {mode==="entrepot" && (
+              <div style={{ display:"flex", gap:3 }}>
+                <button type="button" onClick={()=>upRow(i,"decisionArticle",row.decisionArticle==="accepte"?null:"accepte")}
+                  style={{ padding:"5px 6px", borderRadius:6, border:`1.5px solid ${row.decisionArticle==="accepte"?"#15803d":"#bbf7d0"}`, background:row.decisionArticle==="accepte"?"#dcfce7":"transparent", color:"#15803d", fontSize:11, fontWeight:600, cursor:"pointer" }}>✓</button>
+                <button type="button" onClick={()=>upRow(i,"decisionArticle",row.decisionArticle==="destruction"?null:"destruction")}
+                  style={{ padding:"5px 6px", borderRadius:6, border:`1.5px solid ${row.decisionArticle==="destruction"?"#dc2626":"#fecaca"}`, background:row.decisionArticle==="destruction"?"#fee2e2":"transparent", color:"#dc2626", fontSize:11, fontWeight:600, cursor:"pointer" }}>✗</button>
+              </div>
+            )}
+            {rows.length>1 && <button type="button" onClick={()=>setRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:"transparent", border:"none", color:"#ccc", cursor:"pointer", fontSize:16 }}>🗑</button>}
+          </div>
+        ))}
+
+        <button type="button" onClick={()=>setRows(rs=>[...rs,emptyRow()])}
+          style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 14px", border:"1.5px dashed #c8a84b", borderRadius:10, background:"transparent", cursor:"pointer", fontSize:13, color:"#c8a84b", margin:"8px 0 14px", fontFamily:"inherit" }}>
+          + Ajouter
+        </button>
+
+        <div style={{ marginBottom:14 }}>
+          <label style={L}>Commentaires</label>
+          <textarea style={{...S,minHeight:55,resize:"vertical"}} value={mode==="prevu"?cmt:cmtE} onChange={e=>mode==="prevu"?setCmt(e.target.value):setCmtE(e.target.value)} />
+        </div>
+
+        <div style={{ display:"flex", justifyContent:"flex-end", gap:10 }}>
+          <button type="button" style={{ padding:"10px 18px", borderRadius:10, border:"1.5px solid #e8e0d0", background:"transparent", cursor:"pointer", fontSize:13, fontFamily:"inherit" }} onClick={oc}>Annuler</button>
+          <button type="button" style={{ padding:"10px 18px", borderRadius:10, border:"none", background:"#c8a84b", color:"#0a0a0a", cursor:"pointer", fontSize:13, fontWeight:700, fontFamily:"inherit" }} onClick={submit}>
+            📤 {mode==="prevu"?"Enregistrer":"Envoyer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function RetoursClientsModule({ onClose }: { onClose: () => void }) {
   const S: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%", fontFamily: "inherit" };
@@ -4079,112 +4185,6 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
   }
 
   // ── Formulaire saisie — rendu inline dans un Overlay, state local ──
-  function FormSaisie({ mode, onClose: oc, onSubmit: os }: { mode:"prevu"|"entrepot", onClose:()=>void, onSubmit:(d:any)=>void }) {
-    const [client, setClient] = useState("");
-    const [bl, setBl] = useState("");
-    const [tra, setTra] = useState("");
-    const [dat, setDat] = useState("");
-    const [com, setCom] = useState("");
-    const [cmt, setCmt] = useState("");
-    const [agent, setAgent] = useState("");
-    const [datE, setDatE] = useState(new Date().toISOString().split("T")[0]);
-    const [cliE, setCliE] = useState("");
-    const [traE, setTraE] = useState("");
-    const [cmtE, setCmtE] = useState("");
-    const [rows, setRows] = useState<any[]>([emptyRow()]);
-
-    function emptyRow() { return { nom:"", lot:"", origine:"", qteAttendue:"", qteRecue:"", motif:"", decisionArticle:null }; }
-    function upRow(i:number, f:string, v:any) { setRows(rs => rs.map((r,j) => j===i ? {...r,[f]:v} : r)); }
-
-    function submit() {
-      const products = rows.filter(r => r.nom.trim());
-      if (mode==="prevu") {
-        if (!client.trim() || !bl.trim() || !products.length) { alert("Client, BL et au moins un produit requis."); return; }
-        os({ client:client.trim(), bl:bl.trim(), transporteur:tra.trim(), dateLiv:dat, commercial:com.trim(), comment:cmt.trim(), products });
-      } else {
-        if (!agent.trim() || !products.length) { alert("Reçu par et au moins un article requis."); return; }
-        os({ agent:agent.trim(), dateLiv:datE, clientConnu:cliE.trim()||null, transporteurConnu:traE.trim()||null, comment:cmtE.trim(), products });
-      }
-    }
-
-    return (
-      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.55)", zIndex:500, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:16, overflowY:"auto" }}
-        onMouseDown={e => { if (e.target === e.currentTarget) oc(); }}>
-        <div style={{ background:"#fff", borderRadius:20, padding:24, maxWidth:680, width:"100%", marginTop:16, marginBottom:16 }}>
-          <p style={{ fontSize:15, fontWeight:700, marginBottom:14 }}>{mode==="prevu"?"📋 Nouveau retour prévu":"🏭 Retour inattendu"}</p>
-
-          {mode==="prevu" ? (
-            <>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-                <div><label style={L}>Client</label><input style={S} value={client} onChange={e=>setClient(e.target.value)} placeholder="ex : Carrefour" /></div>
-                <div><label style={L}>N° BL</label><input style={S} type="number" value={bl} onChange={e=>setBl(e.target.value)} /></div>
-                <div><label style={L}>Transporteur</label><input style={S} value={tra} onChange={e=>setTra(e.target.value)} /></div>
-                <div><label style={L}>Date livraison</label><input style={S} type="date" value={dat} onChange={e=>setDat(e.target.value)} /></div>
-              </div>
-              <div style={{ marginBottom:14 }}><label style={L}>Saisi par</label><input style={S} value={com} onChange={e=>setCom(e.target.value)} /></div>
-            </>
-          ) : (
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-              <div><label style={L}>Reçu par</label><input style={S} value={agent} onChange={e=>setAgent(e.target.value)} /></div>
-              <div><label style={L}>Date réception</label><input style={S} type="date" value={datE} onChange={e=>setDatE(e.target.value)} /></div>
-              <div><label style={L}>Client (optionnel)</label><input style={S} value={cliE} onChange={e=>setCliE(e.target.value)} /></div>
-              <div><label style={L}>Transporteur (optionnel)</label><input style={S} value={traE} onChange={e=>setTraE(e.target.value)} /></div>
-            </div>
-          )}
-
-          <p style={{ fontSize:11, fontWeight:700, color:"#9ca3af", textTransform:"uppercase", marginBottom:8 }}>
-            {mode==="prevu"?"Produits":"Articles reçus"}
-          </p>
-
-          {rows.map((row, i) => (
-            <div key={i} style={{ display:"grid", gridTemplateColumns: mode==="prevu" ? "2fr 1fr 1fr 0.8fr 0.8fr 1.8fr 28px" : "2fr 1fr 1fr 0.9fr 1.8fr 70px 28px", gap:5, marginBottom:6, alignItems:"center" }}>
-              <input style={S} list="produits-stock-list" placeholder="Produit" value={row.nom} onChange={e=>upRow(i,"nom",e.target.value)} autoComplete="off" />
-              <input style={S} placeholder="Lot" value={row.lot} onChange={e=>upRow(i,"lot",e.target.value)} />
-              <input style={S} placeholder="Origine" value={row.origine} onChange={e=>upRow(i,"origine",e.target.value)} />
-              {mode==="prevu" ? (
-                <>
-                  <input style={{...S,textAlign:"center"}} type="number" placeholder="Att." value={row.qteAttendue} onChange={e=>upRow(i,"qteAttendue",e.target.value)} />
-                  <input style={{...S,textAlign:"center"}} type="number" placeholder="Reçu" value={row.qteRecue} onChange={e=>upRow(i,"qteRecue",e.target.value)} />
-                </>
-              ) : (
-                <input style={{...S,textAlign:"center"}} type="number" placeholder="Qté" value={row.qteRecue} onChange={e=>upRow(i,"qteRecue",e.target.value)} />
-              )}
-              <select style={S} value={row.motif} onChange={e=>upRow(i,"motif",e.target.value)}>
-                <option value="">--</option>
-                {(mode==="prevu"?MOTIFS_RETOUR:ETATS_ENTREPOT).map(m=><option key={m} value={m}>{m}</option>)}
-              </select>
-              {mode==="entrepot" && (
-                <div style={{ display:"flex", gap:3 }}>
-                  <button type="button" onClick={()=>upRow(i,"decisionArticle",row.decisionArticle==="accepte"?null:"accepte")}
-                    style={{ padding:"5px 6px", borderRadius:6, border:`1.5px solid ${row.decisionArticle==="accepte"?"#15803d":"#bbf7d0"}`, background:row.decisionArticle==="accepte"?"#dcfce7":"transparent", color:"#15803d", fontSize:11, fontWeight:600, cursor:"pointer" }}>✓</button>
-                  <button type="button" onClick={()=>upRow(i,"decisionArticle",row.decisionArticle==="destruction"?null:"destruction")}
-                    style={{ padding:"5px 6px", borderRadius:6, border:`1.5px solid ${row.decisionArticle==="destruction"?"#dc2626":"#fecaca"}`, background:row.decisionArticle==="destruction"?"#fee2e2":"transparent", color:"#dc2626", fontSize:11, fontWeight:600, cursor:"pointer" }}>✗</button>
-                </div>
-              )}
-              {rows.length>1 && <button type="button" onClick={()=>setRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:"transparent", border:"none", color:"#ccc", cursor:"pointer", fontSize:16 }}>🗑</button>}
-            </div>
-          ))}
-
-          <button type="button" onClick={()=>setRows(rs=>[...rs,emptyRow()])}
-            style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 14px", border:"1.5px dashed #c8a84b", borderRadius:10, background:"transparent", cursor:"pointer", fontSize:13, color:"#c8a84b", margin:"8px 0 14px", fontFamily:"inherit" }}>
-            + Ajouter
-          </button>
-
-          <div style={{ marginBottom:14 }}>
-            <label style={L}>Commentaires</label>
-            <textarea style={{...S,minHeight:55,resize:"vertical"}} value={mode==="prevu"?cmt:cmtE} onChange={e=>mode==="prevu"?setCmt(e.target.value):setCmtE(e.target.value)} />
-          </div>
-
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:10 }}>
-            <button type="button" style={{ padding:"10px 18px", borderRadius:10, border:"1.5px solid #e8e0d0", background:"transparent", cursor:"pointer", fontSize:13, fontFamily:"inherit" }} onClick={oc}>Annuler</button>
-            <button type="button" style={{ padding:"10px 18px", borderRadius:10, border:"none", background:"#c8a84b", color:"#0a0a0a", cursor:"pointer", fontSize:13, fontWeight:700, fontFamily:"inherit" }} onClick={submit}>
-              📤 {mode==="prevu"?"Enregistrer":"Envoyer"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={{ minHeight:"100vh", background:"#f5f3ee", fontFamily:"'Syne', sans-serif" }}>
