@@ -3844,6 +3844,14 @@ const STOCK_ARTICLES_LIST: Array<{article: string, equipe: string}> = [
       ];
 
 // ─── RETOURS CLIENTS ───
+const _retoursApp = getApps2().find((a: any) => a.name === "moorea-retours") ?? initializeApp2({
+  apiKey: "AIzaSyAR0BdIsWrA7UDKfCFSANbqxDrIsqLq6BA",
+  authDomain: "moorea-retours.firebaseapp.com",
+  databaseURL: "https://moorea-retours-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "moorea-retours",
+  appId: "1:57607281213:web:f00e57e7d8cb7166c9a854"
+}, "moorea-retours");
+const dbRetours = getDatabase2(_retoursApp);
 
 // ModalSaisiePrevu — composant indépendant, pas de state partagé avec le parent
 function ModalSaisiePrevu({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: any) => void }) {
