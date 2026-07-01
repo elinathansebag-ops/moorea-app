@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc as fsDoc } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
 import { initializeApp as initializeApp2, getApps as getApps2 } from "firebase/app";
-import { getDatabase as getDatabase2, ref as ref2, onValue as onValue2, off as off2 } from "firebase/database";
+import { getDatabase as getDatabase2, ref as ref2, onValue as onValue2, off as off2, push as push2, update as update2, remove as remove2 } from "firebase/database";
 import jsPDF from "jspdf";
 import emailjs from "@emailjs/browser";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
@@ -4120,16 +4120,16 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     setLoading(true);
-    const u1 = onValue(ref2(dbRetours, "retours"), snap => {
+    const u1 = onValue2(ref2(dbRetours, "retours"), snap => {
       const d = snap.val();
       setRetours(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
       setLoading(false);
     });
-    const u2 = onValue(ref2(dbRetours, "retours_entrepot"), snap => {
+    const u2 = onValue2(ref2(dbRetours, "retours_entrepot"), snap => {
       const d = snap.val();
       setRetoursEntrepot(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    const u3 = onValue(ref2(dbRetours, "corbeille"), snap => {
+    const u3 = onValue2(ref2(dbRetours, "corbeille"), snap => {
       const d = snap.val();
       setCorbeille(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b._deletedTs || 0) - (a._deletedTs || 0)) : []);
     });
@@ -4138,9 +4138,9 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
 
   async function getNextNumero(): Promise<string> {
     try {
-      const snap = await new Promise<any>(res => { const u = onValue(ref2(dbRetours, "compteur"), s => { u(); res(s); }); });
+      const snap = await new Promise<any>(res => { const u = onValue2(ref2(dbRetours, "compteur"), s => { u(); res(s); }); });
       const n = (snap.val() || 0) + 1;
-      await update(ref2(dbRetours, "/"), { compteur: n });
+      await update2(ref2(dbRetours, "/"), { compteur: n });
       return "RC-" + new Date().getFullYear() + "-" + String(n).padStart(3, "0");
     } catch { return "RC-" + Date.now(); }
   }
@@ -4160,7 +4160,7 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
     if (!fClient.trim() || !fBl.trim() || !prods.length) { alert("Client, BL et au moins un produit requis."); return; }
     const numero = await getNextNumero();
     const fiche = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), client: fClient.trim(), bl: fBl.trim(), transporteur: fTransporteur.trim(), dateLiv: fDateLiv, commercial: fCommercial.trim(), comment: fComment.trim(), products: prods, statut: "nouveau", commentPrep: "", source: "commercial" };
-    const newRef = await push(ref2(dbRetours, "retours"), fiche);
+    const newRef = await push2(ref2(dbRetours, "retours"), fiche);
     setFClient(""); setFBl(""); setFTransporteur(""); setFDateLiv(""); setFCommercial(""); setFComment(""); setFProducts([{ nom: "", lot: "", origine: "", qteAttendue: "", qteRecue: "", motif: "" }]);
     setModalPrevu(false);
     setModalSuccess({ fiche: { ...fiche, id: newRef.key }, source: "commercial" });
@@ -4171,7 +4171,7 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
     if (!eAgent.trim() || !prods.length) { alert("Reçu par et au moins un article requis."); return; }
     const numero = await getNextNumero();
     const fiche = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), agent: eAgent.trim(), products: prods, comment: eComment.trim(), dateLiv: eDate, clientConnu: eClient.trim() || null, transporteurConnu: eTransporteur.trim() || null, rattache: false, source: "entrepot" };
-    const newRef = await push(ref2(dbRetours, "retours_entrepot"), fiche);
+    const newRef = await push2(ref2(dbRetours, "retours_entrepot"), fiche);
     setEAgent(""); setEClient(""); setETransporteur(""); setEComment(""); setEDate(new Date().toISOString().split("T")[0]); setEProducts([{ nom: "", lot: "", origine: "", qteRecue: "", motif: "", decisionArticle: null }]);
     setModalInattendu(false);
     setModalSuccess({ fiche: { ...fiche, id: newRef.key, client: "(non rattaché)", bl: "—" }, source: "entrepot" });
@@ -4181,8 +4181,8 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
     if (!rClient.trim() || !rBl.trim() || !modalRattach) { alert("Client et BL requis."); return; }
     const numero = await getNextNumero();
     const fiche = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), client: rClient.trim(), bl: rBl.trim(), transporteur: rTransporteur.trim(), dateLiv: rDateLiv, commercial: rCommercial.trim(), comment: rComment.trim() || modalRattach.comment || "", products: modalRattach.products || [], statut: "nouveau", commentPrep: "", source: "entrepot_rattache", entrepotId: modalRattach.id };
-    const newRef = await push(ref2(dbRetours, "retours"), fiche);
-    await update(ref2(dbRetours, "retours_entrepot/" + modalRattach.id), { rattache: true, clientRattache: rClient.trim(), blRattache: rBl.trim() });
+    const newRef = await push2(ref2(dbRetours, "retours"), fiche);
+    await update2(ref2(dbRetours, "retours_entrepot/" + modalRattach.id), { rattache: true, clientRattache: rClient.trim(), blRattache: rBl.trim() });
     setModalRattach(null);
     setModalSuccess({ fiche: { ...fiche, id: newRef.key }, source: "commercial" });
   }
@@ -4195,7 +4195,7 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
       const qManque = ctrl.qManque ?? p.controle?.qManque ?? 0;
       return { ...p, controle: { qStock: parseInt(qStock) || 0, qDestroy: parseInt(qDestroy) || 0, qManque: parseInt(qManque) || 0 } };
     });
-    await update(ref2(dbRetours, "retours/" + fiche.id), { products, statut: "traite", commentPrep: commentPrepLocal[fiche.id] || fiche.commentPrep || "" });
+    await update2(ref2(dbRetours, "retours/" + fiche.id), { products, statut: "traite", commentPrep: commentPrepLocal[fiche.id] || fiche.commentPrep || "" });
     setOpenId(null);
     setModalSuccess({ fiche: { ...fiche, products }, source: "valide" });
   }
@@ -4203,27 +4203,27 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
   async function sauvegarderModif() {
     if (!modalEdit || !editClient.trim() || !editBl.trim()) return;
     const prods = editProducts.filter((p: any) => p.nom.trim());
-    await update(ref2(dbRetours, "retours/" + modalEdit.id), { client: editClient.trim(), bl: editBl.trim(), transporteur: editTransporteur.trim(), dateLiv: editDateLiv, commercial: editCommercial.trim(), comment: editComment.trim(), products: prods });
+    await update2(ref2(dbRetours, "retours/" + modalEdit.id), { client: editClient.trim(), bl: editBl.trim(), transporteur: editTransporteur.trim(), dateLiv: editDateLiv, commercial: editCommercial.trim(), comment: editComment.trim(), products: prods });
     setModalEdit(null);
   }
 
   async function supprimerFiche(type: string, id: string, numero: string) {
     const path = type === "retour" ? "retours/" + id : "retours_entrepot/" + id;
-    const snap = await new Promise<any>(res => { const u = onValue(ref2(dbRetours, path), s => { u(); res(s); }); });
+    const snap = await new Promise<any>(res => { const u = onValue2(ref2(dbRetours, path), s => { u(); res(s); }); });
     const data = snap.val();
-    if (data) await push(ref2(dbRetours, "corbeille"), { ...data, _originalPath: path, _deletedAt: new Date().toLocaleDateString("fr-FR"), _deletedTs: Date.now() });
-    await remove(ref2(dbRetours, path));
+    if (data) await push2(ref2(dbRetours, "corbeille"), { ...data, _originalPath: path, _deletedAt: new Date().toLocaleDateString("fr-FR"), _deletedTs: Date.now() });
+    await remove2(ref2(dbRetours, path));
     setDeleteTarget(null);
   }
 
   async function restaurerFiche(item: any) {
     const { _originalPath, _deletedAt, _deletedTs, id, ...data } = item;
-    await push(ref2(dbRetours, _originalPath?.startsWith("retours_entrepot") ? "retours_entrepot" : "retours"), data);
-    await remove(ref2(dbRetours, "corbeille/" + id));
+    await push2(ref2(dbRetours, _originalPath?.startsWith("retours_entrepot") ? "retours_entrepot" : "retours"), data);
+    await remove2(ref2(dbRetours, "corbeille/" + id));
   }
 
   async function repointerFiche(fiche: any) {
-    await update(ref2(dbRetours, "retours/" + fiche.id), { statut: "en_attente" });
+    await update2(ref2(dbRetours, "retours/" + fiche.id), { statut: "en_attente" });
     setActiveTab("fiches"); setOpenId(fiche.id);
   }
 
@@ -4237,7 +4237,7 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
       if (i !== pi) return p;
       return { ...p, controle: { ...(p.controle || {}), [field]: parsed } };
     });
-    try { await update(ref2(dbRetours, "retours/" + fid), { products: updatedProducts }); } catch {}
+    try { await update2(ref2(dbRetours, "retours/" + fid), { products: updatedProducts }); } catch {}
   };
 
   const total = retours.length;
@@ -4423,7 +4423,7 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
             )))}
             {activeTab === "corbeille" && (
               <>
-                {corbeille.length > 0 && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}><button style={btn("#fee2e2", "#dc2626")} onClick={async () => { if (confirm("Vider la corbeille ?")) { await Promise.all(corbeille.map(c => remove(ref2(dbRetours, "corbeille/" + c.id)))); } }}>🗑 Vider</button></div>}
+                {corbeille.length > 0 && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}><button style={btn("#fee2e2", "#dc2626")} onClick={async () => { if (confirm("Vider la corbeille ?")) { await Promise.all(corbeille.map(c => remove2(ref2(dbRetours, "corbeille/" + c.id)))); } }}>🗑 Vider</button></div>}
                 {corbeille.length === 0 ? <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 14, color: "#9ca3af" }}>Corbeille vide</div> : corbeille.map(r => (
                   <div key={r.id} style={{ background: "#fff", border: "1.5px solid #fecaca", borderRadius: 14, padding: "1rem 1.2rem", marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
@@ -4432,7 +4432,7 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
                     </div>
                     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                       <button style={btn("#dcfce7", "#15803d")} onClick={() => restaurerFiche(r)}>↩ Restaurer</button>
-                      <button style={btn("#fee2e2", "#dc2626")} onClick={async () => { if (confirm("Supprimer définitivement ?")) await remove(ref2(dbRetours, "corbeille/" + r.id)); }}>🗑 Définitif</button>
+                      <button style={btn("#fee2e2", "#dc2626")} onClick={async () => { if (confirm("Supprimer définitivement ?")) await remove2(ref2(dbRetours, "corbeille/" + r.id)); }}>🗑 Définitif</button>
                     </div>
                   </div>
                 ))}
@@ -4456,7 +4456,7 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
       {modalPrevu && <ModalSaisiePrevu onClose={() => setModalPrevu(false)} onSubmit={async (data) => {
         const numero = await getNextNumero();
         const fiche = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), ...data, statut: "nouveau", commentPrep: "", source: "commercial" };
-        const newRef = await push(ref2(dbRetours, "retours"), fiche);
+        const newRef = await push2(ref2(dbRetours, "retours"), fiche);
         setModalPrevu(false);
         setModalSuccess({ fiche: { ...fiche, id: newRef.key }, source: "commercial" });
       }} />}
@@ -4465,7 +4465,7 @@ function RetoursClientsModule({ onClose }: { onClose: () => void }) {
       {modalInattendu && <ModalSaisieInattendu onClose={() => setModalInattendu(false)} onSubmit={async (data) => {
         const numero = await getNextNumero();
         const fiche = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), ...data, rattache: false, source: "entrepot" };
-        const newRef = await push(ref2(dbRetours, "retours_entrepot"), fiche);
+        const newRef = await push2(ref2(dbRetours, "retours_entrepot"), fiche);
         setModalInattendu(false);
         setModalSuccess({ fiche: { ...fiche, id: newRef.key, client: "(non rattaché)", bl: "—" }, source: "entrepot" });
       }} />}
