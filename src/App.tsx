@@ -3855,144 +3855,189 @@ const dbRetours = getDatabase2(_retoursApp);
 
 // ModalSaisiePrevu — composant indépendant, pas de state partagé avec le parent
 function ModalSaisiePrevu({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: any) => void }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const rClient = useRef<HTMLInputElement>(null);
+  const rBl = useRef<HTMLInputElement>(null);
+  const rTra = useRef<HTMLInputElement>(null);
+  const rDat = useRef<HTMLInputElement>(null);
+  const rCom = useRef<HTMLInputElement>(null);
+  const rCmt = useRef<HTMLTextAreaElement>(null);
   const [rowKeys, setRowKeys] = useState<number[]>([0]);
   const nextKey = useRef(1);
+  const rowRefs = useRef<Map<number, { nom: HTMLInputElement | null, lot: HTMLInputElement | null, ori: HTMLInputElement | null, att: HTMLInputElement | null, rec: HTMLInputElement | null, mot: HTMLSelectElement | null }>>(new Map());
+
   const inp: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%" };
   const lbl: React.CSSProperties = { fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", display: "block", marginBottom: 5 };
 
   function handleSubmit() {
-    if (!containerRef.current) return;
-    const g = (id: string) => (containerRef.current!.querySelector(`#mp-${id}`) as HTMLInputElement)?.value?.trim() || "";
-    const rows = containerRef.current.querySelectorAll(".prod-row-mp");
-    const products = Array.from(rows).map(row => ({
-      nom: (row.querySelector('[data-f="nom"]') as HTMLInputElement)?.value?.trim() || "",
-      lot: (row.querySelector('[data-f="lot"]') as HTMLInputElement)?.value?.trim() || "",
-      origine: (row.querySelector('[data-f="ori"]') as HTMLInputElement)?.value?.trim() || "",
-      qteAttendue: (row.querySelector('[data-f="att"]') as HTMLInputElement)?.value?.trim() || "",
-      qteRecue: (row.querySelector('[data-f="rec"]') as HTMLInputElement)?.value?.trim() || "",
-      motif: (row.querySelector('[data-f="mot"]') as HTMLSelectElement)?.value || "",
-    })).filter(r => r.nom);
-    if (!g("client") || !g("bl") || !products.length) { alert("Client, BL et au moins un produit requis."); return; }
-    onSubmit({ client: g("client"), bl: g("bl"), transporteur: g("tra"), dateLiv: g("dat"), commercial: g("com"), comment: g("cmt"), products });
+    const client = rClient.current?.value?.trim() || "";
+    const bl = rBl.current?.value?.trim() || "";
+    if (!client || !bl) { alert("Client et BL requis."); return; }
+    const products: any[] = [];
+    rowKeys.forEach(k => {
+      const r = rowRefs.current.get(k);
+      if (!r) return;
+      const nom = r.nom?.value?.trim() || "";
+      if (!nom) return;
+      products.push({ nom, lot: r.lot?.value?.trim() || "", origine: r.ori?.value?.trim() || "", qteAttendue: r.att?.value?.trim() || "", qteRecue: r.rec?.value?.trim() || "", motif: r.mot?.value || "" });
+    });
+    if (!products.length) { alert("Au moins un produit requis."); return; }
+    onSubmit({ client, bl, transporteur: rTra.current?.value?.trim() || "", dateLiv: rDat.current?.value || "", commercial: rCom.current?.value?.trim() || "", comment: rCmt.current?.value?.trim() || "", products });
   }
 
+  function addRow() {
+    const k = nextKey.current++;
+    rowRefs.current.set(k, { nom: null, lot: null, ori: null, att: null, rec: null, mot: null });
+    setRowKeys(rk => [...rk, k]);
+  }
+  function removeRow(k: number) {
+    rowRefs.current.delete(k);
+    setRowKeys(rk => rk.filter(x => x !== k));
+  }
+
+  // Init first row ref
+  if (!rowRefs.current.has(0)) rowRefs.current.set(0, { nom: null, lot: null, ori: null, att: null, rec: null, mot: null });
+
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "16px", overflowY: "auto" }} onClick={onClose}>
-      <div ref={containerRef} style={{ background: "#fff", borderRadius: 20, padding: 24, maxWidth: 720, width: "100%", marginTop: 20 }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 16, overflowY: "auto" }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: "#fff", borderRadius: 20, padding: 24, maxWidth: 720, width: "100%", marginTop: 20 }} onClick={e => e.stopPropagation()}>
         <p style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>📋 Nouveau retour prévu</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <div><label style={lbl}>Client</label><input id="mp-client" style={inp} placeholder="ex : Carrefour Billy" /></div>
-          <div><label style={lbl}>N° BL</label><input id="mp-bl" style={inp} type="number" /></div>
-          <div><label style={lbl}>Transporteur</label><input id="mp-tra" style={inp} /></div>
-          <div><label style={lbl}>Date livraison</label><input id="mp-dat" style={inp} type="date" /></div>
+          <div><label style={lbl}>Client</label><input ref={rClient} style={inp} placeholder="ex : Carrefour Billy" /></div>
+          <div><label style={lbl}>N° BL</label><input ref={rBl} style={inp} type="number" /></div>
+          <div><label style={lbl}>Transporteur</label><input ref={rTra} style={inp} /></div>
+          <div><label style={lbl}>Date livraison</label><input ref={rDat} style={inp} type="date" /></div>
         </div>
-        <div style={{ marginBottom: 14 }}><label style={lbl}>Saisi par</label><input id="mp-com" style={inp} /></div>
+        <div style={{ marginBottom: 14 }}><label style={lbl}>Saisi par</label><input ref={rCom} style={inp} /></div>
         <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 6 }}>Produits</p>
         <div style={{ fontSize: 11, color: "#9ca3af", display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 2fr 28px", gap: 5, marginBottom: 4 }}>
           <span>Produit</span><span>Lot</span><span>Origine</span><span>Att.</span><span>Reçu</span><span>Motif</span><span></span>
         </div>
-        {rowKeys.map(k => (
-          <div key={k} className="prod-row-mp" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 2fr 28px", gap: 5, marginBottom: 5, alignItems: "center" }}>
-            <input style={inp} data-f="nom" list="produits-stock-list" placeholder="Produit" autoComplete="off" />
-            <input style={inp} data-f="lot" placeholder="Lot" />
-            <input style={inp} data-f="ori" placeholder="Origine" />
-            <input style={{ ...inp, textAlign: "center" }} data-f="att" type="number" placeholder="Att." />
-            <input style={{ ...inp, textAlign: "center" }} data-f="rec" type="number" placeholder="Reçu" />
-            <select style={inp} data-f="mot">
-              <option value="">-- Motif --</option>
-              {MOTIFS_RETOUR.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-            {rowKeys.length > 1 && <button type="button" onClick={() => setRowKeys(rk => rk.filter(x => x !== k))} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>🗑</button>}
-          </div>
-        ))}
-        <button type="button" onClick={() => { setRowKeys(rk => [...rk, nextKey.current++]); }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", margin: "8px 0 14px" }}>+ Ajouter un produit</button>
-        <div><label style={lbl}>Commentaires</label><textarea id="mp-cmt" style={{ ...inp, minHeight: 55, resize: "vertical" }} /></div>
+        {rowKeys.map(k => {
+          if (!rowRefs.current.has(k)) rowRefs.current.set(k, { nom: null, lot: null, ori: null, att: null, rec: null, mot: null });
+          const r = rowRefs.current.get(k)!;
+          return (
+            <div key={k} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 2fr 28px", gap: 5, marginBottom: 5, alignItems: "center" }}>
+              <input style={inp} ref={el => { r.nom = el; }} list="produits-stock-list" placeholder="Produit" autoComplete="off" />
+              <input style={inp} ref={el => { r.lot = el; }} placeholder="Lot" />
+              <input style={inp} ref={el => { r.ori = el; }} placeholder="Origine" />
+              <input style={{ ...inp, textAlign: "center" }} ref={el => { r.att = el; }} type="number" placeholder="Att." />
+              <input style={{ ...inp, textAlign: "center" }} ref={el => { r.rec = el; }} type="number" placeholder="Reçu" />
+              <select style={inp} ref={el => { r.mot = el; }}>
+                <option value="">-- Motif --</option>
+                {MOTIFS_RETOUR.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              {rowKeys.length > 1 && <button type="button" onClick={() => removeRow(k)} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>🗑</button>}
+            </div>
+          );
+        })}
+        <button type="button" onClick={addRow} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", margin: "8px 0 14px" }}>+ Ajouter un produit</button>
+        <div><label style={lbl}>Commentaires</label><textarea ref={rCmt} style={{ ...inp, minHeight: 55, resize: "vertical" }} /></div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-          <button style={{ padding: "10px 18px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "transparent", cursor: "pointer", fontSize: 13 }} onClick={onClose}>Annuler</button>
-          <button style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 13, fontWeight: 700 }} onClick={handleSubmit}>📤 Enregistrer</button>
+          <button type="button" style={{ padding: "10px 18px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "transparent", cursor: "pointer", fontSize: 13 }} onClick={onClose}>Annuler</button>
+          <button type="button" style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 13, fontWeight: 700 }} onClick={handleSubmit}>📤 Enregistrer</button>
         </div>
       </div>
     </div>
   );
 }
 
+
 // ModalSaisieInattendu — même principe
 function ModalSaisieInattendu({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: any) => void }) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const rAgent = useRef<HTMLInputElement>(null);
+  const rDat = useRef<HTMLInputElement>(null);
+  const rCli = useRef<HTMLInputElement>(null);
+  const rTra = useRef<HTMLInputElement>(null);
+  const rCmt = useRef<HTMLTextAreaElement>(null);
   const [rowKeys, setRowKeys] = useState<number[]>([0]);
   const nextKey = useRef(1);
+  const rowRefs = useRef<Map<number, { nom: HTMLInputElement|null, lot: HTMLInputElement|null, ori: HTMLInputElement|null, qte: HTMLInputElement|null, mot: HTMLSelectElement|null, da: HTMLButtonElement|null, dd: HTMLButtonElement|null }>>(new Map());
+
   const inp: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%" };
   const lbl: React.CSSProperties = { fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", display: "block", marginBottom: 5 };
 
+  if (!rowRefs.current.has(0)) rowRefs.current.set(0, { nom:null,lot:null,ori:null,qte:null,mot:null,da:null,dd:null });
+
   function handleSubmit() {
-    if (!containerRef.current) return;
-    const g = (id: string) => (containerRef.current!.querySelector(`#mi-${id}`) as HTMLInputElement)?.value?.trim() || "";
-    const rows = containerRef.current.querySelectorAll(".prod-row-mi");
-    const products = Array.from(rows).map(row => {
-      const decAcc = (row.querySelector('[data-f="da"]') as HTMLButtonElement)?.dataset?.on === "1";
-      const decDes = (row.querySelector('[data-f="dd"]') as HTMLButtonElement)?.dataset?.on === "1";
-      return {
-        nom: (row.querySelector('[data-f="nom"]') as HTMLInputElement)?.value?.trim() || "",
-        lot: (row.querySelector('[data-f="lot"]') as HTMLInputElement)?.value?.trim() || "",
-        origine: (row.querySelector('[data-f="ori"]') as HTMLInputElement)?.value?.trim() || "",
-        qteAttendue: "", qteRecue: (row.querySelector('[data-f="qte"]') as HTMLInputElement)?.value?.trim() || "",
-        motif: (row.querySelector('[data-f="mot"]') as HTMLSelectElement)?.value || "",
-        decisionArticle: decAcc ? "accepte" : decDes ? "destruction" : null,
-      };
-    }).filter(r => r.nom);
-    if (!g("agent") || !products.length) { alert("Reçu par et au moins un article requis."); return; }
-    onSubmit({ agent: g("agent"), dateLiv: g("dat"), clientConnu: g("cli") || null, transporteurConnu: g("tra") || null, comment: g("cmt"), products });
+    const agent = rAgent.current?.value?.trim() || "";
+    if (!agent) { alert("Reçu par requis."); return; }
+    const products: any[] = [];
+    rowKeys.forEach(k => {
+      const r = rowRefs.current.get(k);
+      if (!r) return;
+      const nom = r.nom?.value?.trim() || "";
+      if (!nom) return;
+      const decAcc = r.da?.dataset?.on === "1";
+      const decDes = r.dd?.dataset?.on === "1";
+      products.push({ nom, lot: r.lot?.value?.trim()||"", origine: r.ori?.value?.trim()||"", qteAttendue:"", qteRecue: r.qte?.value?.trim()||"", motif: r.mot?.value||"", decisionArticle: decAcc?"accepte":decDes?"destruction":null });
+    });
+    if (!products.length) { alert("Au moins un article requis."); return; }
+    onSubmit({ agent, dateLiv: rDat.current?.value||"", clientConnu: rCli.current?.value?.trim()||null, transporteurConnu: rTra.current?.value?.trim()||null, comment: rCmt.current?.value?.trim()||"", products });
   }
 
-  function toggleDec(e: React.MouseEvent<HTMLButtonElement>, self: string, other: string) {
-    const btn = e.currentTarget;
+  function toggleDec(btn: HTMLButtonElement, otherBtn: HTMLButtonElement | null, activeColor: string, activeBorder: string, inactiveBorder: string) {
     const isOn = btn.dataset.on === "1";
     btn.dataset.on = isOn ? "0" : "1";
-    btn.style.background = !isOn ? (self === "da" ? "#dcfce7" : "#fee2e2") : "transparent";
-    btn.style.borderColor = !isOn ? (self === "da" ? "#15803d" : "#dc2626") : (self === "da" ? "#bbf7d0" : "#fecaca");
-    const row = btn.closest(".prod-row-mi");
-    const otherBtn = row?.querySelector(`[data-f="${other}"]`) as HTMLButtonElement;
-    if (otherBtn) { otherBtn.dataset.on = "0"; otherBtn.style.background = "transparent"; otherBtn.style.borderColor = other === "da" ? "#bbf7d0" : "#fecaca"; }
+    btn.style.background = !isOn ? activeColor : "transparent";
+    btn.style.borderColor = !isOn ? activeBorder : inactiveBorder;
+    if (otherBtn) { otherBtn.dataset.on = "0"; otherBtn.style.background = "transparent"; }
+  }
+
+  function addRow() {
+    const k = nextKey.current++;
+    rowRefs.current.set(k, { nom:null,lot:null,ori:null,qte:null,mot:null,da:null,dd:null });
+    setRowKeys(rk => [...rk, k]);
+  }
+  function removeRow(k: number) {
+    rowRefs.current.delete(k);
+    setRowKeys(rk => rk.filter(x => x !== k));
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "16px", overflowY: "auto" }} onClick={onClose}>
-      <div ref={containerRef} style={{ background: "#fff", borderRadius: 20, padding: 24, maxWidth: 720, width: "100%", marginTop: 20 }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 16, overflowY: "auto" }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: "#fff", borderRadius: 20, padding: 24, maxWidth: 720, width: "100%", marginTop: 20 }} onClick={e => e.stopPropagation()}>
         <p style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>🏭 Retour inattendu</p>
         <div style={{ background: "#fffbf0", border: "1.5px solid rgba(200,168,75,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#92600a", marginBottom: 14 }}>Colis reçu sans déclaration — apparaîtra dans <strong>À rattacher</strong>.</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <div><label style={lbl}>Reçu par</label><input id="mi-agent" style={inp} /></div>
-          <div><label style={lbl}>Date réception</label><input id="mi-dat" style={inp} type="date" defaultValue={new Date().toISOString().split("T")[0]} /></div>
-          <div><label style={lbl}>Client (optionnel)</label><input id="mi-cli" style={inp} /></div>
-          <div><label style={lbl}>Transporteur (optionnel)</label><input id="mi-tra" style={inp} /></div>
+          <div><label style={lbl}>Reçu par</label><input ref={rAgent} style={inp} /></div>
+          <div><label style={lbl}>Date réception</label><input ref={rDat} style={inp} type="date" defaultValue={new Date().toISOString().split("T")[0]} /></div>
+          <div><label style={lbl}>Client (optionnel)</label><input ref={rCli} style={inp} /></div>
+          <div><label style={lbl}>Transporteur (optionnel)</label><input ref={rTra} style={inp} /></div>
         </div>
         <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 6 }}>Articles reçus</p>
         <div style={{ fontSize: 11, color: "#9ca3af", display: "grid", gridTemplateColumns: "2fr 1fr 1fr 0.8fr 1.6fr 70px 28px", gap: 5, marginBottom: 4 }}>
           <span>Article</span><span>Lot</span><span>Origine</span><span>Qté</span><span>État</span><span>Décision</span><span></span>
         </div>
-        {rowKeys.map(k => (
-          <div key={k} className="prod-row-mi" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 0.8fr 1.6fr 70px 28px", gap: 5, marginBottom: 5, alignItems: "center" }}>
-            <input style={inp} data-f="nom" list="produits-stock-list" placeholder="Article" autoComplete="off" />
-            <input style={inp} data-f="lot" placeholder="Lot" />
-            <input style={inp} data-f="ori" placeholder="Origine" />
-            <input style={{ ...inp, textAlign: "center" }} data-f="qte" type="number" placeholder="Qté" />
-            <select style={inp} data-f="mot">
-              <option value="">-- État --</option>
-              {ETATS_ENTREPOT.map((m: string) => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <div style={{ display: "flex", gap: 3 }}>
-              <button type="button" data-f="da" data-on="0" onClick={e => toggleDec(e, "da", "dd")} style={{ padding: "5px 6px", borderRadius: 6, border: "1.5px solid #bbf7d0", background: "transparent", color: "#15803d", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✓</button>
-              <button type="button" data-f="dd" data-on="0" onClick={e => toggleDec(e, "dd", "da")} style={{ padding: "5px 6px", borderRadius: 6, border: "1.5px solid #fecaca", background: "transparent", color: "#dc2626", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✗</button>
+        {rowKeys.map(k => {
+          if (!rowRefs.current.has(k)) rowRefs.current.set(k, { nom:null,lot:null,ori:null,qte:null,mot:null,da:null,dd:null });
+          const r = rowRefs.current.get(k)!;
+          return (
+            <div key={k} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 0.8fr 1.6fr 70px 28px", gap: 5, marginBottom: 5, alignItems: "center" }}>
+              <input style={inp} ref={el => { r.nom = el; }} list="produits-stock-list" placeholder="Article" autoComplete="off" />
+              <input style={inp} ref={el => { r.lot = el; }} placeholder="Lot" />
+              <input style={inp} ref={el => { r.ori = el; }} placeholder="Origine" />
+              <input style={{ ...inp, textAlign: "center" }} ref={el => { r.qte = el; }} type="number" placeholder="Qté" />
+              <select style={inp} ref={el => { r.mot = el; }}>
+                <option value="">-- État --</option>
+                {ETATS_ENTREPOT.map((m: string) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <div style={{ display: "flex", gap: 3 }}>
+                <button type="button" ref={el => { r.da = el; }} data-on="0"
+                  onClick={e => toggleDec(e.currentTarget, r.dd, "#dcfce7", "#15803d", "#bbf7d0")}
+                  style={{ padding: "5px 6px", borderRadius: 6, border: "1.5px solid #bbf7d0", background: "transparent", color: "#15803d", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✓</button>
+                <button type="button" ref={el => { r.dd = el; }} data-on="0"
+                  onClick={e => toggleDec(e.currentTarget, r.da, "#fee2e2", "#dc2626", "#fecaca")}
+                  style={{ padding: "5px 6px", borderRadius: 6, border: "1.5px solid #fecaca", background: "transparent", color: "#dc2626", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✗</button>
+              </div>
+              {rowKeys.length > 1 && <button type="button" onClick={() => removeRow(k)} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>🗑</button>}
             </div>
-            {rowKeys.length > 1 && <button type="button" onClick={() => setRowKeys(rk => rk.filter(x => x !== k))} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>🗑</button>}
-          </div>
-        ))}
-        <button type="button" onClick={() => setRowKeys(rk => [...rk, nextKey.current++])} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", margin: "8px 0 14px" }}>+ Ajouter</button>
-        <div><label style={lbl}>Commentaires</label><textarea id="mi-cmt" style={{ ...inp, minHeight: 55, resize: "vertical" }} /></div>
+          );
+        })}
+        <button type="button" onClick={addRow} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", margin: "8px 0 14px" }}>+ Ajouter</button>
+        <div><label style={lbl}>Commentaires</label><textarea ref={rCmt} style={{ ...inp, minHeight: 55, resize: "vertical" }} /></div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-          <button style={{ padding: "10px 18px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "transparent", cursor: "pointer", fontSize: 13 }} onClick={onClose}>Annuler</button>
-          <button style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 13, fontWeight: 700 }} onClick={handleSubmit}>📤 Envoyer</button>
+          <button type="button" style={{ padding: "10px 18px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "transparent", cursor: "pointer", fontSize: 13 }} onClick={onClose}>Annuler</button>
+          <button type="button" style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 13, fontWeight: 700 }} onClick={handleSubmit}>📤 Envoyer</button>
         </div>
       </div>
     </div>
