@@ -3727,6 +3727,1034 @@ function QrCodeDashboard({ onClose }: { onClose: () => void }) {
   );
 }
 
+
+function genererPDFRetour(fiche: any) {
+  if (!fiche) return;
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const W = 210, ml = 14, mr = 14, cw = W - ml - mr;
+  let y = 0;
+  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 32, "F");
+  doc.setFillColor(200, 168, 75); doc.rect(0, 31.5, W, 1, "F");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(200, 168, 75);
+  doc.text("moorea", ml, 13);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(160, 160, 160);
+  doc.text("FICHE DE RETOUR CLIENT", ml, 20);
+  doc.setFontSize(7.5); doc.setTextColor(120, 120, 120);
+  doc.text("Fruits & Legumes · Rungis", ml, 26);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(200, 168, 75);
+  doc.text(fiche.numero || "—", W - mr, 13, { align: "right" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(120, 120, 120);
+  doc.text(fiche.date || "", W - mr, 20, { align: "right" });
+  y = 42;
+  const col1 = ml, col2 = ml + cw / 2 + 2, colW = cw / 2 - 4;
+  function infoBox(label: string, value: any, x: number, yPos: number, w: number) {
+    doc.setFillColor(247, 245, 242); doc.roundedRect(x, yPos - 4, w, 12, 1.5, 1.5, "F");
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(140, 140, 140);
+    doc.text(label.toUpperCase(), x + 3, yPos + 0.5);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(20, 20, 20);
+    doc.text(doc.splitTextToSize(String(value || "—"), w - 6)[0], x + 3, yPos + 6);
+  }
+  infoBox("Client", fiche.client, col1, y, colW); infoBox("N° BL", fiche.bl, col2, y, colW); y += 16;
+  infoBox("Transporteur", fiche.transporteur, col1, y, colW); infoBox("Date de livraison", fiche.dateLiv || fiche.date, col2, y, colW); y += 16;
+  infoBox("Saisi par", fiche.commercial, col1, y, colW); infoBox("Date de la fiche", fiche.date, col2, y, colW); y += 20;
+  const products = fiche.products || [];
+  if (products.length) {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(200, 168, 75);
+    doc.text("PRODUITS RETOURNES", ml, y);
+    doc.setDrawColor(200, 168, 75); doc.setLineWidth(0.4); doc.line(ml, y + 1.5, ml + cw, y + 1.5); y += 7;
+    const cols = [{ h: "Produit", w: 46 }, { h: "Lot", w: 16 }, { h: "Origine", w: 20 }, { h: "Att.", w: 13 }, { h: "Recu", w: 13 }, { h: "Ecart", w: 13 }, { h: "Motif", w: 30 }, { h: "Decision", w: 29 }];
+    doc.setFillColor(30, 30, 30); doc.rect(ml, y - 4, cw, 8, "F");
+    let cx = ml; doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(200, 168, 75);
+    cols.forEach(c => { doc.text(c.h, cx + 2, y); cx += c.w; }); y += 6;
+    products.forEach((p: any, i: number) => {
+      if (y > 258) { doc.addPage(); y = 20; }
+      const rowH = 8;
+      doc.setFillColor(i % 2 === 0 ? 255 : 249, i % 2 === 0 ? 255 : 248, i % 2 === 0 ? 255 : 246);
+      doc.rect(ml, y - 3.5, cw, rowH, "F");
+      const att = parseInt(p.qteAttendue) || 0, rec = parseInt(p.qteRecue) || 0;
+      const diff = (p.qteAttendue && p.qteRecue) ? rec - att : null;
+      const diffStr = diff === null ? "—" : diff < 0 ? String(diff) : diff === 0 ? "=" : "+" + diff;
+      const dec = p.decisionArticle;
+      cx = ml;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(15, 15, 15);
+      doc.text(doc.splitTextToSize(p.nom || "—", 42)[0], cx + 2, y); cx += cols[0].w;
+      doc.setFont("helvetica", "normal"); doc.setTextColor(90, 90, 90); doc.setFontSize(7.5);
+      doc.text(p.lot || "—", cx + 2, y); cx += cols[1].w;
+      doc.text(p.origine || "—", cx + 2, y); cx += cols[2].w;
+      doc.setTextColor(60, 60, 60); doc.text(p.qteAttendue || "—", cx + 2, y); cx += cols[3].w;
+      doc.setFont("helvetica", "bold"); doc.setTextColor(15, 15, 15); doc.text(p.qteRecue || "—", cx + 2, y); cx += cols[4].w;
+      if (diff !== null && diff < 0) doc.setTextColor(180, 60, 20); else doc.setTextColor(21, 128, 61);
+      doc.text(diffStr, cx + 2, y); cx += cols[5].w;
+      doc.setFont("helvetica", "normal"); doc.setTextColor(90, 90, 90);
+      doc.text(doc.splitTextToSize(p.motif || "—", 27)[0], cx + 2, y); cx += cols[6].w;
+      if (dec === "accepte") { doc.setTextColor(21, 128, 61); doc.setFont("helvetica", "bold"); }
+      else if (dec === "destruction") { doc.setTextColor(200, 38, 38); doc.setFont("helvetica", "bold"); }
+      else { doc.setTextColor(120, 120, 120); doc.setFont("helvetica", "normal"); }
+      doc.text(dec === "accepte" ? "En stock" : dec === "destruction" ? "Destruction" : "—", cx + 2, y);
+      doc.setDrawColor(230, 225, 215); doc.setLineWidth(0.15); doc.line(ml, y + rowH - 3.5, ml + cw, y + rowH - 3.5);
+      y += rowH;
+    });
+    y += 6;
+  }
+  const hasCtrl = (fiche.products || []).some((p: any) => p.controle && (p.controle.qStock || p.controle.qDestroy || p.controle.qManque));
+  if (hasCtrl) {
+    if (y > 230) { doc.addPage(); y = 20; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(200, 168, 75);
+    doc.text("CONTROLE PAR ARTICLE", ml, y);
+    doc.setDrawColor(200, 168, 75); doc.setLineWidth(0.4); doc.line(ml, y + 1.5, ml + cw, y + 1.5); y += 7;
+    const ctrlCols = [{ h: "Produit", w: 50 }, { h: "Recus", w: 18 }, { h: "En stock", w: 28 }, { h: "Destruction", w: 28 }, { h: "Manquants", w: 28 }, { h: "Solde", w: 28 }];
+    doc.setFillColor(30, 30, 30); doc.rect(ml, y - 4, cw, 8, "F");
+    let cx = ml; doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(200, 168, 75);
+    ctrlCols.forEach(c => { doc.text(c.h, cx + 2, y); cx += c.w; }); y += 6;
+    (fiche.products || []).forEach((p: any, i: number) => {
+      if (y > 260) { doc.addPage(); y = 20; }
+      const ctrl = p.controle || {};
+      const recu = parseInt(p.qteRecue) || 0;
+      const stock = parseInt(ctrl.qStock) || 0, destroy = parseInt(ctrl.qDestroy) || 0, manque = parseInt(ctrl.qManque) || 0;
+      const solde = recu - stock - destroy;
+      const rowH = 8;
+      doc.setFillColor(i % 2 === 0 ? 255 : 249, i % 2 === 0 ? 255 : 248, i % 2 === 0 ? 255 : 246);
+      doc.rect(ml, y - 3.5, cw, rowH, "F"); cx = ml;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(15, 15, 15);
+      doc.text(doc.splitTextToSize(p.nom || "—", 47)[0], cx + 2, y); cx += ctrlCols[0].w;
+      doc.setFont("helvetica", "normal"); doc.setTextColor(60, 60, 60);
+      doc.text(String(recu || "—"), cx + 2, y); cx += ctrlCols[1].w;
+      doc.setFont("helvetica", "bold"); doc.setTextColor(21, 128, 61);
+      doc.text(ctrl.qStock != null ? String(ctrl.qStock) : "—", cx + 2, y); cx += ctrlCols[2].w;
+      doc.setTextColor(200, 38, 38);
+      doc.text(ctrl.qDestroy != null ? String(ctrl.qDestroy) : "—", cx + 2, y); cx += ctrlCols[3].w;
+      doc.setTextColor(180, 83, 9);
+      doc.text(ctrl.qManque != null ? String(ctrl.qManque) : "—", cx + 2, y); cx += ctrlCols[4].w;
+      const sc = solde > 0 ? [29, 78, 216] : solde < 0 ? [200, 38, 38] : [21, 128, 61];
+      doc.setTextColor(sc[0], sc[1], sc[2]); doc.text(String(solde), cx + 2, y);
+      doc.setDrawColor(230, 225, 215); doc.setLineWidth(0.15); doc.line(ml, y + rowH - 3.5, ml + cw, y + rowH - 3.5);
+      y += rowH;
+    });
+    const totS = (fiche.products || []).reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qStock) || 0), 0);
+    const totD = (fiche.products || []).reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qDestroy) || 0), 0);
+    const totM = (fiche.products || []).reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qManque) || 0), 0);
+    y += 3; doc.setFillColor(245, 243, 238); doc.rect(ml, y - 3, cw, 9, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(60, 60, 60); doc.text("TOTAL :", ml + 2, y + 2);
+    doc.setTextColor(21, 128, 61); doc.text("En stock : " + totS, ml + 30, y + 2);
+    doc.setTextColor(200, 38, 38); doc.text("Destruction : " + totD, ml + 75, y + 2);
+    doc.setTextColor(180, 83, 9); doc.text("Manquants : " + totM, ml + 120, y + 2);
+    y += 14;
+  }
+  const allC = [fiche.comment, fiche.commentPrep].filter(Boolean);
+  if (allC.length) {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(200, 168, 75);
+    doc.text("COMMENTAIRES", ml, y);
+    doc.setDrawColor(200, 168, 75); doc.setLineWidth(0.4); doc.line(ml, y + 1.5, ml + cw, y + 1.5); y += 7;
+    allC.forEach((c: string) => {
+      doc.setFillColor(247, 245, 242);
+      const lines = doc.splitTextToSize(c, cw - 8);
+      doc.rect(ml, y - 3, cw, lines.length * 5 + 4, "F");
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(50, 50, 50);
+      doc.text(lines, ml + 4, y + 1); y += lines.length * 5 + 8;
+    });
+  }
+  const visaY = Math.max(y + 8, 230);
+  if (visaY < 260) {
+    doc.setDrawColor(200, 168, 75); doc.setLineWidth(0.3);
+    doc.line(ml, visaY, ml + 55, visaY); doc.line(W - mr - 55, visaY, W - mr, visaY);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(140, 140, 140);
+    doc.text("Visa service qualite", ml, visaY + 5); doc.text("Visa du saisissant", W - mr - 55, visaY + 5);
+  }
+  doc.setFillColor(10, 10, 10); doc.rect(0, 282, W, 15, "F");
+  doc.setFillColor(200, 168, 75); doc.rect(0, 282, W, 0.8, "F");
+  doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(130, 130, 130);
+  doc.text("MOOREA COMMERCIAL FRUITS - 69 rue de Perpignan - 94632 Rungis cedex - SIREN 532788999", W / 2, 288, { align: "center" });
+  doc.setTextColor(200, 168, 75); doc.text("moorea-qualite.vercel.app", W / 2, 293, { align: "center" });
+  doc.save("fiche-retour-" + (fiche.numero || "export") + ".pdf");
+}
+// ─── RETOURS CLIENTS ───
+function genererMessageRetour(fiche: any, type: string): string {
+  const products = fiche.products || [];
+  const ligneArticle = (p: any) => {
+    const att = p.qteAttendue ? p.qteAttendue + " att." : "";
+    const rec = p.qteRecue ? p.qteRecue + " recu" : "";
+    const qt = [att, rec].filter(Boolean).join(" / ");
+    return "  - " + p.nom + (p.lot ? " (Lot " + p.lot + ")" : "") + (p.origine ? " - " + p.origine : "") + (qt ? " -- " + qt : "") + (p.motif ? " => " + p.motif : "");
+  };
+  if (type === "prevu_preparateur") {
+    const lignes = products.map(ligneArticle).join("\n");
+    return `📦 RETOUR CLIENT A RECEPTIONNER - ${fiche.numero}\n\nUn retour arrive, merci de le pointer a la reception.\n\n🏪 Client : ${fiche.client}\n📋 BL : ${fiche.bl}\n🚛 Transporteur : ${fiche.transporteur || "—"}\n📅 Date de livraison : ${fiche.dateLiv || fiche.date}\n👤 Saisi par : ${fiche.commercial || "—"}\n\nArticles attendus :\n${lignes}\n\n${fiche.comment ? "💬 " + fiche.comment + "\n\n" : ""}`;
+  }
+  if (type === "bilan_preparateur") {
+    const enStock = products.filter((p: any) => p.controle && parseInt(p.controle.qStock) > 0);
+    const aDetruire = products.filter((p: any) => p.controle && parseInt(p.controle.qDestroy) > 0);
+    const manquants = products.filter((p: any) => p.controle && parseInt(p.controle.qManque) > 0);
+    const nonTraites = products.filter((p: any) => !p.controle || (!p.controle.qStock && !p.controle.qDestroy && !p.controle.qManque));
+    const totS = products.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qStock) || 0), 0);
+    const totD = products.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qDestroy) || 0), 0);
+    const totM = products.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qManque) || 0), 0);
+    let detail = "";
+    if (enStock.length) detail += `\n\n✅ Remis en stock (${totS} colis) :\n` + enStock.map((p: any) => "  - " + p.nom + (p.origine ? " - " + p.origine : "") + " -- " + p.controle.qStock + " colis").join("\n");
+    if (aDetruire.length) detail += `\n\n🗑️ Detruits / non conformes (${totD} colis) :\n` + aDetruire.map((p: any) => "  - " + p.nom + (p.origine ? " - " + p.origine : "") + " -- " + p.controle.qDestroy + " colis" + (p.motif ? " (" + p.motif + ")" : "")).join("\n");
+    if (manquants.length) detail += `\n\n⚠️ Manquants (${totM} colis) :\n` + manquants.map((p: any) => "  - " + p.nom + " -- " + p.controle.qManque + " colis manquants").join("\n");
+    if (nonTraites.length) detail += `\n\n❓ Non traites :\n` + nonTraites.map((p: any) => "  - " + p.nom + (p.qteRecue ? " (" + p.qteRecue + " recus)" : "")).join("\n");
+    return `✅ RETOUR RECEPTIONNE ET POINTE - ${fiche.numero}\n\nLe retour a ete receptionne et controle.\n\n🏪 Client : ${fiche.client}\n📋 BL : ${fiche.bl}\n📅 Date : ${fiche.date}${detail}\n\n${fiche.commentPrep ? "💬 Note preparateur : " + fiche.commentPrep + "\n\n" : ""}`;
+  }
+  if (type === "entrepot_nondecl") {
+    const enStock = products.filter((p: any) => p.decisionArticle === "accepte");
+    const aDetruire = products.filter((p: any) => p.decisionArticle === "destruction");
+    const sansDecision = products.filter((p: any) => !p.decisionArticle);
+    let detail = "";
+    if (enStock.length) detail += "\n\n✅ A remettre en stock :\n" + enStock.map((p: any) => "  - " + p.nom + (p.qteRecue ? " x " + p.qteRecue : "") + (p.origine ? " (" + p.origine + ")" : "")).join("\n");
+    if (aDetruire.length) detail += "\n\n🗑️ A detruire :\n" + aDetruire.map((p: any) => "  - " + p.nom + (p.qteRecue ? " x " + p.qteRecue : "") + (p.motif ? " -- " + p.motif : "")).join("\n");
+    if (sansDecision.length) detail += "\n\n❓ Decision a prendre :\n" + sansDecision.map((p: any) => "  - " + p.nom + (p.qteRecue ? " x " + p.qteRecue : "")).join("\n");
+    return `⚠️ RETOUR NON DECLARE RECU - ${fiche.numero}\n\nNous avons recu un retour SANS declaration prealable.\n\n${fiche.clientConnu ? "🏪 Client : " + fiche.clientConnu : "🏪 Client : inconnu -- a identifier"}\n${fiche.transporteurConnu ? "🚛 Transporteur : " + fiche.transporteurConnu : "🚛 Transporteur : inconnu"}\n📅 Recu le : ${fiche.date}\n👤 Agent entrepot : ${fiche.agent}${detail}\n\n${fiche.comment ? "💬 " + fiche.comment + "\n\n" : ""}⚡ Action requise : rattacher a une commande\n`;
+  }
+  if (type === "rattache") {
+    const lignes = products.map(ligneArticle).join("\n");
+    return `🔗 RETOUR RATTACHE - ${fiche.numero}\n\nLa fiche entrepot a ete rattachee a une commande.\n\n🏪 Client : ${fiche.client}\n📋 BL : ${fiche.bl}\n📅 Date : ${fiche.date}\n\nArticles :\n${lignes}\n\n`;
+  }
+  return "";
+}
+
+const MOTIFS_RETOUR = ["Défaut sanitaire – moisissure", "Défaut sanitaire – pourriture", "Qualité insuffisante", "Erreur de préparation", "Colis abîmé", "Livraison incomplète", "Mauvais article", "Autre"];
+const ETATS_ENTREPOT = ["Bon état", "Emballage abîmé", "Produit endommagé", "Moisissure visible", "Pourriture partielle", "Autre"];
+
+async function getNextNumeroRetour(): Promise<string> {
+  try {
+    const cRef = fsDoc(fsDb, "compteurs", "retours");
+    const snap = await getDocs(collection(fsDb, "compteurs"));
+    const existing = snap.docs.find(d => d.id === "retours");
+    const n = (existing?.data()?.value || 0) + 1;
+    await updateDoc(cRef, { value: n }).catch(async () => { await addDoc(collection(fsDb, "compteurs"), { value: n }); });
+    return "RC-" + new Date().getFullYear() + "-" + String(n).padStart(3, "0");
+  } catch { return "RC-" + Date.now(); }
+}
+
+function RetoursClientsModule({ onClose }: { onClose: () => void }) {
+  const [retours, setRetours] = useState<any[]>([]);
+  const [retoursEntrepot, setRetoursEntrepot] = useState<any[]>([]);
+  const [corbeille, setCorbeille] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"fiches" | "rattacher" | "traitees" | "corbeille">("fiches");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [modalChoix, setModalChoix] = useState(false);
+  const [modalPrevu, setModalPrevu] = useState(false);
+  const [modalInattendu, setModalInattendu] = useState(false);
+  const [modalSuccess, setModalSuccess] = useState<{ fiche: any; source: string } | null>(null);
+  const [modalRattach, setModalRattach] = useState<any | null>(null);
+  const [modalEdit, setModalEdit] = useState<any | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: string; numero: string } | null>(null);
+  const [recapMessage, setRecapMessage] = useState("");
+  const [recapLabel, setRecapLabel] = useState("");
+
+  // Form retour prévu
+  const [fClient, setFClient] = useState("");
+  const [fBl, setFBl] = useState("");
+  const [fTransporteur, setFTransporteur] = useState("");
+  const [fDateLiv, setFDateLiv] = useState("");
+  const [fCommercial, setFCommercial] = useState("");
+  const [fComment, setFComment] = useState("");
+  const [fProducts, setFProducts] = useState<any[]>([{ nom: "", lot: "", origine: "", qteAttendue: "", qteRecue: "", motif: "" }]);
+  const [submittingPrevu, setSubmittingPrevu] = useState(false);
+
+  // Form entrepôt
+  const [eAgent, setEAgent] = useState("");
+  const [eDate, setEDate] = useState(new Date().toISOString().split("T")[0]);
+  const [eClient, setEClient] = useState("");
+  const [eTransporteur, setETransporteur] = useState("");
+  const [eComment, setEComment] = useState("");
+  const [eProducts, setEProducts] = useState<any[]>([{ nom: "", lot: "", origine: "", qteRecue: "", motif: "", decisionArticle: null }]);
+  const [submittingEntrepot, setSubmittingEntrepot] = useState(false);
+
+  // Form rattachement
+  const [rClient, setRClient] = useState("");
+  const [rBl, setRBl] = useState("");
+  const [rTransporteur, setRTransporteur] = useState("");
+  const [rDateLiv, setRDateLiv] = useState("");
+  const [rCommercial, setRCommercial] = useState("");
+  const [rComment, setRComment] = useState("");
+
+  // Form édition
+  const [editClient, setEditClient] = useState("");
+  const [editBl, setEditBl] = useState("");
+  const [editTransporteur, setEditTransporteur] = useState("");
+  const [editDateLiv, setEditDateLiv] = useState("");
+  const [editCommercial, setEditCommercial] = useState("");
+  const [editComment, setEditComment] = useState("");
+  const [editProducts, setEditProducts] = useState<any[]>([]);
+
+  // Contrôle par article (état local pour la fiche ouverte)
+  const [controleLocal, setControleLocal] = useState<Record<string, any>>({});
+  const [commentPrepLocal, setCommentPrepLocal] = useState<Record<string, string>>({});
+
+  useEffect(() => { fetchAll(); }, []);
+
+  async function fetchAll() {
+    setLoading(true);
+    try {
+      const [rSnap, eSnap, cSnap] = await Promise.all([
+        getDocs(collection(fsDb, "retours_clients")),
+        getDocs(collection(fsDb, "retours_entrepot")),
+        getDocs(collection(fsDb, "retours_corbeille")),
+      ]);
+      setRetours(rSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)));
+      setRetoursEntrepot(eSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)));
+      setCorbeille(cSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (b._deletedTs || 0) - (a._deletedTs || 0)));
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }
+
+  // Historique pour autocomplete
+  const histo = (() => {
+    const clientsMap = new Map<string, any>();
+    const blsMap = new Map<string, any>();
+    const produitsMap = new Map<string, any>();
+    const origines = new Set<string>();
+    [...retours, ...retoursEntrepot].forEach((r: any) => {
+      if (r.client) clientsMap.set(r.client, { client: r.client, transporteur: r.transporteur || "", commercial: r.commercial || "" });
+      if (r.bl) blsMap.set(String(r.bl), { bl: String(r.bl), client: r.client || "", dateLiv: r.dateLiv || "" });
+      (r.products || []).forEach((p: any) => {
+        if (p.nom) { const key = p.nom.toLowerCase().trim(); if (!produitsMap.has(key)) produitsMap.set(key, { nom: p.nom, origine: p.origine || "" }); }
+        if (p.origine?.trim()) origines.add(p.origine.trim());
+      });
+    });
+    return { clients: [...clientsMap.values()], bls: [...blsMap.values()], produits: [...produitsMap.values()], origines: [...origines].sort() };
+  })();
+
+  function emptyProductRow() { return { nom: "", lot: "", origine: "", qteAttendue: "", qteRecue: "", motif: "" }; }
+  function emptyEntrepotRow() { return { nom: "", lot: "", origine: "", qteRecue: "", motif: "", decisionArticle: null }; }
+
+  function resetFormPrevu() {
+    setFClient(""); setFBl(""); setFTransporteur(""); setFDateLiv(""); setFCommercial(""); setFComment("");
+    setFProducts([emptyProductRow()]);
+  }
+  function resetFormEntrepot() {
+    setEAgent(""); setEClient(""); setETransporteur(""); setEComment("");
+    setEDate(new Date().toISOString().split("T")[0]);
+    setEProducts([emptyEntrepotRow()]);
+  }
+
+  async function submitRetourPrevu() {
+    const products = fProducts.filter(p => p.nom.trim());
+    if (!fClient.trim() || !fBl.trim() || !products.length) { alert("Client, N° BL et au moins un produit requis."); return; }
+    setSubmittingPrevu(true);
+    const numero = await getNextNumeroRetour();
+    const fiche = {
+      numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(),
+      client: fClient.trim(), bl: fBl.trim(), transporteur: fTransporteur.trim(),
+      dateLiv: fDateLiv, commercial: fCommercial.trim(), comment: fComment.trim(), products,
+      hasManque: products.some(p => p.qteAttendue && p.qteRecue && parseInt(p.qteRecue) < parseInt(p.qteAttendue)),
+      statut: "nouveau", commentPrep: "", source: "commercial",
+    };
+    try {
+      const docRef = await addDoc(collection(fsDb, "retours_clients"), fiche);
+      await fetchAll();
+      resetFormPrevu(); setModalPrevu(false);
+      setModalSuccess({ fiche: { ...fiche, id: docRef.id }, source: "commercial" });
+    } catch (e: any) { alert("Erreur : " + e.message); }
+    setSubmittingPrevu(false);
+  }
+
+  async function submitEntrepot() {
+    const products = eProducts.filter(p => p.nom.trim());
+    if (!eAgent.trim() || !products.length) { alert("Remplis : reçu par et au moins un article."); return; }
+    setSubmittingEntrepot(true);
+    const numero = await getNextNumeroRetour();
+    const fiche = {
+      numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(),
+      agent: eAgent.trim(), products, comment: eComment.trim(), dateLiv: eDate,
+      clientConnu: eClient.trim() || null, transporteurConnu: eTransporteur.trim() || null,
+      rattache: false, source: "entrepot",
+    };
+    try {
+      const docRef = await addDoc(collection(fsDb, "retours_entrepot"), fiche);
+      await fetchAll();
+      resetFormEntrepot(); setModalInattendu(false);
+      setModalSuccess({ fiche: { ...fiche, id: docRef.id, client: "(non rattaché)", bl: "—" }, source: "entrepot" });
+    } catch (e: any) { alert("Erreur : " + e.message); }
+    setSubmittingEntrepot(false);
+  }
+
+  function ouvrirRattachement(fiche: any) {
+    setModalRattach(fiche);
+    setRClient(fiche.clientConnu || "");
+    setRTransporteur(fiche.transporteurConnu || "");
+    setRBl(""); setRCommercial("");
+    setRComment(fiche.comment || "");
+    setRDateLiv(fiche.dateLiv || fiche.date || "");
+  }
+
+  async function confirmerRattachement() {
+    if (!rClient.trim() || !rBl.trim()) { alert("Client et N° BL requis."); return; }
+    if (!modalRattach) return;
+    const numero = await getNextNumeroRetour();
+    const fiche = {
+      numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(),
+      client: rClient.trim(), bl: rBl.trim(), transporteur: rTransporteur.trim(),
+      dateLiv: rDateLiv, commercial: rCommercial.trim(), comment: rComment.trim() || modalRattach.comment || "",
+      products: modalRattach.products || [], hasManque: false, statut: "nouveau", commentPrep: "",
+      source: "entrepot_rattache", entrepotId: modalRattach.id,
+    };
+    try {
+      const docRef = await addDoc(collection(fsDb, "retours_clients"), fiche);
+      await updateDoc(fsDoc(fsDb, "retours_entrepot", modalRattach.id), { rattache: true, clientRattache: rClient.trim(), blRattache: rBl.trim() });
+      await fetchAll();
+      setModalRattach(null);
+      setModalSuccess({ fiche: { ...fiche, id: docRef.id }, source: "commercial" });
+    } catch (e: any) { alert("Erreur : " + e.message); }
+  }
+
+  function ouvrirModification(fiche: any) {
+    setModalEdit(fiche);
+    setEditClient(fiche.client || ""); setEditBl(fiche.bl || "");
+    setEditTransporteur(fiche.transporteur || ""); setEditDateLiv(fiche.dateLiv || "");
+    setEditCommercial(fiche.commercial || ""); setEditComment(fiche.comment || "");
+    setEditProducts((fiche.products || []).map((p: any) => ({ ...p })));
+  }
+
+  async function sauvegarderModif() {
+    if (!modalEdit || !editClient.trim() || !editBl.trim()) { alert("Client et N° BL requis."); return; }
+    const products = editProducts.filter(p => p.nom.trim());
+    if (!products.length) { alert("Au moins un produit requis."); return; }
+    const hasManque = products.some(p => p.qteAttendue && p.qteRecue && parseInt(p.qteRecue) < parseInt(p.qteAttendue));
+    try {
+      await updateDoc(fsDoc(fsDb, "retours_clients", modalEdit.id), {
+        client: editClient.trim(), bl: editBl.trim(), transporteur: editTransporteur.trim(),
+        dateLiv: editDateLiv, commercial: editCommercial.trim(), comment: editComment.trim(), products, hasManque,
+      });
+      await fetchAll();
+      setModalEdit(null);
+    } catch (e: any) { alert("Erreur : " + e.message); }
+  }
+
+  function demanderSuppression(type: "retour" | "entrepot", id: string, numero: string) {
+    setDeleteTarget({ type, id, numero });
+  }
+
+  async function confirmerSuppression() {
+    if (!deleteTarget) return;
+    const collName = deleteTarget.type === "retour" ? "retours_clients" : "retours_entrepot";
+    try {
+      const snap = await getDocs(collection(fsDb, collName));
+      const docData = snap.docs.find(d => d.id === deleteTarget.id)?.data();
+      if (docData) {
+        await addDoc(collection(fsDb, "retours_corbeille"), {
+          ...docData, _originalCollection: collName, _originalId: deleteTarget.id,
+          _deletedAt: new Date().toLocaleDateString("fr-FR"), _deletedTs: Date.now(),
+        });
+      }
+      await deleteDoc(fsDoc(fsDb, collName, deleteTarget.id));
+      await fetchAll();
+      setDeleteTarget(null);
+    } catch (e: any) { alert("Erreur : " + e.message); }
+  }
+
+  async function restaurerFiche(item: any) {
+    const { _originalCollection, _originalId, _deletedAt, _deletedTs, id, ...data } = item;
+    try {
+      await addDoc(collection(fsDb, _originalCollection || "retours_clients"), data);
+      await deleteDoc(fsDoc(fsDb, "retours_corbeille", id));
+      await fetchAll();
+    } catch (e: any) { alert("Erreur : " + e.message); }
+  }
+
+  async function supprimerDefinitivement(id: string) {
+    if (!confirm("Supprimer définitivement ? Action irréversible.")) return;
+    try { await deleteDoc(fsDoc(fsDb, "retours_corbeille", id)); await fetchAll(); } catch (e: any) { alert("Erreur : " + e.message); }
+  }
+
+  async function viderCorbeille() {
+    if (!corbeille.length) return;
+    if (!confirm(`Vider toute la corbeille ? (${corbeille.length} fiche${corbeille.length > 1 ? "s" : ""}) — Irréversible !`)) return;
+    try { await Promise.all(corbeille.map(c => deleteDoc(fsDoc(fsDb, "retours_corbeille", c.id)))); await fetchAll(); } catch (e: any) { alert("Erreur : " + e.message); }
+  }
+
+  function getControle(fid: string, pi: number) { return controleLocal[`${fid}_${pi}`] || {}; }
+  function setControle(fid: string, pi: number, field: string, val: string) {
+    const key = `${fid}_${pi}`;
+    setControleLocal(prev => ({ ...prev, [key]: { ...prev[key], [field]: val === "" ? null : parseInt(val) || 0 } }));
+  }
+
+  async function validerControle(fiche: any) {
+    const products = (fiche.products || []).map((p: any, pi: number) => {
+      const ctrl = getControle(fiche.id, pi);
+      const qStock = ctrl.qStock ?? (p.controle?.qStock || 0);
+      const qDestroy = ctrl.qDestroy ?? (p.controle?.qDestroy || 0);
+      const qManque = ctrl.qManque ?? (p.controle?.qManque || 0);
+      const recu = parseInt(p.qteRecue) || 0;
+      const solde = Math.max(0, recu - qStock - qDestroy);
+      return { ...p, controle: { qStock, qDestroy, qManque, solde } };
+    });
+    try {
+      await updateDoc(fsDoc(fsDb, "retours_clients", fiche.id), { products, statut: "traite", commentPrep: commentPrepLocal[fiche.id] || fiche.commentPrep || "" });
+      await fetchAll();
+      setOpenId(null);
+      const updated = { ...fiche, products, statut: "traite" };
+      setModalSuccess({ fiche: updated, source: "valide" });
+    } catch (e: any) { alert("Erreur : " + e.message); }
+  }
+
+  async function repointerFiche(fiche: any) {
+    try {
+      await updateDoc(fsDoc(fsDb, "retours_clients", fiche.id), { statut: "en_attente" });
+      await fetchAll();
+      setActiveTab("fiches"); setOpenId(fiche.id);
+    } catch (e: any) { alert("Erreur : " + e.message); }
+  }
+
+  function rouvrirPartage(fiche: any, type: "commercial" | "entrepot") { setModalSuccess({ fiche, source: type }); }
+
+  // Stats
+  const total = retours.length;
+  const traites = retours.filter(r => r.statut === "traite").length;
+  const nonTraites = retours.filter(r => r.statut !== "traite").length;
+  const nonRattaches = retoursEntrepot.filter(r => !r.rattache).length;
+
+  const btn = (bg: string, color = "#fff"): React.CSSProperties => ({ background: bg, color, border: "none", borderRadius: 10, padding: "10px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 });
+  const inputStyle: React.CSSProperties = { padding: "10px 13px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", color: "#1a2e1a", fontSize: 13, outline: "none", width: "100%" };
+  const labelStyle: React.CSSProperties = { fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", display: "block", marginBottom: 5 };
+
+  function ProductRowEditor({ products, setProducts, mode }: { products: any[]; setProducts: (p: any[]) => void; mode: "prevu" | "entrepot" }) {
+    return (
+      <div>
+        {products.map((p, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: mode === "prevu" ? "2fr 1fr 1fr 1.4fr 2fr 30px" : "2fr 1fr 1fr 0.8fr 1.4fr 1.6fr 30px", gap: 6, marginBottom: 6, alignItems: "center" }}>
+            <input style={inputStyle} placeholder={mode === "prevu" ? "Produit" : "Description"} value={p.nom}
+              onChange={e => setProducts(products.map((pp, ii) => ii === i ? { ...pp, nom: e.target.value } : pp))} />
+            <input style={inputStyle} placeholder="Lot" type="number" value={p.lot}
+              onChange={e => setProducts(products.map((pp, ii) => ii === i ? { ...pp, lot: e.target.value } : pp))} />
+            <input style={inputStyle} placeholder="Origine" value={p.origine}
+              onChange={e => setProducts(products.map((pp, ii) => ii === i ? { ...pp, origine: e.target.value } : pp))} />
+            {mode === "prevu" ? (
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input style={{ ...inputStyle, width: 55, padding: "8px 6px", textAlign: "center" }} type="number" placeholder="Att." value={p.qteAttendue}
+                  onChange={e => setProducts(products.map((pp, ii) => ii === i ? { ...pp, qteAttendue: e.target.value } : pp))} />
+                <span style={{ color: "#bbb", fontSize: 11 }}>/</span>
+                <input style={{ ...inputStyle, width: 55, padding: "8px 6px", textAlign: "center" }} type="number" placeholder="Reçu" value={p.qteRecue}
+                  onChange={e => setProducts(products.map((pp, ii) => ii === i ? { ...pp, qteRecue: e.target.value } : pp))} />
+              </div>
+            ) : (
+              <input style={{ ...inputStyle, textAlign: "center" }} type="number" placeholder="Qté" value={p.qteRecue}
+                onChange={e => setProducts(products.map((pp, ii) => ii === i ? { ...pp, qteRecue: e.target.value } : pp))} />
+            )}
+            <select style={inputStyle} value={p.motif} onChange={e => setProducts(products.map((pp, ii) => ii === i ? { ...pp, motif: e.target.value } : pp))}>
+              <option value="">-- {mode === "prevu" ? "Motif" : "État"} --</option>
+              {(mode === "prevu" ? MOTIFS_RETOUR : ETATS_ENTREPOT).map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            {mode === "entrepot" && (
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={() => setProducts(products.map((pp, ii) => ii === i ? { ...pp, decisionArticle: pp.decisionArticle === "accepte" ? null : "accepte" } : pp))}
+                  style={{ padding: "6px 8px", borderRadius: 6, border: `1.5px solid ${p.decisionArticle === "accepte" ? "#15803d" : "#bbf7d0"}`, background: p.decisionArticle === "accepte" ? "#dcfce7" : "transparent", color: "#15803d", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✓ Stock</button>
+                <button onClick={() => setProducts(products.map((pp, ii) => ii === i ? { ...pp, decisionArticle: pp.decisionArticle === "destruction" ? null : "destruction" } : pp))}
+                  style={{ padding: "6px 8px", borderRadius: 6, border: `1.5px solid ${p.decisionArticle === "destruction" ? "#dc2626" : "#fecaca"}`, background: p.decisionArticle === "destruction" ? "#fee2e2" : "transparent", color: "#dc2626", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✗ Destr.</button>
+              </div>
+            )}
+            <button onClick={() => products.length > 1 && setProducts(products.filter((_, ii) => ii !== i))}
+              style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", padding: 4 }}>🗑</button>
+          </div>
+        ))}
+        <button onClick={() => setProducts([...products, mode === "prevu" ? emptyProductRow() : emptyEntrepotRow()])}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", marginTop: 6 }}>
+          + Ajouter {mode === "prevu" ? "un produit" : "un article"}
+        </button>
+      </div>
+    );
+  }
+
+  const topBar = (titre: string, right: React.ReactNode) => (
+    <div style={{ background: "#0a0a0a", borderBottom: "3px solid #c8a84b", position: "sticky", top: 0, zIndex: 200, paddingTop: "env(safe-area-inset-top, 0px)" }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 8, color: "#fff", padding: "6px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>← Retour</button>
+          <span style={{ fontWeight: 800, fontSize: 15, color: "#fff" }}>{titre}</span>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>{right}</div>
+      </div>
+    </div>
+  );
+
+  function ProductTags({ products }: { products: any[] }) {
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+        {products.map((p, i) => {
+          const dec = p.decisionArticle;
+          const style = dec === "accepte" ? { background: "#dcfce7", color: "#15803d", borderColor: "#bbf7d0" } : dec === "destruction" ? { background: "#fee2e2", color: "#dc2626", borderColor: "#fecaca" } : {};
+          return <span key={i} style={{ background: "#f5f3ee", border: "1px solid #e8e0d0", borderRadius: 20, padding: "3px 11px", fontSize: 12, color: "#6b7280", ...style }}>
+            {p.nom}{p.qteRecue ? ` × ${p.qteRecue}` : ""}{p.origine ? ` · ${p.origine}` : ""}{dec ? ` ${dec === "accepte" ? "✓" : "✗"}` : ""}
+          </span>;
+        })}
+      </div>
+    );
+  }
+
+  function FicheCardEntrepot({ r }: { r: any }) {
+    const prods = r.products || [];
+    const isRattache = r.rattache;
+    const nbAccept = prods.filter((p: any) => p.decisionArticle === "accepte").length;
+    const nbDestroy = prods.filter((p: any) => p.decisionArticle === "destruction").length;
+    return (
+      <div style={{ background: "#fff", border: `1.5px solid ${isRattache ? "#bbf7d0" : "#fde68a"}`, borderRadius: 16, marginBottom: 12, overflow: "hidden" }}>
+        <div style={{ background: isRattache ? "#f0fdf4" : "#fffbf0", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", borderBottom: `1px solid ${isRattache ? "#bbf7d0" : "#fde68a"}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#c8a84b", background: "rgba(200,168,75,.12)", border: "1px solid rgba(200,168,75,.3)", borderRadius: 6, padding: "2px 8px" }}>{r.numero}</span>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>{r.clientConnu || "Client non identifié"}</span>
+            {r.transporteurConnu && <span style={{ fontSize: 12, color: "#6b7280" }}>🚛 {r.transporteurConnu}</span>}
+          </div>
+          <span style={{ padding: "4px 11px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: isRattache ? "#dcfce7" : "#fef3c7", color: isRattache ? "#15803d" : "#b45309", border: `1px solid ${isRattache ? "#bbf7d0" : "#fde68a"}` }}>
+            {isRattache ? "✓ Rattaché" : "⏳ En attente"}
+          </span>
+        </div>
+        <div style={{ padding: "12px 16px" }}>
+          <div style={{ display: "flex", gap: 14, fontSize: 12, color: "#6b7280", flexWrap: "wrap", marginBottom: 12 }}>
+            <span>📅 {r.date}</span><span>👤 {r.agent}</span><span>📦 {prods.length} article{prods.length > 1 ? "s" : ""}</span>
+            {nbAccept > 0 && <span style={{ color: "#15803d", fontWeight: 600 }}>✓ {nbAccept} en stock</span>}
+            {nbDestroy > 0 && <span style={{ color: "#dc2626", fontWeight: 600 }}>✗ {nbDestroy} détruits</span>}
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 10 }}>
+            <thead><tr style={{ borderBottom: "1.5px solid #e8e0d0" }}>
+              <th style={{ padding: "5px 8px", textAlign: "left", color: "#9ca3af", fontSize: 10 }}>Article</th>
+              <th style={{ padding: "5px 8px", textAlign: "left", color: "#9ca3af", fontSize: 10 }}>Origine</th>
+              <th style={{ padding: "5px 8px", textAlign: "center", color: "#9ca3af", fontSize: 10 }}>Qté</th>
+              <th style={{ padding: "5px 8px", textAlign: "left", color: "#9ca3af", fontSize: 10 }}>État</th>
+              <th style={{ padding: "5px 8px", textAlign: "center", color: "#9ca3af", fontSize: 10 }}>Décision</th>
+            </tr></thead>
+            <tbody>
+              {prods.map((p: any, i: number) => (
+                <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : "#fafaf8" }}>
+                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>{p.nom}{p.lot && <span style={{ fontWeight: 400, color: "#9ca3af", fontSize: 11, marginLeft: 6 }}>Lot {p.lot}</span>}</td>
+                  <td style={{ padding: "6px 8px", color: "#6b7280" }}>{p.origine || "—"}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 700 }}>{p.qteRecue || "—"}</td>
+                  <td style={{ padding: "6px 8px" }}><span style={{ background: "#fef3c7", color: "#b45309", borderRadius: 20, padding: "2px 8px", fontSize: 11 }}>{p.motif || "—"}</span></td>
+                  <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                    {p.decisionArticle === "accepte" ? <span style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>✓ En stock</span>
+                      : p.decisionArticle === "destruction" ? <span style={{ background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>✗ Destruction</span>
+                      : <span style={{ color: "#bbb", fontSize: 11 }}>—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {r.comment && <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 10px", background: "#f5f3ee", borderRadius: 8, marginBottom: 10 }}>💬 {r.comment}</div>}
+          {isRattache && <div style={{ fontSize: 12, color: "#15803d", display: "flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "8px 10px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
+            🔗 Rattaché à : <strong>{r.clientRattache}</strong> — BL {r.blRattache}
+          </div>}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {!isRattache && <button style={btn("#fff8e1", "#b45309")} onClick={() => ouvrirRattachement(r)}>🔗 Rattacher</button>}
+            <button style={{ ...btn("#fee2e2", "#dc2626"), padding: "8px 14px" }} onClick={() => genererPDFRetour({ ...r, client: r.clientRattache || r.clientConnu || "(non rattaché)", bl: r.blRattache || "—" })}>📄 PDF</button>
+            <button style={{ ...btn("#f5f3ee", "#374151"), padding: "8px 14px" }} onClick={() => rouvrirPartage(r, "entrepot")}>📤 Partager</button>
+            <button style={{ ...btn("#fee2e2", "#dc2626"), padding: "8px 10px" }} onClick={() => demanderSuppression("entrepot", r.id, r.numero)}>🗑</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function FicheCardCommercial({ r }: { r: any }) {
+    const isOpen = openId === r.id;
+    const sLabel: any = { nouveau: "Nouveau", en_attente: "En attente", traite: "Traité" };
+    const sBadge: any = { nouveau: { bg: "#f3f4f6", color: "#6b7280", border: "#e5e7eb" }, en_attente: { bg: "#fef3c7", color: "#b45309", border: "#fde68a" }, traite: { bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" } };
+    const badgeStyle = sBadge[r.statut] || sBadge.nouveau;
+    return (
+      <div style={{ background: "#fff", border: `1.5px solid ${r.source === "entrepot_rattache" ? "#fde68a" : "#e8e0d0"}`, borderRadius: 16, padding: "1.1rem 1.4rem", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#c8a84b", background: "rgba(200,168,75,.12)", border: "1px solid rgba(200,168,75,.3)", borderRadius: 6, padding: "2px 8px" }}>{r.numero}</span>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>{r.client}</span>
+            <span style={{ color: "#6b7280", fontSize: 12 }}>BL {r.bl}</span>
+            {r.source === "entrepot_rattache" && <span style={{ background: "#f3e8ff", color: "#7c3aed", border: "1px solid #e9d5ff", borderRadius: 20, padding: "3px 11px", fontSize: 11, fontWeight: 600 }}>🏭 Entrepôt</span>}
+            {r.hasManque && <span style={{ background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a", borderRadius: 20, padding: "3px 11px", fontSize: 11, fontWeight: 600 }}>⚠ Manque</span>}
+          </div>
+          <span style={{ padding: "4px 11px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: badgeStyle.bg, color: badgeStyle.color, border: `1px solid ${badgeStyle.border}` }}>{sLabel[r.statut] || r.statut}</span>
+        </div>
+        <div style={{ display: "flex", gap: 14, fontSize: 12, color: "#6b7280", flexWrap: "wrap", marginTop: 2 }}>
+          <span>📅 {r.date}</span><span>🚛 {r.transporteur || "—"}</span><span>📦 {(r.products || []).length} article{(r.products || []).length > 1 ? "s" : ""}</span>
+          {r.commercial && <span>👤 {r.commercial}</span>}
+        </div>
+        <ProductTags products={r.products || []} />
+        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button style={btn("#c8a84b", "#0a0a0a")} onClick={() => setOpenId(isOpen ? null : r.id)}>📋 {isOpen ? "Fermer" : "Pointer le retour"}</button>
+          <button style={{ ...btn("#f5f3ee", "#374151"), padding: "8px 14px", fontSize: 12 }} onClick={() => ouvrirModification(r)}>✏️ Modifier</button>
+          <button style={{ ...btn("#fee2e2", "#dc2626"), padding: "8px 12px", fontSize: 12 }} onClick={() => genererPDFRetour(r)}>📄</button>
+          <button style={{ ...btn("#f5f3ee", "#374151"), padding: "8px 12px", fontSize: 12 }} onClick={() => rouvrirPartage(r, "commercial")}>📤</button>
+          <button style={{ ...btn("#fee2e2", "#dc2626"), padding: "8px 12px", fontSize: 12 }} onClick={() => demanderSuppression("retour", r.id, r.numero)}>🗑</button>
+        </div>
+        {isOpen && (
+          <div style={{ marginTop: 16, borderTop: "1.5px solid #e8e0d0", paddingTop: 16 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "#c8a84b", textTransform: "uppercase", letterSpacing: ".8px", marginBottom: 10 }}>📋 Saisir les quantités reçues</p>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ background: "#fafaf8", borderBottom: "1.5px solid #e8e0d0" }}>
+                <th style={{ padding: "9px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af" }}>Article</th>
+                <th style={{ padding: "9px 10px", textAlign: "center", fontSize: 11, color: "#9ca3af" }}>Attendu</th>
+                <th style={{ padding: "9px 10px", textAlign: "center", fontSize: 11, color: "#15803d" }}>✓ Stock</th>
+                <th style={{ padding: "9px 10px", textAlign: "center", fontSize: 11, color: "#dc2626" }}>✗ Destr.</th>
+                <th style={{ padding: "9px 10px", textAlign: "center", fontSize: 11, color: "#b45309" }}>Manquant</th>
+                <th style={{ padding: "9px 10px", textAlign: "center", fontSize: 11, color: "#1d4ed8" }}>Solde</th>
+              </tr></thead>
+              <tbody>
+                {(r.products || []).map((p: any, pi: number) => {
+                  const ctrl = getControle(r.id, pi);
+                  const qStock = ctrl.qStock ?? p.controle?.qStock ?? "";
+                  const qDestroy = ctrl.qDestroy ?? p.controle?.qDestroy ?? "";
+                  const qManque = ctrl.qManque ?? p.controle?.qManque ?? "";
+                  const recu = parseInt(p.qteRecue) || 0;
+                  const solde = recu - (parseInt(qStock) || 0) - (parseInt(qDestroy) || 0);
+                  const soldeColor = solde > 0 ? "#1d4ed8" : solde < 0 ? "#dc2626" : "#15803d";
+                  const soldeBg = solde > 0 ? "#dbeafe" : solde < 0 ? "#fee2e2" : "#dcfce7";
+                  return (
+                    <tr key={pi} style={{ borderBottom: "1px solid #f5f3ee" }}>
+                      <td style={{ padding: "9px 10px" }}>
+                        <div style={{ fontWeight: 600 }}>{p.nom}</div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>{[p.lot ? "Lot " + p.lot : "", p.origine, p.motif].filter(Boolean).join(" · ")}</div>
+                      </td>
+                      <td style={{ padding: "9px 10px", textAlign: "center", fontSize: 14, fontWeight: 700, color: "#9ca3af" }}>{p.qteAttendue || "—"}</td>
+                      <td style={{ padding: "9px 10px", textAlign: "center" }}>
+                        <input type="number" min="0" value={qStock} placeholder="0"
+                          onChange={e => setControle(r.id, pi, "qStock", e.target.value)}
+                          style={{ width: 60, height: 36, textAlign: "center", border: "2px solid #bbf7d0", borderRadius: 8, background: "#f0fdf4", color: "#15803d", fontWeight: 700, fontSize: 14, outline: "none" }} />
+                      </td>
+                      <td style={{ padding: "9px 10px", textAlign: "center" }}>
+                        <input type="number" min="0" value={qDestroy} placeholder="0"
+                          onChange={e => setControle(r.id, pi, "qDestroy", e.target.value)}
+                          style={{ width: 60, height: 36, textAlign: "center", border: "2px solid #fecaca", borderRadius: 8, background: "#fff5f5", color: "#dc2626", fontWeight: 700, fontSize: 14, outline: "none" }} />
+                      </td>
+                      <td style={{ padding: "9px 10px", textAlign: "center" }}>
+                        <input type="number" min="0" value={qManque} placeholder="0"
+                          onChange={e => setControle(r.id, pi, "qManque", e.target.value)}
+                          style={{ width: 56, height: 36, textAlign: "center", border: "2px solid #fde68a", borderRadius: 8, background: "#fffbf0", color: "#b45309", fontWeight: 700, fontSize: 14, outline: "none" }} />
+                      </td>
+                      <td style={{ padding: "9px 10px", textAlign: "center" }}>
+                        <span style={{ display: "inline-block", minWidth: 36, padding: "5px 8px", borderRadius: 8, fontSize: 13, fontWeight: 700, background: soldeBg, color: soldeColor }}>{solde}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div style={{ marginTop: 10, padding: "10px 14px", background: "#f5f3ee", borderRadius: 10, fontSize: 13, color: "#6b7280" }}>
+              {(() => {
+                const prods = r.products || [];
+                const totS = prods.reduce((s: number, p: any, pi: number) => s + (parseInt(getControle(r.id, pi).qStock ?? p.controle?.qStock) || 0), 0);
+                const totD = prods.reduce((s: number, p: any, pi: number) => s + (parseInt(getControle(r.id, pi).qDestroy ?? p.controle?.qDestroy) || 0), 0);
+                const totM = prods.reduce((s: number, p: any, pi: number) => s + (parseInt(getControle(r.id, pi).qManque ?? p.controle?.qManque) || 0), 0);
+                const parts = [];
+                if (totS > 0) parts.push(<span key="s" style={{ color: "#15803d", fontWeight: 600 }}>✓ {totS} en stock</span>);
+                if (totD > 0) parts.push(<span key="d" style={{ color: "#dc2626", fontWeight: 600, marginLeft: 10 }}>✗ {totD} détruits</span>);
+                if (totM > 0) parts.push(<span key="m" style={{ color: "#b45309", fontWeight: 600, marginLeft: 10 }}>⚠ {totM} manquants</span>);
+                return parts.length ? <>Récap : {parts}</> : "Saisir les quantités ci-dessus.";
+              })()}
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <label style={labelStyle}>Commentaire</label>
+              <textarea defaultValue={r.commentPrep || ""} onChange={e => setCommentPrepLocal(prev => ({ ...prev, [r.id]: e.target.value }))}
+                placeholder="Observations..." style={{ ...inputStyle, minHeight: 55, resize: "vertical" }} />
+            </div>
+            <button onClick={() => validerControle(r)} style={{ width: "100%", marginTop: 14, padding: 14, background: "#c8a84b", color: "#0a0a0a", border: "none", borderRadius: 12, cursor: "pointer", fontSize: 15, fontWeight: 700 }}>✓ Valider le retour</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function FicheCardTraitee({ r }: { r: any }) {
+    const prods = r.products || [];
+    const totS = prods.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qStock) || 0), 0);
+    const totD = prods.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qDestroy) || 0), 0);
+    const totM = prods.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qManque) || 0), 0);
+    return (
+      <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 16, padding: "1.1rem 1.4rem", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#c8a84b", background: "rgba(200,168,75,.12)", border: "1px solid rgba(200,168,75,.3)", borderRadius: 6, padding: "2px 8px" }}>{r.numero}</span>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>{r.client}</span>
+            <span style={{ color: "#6b7280", fontSize: 12 }}>BL {r.bl}</span>
+            <span style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 20, padding: "3px 11px", fontSize: 11, fontWeight: 600 }}>✓ Traité</span>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button style={{ ...btn("#dbeafe", "#1d4ed8"), padding: "7px 14px", fontSize: 12 }} onClick={() => repointerFiche(r)}>📋 Repointer</button>
+            <button style={{ ...btn("rgba(200,168,75,.1)", "#c8a84b"), padding: "7px 12px", fontSize: 12 }} onClick={() => ouvrirModification(r)}>✏️</button>
+            <button style={{ ...btn("#fee2e2", "#dc2626"), padding: "7px 9px", fontSize: 12 }} onClick={() => genererPDFRetour(r)}>📄</button>
+            <button style={{ ...btn("#fee2e2", "#dc2626"), padding: "7px 9px", fontSize: 11 }} onClick={() => demanderSuppression("retour", r.id, r.numero)}>🗑</button>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 14, fontSize: 12, color: "#6b7280", flexWrap: "wrap" }}>
+          <span>📅 {r.date}</span><span>🚛 {r.transporteur || "—"}</span><span>📦 {prods.length} article{prods.length > 1 ? "s" : ""}</span>
+          {r.commercial && <span>👤 {r.commercial}</span>}
+        </div>
+        <ProductTags products={prods} />
+        {(totS > 0 || totD > 0 || totM > 0) && (
+          <div style={{ marginTop: 8, fontSize: 12, padding: "6px 10px", background: "rgba(21,128,61,.06)", borderRadius: 8 }}>
+            {totS > 0 && <span style={{ color: "#15803d", fontWeight: 600 }}>✓ {totS} en stock</span>}
+            {totD > 0 && <span style={{ color: "#dc2626", fontWeight: 600, marginLeft: 10 }}>✗ {totD} détruits</span>}
+            {totM > 0 && <span style={{ color: "#b45309", fontWeight: 600, marginLeft: 10 }}>⚠ {totM} manquants</span>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      {topBar("📦 Retours clients", null)}
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "16px 12px 80px" }}>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#c8a84b", textTransform: "uppercase", letterSpacing: ".8px" }}>Déclarations</p>
+          <button style={btn("#c8a84b", "#0a0a0a")} onClick={() => setModalChoix(true)}>+ Saisir un retour</button>
+        </div>
+
+        {/* Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 18 }}>
+          {[["Fiches totales", total, "#1a2e1a"], ["Traitées", traites, "#1a2e1a"], ["À valider", nonTraites, "#1a2e1a"], ["À rattacher", nonRattaches, "#c8a84b"]].map(([l, n, c]) => (
+            <div key={l as string} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: "14px", textAlign: "center" }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: c as string }}>{n}</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3, textTransform: "uppercase" }}>{l}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Onglets */}
+        <div style={{ display: "flex", gap: 4, background: "#0a0a0a", borderRadius: 12, padding: 5, marginBottom: 18, overflowX: "auto" }}>
+          {[
+            ["fiches", "⏱ En attente de réception", nonTraites],
+            ["rattacher", "🔗 À rattacher", nonRattaches],
+            ["traitees", "✓ Retour traité", traites],
+            ["corbeille", "🗑 Corbeille", corbeille.length],
+          ].map(([key, label, count]) => (
+            <button key={key as string} onClick={() => setActiveTab(key as any)}
+              style={{ padding: "9px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: activeTab === key ? 700 : 500, color: activeTab === key ? "#0a0a0a" : "rgba(255,255,255,.6)", background: activeTab === key ? "#c8a84b" : "transparent", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+              {label} {(count as number) > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: activeTab === key ? "#0a0a0a" : "#c8a84b", color: activeTab === key ? "#c8a84b" : "#0a0a0a" }}>{count}</span>}
+            </button>
+          ))}
+        </div>
+
+        {loading ? <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>Chargement...</div> : (
+          <>
+            {activeTab === "fiches" && (
+              retours.filter(r => r.statut !== "traite").length === 0
+                ? <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 14, border: "1.5px solid #e8e0d0" }}><p style={{ fontSize: 40 }}>📭</p><p style={{ color: "#9ca3af" }}>Aucune fiche à afficher</p></div>
+                : retours.filter(r => r.statut !== "traite").map(r => <FicheCardCommercial key={r.id} r={r} />)
+            )}
+            {activeTab === "rattacher" && (
+              retoursEntrepot.filter(r => !r.rattache).length === 0
+                ? <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 14, border: "1.5px solid #e8e0d0" }}><p style={{ fontSize: 40 }}>✓</p><p style={{ color: "#9ca3af" }}>Rien à rattacher</p></div>
+                : retoursEntrepot.filter(r => !r.rattache).map(r => <FicheCardEntrepot key={r.id} r={r} />)
+            )}
+            {activeTab === "traitees" && (
+              retours.filter(r => r.statut === "traite").length === 0
+                ? <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 14, border: "1.5px solid #e8e0d0" }}><p style={{ fontSize: 40 }}>📋</p><p style={{ color: "#9ca3af" }}>Aucune fiche traitée</p></div>
+                : retours.filter(r => r.statut === "traite").map(r => <FicheCardTraitee key={r.id} r={r} />)
+            )}
+            {activeTab === "corbeille" && (
+              <>
+                {corbeille.length > 0 && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                  <button style={btn("#fee2e2", "#dc2626")} onClick={viderCorbeille}>🗑 Vider la corbeille</button>
+                </div>}
+                {corbeille.length === 0
+                  ? <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 14, border: "1.5px solid #e8e0d0" }}><p style={{ fontSize: 40 }}>✓</p><p style={{ color: "#9ca3af" }}>La corbeille est vide</p></div>
+                  : corbeille.map(r => (
+                    <div key={r.id} style={{ background: "#fff", border: "1.5px solid #fecaca", borderRadius: 16, padding: "1rem 1.25rem", marginBottom: 10, opacity: .9 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#c8a84b", background: "rgba(200,168,75,.12)", borderRadius: 6, padding: "2px 8px" }}>{r.numero}</span>
+                          <span style={{ fontWeight: 700, fontSize: 14 }}>{r.client || r.clientConnu || "—"}</span>
+                          {r.bl && <span style={{ color: "#6b7280", fontSize: 12 }}>BL {r.bl}</span>}
+                        </div>
+                        <span style={{ fontSize: 11, color: "#dc2626" }}>🗑 Supprimé le {r._deletedAt}</span>
+                      </div>
+                      <ProductTags products={r.products || []} />
+                      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                        <button style={btn("#dcfce7", "#15803d")} onClick={() => restaurerFiche(r)}>↩ Restaurer</button>
+                        <button style={btn("#fee2e2", "#dc2626")} onClick={() => supprimerDefinitivement(r.id)}>🗑 Supprimer définitivement</button>
+                      </div>
+                    </div>
+                  ))}
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* MODAL CHOIX */}
+      {modalChoix && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setModalChoix(false)}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 32, maxWidth: 460, width: "100%" }} onClick={e => e.stopPropagation()}>
+            <p style={{ textAlign: "center", fontSize: 16, fontWeight: 700, marginBottom: 24 }}>+ Saisir un retour</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <button onClick={() => { setModalChoix(false); resetFormPrevu(); setModalPrevu(true); }} style={{ padding: "1.5rem 1rem", background: "#f5f3ee", border: "2px solid #e8e0d0", borderRadius: 16, cursor: "pointer", textAlign: "center" }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>📦</div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Retour prévu</div>
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Le client a signalé un retour</div>
+              </button>
+              <button onClick={() => { setModalChoix(false); resetFormEntrepot(); setModalInattendu(true); }} style={{ padding: "1.5rem 1rem", background: "#f5f3ee", border: "2px solid #e8e0d0", borderRadius: 16, cursor: "pointer", textAlign: "center" }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>⚠️</div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Retour inattendu</div>
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Colis reçu sans déclaration</div>
+              </button>
+            </div>
+            <div style={{ textAlign: "center", marginTop: 20 }}>
+              <button style={{ ...btn("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => setModalChoix(false)}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RETOUR PRÉVU */}
+      {modalPrevu && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 700, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+            <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>📋 Nouveau retour prévu</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={labelStyle}>Client</label><input style={inputStyle} value={fClient} onChange={e => setFClient(e.target.value)} placeholder="ex : Carrefour Billy" /></div>
+              <div><label style={labelStyle}>N° du BL</label><input style={inputStyle} type="number" value={fBl} onChange={e => setFBl(e.target.value)} placeholder="ex : 2026054670" /></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={labelStyle}>Transporteur</label><input style={inputStyle} value={fTransporteur} onChange={e => setFTransporteur(e.target.value)} /></div>
+              <div><label style={labelStyle}>Date de livraison</label><input style={inputStyle} type="date" value={fDateLiv} onChange={e => setFDateLiv(e.target.value)} /></div>
+            </div>
+            <div style={{ marginBottom: 16 }}><label style={labelStyle}>Saisi par</label><input style={inputStyle} value={fCommercial} onChange={e => setFCommercial(e.target.value)} /></div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 10 }}>📦 Produits retournés / manquants</p>
+            <ProductRowEditor products={fProducts} setProducts={setFProducts} mode="prevu" />
+            <div style={{ marginTop: 16, marginBottom: 16 }}><label style={labelStyle}>Commentaires</label><textarea style={{ ...inputStyle, minHeight: 60 }} value={fComment} onChange={e => setFComment(e.target.value)} /></div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button style={{ ...btn("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => setModalPrevu(false)}>Annuler</button>
+              <button style={btn("#c8a84b", "#0a0a0a")} onClick={submitRetourPrevu} disabled={submittingPrevu}>{submittingPrevu ? "..." : "📤 Enregistrer"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RETOUR INATTENDU */}
+      {modalInattendu && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 700, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+            <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>🏭 Retour inattendu — Entrepôt</p>
+            <div style={{ background: "#fffbf0", border: "1.5px solid rgba(200,168,75,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#92600a", marginBottom: 14 }}>
+              Colis reçu sans déclaration préalable. Les fiches envoyées apparaissent dans <strong>À rattacher</strong>.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={labelStyle}>Reçu par</label><input style={inputStyle} value={eAgent} onChange={e => setEAgent(e.target.value)} /></div>
+              <div><label style={labelStyle}>Date de réception</label><input style={inputStyle} type="date" value={eDate} onChange={e => setEDate(e.target.value)} /></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={labelStyle}>Client (si connu)</label><input style={inputStyle} value={eClient} onChange={e => setEClient(e.target.value)} placeholder="optionnel" /></div>
+              <div><label style={labelStyle}>Transporteur (si connu)</label><input style={inputStyle} value={eTransporteur} onChange={e => setETransporteur(e.target.value)} placeholder="optionnel" /></div>
+            </div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 10 }}>📦 Articles reçus</p>
+            <ProductRowEditor products={eProducts} setProducts={setEProducts} mode="entrepot" />
+            <div style={{ marginTop: 16, marginBottom: 16 }}><label style={labelStyle}>Commentaires</label><textarea style={{ ...inputStyle, minHeight: 60 }} value={eComment} onChange={e => setEComment(e.target.value)} /></div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button style={{ ...btn("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => setModalInattendu(false)}>Annuler</button>
+              <button style={btn("#c8a84b", "#0a0a0a")} onClick={submitEntrepot} disabled={submittingEntrepot}>{submittingEntrepot ? "..." : "📤 Envoyer"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SUCCÈS */}
+      {modalSuccess && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 520, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>Numéro de fiche</div>
+              <div style={{ fontSize: 30, fontWeight: 700, color: "#c8a84b" }}>{modalSuccess.fiche.numero}</div>
+            </div>
+            <button style={{ ...btn("#fee2e2", "#dc2626"), width: "100%", justifyContent: "center", marginBottom: 14 }} onClick={() => genererPDFRetour(modalSuccess.fiche)}>📄 Télécharger le PDF</button>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 10 }}>💬 Message WhatsApp</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {modalSuccess.source === "commercial" && (
+                <button style={{ ...btn("#dbeafe", "#1d4ed8"), justifyContent: "flex-start" }} onClick={() => { setRecapLabel("Message au préparateur"); setRecapMessage(genererMessageRetour(modalSuccess.fiche, "prevu_preparateur")); }}>📦 Prévenir le préparateur</button>
+              )}
+              {modalSuccess.source === "entrepot" && (
+                <button style={{ ...btn("#fef3c7", "#b45309"), justifyContent: "flex-start" }} onClick={() => { setRecapLabel("Alerte au commercial"); setRecapMessage(genererMessageRetour(modalSuccess.fiche, "entrepot_nondecl")); }}>⚠️ Alerter le commercial</button>
+              )}
+              {modalSuccess.source === "valide" && (
+                <button style={{ ...btn("#dcfce7", "#15803d"), justifyContent: "flex-start" }} onClick={() => { setRecapLabel("Bilan au commercial"); setRecapMessage(genererMessageRetour(modalSuccess.fiche, "bilan_preparateur")); }}>✅ Envoyer le bilan</button>
+              )}
+            </div>
+            {recapMessage && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 8 }}>{recapLabel}</p>
+                <textarea value={recapMessage} onChange={e => setRecapMessage(e.target.value)} style={{ ...inputStyle, minHeight: 130, background: "#f5f3ee" }} />
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button style={{ ...btn("#25D366"), flex: 1, justifyContent: "center" }} onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(recapMessage)}`, "_blank")}>📲 Envoyer sur WhatsApp</button>
+                  <button style={{ ...btn("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => navigator.clipboard.writeText(recapMessage)}>📋</button>
+                </div>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button style={{ ...btn("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => { setModalSuccess(null); setRecapMessage(""); }}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RATTACHEMENT */}
+      {modalRattach && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 560, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+            <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>🔗 Rattacher à une commande</p>
+            <div style={{ background: "#f5f3ee", borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "#6b7280" }}>
+              <strong>Fiche {modalRattach.numero} :</strong><br />
+              {(modalRattach.products || []).map((p: any, i: number) => <div key={i}>📦 {p.nom}{p.qteRecue ? ` × ${p.qteRecue}` : ""}{p.origine ? ` · ${p.origine}` : ""}</div>)}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={labelStyle}>Client</label><input style={inputStyle} value={rClient} onChange={e => setRClient(e.target.value)} /></div>
+              <div><label style={labelStyle}>N° du BL</label><input style={inputStyle} type="number" value={rBl} onChange={e => setRBl(e.target.value)} /></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={labelStyle}>Transporteur</label><input style={inputStyle} value={rTransporteur} onChange={e => setRTransporteur(e.target.value)} /></div>
+              <div><label style={labelStyle}>Date de livraison</label><input style={inputStyle} type="date" value={rDateLiv} onChange={e => setRDateLiv(e.target.value)} /></div>
+            </div>
+            <div style={{ marginBottom: 12 }}><label style={labelStyle}>Saisi par</label><input style={inputStyle} value={rCommercial} onChange={e => setRCommercial(e.target.value)} /></div>
+            <div style={{ marginBottom: 16 }}><label style={labelStyle}>Commentaires</label><textarea style={{ ...inputStyle, minHeight: 60 }} value={rComment} onChange={e => setRComment(e.target.value)} /></div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button style={{ ...btn("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => setModalRattach(null)}>Annuler</button>
+              <button style={btn("#c8a84b", "#0a0a0a")} onClick={confirmerRattachement}>🔗 Rattacher</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL MODIFICATION */}
+      {modalEdit && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 700, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+            <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>✏️ Modifier la fiche <span style={{ color: "#c8a84b" }}>{modalEdit.numero}</span></p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={labelStyle}>Client</label><input style={inputStyle} value={editClient} onChange={e => setEditClient(e.target.value)} /></div>
+              <div><label style={labelStyle}>N° du BL</label><input style={inputStyle} type="number" value={editBl} onChange={e => setEditBl(e.target.value)} /></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={labelStyle}>Transporteur</label><input style={inputStyle} value={editTransporteur} onChange={e => setEditTransporteur(e.target.value)} /></div>
+              <div><label style={labelStyle}>Date de livraison</label><input style={inputStyle} type="date" value={editDateLiv} onChange={e => setEditDateLiv(e.target.value)} /></div>
+            </div>
+            <div style={{ marginBottom: 16 }}><label style={labelStyle}>Saisi par</label><input style={inputStyle} value={editCommercial} onChange={e => setEditCommercial(e.target.value)} /></div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 10 }}>📦 Produits</p>
+            <ProductRowEditor products={editProducts} setProducts={setEditProducts} mode="prevu" />
+            <div style={{ marginTop: 16, marginBottom: 16 }}><label style={labelStyle}>Commentaires</label><textarea style={{ ...inputStyle, minHeight: 60 }} value={editComment} onChange={e => setEditComment(e.target.value)} /></div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button style={{ ...btn("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => setModalEdit(null)}>Annuler</button>
+              <button style={btn("#c8a84b", "#0a0a0a")} onClick={sauvegarderModif}>💾 Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SUPPRESSION */}
+      {deleteTarget && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 28, maxWidth: 400, width: "100%" }}>
+            <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: "#dc2626" }}>🗑 Supprimer la fiche</p>
+            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20, lineHeight: 1.6 }}>Es-tu sûr de vouloir supprimer la fiche <strong>{deleteTarget.numero}</strong> ? Elle sera déplacée dans la corbeille.</p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button style={{ ...btn("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => setDeleteTarget(null)}>Annuler</button>
+              <button style={btn("#dc2626")} onClick={confirmerSuppression}>🗑 Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── YUKON APP ───
 const YUKON_ARTICLES_DEFAULT = [
   { id: "bett-jaune", nom: "MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", stockNom: "MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)", unite: "colis", colisVente: 1, colisCommande: 1 },
@@ -4421,6 +5449,7 @@ export default function App() {
   const [showRH, setShowRH] = useState(false);
   const [showEtiquettes, setShowEtiquettes] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
+  const [showRetours, setShowRetours] = useState(false);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [showStock, setShowStock] = useState(false);
@@ -6062,6 +7091,10 @@ _PDF joint_`;
     );
   }
 
+  if (showRetours) {
+    return <RetoursClientsModule onClose={() => { setShowRetours(false); setShowAccueil(true); }} />;
+  }
+
   if (showQrCode) {
     return <QrCodeDashboard onClose={() => { setShowQrCode(false); setShowAccueil(true); }} />;
   }
@@ -6108,6 +7141,7 @@ _PDF joint_`;
       { icon: "👥", label: "RH · Pointeuse", sub: "Analyse des temps de présence et heures sup", color: "#0ea5e9", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
       { icon: "🏷️", label: "Leofresh · Étiquettes", sub: "Générer les étiquettes bilingues pour l'export", color: "#f59e0b", badge: null, action: () => { setShowAccueil(false); setShowEtiquettes(true); } },
       { icon: "📊", label: "QR Code Leofresh", sub: "Statistiques de scan du QR code réseau social", color: "#27ae60", badge: null, action: () => { setShowAccueil(false); setShowQrCode(true); } },
+      { icon: "📦", label: "Retours clients", sub: "Gestion des retours et réclamations", color: "#dc2626", badge: null, action: () => { setShowAccueil(false); setShowRetours(true); } },
     ];
 
     return (
