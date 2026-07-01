@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc as fsDoc, onSnapshot } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
-import { initializeApp as initializeApp2 } from "firebase/app";
+import { initializeApp as initializeApp2, getApps as getApps2 } from "firebase/app";
 import { getDatabase as getDatabase2, ref as ref2, onValue as onValue2, off as off2 } from "firebase/database";
 import jsPDF from "jspdf";
 import emailjs from "@emailjs/browser";
@@ -3172,7 +3172,8 @@ function RHApp({ onClose }: { onClose: () => void }) {
 }
 
 // ─── ETIQUETTES MODULE ───
-const fsDb = getFirestore();
+const _mainApp = getApps2().find((a: any) => a.name === "[DEFAULT]") || getApps2()[0];
+const fsDb = getFirestore(_mainApp);
 
 const ETQ_CHAMPS_VARIABLES = [
   { key: "lotNo", label: "Lot No" },
