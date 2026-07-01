@@ -3729,681 +3729,439 @@ function QrCodeDashboard({ onClose }: { onClose: () => void }) {
 }
 
 
-function genererPDFRetour(fiche: any) {
-  if (!fiche) return;
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const W = 210, ml = 14, mr = 14, cw = W - ml - mr;
-  let y = 0;
-  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 32, "F");
-  doc.setFillColor(200, 168, 75); doc.rect(0, 31.5, W, 1, "F");
-  doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(200, 168, 75);
-  doc.text("moorea", ml, 13);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(160, 160, 160);
-  doc.text("FICHE DE RETOUR CLIENT", ml, 20);
-  doc.setFontSize(7.5); doc.setTextColor(120, 120, 120);
-  doc.text("Fruits & Legumes · Rungis", ml, 26);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(200, 168, 75);
-  doc.text(fiche.numero || "—", W - mr, 13, { align: "right" });
-  doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(120, 120, 120);
-  doc.text(fiche.date || "", W - mr, 20, { align: "right" });
-  y = 42;
-  const col1 = ml, col2 = ml + cw / 2 + 2, colW = cw / 2 - 4;
-  function infoBox(label: string, value: any, x: number, yPos: number, w: number) {
-    doc.setFillColor(247, 245, 242); doc.roundedRect(x, yPos - 4, w, 12, 1.5, 1.5, "F");
-    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(140, 140, 140);
-    doc.text(label.toUpperCase(), x + 3, yPos + 0.5);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(20, 20, 20);
-    doc.text(doc.splitTextToSize(String(value || "—"), w - 6)[0], x + 3, yPos + 6);
-  }
-  infoBox("Client", fiche.client, col1, y, colW); infoBox("N° BL", fiche.bl, col2, y, colW); y += 16;
-  infoBox("Transporteur", fiche.transporteur, col1, y, colW); infoBox("Date livraison", fiche.dateLiv || fiche.date, col2, y, colW); y += 16;
-  infoBox("Saisi par", fiche.commercial, col1, y, colW); infoBox("Date fiche", fiche.date, col2, y, colW); y += 20;
-  const products = fiche.products || [];
-  if (products.length) {
-    doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(200, 168, 75);
-    doc.text("PRODUITS RETOURNES", ml, y);
-    doc.setDrawColor(200, 168, 75); doc.setLineWidth(0.4); doc.line(ml, y + 1.5, ml + cw, y + 1.5); y += 7;
-    const cols = [{ h: "Produit", w: 46 }, { h: "Lot", w: 16 }, { h: "Origine", w: 20 }, { h: "Att.", w: 13 }, { h: "Recu", w: 13 }, { h: "Ecart", w: 13 }, { h: "Motif", w: 30 }, { h: "Decision", w: 29 }];
-    doc.setFillColor(30, 30, 30); doc.rect(ml, y - 4, cw, 8, "F");
-    let cx = ml; doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(200, 168, 75);
-    cols.forEach(c => { doc.text(c.h, cx + 2, y); cx += c.w; }); y += 6;
-    products.forEach((p: any, i: number) => {
-      if (y > 258) { doc.addPage(); y = 20; }
-      const rowH = 8;
-      doc.setFillColor(i % 2 === 0 ? 255 : 249, i % 2 === 0 ? 255 : 248, i % 2 === 0 ? 255 : 246);
-      doc.rect(ml, y - 3.5, cw, rowH, "F");
-      const att = parseInt(p.qteAttendue) || 0, rec = parseInt(p.qteRecue) || 0;
-      const diff = (p.qteAttendue && p.qteRecue) ? rec - att : null;
-      const diffStr = diff === null ? "—" : diff < 0 ? String(diff) : diff === 0 ? "=" : "+" + diff;
-      cx = ml;
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(15, 15, 15);
-      doc.text(doc.splitTextToSize(p.nom || "—", 42)[0], cx + 2, y); cx += cols[0].w;
-      doc.setFont("helvetica", "normal"); doc.setTextColor(90, 90, 90); doc.setFontSize(7.5);
-      doc.text(p.lot || "—", cx + 2, y); cx += cols[1].w;
-      doc.text(p.origine || "—", cx + 2, y); cx += cols[2].w;
-      doc.setTextColor(60, 60, 60); doc.text(p.qteAttendue || "—", cx + 2, y); cx += cols[3].w;
-      doc.setFont("helvetica", "bold"); doc.setTextColor(15, 15, 15); doc.text(p.qteRecue || "—", cx + 2, y); cx += cols[4].w;
-      if (diff !== null && diff < 0) doc.setTextColor(180, 60, 20); else doc.setTextColor(21, 128, 61);
-      doc.text(diffStr, cx + 2, y); cx += cols[5].w;
-      doc.setFont("helvetica", "normal"); doc.setTextColor(90, 90, 90);
-      doc.text(doc.splitTextToSize(p.motif || "—", 27)[0], cx + 2, y); cx += cols[6].w;
-      const dec = p.decisionArticle;
-      if (dec === "accepte") { doc.setTextColor(21, 128, 61); doc.setFont("helvetica", "bold"); }
-      else if (dec === "destruction") { doc.setTextColor(200, 38, 38); doc.setFont("helvetica", "bold"); }
-      else { doc.setTextColor(120, 120, 120); doc.setFont("helvetica", "normal"); }
-      doc.text(dec === "accepte" ? "En stock" : dec === "destruction" ? "Destruction" : "—", cx + 2, y);
-      doc.setDrawColor(230, 225, 215); doc.setLineWidth(0.15); doc.line(ml, y + rowH - 3.5, ml + cw, y + rowH - 3.5);
-      y += rowH;
-    });
-    y += 6;
-  }
-  const allC = [fiche.comment, fiche.commentPrep].filter(Boolean);
-  if (allC.length) {
-    if (y > 250) { doc.addPage(); y = 20; }
-    doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(200, 168, 75);
-    doc.text("COMMENTAIRES", ml, y);
-    doc.setDrawColor(200, 168, 75); doc.setLineWidth(0.4); doc.line(ml, y + 1.5, ml + cw, y + 1.5); y += 7;
-    allC.forEach((c: string) => {
-      const lines = doc.splitTextToSize(c, cw - 8);
-      doc.setFillColor(247, 245, 242); doc.rect(ml, y - 3, cw, lines.length * 5 + 4, "F");
-      doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(50, 50, 50);
-      doc.text(lines, ml + 4, y + 1); y += lines.length * 5 + 8;
-    });
-  }
-  doc.setFillColor(10, 10, 10); doc.rect(0, 282, W, 15, "F");
-  doc.setFillColor(200, 168, 75); doc.rect(0, 282, W, 0.8, "F");
-  doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(130, 130, 130);
-  doc.text("MOOREA COMMERCIAL FRUITS - 69 rue de Perpignan - 94632 Rungis cedex", W / 2, 288, { align: "center" });
-  doc.setTextColor(200, 168, 75); doc.text("moorea-qualite.vercel.app", W / 2, 293, { align: "center" });
-  doc.save("fiche-retour-" + (fiche.numero || "export") + ".pdf");
-}
-
-function genererMessageRetour(fiche: any, type: string): string {
-  const products = fiche.products || [];
-  const ligne = (p: any) => "  - " + p.nom + (p.lot ? " (Lot " + p.lot + ")" : "") + (p.origine ? " - " + p.origine : "") + (p.qteAttendue || p.qteRecue ? " -- " + [p.qteAttendue ? p.qteAttendue + " att." : "", p.qteRecue ? p.qteRecue + " recu" : ""].filter(Boolean).join(" / ") : "") + (p.motif ? " => " + p.motif : "");
-  if (type === "prevu_preparateur") return `📦 RETOUR CLIENT A RECEPTIONNER - ${fiche.numero}\n\nUn retour arrive, merci de le pointer a la reception.\n\n🏪 Client : ${fiche.client}\n📋 BL : ${fiche.bl}\n🚛 Transporteur : ${fiche.transporteur || "—"}\n📅 Date : ${fiche.dateLiv || fiche.date}\n👤 Saisi par : ${fiche.commercial || "—"}\n\nArticles :\n${products.map(ligne).join("\n")}\n\n${fiche.comment ? "💬 " + fiche.comment + "\n\n" : ""}`;
-  if (type === "bilan_preparateur") {
-    const totS = products.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qStock) || 0), 0);
-    const totD = products.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qDestroy) || 0), 0);
-    const totM = products.reduce((s: number, p: any) => s + (parseInt((p.controle || {}).qManque) || 0), 0);
-    let detail = "";
-    if (totS) detail += `\n\n✅ En stock (${totS}) :\n` + products.filter((p: any) => p.controle?.qStock > 0).map((p: any) => `  - ${p.nom} -- ${p.controle.qStock}`).join("\n");
-    if (totD) detail += `\n\n🗑️ Détruits (${totD}) :\n` + products.filter((p: any) => p.controle?.qDestroy > 0).map((p: any) => `  - ${p.nom} -- ${p.controle.qDestroy}`).join("\n");
-    if (totM) detail += `\n\n⚠️ Manquants (${totM}) :\n` + products.filter((p: any) => p.controle?.qManque > 0).map((p: any) => `  - ${p.nom} -- ${p.controle.qManque}`).join("\n");
-    return `✅ RETOUR RECEPTIONNE ET POINTE - ${fiche.numero}\n\n🏪 Client : ${fiche.client}\n📋 BL : ${fiche.bl}${detail}\n\n${fiche.commentPrep ? "💬 " + fiche.commentPrep + "\n\n" : ""}`;
-  }
-  if (type === "entrepot_nondecl") return `⚠️ RETOUR NON DECLARE RECU - ${fiche.numero}\n\n${fiche.clientConnu ? "🏪 Client : " + fiche.clientConnu : "🏪 Client : inconnu"}\n📅 Recu le : ${fiche.date}\n👤 Agent : ${fiche.agent}\n\n${products.map(ligne).join("\n")}\n\n${fiche.comment ? "💬 " + fiche.comment + "\n\n" : ""}⚡ Action requise : rattacher a une commande`;
-  return `🔗 RETOUR RATTACHE - ${fiche.numero}\n\n🏪 Client : ${fiche.client}\n📋 BL : ${fiche.bl}\n\n${products.map(ligne).join("\n")}\n`;
-}
-
-const MOTIFS_RETOUR = ["Défaut sanitaire – moisissure", "Défaut sanitaire – pourriture", "Qualité insuffisante", "Erreur de préparation", "Colis abîmé", "Livraison incomplète", "Mauvais article", "Autre"];
-const ETATS_ENTREPOT = ["Bon état", "Emballage abîmé", "Produit endommagé", "Moisissure visible", "Pourriture partielle", "Autre"];
-
-const STOCK_ARTICLES_LIST: Array<{article: string, equipe: string}> = [
-        {article:"AGRETTI (BOTTE X 10)",equipe:"PRESTIGE"},{article:"AGRETTI (BOTTE X 12)",equipe:"PRESTIGE"},{article:"AIL DE LA VICTOIRE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"AIL DES OURS (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"AIL FRAIS (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"AIL NOIR (SACHET 2 PIECES)",equipe:"PRESTIGE"},{article:"ANANAS PAIN SUCRE BENIN (VRAC) CAT 1",equipe:"PRESTIGE"},{article:"ARTICHAUT (X 12 PIECES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (24 PIÈCES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (34 PIÈCES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (44 PIÈCES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (54 PIECES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (BOTTE X 10)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (BOTTE X 12)",equipe:"PRESTIGE"},{article:"ASPERGE BLANCHE CAL. 16+ (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ASPERGE BLANCHE CAL.16+ (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"ASPERGE BLANCHE CAL.22+ (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"ASPERGE BLANCHE CAL.22+ (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ASPERGE SAUVAGE (BOTTE 200G X 10)",equipe:"PRESTIGE"},{article:"ASPERGE SAUVAGE (BOTTE 200G X 5)",equipe:"PRESTIGE"},{article:"ASPERGE VERTE CAL.16+ (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ASPERGE VERTE ESPAGNE CAL.XL (BOTTE 500G X 8)",equipe:"PRESTIGE"},{article:"AUBERGINE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"AUBERGINE GRAFFITY (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"AUBERGINE JAPONAISE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"AUBERGINE JAPONAISE (VRAC)",equipe:"PRESTIGE"},{article:"AUBERGINE RONDE (VRAC 2.5KG)",equipe:"PRESTIGE"},{article:"AUBERGINE RONDE (VRAC 4.5 KG)",equipe:"PRESTIGE"},{article:"AUBERGINE RONDE (VRAC)",equipe:"PRESTIGE"},{article:"BAIE DU MIRACLE (SACHET 2 PIECES X 5)",equipe:"PRESTIGE"},{article:"BETTERAVE BLANCHE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BETTERAVE CHIOGGIA (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BETTERAVE CRAPAUDINE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BETTERAVE JAUNE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BETTERAVE RAINBOW (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BLACK VANILLA (2 POTS X6)",equipe:"PRESTIGE"},{article:"BLETTE MULTICOLORE (VRAC)",equipe:"PRESTIGE"},{article:"BLETTE MULTICOLORE (X 10 BOTTES)",equipe:"PRESTIGE"},{article:"BLUE FOOT MUSHROOM (CHAMPIGNON PIED BLUE)",equipe:"PRESTIGE"},{article:"BOULE D OR (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BROCOLIS BIMI (BARQUETTE 200G X 10)",equipe:"PRESTIGE"},{article:"BROCOLIS BIMI (BARQUETTE 200G X 8)",equipe:"PRESTIGE"},{article:"CAPUCINE TUBEREUSE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"CARAMBOLE MALAISIE CAT 1",equipe:"PRESTIGE"},{article:"CAROTTE (SACHET 1KG X 10)",equipe:"PRESTIGE"},{article:"CAROTTE BLANCHE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE JAUNE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE RAINBOW (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE ROUGE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE SABLES (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE VIOLETTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CASTELFRANCO (VRAC)",equipe:"PRESTIGE"},{article:"CAVOLONERO (BOTTE 250G X 5)",equipe:"PRESTIGE"},{article:"CEBETTE (BOTTE X 14)",equipe:"PRESTIGE"},{article:"CEBETTE ALLEMAGNE (BOTTE X 14)",equipe:"PRESTIGE"},{article:"CEBETTE EGYPTE (BOTTE X 14)",equipe:"PRESTIGE"},{article:"CELERI BRANCHE COUPE (SACHET 500G X 12)",equipe:"PRESTIGE"},{article:"CELERI RAVE (VRAC)",equipe:"PRESTIGE"},{article:"CERFEUIL TUBEREUX (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON CEPES (BOITE 500G)",equipe:"PRESTIGE"},{article:"CHAMPIGNON CHANTERELLES GRISES (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON CHANTERELLES JAUNE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON ENOKI (SACHET 100G X 10)",equipe:"PRESTIGE"},{article:"CHAMPIGNON ERINGY (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON ERINGY (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON GIROLLE (BOITE 500G)",equipe:"PRESTIGE"},{article:"CHAMPIGNON GIROLLE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON GIROLLE (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON LICHEN (BARQUETTE)",equipe:"PRESTIGE"},{article:"CHAMPIGNON MORILLE (BOITE 400G)",equipe:"PRESTIGE"},{article:"CHAMPIGNON MORILLE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON PIED DE MOUTON (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON PORTOBELLO (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON SHIMEJI BLANC (BARQUETTE 150G X 20)",equipe:"PRESTIGE"},{article:"CHAMPIGNON SHIMEJI BRUN (BARQUETTE 150G X 20)",equipe:"PRESTIGE"},{article:"CHAMPIGNON SHITAKE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON SHITAKE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON TROMPETTE DE LA MORT (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHATAIGNE FRAICHE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CHOUX BABY PAK-CHOI (VRAC 6 KG)",equipe:"PRESTIGE"},{article:"CHOUX CHINOIS (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"CHOUX CHINOIS (VRAC)",equipe:"PRESTIGE"},{article:"CHOUX CHINOIS (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX CHOI SAM (VRAC 7 KG)",equipe:"PRESTIGE"},{article:"CHOUX DOUX (6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX DOUX (VRAC)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS BLANC (VRAC 6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS JAUNE (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS JAUNE (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS VIOLET (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS VIOLET (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS VERT (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS VERT (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX KAI LAN (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CHOUX KAI LAN (VRAC 6 KG)",equipe:"PRESTIGE"},{article:"CHOUX KAI LAN (VRAC)",equipe:"PRESTIGE"},{article:"CHOUX KALE ROUGE (BOTTE 250G X 5)",equipe:"PRESTIGE"},{article:"CHOUX KALE VERT (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"CHOUX KALE VERT (VRAC 4 KG)",equipe:"GMS"},{article:"CHOUX POINTU BLANC (VRAC)",equipe:"PRESTIGE"},{article:"CHOUX POINTU BLANC (X10 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX POINTU BLANC (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX PONTOISE (6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX PONTOISE (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX RAVE (X 25 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX ROMANESCO (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX ROMANESCO (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX ROMANESCO BLANC (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX ROMANESCO JAUNE (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX SHANGAI (VRAC 8 KG)",equipe:"PRESTIGE"},{article:"CHOUX SHANGAI (VRAC)",equipe:"PRESTIGE"},{article:"CIME DI RAPA (VRAC)",equipe:"PRESTIGE"},{article:"COCO PLAT ESPAGNE CAL FIN",equipe:"PRESTIGE"},{article:"COCO PLAT MAROC CAL FIN 4 KG",equipe:"GMS"},{article:"COCO PLAT MAROC IFCO SACHET 500G X 10",equipe:"GMS"},{article:"COCO PLAT MAROC SACHET 500G X 10",equipe:"GMS"},{article:"CONCOMBRE (VRAC)",equipe:"PRESTIGE"},{article:"CONCOMBRE MINI (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"CONCOMBRE MINI (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"COURGE BLEU DE HONGRIE (VRAC 15 KG)",equipe:"PRESTIGE"},{article:"COURGE BUTTERNUT (VRAC 10 KG)",equipe:"GMS"},{article:"COURGE JACK BE LITTLE (VRAC X 12)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC 12 KG)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC 15 KG)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC 16 KG)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC 18 KG)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC)",equipe:"PRESTIGE"},{article:"COURGE POTIMARRON (X 12 KILOS)",equipe:"PRESTIGE"},{article:"COURGE SPAGHETTI (VRAC 12 KG)",equipe:"PRESTIGE"},{article:"COURGETTE BLANCHE (VRAC 5 KG)",equipe:"GMS"},{article:"COURGETTE BLANCHE (VRAC)",equipe:"GMS"},{article:"COURGETTE JAUNE (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"COURGETTE JAUNE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"COURGETTE RONDE (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"COURGETTE RONDE (VRAC)",equipe:"PRESTIGE"},{article:"COURGETTE RONDE JAUNE (VRAC)",equipe:"PRESTIGE"},{article:"COURGETTE RONDE VERTE VIRGINIA (VRAC)",equipe:"PRESTIGE"},{article:"COURGETTE VIOLON (VRAC)",equipe:"PRESTIGE"},{article:"ECHALOTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ECHALOTTE ECHALION (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ENDIVE ROUGE (VRAC 2.5KG)",equipe:"PRESTIGE"},{article:"FENOUIL",equipe:"GMS"},{article:"FEVE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"FEVE (VRAC)",equipe:"GMS"},{article:"GINGEMBRE CHINE (VRAC 12.5 KG)",equipe:"PRESTIGE"},{article:"GINGEMBRE CHINE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"GINGEMBRE CHINE (VRAC 5 KG)",equipe:"GMS"},{article:"GINGEMBRE BRESIL (VRAC 5 KG)",equipe:"GMS"},{article:"GIROLLE MUSHROOMS (3KG)",equipe:"PRESTIGE"},{article:"HARICOT KILOMETRE (VRAC 6 KG)",equipe:"PRESTIGE"},{article:"HARICOT VERT (2.7 KG)",equipe:"GMS"},{article:"HARICOT VERT KENYA (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"HARICOT VERT KENYA (BARQUETTE 350G X 8)",equipe:"GMS"},{article:"HARICOT VERT KENYA (BARQUETTE 500G X 8)",equipe:"GMS"},{article:"HARICOT VERT EGYPTE (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"HARICOT VERT EGYPTE (BARQUETTE 500G X 8)",equipe:"GMS"},{article:"HARICOT VERT RWANDA (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"HARICOT VERT RWANDA (BARQUETTE 500G X 8)",equipe:"GMS"},{article:"HELIANTHES (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"HERBES ANETH (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES BASILIC (POT X 6)",equipe:"PRESTIGE"},{article:"HERBES BASILIC (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES BASILIC THAI (1 KG)",equipe:"PRESTIGE"},{article:"HERBES CERFEUIL (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES CIBOULETTE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES CORIANDRE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES ESTRAGON (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES FENOUIL SEC (BOTTE)",equipe:"PRESTIGE"},{article:"HERBES LIVECHE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES MARJOLAINE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES MELISSE (X5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES MENTHE (X5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES MENTHE POIVRE (BOTTE X 5)",equipe:"PRESTIGE"},{article:"HERBES PERSIL FRISEE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"HERBES PERSIL FRISEE (X5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES PERSIL PLAT (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES SARIETTES (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES SARRIETTE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES SAUGE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES THYM (POT X 6)",equipe:"PRESTIGE"},{article:"HERBES THYM (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES THYM CITRON (X5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES VERVEINE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES VERVEINE (X6 POTS)",equipe:"PRESTIGE"},{article:"KIWI HAYWARD CAL.36 (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"LAITUE CELTUCE (VRAC 12 KG)",equipe:"PRESTIGE"},{article:"LAITUE CELTUCE (VRAC 15 KG)",equipe:"PRESTIGE"},{article:"LAITUE CELTUCE (VRAC 16 KG)",equipe:"PRESTIGE"},{article:"LAITUE CELTUCE (VRAC)",equipe:"PRESTIGE"},{article:"LIME BRESIL CAL 48 (FILET 500GR X 10)",equipe:"GMS"},{article:"LIME BRESIL CAL 48 IFCO (FILET 500GR X 12)",equipe:"GMS"},{article:"LIME BRESIL CAL. 54 (FILET 500GR X 12)",equipe:"GMS"},{article:"LIME BRESIL CAL. 54",equipe:"GMS"},{article:"LIME CAL. 48",equipe:"GMS"},{article:"MANGUE KENT (AVION) BRESIL CAL. 10",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) BRESIL CAL. 12",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) CAL. 10",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) PEROU CAL 11",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) PEROU CAL. 12",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) PEROU CAL.10",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) PEROU CAL.14",equipe:"PRESTIGE"},{article:"MANGUE KENT CAL. 10",equipe:"PRESTIGE"},{article:"MANGUE VERTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"MANGUE VERTE (VRAC 7 KG)",equipe:"PRESTIGE"},{article:"MANGUE VERTE (VRAC)",equipe:"PRESTIGE"},{article:"MANGUE AVION",equipe:"GMS"},{article:"MANGUE KENT (AVION) CAL. 12",equipe:"GMS"},{article:"MINI ASPERGE VERTE (BARQUETTE 200G X 10)",equipe:"PRESTIGE"},{article:"MINI AUBERGINE BLANCHE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"MINI AUBERGINE NOIR NATURINDA (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"MINI AUBERGINE THAI (BARQUETTE 100G X 10)",equipe:"PRESTIGE"},{article:"MINI AUBERGINE THAI (BARQUETTE 250G X 4)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE CHIOGGIA HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE CHIOGGIA PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE JAUNE HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE JAUNE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE MIXTE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE ROUGE HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE ROUGE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE ROUGE SALES (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI BETTERAVE ROSE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI BETTERAVE ROUGE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI CAROTTE BLANCHE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE JAUNE JACQ (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE JAUNE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE JAUNE SALES (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE MIXTE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE ORANGE JACQ (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE ORANGE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE ORANGE SALES (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE VIOLETTE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE AFRIQUE DU SUD (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI CAROTTE MULTICOLORE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI CAROTTE MULTICOLORE ESPAGNE (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI CHOUX FLEURS (BARQUETTE 4 PCES X 4)",equipe:"PRESTIGE"},{article:"MINI CHOUX FLEURS FRANCE (2 P X 8)",equipe:"GMS"},{article:"MINI CONCOMBRE ESPAGNE (BARQUETTE 200G X 8)",equipe:"PRESTIGE"},{article:"MINI CONCOMBRE (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"MINI CONCOMBRE ESPAGNE (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"MINI CONCOMBRE ESPAGNE (BARQUETTE 250G X 6)",equipe:"GMS"},{article:"MINI CONCOMBRE PAYS BAS",equipe:"GMS"},{article:"MINI COURGETTE FLEUR (15 PIECES)",equipe:"PRESTIGE"},{article:"MINI COURGETTE FLEUR FEMELLE SALES (BARQUETTE 10 PCS)",equipe:"PRESTIGE"},{article:"MINI COURGETTE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI COURGETTE RONDE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI COURGE KABOCHA (6 PIECES)",equipe:"PRESTIGE"},{article:"MINI ENDIVE SALES (X 4 BQ DE 200G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL JACQ (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL SALES (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL ESPAGNE (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI FLEUR COURGETTE MALE SALES (BARQUETTE 10 PCS)",equipe:"PRESTIGE"},{article:"MINI LEGUMES MIXTE (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"MINI LEGUMES MIXTE KENYA (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"MINI LEGUMES PANACHE (BARQUETTE X 8)",equipe:"GMS"},{article:"MINI MAIS THAILANDE (BARQUETTE 125G X 12)",equipe:"PRESTIGE"},{article:"MINI MAIS (BARQUETTE 100G X 1)",equipe:"GMS"},{article:"MINI MAIS (BARQUETTE 125G X 12)",equipe:"GMS"},{article:"MINI MAIS KENYA (BARQUETTE 125G X 12)",equipe:"GMS"},{article:"MINI MANGUE MARIAN PLUM (BARQUETTE 200G X 5)",equipe:"PRESTIGE"},{article:"MINI NAVET HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI NAVET JACQ (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI NAVET PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI NAVET (BARQUETTE 400G)",equipe:"GMS"},{article:"MINI NAVET AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI PANAIS ROYAUME UNI (VRAC 4KG)",equipe:"GMS"},{article:"MINI PATISSON JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI PATISSON VERT AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI NOIX DE COCO (BARQUETTE 100G)",equipe:"PRESTIGE"},{article:"MINI POIRE (VRAC 6 KG)",equipe:"PRESTIGE"},{article:"MINI POIREAUX HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI POIREAUX PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI POIREAUX AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI POIREAUX ESPAGNE (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI POIVRON JAUNE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON MIXTE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON MIXTE (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON ROUGE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON VERT (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON MIXTE (VRAC 3 KG)",equipe:"GMS"},{article:"MINI POIVRON MIXTE ESPAGNE (200 GR X 12)",equipe:"GMS"},{article:"MINI POIVRON MIXTE ESPAGNE 2€ (BARQUETTE 200G X 12)",equipe:"GMS"},{article:"MINI POMME ROCKIT (X4 BQ)",equipe:"PRESTIGE"},{article:"NOIX DE COCO (X10 PIECES)",equipe:"PRESTIGE"},{article:"NOIX DE COCO AVEC EMBRYON (VRAC)",equipe:"PRESTIGE"},{article:"NOIX DE COCO (X8 PIECES)",equipe:"GMS"},{article:"NOIX DE COCO A BOIRE (X6 PIECES)",equipe:"GMS"},{article:"NOIX DE COCO A BOIRE THAILANDE (X9 PIECES)",equipe:"GMS"},{article:"NOIX DE COCO COTE D IVOIRE (X8 PIECES)",equipe:"GMS"},{article:"OCA DU PEROU (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"OIGNON CALCOT (4 BOTTES X 25)",equipe:"PRESTIGE"},{article:"OIGNON JAUNE GRELOT (500 GR X 10)",equipe:"PRESTIGE"},{article:"OIGNON ROSCOFF (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"OIGNON ROSCOFF (X10 TRESSES 1KG)",equipe:"PRESTIGE"},{article:"OIGNON BLANC GRELOT (VRAC 5 KG)",equipe:"GMS"},{article:"OIGNON JAUNE GRELOT (VRAC 5 KG)",equipe:"GMS"},{article:"PANAIS (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"PAPAYE GOLDEN CAL 7 (VRAC)",equipe:"PRESTIGE"},{article:"PAPAYE LEGUME (VRAC 15 KG)",equipe:"PRESTIGE"},{article:"PAPAYE LEGUME (VRAC)",equipe:"PRESTIGE"},{article:"PAPAYE VERTE (4 P)",equipe:"PRESTIGE"},{article:"PAPAYE VERTE (VRAC)",equipe:"PRESTIGE"},{article:"PAPAYE VERTE THAILANDE (4 KGS)",equipe:"PRESTIGE"},{article:"PAPAYE GOLDEN (VRAC)",equipe:"GMS"},{article:"PAPAYE GOLDEN BRESIL (COLIS)",equipe:"GMS"},{article:"PATATE DOUCE EGYPTE CAL.L 1 CARTON 6 KG CAT 1",equipe:"PRESTIGE"},{article:"PATATE DOUCE EGYPTE CAL.L 2 CARTON 6 KG CAT 1",equipe:"PRESTIGE"},{article:"PATATE DOUCE BLANCHE (VRAC 10 KG)",equipe:"GMS"},{article:"PATATE DOUCE BLANCHE (VRAC 6 KG)",equipe:"GMS"},{article:"PATATE DOUCE EGYPTE CAL.M CARTON 6 KG CAT 1",equipe:"GMS"},{article:"PATATE DOUCE EGYPTE CAL.XL CARTON 6 KG",equipe:"GMS"},{article:"PATATE DOUCE VIOLETTE (VRAC 10 KG)",equipe:"GMS"},{article:"PATATE DOUCE VIOLETTE (VRAC 6 KG)",equipe:"GMS"},{article:"PERSIL RACINE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"PHYSALIS (BARQUETTE 100G X 12)",equipe:"PRESTIGE"},{article:"PHYSALIS COLOMBIE (BARQUETTE 100G X 12)",equipe:"GMS"},{article:"PIMENT ANTILLAIS (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT HABANERO JAUNE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT HABANERO ROUGE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT JALAPENO ROUGE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT JALAPENO VERT (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT JAUNE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT OISEAU ROUGE (BARQUETTE 100G X 6)",equipe:"PRESTIGE"},{article:"PIMENT OISEAU ROUGE MAROC (BARQUETTE 100G X 6)",equipe:"PRESTIGE"},{article:"PIMENT PADRONE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT VEGETARIEN (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT ANTILLAIS (VRAC 3.5 KG)",equipe:"GMS"},{article:"PIMENT ANTILLAIS (VRAC 4 KG)",equipe:"GMS"},{article:"PIMENT ANTILLAIS (VRAC)",equipe:"GMS"},{article:"PIMENT ANTILLAIS HONDURAS (VRAC 3.5 KG)",equipe:"GMS"},{article:"PIMENT ANTILLAIS MAROC (BARQUETTE 75G X 6)",equipe:"GMS"},{article:"PIMENT OISEAU ROUGE AFRIQUE DU SUD (BARQUETTE 100G X 6)",equipe:"GMS"},{article:"PIMENT OISEAU VERT AFRIQUE DU SUD (BARQUETTE 100G X 6)",equipe:"GMS"},{article:"PIMENT OISEAU VERT MAROC (BARQUETTE 100G X 6)",equipe:"GMS"},{article:"PIMENT VEGETARIEN (VRAC 1 KG)",equipe:"GMS"},{article:"PIMENT VEGETARIEN (VRAC)",equipe:"GMS"},{article:"PITAYA ROUGE (VRAC)",equipe:"PRESTIGE"},{article:"PITAYA ROUGE (VRAC 3 KG)",equipe:"GMS"},{article:"PITAYA ROUGE (VRAC 4.5 KG)",equipe:"GMS"},{article:"PITAYA JAUNE (VRAC 2.5KG)",equipe:"GMS"},{article:"PITAYA JAUNE (VRAC 3 KG)",equipe:"GMS"},{article:"POIRE CONFERENCE",equipe:"PRESTIGE"},{article:"POIRE NASHI (VRAC)",equipe:"GMS"},{article:"POIRE NASHI CHINE (VRAC 5 KG)",equipe:"GMS"},{article:"POIVRADE (VRAC)",equipe:"PRESTIGE"},{article:"POIVRE VERT (BARQUETTE 100G)",equipe:"PRESTIGE"},{article:"POIS GOURMAND EGYPTE (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"POIS GOURMAND EGYPTE (COLIS 2KG)",equipe:"GMS"},{article:"POIS GOURMAND KENYA (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"POIS GOURMAND KENYA (BARQUETTE 250G X 9)",equipe:"GMS"},{article:"POIS GOURMAND KENYA (COLIS 2KG)",equipe:"GMS"},{article:"POIS GOURMAND KENYA (VRAC 2 KG)",equipe:"GMS"},{article:"POIS GOURMAND ZIMBABWE (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"POMELOS CHINE CAL 9",equipe:"PRESTIGE"},{article:"POMELOS OROBLANCO (VRAC)",equipe:"GMS"},{article:"POMELOS SWEETIE (VRAC)",equipe:"GMS"},{article:"POMME (VRAC)",equipe:"PRESTIGE"},{article:"POMME DE TERRE NOIRMOUTIER (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"POMME DE TERRE POMPADOUR FRANCE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"POMME DE TERRE RATTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"POMME DE TERRE VITELOTTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RACINE CURCUMA (BARQUETTE 100G X 10)",equipe:"PRESTIGE"},{article:"RACINE CURCUMA (BARQUETTE 100G)",equipe:"PRESTIGE"},{article:"RACINE CURCUMA (BARQUETTE 200G X 5)",equipe:"PRESTIGE"},{article:"RACINE CURCUMA THAILANDE (BARQUETTE 100G X 10)",equipe:"PRESTIGE"},{article:"RACINE GALANGA (BARQUETTE 100G X 10)",equipe:"PRESTIGE"},{article:"RACINE GALANGA (BARQUETTE 100G)",equipe:"PRESTIGE"},{article:"RACINE GALANGA (BARQUETTE 200G X 5)",equipe:"PRESTIGE"},{article:"RACINE JICAMA (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"RACINE JICAMA (VRAC)",equipe:"PRESTIGE"},{article:"RACINE LOTUS (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"RACINE MANIOC (VRAC 18 KG)",equipe:"PRESTIGE"},{article:"RACINE TARO (VRAC)",equipe:"PRESTIGE"},{article:"RACINE WASABI",equipe:"PRESTIGE"},{article:"RACINE EDDO (VRAC 10 KG)",equipe:"GMS"},{article:"RACINE MANIOC (VRAC 5 KG)",equipe:"GMS"},{article:"RADIS BLUE MEAT (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RADIS GLACON (X 15 BOTTES)",equipe:"PRESTIGE"},{article:"RADIS GREEN MEAT (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RADIS MULTICOLORE (X 10 BOTTES)",equipe:"PRESTIGE"},{article:"RADIS MULTICOLORE (X 12 BOTTES)",equipe:"PRESTIGE"},{article:"RADIS NOIR (10 PIECES)",equipe:"PRESTIGE"},{article:"RADIS RED MEAT (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RADIS ROSE (BOTTE X 12)",equipe:"PRESTIGE"},{article:"RADIS ROUGE (X 15 BOTTES)",equipe:"PRESTIGE"},{article:"RADIS ROUGE (X 12 BOTTES)",equipe:"GMS"},{article:"RAIFORT (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RAISIN BLANC",equipe:"PRESTIGE"},{article:"RAISIN MIDNIGHT BEAUTY (VRAC 4.5 KG)",equipe:"PRESTIGE"},{article:"RAISIN NOIR",equipe:"PRESTIGE"},{article:"RAISIN TIMPSON (VRAC 4.5 KG)",equipe:"PRESTIGE"},{article:"RAISIN BLANC SANS PEPIN (4.5KG)",equipe:"GMS"},{article:"RAISIN DE MER (BARQUETTE 100G)",equipe:"GMS"},{article:"RUTABAGA (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"SALADE FRISEE FINE (BARQUETTE 500G X 10)",equipe:"PRESTIGE"},{article:"SALADE ICEBERG",equipe:"PRESTIGE"},{article:"SALADE PISSENLIT BLANC (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"SALADE PISSENLIT VERT (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"SALADE TREVISE (VRAC)",equipe:"PRESTIGE"},{article:"SALADE TREVISE PRECOCE (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"SALADE ICEBERG ESPAGNE (PIECE X 12)",equipe:"GMS"},{article:"SALICORNE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"SALICORNE MAROC (VRAC 1 KG)",equipe:"GMS"},{article:"SALSIFIS (1 KG X 5)",equipe:"PRESTIGE"},{article:"SALSIFIS (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"SUGAR SNAPS KENYA (BARQUETTE 150G X 6)",equipe:"GMS"},{article:"SUGAR SNAPS KENYA (BARQUETTE 250G X 6)",equipe:"GMS"},{article:"TOMATE ANANAS (VRAC)",equipe:"PRESTIGE"},{article:"TOMATE ANCIENNE (VRAC 3.4 KG)",equipe:"PRESTIGE"},{article:"TOMATE ANCIENNE (VRAC 3.5 KG)",equipe:"PRESTIGE"},{article:"TOMATE CERISE",equipe:"PRESTIGE"},{article:"TOMATE CERISE JAUNE (BARQUETTE 250G X 9)",equipe:"PRESTIGE"},{article:"TOMATE COEUR DE BOEUF",equipe:"PRESTIGE"},{article:"TOMATE DATTERINO (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"TOMATE JAUNE GRAPPE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"TOMATE MELI MELO (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"TOMATE NOIRE DE CRIMEE",equipe:"PRESTIGE"},{article:"TOMATE PIENNOLO (3 KG)",equipe:"PRESTIGE"},{article:"TOMATE VERTE GRAPPE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"TOMATE AMELA (VRAC 1 KG)",equipe:"GMS"},{article:"TOMATE ANANAS (VRAC 3.5 KG)",equipe:"GMS"},{article:"TOMATE CERISE NOIR GRAPPES (Vrac 3kg)",equipe:"GMS"},{article:"TOMATE NOIRE DE CRIMEE (VRAC 3.5 KG)",equipe:"GMS"},{article:"TOMATILLO (VRAC 3 KG)",equipe:"GMS"},{article:"TOMBERRY JAUNE (X 8 BQ)",equipe:"PRESTIGE"},{article:"TOMBERRY ROUGE (X 8 BQ)",equipe:"PRESTIGE"},{article:"TOPINAMBOUR (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"TREVISE PRECOCE (VRAC)",equipe:"PRESTIGE"},{article:"TREVISE TARDIVE (VRAC)",equipe:"PRESTIGE"},{article:"TRUFFE AESTIVUM",equipe:"PRESTIGE"},{article:"TRUFFE MELANOSPORUM",equipe:"PRESTIGE"},{article:"BRISURE DE TRUFFE (Melanosporum) 50g",equipe:"GMS"},{article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"AGRUMES LIMEQUAT LIMON SNACK (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"AGRUMES LIMON SNACK (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"AMANDE FRAICHE (VRAC 5 KG)",equipe:"GMS"},{article:"ANANAS AVION CAL. 6",equipe:"GMS"},{article:"ANANAS CAYENNE CAL.A1 CAT 1",equipe:"GMS"},{article:"ANANAS CAYENNE CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE BENIN CAL. 10 (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE CAL. 10 (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE GHANA (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE GHANA CAL. 10 (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE TOGO (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS VICTORIA CAL 7",equipe:"GMS"},{article:"ANANAS VICTORIA CAL.8",equipe:"GMS"},{article:"ANONE ESPAGNE",equipe:"GMS"},{article:"AUBERGINE AFRIQUE DU SUD (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"AUBERGINE DIAKHATOU (VRAC 5 KG)",equipe:"GMS"},{article:"AVOCAT COCKTAIL (VRAC 2 KG)",equipe:"GMS"},{article:"BAIE DU MIRACLE (SACHET 2 PIECES X 10)",equipe:"GMS"},{article:"BANANE PLANTAIN (VRAC 5 KG)",equipe:"GMS"},{article:"BANANE PLANTAIN (VRAC)",equipe:"GMS"},{article:"BANANE PLANTAIN COLOMBIE (VRAC 9 KG)",equipe:"GMS"},{article:"BETTERAVE CRUE",equipe:"GMS"},{article:"CARAMBOLE BRESIL CAT 1",equipe:"GMS"},{article:"CARAMBOLE CAT 1",equipe:"GMS"},{article:"CARAMBOLE MALAISIE CAT 1",equipe:"PRESTIGE"},{article:"CAVOLONERO (VRAC 5 KG)",equipe:"GMS"},{article:"CELERI RAVE (FILET 10KG)",equipe:"GMS"},{article:"CELERI RAVE (X8 PIECES)",equipe:"GMS"},{article:"CERISE ARGENTINE (2.5 KG)",equipe:"GMS"},{article:"CERISE ARGENTINE (250 GR X 8) CAT 1",equipe:"GMS"},{article:"CERISE CHILI (2.5 KG)",equipe:"GMS"},{article:"CERISE CHILI (250 GR X 8) CAT 1",equipe:"GMS"},{article:"CHAYOTTE (VRAC)",equipe:"GMS"},{article:"CHOUX BRUXELLES (SACHET 500G X 10)",equipe:"GMS"},{article:"CHOUX BRUXELLES (VRAC 5 KG)",equipe:"GMS"},{article:"CHOUX FLEURS BABY (6 PIECES)",equipe:"GMS"},{article:"CHRISTOPHINE (VRAC 6 KG)",equipe:"GMS"},{article:"CITRON AMALFI (VRAC 8 KG)",equipe:"GMS"},{article:"CITRON BERGAMOTE (VRAC 2 KG)",equipe:"GMS"},{article:"CITRON BERGAMOTE (VRAC 4 KG)",equipe:"GMS"},{article:"CITRON BERGAMOTE (VRAC 6 KG)",equipe:"GMS"},{article:"CITRON BERGAMOTE (VRAC 8 KG)",equipe:"GMS"},{article:"CITRON CALAMANSI (VRAC 1 KG)",equipe:"GMS"},{article:"CITRON CAVIAR GUATEMALA (1 KG)",equipe:"GMS"},{article:"CITRON CAVIAR MAROC (100 GR X 4)",equipe:"GMS"},{article:"CITRON CAVIAR MAROC (BARQUETTE 40 GR X 4)",equipe:"GMS"},{article:"CITRON CEDRAT (VRAC 4.5 KG)",equipe:"GMS"},{article:"CITRON CEDRAT ITALIE (COLIS 2 PIECES)",equipe:"GMS"},{article:"CITRON COMBAWA",equipe:"GMS"},{article:"CITRON COMBAWA (3 KG)",equipe:"GMS"},{article:"CITRON COMBAWA (VRAC 2.5KG)",equipe:"GMS"},{article:"CITRON COMBAWA MAROC (3 PCE X 6)",equipe:"GMS"},{article:"CITRON DEKOPON (VRAC 4 KG)",equipe:"GMS"},{article:"CITRON LIMONCELLO (VRAC 8 KG)",equipe:"GMS"},{article:"CITRON LIMQUAT (VRAC 2 KG)",equipe:"GMS"},{article:"CITRON MEYER (VRAC 1 KG)",equipe:"GMS"},{article:"CITRON MEYER (VRAC 3 KG)",equipe:"GMS"},{article:"CITRON MEYER (VRAC)",equipe:"GMS"},{article:"CITRON NICE FRANCE (VRAC 5 KG)",equipe:"GMS"},{article:"CITRON ROSE (VRAC 2.5KG)",equipe:"GMS"},{article:"CITRON SUDACHI (VRAC 1 KG)",equipe:"GMS"},{article:"CITRON TANGELO (VRAC)",equipe:"GMS"},{article:"CITRON YUZU (VRAC 1 KG)",equipe:"GMS"},{article:"CITRON YUZU (VRAC)",equipe:"GMS"},{article:"CITRON YUZU ESPAGNE (2 P X 4)",equipe:"GMS"},{article:"CITRON YUZU MAROC (2 P X 4)",equipe:"GMS"},{article:"CITRON ZEBRE (1 KG)",equipe:"GMS"},{article:"CITRON ZEBRE (1.5 KG)",equipe:"GMS"},{article:"CITRONNELLE MAROC (SACHET 100G X 20)",equipe:"GMS"},{article:"COEUR DE PALMIER (VRAC 5 KG)",equipe:"GMS"},{article:"COING (VRAC)",equipe:"GMS"},{article:"COING TURQUIE (VRAC)",equipe:"GMS"},{article:"COMBAVAS INDONESIE (VRAC 2 KG) CAT 1",equipe:"GMS"},{article:"COMBAVAS INDONESIE (VRAC 3 KG)",equipe:"GMS"},{article:"CONCOMBRE CONCOMBRE (VRAC 6 KG)",equipe:"GMS"},{article:"COROSSOL EQUATEUR (VRAC 5 KG)",equipe:"GMS"},{article:"COROSSOL EQUATEUR (VRAC)",equipe:"GMS"},{article:"COTES DE BLETTES (VRAC)",equipe:"GMS"},{article:"FIGUE BRESIL (VRAC 1.2KG)",equipe:"GMS"},{article:"FIGUE DE BARBARIE (VRAC)",equipe:"GMS"},{article:"FIGUE FRAICHE (VRAC)",equipe:"GMS"},{article:"FIGUE NOIR CAL.30",equipe:"GMS"},{article:"FIGUE NOIR PEROU (1 KG)",equipe:"GMS"},{article:"FIGUE NOIRE AFRIQUE DU SUD (VRAC 1 KG)",equipe:"GMS"},{article:"FRECINETTE (VRAC 3 KG)",equipe:"GMS"},{article:"FRECINETTE COLOMBIE (VRAC 3 KG) CAT 1",equipe:"GMS"},{article:"FRUIT A PAIN (VRAC)",equipe:"GMS"},{article:"FRUIT DU JACQUIER",equipe:"GMS"},{article:"FRUITS GRENADE (VRAC)",equipe:"GMS"},{article:"FRUITS GRENADE CAL.10",equipe:"GMS"},{article:"FRUITS GRENADE CAL.12",equipe:"GMS"},{article:"FRUITS GRENADILLA (2 KG)",equipe:"GMS"},{article:"GINGEMBRE BRESIL (2 KG)",equipe:"GMS"},{article:"GINGEMBRE BRESIL (VRAC 13 KG)",equipe:"GMS"},{article:"GINGEMBRE CHINE (12 KG)",equipe:"GMS"},{article:"GINGEMBRE CHINE (VRAC 13 KG)",equipe:"GMS"},{article:"GINGEMBRE PEROU (2 KG)",equipe:"GMS"},{article:"GOMBO HONDURAS (VRAC 5 KG)",equipe:"GMS"},{article:"GOYAVE (2 KG)",equipe:"GMS"},{article:"GRENADE (VRAC X 9)",equipe:"GMS"},{article:"GRENADE CAL.7",equipe:"GMS"},{article:"GRENADE PEROU CAL.8",equipe:"GMS"},{article:"GRENADE TURQUIE CAL.8",equipe:"GMS"},{article:"GROSEILLE ROUGE (BARQUETTE 100G X 8)",equipe:"GMS"},{article:"HARICOT RWANDA (BARQUETTE 350G X 8)",equipe:"GMS"},{article:"HERBES ANETH (VRAC 1 KG)",equipe:"GMS"},{article:"HERBES MENTHE (VRAC 1 KG X 1)",equipe:"GMS"},{article:"KIWANO FRANCE (8 PIÈCES)",equipe:"GMS"},{article:"KIWI GOLD ITALIE (BARQUETTE 4 PCES)",equipe:"GMS"},{article:"KIWI GOLD ITALIE (VRAC 6 KG)",equipe:"GMS"},{article:"KIWI GOLD ITALIE (VRAC)",equipe:"GMS"},{article:"KIWI GOLDEN ITALIE (3 KG)",equipe:"GMS"},{article:"KIWI ITALIE (3 KG)",equipe:"GMS"},{article:"KIWI ROUGE ITALIE",equipe:"GMS"},{article:"KUMQUAT AFRIQUE DU SUD (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"KUMQUAT AFRIQUE DU SUD (VRAC 2 KG)",equipe:"GMS"},{article:"KUMQUAT ESPAGNE (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"KUMQUAT ESPAGNE (VRAC 2 KG)",equipe:"GMS"},{article:"KUMQUAT MAROC (VRAC 2 KG)",equipe:"GMS"},{article:"LICHI BOUQUET (VRAC 5 KG)",equipe:"GMS"},{article:"LICHI BRANCHE MAURICE (VRAC 5 KG)",equipe:"GMS"},{article:"LITCHI BOUQUET (6 KG)",equipe:"GMS"},{article:"MAIS BLANC PEROU (VRAC 1.5 KG)",equipe:"GMS"},{article:"MAIS EPI (BARQUETTE 2 PCS X 8)",equipe:"GMS"},{article:"MAIS EPI NOIRE (VRAC 2 KG)",equipe:"GMS"},{article:"MAIS EPI SENEGAL (2 EPI BARQ X 7)",equipe:"GMS"},{article:"MANGOUSTAN (2 KG)",equipe:"GMS"},{article:"MANGUE BATEAU CAL.8",equipe:"GMS"},{article:"MANGUE KENT COTE D IVOIRE CAL. 12",equipe:"GMS"},{article:"MANGUE NAM DOK MAI 5 KG",equipe:"GMS"},{article:"MARRONS SOUS VIDE FRANCE BOGUE (BARQUETTE 400G X 12)",equipe:"GMS"},{article:"MELON CAL.5 PHILIBON (VRAC)",equipe:"GMS"},{article:"MELON CAL.6 (6 PIECES)",equipe:"GMS"},{article:"MELON CHARENTAIS (PIECE X 6)",equipe:"GMS"},{article:"MELON JAUNE CAL.6 (X6 PIECES)",equipe:"GMS"},{article:"MELON VERT",equipe:"GMS"},{article:"MELON VERT BRESIL CAL.6",equipe:"GMS"},{article:"MELON VERT CAL.6",equipe:"GMS"},{article:"MELON VERT ESPAGNE CAL.6",equipe:"GMS"},{article:"NECTARINE BLANCHE (VRAC)",equipe:"GMS"},{article:"NECTARINE JAUNE CAL.A",equipe:"PRESTIGE"},{article:"ORANGE AMER (VRAC)",equipe:"GMS"},{article:"ORANGE CHOCOLAT ESPAGNE (VRAC)",equipe:"GMS"},{article:"ORANGE SANGUINE (VRAC)",equipe:"GMS"},{article:"ORANGE VALENCIA",equipe:"PRESTIGE"},{article:"PAMPLEMOUSSE BLANC (VRAC)",equipe:"GMS"},{article:"PAPAYE FORMOSE CAL. 3",equipe:"GMS"},{article:"PAPAYE GOLDEN CAL.8 (VRAC)",equipe:"GMS"},{article:"PASSION (VRAC 2 KG)",equipe:"GMS"},{article:"PASSION AFRIQUE DU SUD (COLIS 2KG)",equipe:"GMS"},{article:"PASSION COLOMBIE (3 PIECES X 8)",equipe:"GMS"},{article:"PASSION COLOMBIE (5 P X 8)",equipe:"GMS"},{article:"PASSION COLOMBIE (VRAC 2 KG)",equipe:"GMS"},{article:"PASSION VIETNAM (COLIS 2KG)",equipe:"GMS"},{article:"PASSION ZIMBABWE (COLIS 2KG)",equipe:"GMS"},{article:"PASTEQUE",equipe:"GMS"},{article:"PASTEQUE BRESIL ( X 6 PIECES )",equipe:"GMS"},{article:"PASTEQUE BRESIL CAL. 5",equipe:"GMS"},{article:"PECHE BLANCHE CAL.A",equipe:"GMS"},{article:"PECHE JAUNE CAL.A (VRAC)",equipe:"GMS"},{article:"PETIT POIS (VRAC)",equipe:"GMS"},{article:"PETITS POIS KENYA (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"POMME CANNELLE",equipe:"GMS"},{article:"PRUNE CYTHERE (VRAC 5 KG)",equipe:"GMS"},{article:"RAMBOUTAN (2 KG) CAT 1",equipe:"PRESTIGE"},{article:"SALAK (VRAC 2 KG)",equipe:"GMS"},{article:"SAPOTILLE (2 KG)",equipe:"GMS"},{article:"TAMARILLO ROUGE (VRAC 2.5KG)",equipe:"GMS"},{article:"TAMARIN THAILANDE (BARQUETTE 400G X 16)",equipe:"GMS"},{article:"TAMARIN THAILANDE (BARQUETTE 450G X 20)",equipe:"GMS"},{article:"TRANSPORT",equipe:"PRESTIGE"},
-      ];
-
 // ─── RETOURS CLIENTS ───
-const _retoursApp = getApps2().find((a: any) => a.name === "moorea-retours") ?? initializeApp2({
-  apiKey: "AIzaSyAR0BdIsWrA7UDKfCFSANbqxDrIsqLq6BA",
-  authDomain: "moorea-retours.firebaseapp.com",
-  databaseURL: "https://moorea-retours-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "moorea-retours",
-  appId: "1:57607281213:web:f00e57e7d8cb7166c9a854"
-}, "moorea-retours");
-const dbRetours = getDatabase2(_retoursApp);
-
-
-async function getNextNumeroRetour(): Promise<string> {
-  try {
-    const snap = await new Promise<any>(res => { const u = onValue2(ref2(dbRetours, "compteur"), s => { u(); res(s); }); });
-    const n = (snap.val() || 0) + 1;
-    await update2(ref2(dbRetours, "/"), { compteur: n });
-    return "RC-" + new Date().getFullYear() + "-" + String(n).padStart(3, "0");
-  } catch { return "RC-" + Date.now(); }
-}
-
-const RETOURS_INP: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%", fontFamily: "inherit" };
-const RETOURS_LBL: React.CSSProperties = { fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: ".5px", display: "block", marginBottom: 5 };
-
-
+const _retApp = (() => {
+  const cfg = { apiKey:"AIzaSyAR0BdIsWrA7UDKfCFSANbqxDrIsqLq6BA", authDomain:"moorea-retours.firebaseapp.com", databaseURL:"https://moorea-retours-default-rtdb.europe-west1.firebasedatabase.app", projectId:"moorea-retours", appId:"1:57607281213:web:f00e57e7d8cb7166c9a854" };
+  return getApps2().find((a:any) => a.name === "moorea-retours") ?? initializeApp2(cfg, "moorea-retours");
+})();
+const dbRet = getDatabase2(_retApp);
 
 function RetoursClientsModule({ onClose }: { onClose: () => void }) {
-  const BTN = (bg: string, c = "#fff"): React.CSSProperties => ({ background: bg, color: c, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" });
+  // ── styles locaux ──
+  const si: React.CSSProperties = { padding:"10px 12px", border:"1.5px solid #e8e0d0", borderRadius:10, background:"#fff", fontSize:13, outline:"none", width:"100%", fontFamily:"inherit" };
+  const lb: React.CSSProperties = { fontSize:11, color:"#9ca3af", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:".5px", display:"block", marginBottom:5 };
+  const bt = (bg:string, c="#fff"): React.CSSProperties => ({ background:bg, color:c, border:"none", borderRadius:10, padding:"10px 16px", fontWeight:700, fontSize:13, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:6, fontFamily:"inherit" });
 
-  // ── State principal ──
+  // ── state firebase ──
   const [retours, setRetours] = useState<any[]>([]);
-  const [retoursEntrepot, setRetoursEntrepot] = useState<any[]>([]);
+  const [entrepots, setEntrepots] = useState<any[]>([]);
   const [corbeille, setCorbeille] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"fiches"|"rattacher"|"traitees"|"corbeille">("fiches");
-  const [openId, setOpenId] = useState<string|null>(null);
 
-  // ── Modals ──
-  const [showChoix, setShowChoix] = useState(false);
-  const [showPrevu, setShowPrevu] = useState(false);
-  const [showInattendu, setShowInattendu] = useState(false);
-  const [showSuccess, setShowSuccess] = useState<{fiche:any,source:string}|null>(null);
-  const [showRattach, setShowRattach] = useState<any|null>(null);
-  const [showDelete, setShowDelete] = useState<{type:string,id:string,numero:string}|null>(null);
+  // ── state UI ──
+  const [tab, setTab] = useState<"att"|"rat"|"tra"|"cor">("att");
+  const [openId, setOpenId] = useState<string|null>(null);
+  const [ctrl, setCtrl] = useState<Record<string,any>>({});
+  const [cmtPrep, setCmtPrep] = useState<Record<string,string>>({});
   const [recapMsg, setRecapMsg] = useState("");
 
-  // ── Contrôle pointage ──
-  const [ctrlLocal, setCtrlLocal] = useState<Record<string,any>>({});
-  const [cmtLocal, setCmtLocal] = useState<Record<string,string>>({});
+  // ── modals ──
+  const [modal, setModal] = useState<""|"choix"|"prevu"|"inattendu"|"rattach"|"delete"|"success">("");
+  const [modalData, setModalData] = useState<any>(null);
 
-  // ── Firebase listeners ──
+  // ── formulaire retour prévu ──
+  const [fCli, setFCli] = useState(""); const [fBl, setFBl] = useState(""); const [fTra, setFTra] = useState("");
+  const [fDat, setFDat] = useState(""); const [fCom, setFCom] = useState(""); const [fCmt, setFCmt] = useState("");
+  const [fRows, setFRows] = useState([{nom:"",lot:"",ori:"",att:"",rec:"",mot:""}]);
+
+  // ── formulaire entrepôt ──
+  const [eAgt, setEAgt] = useState(""); const [eDat, setEDat] = useState(new Date().toISOString().split("T")[0]);
+  const [eCli, setECli] = useState(""); const [eTra, setETra] = useState(""); const [eCmt, setECmt] = useState("");
+  const [eRows, setERows] = useState([{nom:"",lot:"",ori:"",qte:"",mot:"",dec:null as null|"accepte"|"destruction"}]);
+
+  // ── firebase ──
   useEffect(() => {
     setLoading(true);
-    const u1 = onValue2(ref2(dbRetours, "retours"), snap => {
-      const d = snap.val();
-      setRetours(d ? Object.entries(d).map(([id,v]:any) => ({...v,id})).sort((a:any,b:any)=>(b.ts||0)-(a.ts||0)) : []);
-      setLoading(false);
-    });
-    const u2 = onValue2(ref2(dbRetours, "retours_entrepot"), snap => {
-      const d = snap.val();
-      setRetoursEntrepot(d ? Object.entries(d).map(([id,v]:any) => ({...v,id})).sort((a:any,b:any)=>(b.ts||0)-(a.ts||0)) : []);
-    });
-    const u3 = onValue2(ref2(dbRetours, "corbeille"), snap => {
-      const d = snap.val();
-      setCorbeille(d ? Object.entries(d).map(([id,v]:any) => ({...v,id})).sort((a:any,b:any)=>(b._deletedTs||0)-(a._deletedTs||0)) : []);
-    });
+    const u1 = onValue2(ref2(dbRet,"retours"), s => { const d=s.val(); setRetours(d?Object.entries(d).map(([id,v]:any)=>({...v,id})).sort((a:any,b:any)=>(b.ts||0)-(a.ts||0)):[]); setLoading(false); });
+    const u2 = onValue2(ref2(dbRet,"retours_entrepot"), s => { const d=s.val(); setEntrepots(d?Object.entries(d).map(([id,v]:any)=>({...v,id})).sort((a:any,b:any)=>(b.ts||0)-(a.ts||0)):[]); });
+    const u3 = onValue2(ref2(dbRet,"corbeille"), s => { const d=s.val(); setCorbeille(d?Object.entries(d).map(([id,v]:any)=>({...v,id})).sort((a:any,b:any)=>(b._deletedTs||0)-(a._deletedTs||0)):[]); });
     return () => { u1(); u2(); u3(); };
   }, []);
 
-  // ── Submit retour prévu ──
-  async function submitPrevu(data: any) {
-    const numero = await getNextNumeroRetour();
-    const fiche = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), ...data, statut: "nouveau", commentPrep: "", source: "commercial" };
-    const r = await push2(ref2(dbRetours, "retours"), fiche);
-    setShowPrevu(false);
-    setShowSuccess({ fiche: {...fiche, id: r.key}, source: "commercial" });
+  async function nextNumero() {
+    const s = await new Promise<any>(res => { const u = onValue2(ref2(dbRet,"compteur"), x => { u(); res(x); }); });
+    const n = (s.val()||0)+1;
+    await update2(ref2(dbRet,"/"), {compteur:n});
+    return "RC-"+new Date().getFullYear()+"-"+String(n).padStart(3,"0");
   }
 
-  // ── Submit entrepôt ──
-  async function submitEntrepot(data: any) {
-    const numero = await getNextNumeroRetour();
-    const fiche = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), ...data, rattache: false, source: "entrepot" };
-    const r = await push2(ref2(dbRetours, "retours_entrepot"), fiche);
-    setShowInattendu(false);
-    setShowSuccess({ fiche: {...fiche, id: r.key, client:"(non rattaché)", bl:"—"}, source: "entrepot" });
+  // ── submit prévu ──
+  async function doSubmitPrevu() {
+    const prods = fRows.filter(r=>r.nom.trim()).map(r=>({nom:r.nom.trim(),lot:r.lot,origine:r.ori,qteAttendue:r.att,qteRecue:r.rec,motif:r.mot}));
+    if (!fCli.trim()||!fBl.trim()||!prods.length) { alert("Client, BL et au moins un produit requis."); return; }
+    const numero = await nextNumero();
+    const fiche = {numero, date:new Date().toLocaleDateString("fr-FR"), ts:Date.now(), client:fCli.trim(), bl:fBl.trim(), transporteur:fTra.trim(), dateLiv:fDat, commercial:fCom.trim(), comment:fCmt.trim(), products:prods, statut:"nouveau", commentPrep:"", source:"commercial"};
+    const r = await push2(ref2(dbRet,"retours"), fiche);
+    setFCli(""); setFBl(""); setFTra(""); setFDat(""); setFCom(""); setFCmt(""); setFRows([{nom:"",lot:"",ori:"",att:"",rec:"",mot:""}]);
+    setModal("success"); setModalData({fiche:{...fiche,id:r.key},source:"commercial"});
   }
 
-  // ── Rattachement ──
-  async function submitRattach(data: any) {
-    if (!showRattach) return;
-    const numero = await getNextNumeroRetour();
-    const fiche = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), ...data, products: showRattach.products||[], statut:"nouveau", commentPrep:"", source:"entrepot_rattache", entrepotId: showRattach.id };
-    const r = await push2(ref2(dbRetours, "retours"), fiche);
-    await update2(ref2(dbRetours, "retours_entrepot/" + showRattach.id), { rattache:true, clientRattache: data.client, blRattache: data.bl });
-    setShowRattach(null);
-    setShowSuccess({ fiche: {...fiche, id: r.key}, source: "commercial" });
+  // ── submit entrepôt ──
+  async function doSubmitEntrepot() {
+    const prods = eRows.filter(r=>r.nom.trim()).map(r=>({nom:r.nom.trim(),lot:r.lot,origine:r.ori,qteRecue:r.qte,motif:r.mot,decisionArticle:r.dec,qteAttendue:""}));
+    if (!eAgt.trim()||!prods.length) { alert("Reçu par et au moins un article requis."); return; }
+    const numero = await nextNumero();
+    const fiche = {numero, date:new Date().toLocaleDateString("fr-FR"), ts:Date.now(), agent:eAgt.trim(), products:prods, comment:eCmt.trim(), dateLiv:eDat, clientConnu:eCli.trim()||null, transporteurConnu:eTra.trim()||null, rattache:false, source:"entrepot"};
+    const r = await push2(ref2(dbRet,"retours_entrepot"), fiche);
+    setEAgt(""); setECli(""); setETra(""); setECmt(""); setEDat(new Date().toISOString().split("T")[0]); setERows([{nom:"",lot:"",ori:"",qte:"",mot:"",dec:null}]);
+    setModal("success"); setModalData({fiche:{...fiche,id:r.key,client:"(non rattaché)",bl:"—"},source:"entrepot"});
   }
 
-  // ── Valider contrôle ──
-  async function validerControle(fiche: any) {
+  // ── submit rattachement ──
+  async function doSubmitRattach(d:any) {
+    if (!d.client||!d.bl) { alert("Client et BL requis."); return; }
+    const numero = await nextNumero();
+    const fiche = {numero, date:new Date().toLocaleDateString("fr-FR"), ts:Date.now(), ...d, products:modalData.products||[], statut:"nouveau", commentPrep:"", source:"entrepot_rattache"};
+    const r = await push2(ref2(dbRet,"retours"), fiche);
+    await update2(ref2(dbRet,"retours_entrepot/"+modalData.id), {rattache:true, clientRattache:d.client, blRattache:d.bl});
+    setModal("success"); setModalData({fiche:{...fiche,id:r.key},source:"commercial"});
+  }
+
+  // ── valider contrôle ──
+  async function doValider(fiche:any) {
     const products = (fiche.products||[]).map((p:any,pi:number) => {
-      const ctrl = ctrlLocal[`${fiche.id}_${pi}`] || {};
-      return { ...p, controle: { qStock: parseInt(ctrl.qStock ?? p.controle?.qStock) || 0, qDestroy: parseInt(ctrl.qDestroy ?? p.controle?.qDestroy) || 0, qManque: parseInt(ctrl.qManque ?? p.controle?.qManque) || 0 } };
+      const c = ctrl[`${fiche.id}_${pi}`]||{};
+      return {...p, controle:{qStock:parseInt(c.qStock??p.controle?.qStock)||0, qDestroy:parseInt(c.qDestroy??p.controle?.qDestroy)||0, qManque:parseInt(c.qManque??p.controle?.qManque)||0}};
     });
-    await update2(ref2(dbRetours, "retours/" + fiche.id), { products, statut:"traite", commentPrep: cmtLocal[fiche.id] || fiche.commentPrep || "" });
+    await update2(ref2(dbRet,"retours/"+fiche.id), {products, statut:"traite", commentPrep:cmtPrep[fiche.id]||fiche.commentPrep||""});
     setOpenId(null);
-    setShowSuccess({ fiche: {...fiche, products}, source: "valide" });
+    setModal("success"); setModalData({fiche:{...fiche,products},source:"valide"});
   }
 
-  async function supprimerFiche(type: string, id: string) {
-    const path = type === "retour" ? "retours/" + id : "retours_entrepot/" + id;
-    const snap = await new Promise<any>(res => { const u = onValue2(ref2(dbRetours, path), s => { u(); res(s); }); });
-    const data = snap.val();
-    if (data) await push2(ref2(dbRetours, "corbeille"), { ...data, _originalPath: path, _deletedAt: new Date().toLocaleDateString("fr-FR"), _deletedTs: Date.now() });
-    await remove2(ref2(dbRetours, path));
-    setShowDelete(null);
+  async function doSupprimer() {
+    const {type,id} = modalData;
+    const path = type==="ret" ? "retours/"+id : "retours_entrepot/"+id;
+    const s = await new Promise<any>(res => { const u = onValue2(ref2(dbRet,path), x => { u(); res(x); }); });
+    const data = s.val();
+    if (data) await push2(ref2(dbRet,"corbeille"), {...data, _originalPath:path, _deletedAt:new Date().toLocaleDateString("fr-FR"), _deletedTs:Date.now()});
+    await remove2(ref2(dbRet,path));
+    setModal(""); setModalData(null);
   }
 
-  async function restaurer(item: any) {
-    const { _originalPath, _deletedAt, _deletedTs, id, ...data } = item;
-    await push2(ref2(dbRetours, _originalPath?.startsWith("retours_entrepot") ? "retours_entrepot" : "retours"), data);
-    await remove2(ref2(dbRetours, "corbeille/" + id));
-  }
+  function upFRow(i:number,f:string,v:string) { setFRows(rs=>rs.map((r,j)=>j===i?{...r,[f]:v}:r)); }
+  function upERow(i:number,f:string,v:any) { setERows(rs=>rs.map((r,j)=>j===i?{...r,[f]:v}:r)); }
+  const MOTIFS = ["Défaut sanitaire – moisissure","Défaut sanitaire – pourriture","Qualité insuffisante","Erreur de préparation","Colis abîmé","Livraison incomplète","Mauvais article","Autre"];
+  const ETATS = ["Bon état","Emballage abîmé","Produit endommagé","Moisissure visible","Pourriture partielle","Autre"];
 
-  // ── Stats ──
-  const nonTraites = retours.filter(r => r.statut !== "traite").length;
-  const traites = retours.filter(r => r.statut === "traite").length;
-  const nonRattaches = retoursEntrepot.filter(r => !r.rattache).length;
+  const nbAtt = retours.filter(r=>r.statut!=="traite").length;
+  const nbTra = retours.filter(r=>r.statut==="traite").length;
+  const nbRat = entrepots.filter(r=>!r.rattache).length;
 
-  const numBadge = (n: string) => (
-    <span style={{ fontSize: 11, fontWeight: 700, color: "#c8a84b", background: "rgba(200,168,75,.12)", border: "1px solid rgba(200,168,75,.3)", borderRadius: 6, padding: "2px 8px" }}>{n}</span>
-  );
-
-  // ── Carte fiche à valider ──
-  function FicheCard({ r }: { r: any }) {
-    const isOpen = openId === r.id;
-    const prods = r.products || [];
+  function Ovl({children,close}:{children:any,close:()=>void}) {
     return (
-      <div style={{ background:"#fff", border:"1.5px solid #e8e0d0", borderRadius:16, padding:"1.1rem 1.4rem", marginBottom:10 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8, marginBottom:8 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-            {numBadge(r.numero||"—")}
-            <span style={{ fontWeight:700, fontSize:15 }}>{r.client}</span>
-            <span style={{ color:"#6b7280", fontSize:12 }}>BL {r.bl}</span>
-          </div>
-          <span style={{ padding:"4px 11px", borderRadius:20, fontSize:11, fontWeight:600, background: r.statut==="traite"?"#dcfce7":"#fef3c7", color: r.statut==="traite"?"#15803d":"#b45309" }}>
-            {r.statut==="traite"?"✓ Traité":"En attente"}
-          </span>
-        </div>
-        <div style={{ fontSize:12, color:"#6b7280", display:"flex", gap:12, flexWrap:"wrap" }}>
-          <span>📅 {r.date}</span><span>🚛 {r.transporteur||"—"}</span><span>📦 {prods.length} article{prods.length>1?"s":""}</span>
-        </div>
-        <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8 }}>
-          {prods.map((p:any,i:number) => <span key={i} style={{ background:"#f5f3ee", border:"1px solid #e8e0d0", borderRadius:20, padding:"3px 10px", fontSize:12, color:"#6b7280" }}>{p.nom}{p.qteRecue?` × ${p.qteRecue}`:""}</span>)}
-        </div>
-        <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
-          <button style={BTN("#c8a84b","#0a0a0a")} onClick={() => setOpenId(isOpen?null:r.id)}>
-            📋 {isOpen?"Fermer":"Pointer"}
-          </button>
-          <button style={{ ...BTN("#fee2e2","#dc2626"), padding:"8px 12px" }} onClick={() => genererPDFRetour(r)}>📄</button>
-          <button style={{ ...BTN("#fee2e2","#dc2626"), padding:"8px 12px" }} onClick={() => setShowDelete({type:"retour",id:r.id,numero:r.numero||""})}>🗑</button>
-        </div>
-        {isOpen && (
-          <div style={{ marginTop:16, borderTop:"1.5px solid #e8e0d0", paddingTop:16 }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-              <thead><tr style={{ background:"#fafaf8", borderBottom:"1.5px solid #e8e0d0" }}>
-                <th style={{ padding:"8px 10px", textAlign:"left", fontSize:11, color:"#9ca3af" }}>Article</th>
-                <th style={{ padding:"8px 6px", textAlign:"center", fontSize:11, color:"#9ca3af", width:55 }}>Att.</th>
-                <th style={{ padding:"8px 6px", textAlign:"center", fontSize:11, color:"#15803d", width:80 }}>✓ Stock</th>
-                <th style={{ padding:"8px 6px", textAlign:"center", fontSize:11, color:"#dc2626", width:80 }}>✗ Destr.</th>
-                <th style={{ padding:"8px 6px", textAlign:"center", fontSize:11, color:"#b45309", width:75 }}>Manq.</th>
-                <th style={{ padding:"8px 6px", textAlign:"center", fontSize:11, color:"#1d4ed8", width:50 }}>Solde</th>
-              </tr></thead>
-              <tbody>
-                {prods.map((p:any, pi:number) => {
-                  const ctrl = ctrlLocal[`${r.id}_${pi}`] || {};
-                  const qS = ctrl.qStock ?? p.controle?.qStock ?? "";
-                  const qD = ctrl.qDestroy ?? p.controle?.qDestroy ?? "";
-                  const qM = ctrl.qManque ?? p.controle?.qManque ?? "";
-                  const recu = parseInt(p.qteRecue)||0;
-                  const solde = recu - (parseInt(qS)||0) - (parseInt(qD)||0);
-                  const sc = solde>0?"#1d4ed8":solde<0?"#dc2626":"#15803d";
-                  return (
-                    <tr key={pi} style={{ borderBottom:"1px solid #f5f3ee" }}>
-                      <td style={{ padding:"8px 10px" }}>
-                        <div style={{ fontWeight:600 }}>{p.nom}</div>
-                        <div style={{ fontSize:11, color:"#9ca3af" }}>{[p.lot&&"Lot "+p.lot,p.origine,p.motif].filter(Boolean).join(" · ")}</div>
-                      </td>
-                      <td style={{ padding:"6px", textAlign:"center", fontWeight:700, color:"#9ca3af" }}>{p.qteAttendue||"—"}</td>
-                      <td style={{ padding:"6px", textAlign:"center" }}>
-                        <input type="number" min="0" value={qS} placeholder="0"
-                          onChange={e => setCtrlLocal(prev => ({...prev, [`${r.id}_${pi}`]: {...(prev[`${r.id}_${pi}`]||{}), qStock: e.target.value}}))}
-                          style={{ width:52, height:32, textAlign:"center", border:"2px solid #bbf7d0", borderRadius:8, background:"#f0fdf4", color:"#15803d", fontWeight:700, fontSize:14, outline:"none", fontFamily:"inherit" }} />
-                      </td>
-                      <td style={{ padding:"6px", textAlign:"center" }}>
-                        <input type="number" min="0" value={qD} placeholder="0"
-                          onChange={e => setCtrlLocal(prev => ({...prev, [`${r.id}_${pi}`]: {...(prev[`${r.id}_${pi}`]||{}), qDestroy: e.target.value}}))}
-                          style={{ width:52, height:32, textAlign:"center", border:"2px solid #fecaca", borderRadius:8, background:"#fff5f5", color:"#dc2626", fontWeight:700, fontSize:14, outline:"none", fontFamily:"inherit" }} />
-                      </td>
-                      <td style={{ padding:"6px", textAlign:"center" }}>
-                        <input type="number" min="0" value={qM} placeholder="0"
-                          onChange={e => setCtrlLocal(prev => ({...prev, [`${r.id}_${pi}`]: {...(prev[`${r.id}_${pi}`]||{}), qManque: e.target.value}}))}
-                          style={{ width:48, height:32, textAlign:"center", border:"2px solid #fde68a", borderRadius:8, background:"#fffbf0", color:"#b45309", fontWeight:700, fontSize:14, outline:"none", fontFamily:"inherit" }} />
-                      </td>
-                      <td style={{ padding:"6px", textAlign:"center" }}>
-                        <span style={{ display:"inline-block", minWidth:32, padding:"4px 6px", borderRadius:8, fontSize:13, fontWeight:700, background: solde>0?"#dbeafe":solde<0?"#fee2e2":"#dcfce7", color:sc }}>{solde}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <div style={{ marginTop:10 }}>
-              <label style={RETOURS_LBL}>Commentaire</label>
-              <textarea defaultValue={r.commentPrep||""} onChange={e => setCmtLocal(prev=>({...prev,[r.id]:e.target.value}))}
-                style={{ ...S, minHeight:50, resize:"vertical" }} />
-            </div>
-            <button onClick={() => validerControle(r)}
-              style={{ width:"100%", marginTop:12, padding:14, background:"#c8a84b", color:"#0a0a0a", border:"none", borderRadius:12, cursor:"pointer", fontSize:15, fontWeight:700, fontFamily:"inherit" }}>
-              ✓ Valider le retour
-            </button>
-          </div>
-        )}
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:500,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:16,overflowY:"auto"}}
+        onMouseDown={e=>{if(e.target===e.currentTarget)close();}}>
+        <div style={{background:"#fff",borderRadius:20,padding:24,maxWidth:680,width:"100%",marginTop:20,marginBottom:20}}>{children}</div>
       </div>
     );
   }
 
-  // ── Modal simple (rattachement, suppression, succès) ──
-  function Overlay({ children, onClose: oc }: any) {
-    return (
-      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.55)", zIndex:500, display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflowY:"auto" }}
-        onMouseDown={e => { if (e.target === e.currentTarget) oc(); }}>
-        <div style={{ background:"#fff", borderRadius:20, padding:28, maxWidth:560, width:"100%", maxHeight:"90vh", overflowY:"auto" }}>{children}</div>
-      </div>
-    );
-  }
-
-  // ── Formulaire saisie — rendu inline dans un Overlay, state local ──
-
-
-  function FormSaisie({ mode, onClose: oc, onSubmit: os }: { mode:"prevu"|"entrepot", onClose:()=>void, onSubmit:(d:any)=>void }) {
-    const [client, setClient] = useState("");
-    const [bl, setBl] = useState("");
-    const [tra, setTra] = useState("");
-    const [dat, setDat] = useState("");
-    const [com, setCom] = useState("");
-    const [cmt, setCmt] = useState("");
-    const [agent, setAgent] = useState("");
-    const [datE, setDatE] = useState(new Date().toISOString().split("T")[0]);
-    const [cliE, setCliE] = useState("");
-    const [traE, setTraE] = useState("");
-    const [cmtE, setCmtE] = useState("");
-    const [rows, setRows] = useState<any[]>([emptyRow()]);
-
-    function emptyRow() { return { nom:"", lot:"", origine:"", qteAttendue:"", qteRecue:"", motif:"", decisionArticle:null }; }
-    function upRow(i:number, f:string, v:any) { setRows(rs => rs.map((r,j) => j===i ? {...r,[f]:v} : r)); }
-
-    function submit() {
-      const products = rows.filter(r => r.nom.trim());
-      if (mode==="prevu") {
-        if (!client.trim() || !bl.trim() || !products.length) { alert("Client, BL et au moins un produit requis."); return; }
-        os({ client:client.trim(), bl:bl.trim(), transporteur:tra.trim(), dateLiv:dat, commercial:com.trim(), comment:cmt.trim(), products });
-      } else {
-        if (!agent.trim() || !products.length) { alert("Reçu par et au moins un article requis."); return; }
-        os({ agent:agent.trim(), dateLiv:datE, clientConnu:cliE.trim()||null, transporteurConnu:traE.trim()||null, comment:cmtE.trim(), products });
-      }
-    }
-
-    return (
-      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.55)", zIndex:500, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:16, overflowY:"auto" }}
-        onMouseDown={e => { if (e.target === e.currentTarget) oc(); }}>
-        <div style={{ background:"#fff", borderRadius:20, padding:24, maxWidth:680, width:"100%", marginTop:16, marginBottom:16 }}>
-          <p style={{ fontSize:15, fontWeight:700, marginBottom:14 }}>{mode==="prevu"?"📋 Nouveau retour prévu":"🏭 Retour inattendu"}</p>
-
-          {mode==="prevu" ? (
-            <>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-                <div><label style={RETOURS_LBL}>Client</label><input style={RETOURS_INP} value={client} onChange={e=>setClient(e.target.value)} placeholder="ex : Carrefour" /></div>
-                <div><label style={RETOURS_LBL}>N° BL</label><input style={RETOURS_INP} type="number" value={bl} onChange={e=>setBl(e.target.value)} /></div>
-                <div><label style={RETOURS_LBL}>Transporteur</label><input style={RETOURS_INP} value={tra} onChange={e=>setTra(e.target.value)} /></div>
-                <div><label style={RETOURS_LBL}>Date livraison</label><input style={RETOURS_INP} type="date" value={dat} onChange={e=>setDat(e.target.value)} /></div>
-              </div>
-              <div style={{ marginBottom:14 }}><label style={RETOURS_LBL}>Saisi par</label><input style={RETOURS_INP} value={com} onChange={e=>setCom(e.target.value)} /></div>
-            </>
-          ) : (
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-              <div><label style={RETOURS_LBL}>Reçu par</label><input style={RETOURS_INP} value={agent} onChange={e=>setAgent(e.target.value)} /></div>
-              <div><label style={RETOURS_LBL}>Date réception</label><input style={RETOURS_INP} type="date" value={datE} onChange={e=>setDatE(e.target.value)} /></div>
-              <div><label style={RETOURS_LBL}>Client (optionnel)</label><input style={RETOURS_INP} value={cliE} onChange={e=>setCliE(e.target.value)} /></div>
-              <div><label style={RETOURS_LBL}>Transporteur (optionnel)</label><input style={RETOURS_INP} value={traE} onChange={e=>setTraE(e.target.value)} /></div>
-            </div>
-          )}
-
-          <p style={{ fontSize:11, fontWeight:700, color:"#9ca3af", textTransform:"uppercase", marginBottom:8 }}>
-            {mode==="prevu"?"Produits":"Articles reçus"}
-          </p>
-
-          {rows.map((row, i) => (
-            <div key={i} style={{ display:"grid", gridTemplateColumns: mode==="prevu" ? "2fr 1fr 1fr 0.8fr 0.8fr 1.8fr 28px" : "2fr 1fr 1fr 0.9fr 1.8fr 70px 28px", gap:5, marginBottom:6, alignItems:"center" }}>
-              <input style={RETOURS_INP} list="produits-stock-list" placeholder="Produit" value={row.nom} onChange={e=>upRow(i,"nom",e.target.value)} autoComplete="off" />
-              <input style={RETOURS_INP} placeholder="Lot" value={row.lot} onChange={e=>upRow(i,"lot",e.target.value)} />
-              <input style={RETOURS_INP} placeholder="Origine" value={row.origine} onChange={e=>upRow(i,"origine",e.target.value)} />
-              {mode==="prevu" ? (
-                <>
-                  <input style={{...RETOURS_INP,textAlign:"center"}} type="number" placeholder="Att." value={row.qteAttendue} onChange={e=>upRow(i,"qteAttendue",e.target.value)} />
-                  <input style={{...RETOURS_INP,textAlign:"center"}} type="number" placeholder="Reçu" value={row.qteRecue} onChange={e=>upRow(i,"qteRecue",e.target.value)} />
-                </>
-              ) : (
-                <input style={{...RETOURS_INP,textAlign:"center"}} type="number" placeholder="Qté" value={row.qteRecue} onChange={e=>upRow(i,"qteRecue",e.target.value)} />
-              )}
-              <select style={RETOURS_INP} value={row.motif} onChange={e=>upRow(i,"motif",e.target.value)}>
-                <option value="">--</option>
-                {(mode==="prevu"?MOTIFS_RETOUR:ETATS_ENTREPOT).map(m=><option key={m} value={m}>{m}</option>)}
-              </select>
-              {mode==="entrepot" && (
-                <div style={{ display:"flex", gap:3 }}>
-                  <button type="button" onClick={()=>upRow(i,"decisionArticle",row.decisionArticle==="accepte"?null:"accepte")}
-                    style={{ padding:"5px 6px", borderRadius:6, border:`1.5px solid ${row.decisionArticle==="accepte"?"#15803d":"#bbf7d0"}`, background:row.decisionArticle==="accepte"?"#dcfce7":"transparent", color:"#15803d", fontSize:11, fontWeight:600, cursor:"pointer" }}>✓</button>
-                  <button type="button" onClick={()=>upRow(i,"decisionArticle",row.decisionArticle==="destruction"?null:"destruction")}
-                    style={{ padding:"5px 6px", borderRadius:6, border:`1.5px solid ${row.decisionArticle==="destruction"?"#dc2626":"#fecaca"}`, background:row.decisionArticle==="destruction"?"#fee2e2":"transparent", color:"#dc2626", fontSize:11, fontWeight:600, cursor:"pointer" }}>✗</button>
-                </div>
-              )}
-              {rows.length>1 && <button type="button" onClick={()=>setRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:"transparent", border:"none", color:"#ccc", cursor:"pointer", fontSize:16 }}>🗑</button>}
-            </div>
-          ))}
-
-          <button type="button" onClick={()=>setRows(rs=>[...rs,emptyRow()])}
-            style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 14px", border:"1.5px dashed #c8a84b", borderRadius:10, background:"transparent", cursor:"pointer", fontSize:13, color:"#c8a84b", margin:"8px 0 14px", fontFamily:"inherit" }}>
-            + Ajouter
-          </button>
-
-          <div style={{ marginBottom:14 }}>
-            <label style={RETOURS_LBL}>Commentaires</label>
-            <textarea style={{...RETOURS_INP,minHeight:55,resize:"vertical"}} value={mode==="prevu"?cmt:cmtE} onChange={e=>mode==="prevu"?setCmt(e.target.value):setCmtE(e.target.value)} />
-          </div>
-
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:10 }}>
-            <button type="button" style={{ padding:"10px 18px", borderRadius:10, border:"1.5px solid #e8e0d0", background:"transparent", cursor:"pointer", fontSize:13, fontFamily:"inherit" }} onClick={oc}>Annuler</button>
-            <button type="button" style={{ padding:"10px 18px", borderRadius:10, border:"none", background:"#c8a84b", color:"#0a0a0a", cursor:"pointer", fontSize:13, fontWeight:700, fontFamily:"inherit" }} onClick={submit}>
-              📤 {mode==="prevu"?"Enregistrer":"Envoyer"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  function numBadge(n:string) {
+    return <span style={{fontSize:11,fontWeight:700,color:"#c8a84b",background:"rgba(200,168,75,.12)",border:"1px solid rgba(200,168,75,.3)",borderRadius:6,padding:"2px 8px"}}>{n}</span>;
   }
 
   return (
-    <div style={{ minHeight:"100vh", background:"#f5f3ee", fontFamily:"'Syne', sans-serif" }}>
-      <datalist id="produits-stock-list">
-        {STOCK_ARTICLES_LIST.map((s,i) => <option key={i} value={s.article} />)}
+    <div style={{minHeight:"100vh",background:"#f5f3ee",fontFamily:"'Syne',sans-serif"}}>
+      <datalist id="rl-produits">
+        {STOCK_ARTICLES_LIST.map((s,i)=><option key={i} value={s.article}/>)}
       </datalist>
 
-      {/* TOP BAR */}
-      <div style={{ background:"#0a0a0a", borderBottom:"3px solid #c8a84b", position:"sticky", top:0, zIndex:200 }}>
-        <div style={{ maxWidth:900, margin:"0 auto", height:56, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 16px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <button onClick={onClose} style={{ background:"rgba(255,255,255,.1)", border:"none", borderRadius:8, color:"#fff", padding:"6px 12px", cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:"inherit" }}>← Retour</button>
-            <span style={{ fontWeight:800, fontSize:15, color:"#fff" }}>📦 Retours clients</span>
+      {/* TOPBAR */}
+      <div style={{background:"#0a0a0a",borderBottom:"3px solid #c8a84b",position:"sticky",top:0,zIndex:200}}>
+        <div style={{maxWidth:900,margin:"0 auto",height:56,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:8,color:"#fff",padding:"6px 12px",cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"inherit"}}>← Retour</button>
+            <span style={{fontWeight:800,fontSize:15,color:"#fff"}}>📦 Retours clients</span>
           </div>
-          <button style={BTN("#c8a84b","#0a0a0a")} onClick={()=>setShowChoix(true)}>+ Saisir</button>
+          <button style={bt("#c8a84b","#0a0a0a")} onClick={()=>setModal("choix")}>+ Saisir</button>
         </div>
       </div>
 
-      <div style={{ maxWidth:900, margin:"0 auto", padding:"16px 12px 80px" }}>
+      <div style={{maxWidth:900,margin:"0 auto",padding:"16px 12px 80px"}}>
 
-        {/* Stats */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16 }}>
-          {[["Total",retours.length,"#1a2e1a"],["Traitées",traites,"#15803d"],["À valider",nonTraites,"#c8a84b"],["À rattacher",nonRattaches,"#b45309"]].map(([l,n,c])=>(
-            <div key={l as string} style={{ background:"#fff", border:"1.5px solid #e8e0d0", borderRadius:12, padding:12, textAlign:"center" }}>
-              <div style={{ fontSize:22, fontWeight:800, color:c as string }}>{n}</div>
-              <div style={{ fontSize:11, color:"#9ca3af", textTransform:"uppercase" }}>{l}</div>
+        {/* stats */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+          {([["Total",retours.length,"#1a2e1a"],["Traitées",nbTra,"#15803d"],["À valider",nbAtt,"#c8a84b"],["À rattacher",nbRat,"#b45309"]] as any[]).map(([l,n,c])=>(
+            <div key={l} style={{background:"#fff",border:"1.5px solid #e8e0d0",borderRadius:12,padding:12,textAlign:"center"}}>
+              <div style={{fontSize:22,fontWeight:800,color:c}}>{n}</div>
+              <div style={{fontSize:11,color:"#9ca3af",textTransform:"uppercase"}}>{l}</div>
             </div>
           ))}
         </div>
 
-        {/* Onglets */}
-        <div style={{ display:"flex", gap:4, background:"#0a0a0a", borderRadius:12, padding:5, marginBottom:16, overflowX:"auto" }}>
-          {([["fiches","⏱ En attente",nonTraites],["rattacher","🔗 À rattacher",nonRattaches],["traitees","✓ Traités",traites],["corbeille","🗑 Corbeille",corbeille.length]] as any[]).map(([k,l,c])=>(
-            <button key={k} onClick={()=>setTab(k)}
-              style={{ padding:"9px 14px", borderRadius:8, border:"none", cursor:"pointer", fontSize:13, fontWeight:tab===k?700:500, color:tab===k?"#0a0a0a":"rgba(255,255,255,.6)", background:tab===k?"#c8a84b":"transparent", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:6, fontFamily:"inherit" }}>
-              {l} {c>0 && <span style={{ fontSize:10, fontWeight:700, padding:"1px 6px", borderRadius:20, background:tab===k?"#0a0a0a":"#c8a84b", color:tab===k?"#c8a84b":"#0a0a0a" }}>{c}</span>}
+        {/* onglets */}
+        <div style={{display:"flex",gap:4,background:"#0a0a0a",borderRadius:12,padding:5,marginBottom:16,overflowX:"auto"}}>
+          {([["att","⏱ En attente",nbAtt],["rat","🔗 À rattacher",nbRat],["tra","✓ Traités",nbTra],["cor","🗑 Corbeille",corbeille.length]] as any[]).map(([k,l,c])=>(
+            <button key={k} onClick={()=>setTab(k)} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:tab===k?700:500,color:tab===k?"#0a0a0a":"rgba(255,255,255,.6)",background:tab===k?"#c8a84b":"transparent",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,fontFamily:"inherit"}}>
+              {l} {c>0&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:20,background:tab===k?"#0a0a0a":"#c8a84b",color:tab===k?"#c8a84b":"#0a0a0a"}}>{c}</span>}
             </button>
           ))}
         </div>
 
-        {loading ? <div style={{ textAlign:"center", padding:40, color:"#9ca3af" }}>Chargement...</div> : <>
+        {loading ? <div style={{textAlign:"center",padding:40,color:"#9ca3af"}}>Chargement...</div> : <>
 
-          {tab==="fiches" && (
-            retours.filter(r=>r.statut!=="traite").length===0
-              ? <div style={{ textAlign:"center", padding:"3rem", background:"#fff", borderRadius:14, color:"#9ca3af" }}>Aucune fiche à valider</div>
-              : retours.filter(r=>r.statut!=="traite").map(r => <FicheCard key={r.id} r={r} />)
-          )}
-
-          {tab==="rattacher" && (
-            retoursEntrepot.filter(r=>!r.rattache).length===0
-              ? <div style={{ textAlign:"center", padding:"3rem", background:"#fff", borderRadius:14, color:"#9ca3af" }}>Rien à rattacher ✓</div>
-              : retoursEntrepot.filter(r=>!r.rattache).map(r => (
-                <div key={r.id} style={{ background:"#fffbf0", border:"1.5px solid #fde68a", borderRadius:16, padding:"1.1rem 1.4rem", marginBottom:10 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8, marginBottom:8 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {/* EN ATTENTE */}
+          {tab==="att" && (nbAtt===0
+            ? <div style={{textAlign:"center",padding:"3rem",background:"#fff",borderRadius:14,color:"#9ca3af"}}>Aucune fiche à valider</div>
+            : retours.filter(r=>r.statut!=="traite").map(r=>{
+              const isOpen = openId===r.id;
+              const prods = r.products||[];
+              return (
+                <div key={r.id} style={{background:"#fff",border:"1.5px solid #e8e0d0",borderRadius:16,padding:"1.1rem 1.4rem",marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       {numBadge(r.numero||"—")}
-                      <span style={{ fontWeight:700 }}>{r.clientConnu||"Client non identifié"}</span>
+                      <span style={{fontWeight:700,fontSize:15}}>{r.client}</span>
+                      <span style={{color:"#6b7280",fontSize:12}}>BL {r.bl}</span>
                     </div>
-                    <span style={{ fontSize:12, color:"#6b7280" }}>📅 {r.date} · 👤 {r.agent}</span>
+                    <span style={{padding:"4px 11px",borderRadius:20,fontSize:11,fontWeight:600,background:"#fef3c7",color:"#b45309"}}>En attente</span>
                   </div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:10 }}>
-                    {(r.products||[]).map((p:any,i:number) => <span key={i} style={{ background:"#fff", border:"1px solid #e8e0d0", borderRadius:20, padding:"3px 10px", fontSize:12, color:"#6b7280" }}>{p.nom}{p.qteRecue?` × ${p.qteRecue}`:""}</span>)}
+                  <div style={{fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>
+                    <span>📅 {r.date}</span><span>🚛 {r.transporteur||"—"}</span><span>📦 {prods.length} article{prods.length>1?"s":""}</span>
                   </div>
-                  <div style={{ display:"flex", gap:8 }}>
-                    <button style={BTN("#fef3c7","#b45309")} onClick={()=>setShowRattach(r)}>🔗 Rattacher</button>
-                    <button style={{ ...BTN("#fee2e2","#dc2626"), padding:"8px 12px" }} onClick={()=>setShowDelete({type:"entrepot",id:r.id,numero:r.numero||""})}>🗑</button>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:8}}>
+                    {prods.map((p:any,i:number)=><span key={i} style={{background:"#f5f3ee",border:"1px solid #e8e0d0",borderRadius:20,padding:"3px 10px",fontSize:12,color:"#6b7280"}}>{p.nom}{p.qteRecue?` × ${p.qteRecue}`:""}</span>)}
                   </div>
-                </div>
-              ))
-          )}
-
-          {tab==="traitees" && (
-            retours.filter(r=>r.statut==="traite").length===0
-              ? <div style={{ textAlign:"center", padding:"3rem", background:"#fff", borderRadius:14, color:"#9ca3af" }}>Aucune fiche traitée</div>
-              : retours.filter(r=>r.statut==="traite").map(r => (
-                <div key={r.id} style={{ background:"#f0fdf4", border:"1.5px solid #bbf7d0", borderRadius:16, padding:"1.1rem 1.4rem", marginBottom:10 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      {numBadge(r.numero||"—")}
-                      <span style={{ fontWeight:700 }}>{r.client}</span>
-                      <span style={{ color:"#6b7280", fontSize:12 }}>BL {r.bl}</span>
-                      <span style={{ background:"#dcfce7", color:"#15803d", border:"1px solid #bbf7d0", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>✓ Traité</span>
-                    </div>
-                    <div style={{ display:"flex", gap:6 }}>
-                      <button style={{ ...BTN("#fee2e2","#dc2626"), padding:"7px 9px", fontSize:12 }} onClick={()=>genererPDFRetour(r)}>📄</button>
-                      <button style={{ ...BTN("#fee2e2","#dc2626"), padding:"7px 9px", fontSize:11 }} onClick={()=>setShowDelete({type:"retour",id:r.id,numero:r.numero||""})}>🗑</button>
-                    </div>
+                  <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+                    <button style={bt("#c8a84b","#0a0a0a")} onClick={()=>setOpenId(isOpen?null:r.id)}>📋 {isOpen?"Fermer":"Pointer"}</button>
+                    <button style={{...bt("#fee2e2","#dc2626"),padding:"8px 12px"}} onClick={()=>{setModal("delete");setModalData({type:"ret",id:r.id,numero:r.numero||"—"});}}>🗑</button>
                   </div>
-                  <div style={{ fontSize:12, color:"#6b7280", marginTop:6 }}>📅 {r.date} · 🚛 {r.transporteur||"—"}</div>
-                </div>
-              ))
-          )}
-
-          {tab==="corbeille" && (
-            corbeille.length===0
-              ? <div style={{ textAlign:"center", padding:"3rem", background:"#fff", borderRadius:14, color:"#9ca3af" }}>Corbeille vide</div>
-              : <>
-                <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:10 }}>
-                  <button style={BTN("#fee2e2","#dc2626")} onClick={async()=>{ if(confirm("Vider la corbeille ?")) await Promise.all(corbeille.map(c=>remove2(ref2(dbRetours,"corbeille/"+c.id)))); }}>🗑 Vider</button>
-                </div>
-                {corbeille.map(r => (
-                  <div key={r.id} style={{ background:"#fff", border:"1.5px solid #fecaca", borderRadius:14, padding:"1rem 1.2rem", marginBottom:8 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", gap:8, marginBottom:6, flexWrap:"wrap" }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        {numBadge(r.numero||"—")}
-                        <span style={{ fontWeight:700 }}>{r.client||r.clientConnu||"—"}</span>
+                  {isOpen && (
+                    <div style={{marginTop:16,borderTop:"1.5px solid #e8e0d0",paddingTop:16}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                        <thead><tr style={{background:"#fafaf8",borderBottom:"1.5px solid #e8e0d0"}}>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:11,color:"#9ca3af"}}>Article</th>
+                          <th style={{padding:"8px 6px",textAlign:"center",fontSize:11,color:"#9ca3af",width:55}}>Att.</th>
+                          <th style={{padding:"8px 6px",textAlign:"center",fontSize:11,color:"#15803d",width:80}}>✓ Stock</th>
+                          <th style={{padding:"8px 6px",textAlign:"center",fontSize:11,color:"#dc2626",width:80}}>✗ Destr.</th>
+                          <th style={{padding:"8px 6px",textAlign:"center",fontSize:11,color:"#b45309",width:75}}>Manq.</th>
+                          <th style={{padding:"8px 6px",textAlign:"center",fontSize:11,color:"#1d4ed8",width:55}}>Solde</th>
+                        </tr></thead>
+                        <tbody>
+                          {prods.map((p:any,pi:number)=>{
+                            const c = ctrl[`${r.id}_${pi}`]||{};
+                            const qS=c.qStock??p.controle?.qStock??""; const qD=c.qDestroy??p.controle?.qDestroy??""; const qM=c.qManque??p.controle?.qManque??"";
+                            const recu=parseInt(p.qteRecue)||0; const solde=recu-(parseInt(qS)||0)-(parseInt(qD)||0);
+                            return (
+                              <tr key={pi} style={{borderBottom:"1px solid #f5f3ee"}}>
+                                <td style={{padding:"8px 10px"}}><div style={{fontWeight:600}}>{p.nom}</div><div style={{fontSize:11,color:"#9ca3af"}}>{[p.lot&&"Lot "+p.lot,p.origine,p.motif].filter(Boolean).join(" · ")}</div></td>
+                                <td style={{padding:"6px",textAlign:"center",color:"#9ca3af",fontWeight:700}}>{p.qteAttendue||"—"}</td>
+                                <td style={{padding:"6px",textAlign:"center"}}><input type="number" min="0" value={qS} placeholder="0" onChange={e=>setCtrl(prev=>({...prev,[`${r.id}_${pi}`]:{...(prev[`${r.id}_${pi}`]||{}),qStock:e.target.value}}))} style={{width:52,height:32,textAlign:"center",border:"2px solid #bbf7d0",borderRadius:8,background:"#f0fdf4",color:"#15803d",fontWeight:700,fontSize:14,outline:"none",fontFamily:"inherit"}}/></td>
+                                <td style={{padding:"6px",textAlign:"center"}}><input type="number" min="0" value={qD} placeholder="0" onChange={e=>setCtrl(prev=>({...prev,[`${r.id}_${pi}`]:{...(prev[`${r.id}_${pi}`]||{}),qDestroy:e.target.value}}))} style={{width:52,height:32,textAlign:"center",border:"2px solid #fecaca",borderRadius:8,background:"#fff5f5",color:"#dc2626",fontWeight:700,fontSize:14,outline:"none",fontFamily:"inherit"}}/></td>
+                                <td style={{padding:"6px",textAlign:"center"}}><input type="number" min="0" value={qM} placeholder="0" onChange={e=>setCtrl(prev=>({...prev,[`${r.id}_${pi}`]:{...(prev[`${r.id}_${pi}`]||{}),qManque:e.target.value}}))} style={{width:48,height:32,textAlign:"center",border:"2px solid #fde68a",borderRadius:8,background:"#fffbf0",color:"#b45309",fontWeight:700,fontSize:14,outline:"none",fontFamily:"inherit"}}/></td>
+                                <td style={{padding:"6px",textAlign:"center"}}><span style={{display:"inline-block",minWidth:32,padding:"4px 6px",borderRadius:8,fontSize:13,fontWeight:700,background:solde>0?"#dbeafe":solde<0?"#fee2e2":"#dcfce7",color:solde>0?"#1d4ed8":solde<0?"#dc2626":"#15803d"}}>{solde}</span></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      <div style={{marginTop:10}}>
+                        <label style={lb}>Commentaire</label>
+                        <textarea defaultValue={r.commentPrep||""} onChange={e=>setCmtPrep(prev=>({...prev,[r.id]:e.target.value}))} style={{...si,minHeight:50,resize:"vertical"}}/>
                       </div>
-                      <span style={{ fontSize:11, color:"#dc2626" }}>Supprimé le {r._deletedAt}</span>
+                      <button onClick={()=>doValider(r)} style={{width:"100%",marginTop:12,padding:14,background:"#c8a84b",color:"#0a0a0a",border:"none",borderRadius:12,cursor:"pointer",fontSize:15,fontWeight:700,fontFamily:"inherit"}}>✓ Valider le retour</button>
                     </div>
-                    <div style={{ display:"flex", gap:8, marginTop:8 }}>
-                      <button style={BTN("#dcfce7","#15803d")} onClick={()=>restaurer(r)}>↩ Restaurer</button>
-                      <button style={BTN("#fee2e2","#dc2626")} onClick={async()=>{ if(confirm("Supprimer définitivement ?")) await remove2(ref2(dbRetours,"corbeille/"+r.id)); }}>🗑 Définitif</button>
-                    </div>
-                  </div>
-                ))}
-              </>
+                  )}
+                </div>
+              );
+            })
+          )}
+
+          {/* À RATTACHER */}
+          {tab==="rat" && (nbRat===0
+            ? <div style={{textAlign:"center",padding:"3rem",background:"#fff",borderRadius:14,color:"#9ca3af"}}>Rien à rattacher ✓</div>
+            : entrepots.filter(r=>!r.rattache).map(r=>(
+              <div key={r.id} style={{background:"#fffbf0",border:"1.5px solid #fde68a",borderRadius:16,padding:"1.1rem 1.4rem",marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>{numBadge(r.numero||"—")}<span style={{fontWeight:700}}>{r.clientConnu||"Client non identifié"}</span></div>
+                  <span style={{fontSize:12,color:"#6b7280"}}>📅 {r.date} · 👤 {r.agent}</span>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>
+                  {(r.products||[]).map((p:any,i:number)=><span key={i} style={{background:"#fff",border:"1px solid #e8e0d0",borderRadius:20,padding:"3px 10px",fontSize:12,color:"#6b7280"}}>{p.nom}{p.qteRecue?` × ${p.qteRecue}`:""}</span>)}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button style={bt("#fef3c7","#b45309")} onClick={()=>{setModal("rattach");setModalData(r);}}>🔗 Rattacher</button>
+                  <button style={{...bt("#fee2e2","#dc2626"),padding:"8px 12px"}} onClick={()=>{setModal("delete");setModalData({type:"ent",id:r.id,numero:r.numero||"—"});}}>🗑</button>
+                </div>
+              </div>
+            ))
+          )}
+
+          {/* TRAITÉS */}
+          {tab==="tra" && (nbTra===0
+            ? <div style={{textAlign:"center",padding:"3rem",background:"#fff",borderRadius:14,color:"#9ca3af"}}>Aucune fiche traitée</div>
+            : retours.filter(r=>r.statut==="traite").map(r=>(
+              <div key={r.id} style={{background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:16,padding:"1.1rem 1.4rem",marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>{numBadge(r.numero||"—")}<span style={{fontWeight:700}}>{r.client}</span><span style={{color:"#6b7280",fontSize:12}}>BL {r.bl}</span><span style={{background:"#dcfce7",color:"#15803d",border:"1px solid #bbf7d0",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:600}}>✓ Traité</span></div>
+                  <button style={{...bt("#fee2e2","#dc2626"),padding:"7px 9px",fontSize:11}} onClick={()=>{setModal("delete");setModalData({type:"ret",id:r.id,numero:r.numero||"—"});}}>🗑</button>
+                </div>
+                <div style={{fontSize:12,color:"#6b7280",marginTop:6}}>📅 {r.date} · 🚛 {r.transporteur||"—"}</div>
+              </div>
+            ))
+          )}
+
+          {/* CORBEILLE */}
+          {tab==="cor" && (corbeille.length===0
+            ? <div style={{textAlign:"center",padding:"3rem",background:"#fff",borderRadius:14,color:"#9ca3af"}}>Corbeille vide</div>
+            : corbeille.map(r=>(
+              <div key={r.id} style={{background:"#fff",border:"1.5px solid #fecaca",borderRadius:14,padding:"1rem 1.2rem",marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>{numBadge(r.numero||"—")}<span style={{fontWeight:700}}>{r.client||r.clientConnu||"—"}</span></div>
+                  <span style={{fontSize:11,color:"#dc2626"}}>🗑 {r._deletedAt}</span>
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:8}}>
+                  <button style={bt("#dcfce7","#15803d")} onClick={async()=>{const{_originalPath,_deletedAt,_deletedTs,id,...d}=r;await push2(ref2(dbRet,_originalPath?.startsWith("retours_entrepot")?"retours_entrepot":"retours"),d);await remove2(ref2(dbRet,"corbeille/"+id));}}>↩ Restaurer</button>
+                  <button style={bt("#fee2e2","#dc2626")} onClick={async()=>{if(confirm("Supprimer définitivement ?"))await remove2(ref2(dbRet,"corbeille/"+r.id));}}>🗑 Définitif</button>
+                </div>
+              </div>
+            ))
           )}
         </>}
       </div>
 
       {/* MODAL CHOIX */}
-      {showChoix && (
-        <Overlay onClose={()=>setShowChoix(false)}>
-          <p style={{ fontSize:16, fontWeight:700, textAlign:"center", marginBottom:20 }}>+ Saisir un retour</p>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
-            <button onClick={()=>{setShowChoix(false);setShowPrevu(true);}} style={{ padding:"1.5rem 1rem", background:"#f5f3ee", border:"2px solid #e8e0d0", borderRadius:16, cursor:"pointer", textAlign:"center", fontFamily:"inherit" }}>
-              <div style={{ fontSize:32, marginBottom:8 }}>📦</div>
-              <div style={{ fontWeight:700 }}>Retour prévu</div>
-              <div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>Commercial</div>
-            </button>
-            <button onClick={()=>{setShowChoix(false);setShowInattendu(true);}} style={{ padding:"1.5rem 1rem", background:"#f5f3ee", border:"2px solid #e8e0d0", borderRadius:16, cursor:"pointer", textAlign:"center", fontFamily:"inherit" }}>
-              <div style={{ fontSize:32, marginBottom:8 }}>⚠️</div>
-              <div style={{ fontWeight:700 }}>Retour inattendu</div>
-              <div style={{ fontSize:12, color:"#6b7280", marginTop:4 }}>Entrepôt</div>
-            </button>
-          </div>
-          <div style={{ textAlign:"center", marginTop:16 }}>
-            <button style={{ padding:"10px 18px", borderRadius:10, border:"1.5px solid #e8e0d0", background:"transparent", cursor:"pointer", fontSize:13, fontFamily:"inherit" }} onClick={()=>setShowChoix(false)}>Annuler</button>
-          </div>
-        </Overlay>
-      )}
+      {modal==="choix" && <Ovl close={()=>setModal("")}>
+        <p style={{fontSize:16,fontWeight:700,textAlign:"center",marginBottom:20}}>+ Saisir un retour</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <button onClick={()=>setModal("prevu")} style={{padding:"1.5rem 1rem",background:"#f5f3ee",border:"2px solid #e8e0d0",borderRadius:16,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
+            <div style={{fontSize:32,marginBottom:8}}>📦</div><div style={{fontWeight:700}}>Retour prévu</div><div style={{fontSize:12,color:"#6b7280",marginTop:4}}>Commercial</div>
+          </button>
+          <button onClick={()=>setModal("inattendu")} style={{padding:"1.5rem 1rem",background:"#f5f3ee",border:"2px solid #e8e0d0",borderRadius:16,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
+            <div style={{fontSize:32,marginBottom:8}}>⚠️</div><div style={{fontWeight:700}}>Retour inattendu</div><div style={{fontSize:12,color:"#6b7280",marginTop:4}}>Entrepôt</div>
+          </button>
+        </div>
+        <div style={{textAlign:"center",marginTop:16}}><button style={{padding:"10px 18px",borderRadius:10,border:"1.5px solid #e8e0d0",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setModal("")}>Annuler</button></div>
+      </Ovl>}
 
-      {showPrevu && <FormSaisie mode="prevu" onClose={()=>setShowPrevu(false)} onSubmit={submitPrevu} />}
-      {showInattendu && <FormSaisie mode="entrepot" onClose={()=>setShowInattendu(false)} onSubmit={submitEntrepot} />}
+      {/* MODAL RETOUR PRÉVU */}
+      {modal==="prevu" && <Ovl close={()=>setModal("choix")}>
+        <p style={{fontSize:15,fontWeight:700,marginBottom:14}}>📋 Nouveau retour prévu</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div><label style={lb}>Client</label><input style={si} value={fCli} onChange={e=>setFCli(e.target.value)} placeholder="ex : Carrefour"/></div>
+          <div><label style={lb}>N° BL</label><input style={si} type="number" value={fBl} onChange={e=>setFBl(e.target.value)}/></div>
+          <div><label style={lb}>Transporteur</label><input style={si} value={fTra} onChange={e=>setFTra(e.target.value)}/></div>
+          <div><label style={lb}>Date livraison</label><input style={si} type="date" value={fDat} onChange={e=>setFDat(e.target.value)}/></div>
+        </div>
+        <div style={{marginBottom:14}}><label style={lb}>Saisi par</label><input style={si} value={fCom} onChange={e=>setFCom(e.target.value)}/></div>
+        <p style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",marginBottom:8}}>Produits</p>
+        <div style={{fontSize:11,color:"#9ca3af",display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 2fr 28px",gap:5,marginBottom:4}}>
+          <span>Produit</span><span>Lot</span><span>Origine</span><span>Att.</span><span>Reçu</span><span>Motif</span><span></span>
+        </div>
+        {fRows.map((row,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr 1fr 2fr 28px",gap:5,marginBottom:6,alignItems:"center"}}>
+            <input style={si} list="rl-produits" placeholder="Produit" value={row.nom} onChange={e=>upFRow(i,"nom",e.target.value)} autoComplete="off"/>
+            <input style={si} placeholder="Lot" value={row.lot} onChange={e=>upFRow(i,"lot",e.target.value)}/>
+            <input style={si} placeholder="Origine" value={row.ori} onChange={e=>upFRow(i,"ori",e.target.value)}/>
+            <input style={{...si,textAlign:"center"}} type="number" placeholder="Att." value={row.att} onChange={e=>upFRow(i,"att",e.target.value)}/>
+            <input style={{...si,textAlign:"center"}} type="number" placeholder="Reçu" value={row.rec} onChange={e=>upFRow(i,"rec",e.target.value)}/>
+            <select style={si} value={row.mot} onChange={e=>upFRow(i,"mot",e.target.value)}>
+              <option value="">--</option>{MOTIFS.map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            {fRows.length>1&&<button type="button" onClick={()=>setFRows(rs=>rs.filter((_,j)=>j!==i))} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:16}}>🗑</button>}
+          </div>
+        ))}
+        <button type="button" onClick={()=>setFRows(rs=>[...rs,{nom:"",lot:"",ori:"",att:"",rec:"",mot:""}])} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",border:"1.5px dashed #c8a84b",borderRadius:10,background:"transparent",cursor:"pointer",fontSize:13,color:"#c8a84b",margin:"8px 0 14px",fontFamily:"inherit"}}>+ Ajouter</button>
+        <div style={{marginBottom:14}}><label style={lb}>Commentaires</label><textarea style={{...si,minHeight:55,resize:"vertical"}} value={fCmt} onChange={e=>setFCmt(e.target.value)}/></div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+          <button style={{padding:"10px 18px",borderRadius:10,border:"1.5px solid #e8e0d0",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setModal("choix")}>Annuler</button>
+          <button style={{padding:"10px 18px",borderRadius:10,border:"none",background:"#c8a84b",color:"#0a0a0a",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}} onClick={doSubmitPrevu}>📤 Enregistrer</button>
+        </div>
+      </Ovl>}
+
+      {/* MODAL ENTREPÔT */}
+      {modal==="inattendu" && <Ovl close={()=>setModal("choix")}>
+        <p style={{fontSize:15,fontWeight:700,marginBottom:10}}>🏭 Retour inattendu</p>
+        <div style={{background:"#fffbf0",border:"1.5px solid rgba(200,168,75,.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#92600a",marginBottom:14}}>Colis reçu sans déclaration — apparaîtra dans <strong>À rattacher</strong>.</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div><label style={lb}>Reçu par</label><input style={si} value={eAgt} onChange={e=>setEAgt(e.target.value)}/></div>
+          <div><label style={lb}>Date réception</label><input style={si} type="date" value={eDat} onChange={e=>setEDat(e.target.value)}/></div>
+          <div><label style={lb}>Client (optionnel)</label><input style={si} value={eCli} onChange={e=>setECli(e.target.value)}/></div>
+          <div><label style={lb}>Transporteur (optionnel)</label><input style={si} value={eTra} onChange={e=>setETra(e.target.value)}/></div>
+        </div>
+        <p style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",marginBottom:8}}>Articles</p>
+        <div style={{fontSize:11,color:"#9ca3af",display:"grid",gridTemplateColumns:"2fr 1fr 1fr 0.8fr 1.8fr 70px 28px",gap:5,marginBottom:4}}>
+          <span>Article</span><span>Lot</span><span>Origine</span><span>Qté</span><span>État</span><span>Décision</span><span></span>
+        </div>
+        {eRows.map((row,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 0.8fr 1.8fr 70px 28px",gap:5,marginBottom:6,alignItems:"center"}}>
+            <input style={si} list="rl-produits" placeholder="Article" value={row.nom} onChange={e=>upERow(i,"nom",e.target.value)} autoComplete="off"/>
+            <input style={si} placeholder="Lot" value={row.lot} onChange={e=>upERow(i,"lot",e.target.value)}/>
+            <input style={si} placeholder="Origine" value={row.ori} onChange={e=>upERow(i,"ori",e.target.value)}/>
+            <input style={{...si,textAlign:"center"}} type="number" placeholder="Qté" value={row.qte} onChange={e=>upERow(i,"qte",e.target.value)}/>
+            <select style={si} value={row.mot} onChange={e=>upERow(i,"mot",e.target.value)}>
+              <option value="">--</option>{ETATS.map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+            <div style={{display:"flex",gap:3}}>
+              <button type="button" onClick={()=>upERow(i,"dec",row.dec==="accepte"?null:"accepte")} style={{padding:"5px 6px",borderRadius:6,border:`1.5px solid ${row.dec==="accepte"?"#15803d":"#bbf7d0"}`,background:row.dec==="accepte"?"#dcfce7":"transparent",color:"#15803d",fontSize:11,fontWeight:600,cursor:"pointer"}}>✓</button>
+              <button type="button" onClick={()=>upERow(i,"dec",row.dec==="destruction"?null:"destruction")} style={{padding:"5px 6px",borderRadius:6,border:`1.5px solid ${row.dec==="destruction"?"#dc2626":"#fecaca"}`,background:row.dec==="destruction"?"#fee2e2":"transparent",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>✗</button>
+            </div>
+            {eRows.length>1&&<button type="button" onClick={()=>setERows(rs=>rs.filter((_,j)=>j!==i))} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:16}}>🗑</button>}
+          </div>
+        ))}
+        <button type="button" onClick={()=>setERows(rs=>[...rs,{nom:"",lot:"",ori:"",qte:"",mot:"",dec:null}])} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",border:"1.5px dashed #c8a84b",borderRadius:10,background:"transparent",cursor:"pointer",fontSize:13,color:"#c8a84b",margin:"8px 0 14px",fontFamily:"inherit"}}>+ Ajouter</button>
+        <div style={{marginBottom:14}}><label style={lb}>Commentaires</label><textarea style={{...si,minHeight:55,resize:"vertical"}} value={eCmt} onChange={e=>setECmt(e.target.value)}/></div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+          <button style={{padding:"10px 18px",borderRadius:10,border:"1.5px solid #e8e0d0",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setModal("choix")}>Annuler</button>
+          <button style={{padding:"10px 18px",borderRadius:10,border:"none",background:"#c8a84b",color:"#0a0a0a",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}} onClick={doSubmitEntrepot}>📤 Envoyer</button>
+        </div>
+      </Ovl>}
 
       {/* MODAL RATTACHEMENT */}
-      {showRattach && (
-        <Overlay onClose={()=>setShowRattach(null)}>
-          {(() => {
-            let rClient="",rBl="",rTra="",rDat="",rCom="",rCmt="";
-            return (
-              <>
-                <p style={{ fontSize:15, fontWeight:700, marginBottom:14 }}>🔗 Rattacher à une commande</p>
-                <div style={{ background:"#f5f3ee", borderRadius:10, padding:"12px 14px", marginBottom:16, fontSize:13, color:"#6b7280" }}>
-                  <strong>Fiche {showRattach.numero} :</strong><br/>
-                  {(showRattach.products||[]).map((p:any,i:number)=><div key={i}>📦 {p.nom}{p.qteRecue?` × ${p.qteRecue}`:""}</div>)}
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-                  <div><label style={RETOURS_LBL}>Client</label><input style={RETOURS_INP} placeholder="Client" onChange={e=>{rClient=e.target.value}} /></div>
-                  <div><label style={RETOURS_LBL}>N° BL</label><input style={RETOURS_INP} type="number" placeholder="BL" onChange={e=>{rBl=e.target.value}} /></div>
-                  <div><label style={RETOURS_LBL}>Transporteur</label><input style={RETOURS_INP} onChange={e=>{rTra=e.target.value}} /></div>
-                  <div><label style={RETOURS_LBL}>Date livraison</label><input style={RETOURS_INP} type="date" onChange={e=>{rDat=e.target.value}} /></div>
-                </div>
-                <div style={{ marginBottom:12 }}><label style={RETOURS_LBL}>Saisi par</label><input style={RETOURS_INP} onChange={e=>{rCom=e.target.value}} /></div>
-                <div><label style={RETOURS_LBL}>Commentaires</label><textarea style={{...RETOURS_INP,minHeight:55}} onChange={e=>{rCmt=e.target.value}} /></div>
-                <div style={{ display:"flex", justifyContent:"flex-end", gap:10, marginTop:16 }}>
-                  <button style={{ padding:"10px 18px", borderRadius:10, border:"1.5px solid #e8e0d0", background:"transparent", cursor:"pointer", fontSize:13, fontFamily:"inherit" }} onClick={()=>setShowRattach(null)}>Annuler</button>
-                  <button style={{ padding:"10px 18px", borderRadius:10, border:"none", background:"#c8a84b", color:"#0a0a0a", cursor:"pointer", fontSize:13, fontWeight:700, fontFamily:"inherit" }}
-                    onClick={()=>submitRattach({ client:rClient, bl:rBl, transporteur:rTra, dateLiv:rDat, commercial:rCom, comment:rCmt })}>
-                    🔗 Rattacher
-                  </button>
-                </div>
-              </>
-            );
-          })()}
-        </Overlay>
-      )}
-
-      {/* MODAL SUCCÈS */}
-      {showSuccess && (
-        <Overlay onClose={()=>{setShowSuccess(null);setRecapMsg("");}}>
-          <div style={{ textAlign:"center", marginBottom:20 }}>
-            <div style={{ fontSize:40, marginBottom:8 }}>✅</div>
-            <div style={{ fontSize:11, color:"#9ca3af", textTransform:"uppercase" }}>Numéro de fiche</div>
-            <div style={{ fontSize:28, fontWeight:800, color:"#c8a84b" }}>{showSuccess.fiche.numero}</div>
+      {modal==="rattach" && modalData && (()=>{
+        let rCli="",rBl="",rTra="",rDat="",rCom="",rCmt="";
+        return <Ovl close={()=>setModal("")}>
+          <p style={{fontSize:15,fontWeight:700,marginBottom:14}}>🔗 Rattacher</p>
+          <div style={{background:"#f5f3ee",borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:13,color:"#6b7280"}}>
+            <strong>{modalData.numero}</strong> · {(modalData.products||[]).map((p:any)=>p.nom).join(", ")}
           </div>
-          <button style={{ ...BTN("#fee2e2","#dc2626"), width:"100%", justifyContent:"center", marginBottom:14 }} onClick={()=>genererPDFRetour(showSuccess.fiche)}>📄 PDF</button>
-          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:12 }}>
-            {showSuccess.source==="commercial" && <button style={{ ...BTN("#dbeafe","#1d4ed8"), justifyContent:"flex-start" }} onClick={()=>setRecapMsg(genererMessageRetour(showSuccess.fiche,"prevu_preparateur"))}>📦 Message préparateur</button>}
-            {showSuccess.source==="entrepot" && <button style={{ ...BTN("#fef3c7","#b45309"), justifyContent:"flex-start" }} onClick={()=>setRecapMsg(genererMessageRetour(showSuccess.fiche,"entrepot_nondecl"))}>⚠️ Alerter commercial</button>}
-            {showSuccess.source==="valide" && <button style={{ ...BTN("#dcfce7","#15803d"), justifyContent:"flex-start" }} onClick={()=>setRecapMsg(genererMessageRetour(showSuccess.fiche,"bilan_preparateur"))}>✅ Envoyer bilan</button>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <div><label style={lb}>Client</label><input style={si} onChange={e=>{rCli=e.target.value}}/></div>
+            <div><label style={lb}>N° BL</label><input style={si} type="number" onChange={e=>{rBl=e.target.value}}/></div>
+            <div><label style={lb}>Transporteur</label><input style={si} onChange={e=>{rTra=e.target.value}}/></div>
+            <div><label style={lb}>Date livraison</label><input style={si} type="date" onChange={e=>{rDat=e.target.value}}/></div>
           </div>
-          {recapMsg && <>
-            <textarea value={recapMsg} onChange={e=>setRecapMsg(e.target.value)} style={{ ...S, minHeight:120, marginBottom:8 }} />
-            <div style={{ display:"flex", gap:8 }}>
-              <button style={{ ...BTN("#25D366"), flex:1, justifyContent:"center" }} onClick={()=>window.open(`https://wa.me/?text=${encodeURIComponent(recapMsg)}`,"_blank")}>📲 WhatsApp</button>
-              <button style={{ ...BTN("transparent","#1a2e1a"), border:"1.5px solid #e8e0d0" }} onClick={()=>navigator.clipboard.writeText(recapMsg)}>📋</button>
-            </div>
-          </>}
-          <div style={{ display:"flex", justifyContent:"flex-end", marginTop:16 }}>
-            <button style={{ padding:"10px 18px", borderRadius:10, border:"1.5px solid #e8e0d0", background:"transparent", cursor:"pointer", fontSize:13, fontFamily:"inherit" }} onClick={()=>{setShowSuccess(null);setRecapMsg("");}}>Fermer</button>
+          <div style={{marginBottom:12}}><label style={lb}>Saisi par</label><input style={si} onChange={e=>{rCom=e.target.value}}/></div>
+          <div><label style={lb}>Commentaires</label><textarea style={{...si,minHeight:55}} onChange={e=>{rCmt=e.target.value}}/></div>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:16}}>
+            <button style={{padding:"10px 18px",borderRadius:10,border:"1.5px solid #e8e0d0",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setModal("")}>Annuler</button>
+            <button style={{padding:"10px 18px",borderRadius:10,border:"none",background:"#c8a84b",color:"#0a0a0a",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}} onClick={()=>doSubmitRattach({client:rCli,bl:rBl,transporteur:rTra,dateLiv:rDat,commercial:rCom,comment:rCmt})}>🔗 Rattacher</button>
           </div>
-        </Overlay>
-      )}
+        </Ovl>;
+      })()}
 
       {/* MODAL SUPPRESSION */}
-      {showDelete && (
-        <Overlay onClose={()=>setShowDelete(null)}>
-          <p style={{ fontSize:15, fontWeight:700, marginBottom:12, color:"#dc2626" }}>🗑 Supprimer la fiche</p>
-          <p style={{ fontSize:13, color:"#6b7280", marginBottom:20 }}>Supprimer <strong>{showDelete.numero}</strong> ? Elle sera déplacée dans la corbeille.</p>
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:10 }}>
-            <button style={{ padding:"10px 18px", borderRadius:10, border:"1.5px solid #e8e0d0", background:"transparent", cursor:"pointer", fontSize:13, fontFamily:"inherit" }} onClick={()=>setShowDelete(null)}>Annuler</button>
-            <button style={BTN("#dc2626")} onClick={()=>supprimerFiche(showDelete.type,showDelete.id)}>🗑 Supprimer</button>
+      {modal==="delete" && modalData && <Ovl close={()=>setModal("")}>
+        <p style={{fontSize:15,fontWeight:700,marginBottom:12,color:"#dc2626"}}>🗑 Supprimer</p>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:20}}>Supprimer <strong>{modalData.numero}</strong> ? Elle sera en corbeille.</p>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+          <button style={{padding:"10px 18px",borderRadius:10,border:"1.5px solid #e8e0d0",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setModal("")}>Annuler</button>
+          <button style={{padding:"10px 18px",borderRadius:10,border:"none",background:"#dc2626",color:"#fff",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}} onClick={doSupprimer}>Supprimer</button>
+        </div>
+      </Ovl>}
+
+      {/* MODAL SUCCÈS */}
+      {modal==="success" && modalData && <Ovl close={()=>{setModal("");setRecapMsg("");}}>
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:40,marginBottom:8}}>✅</div>
+          <div style={{fontSize:28,fontWeight:800,color:"#c8a84b"}}>{modalData.fiche?.numero}</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+          {modalData.source==="commercial" && <button style={bt("#dbeafe","#1d4ed8")} onClick={()=>setRecapMsg(`📦 RETOUR CLIENT - ${modalData.fiche?.numero}\n\n🏪 ${modalData.fiche?.client}\n📋 BL ${modalData.fiche?.bl}\n📅 ${modalData.fiche?.dateLiv||modalData.fiche?.date}\n\n${(modalData.fiche?.products||[]).map((p:any)=>`  - ${p.nom}${p.qteAttendue?" att."+p.qteAttendue:""}${p.qteRecue?" reçu "+p.qteRecue:""}`).join("\n")}`)}>📦 Message préparateur</button>}
+          {modalData.source==="entrepot" && <button style={bt("#fef3c7","#b45309")} onClick={()=>setRecapMsg(`⚠️ RETOUR NON DECLARE - ${modalData.fiche?.numero}\n\n📅 ${modalData.fiche?.date} · 👤 ${modalData.fiche?.agent}\n\n${(modalData.fiche?.products||[]).map((p:any)=>`  - ${p.nom}${p.qteRecue?" x"+p.qteRecue:""}`).join("\n")}\n\n⚡ À rattacher`)}>⚠️ Alerter commercial</button>}
+          {modalData.source==="valide" && <button style={bt("#dcfce7","#15803d")} onClick={()=>setRecapMsg(`✅ RETOUR POINTE - ${modalData.fiche?.numero}\n\n🏪 ${modalData.fiche?.client} · BL ${modalData.fiche?.bl}`)}>✅ Envoyer bilan</button>}
+        </div>
+        {recapMsg && <>
+          <textarea value={recapMsg} onChange={e=>setRecapMsg(e.target.value)} style={{...si,minHeight:120,marginBottom:8}}/>
+          <div style={{display:"flex",gap:8}}>
+            <button style={{...bt("#25D366"),flex:1,justifyContent:"center"}} onClick={()=>window.open(`https://wa.me/?text=${encodeURIComponent(recapMsg)}`,"_blank")}>📲 WhatsApp</button>
+            <button style={{...bt("transparent","#1a2e1a"),border:"1.5px solid #e8e0d0"}} onClick={()=>navigator.clipboard.writeText(recapMsg)}>📋</button>
           </div>
-        </Overlay>
-      )}
+        </>}
+        <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
+          <button style={{padding:"10px 18px",borderRadius:10,border:"1.5px solid #e8e0d0",background:"transparent",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{setModal("");setRecapMsg("");}}>Fermer</button>
+        </div>
+      </Ovl>}
     </div>
   );
 }
