@@ -3848,7 +3848,8 @@ const STOCK_ARTICLES_LIST: Array<{article: string, equipe: string}> = [
 // ModalSaisiePrevu — composant indépendant, pas de state partagé avec le parent
 function ModalSaisiePrevu({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: any) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [nbRows, setNbRows] = useState(1);
+  const [rowKeys, setRowKeys] = useState<number[]>([0]);
+  const nextKey = useRef(1);
   const inp: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%" };
   const lbl: React.CSSProperties = { fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", display: "block", marginBottom: 5 };
 
@@ -3868,8 +3869,6 @@ function ModalSaisiePrevu({ onClose, onSubmit }: { onClose: () => void; onSubmit
     onSubmit({ client: g("client"), bl: g("bl"), transporteur: g("tra"), dateLiv: g("dat"), commercial: g("com"), comment: g("cmt"), products });
   }
 
-  const rowStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 2fr 28px", gap: 5, marginBottom: 5, alignItems: "center" };
-
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "16px", overflowY: "auto" }} onClick={onClose}>
       <div ref={containerRef} style={{ background: "#fff", borderRadius: 20, padding: 24, maxWidth: 720, width: "100%", marginTop: 20 }} onClick={e => e.stopPropagation()}>
@@ -3882,26 +3881,24 @@ function ModalSaisiePrevu({ onClose, onSubmit }: { onClose: () => void; onSubmit
         </div>
         <div style={{ marginBottom: 14 }}><label style={lbl}>Saisi par</label><input id="mp-com" style={inp} /></div>
         <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 6 }}>Produits</p>
-        <div style={{ fontSize: 11, color: "#9ca3af", display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 2fr 28px", gap: 5, marginBottom: 4, padding: "0 2px" }}>
+        <div style={{ fontSize: 11, color: "#9ca3af", display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 2fr 28px", gap: 5, marginBottom: 4 }}>
           <span>Produit</span><span>Lot</span><span>Origine</span><span>Att.</span><span>Reçu</span><span>Motif</span><span></span>
         </div>
-        <div id="mp-rows">
-          {Array.from({ length: nbRows }).map((_, i) => (
-            <div key={i} className="prod-row-mp" style={rowStyle}>
-              <input style={inp} data-f="nom" list="produits-stock-list" placeholder="Produit" autoComplete="off" />
-              <input style={inp} data-f="lot" placeholder="Lot" />
-              <input style={inp} data-f="ori" placeholder="Origine" />
-              <input style={{ ...inp, textAlign: "center" }} data-f="att" type="number" placeholder="Att." />
-              <input style={{ ...inp, textAlign: "center" }} data-f="rec" type="number" placeholder="Reçu" />
-              <select style={inp} data-f="mot">
-                <option value="">-- Motif --</option>
-                {MOTIFS_RETOUR.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              {nbRows > 1 && <button type="button" onClick={() => setNbRows(n => n - 1)} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>🗑</button>}
-            </div>
-          ))}
-        </div>
-        <button type="button" onClick={() => setNbRows(n => n + 1)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", margin: "8px 0 14px" }}>+ Ajouter un produit</button>
+        {rowKeys.map(k => (
+          <div key={k} className="prod-row-mp" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 2fr 28px", gap: 5, marginBottom: 5, alignItems: "center" }}>
+            <input style={inp} data-f="nom" list="produits-stock-list" placeholder="Produit" autoComplete="off" />
+            <input style={inp} data-f="lot" placeholder="Lot" />
+            <input style={inp} data-f="ori" placeholder="Origine" />
+            <input style={{ ...inp, textAlign: "center" }} data-f="att" type="number" placeholder="Att." />
+            <input style={{ ...inp, textAlign: "center" }} data-f="rec" type="number" placeholder="Reçu" />
+            <select style={inp} data-f="mot">
+              <option value="">-- Motif --</option>
+              {MOTIFS_RETOUR.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            {rowKeys.length > 1 && <button type="button" onClick={() => setRowKeys(rk => rk.filter(x => x !== k))} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>🗑</button>}
+          </div>
+        ))}
+        <button type="button" onClick={() => { setRowKeys(rk => [...rk, nextKey.current++]); }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", margin: "8px 0 14px" }}>+ Ajouter un produit</button>
         <div><label style={lbl}>Commentaires</label><textarea id="mp-cmt" style={{ ...inp, minHeight: 55, resize: "vertical" }} /></div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
           <button style={{ padding: "10px 18px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "transparent", cursor: "pointer", fontSize: 13 }} onClick={onClose}>Annuler</button>
@@ -3915,7 +3912,8 @@ function ModalSaisiePrevu({ onClose, onSubmit }: { onClose: () => void; onSubmit
 // ModalSaisieInattendu — même principe
 function ModalSaisieInattendu({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: any) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [nbRows, setNbRows] = useState(1);
+  const [rowKeys, setRowKeys] = useState<number[]>([0]);
+  const nextKey = useRef(1);
   const inp: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%" };
   const lbl: React.CSSProperties = { fontSize: 11, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", display: "block", marginBottom: 5 };
 
@@ -3962,29 +3960,27 @@ function ModalSaisieInattendu({ onClose, onSubmit }: { onClose: () => void; onSu
           <div><label style={lbl}>Transporteur (optionnel)</label><input id="mi-tra" style={inp} /></div>
         </div>
         <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 6 }}>Articles reçus</p>
-        <div style={{ fontSize: 11, color: "#9ca3af", display: "grid", gridTemplateColumns: "2fr 1fr 1fr 0.8fr 1.6fr 80px 28px", gap: 5, marginBottom: 4, padding: "0 2px" }}>
+        <div style={{ fontSize: 11, color: "#9ca3af", display: "grid", gridTemplateColumns: "2fr 1fr 1fr 0.8fr 1.6fr 70px 28px", gap: 5, marginBottom: 4 }}>
           <span>Article</span><span>Lot</span><span>Origine</span><span>Qté</span><span>État</span><span>Décision</span><span></span>
         </div>
-        <div id="mi-rows">
-          {Array.from({ length: nbRows }).map((_, i) => (
-            <div key={i} className="prod-row-mi" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 0.8fr 1.6fr 80px 28px", gap: 5, marginBottom: 5, alignItems: "center" }}>
-              <input style={inp} data-f="nom" list="produits-stock-list" placeholder="Article" autoComplete="off" />
-              <input style={inp} data-f="lot" placeholder="Lot" />
-              <input style={inp} data-f="ori" placeholder="Origine" />
-              <input style={{ ...inp, textAlign: "center" }} data-f="qte" type="number" placeholder="Qté" />
-              <select style={inp} data-f="mot">
-                <option value="">-- État --</option>
-                {ETATS_ENTREPOT.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <div style={{ display: "flex", gap: 3 }}>
-                <button type="button" data-f="da" data-on="0" onClick={e => toggleDec(e, "da", "dd")} style={{ padding: "5px 8px", borderRadius: 6, border: "1.5px solid #bbf7d0", background: "transparent", color: "#15803d", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✓ Stock</button>
-                <button type="button" data-f="dd" data-on="0" onClick={e => toggleDec(e, "dd", "da")} style={{ padding: "5px 8px", borderRadius: 6, border: "1.5px solid #fecaca", background: "transparent", color: "#dc2626", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✗ Destr</button>
-              </div>
-              {nbRows > 1 && <button type="button" onClick={() => setNbRows(n => n - 1)} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>🗑</button>}
+        {rowKeys.map(k => (
+          <div key={k} className="prod-row-mi" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 0.8fr 1.6fr 70px 28px", gap: 5, marginBottom: 5, alignItems: "center" }}>
+            <input style={inp} data-f="nom" list="produits-stock-list" placeholder="Article" autoComplete="off" />
+            <input style={inp} data-f="lot" placeholder="Lot" />
+            <input style={inp} data-f="ori" placeholder="Origine" />
+            <input style={{ ...inp, textAlign: "center" }} data-f="qte" type="number" placeholder="Qté" />
+            <select style={inp} data-f="mot">
+              <option value="">-- État --</option>
+              {ETATS_ENTREPOT.map((m: string) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <div style={{ display: "flex", gap: 3 }}>
+              <button type="button" data-f="da" data-on="0" onClick={e => toggleDec(e, "da", "dd")} style={{ padding: "5px 6px", borderRadius: 6, border: "1.5px solid #bbf7d0", background: "transparent", color: "#15803d", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✓</button>
+              <button type="button" data-f="dd" data-on="0" onClick={e => toggleDec(e, "dd", "da")} style={{ padding: "5px 6px", borderRadius: 6, border: "1.5px solid #fecaca", background: "transparent", color: "#dc2626", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✗</button>
             </div>
-          ))}
-        </div>
-        <button type="button" onClick={() => setNbRows(n => n + 1)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", margin: "8px 0 14px" }}>+ Ajouter</button>
+            {rowKeys.length > 1 && <button type="button" onClick={() => setRowKeys(rk => rk.filter(x => x !== k))} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16 }}>🗑</button>}
+          </div>
+        ))}
+        <button type="button" onClick={() => setRowKeys(rk => [...rk, nextKey.current++])} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", margin: "8px 0 14px" }}>+ Ajouter</button>
         <div><label style={lbl}>Commentaires</label><textarea id="mi-cmt" style={{ ...inp, minHeight: 55, resize: "vertical" }} /></div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
           <button style={{ padding: "10px 18px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "transparent", cursor: "pointer", fontSize: 13 }} onClick={onClose}>Annuler</button>
@@ -3994,18 +3990,7 @@ function ModalSaisieInattendu({ onClose, onSubmit }: { onClose: () => void; onSu
     </div>
   );
 }
-const RETOURS_CFG = {
-  apiKey: "AIzaSyAR0BdIsWrA7UDKfCFSANbqxDrIsqLq6BA",
-  authDomain: "moorea-retours.firebaseapp.com",
-  databaseURL: "https://moorea-retours-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "moorea-retours",
-  appId: "1:57607281213:web:f00e57e7d8cb7166c9a854"
-};
-const _retoursApp = getApps2().find((a: any) => a.name === "moorea-retours") ?? initializeApp2(RETOURS_CFG, "moorea-retours");
-// On réutilise getDatabase2 déjà importé pour qrTracker — même fonction, app différente
-const dbRetours = getDatabase2(_retoursApp);
 
-// ProdRow — inputs NON CONTRÔLÉS (defaultValue) — zéro re-render, focus conservé
 function ProdRow({ p, i, mode, onRemove, canRemove, listId }: any) {
   const s: React.CSSProperties = { padding: "10px 10px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%" };
   return (
