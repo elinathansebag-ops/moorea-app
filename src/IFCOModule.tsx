@@ -9,9 +9,11 @@ interface HistoEntry {
   date: string;
   lignes: number;
   fichier: string;
-  type: "telechargement" | "envoi" | "manuel";
+  type: "telechargement" | "envoi" | "manuel" | "traitement";
   ts: number;
-  delivDates: string[];
+  delivDates?: string[];
+  dAll?: string;
+  d0?: string; d1?: string; d2?: string; d3?: string; d4?: string;
 }
 
 interface ClientMap { [nom: string]: number; }
@@ -148,9 +150,28 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
 
   async function addHisto(type: HistoEntry["type"], lignes: number, fichier: string, rows: any[]) {
     const now = new Date();
-    const delivDates = [...new Set(rows.map((r:any) => r['DATE DE LIVRAISON']).filter(Boolean))] as string[];
-    const entry: HistoEntry = { user: userName, date: now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}), lignes, fichier, type, ts: now.getTime(), delivDates };
-    await push(ref(db, "ifco_histo"), entry);
+    const rawDates = rows.map((r:any) => r['DATE DE LIVRAISON']).filter((d:any) => d && String(d).trim());
+    const delivDates = [...new Set(rawDates)] as string[];
+    const key = `h${now.getTime()}`;
+    const entry = {
+      user: userName || 'Moorea',
+      date: now.toLocaleDateString('fr-FR') + ' ' + now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),
+      lignes,
+      fichier: fichier || 'inconnu',
+      type,
+      ts: now.getTime(),
+      d0: delivDates[0] || '',
+      d1: delivDates[1] || '',
+      d2: delivDates[2] || '',
+      d3: delivDates[3] || '',
+      d4: delivDates[4] || '',
+      dAll: delivDates.join(',')
+    };
+    try {
+      await update(ref(db, `ifco_histo/${key}`), entry);
+    } catch(err: any) {
+      setStatus(s => s ? { ...s, msg: s.msg + ' ⚠️ Erreur calendrier : ' + err.message } : null);
+    }
   }
 
   // ── Lookup client ──
@@ -193,6 +214,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
         setSelected(rowsFiltered.map(() => true));
         const excluded = rows.length - rowsFiltered.length;
         setStatus({ msg: `✅ ${rowsFiltered.length} ligne${rowsFiltered.length > 1 ? 's' : ''} prête${rowsFiltered.length > 1 ? 's' : ''}${excluded > 0 ? ` — ${excluded} exclu${excluded > 1 ? 's' : ''} (en attente IFCO)` : ''} — vérifiez et exportez`, type: "success" });
+        if (rowsFiltered.length > 0) addHisto('traitement', rowsFiltered.length, file.name, rowsFiltered);
       } catch(err:any) { setStatus({ msg: "❌ Erreur : " + err.message, type: "error" }); }
     };
     reader.readAsArrayBuffer(file);
@@ -237,15 +259,23 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
   }
 
   // ── Calendrier ──
-  function getDeclByDate(): Record<string, string[]> {
-    const map: Record<string, string[]> = {};
+  const [selectedDay, setSelectedDay] = useState<string|null>(null);
+
+  function getHistoByDate(): Record<string, HistoEntry[]> {
+    const map: Record<string, HistoEntry[]> = {};
     histo.forEach(e => {
-      const dates = e.delivDates?.length ? e.delivDates : [];
-      dates.forEach(d => {
-        let key = d;
-        if (d.includes('.')) { const p = d.split('.'); key = `${p[2]}-${p[1]}-${p[0]}`; }
+      // Support ancien format (delivDates array) et nouveau format (dAll string)
+      let dates: string[] = [];
+      if (e.dAll) dates = e.dAll.split(',').filter(Boolean);
+      else if (e.delivDates?.length) dates = e.delivDates;
+      else dates = [e.d0,e.d1,e.d2,e.d3,e.d4].filter(Boolean) as string[];
+
+      dates.forEach((d: string) => {
+        let key = d.trim();
+        if (key.includes('.')) { const p = key.split('.'); key = `${p[2]}-${p[1]}-${p[0]}`; }
+        else if (key.includes('/')) { const p = key.split('/'); key = p[2].length===2 ? `20${p[2]}-${p[1]}-${p[0]}` : `${p[2]}-${p[1]}-${p[0]}`; }
         if (!map[key]) map[key] = [];
-        if (!map[key].includes(e.user)) map[key].push(e.user);
+        if (!map[key].find((x:any) => x.id === e.id)) map[key].push(e);
       });
     });
     return map;
@@ -253,7 +283,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
 
   function renderCal() {
     const year = calDate.getFullYear(), month = calDate.getMonth();
-    const declMap = getDeclByDate();
+    const histoMap = getHistoByDate();
     const today = new Date(); today.setHours(0,0,0,0);
     const firstDay = new Date(year, month, 1).getDay();
     const offset = firstDay === 0 ? 6 : firstDay - 1;
@@ -268,14 +298,31 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       const isSunday = dow === 0;
       const isToday = dayDate.getTime() === today.getTime();
       const isPast = dayDate < today;
-      const users = declMap[dateStr];
-      const hasDone = users && users.length > 0;
-      days.push({ d, dateStr, isSunday, isToday, isPast, hasDone, users: users || [] });
+      const entries = histoMap[dateStr] || [];
+      const hasDone = entries.length > 0;
+      const uniqueUsers = [...new Set(entries.map((e:any) => (e.user||'?').split(' ')[0]).filter(Boolean))];
+      const hasPending = Object.values(pendingData).some((e:any) =>
+        (e.lignes||[]).some((r:any) => {
+          const dv = r['DATE DE LIVRAISON']; if (!dv) return false;
+          let k = dv; if (dv.includes('.')) { const p = dv.split('.'); k = `${p[2]}-${p[1]}-${p[0]}`; }
+          return k === dateStr;
+        })
+      );
+      days.push({ d, dateStr, isSunday, isToday, isPast, hasDone, hasPending, entries, uniqueUsers });
     }
     return { days, monthLabel: `${MONTHS[month]} ${year}` };
   }
 
   const { days, monthLabel } = renderCal();
+  const histoMapForDetail = getHistoByDate();
+  const selectedEntries: HistoEntry[] = selectedDay ? (histoMapForDetail[selectedDay] || []) : [];
+  const selectedPending = selectedDay ? Object.values(pendingData).filter((e:any) =>
+    (e.lignes||[]).some((r:any) => {
+      const dv = r['DATE DE LIVRAISON']; if (!dv) return false;
+      let k = dv; if (dv.includes('.')) { const p = dv.split('.'); k = `${p[2]}-${p[1]}-${p[0]}`; }
+      return k === selectedDay;
+    })
+  ) : [];
 
   // ── Render ──
   const BT = (bg: string, c = "#fff"): React.CSSProperties => ({ background: bg, color: c, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" });
@@ -315,98 +362,8 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 80px" }}>
 
         {/* ── OPÉRATIONNEL ── */}
-        {/* ── OPÉRATIONNEL ── */}
         {tab === "convert" && (
           <div>
-            {/* Calendrier */}
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
-              <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "10px 16px", borderBottom: "1px solid #d4edda", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: "#1a6b3a" }}>📅 {monthLabel}</span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()-1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 6, width: 26, height: 26, cursor: "pointer", color: "#1a6b3a", fontSize: 12 }}>◀</button>
-                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 6, width: 26, height: 26, cursor: "pointer", color: "#1a6b3a", fontSize: 12 }}>▶</button>
-                </div>
-              </div>
-              <div style={{ padding: "10px 12px" }}>
-                {/* Légende */}
-                <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-                  {[["#eafaf1","#a9dfbf","✓ Déclaré"],["#fdedec","#f5b7b1","✗ Non fait"],["#fff8e6","#f59e0b","⏳ En attente"],["#f0fff6","#27ae60","Aujourd'hui"]].map(([bg,bd,label]) => (
-                    <span key={label} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#666" }}>
-                      <span style={{ width:12, height:12, borderRadius:3, background:bg, border:`1px solid ${bd}`, display:"inline-block" }}/>
-                      {label}
-                    </span>
-                  ))}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 4 }}>
-                  {["L","M","M","J","V","S","D"].map((d,i) => <span key={i} style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: i===6 ? "#ddd" : "#aaa" }}>{d}</span>)}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
-                  {days.map((day, i) => {
-                    if (!day) return <div key={i} />;
-                    const { d, dateStr, isSunday, isToday, isPast, hasDone, users } = day;
-                    // Dates avec clients en attente
-                    const hasPending = Object.values(pendingData).some((e:any) =>
-                      (e.lignes||[]).some((r:any) => {
-                        const dv = r['DATE DE LIVRAISON'];
-                        if (!dv) return false;
-                        let key = dv;
-                        if (dv.includes('.')) { const p = dv.split('.'); key = `${p[2]}-${p[1]}-${p[0]}`; }
-                        return key === dateStr;
-                      })
-                    );
-                    let bg = "#fafafa", border = "1px solid #eee", numColor = "#bbb";
-                    if (isSunday) { bg = "#fafafa"; numColor = "#e0e0e0"; border = "1px solid #f5f5f5"; }
-                    else if (hasDone && hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
-                    else if (hasDone) { bg = "#eafaf1"; border = "1.5px solid #a9dfbf"; numColor = "#1a6b3a"; }
-                    else if (hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
-                    else if (isPast && !isToday && !isSunday) { bg = "#fdedec"; border = "1px solid #f5b7b1"; numColor = "#c0392b"; }
-                    else if (isToday) { bg = "#f0fff6"; border = "2px solid #27ae60"; numColor = "#1a6b3a"; }
-                    else { numColor = "#999"; }
-                    const uniqueUsers = [...new Set(users)] as string[];
-                    return (
-                      <div key={i} onClick={() => { if (!isSunday) validateDay(dateStr); }}
-                        style={{ height: 44, background: bg, border, borderRadius: 6, padding: "3px 2px", cursor: isSunday ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden" }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: numColor, lineHeight: 1 }}>{d}</div>
-                        {hasDone && <div style={{ fontSize: 8, fontWeight: 600, textAlign: "center", color: "#1e8449", lineHeight: 1.2, marginTop: 1, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>
-                          {uniqueUsers.map(u => u.split(' ')[0]).join(',')}
-                        </div>}
-                        {hasPending && !hasDone && <div style={{ fontSize: 8, color: "#b45309", fontWeight: 700, marginTop: 1 }}>⏳</div>}
-                        {!hasDone && !hasPending && isPast && !isSunday && !isToday && <div style={{ fontSize: 7, color: "#e07070", marginTop: 1 }}>✗</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Historique */}
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a", marginBottom: 12 }}>📋 Historique ({histo.length})</p>
-              {histo.length === 0 ? <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0" }}>Aucune déclaration</div> : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead><tr style={{ background: "#f0fff6" }}>
-                      {["Utilisateur","Date & heure","Lignes","Fichier","Action"].map(h => <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>
-                      {histo.map((e, i) => (
-                        <tr key={i} style={{ borderBottom: "1px solid #f4f4f4" }}>
-                          <td style={{ padding: "8px 10px", fontWeight: 600 }}>{e.user}</td>
-                          <td style={{ padding: "8px 10px" }}>{e.date}</td>
-                          <td style={{ padding: "8px 10px" }}>{e.lignes}</td>
-                          <td style={{ padding: "8px 10px", fontFamily: "monospace", fontSize: 11 }}>{e.fichier}</td>
-                          <td style={{ padding: "8px 10px" }}>
-                            <span style={{ background: e.type==="envoi"?"#eaf4fb":e.type==="manuel"?"#f5f3ee":"#eafaf1", color: e.type==="envoi"?"#1a5276":e.type==="manuel"?"#6b7280":"#1e8449", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
-                              {e.type==="envoi"?"🌐 IFCO":e.type==="manuel"?"📅 Manuel":"⬇️ Téléchargé"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
             {/* Drop zone */}
             <div style={{ background: "#fff", border: "2.5px dashed #a8d5b5", borderRadius: 16, padding: "40px 24px", textAlign: "center", cursor: "pointer", marginBottom: 16, transition: "all .2s" }}
               onClick={() => fileRef.current?.click()}
@@ -486,6 +443,13 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                 <button onClick={() => { setAllRows([]); setSelected([]); setStatus(null); }} style={{ background: "transparent", border: "none", color: "#aaa", fontSize: 12, cursor: "pointer", textDecoration: "underline", textAlign: "center", fontFamily: "inherit" }}>🔄 Recommencer</button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── CALENDRIER + EN ATTENTE (onglet Opérationnel) ── */}
+        {tab === "convert" && (
+          <div>
+
             {/* En attente inline */}
             {pendingClients.length > 0 && (
               <div style={{ background: "#fffbe6", border: "1.5px solid #f59e0b", borderRadius: 16, padding: 16, marginBottom: 16 }}>
@@ -513,6 +477,116 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                 <p style={{ margin: "8px 0 0", fontSize: 10, color: "#b45309" }}>💡 Tape le code + Entrée pour enregistrer et retirer de la liste</p>
               </div>
             )}
+
+            {/* Calendrier */}
+            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
+              <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "10px 16px", borderBottom: "1px solid #d4edda", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#1a6b3a" }}>📅 {monthLabel}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()-1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 6, width: 26, height: 26, cursor: "pointer", color: "#1a6b3a", fontSize: 12 }}>◀</button>
+                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 6, width: 26, height: 26, cursor: "pointer", color: "#1a6b3a", fontSize: 12 }}>▶</button>
+                </div>
+              </div>
+              <div style={{ padding: "10px 12px" }}>
+                <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                  {[["#eafaf1","#a9dfbf","✓ Déclaré"],["#fff8e6","#f59e0b","⚠️ En attente"],["#fdedec","#f5b7b1","✗ Non déclaré"],["#f0fff6","#27ae60","Aujourd'hui"]].map(([bg,bd,label]) => (
+                    <span key={label} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#666" }}>
+                      <span style={{ width:12, height:12, borderRadius:3, background:bg, border:`1px solid ${bd}`, display:"inline-block" }}/>{label}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 4 }}>
+                  {["L","M","M","J","V","S","D"].map((d,i) => <span key={i} style={{ textAlign:"center", fontSize:10, fontWeight:700, color: i===6?"#ddd":"#aaa" }}>{d}</span>)}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
+                  {days.map((day:any, i:number) => {
+                    if (!day) return <div key={i} />;
+                    const { d, dateStr, isSunday, isToday, isPast, hasDone, hasPending, uniqueUsers } = day;
+                    const isSelected = selectedDay === dateStr;
+                    let bg = "#fafafa", border = "1px solid #eee", numColor = "#bbb";
+                    if (isSunday) { numColor = "#e0e0e0"; border = "1px solid #f5f5f5"; }
+                    else if (hasDone && hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
+                    else if (hasDone) { bg = "#eafaf1"; border = "1.5px solid #a9dfbf"; numColor = "#1a6b3a"; }
+                    else if (hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
+                    else if (isPast && !isToday && !isSunday) { bg = "#fdedec"; border = "1px solid #f5b7b1"; numColor = "#c0392b"; }
+                    else if (isToday) { bg = "#f0fff6"; border = "2px solid #27ae60"; numColor = "#1a6b3a"; }
+                    else { numColor = "#999"; }
+                    if (isSelected) border = "2.5px solid #1a6b3a";
+                    return (
+                      <div key={i} onClick={() => { if (!isSunday) setSelectedDay(selectedDay === dateStr ? null : dateStr); }}
+                        style={{ height: 44, background: bg, border, borderRadius: 6, padding: "3px 2px", cursor: isSunday ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: numColor, lineHeight: 1 }}>{d}</div>
+                        {hasDone && <div style={{ fontSize: 8, fontWeight: 600, textAlign: "center", color: "#1e8449", lineHeight: 1.2, marginTop: 1, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>{uniqueUsers.join(',')}</div>}
+                        {hasPending && <div style={{ fontSize: 7, color: "#b45309", fontWeight: 700, marginTop: 1 }}>⏳</div>}
+                        {!hasDone && !hasPending && isPast && !isSunday && !isToday && <div style={{ fontSize: 8, color: "#e07070", marginTop: 1 }}>✗</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Panneau détail jour */}
+                {selectedDay && (
+                  <div style={{ marginTop: 10, background: "#f8fffe", border: "1.5px solid #a9dfbf", borderRadius: 10, padding: "10px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "#1a6b3a" }}>
+                        📅 {new Date(selectedDay + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' })}
+                      </span>
+                      <button onClick={() => setSelectedDay(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#aaa" }}>✕</button>
+                    </div>
+                    {selectedEntries.length === 0 && selectedPending.length === 0 && (
+                      <p style={{ margin: 0, fontSize: 12, color: "#c0392b" }}>✗ Aucune déclaration pour ce jour</p>
+                    )}
+                    {selectedEntries.map((e:any, i:number) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < selectedEntries.length-1 ? "1px solid #e8f0ea" : "none" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#1a6b3a" }}>✓</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, flex: 1 }}>{e.user || "—"}</span>
+                        <span style={{ fontSize: 11, color: "#666" }}>{e.lignes} lignes</span>
+                        <span style={{ fontSize: 10, color: "#aaa" }}>{e.date}</span>
+                        <span style={{ background: e.type==="envoi"?"#eaf4fb":e.type==="traitement"?"#f0f9ff":"#eafaf1", color: e.type==="envoi"?"#1a5276":e.type==="traitement"?"#0369a1":"#1e8449", borderRadius:10, padding:"2px 7px", fontSize:10, fontWeight:700 }}>
+                          {e.type==="envoi"?"🌐 IFCO":e.type==="traitement"?"📂 Traité":"⬇️ DL"}
+                        </span>
+                      </div>
+                    ))}
+                    {selectedPending.length > 0 && (
+                      <div style={{ background: "#fff8e6", borderRadius: 6, padding: "6px 10px", marginTop: 6 }}>
+                        <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: "#b45309" }}>⏳ En attente :</p>
+                        {selectedPending.map((e:any, i:number) => (
+                          <div key={i} style={{ fontSize: 11, color: "#92400e", marginBottom: 2 }}>• {e.nom} — {(e.lignes||[]).filter((r:any) => { const dv=r['DATE DE LIVRAISON']; if(!dv) return false; let k=dv; if(dv.includes('.')) { const p=dv.split('.'); k=`${p[2]}-${p[1]}-${p[0]}`; } return k===selectedDay; }).reduce((s:number,r:any) => s+(parseInt(r['QUANTITE'])||0), 0)} colis</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Historique */}
+            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a", marginBottom: 12 }}>📋 Historique ({histo.length})</p>
+              {histo.length === 0 ? <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0" }}>Aucune déclaration</div> : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ background: "#f0fff6" }}>
+                      {["Utilisateur","Date & heure","Lignes","Fichier","Action"].map(h => <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {histo.map((e, i) => (
+                        <tr key={i} style={{ borderBottom: "1px solid #f4f4f4" }}>
+                          <td style={{ padding: "8px 10px", fontWeight: 600 }}>{e.user}</td>
+                          <td style={{ padding: "8px 10px" }}>{e.date}</td>
+                          <td style={{ padding: "8px 10px" }}>{e.lignes}</td>
+                          <td style={{ padding: "8px 10px", fontFamily: "monospace", fontSize: 11 }}>{e.fichier}</td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <span style={{ background: e.type==="envoi"?"#eaf4fb":e.type==="manuel"?"#f5f3ee":"#eafaf1", color: e.type==="envoi"?"#1a5276":e.type==="manuel"?"#6b7280":"#1e8449", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
+                              {e.type==="envoi"?"🌐 IFCO":e.type==="manuel"?"📅 Manuel":"⬇️ Téléchargé"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
