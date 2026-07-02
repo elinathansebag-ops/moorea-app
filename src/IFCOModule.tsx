@@ -82,6 +82,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
   const [tab, setTab] = useState<"convert"|"histo"|"clients">("convert");
   const [calDate, setCalDate] = useState(new Date());
   const [showMissingPopup, setShowMissingPopup] = useState<string[]>([]);
+  const [tempCodes, setTempCodes] = useState<Record<string,string>>({});
   const [clientSearch, setClientSearch] = useState("");
   const [editKey, setEditKey] = useState<string|null>(null);
   const [newName, setNewName] = useState(""); const [newCode, setNewCode] = useState("");
@@ -465,19 +466,45 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       </div>
 
       {/* POPUP codes manquants */}
-      {showMissingPopup.length > 0 && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "28px 32px", maxWidth: 400, width: "100%", textAlign: "center", borderTop: "7px solid #e74c3c" }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>🚨</div>
-            <p style={{ fontSize: 16, fontWeight: 800, color: "#c0392b", marginBottom: 8 }}>Codes IFCO manquants !</p>
-            <p style={{ fontSize: 13, color: "#777", marginBottom: 14 }}>Ces clients n'ont pas de code IFCO. Les lignes seront <strong>incomplètes</strong>.</p>
-            <div style={{ background: "#fff5f5", border: "1.5px solid #f5c6cb", borderRadius: 8, padding: "10px 14px", marginBottom: 16, textAlign: "left" }}>
-              {showMissingPopup.map(c => <div key={c} style={{ color: "#c0392b", fontWeight: 700, fontSize: 13, marginBottom: 2 }}>⚠️ {c}</div>)}
+      {showMissingPopup.length > 0 && (() => {
+        const allFilled = showMissingPopup.every(c => tempCodes[c]?.trim());
+        const saveAndClose = () => {
+          const updated = { ...clients };
+          showMissingPopup.forEach(c => { if (tempCodes[c]?.trim()) updated[c] = parseInt(tempCodes[c]); });
+          saveClients(updated);
+          setTempCodes({});
+          setShowMissingPopup([]);
+        };
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 440, width: "100%", borderTop: "7px solid #e74c3c" }}>
+              <div style={{ textAlign: "center", marginBottom: 16 }}>
+                <div style={{ fontSize: 32, marginBottom: 6 }}>🚨</div>
+                <p style={{ fontSize: 15, fontWeight: 800, color: "#c0392b", margin: 0 }}>Codes IFCO manquants !</p>
+                <p style={{ fontSize: 12, color: "#777", marginTop: 4 }}>Saisis les codes directement ici pour les enregistrer.</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                {showMissingPopup.map(c => (
+                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff5f5", border: "1.5px solid #f5c6cb", borderRadius: 8, padding: "8px 10px" }}>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: "#c0392b" }}>⚠️ {c}</span>
+                    <input
+                      type="number"
+                      placeholder="Code IFCO"
+                      value={tempCodes[c] || ""}
+                      onChange={e => setTempCodes(prev => ({ ...prev, [c]: e.target.value }))}
+                      style={{ width: 100, padding: "5px 8px", border: `1.5px solid ${tempCodes[c]?.trim() ? "#27ae60" : "#ddd"}`, borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => { setTempCodes({}); setShowMissingPopup([]); }} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Continuer quand même</button>
+                <button onClick={saveAndClose} disabled={!allFilled} style={{ flex: 1, background: allFilled ? "#27ae60" : "#ccc", color: "#fff", border: "none", padding: "10px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: allFilled ? "pointer" : "not-allowed", fontFamily: "inherit" }}>✅ Enregistrer & continuer</button>
+              </div>
             </div>
-            <button onClick={() => setShowMissingPopup([])} style={{ background: "#e74c3c", color: "#fff", border: "none", padding: "10px 24px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Continuer quand même</button>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
