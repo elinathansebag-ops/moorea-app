@@ -425,6 +425,64 @@ const DEFAULT_ARTICLES: Article[] =
   {id:"g0425",produit:"",variete:"",origine:"",conditionnement:"asperge blanche Perou 420g x 8",ean:"8436004470086",rajout:"",suggestions:["GRENADE PEROU CAL.8"]}
 ];
 
+// Composant ligne de rattachement
+function LinkRow({ article, geslotList, onLink, onUnlink }: {
+  article: Article; geslotList: string[];
+  onLink: (g: string) => void; onUnlink: (g: string) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const filtered = q.length >= 2 ? geslotList.filter(g => g.toLowerCase().includes(q.toLowerCase())).slice(0,15) : article.suggestions?.filter(s => !article.nom_geslot?.includes(s)).slice(0,5) || [];
+  const isLinked = article.nom_geslot?.length > 0;
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', borderBottom:'1px solid #f0f0f0', alignItems:'start', padding:'8px 14px', gap:8, background: isLinked ? '#fff' : '#fffef0' }}>
+      {/* Colonne 1: Gencode */}
+      <div>
+        <div style={{ fontSize:11, fontWeight:700, color:'#1a1a1a' }}>{article.produit} {article.variete && `· ${article.variete}`}</div>
+        <div style={{ fontSize:10, color:'#888', marginTop:1 }}>{article.conditionnement}</div>
+        {article.origine && <div style={{ fontSize:10, color:'#3b82f6', marginTop:1 }}>📍 {article.origine}</div>}
+        <div style={{ fontSize:10, fontFamily:'monospace', color:'#3b82f6', fontWeight:700, marginTop:3 }}>{article.ean}</div>
+      </div>
+      {/* Colonne 2: Liens actuels */}
+      <div>
+        {article.nom_geslot?.length > 0 ? (
+          article.nom_geslot.map(n => (
+            <div key={n} style={{ display:'flex', alignItems:'center', gap:4, marginBottom:3 }}>
+              <span style={{ fontSize:10, fontWeight:600, color:'#1a6b3a', flex:1, lineHeight:1.2 }}>{n}</span>
+              <button onClick={() => onUnlink(n)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:11, color:'#e74c3c', padding:'0 2px', lineHeight:1 }}>✕</button>
+            </div>
+          ))
+        ) : (
+          <span style={{ fontSize:10, color:'#ccc', fontStyle:'italic' }}>Non lié</span>
+        )}
+      </div>
+      {/* Colonne 3: Recherche Geslot */}
+      <div style={{ position:'relative' }}>
+        <input
+          value={q}
+          onChange={e => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder={q.length === 0 ? "🔍 Taper pour chercher..." : ""}
+          style={{ width:'100%', padding:'5px 8px', border:'1.5px solid #e0e0e0', borderRadius:6, fontSize:11, outline:'none', fontFamily:'inherit', boxSizing:'border-box' }}
+        />
+        {open && filtered.length > 0 && (
+          <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#fff', border:'1.5px solid #3b82f6', borderRadius:8, zIndex:100, maxHeight:180, overflowY:'auto', boxShadow:'0 4px 16px rgba(0,0,0,.1)' }}>
+            {q.length < 2 && <div style={{ padding:'4px 10px', fontSize:9, fontWeight:700, color:'#aaa', background:'#f5f5f5' }}>SUGGESTIONS</div>}
+            {filtered.map(g => (
+              <button key={g} onMouseDown={() => { onLink(g); setQ(''); setOpen(false); }}
+                style={{ display:'block', width:'100%', textAlign:'left', background: article.nom_geslot?.includes(g)?'#f0fff4':'#fff', border:'none', borderBottom:'1px solid #f5f5f5', padding:'6px 10px', cursor:'pointer', fontSize:11, fontFamily:'inherit', color: article.nom_geslot?.includes(g)?'#1a6b3a':'#333' }}>
+                {article.nom_geslot?.includes(g) ? '✅ ' : '➕ '}{g}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function GencodeModule({ onClose }: { onClose: () => void }) {
   const [articles, setArticles] = useState<Article[]>([]);
   const [search, setSearch] = useState('');
@@ -584,105 +642,51 @@ export default function GencodeModule({ onClose }: { onClose: () => void }) {
               </div>
             ) : (
               <>
-                {/* Barre de progression */}
-                <div style={{ background:'#fff', borderRadius:16, padding:16, marginBottom:16 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                    <span style={{ fontSize:13, fontWeight:700 }}>Progression du rattachement</span>
-                    <span style={{ fontSize:13, fontWeight:800, color:'#3b82f6' }}>{linkedCount} / {articles.length}</span>
+                {/* Stats + filtre */}
+                <div style={{ background:'#fff', borderRadius:14, padding:'12px 16px', marginBottom:12, display:'flex', gap:12, alignItems:'center', flexWrap:'wrap' }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                      <span style={{ fontSize:13, fontWeight:700 }}>Rattachement</span>
+                      <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'2px 8px', borderRadius:20 }}>{linkedCount}/{articles.length}</span>
+                    </div>
+                    <div style={{ background:'#f0f0f0', borderRadius:10, height:8, overflow:'hidden' }}>
+                      <div style={{ background:'#3b82f6', height:'100%', width:`${(linkedCount/articles.length)*100}%`, borderRadius:10 }} />
+                    </div>
                   </div>
-                  <div style={{ background:'#f0f0f0', borderRadius:10, height:10, overflow:'hidden' }}>
-                    <div style={{ background:'#3b82f6', height:'100%', width:`${(linkedCount/articles.length)*100}%`, borderRadius:10, transition:'width .3s' }} />
-                  </div>
-                  <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
-                    <button onClick={() => { setLinkIdx(0); setLinkSearch(''); setShowLinkSearch(false); }} style={{ background:'#f0f4ff', border:'1px solid #c7d7ff', borderRadius:8, padding:'5px 12px', fontSize:11, cursor:'pointer', color:'#3b82f6', fontFamily:'inherit' }}>⏮ Début</button>
-                    <button onClick={() => { const i = articles.findIndex(a => a.nom_geslot?.length === 0); if(i>=0) setLinkIdx(i); }} style={{ background:'#fff8e6', border:'1px solid #fde68a', borderRadius:8, padding:'5px 12px', fontSize:11, cursor:'pointer', color:'#b45309', fontFamily:'inherit' }}>⏭ Prochain non lié</button>
-                    <span style={{ fontSize:11, color:'#aaa', alignSelf:'center' }}>Article {linkIdx+1} / {articles.length}</span>
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={() => setLinkSearch('non-liés')} style={{ background: linkSearch==='non-liés'?'#fef3c7':'#f5f5f5', border:`1px solid ${linkSearch==='non-liés'?'#f59e0b':'#ddd'}`, borderRadius:8, padding:'5px 12px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, color: linkSearch==='non-liés'?'#b45309':'#555' }}>
+                      ⚪ Non liés ({articles.filter(a=>!a.nom_geslot?.length).length})
+                    </button>
+                    <button onClick={() => setLinkSearch('')} style={{ background: linkSearch===''?'#f0f4ff':'#f5f5f5', border:`1px solid ${linkSearch===''?'#3b82f6':'#ddd'}`, borderRadius:8, padding:'5px 12px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, color: linkSearch===''?'#3b82f6':'#555' }}>
+                      Tous
+                    </button>
                   </div>
                 </div>
 
-                {currentArticle && (
-                  <div style={{ background:'#fff', border:'2px solid #3b82f6', borderRadius:16, padding:20, marginBottom:16 }}>
-                    {/* En-tête article gencode */}
-                    <div style={{ background:'#f0f4ff', borderRadius:12, padding:'12px 16px', marginBottom:16 }}>
-                      <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:4, flexWrap:'wrap' }}>
-                        <span style={{ fontSize:15, fontWeight:800 }}>{currentArticle.produit}</span>
-                        {currentArticle.variete && <span style={{ fontSize:11, color:'#666', background:'#fff', padding:'2px 8px', borderRadius:20 }}>{currentArticle.variete}</span>}
-                        {currentArticle.origine && <span style={{ fontSize:11, color:'#3b82f6', background:'#fff', padding:'2px 8px', borderRadius:20 }}>📍 {currentArticle.origine}</span>}
-                      </div>
-                      <div style={{ fontSize:12, color:'#555', marginBottom:8 }}>{currentArticle.conditionnement}</div>
-                      <div style={{ fontFamily:'monospace', fontSize:15, fontWeight:800, color:'#3b82f6', letterSpacing:2 }}>{currentArticle.ean}</div>
-                    </div>
-
-                    {/* Liens actuels */}
-                    {currentArticle.nom_geslot?.length > 0 && (
-                      <div style={{ marginBottom:14 }}>
-                        <p style={{ fontSize:11, fontWeight:700, color:'#1a6b3a', marginBottom:6 }}>✅ Lié à :</p>
-                        {currentArticle.nom_geslot.map(n => (
-                          <div key={n} style={{ display:'flex', alignItems:'center', gap:8, background:'#f0fff4', border:'1px solid #a9dfbf', borderRadius:8, padding:'6px 10px', marginBottom:4 }}>
-                            <span style={{ flex:1, fontSize:12, fontWeight:600, color:'#1a6b3a' }}>📋 {n}</span>
-                            <button onClick={() => saveLinkForArticle(currentArticle.id, currentArticle.nom_geslot.filter(x=>x!==n))}
-                              style={{ background:'#fee2e2', border:'none', borderRadius:6, padding:'3px 8px', fontSize:10, cursor:'pointer', color:'#dc2626' }}>✕</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Suggestions auto */}
-                    {currentArticle.suggestions?.filter(s => !currentArticle.nom_geslot?.includes(s)).length > 0 && (
-                      <div style={{ marginBottom:14 }}>
-                        <p style={{ fontSize:11, fontWeight:700, color:'#b45309', marginBottom:6 }}>💡 Suggestions :</p>
-                        {currentArticle.suggestions.filter(s => !currentArticle.nom_geslot?.includes(s)).map(s => (
-                          <button key={s} onClick={() => saveLinkForArticle(currentArticle.id, [...(currentArticle.nom_geslot||[]), s])}
-                            style={{ display:'block', width:'100%', textAlign:'left', background:'#fffbe6', border:'1.5px solid #fde68a', borderRadius:8, padding:'8px 12px', marginBottom:6, cursor:'pointer', fontSize:12, fontWeight:600, color:'#92400e', fontFamily:'inherit' }}>
-                            ➕ {s}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Recherche manuelle */}
-                    <div>
-                      <button onClick={() => setShowLinkSearch(!showLinkSearch)} style={{ background:'#f5f5f5', border:'1.5px solid #ddd', borderRadius:8, padding:'7px 14px', fontSize:12, cursor:'pointer', fontFamily:'inherit', fontWeight:600, marginBottom:showLinkSearch?10:0 }}>
-                        🔍 Rechercher manuellement
-                      </button>
-                      {showLinkSearch && (
-                        <div>
-                          <input autoFocus value={linkSearch} onChange={e => setLinkSearch(e.target.value)}
-                            placeholder="Tape le nom Geslot..."
-                            style={{ ...S, marginBottom:8, fontSize:13, padding:'10px 12px' }}
-                          />
-                          <div style={{ maxHeight:200, overflowY:'auto', border:'1px solid #eee', borderRadius:8 }}>
-                            {geslotFiltered.map(g => (
-                              <button key={g} onClick={() => { saveLinkForArticle(currentArticle.id, [...(currentArticle.nom_geslot||[]), g]); setLinkSearch(''); setShowLinkSearch(false); }}
-                                style={{ display:'block', width:'100%', textAlign:'left', background: currentArticle.nom_geslot?.includes(g)?'#f0fff4':'#fff', border:'none', borderBottom:'1px solid #f5f5f5', padding:'9px 12px', cursor:'pointer', fontSize:12, fontFamily:'inherit', color: currentArticle.nom_geslot?.includes(g)?'#1a6b3a':'#333' }}>
-                                {currentArticle.nom_geslot?.includes(g) ? '✅ ' : '➕ '}{g}
-                              </button>
-                            ))}
-                            {linkSearch.length >= 2 && geslotFiltered.length === 0 && <div style={{ padding:'12px', color:'#aaa', fontSize:12 }}>Aucun résultat</div>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Navigation */}
-                    <div style={{ display:'flex', gap:8, marginTop:16, borderTop:'1px solid #eee', paddingTop:16 }}>
-                      <button onClick={() => { setLinkIdx(i => Math.max(0, i-1)); setLinkSearch(''); setShowLinkSearch(false); }}
-                        disabled={linkIdx===0}
-                        style={{ flex:1, background:'#f5f5f5', border:'none', borderRadius:8, padding:'10px', fontSize:13, fontWeight:700, cursor:linkIdx===0?'not-allowed':'pointer', color:linkIdx===0?'#ccc':'#333', fontFamily:'inherit' }}>◀ Précédent</button>
-                      <button onClick={() => saveLinkForArticle(currentArticle.id, [])}
-                        style={{ background:'#fff', border:'1.5px solid #ddd', borderRadius:8, padding:'10px 14px', fontSize:12, cursor:'pointer', color:'#aaa', fontFamily:'inherit' }}>⏭ Passer</button>
-                      <button onClick={() => { setLinkIdx(i => Math.min(articles.length-1, i+1)); setLinkSearch(''); setShowLinkSearch(false); }}
-                        disabled={linkIdx>=articles.length-1}
-                        style={{ flex:1, background:'#3b82f6', border:'none', borderRadius:8, padding:'10px', fontSize:13, fontWeight:700, cursor:'pointer', color:'#fff', fontFamily:'inherit' }}>Suivant ▶</button>
-                    </div>
+                {/* Tableau */}
+                <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', background:'#f0f4ff', padding:'8px 14px', borderBottom:'2px solid #c7d7ff' }}>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>GENCODE · Article</span>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#1a6b3a' }}>Lié à (Geslot)</span>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#b45309' }}>Rechercher dans Geslot</span>
                   </div>
-                )}
+                  <div style={{ maxHeight:'70vh', overflowY:'auto' }}>
+                    {articles
+                      .filter(a => linkSearch === 'non-liés' ? !a.nom_geslot?.length : true)
+                      .map(a => (
+                        <LinkRow key={a.id} article={a} geslotList={GESLOT_LIST}
+                          onLink={(geslotName) => saveLinkForArticle(a.id, [...(a.nom_geslot||[]), geslotName])}
+                          onUnlink={(geslotName) => saveLinkForArticle(a.id, (a.nom_geslot||[]).filter(x=>x!==geslotName))}
+                        />
+                      ))
+                    }
+                  </div>
+                </div>
               </>
             )}
           </div>
         )}
 
-        {/* ── GÉRER ── */}
         {tab === 'manage' && (
           <div>
             <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
