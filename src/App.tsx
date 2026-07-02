@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import RetoursModule from "./RetoursModule";
 import IFCOModule from "./IFCOModule";
+import GencodeModule from "./GencodeModule";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc as fsDoc } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
 import { initializeApp as initializeApp2, getApps as getApps2 } from "firebase/app";
@@ -4431,6 +4432,7 @@ export default function App() {
   const [showQrCode, setShowQrCode] = useState(false);
   const [showLeofresh, setShowLeofresh] = useState(false);
   const [showIFCO, setShowIFCO] = useState(false);
+  const [showGencode, setShowGencode] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
@@ -6096,6 +6098,10 @@ _PDF joint_`;
     return <IFCOModule onClose={() => { setShowIFCO(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
+  if (showGencode) {
+    return <GencodeModule onClose={() => { setShowGencode(false); setShowAccueil(true); }} />;
+  }
+
   if (showYukon) {
     return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
@@ -6133,6 +6139,7 @@ _PDF joint_`;
       { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", badge: null, stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { icon: "🧺", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
+      { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", badge: null, stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
     ];
 
     // Leofresh
