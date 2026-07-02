@@ -320,31 +320,58 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
           <div>
             {/* Calendrier */}
             <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
-              <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "16px 20px", borderBottom: "1px solid #d4edda", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: "#1a6b3a" }}>📅 {monthLabel}</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()-1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#1a6b3a", fontSize: 14 }}>◀</button>
-                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#1a6b3a", fontSize: 14 }}>▶</button>
+              <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "10px 16px", borderBottom: "1px solid #d4edda", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#1a6b3a" }}>📅 {monthLabel}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()-1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 6, width: 26, height: 26, cursor: "pointer", color: "#1a6b3a", fontSize: 12 }}>◀</button>
+                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 6, width: 26, height: 26, cursor: "pointer", color: "#1a6b3a", fontSize: 12 }}>▶</button>
                 </div>
               </div>
-              <div style={{ padding: "16px", overflowX: "auto" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6, minWidth: 420, marginBottom: 8 }}>
-                  {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map(d => <span key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#aaa", textTransform: "uppercase" }}>{d}</span>)}
+              <div style={{ padding: "10px 12px" }}>
+                {/* Légende */}
+                <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                  {[["#eafaf1","#a9dfbf","✓ Déclaré"],["#fdedec","#f5b7b1","✗ Non fait"],["#fff8e6","#f59e0b","⏳ En attente"],["#f0fff6","#27ae60","Aujourd'hui"]].map(([bg,bd,label]) => (
+                    <span key={label} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#666" }}>
+                      <span style={{ width:12, height:12, borderRadius:3, background:bg, border:`1px solid ${bd}`, display:"inline-block" }}/>
+                      {label}
+                    </span>
+                  ))}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6, minWidth: 420 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 4 }}>
+                  {["L","M","M","J","V","S","D"].map((d,i) => <span key={i} style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: i===6 ? "#ddd" : "#aaa" }}>{d}</span>)}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
                   {days.map((day, i) => {
                     if (!day) return <div key={i} />;
                     const { d, dateStr, isSunday, isToday, isPast, hasDone, users } = day;
-                    let bg = "#f8f9fa", border = "1.5px solid #eee", color = "#ccc";
-                    if (isSunday) { bg = "#f8f9fa"; color = "#ddd"; }
-                    else if (hasDone) { bg = "#eafaf1"; border = "1.5px solid #a9dfbf"; color = "#1a6b3a"; }
-                    else if (isPast && !isToday) { bg = "#fdedec"; border = "1.5px solid #f5b7b1"; color = "#c0392b"; }
-                    else if (isToday) { bg = "#f0fff6"; border = "2px solid #27ae60"; color = "#1a6b3a"; }
+                    // Dates avec clients en attente
+                    const hasPending = Object.values(pendingData).some((e:any) =>
+                      (e.lignes||[]).some((r:any) => {
+                        const dv = r['DATE DE LIVRAISON'];
+                        if (!dv) return false;
+                        let key = dv;
+                        if (dv.includes('.')) { const p = dv.split('.'); key = `${p[2]}-${p[1]}-${p[0]}`; }
+                        return key === dateStr;
+                      })
+                    );
+                    let bg = "#fafafa", border = "1px solid #eee", numColor = "#bbb";
+                    if (isSunday) { bg = "#fafafa"; numColor = "#e0e0e0"; border = "1px solid #f5f5f5"; }
+                    else if (hasDone && hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
+                    else if (hasDone) { bg = "#eafaf1"; border = "1.5px solid #a9dfbf"; numColor = "#1a6b3a"; }
+                    else if (hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
+                    else if (isPast && !isToday && !isSunday) { bg = "#fdedec"; border = "1px solid #f5b7b1"; numColor = "#c0392b"; }
+                    else if (isToday) { bg = "#f0fff6"; border = "2px solid #27ae60"; numColor = "#1a6b3a"; }
+                    else { numColor = "#999"; }
+                    const uniqueUsers = [...new Set(users)] as string[];
                     return (
-                      <div key={i} onClick={() => { if (!isSunday) validateDay(dateStr); }} style={{ minHeight: 65, background: bg, border, borderRadius: 10, padding: "6px 4px", cursor: isSunday ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color, marginBottom: 3 }}>{d}</div>
-                        {hasDone && <div style={{ fontSize: 9, fontWeight: 600, textAlign: "center", color: "#1e8449", lineHeight: 1.3 }}>✓ {[...new Set(users)].join(', ')}</div>}
-                        {!hasDone && isPast && !isSunday && <div style={{ fontSize: 9, color: "#c0392b", fontWeight: 600 }}>Non fait</div>}
+                      <div key={i} onClick={() => { if (!isSunday) validateDay(dateStr); }}
+                        style={{ height: 44, background: bg, border, borderRadius: 6, padding: "3px 2px", cursor: isSunday ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: numColor, lineHeight: 1 }}>{d}</div>
+                        {hasDone && <div style={{ fontSize: 8, fontWeight: 600, textAlign: "center", color: "#1e8449", lineHeight: 1.2, marginTop: 1, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>
+                          {uniqueUsers.map(u => u.split(' ')[0]).join(',')}
+                        </div>}
+                        {hasPending && !hasDone && <div style={{ fontSize: 8, color: "#b45309", fontWeight: 700, marginTop: 1 }}>⏳</div>}
+                        {!hasDone && !hasPending && isPast && !isSunday && !isToday && <div style={{ fontSize: 7, color: "#e07070", marginTop: 1 }}>✗</div>}
                       </div>
                     );
                   })}
