@@ -81,10 +81,14 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
   const [status, setStatus] = useState<{ msg: string; type: "info"|"success"|"error" }|null>(null);
   const [tab, setTab] = useState<"convert"|"histo"|"clients">("convert");
   const [calDate, setCalDate] = useState(new Date());
-  const [showMissingPopup, setShowMissingPopup] = useState<string[]>([]);
+  const [showPendingPopup, setShowPendingPopup] = useState(false);
+  const [pendingInputCodes, setPendingInputCodes] = useState<Record<string,string>>({});
   const [tempCodes, setTempCodes] = useState<Record<string,string>>({});
   const [tempPending, setTempPending] = useState<Record<string,boolean>>({});
+  const [showMissingPopup, setShowMissingPopup] = useState<string[]>([]);
+  const [rawMissingRows, setRawMissingRows] = useState<any[]>([]);
   const [pendingClients, setPendingClients] = useState<string[]>([]);
+  const [pendingData, setPendingData] = useState<Record<string,{nom:string,lignes:any[],addedAt:string,totalColis:number,totalBL:number}>>({});
   const [clientSearch, setClientSearch] = useState("");
   const [editKey, setEditKey] = useState<string|null>(null);
   const [newName, setNewName] = useState(""); const [newCode, setNewCode] = useState("");
@@ -102,7 +106,12 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
     });
     const u3 = onValue(ref(db, "ifco_attente"), snap => {
       const d = snap.val();
-      setPendingClients(d ? Object.keys(d) : []);
+      if (d) {
+        setPendingData(d);
+        setPendingClients(Object.values(d).map((v:any) => v.nom || v));
+      } else {
+        setPendingData({}); setPendingClients([]);
+      }
     });
     return () => { u1(); u2(); u3(); };
   }, []);
@@ -112,12 +121,29 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
     update(ref(db, "ifco_clients"), map);
   }
 
-  function addPendingClient(name: string) {
-    update(ref(db, "ifco_attente"), { [name]: true });
+  function sanitizeKey(name: string) { return name.replace(/[.#$[\]/]/g, '_'); }
+
+  function addPendingClient(name: string, newRows: any[]) {
+    const key = sanitizeKey(name);
+    const existing = pendingData[key];
+    const existingLignes = existing?.lignes || [];
+    // Dédupliquer par BL + client
+    const existingBLs = new Set(existingLignes.map((r:any) => r['BON DE LIVRAISON'] + r['_CLIENT']));
+    const toAdd = newRows.filter((r:any) => !existingBLs.has(r['BON DE LIVRAISON'] + r['_CLIENT']));
+    const allLignes = [...existingLignes, ...toAdd];
+    const totalColis = allLignes.reduce((s:number, r:any) => s + (parseInt(r['QUANTITE']) || 0), 0);
+    const totalBL = new Set(allLignes.map((r:any) => r['BON DE LIVRAISON'])).size;
+    update(ref(db, `ifco_attente/${key}`), {
+      nom: name,
+      lignes: allLignes,
+      addedAt: new Date().toLocaleDateString('fr-FR'),
+      totalColis,
+      totalBL
+    });
   }
 
   function removePendingClient(name: string) {
-    remove(ref(db, `ifco_attente/${name}`));
+    remove(ref(db, `ifco_attente/${sanitizeKey(name)}`));
   }
 
   async function addHisto(type: HistoEntry["type"], lignes: number, fichier: string, rows: any[]) {
@@ -160,7 +186,9 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
         const missing = [...new Set(rows.filter((r:any) => !r['NUMERO PARTICIPANT']).map((r:any) => r['_CLIENT']))].filter(Boolean) as string[];
         const missingNonPending = missing.filter(c => !pendingClients.includes(c));
         const rowsFiltered = rows.filter((r:any) => !pendingClients.includes(r['_CLIENT']));
-        if (missingNonPending.length > 0) setShowMissingPopup(missingNonPending);
+        // Sauvegarder les lignes des clients manquants pour pouvoir les mettre en attente
+        const missingRowsMap = rows.filter((r:any) => missingNonPending.includes(r['_CLIENT']));
+        if (missingNonPending.length > 0) { setShowMissingPopup(missingNonPending); setRawMissingRows(missingRowsMap); }
         setAllRows(rowsFiltered);
         setSelected(rowsFiltered.map(() => true));
         const excluded = rows.length - rowsFiltered.length;
@@ -263,6 +291,12 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
             <span style={{ fontWeight: 800, fontSize: 15, color: "#fff" }}>🌿 Moorea → <span style={{ color: "#27ae60" }}>IFCO</span></span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {pendingClients.length > 0 && (
+              <button onClick={() => { setPendingInputCodes({}); setShowPendingPopup(true); }} style={{ position: "relative", background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+                ⏳ En attente
+                <span style={{ background: "#fff", color: "#b45309", borderRadius: 10, padding: "1px 6px", fontSize: 11, fontWeight: 800 }}>{pendingClients.length}</span>
+              </button>
+            )}
             <span style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>👤 {userName}</span>
             <span style={{ background: "#27ae60", color: "#fff", fontWeight: 800, fontSize: 12, padding: "4px 10px", borderRadius: 6 }}>N° 639861</span>
           </div>
@@ -272,7 +306,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       {/* ONGLETS */}
       <div style={{ background: "#0a0a0a", borderBottom: "1px solid #222" }}>
         <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", gap: 4, padding: "0 16px 8px" }}>
-          {([["convert","📂 Convertir"],["histo","📅 Calendrier"],["clients","👥 Codes IFCO"]] as any[]).map(([k,l]) => (
+          {([["convert","⚡ Opérationnel"],["clients","⚙️ Réglages"]] as any[]).map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: tab===k ? 700 : 500, color: tab===k ? "#0a0a0a" : "rgba(255,255,255,.5)", background: tab===k ? "#27ae60" : "transparent", fontFamily: "inherit" }}>{l}</button>
           ))}
         </div>
@@ -280,7 +314,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
 
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 80px" }}>
 
-        {/* ── CONVERTIR ── */}
+        {/* ── OPÉRATIONNEL ── */}
         {tab === "convert" && (
           <div>
             {/* Drop zone */}
@@ -365,9 +399,39 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
           </div>
         )}
 
-        {/* ── CALENDRIER ── */}
-        {tab === "histo" && (
+        {/* ── CALENDRIER + EN ATTENTE (onglet Opérationnel) ── */}
+        {tab === "convert" && (
           <div>
+
+            {/* En attente inline */}
+            {pendingClients.length > 0 && (
+              <div style={{ background: "#fffbe6", border: "1.5px solid #f59e0b", borderRadius: 16, padding: 16, marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#b45309" }}>⏳ En attente IFCO ({pendingClients.length})</p>
+                  <span style={{ fontSize: 11, color: "#92400e" }}>Ces clients sont exclus de l'export</span>
+                </div>
+                {pendingClients.map(c => (
+                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, background: "#fff", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px" }}>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: "#92400e" }}>⏳ {c}</span>
+                    <input
+                      type="number"
+                      placeholder="Code IFCO"
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          const val = (e.target as HTMLInputElement).value.trim();
+                          if (val) { const updated = { ...clients, [c]: parseInt(val) }; saveClients(updated); removePendingClient(c); (e.target as HTMLInputElement).value = ""; }
+                        }
+                      }}
+                      style={{ width: 100, padding: "5px 8px", border: "1.5px solid #fde68a", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                    />
+                    <button onClick={() => { if (confirm(`Supprimer "${c}" de la liste en attente ?`)) removePendingClient(c); }} style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#c0392b" }}>🗑️</button>
+                  </div>
+                ))}
+                <p style={{ margin: "8px 0 0", fontSize: 10, color: "#b45309" }}>💡 Tape le code + Entrée pour enregistrer et retirer de la liste</p>
+              </div>
+            )}
+
+            {/* Calendrier */}
             <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
               <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "16px 20px", borderBottom: "1px solid #d4edda", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 15, fontWeight: 700, color: "#1a6b3a" }}>📅 {monthLabel}</span>
@@ -432,88 +496,123 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
           </div>
         )}
 
-        {/* ── CODES IFCO ── */}
+        {/* ── RÉGLAGES — CODES IFCO ── */}
         {tab === "clients" && (
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 16 }}>
-            {/* Section En attente IFCO */}
-            {pendingClients.length > 0 && (
-              <div style={{ background: "#fffbe6", border: "1.5px solid #f59e0b", borderRadius: 12, padding: 12, marginBottom: 16 }}>
-                <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 800, color: "#b45309" }}>⏳ En attente IFCO ({pendingClients.length})</p>
-                <p style={{ margin: "0 0 10px", fontSize: 11, color: "#92400e" }}>Ces clients sont exclus de l'export. Dès que tu as leur code, entre-le ici.</p>
-                {pendingClients.map(c => (
-                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, background: "#fff", border: "1px solid #fde68a", borderRadius: 8, padding: "6px 10px" }}>
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: "#92400e" }}>⏳ {c}</span>
-                    <input
-                      type="number"
-                      placeholder="Code IFCO"
-                      onKeyDown={e => {
-                        if (e.key === "Enter") {
-                          const val = (e.target as HTMLInputElement).value.trim();
-                          if (val) {
-                            const updated = { ...clients, [c]: parseInt(val) };
-                            saveClients(updated);
-                            removePendingClient(c);
-                            (e.target as HTMLInputElement).value = "";
-                          }
-                        }
-                      }}
-                      style={{ width: 90, padding: "4px 7px", border: "1.5px solid #fde68a", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }}
-                    />
-                    <button
-                      onClick={() => { if (confirm(`Supprimer "${c}" de la liste en attente ?`)) removePendingClient(c); }}
-                      style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#c0392b" }}>🗑️</button>
-                  </div>
-                ))}
-                <p style={{ margin: "6px 0 0", fontSize: 10, color: "#b45309" }}>💡 Appuie sur Entrée pour enregistrer le code et retirer de la liste</p>
-              </div>
-            )}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a" }}>👥 {Object.keys(clients).length} clients</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a" }}>👥 {Object.keys(clients).length} clients enregistrés</span>
             </div>
-            <input style={{ ...S, marginBottom: 12 }} placeholder="🔍 Rechercher..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
-            <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid #e8f0ea", borderRadius: 10, marginBottom: 16 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead><tr style={{ background: "#f0fff6" }}>
-                  {["Nom client","Code IFCO",""].map(h => <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
-                </tr></thead>
-                <tbody>
-                  {Object.entries(clients).filter(([k]) => !clientSearch || k.toLowerCase().includes(clientSearch.toLowerCase())).map(([name, code]) => (
-                    <tr key={name} style={{ borderBottom: "1px solid #f4f4f4" }}>
-                      <td style={{ padding: "8px 10px", fontWeight: 600 }}>{name}</td>
-                      <td style={{ padding: "8px 10px", fontFamily: "monospace", color: "#1a6b3a", fontWeight: 700 }}>{code}</td>
-                      <td style={{ padding: "8px 10px" }}>
-                        <button onClick={() => { setEditKey(name); setNewName(name); setNewCode(String(code)); }} style={{ background: "#eaf4fb", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#1a5276", marginRight: 4 }}>✏️</button>
-                        <button onClick={() => { if(confirm(`Supprimer "${name}" ?`)) { const m = {...clients}; delete m[name]; saveClients(m); } }} style={{ background: "#fdedec", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#c0392b" }}>🗑️</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <input style={{ padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%", fontFamily: "inherit", marginBottom: 12 }} placeholder="🔍 Rechercher..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
+            <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid #e8f0ea", borderRadius: 10, marginBottom: 16 }}>
+              {Object.entries(clients).filter(([k]) => !clientSearch || k.toLowerCase().includes(clientSearch.toLowerCase())).map(([name, code]) => (
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid #f4f4f4" }}>
+                  {editKey === name ? (
+                    <>
+                      <input value={newName} onChange={e => setNewName(e.target.value)} style={{ flex: 2, padding: "4px 8px", border: "1.5px solid #27ae60", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                      <input value={newCode} onChange={e => setNewCode(e.target.value)} type="number" style={{ width: 80, padding: "4px 8px", border: "1.5px solid #27ae60", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                      <button onClick={() => { const m = {...clients}; delete m[editKey]; m[newName.trim()] = parseInt(newCode); saveClients(m); setEditKey(null); setNewName(""); setNewCode(""); }} style={{ background: "#27ae60", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#fff" }}>✓</button>
+                      <button onClick={() => setEditKey(null)} style={{ background: "#f5f5f5", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#555" }}>✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ flex: 2, fontSize: 12, fontWeight: 600 }}>{name}</span>
+                      <span style={{ fontSize: 12, color: "#27ae60", fontWeight: 700, fontFamily: "monospace" }}>{code}</span>
+                      <button onClick={() => { setEditKey(name); setNewName(name); setNewCode(String(code)); }} style={{ background: "#f0fff6", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#1a6b3a" }}>✏️</button>
+                      <button onClick={() => { if(confirm(`Supprimer "${name}" ?`)) { const m = {...clients}; delete m[name]; saveClients(m); } }} style={{ background: "#fdedec", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#c0392b" }}>🗑️</button>
+                    </>
+                  )}
+                </div>
+              ))}
             </div>
-            {/* Formulaire ajout/edit */}
-            <div style={{ background: "#f0fff6", border: "1.5px solid #a8d5b5", borderRadius: 12, padding: "14px 16px" }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a", marginBottom: 10 }}>{editKey ? "✏️ Modifier" : "➕ Ajouter un client"}</p>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                <div><label style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Nom exact client</label>
-                  <input style={S} value={newName} onChange={e => setNewName(e.target.value)} placeholder="ex : CARREFOUR LYON - 751" /></div>
-                <div><label style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase" }}>Code IFCO</label>
-                  <input style={S} value={newCode} onChange={e => setNewCode(e.target.value)} placeholder="ex : 705335" type="number" /></div>
-              </div>
+            <div style={{ background: "#f0fff6", border: "1px solid #a8d5b5", borderRadius: 10, padding: 12 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#1a6b3a" }}>➕ Ajouter un client</p>
               <div style={{ display: "flex", gap: 8 }}>
-                <button style={{ ...BT("#27ae60"), flex: 1, justifyContent: "center" }} onClick={() => {
-                  if (!newName.trim() || !newCode) { alert("Remplis les deux champs."); return; }
-                  const m = {...clients};
-                  if (editKey && editKey !== newName) delete m[editKey];
-                  m[newName.trim()] = parseInt(newCode);
-                  saveClients(m); setEditKey(null); setNewName(""); setNewCode("");
-                }}>💾 Enregistrer</button>
-                {editKey && <button style={{ ...BT("#e8e0d0", "#6b7280") }} onClick={() => { setEditKey(null); setNewName(""); setNewCode(""); }}>Annuler</button>}
+                <input placeholder="Nom client (exact)" value={newName} onChange={e => setNewName(e.target.value)} style={{ flex: 2, padding: "8px 10px", border: "1.5px solid #a8d5b5", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                <input placeholder="Code" type="number" value={newCode} onChange={e => setNewCode(e.target.value)} style={{ width: 90, padding: "8px 10px", border: "1.5px solid #a8d5b5", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                <button onClick={() => { if (!newName.trim() || !newCode) { alert("Remplis les deux champs."); return; } const m = {...clients}; m[newName.trim()] = parseInt(newCode); saveClients(m); setNewName(""); setNewCode(""); }} style={{ background: "#27ae60", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Ajouter</button>
               </div>
             </div>
           </div>
         )}
+
       </div>
 
+      {/* POPUP EN ATTENTE IFCO */}
+      {showPendingPopup && (() => {
+        const entries = Object.values(pendingData);
+        const resolvedCount = entries.filter((e:any) => pendingInputCodes[e.nom]?.trim()).length;
+        const buildPendingCSV = () => {
+          const toExport = entries.filter((e:any) => pendingInputCodes[e.nom]?.trim());
+          if (!toExport.length) return null;
+          const headers = EXPORT_COLS.map(c => c === 'DATE DE LIVRAISON 2' ? 'DATE DE LIVRAISON' : c);
+          const allPendingRows: any[] = [];
+          toExport.forEach((e:any) => {
+            (e.lignes || []).forEach((r:any) => {
+              allPendingRows.push({ ...r, 'NUMERO PARTICIPANT': parseInt(pendingInputCodes[e.nom]) });
+            });
+          });
+          if (!allPendingRows.length) return null;
+          const csvRows = [headers, ...allPendingRows.map((r:any) => EXPORT_COLS.map((c:string) => r[c] || ''))];
+          return csvRows.map((r:any) => r.join(';')).join('\n');
+        };
+        const saveAndDownload = () => {
+          const updated = { ...clients };
+          entries.forEach((e:any) => { if (pendingInputCodes[e.nom]?.trim()) { updated[e.nom] = parseInt(pendingInputCodes[e.nom]); removePendingClient(e.nom); } });
+          saveClients(updated);
+          const csv = buildPendingCSV();
+          if (csv) downloadCSV(getExportName(), csv);
+          setPendingInputCodes({}); setShowPendingPopup(false);
+        };
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 500, width: "100%", borderTop: "7px solid #f59e0b", maxHeight: "85vh", overflowY: "auto" }}>
+              <div style={{ textAlign: "center", marginBottom: 18 }}>
+                <div style={{ fontSize: 32, marginBottom: 6 }}>⏳</div>
+                <p style={{ fontSize: 15, fontWeight: 800, color: "#b45309", margin: 0 }}>Clients en attente IFCO</p>
+                <p style={{ fontSize: 12, color: "#777", marginTop: 4 }}>Entre les codes reçus d'IFCO — le fichier de déclaration sera généré automatiquement.</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
+                {entries.map((e:any) => {
+                  const hasCode = pendingInputCodes[e.nom]?.trim();
+                  return (
+                    <div key={e.nom} style={{ background: hasCode ? "#f0fdf4" : "#fffbe6", border: `1.5px solid ${hasCode ? "#27ae60" : "#fde68a"}`, borderRadius: 12, padding: "12px 14px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: "#92400e" }}>{e.nom}</div>
+                          <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>📦 {e.totalColis} colis · 🧾 {e.totalBL} BL · 📅 depuis le {e.addedAt}</div>
+                        </div>
+                        <input type="number" placeholder="Code IFCO"
+                          value={pendingInputCodes[e.nom] || ""}
+                          onChange={ev => setPendingInputCodes(prev => ({ ...prev, [e.nom]: ev.target.value }))}
+                          style={{ width: 100, padding: "6px 10px", border: `1.5px solid ${hasCode ? "#27ae60" : "#fde68a"}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", fontWeight: 700 }}
+                        />
+                        {hasCode && <span style={{ color: "#27ae60", fontSize: 18 }}>✅</span>}
+                      </div>
+                      <div style={{ maxHeight: 90, overflowY: "auto", background: "rgba(0,0,0,.03)", borderRadius: 6, padding: "6px 8px" }}>
+                        {(e.lignes || []).map((r:any, i:number) => (
+                          <div key={i} style={{ fontSize: 10, color: "#666", display: "flex", gap: 10, marginBottom: 2 }}>
+                            <span style={{ color: "#999" }}>{r['DATE DE LIVRAISON']}</span>
+                            <span style={{ fontFamily: "monospace" }}>{r['BON DE LIVRAISON']}</span>
+                            <span style={{ fontWeight: 700 }}>{r['QUANTITE']} colis</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {resolvedCount > 0 && (
+                  <button onClick={saveAndDownload} style={{ background: "#27ae60", color: "#fff", border: "none", padding: "12px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    ✅ Enregistrer codes + télécharger CSV ({resolvedCount}/{entries.length})
+                  </button>
+                )}
+                <button onClick={() => { setPendingInputCodes({}); setShowPendingPopup(false); }} style={{ background: "#f5f5f5", color: "#555", border: "none", padding: "11px", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Fermer</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {/* POPUP codes manquants */}
       {showMissingPopup.length > 0 && (() => {
         const allHandled = showMissingPopup.every(c => tempCodes[c]?.trim() || tempPending[c]);
@@ -521,7 +620,10 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
           const updated = { ...clients };
           showMissingPopup.forEach(c => {
             if (tempCodes[c]?.trim()) updated[c] = parseInt(tempCodes[c]);
-            if (tempPending[c]) addPendingClient(c);
+            if (tempPending[c]) {
+              const rowsForClient = rawMissingRows.filter((r:any) => r['_CLIENT'] === c);
+              addPendingClient(c, rowsForClient);
+            }
           });
           if (Object.keys(updated).length !== Object.keys(clients).length) saveClients(updated);
           setTempCodes({}); setTempPending({});
