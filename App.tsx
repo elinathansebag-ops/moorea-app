@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import RetoursModule from "./RetoursModule";
 import IFCOModule from "./IFCOModule";
 import GencodeModule from "./GencodeModule";
+import CatalogueModule from "./CatalogueModule";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc as fsDoc } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
 import { initializeApp as initializeApp2, getApps as getApps2 } from "firebase/app";
@@ -5261,7 +5262,18 @@ export default function App() {
   const [showIFCO, setShowIFCO] = useState(false);
   const [showGencode, setShowGencode] = useState(false);
   const [showGencodeChecker, setShowGencodeChecker] = useState(false);
+  const [showCatalogue, setShowCatalogue] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
+  const [catalogueArticles, setCatalogueArticles] = useState<{code:string,libelle:string}[]>([]);
+
+  // Charger les articles du catalogue depuis Firebase
+  useEffect(() => {
+    const u = onValue(ref(db, 'moorea_articles'), snap => {
+      const d = snap.val();
+      if (d) setCatalogueArticles(Object.values(d) as any[]);
+    });
+    return () => u();
+  }, []);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [showStock, setShowStock] = useState(false);
@@ -6933,8 +6945,12 @@ _PDF joint_`;
     return <IFCOModule onClose={() => { setShowIFCO(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
+  if (showCatalogue) {
+    return <CatalogueModule onClose={() => { setShowCatalogue(false); setShowAccueil(true); }} />;
+  }
+
   if (showGencode) {
-    return <GencodeModule onClose={() => { setShowGencode(false); setShowAccueil(true); }} />;
+    return <GencodeModule onClose={() => { setShowGencode(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} />;
   }
 
   if (showYukon) {
@@ -6975,6 +6991,7 @@ _PDF joint_`;
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { icon: "🧺", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
       { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", badge: null, stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
+      { icon: "📚", label: "Catalogue", color: "#27ae60", badge: catalogueArticles.length > 0 ? catalogueArticles.length : null, stat: "Base articles Moorea", action: () => { setShowAccueil(false); setShowCatalogue(true); } },
     ];
 
     // Leofresh
