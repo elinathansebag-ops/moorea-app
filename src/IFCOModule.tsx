@@ -315,8 +315,71 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 80px" }}>
 
         {/* ── OPÉRATIONNEL ── */}
+        {/* ── OPÉRATIONNEL ── */}
         {tab === "convert" && (
           <div>
+            {/* Calendrier */}
+            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
+              <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "16px 20px", borderBottom: "1px solid #d4edda", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "#1a6b3a" }}>📅 {monthLabel}</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()-1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#1a6b3a", fontSize: 14 }}>◀</button>
+                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#1a6b3a", fontSize: 14 }}>▶</button>
+                </div>
+              </div>
+              <div style={{ padding: "16px", overflowX: "auto" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6, minWidth: 420, marginBottom: 8 }}>
+                  {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map(d => <span key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#aaa", textTransform: "uppercase" }}>{d}</span>)}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6, minWidth: 420 }}>
+                  {days.map((day, i) => {
+                    if (!day) return <div key={i} />;
+                    const { d, dateStr, isSunday, isToday, isPast, hasDone, users } = day;
+                    let bg = "#f8f9fa", border = "1.5px solid #eee", color = "#ccc";
+                    if (isSunday) { bg = "#f8f9fa"; color = "#ddd"; }
+                    else if (hasDone) { bg = "#eafaf1"; border = "1.5px solid #a9dfbf"; color = "#1a6b3a"; }
+                    else if (isPast && !isToday) { bg = "#fdedec"; border = "1.5px solid #f5b7b1"; color = "#c0392b"; }
+                    else if (isToday) { bg = "#f0fff6"; border = "2px solid #27ae60"; color = "#1a6b3a"; }
+                    return (
+                      <div key={i} onClick={() => { if (!isSunday) validateDay(dateStr); }} style={{ minHeight: 65, background: bg, border, borderRadius: 10, padding: "6px 4px", cursor: isSunday ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color, marginBottom: 3 }}>{d}</div>
+                        {hasDone && <div style={{ fontSize: 9, fontWeight: 600, textAlign: "center", color: "#1e8449", lineHeight: 1.3 }}>✓ {[...new Set(users)].join(', ')}</div>}
+                        {!hasDone && isPast && !isSunday && <div style={{ fontSize: 9, color: "#c0392b", fontWeight: 600 }}>Non fait</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Historique */}
+            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a", marginBottom: 12 }}>📋 Historique ({histo.length})</p>
+              {histo.length === 0 ? <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0" }}>Aucune déclaration</div> : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ background: "#f0fff6" }}>
+                      {["Utilisateur","Date & heure","Lignes","Fichier","Action"].map(h => <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {histo.map((e, i) => (
+                        <tr key={i} style={{ borderBottom: "1px solid #f4f4f4" }}>
+                          <td style={{ padding: "8px 10px", fontWeight: 600 }}>{e.user}</td>
+                          <td style={{ padding: "8px 10px" }}>{e.date}</td>
+                          <td style={{ padding: "8px 10px" }}>{e.lignes}</td>
+                          <td style={{ padding: "8px 10px", fontFamily: "monospace", fontSize: 11 }}>{e.fichier}</td>
+                          <td style={{ padding: "8px 10px" }}>
+                            <span style={{ background: e.type==="envoi"?"#eaf4fb":e.type==="manuel"?"#f5f3ee":"#eafaf1", color: e.type==="envoi"?"#1a5276":e.type==="manuel"?"#6b7280":"#1e8449", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
+                              {e.type==="envoi"?"🌐 IFCO":e.type==="manuel"?"📅 Manuel":"⬇️ Téléchargé"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
             {/* Drop zone */}
             <div style={{ background: "#fff", border: "2.5px dashed #a8d5b5", borderRadius: 16, padding: "40px 24px", textAlign: "center", cursor: "pointer", marginBottom: 16, transition: "all .2s" }}
               onClick={() => fileRef.current?.click()}
@@ -397,12 +460,6 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
               </div>
             )}
           </div>
-        )}
-
-        {/* ── CALENDRIER + EN ATTENTE (onglet Opérationnel) ── */}
-        {tab === "convert" && (
-          <div>
-
             {/* En attente inline */}
             {pendingClients.length > 0 && (
               <div style={{ background: "#fffbe6", border: "1.5px solid #f59e0b", borderRadius: 16, padding: 16, marginBottom: 16 }}>
@@ -430,69 +487,6 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                 <p style={{ margin: "8px 0 0", fontSize: 10, color: "#b45309" }}>💡 Tape le code + Entrée pour enregistrer et retirer de la liste</p>
               </div>
             )}
-
-            {/* Calendrier */}
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
-              <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "16px 20px", borderBottom: "1px solid #d4edda", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: "#1a6b3a" }}>📅 {monthLabel}</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()-1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#1a6b3a", fontSize: 14 }}>◀</button>
-                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))} style={{ background: "none", border: "1.5px solid #d4edda", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "#1a6b3a", fontSize: 14 }}>▶</button>
-                </div>
-              </div>
-              <div style={{ padding: "16px", overflowX: "auto" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6, minWidth: 420, marginBottom: 8 }}>
-                  {["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"].map(d => <span key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#aaa", textTransform: "uppercase" }}>{d}</span>)}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6, minWidth: 420 }}>
-                  {days.map((day, i) => {
-                    if (!day) return <div key={i} />;
-                    const { d, dateStr, isSunday, isToday, isPast, hasDone, users } = day;
-                    let bg = "#f8f9fa", border = "1.5px solid #eee", color = "#ccc";
-                    if (isSunday) { bg = "#f8f9fa"; color = "#ddd"; }
-                    else if (hasDone) { bg = "#eafaf1"; border = "1.5px solid #a9dfbf"; color = "#1a6b3a"; }
-                    else if (isPast && !isToday) { bg = "#fdedec"; border = "1.5px solid #f5b7b1"; color = "#c0392b"; }
-                    else if (isToday) { bg = "#f0fff6"; border = "2px solid #27ae60"; color = "#1a6b3a"; }
-                    return (
-                      <div key={i} onClick={() => { if (!isSunday) validateDay(dateStr); }} style={{ minHeight: 65, background: bg, border, borderRadius: 10, padding: "6px 4px", cursor: isSunday ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color, marginBottom: 3 }}>{d}</div>
-                        {hasDone && <div style={{ fontSize: 9, fontWeight: 600, textAlign: "center", color: "#1e8449", lineHeight: 1.3 }}>✓ {[...new Set(users)].join(', ')}</div>}
-                        {!hasDone && isPast && !isSunday && <div style={{ fontSize: 9, color: "#c0392b", fontWeight: 600 }}>Non fait</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Historique */}
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a", marginBottom: 12 }}>📋 Historique ({histo.length})</p>
-              {histo.length === 0 ? <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0" }}>Aucune déclaration</div> : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead><tr style={{ background: "#f0fff6" }}>
-                      {["Utilisateur","Date & heure","Lignes","Fichier","Action"].map(h => <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>
-                      {histo.map((e, i) => (
-                        <tr key={i} style={{ borderBottom: "1px solid #f4f4f4" }}>
-                          <td style={{ padding: "8px 10px", fontWeight: 600 }}>{e.user}</td>
-                          <td style={{ padding: "8px 10px" }}>{e.date}</td>
-                          <td style={{ padding: "8px 10px" }}>{e.lignes}</td>
-                          <td style={{ padding: "8px 10px", fontFamily: "monospace", fontSize: 11 }}>{e.fichier}</td>
-                          <td style={{ padding: "8px 10px" }}>
-                            <span style={{ background: e.type==="envoi"?"#eaf4fb":e.type==="manuel"?"#f5f3ee":"#eafaf1", color: e.type==="envoi"?"#1a5276":e.type==="manuel"?"#6b7280":"#1e8449", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
-                              {e.type==="envoi"?"🌐 IFCO":e.type==="manuel"?"📅 Manuel":"⬇️ Téléchargé"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
           </div>
         )}
 
