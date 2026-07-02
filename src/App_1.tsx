@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import RetoursModule from "./RetoursModule";
 import IFCOModule from "./IFCOModule";
+import GencodeModule from "./GencodeModule";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc as fsDoc } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
 import { initializeApp as initializeApp2, getApps as getApps2 } from "firebase/app";
@@ -257,7 +258,7 @@ function NoteBtnArr({ n, selected, onChange }: { n: number; selected: number; on
   );
 }
 
-function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode, selected, onToggleSelect }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void }) {
+function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode, selected, onToggleSelect, gencodeArticles }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[] }) {
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
   const [poidsOk, setPoidsOk] = useState(true);
@@ -266,6 +267,12 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
   const [poidsBrut, setPoidsBrut] = useState<string>(arrivage.poids_brut || "");
   const [poidsNet, setPoidsNet] = useState<string>(arrivage.poids_net || arrivage.poids_colis || "");
   const [saving, setSaving] = useState(false);
+  const [showGencodeScan, setShowGencodeScan] = useState(false);
+
+  // Chercher le gencode correspondant à cet article
+  const matchedGencode = gencodeArticles?.find(g =>
+    g.nom_geslot?.some((n: string) => n === arrivage.produit || n.toLowerCase() === (arrivage.produit || '').toLowerCase())
+  );
 
   const colisAttendu = arrivage.quantite || 0;
   const colisRecusNum = colisRecus === "" ? colisAttendu : parseInt(colisRecus) || 0;
@@ -314,8 +321,12 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
             await fbUpdate(fbRef(dbImport, `arrivages/${arrivage.id}`), { date: nouvelleDate });
           }} style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
           <button onClick={() => onDelete(arrivage.id)} style={{ background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>🗑</button>
+          {matchedGencode && (
+            <button onClick={() => setShowGencodeScan(true)} style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷️ Contrôler gencode</button>
+          )}
         </div>
       </div>
+      {showGencodeScan && matchedGencode && <GencodeChecker onClose={() => setShowGencodeScan(false)} expectedEan={matchedGencode.ean} expectedArticle={matchedGencode} />}
 
       {/* Colis reçus + Poids */}
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
@@ -400,7 +411,7 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
   );
 }
 
-function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect }: any) {
+function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect, gencodeArticles }: any) {
   const [open, setOpen] = useState(false);
   const nbTraites = traites.length;
   const allDone = produits.length === 0 && nbTraites > 0;
@@ -420,7 +431,7 @@ function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onD
       </div>
       {open && (
         <div style={{ padding: "12px 14px" }}>
-          {produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} />)}
+          {produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} />)}
           {nbTraites > 0 && (
             <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>📁 Traités · {nbTraites}</p>
@@ -631,6 +642,189 @@ function PalettePerteForm({ arrivage }: { arrivage: any }) {
 }
 
 // ─── COMPOSANT SCANNER QR ───
+// ── Vérificateur de gencode ──────────────────────────────────────────────────
+function GencodeChecker({ onClose, expectedEan, expectedArticle }: { onClose: () => void; expectedEan?: string; expectedArticle?: any }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [result, setResult] = useState<any>(null);
+  const [manualCode, setManualCode] = useState('');
+  const [error, setError] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [articles, setArticles] = useState<any[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number>(0);
+  const activeRef = useRef(true);
+
+  useEffect(() => {
+    const u = onValue(ref(db, 'gencode_articles'), snap => {
+      const d = snap.val();
+      if (d) setArticles(Object.entries(d).map(([id, v]: any) => ({ ...v, id })));
+    });
+    return () => u();
+  }, []);
+
+  function findArticle(code: string) {
+    const clean = code.replace(/\s/g, '');
+    if (expectedEan) {
+      // Mode contrôle : vérifier que le code scanné correspond à l'EAN attendu
+      if (clean === expectedEan) setResult({ found: true, correct: true, article: expectedArticle, code: clean });
+      else setResult({ found: true, correct: false, article: expectedArticle, scanned: clean, expected: expectedEan });
+    } else {
+      const found = articles.find(a => a.ean === clean || a.ean_mcf === clean || a.ean_sw === clean);
+      if (found) setResult({ found: true, correct: true, article: found, code: clean });
+      else setResult({ found: false, code: clean });
+    }
+  }
+
+  useEffect(() => {
+    const loadZXing = (): Promise<any> => new Promise((res, rej) => {
+      if ((window as any).ZXing) { res((window as any).ZXing); return; }
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js';
+      s.onload = () => res((window as any).ZXing);
+      s.onerror = rej;
+      document.head.appendChild(s);
+    });
+
+    const start = async () => {
+      try {
+        const ZXing = await loadZXing();
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } } });
+        if (!activeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+        setScanning(true);
+        const hints = new Map();
+        hints.set(2, [15, 14, 13, 12, 11]); // EAN13, EAN8, UPC-A, UPC-E, Code128
+        const reader = new ZXing.MultiFormatReader();
+        reader.setHints(hints);
+
+        const tick = () => {
+          if (!activeRef.current || !videoRef.current || !canvasRef.current) return;
+          const v = videoRef.current, c = canvasRef.current;
+          if (v.readyState !== v.HAVE_ENOUGH_DATA) { rafRef.current = requestAnimationFrame(tick); return; }
+          c.width = v.videoWidth; c.height = v.videoHeight;
+          const ctx = c.getContext('2d')!;
+          ctx.drawImage(v, 0, 0, c.width, c.height);
+          try {
+            const lum = new ZXing.RGBLuminanceSource(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+            const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+            const res = reader.decode(bmp);
+            if (res?.getText()) {
+              activeRef.current = false;
+              stream.getTracks().forEach(t => t.stop());
+              findArticle(res.getText());
+              return;
+            }
+          } catch {}
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        rafRef.current = requestAnimationFrame(tick);
+      } catch (e: any) {
+        setError(e.name === 'NotAllowedError' ? 'Accès caméra refusé' : 'Caméra indisponible');
+      }
+    };
+    start();
+    return () => {
+      activeRef.current = false;
+      cancelAnimationFrame(rafRef.current);
+      streamRef.current?.getTracks().forEach(t => t.stop());
+    };
+  }, [articles]);
+
+  const reset = () => { setResult(null); setManualCode(''); activeRef.current = true; };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 900, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 24, maxWidth: 420, width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <span style={{ fontSize: 15, fontWeight: 800 }}>🏷️ Vérifier un gencode</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#aaa' }}>✕</button>
+        </div>
+
+        {!result ? (
+          <>
+            {expectedArticle && (
+              <div style={{ background: '#f0f4ff', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6', marginBottom: 2 }}>Article attendu</div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{expectedArticle.produit} {expectedArticle.variete && `· ${expectedArticle.variete}`}</div>
+                {expectedArticle.origine && <div style={{ fontSize: 11, color: '#3b82f6' }}>📍 {expectedArticle.origine}</div>}
+                <div style={{ fontSize: 11, color: '#555' }}>{expectedArticle.conditionnement}</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: '#3b82f6', marginTop: 4 }}>EAN attendu : {expectedEan}</div>
+              </div>
+            )}
+            {/* Viewfinder caméra */}
+            <div style={{ position: 'relative', background: '#000', borderRadius: 12, overflow: 'hidden', marginBottom: 14, height: 200 }}>
+              <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} playsInline muted />
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
+              {!scanning && !error && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>⏳ Chargement caméra...</div>}
+              {error && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff6b6b', fontSize: 12, padding: 12, textAlign: 'center' }}>{error}</div>}
+              {scanning && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ border: '2px solid #3b82f6', borderRadius: 8, width: 240, height: 80 }} />
+                </div>
+              )}
+            </div>
+
+            {/* Saisie manuelle */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={manualCode}
+                onChange={e => setManualCode(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && manualCode.trim()) findArticle(manualCode.trim()); }}
+                placeholder="Ou saisir le code manuellement..."
+                style={{ flex: 1, padding: '9px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
+              />
+              <button onClick={() => { if (manualCode.trim()) findArticle(manualCode.trim()); }}
+                style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>→</button>
+            </div>
+          </>
+        ) : (
+          <div>
+            {result.found && result.correct && (
+              <div style={{ background: '#f0fff4', border: '2px solid #27ae60', borderRadius: 14, padding: 16, marginBottom: 14 }}>
+                <div style={{ fontSize: 24, textAlign: 'center', marginBottom: 8 }}>✅</div>
+                <div style={{ fontSize: 14, fontWeight: 800, textAlign: 'center', color: '#1a6b3a', marginBottom: 8 }}>Gencode correct !</div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{result.article.produit}</div>
+                {result.article.variete && <div style={{ fontSize: 12, color: '#555' }}>{result.article.variete}</div>}
+                {result.article.origine && <div style={{ fontSize: 12, color: '#3b82f6' }}>📍 {result.article.origine}</div>}
+                <div style={{ fontSize: 12, color: '#555' }}>{result.article.conditionnement}</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#27ae60', textAlign: 'center', marginTop: 8 }}>{result.code}</div>
+              </div>
+            )}
+            {result.found && !result.correct && (
+              <div style={{ background: '#fff5f5', border: '2px solid #e74c3c', borderRadius: 14, padding: 16, marginBottom: 14 }}>
+                <div style={{ fontSize: 24, textAlign: 'center', marginBottom: 8 }}>❌</div>
+                <div style={{ fontSize: 14, fontWeight: 800, textAlign: 'center', color: '#c0392b', marginBottom: 10 }}>Gencode incorrect !</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ background: '#fee2e2', borderRadius: 8, padding: '8px 12px' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#c0392b' }}>SCANNÉ</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: '#c0392b' }}>{result.scanned}</div>
+                  </div>
+                  <div style={{ background: '#f0fff4', borderRadius: 8, padding: '8px 12px' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#1a6b3a' }}>ATTENDU</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 800, color: '#1a6b3a' }}>{result.expected}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {!result.found && (
+              <div style={{ background: '#fff5f5', border: '2px solid #e74c3c', borderRadius: 14, padding: 16, marginBottom: 14, textAlign: 'center' }}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>❌</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#c0392b' }}>Code inconnu dans la base</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 6, color: '#e74c3c' }}>{result.code}</div>
+              </div>
+            )}
+            <button onClick={reset} style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              🔄 Scanner un autre code
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1157,7 +1351,7 @@ Merci de régulariser.`;
   );
 }
 
-function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect, onScan }: any) {
+function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -1239,7 +1433,8 @@ function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, o
               produits={byFournisseur[f] || []}
               traites={byFournisseurTraites[f] || []}
               onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport}
-              selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect} />
+              selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect}
+              gencodeArticles={gencodeArticles} />
           ))}
         </div>
       )}
@@ -2339,7 +2534,7 @@ function StockApp({ onExit }: { onExit: () => void }) {
         const q = (document.getElementById("s-cfg-srch") as HTMLInputElement)?.value.toLowerCase() || "";
         const tbody = document.getElementById("s-cfg-body");
         if (!tbody) return;
-        const source = allArticles.length ? allArticles : [];
+        const source = allArticles.length ? allArticles : STOCK_DATA_EMBEDDED.map(s => ({ article: s.article, equipe: s.equipe, famille: '' }));
         if (!source.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-state">Importez un fichier stock d'abord</td></tr>`; return; }
         let rows = source.filter(a => {
           if (q && !a.article.toLowerCase().includes(q)) return false;
@@ -4398,6 +4593,7 @@ export default function App() {
   // ─── STATES ARRIVAGES ───
   const [pageMode, setPageMode] = useState<"qualite" | "arrivages" | "historique_arr" | "stats_arr" | "saisie_arr">("arrivages");
   const [arrivages, setArrivages] = useState<any[]>([]);
+  const [gencodeArticles, setGencodeArticles] = useState<any[]>([]);
   const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "" });
   const [previewArr, setPreviewArr] = useState<any[] | null>(null);
   const [importingArr, setImportingArr] = useState(false);
@@ -4431,6 +4627,8 @@ export default function App() {
   const [showQrCode, setShowQrCode] = useState(false);
   const [showLeofresh, setShowLeofresh] = useState(false);
   const [showIFCO, setShowIFCO] = useState(false);
+  const [showGencode, setShowGencode] = useState(false);
+  const [showGencodeChecker, setShowGencodeChecker] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
@@ -4498,6 +4696,15 @@ export default function App() {
       } else {
         setRapports([]);
       }
+    });
+    return () => unsub();
+  }, []);
+
+  // ─── FIREBASE: gencode articles ───
+  useEffect(() => {
+    const unsub = onValue(ref(db, "gencode_articles"), snap => {
+      const d = snap.val();
+      if (d) setGencodeArticles(Object.entries(d).map(([id, v]: any) => ({ ...v, id })));
     });
     return () => unsub();
   }, []);
@@ -6009,9 +6216,7 @@ _PDF joint_`;
       onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.1)")}
       onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
       title="Scanner une palette"
-    >
-      📷
-    </button>
+    >📷</button>
   );
 
   // ─── RENDER ───
@@ -6096,6 +6301,10 @@ _PDF joint_`;
     return <IFCOModule onClose={() => { setShowIFCO(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
+  if (showGencode) {
+    return <GencodeModule onClose={() => { setShowGencode(false); setShowAccueil(true); }} />;
+  }
+
   if (showYukon) {
     return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
@@ -6133,6 +6342,7 @@ _PDF joint_`;
       { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", badge: null, stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { icon: "🧺", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
+      { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", badge: null, stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
     ];
 
     // Leofresh
@@ -6755,7 +6965,7 @@ _PDF joint_`;
                     const enAttente = arr.filter((a: any) => a.statut === "en attente");
                     const traites = arr.filter((a: any) => a.statut !== "en attente");
                     return (
-                      <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onDelete={deleteArrivageItem} onOuvreRapport={ouvrirRapportDepuisArrivage} selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={(id: string) => { const next = new Set(selectedArrivages); if (next.has(id)) next.delete(id); else next.add(id); setSelectedArrivages(next); }} onScan={handleScanForDate} />
+                      <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onDelete={deleteArrivageItem} onOuvreRapport={ouvrirRapportDepuisArrivage} selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={(id: string) => { const next = new Set(selectedArrivages); if (next.has(id)) next.delete(id); else next.add(id); setSelectedArrivages(next); }} onScan={handleScanForDate} gencodeArticles={gencodeArticles} />
                     );
                   })}
                 </>
