@@ -171,8 +171,8 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
   }
 
   function buildCSV(): string|null {
-    const sel = allRows.filter((_, i) => selected[i]);
-    if (!sel.length) { alert("Sélectionnez au moins une ligne."); return null; }
+    const sel = allRows.filter((_, i) => selected[i]).filter((r:any) => r['NUMERO PARTICIPANT']);
+    if (!sel.length) { alert("Sélectionnez au moins une ligne avec un code IFCO valide."); return null; }
     const headers = EXPORT_COLS.map(c => c === 'DATE DE LIVRAISON 2' ? 'DATE DE LIVRAISON' : c);
     const rows = [headers, ...sel.map((r:any) => EXPORT_COLS.map(c => r[c] || ''))];
     return rows.map(r => r.join(';')).join('\n');
