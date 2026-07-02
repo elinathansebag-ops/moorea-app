@@ -459,7 +459,6 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                 <button onClick={() => { setAllRows([]); setSelected([]); setStatus(null); }} style={{ background: "transparent", border: "none", color: "#aaa", fontSize: 12, cursor: "pointer", textDecoration: "underline", textAlign: "center", fontFamily: "inherit" }}>🔄 Recommencer</button>
               </div>
             )}
-          </div>
             {/* En attente inline */}
             {pendingClients.length > 0 && (
               <div style={{ background: "#fffbe6", border: "1.5px solid #f59e0b", borderRadius: 16, padding: 16, marginBottom: 16 }}>
