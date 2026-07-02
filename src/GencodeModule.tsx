@@ -444,9 +444,11 @@ function SimpleRow({ article, geslotList, onSave }: {
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 120px', borderBottom:'1px solid #f0f0f0', padding:'8px 16px', gap:12, alignItems:'center', background: isLinked ? '#fff' : '#fffef5' }}>
       {/* Colonne 1 : nom article gencode */}
       <div>
-        <div style={{ fontSize:12, fontWeight:700, color:'#1a1a1a' }}>{article.conditionnement}</div>
-        <div style={{ fontSize:10, color:'#3b82f6', fontFamily:'monospace', marginTop:2 }}>{article.ean}</div>
-        {isLinked && <div style={{ fontSize:10, color:'#27ae60', marginTop:2 }}>✅ {article.nom_geslot.join(', ')}</div>}
+        <div style={{ fontSize:12, fontWeight:800, color:'#1a1a1a' }}>{article.produit}{article.variete ? ` · ${article.variete}` : ''}</div>
+        {article.origine && <div style={{ fontSize:11, fontWeight:700, color:'#3b82f6', marginTop:2 }}>📍 {article.origine}</div>}
+        <div style={{ fontSize:11, color:'#555', marginTop:2 }}>{article.conditionnement}</div>
+        <div style={{ fontSize:10, color:'#999', fontFamily:'monospace', marginTop:2 }}>{article.ean}</div>
+        {isLinked && <div style={{ fontSize:10, color:'#27ae60', marginTop:3, fontWeight:600 }}>✅ {article.nom_geslot.join(', ')}</div>}
       </div>
 
       {/* Colonne 2 : recherche article Geslot */}
@@ -503,10 +505,21 @@ export default function GencodeModule({ onClose }: { onClose: () => void }) {
     const u = onValue(ref(db, 'gencode_articles'), snap => {
       const d = snap.val();
       if (d) {
-        const loaded = Object.entries(d).map(([id, v]: any) => ({
-          nom_geslot:[], suggestions:[], ...v, id,
-          suggestions: DEFAULT_ARTICLES.find(a => a.id === id)?.suggestions || []
-        }));
+        const loaded = Object.entries(d).map(([id, v]: any) => {
+          const def = DEFAULT_ARTICLES.find(a => a.id === id) || {} as any;
+          return {
+            ...def,
+            ...v,
+            id,
+            produit:    v.produit    || def.produit    || '',
+            variete:    v.variete    || def.variete    || '',
+            origine:    v.origine    || def.origine    || '',
+            conditionnement: v.conditionnement || def.conditionnement || '',
+            ean:        v.ean        || def.ean        || '',
+            nom_geslot: v.nom_geslot || [],
+            suggestions: def.suggestions || []
+          };
+        });
         setArticles(loaded);
         setImported(true);
       } else { setArticles([]); setImported(false); }
