@@ -434,9 +434,17 @@ function SimpleRow({ article, geslotList, onSave }: {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
 
-  const filtered = q.length >= 1
-    ? (() => { const words = q.toLowerCase().split(/\s+/).filter(Boolean); return geslotList.filter(g => words.every(w => g.toLowerCase().includes(w))).slice(0, 20); })()
-    : geslotList.slice(0, 20);
+  const filtered = (() => {
+    if (q.length < 1) return article.suggestions?.filter((s: string) => !article.nom_geslot?.includes(s)).slice(0, 8) || [];
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const results = geslotList.filter(g => words.every(w => g.toLowerCase().includes(w)));
+    // Si aucun résultat et 1 seul mot court, chercher par chaque lettre séparément
+    if (results.length === 0 && words.length === 1 && words[0].length <= 3) {
+      const letters = words[0].split('');
+      return geslotList.filter(g => letters.every(l => g.toLowerCase().includes(l))).slice(0, 50);
+    }
+    return results.slice(0, 50);
+  })();
 
   const isLinked = article.nom_geslot?.length > 0;
 
