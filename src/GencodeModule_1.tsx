@@ -435,7 +435,7 @@ function SimpleRow({ article, geslotList, onSave }: {
   const [open, setOpen] = useState(false);
 
   const filtered = q.length >= 1
-    ? geslotList.filter(g => g.toLowerCase().includes(q.toLowerCase())).slice(0, 20)
+    ? (() => { const words = q.toLowerCase().split(/\s+/).filter(Boolean); return geslotList.filter(g => words.every(w => g.toLowerCase().includes(w))).slice(0, 20); })()
     : geslotList.slice(0, 20);
 
   const isLinked = article.nom_geslot?.length > 0;
@@ -505,10 +505,21 @@ export default function GencodeModule({ onClose }: { onClose: () => void }) {
     const u = onValue(ref(db, 'gencode_articles'), snap => {
       const d = snap.val();
       if (d) {
-        const loaded = Object.entries(d).map(([id, v]: any) => ({
-          nom_geslot:[], suggestions:[], ...v, id,
-          suggestions: DEFAULT_ARTICLES.find(a => a.id === id)?.suggestions || []
-        }));
+        const loaded = Object.entries(d).map(([id, v]: any) => {
+          const def = DEFAULT_ARTICLES.find(a => a.id === id) || {} as any;
+          return {
+            ...def,
+            ...v,
+            id,
+            produit:    v.produit    || def.produit    || '',
+            variete:    v.variete    || def.variete    || '',
+            origine:    v.origine    || def.origine    || '',
+            conditionnement: v.conditionnement || def.conditionnement || '',
+            ean:        v.ean        || def.ean        || '',
+            nom_geslot: v.nom_geslot || [],
+            suggestions: def.suggestions || []
+          };
+        });
         setArticles(loaded);
         setImported(true);
       } else { setArticles([]); setImported(false); }
