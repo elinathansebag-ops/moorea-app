@@ -435,7 +435,7 @@ function SimpleRow({ article, geslotList, onSave }: {
   const [open, setOpen] = useState(false);
 
   const filtered = q.length >= 1
-    ? geslotList.filter(g => g.toLowerCase().includes(q.toLowerCase())).slice(0, 20)
+    ? (() => { const words = q.toLowerCase().split(/\s+/).filter(Boolean); return geslotList.filter(g => words.every(w => g.toLowerCase().includes(w))).slice(0, 20); })()
     : geslotList.slice(0, 20);
 
   const isLinked = article.nom_geslot?.length > 0;
