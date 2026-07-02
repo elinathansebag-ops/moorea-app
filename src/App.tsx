@@ -6093,7 +6093,7 @@ _PDF joint_`;
   }
 
   if (showIFCO) {
-    return <IFCOModule onClose={() => { setShowIFCO(false); setShowAccueil(true); }} />;
+    return <IFCOModule onClose={() => { setShowIFCO(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
   if (showYukon) {
