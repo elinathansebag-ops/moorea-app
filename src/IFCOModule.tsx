@@ -83,6 +83,8 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
   const [calDate, setCalDate] = useState(new Date());
   const [showMissingPopup, setShowMissingPopup] = useState<string[]>([]);
   const [tempCodes, setTempCodes] = useState<Record<string,string>>({});
+  const [tempPending, setTempPending] = useState<Record<string,boolean>>({});
+  const [pendingClients, setPendingClients] = useState<string[]>([]);
   const [clientSearch, setClientSearch] = useState("");
   const [editKey, setEditKey] = useState<string|null>(null);
   const [newName, setNewName] = useState(""); const [newCode, setNewCode] = useState("");
@@ -98,12 +100,24 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       const d = snap.val();
       if (d) setClients({ ...DEFAULT_CLIENTS, ...d });
     });
-    return () => { u1(); u2(); };
+    const u3 = onValue(ref(db, "ifco_attente"), snap => {
+      const d = snap.val();
+      setPendingClients(d ? Object.keys(d) : []);
+    });
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   function saveClients(map: ClientMap) {
     setClients(map);
     update(ref(db, "ifco_clients"), map);
+  }
+
+  function addPendingClient(name: string) {
+    update(ref(db, "ifco_attente"), { [name]: true });
+  }
+
+  function removePendingClient(name: string) {
+    remove(ref(db, `ifco_attente/${name}`));
   }
 
   async function addHisto(type: HistoEntry["type"], lignes: number, fichier: string, rows: any[]) {
@@ -144,10 +158,13 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
           return { 'DIRECTION':'S', 'DATE DE LIVRAISON':dateLiv, 'DATE DE LIVRAISON 2':dateLiv, 'BON DE LIVRAISON': row[idxs.bl] !== undefined ? String(row[idxs.bl]).trim() : '', 'POOL':'', 'MATERIEL':'BLL4314', 'QUANTITE': row[idxs.nbColis] !== undefined ? String(row[idxs.nbColis]).trim() : '', 'NUMERO PARTICIPANT': getIfcoCode(nomClient), 'MON NUMERO IFCO':'639861', 'REMARQUE':'', 'NUMERO DE COMMANDE':'', 'CONTENU':'', "NUMERO D'IMMATRICULATION DU CAMION":'', 'ORIGINE':'', 'REMARQUE SUR LIVRAISON':'', '_CLIENT': nomClient };
         });
         const missing = [...new Set(rows.filter((r:any) => !r['NUMERO PARTICIPANT']).map((r:any) => r['_CLIENT']))].filter(Boolean) as string[];
-        if (missing.length > 0) setShowMissingPopup(missing);
-        setAllRows(rows);
-        setSelected(rows.map(() => true));
-        setStatus({ msg: `✅ ${rows.length} ligne${rows.length > 1 ? 's' : ''} prête${rows.length > 1 ? 's' : ''} — vérifiez et exportez`, type: "success" });
+        const missingNonPending = missing.filter(c => !pendingClients.includes(c));
+        const rowsFiltered = rows.filter((r:any) => !pendingClients.includes(r['_CLIENT']));
+        if (missingNonPending.length > 0) setShowMissingPopup(missingNonPending);
+        setAllRows(rowsFiltered);
+        setSelected(rowsFiltered.map(() => true));
+        const excluded = rows.length - rowsFiltered.length;
+        setStatus({ msg: `✅ ${rowsFiltered.length} ligne${rowsFiltered.length > 1 ? 's' : ''} prête${rowsFiltered.length > 1 ? 's' : ''}${excluded > 0 ? ` — ${excluded} exclu${excluded > 1 ? 's' : ''} (en attente IFCO)` : ''} — vérifiez et exportez`, type: "success" });
       } catch(err:any) { setStatus({ msg: "❌ Erreur : " + err.message, type: "error" }); }
     };
     reader.readAsArrayBuffer(file);
@@ -418,6 +435,38 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
         {/* ── CODES IFCO ── */}
         {tab === "clients" && (
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 16 }}>
+            {/* Section En attente IFCO */}
+            {pendingClients.length > 0 && (
+              <div style={{ background: "#fffbe6", border: "1.5px solid #f59e0b", borderRadius: 12, padding: 12, marginBottom: 16 }}>
+                <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 800, color: "#b45309" }}>⏳ En attente IFCO ({pendingClients.length})</p>
+                <p style={{ margin: "0 0 10px", fontSize: 11, color: "#92400e" }}>Ces clients sont exclus de l'export. Dès que tu as leur code, entre-le ici.</p>
+                {pendingClients.map(c => (
+                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, background: "#fff", border: "1px solid #fde68a", borderRadius: 8, padding: "6px 10px" }}>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: "#92400e" }}>⏳ {c}</span>
+                    <input
+                      type="number"
+                      placeholder="Code IFCO"
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          const val = (e.target as HTMLInputElement).value.trim();
+                          if (val) {
+                            const updated = { ...clients, [c]: parseInt(val) };
+                            saveClients(updated);
+                            removePendingClient(c);
+                            (e.target as HTMLInputElement).value = "";
+                          }
+                        }
+                      }}
+                      style={{ width: 90, padding: "4px 7px", border: "1.5px solid #fde68a", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                    />
+                    <button
+                      onClick={() => { if (confirm(`Supprimer "${c}" de la liste en attente ?`)) removePendingClient(c); }}
+                      style={{ background: "#fee2e2", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "#c0392b" }}>🗑️</button>
+                  </div>
+                ))}
+                <p style={{ margin: "6px 0 0", fontSize: 10, color: "#b45309" }}>💡 Appuie sur Entrée pour enregistrer le code et retirer de la liste</p>
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a" }}>👥 {Object.keys(clients).length} clients</span>
             </div>
@@ -467,39 +516,50 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
 
       {/* POPUP codes manquants */}
       {showMissingPopup.length > 0 && (() => {
-        const allFilled = showMissingPopup.every(c => tempCodes[c]?.trim());
+        const allHandled = showMissingPopup.every(c => tempCodes[c]?.trim() || tempPending[c]);
         const saveAndClose = () => {
           const updated = { ...clients };
-          showMissingPopup.forEach(c => { if (tempCodes[c]?.trim()) updated[c] = parseInt(tempCodes[c]); });
-          saveClients(updated);
-          setTempCodes({});
+          showMissingPopup.forEach(c => {
+            if (tempCodes[c]?.trim()) updated[c] = parseInt(tempCodes[c]);
+            if (tempPending[c]) addPendingClient(c);
+          });
+          if (Object.keys(updated).length !== Object.keys(clients).length) saveClients(updated);
+          setTempCodes({}); setTempPending({});
           setShowMissingPopup([]);
         };
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 440, width: "100%", borderTop: "7px solid #e74c3c" }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 460, width: "100%", borderTop: "7px solid #e74c3c" }}>
               <div style={{ textAlign: "center", marginBottom: 16 }}>
                 <div style={{ fontSize: 32, marginBottom: 6 }}>🚨</div>
                 <p style={{ fontSize: 15, fontWeight: 800, color: "#c0392b", margin: 0 }}>Codes IFCO manquants !</p>
-                <p style={{ fontSize: 12, color: "#777", marginTop: 4 }}>Saisis les codes directement ici pour les enregistrer.</p>
+                <p style={{ fontSize: 12, color: "#777", marginTop: 4 }}>Entre le code ou mets en attente pour exclure automatiquement.</p>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {showMissingPopup.map(c => (
-                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff5f5", border: "1.5px solid #f5c6cb", borderRadius: 8, padding: "8px 10px" }}>
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: "#c0392b" }}>⚠️ {c}</span>
-                    <input
-                      type="number"
-                      placeholder="Code IFCO"
-                      value={tempCodes[c] || ""}
-                      onChange={e => setTempCodes(prev => ({ ...prev, [c]: e.target.value }))}
-                      style={{ width: 100, padding: "5px 8px", border: `1.5px solid ${tempCodes[c]?.trim() ? "#27ae60" : "#ddd"}`, borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }}
-                    />
+                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 8, background: tempPending[c] ? "#fffbe6" : "#fff5f5", border: `1.5px solid ${tempPending[c] ? "#f59e0b" : tempCodes[c]?.trim() ? "#27ae60" : "#f5c6cb"}`, borderRadius: 8, padding: "8px 10px" }}>
+                    <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: tempPending[c] ? "#b45309" : "#c0392b" }}>
+                      {tempPending[c] ? "⏳" : "⚠️"} {c}
+                    </span>
+                    {!tempPending[c] && (
+                      <input
+                        type="number"
+                        placeholder="Code IFCO"
+                        value={tempCodes[c] || ""}
+                        onChange={e => setTempCodes(prev => ({ ...prev, [c]: e.target.value }))}
+                        style={{ width: 90, padding: "4px 7px", border: `1.5px solid ${tempCodes[c]?.trim() ? "#27ae60" : "#ddd"}`, borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                      />
+                    )}
+                    <button
+                      onClick={() => setTempPending(prev => ({ ...prev, [c]: !prev[c] }))}
+                      style={{ padding: "4px 8px", borderRadius: 6, border: "none", fontSize: 10, fontWeight: 700, cursor: "pointer", background: tempPending[c] ? "#fef3c7" : "#f3f4f6", color: tempPending[c] ? "#b45309" : "#6b7280" }}
+                    >{tempPending[c] ? "↩️ Annuler" : "⏳ En attente"}</button>
                   </div>
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => { setTempCodes({}); setShowMissingPopup([]); }} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Continuer quand même</button>
-                <button onClick={saveAndClose} disabled={!allFilled} style={{ flex: 1, background: allFilled ? "#27ae60" : "#ccc", color: "#fff", border: "none", padding: "10px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: allFilled ? "pointer" : "not-allowed", fontFamily: "inherit" }}>✅ Enregistrer & continuer</button>
+                <button onClick={() => { setTempCodes({}); setTempPending({}); setShowMissingPopup([]); }} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Ignorer</button>
+                <button onClick={saveAndClose} disabled={!allHandled} style={{ flex: 2, background: allHandled ? "#27ae60" : "#ccc", color: "#fff", border: "none", padding: "10px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: allHandled ? "pointer" : "not-allowed", fontFamily: "inherit" }}>✅ Enregistrer & continuer</button>
               </div>
             </div>
           </div>
