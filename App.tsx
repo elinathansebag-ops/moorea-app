@@ -2055,7 +2055,8 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
   {article:"TRUFFE MELANOSPORUM",equipe:"PRESTIGE"},
   {article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"}
 ];
- — force le rendu de la table config avec les 607 articles
+
+  // useEffect de secours — force le rendu de la table config avec les 607 articles
   useEffect(() => {
     const renderConfigFallback = () => {
       const tbody = document.getElementById("s-cfg-body");
