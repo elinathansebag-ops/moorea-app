@@ -2534,15 +2534,20 @@ function StockApp({ onExit }: { onExit: () => void }) {
         const q = (document.getElementById("s-cfg-srch") as HTMLInputElement)?.value.toLowerCase() || "";
         const tbody = document.getElementById("s-cfg-body");
         if (!tbody) return;
-        const source = allArticles.length ? allArticles : STOCK_DATA_EMBEDDED.map((s: any) => ({ article: s.article, equipe: s.equipe, famille: '' }));
-        // Toujours afficher les articles même sans fichier stock importé
-        let rows = source.filter(a => {
+        // Toujours utiliser STOCK_DATA_EMBEDDED comme source de base
+        const embedded = STOCK_DATA_EMBEDDED.map((s: any) => ({ article: s.article, equipe: s.equipe, famille: "" }));
+        const source = allArticles.length ? allArticles.map((a: any) => ({
+          article: a.article, famille: a.famille || "",
+          equipe: _byArticle?.[a.article?.toLowerCase().trim()] || a.equipe || "PRESTIGE"
+        })) : embedded;
+        const getEq = (a: any) => _byArticle?.[a.article?.toLowerCase().trim()] || a.equipe || "PRESTIGE";
+        let rows = source.filter((a: any) => {
           if (q && !a.article.toLowerCase().includes(q)) return false;
-          if (cfFilter === "GMS" && getEquipe(a) !== "GMS") return false;
-          if (cfFilter === "PRESTIGE" && getEquipe(a) !== "PRESTIGE") return false;
+          if (cfFilter === "GMS" && getEq(a) !== "GMS") return false;
+          if (cfFilter === "PRESTIGE" && getEq(a) !== "PRESTIGE") return false;
           return true;
         });
-        const isGMSfn = (a: any) => getEquipe(a) === "GMS";
+        const isGMSfn = (a: any) => getEq(a) === "GMS";
         tbody.innerHTML = rows.map(a => {
           const isGMS = isGMSfn(a);
           const enc = encodeURIComponent(a.article);
@@ -2557,6 +2562,8 @@ function StockApp({ onExit }: { onExit: () => void }) {
         }).join("");
       };
       (window as any).sRenderConfig = sRenderConfig;
+      // Pré-remplir la table de config immédiatement
+      setTimeout(() => sRenderConfig(), 100);
 
       (window as any).sToggleEquipe = async (enc: string, isGMS: boolean) => {
         const article = decodeURIComponent(enc);
