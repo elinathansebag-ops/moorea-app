@@ -6131,7 +6131,8 @@ _PDF joint_`;
     // Ligne 2 — secondaires
     const row2 = [
       { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", badge: null, stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
-      { icon: "📦", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
+      { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
+      { icon: "🧺", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
     ];
 
     // Leofresh
