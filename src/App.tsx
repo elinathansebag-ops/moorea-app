@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import RetoursModule from "./RetoursModule";
+import IFCOModule from "./IFCOModule";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc as fsDoc } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
 import { initializeApp as initializeApp2, getApps as getApps2 } from "firebase/app";
@@ -1038,9 +1039,9 @@ function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { arrivage
       <div onClick={() => setOpen(!open)} style={{ background: "rgba(255,255,255,0.06)", padding: "9px 12px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ flex: 1 }}>
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#fff" }}>
-            {a.lot_interne && <span style={{ color: "#c8a84b", marginRight: 8 }}>#{a.lot_interne}</span>}
             {a.produit || a.article || a.nom || a.designation || a.libelle || a.description ||
-              <span style={{ color: "rgba(255,255,255,0.3)", fontStyle: "italic" }}>Article #{a.lot_interne || a.id?.slice(-4)}</span>}
+              <span style={{ color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>Article sans nom</span>}
+            {a.lot_interne && <span style={{ color: "#c8a84b", marginLeft: 8, fontWeight: 500, fontSize: 12 }}>· Lot #{a.lot_interne}</span>}
             <span style={{ fontWeight: 400, color: "rgba(255,255,255,0.5)", marginLeft: 6, fontSize: 12 }}>· {a.fournisseur}</span>
           </p>
           <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
@@ -4429,6 +4430,7 @@ export default function App() {
   const [showEtiquettes, setShowEtiquettes] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
   const [showLeofresh, setShowLeofresh] = useState(false);
+  const [showIFCO, setShowIFCO] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
@@ -6030,7 +6032,8 @@ _PDF joint_`;
   if (!user || !user.email?.endsWith("@moorea.fr")) return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0a0a", padding: 24 }}>
       <div style={{ marginBottom: 32, textAlign: "center" }}>
-        <div style={{ fontSize: 40, fontWeight: 800, color: "#c8a84b", fontFamily: "'Syne', sans-serif", letterSpacing: 2 }}>MOOREA</div>
+        <img src="/Agreage.svg" alt="App Moorea" style={{ width: 96, height: 96, marginBottom: 12 }} />
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#c8a84b", fontFamily: "'Syne', sans-serif", letterSpacing: 2 }}>App Moorea</div>
         <div style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Hub · Agréage Rungis</div>
       </div>
       <button onClick={loginGoogle} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 28px", borderRadius: 14, border: "none", background: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#1a1a1a", fontFamily: "'Syne', sans-serif", boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
@@ -6089,6 +6092,10 @@ _PDF joint_`;
     return <>{fabScanner}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} /></>;
   }
 
+  if (showIFCO) {
+    return <IFCOModule onClose={() => { setShowIFCO(false); setShowAccueil(true); }} />;
+  }
+
   if (showYukon) {
     return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
@@ -6132,6 +6139,7 @@ _PDF joint_`;
       { icon: "🏷️", label: "Étiquettes", color: "#f59e0b", stat: "Export bilingue", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
       { icon: "📊", label: "QR Code", color: "#27ae60", stat: "Scans réseau", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowQrCode(true); } },
       { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
+      { icon: "📦", label: "IFCO", color: "#6366f1", stat: "Bacs & réconciliation", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowIFCO(true); } },
     ];
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
