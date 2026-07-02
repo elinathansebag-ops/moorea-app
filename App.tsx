@@ -2534,8 +2534,8 @@ function StockApp({ onExit }: { onExit: () => void }) {
         const q = (document.getElementById("s-cfg-srch") as HTMLInputElement)?.value.toLowerCase() || "";
         const tbody = document.getElementById("s-cfg-body");
         if (!tbody) return;
-        const source = allArticles.length ? allArticles : STOCK_DATA_EMBEDDED.map(s => ({ article: s.article, equipe: s.equipe, famille: '' }));
-        if (!source.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-state">Importez un fichier stock d'abord</td></tr>`; return; }
+        const source = allArticles.length ? allArticles : STOCK_DATA_EMBEDDED.map((s: any) => ({ article: s.article, equipe: s.equipe, famille: '' }));
+        // Toujours afficher les articles même sans fichier stock importé
         let rows = source.filter(a => {
           if (q && !a.article.toLowerCase().includes(q)) return false;
           if (cfFilter === "GMS" && getEquipe(a) !== "GMS") return false;
