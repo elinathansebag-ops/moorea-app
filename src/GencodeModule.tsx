@@ -8,8 +8,6 @@ interface Article {
   nom_geslot: string[]; suggestions: string[];
 }
 
-const GESLOT_LIST: string[] = ALL_ARTICLES.map(a => a.article);
-
 const ALL_ARTICLES: {article: string, equipe: string}[] = 
 [
   {article:"AGRETTI (BOTTE X 10)",equipe:"PRESTIGE"},
@@ -621,6 +619,7 @@ const ALL_ARTICLES: {article: string, equipe: string}[] =
   {article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"}
 ];
 
+const GESLOT_LIST: string[] = ALL_ARTICLES.map(a => a.article);
 
 // Ligne simple : nom gencode | recherche Geslot | bouton Fusionner
 function SimpleRow({ article, geslotList, onSave }: {
