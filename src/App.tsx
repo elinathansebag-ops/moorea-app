@@ -6106,25 +6106,35 @@ _PDF joint_`;
     const textMain = darkMode ? "#e8e6f0" : "#1a2e1a";
     const textSub = darkMode ? "#9b97b2" : "#9ca3af";
 
-    const mooreaBtns = [
-      { icon: "📋", label: "Pointer arrivage", sub: "Contrôler et valider les arrivages du jour", color: "#c8a84b", badge: nbAttente || null, action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
-      { icon: "📊", label: "Rapports qualité", sub: "Historique et envoi des rapports d'agrément", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
-      { icon: "🔍", label: "Chercher un lot", sub: "Retrouver un arrivage par produit ou numéro de lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
-      { icon: "📦", label: "Compter le stock", sub: "Inventaire GMS & Prestige avec écarts", color: "#0891b2", badge: null, action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
-      { icon: "🌿", label: "Besoins Yukon", sub: "Calculer les commandes mini légumes Afrique du Sud", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setShowYukon(true); } },
-      { icon: "👥", label: "RH · Pointeuse", sub: "Analyse des temps de présence et heures sup", color: "#0ea5e9", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
-      { icon: "📦", label: "Retours clients", sub: "Gestion des retours et réclamations", color: "#dc2626", badge: null, action: () => { setShowAccueil(false); setShowRetours(true); } },
+    // Ligne 1 — prioritaires
+    const row1 = [
+      { icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
+      { icon: "📊", label: "Rapports", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
+      { icon: "📦", label: "Stock", color: "#0891b2", badge: null, action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
+      { icon: "🔍", label: "Chercher lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
     ];
 
+    // Ligne 2 — secondaires
+    const row2 = [
+      { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setShowYukon(true); } },
+      { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
+    ];
+
+    // Leofresh
     const leofreshBtns = [
-      { icon: "🏷️", label: "Étiquettes export", sub: "Générer les étiquettes bilingues", color: "#f59e0b", stats: [{ label: "Produits", value: "—" }] },
-      { icon: "📊", label: "QR Code", sub: "Statistiques de scan", color: "#27ae60", stats: [{ label: "Scans", value: "—" }] },
+      { icon: "🏷️", label: "Étiquettes", color: "#f59e0b", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
+      { icon: "📊", label: "QR Code", color: "#27ae60", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowQrCode(true); } },
     ];
 
-    const leofreshActions: Record<string, () => void> = {
-      "Étiquettes export": () => { setShowAccueil(false); setShowEtiquettes(true); },
-      "QR Code": () => { setShowAccueil(false); setShowQrCode(true); },
-    };
+    function CardCarré({ icon, label, color, badge, action }: any) {
+      return (
+        <button onClick={action} style={{ background: cardBg, border: `1.5px solid ${cardBorder}`, borderRadius: 14, padding: "14px 8px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, position: "relative" }}>
+          {badge && <span style={{ position: "absolute", top: 8, right: 8, background: color, color: "#fff", fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20 }}>{badge}</span>}
+          <span style={{ fontSize: 24, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: color + "18", borderRadius: 12 }}>{icon}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: textMain, lineHeight: 1.2 }}>{label}</span>
+        </button>
+      );
+    }
 
     return (
       <>{fabScanner}
@@ -6139,6 +6149,11 @@ _PDF joint_`;
               <h1 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: "#fff" }}>{getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋</h1>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
+              {/* Toggle Leofresh discret */}
+              <button onClick={() => setShowLeofresh(!showLeofresh)}
+                style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.2)"}`, background: showLeofresh ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
+                🍋 Leofresh
+              </button>
               <button onClick={() => setDarkMode(!darkMode)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {darkMode ? "☀️" : "🌙"}
               </button>
@@ -6146,7 +6161,7 @@ _PDF joint_`;
             </div>
           </div>
 
-          {/* STATS Moorea */}
+          {/* STATS */}
           <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
             {[
               { label: "En attente", value: nbAttente, color: "#fbbf24" },
@@ -6177,55 +6192,35 @@ _PDF joint_`;
 
         <div style={{ maxWidth: 520, margin: "0 auto", padding: "16px 16px 100px" }}>
 
-          {/* TOGGLE LEOFRESH */}
-          <button onClick={() => setShowLeofresh(!showLeofresh)}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: 14, cursor: "pointer", border: `2px solid ${showLeofresh ? "#f59e0b" : cardBorder}`, background: showLeofresh ? (darkMode ? "#2a2010" : "#fffbeb") : cardBg, fontFamily: "'Syne', sans-serif", marginBottom: 14, transition: "all .2s" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 22, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", background: "#f59e0b22", borderRadius: 10 }}>🍋</span>
-              <div style={{ textAlign: "left" }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: showLeofresh ? "#f59e0b" : textMain }}>Leofresh</p>
-                <p style={{ margin: 0, fontSize: 11, color: textSub }}>Étiquettes, QR Code, Export</p>
-              </div>
-            </div>
-            <span style={{ fontSize: 18, color: showLeofresh ? "#f59e0b" : textSub, transition: "transform .2s", display: "inline-block", transform: showLeofresh ? "rotate(90deg)" : "none" }}>›</span>
-          </button>
-
           {/* PANNEAU LEOFRESH */}
           {showLeofresh && (
-            <div style={{ marginBottom: 20, background: darkMode ? "#1a1808" : "#fffbeb", borderRadius: 14, border: "1.5px solid #f59e0b44", padding: "12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: ".6px" }}>🍋 Modules Leofresh</p>
-              {leofreshBtns.map((b) => (
-                <button key={b.label} onClick={leofreshActions[b.label]}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: `1.5px solid ${b.color}33`, background: darkMode ? "#22200a" : "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif" }}>
-                  <span style={{ fontSize: 20, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "22", borderRadius: 9, flexShrink: 0 }}>{b.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: textMain }}>{b.label}</p>
-                    <p style={{ margin: "1px 0 0", fontSize: 11, color: textSub }}>{b.sub}</p>
-                  </div>
-                  <span style={{ color: b.color, fontSize: 16 }}>›</span>
-                </button>
-              ))}
+            <div style={{ marginBottom: 16, background: darkMode ? "#1a1808" : "#fffbeb", borderRadius: 14, border: "1.5px solid #f59e0b55", padding: "14px" }}>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: ".6px" }}>🍋 Leofresh</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+                {leofreshBtns.map(b => (
+                  <button key={b.label} onClick={b.action}
+                    style={{ background: darkMode ? "#22200a" : "#fff", border: `1.5px solid ${b.color}33`, borderRadius: 12, padding: "14px 8px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 24, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "22", borderRadius: 12 }}>{b.icon}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: textMain }}>{b.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           {/* SECTION MOOREA */}
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {mooreaBtns.map((b, idx) => (
-              <button key={idx} onClick={b.action}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderRadius: 14, cursor: "pointer", border: `1.5px solid ${cardBorder}`, background: cardBg, textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: darkMode ? "none" : "0 2px 8px rgba(0,0,0,0.04)" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = b.color; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = cardBorder; }}>
-                <span style={{ fontSize: 20, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "18", borderRadius: 10, flexShrink: 0 }}>{b.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: textMain }}>{b.label}</p>
-                  <p style={{ margin: "1px 0 0", fontSize: 11, color: textSub }}>{b.sub}</p>
-                </div>
-                {b.badge ? <span style={{ background: b.color, color: "#fff", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, flexShrink: 0 }}>{b.badge}</span> : null}
-                <span style={{ color: darkMode ? "#4a4a6a" : "#d1d5db", fontSize: 16, flexShrink: 0 }}>›</span>
-              </button>
-            ))}
+
+          {/* Ligne 1 — 4 carés */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+            {row1.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
+
+          {/* Ligne 2 — carés */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+            {row2.map((b, i) => <CardCarré key={i} {...b} />)}
+          </div>
+
         </div>
       </div>
       </>
