@@ -257,9 +257,8 @@ function LignesEntrepot({ rows, onChange }: { rows: ProduitLigne[]; onChange: (r
               </select>
             </div>
           </div>
-          {/* Ligne 2 : lot + origine + qté + stock + destruction */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 10, alignItems: "flex-end" }}>
-            <div><label style={LBL}>Lot</label><input style={INP} placeholder="—" value={row.lot} onChange={e => up(i, "lot", e.target.value)} /></div>
+          {/* Ligne 2 : origine + qté + stock + destruction */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, alignItems: "flex-end" }}>
             <div><label style={LBL}>Origine</label><input style={INP} placeholder="—" value={row.origine} onChange={e => up(i, "origine", e.target.value)} /></div>
             <div><label style={LBL}>Qté reçue</label><input style={{ ...INP, textAlign: "center" }} type="number" placeholder="0" value={row.qteRecue} onChange={e => up(i, "qteRecue", e.target.value)} /></div>
             <div>
@@ -386,17 +385,13 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "entrepot_rattache", client: d.client, bl: d.bl, transporteur: d.transporteur || "", dateLiv: d.dateLiv || "", commercial: d.commercial || "", comment: d.comment || modalData.comment || "", products: modalData.products || [], statut: "nouveau", commentPrep: "" };
     const r = await push(ref(db, "retours"), fiche);
     await update(ref(db, "retours_entrepot/" + modalData.id), { rattache: true, clientRattache: d.client, blRattache: d.bl });
-    setModal("success"); setModalData({ fiche: { ...fiche, id: (r as any).key }, source: "commercial" });
+    setModal(""); setModalData(null);
   }
 
-  async function validerControle(fiche: FicheRetour) {
-    const products = (fiche.products || []).map((p, pi) => {
-      const c = ctrl[`${fiche.id}_${pi}`] || {};
-      return { ...p, controle: { qStock: parseInt(c.qStock ?? p.controle?.qStock) || 0, qDestroy: parseInt(c.qDestroy ?? p.controle?.qDestroy) || 0, qManque: parseInt(c.qManque ?? p.controle?.qManque) || 0 } };
-    });
-    await update(ref(db, "retours/" + fiche.id), { products, statut: "traite", commentPrep: cmtPrep[fiche.id!] || fiche.commentPrep || "" });
+  async function validerControle(fiche: FicheRetour, commentPrep?: string) {
+    await update(ref(db, "retours/" + fiche.id), { products: fiche.products, statut: "traite", commentPrep: commentPrep ?? fiche.commentPrep ?? "" });
     setOpenId(null);
-    setModal("success"); setModalData({ fiche: { ...fiche, products }, source: "valide" });
+    setModal("success"); setModalData({ fiche, source: "valide" });
   }
 
   async function doSupprimer() {
@@ -418,68 +413,149 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     return <span style={{ fontSize: 11, fontWeight: 700, color: "#c8a84b", background: "rgba(200,168,75,.12)", border: "1px solid rgba(200,168,75,.3)", borderRadius: 6, padding: "2px 8px" }}>{n}</span>;
   }
 
-  // ── Panneau pointage ──
+  async function repointerFiche(fiche: FicheRetour) {
+    await update(ref(db, "retours/" + fiche.id), { statut: "en_attente" });
+    setOpenId(fiche.id!);
+    setTab("att");
+  }
+
+  // ── Panneau pointage — inputs non-contrôlés, validation métier ──
   function PanneauPointage({ fiche }: { fiche: FicheRetour }) {
     const prods = fiche.products || [];
+    const tableRef = useRef<HTMLDivElement>(null);
+    const [erreurs, setErreurs] = useState<string[]>([]);
+
+    function handleValider() {
+      if (!tableRef.current) return;
+      const errs: string[] = [];
+      const products = prods.map((p, pi) => {
+        const row = tableRef.current!.querySelector(`[data-pi="${pi}"]`);
+        const qS = parseInt((row?.querySelector('[data-f="stock"]') as HTMLInputElement)?.value) || 0;
+        const qD = parseInt((row?.querySelector('[data-f="destroy"]') as HTMLInputElement)?.value) || 0;
+        const qM = parseInt((row?.querySelector('[data-f="manque"]') as HTMLInputElement)?.value) || 0;
+        const att = parseInt(p.qteAttendue) || 0;
+        const total = qS + qD + qM;
+
+        if (att > 0 && total > att) {
+          errs.push(`${p.nom} : total saisi (${total}) dépasse la quantité attendue (${att})`);
+        }
+        // qteRecue = stock + destruction (ce qu'on a physiquement reçu)
+        return { ...p, qteRecue: String(qS + qD), controle: { qStock: qS, qDestroy: qD, qManque: qM } };
+      });
+
+      if (errs.length > 0) { setErreurs(errs); return; }
+      setErreurs([]);
+
+      const nonComptabilises = products.filter(p => {
+        const att = parseInt(p.qteAttendue) || 0;
+        if (att === 0) return false;
+        const total = (p.controle?.qStock || 0) + (p.controle?.qDestroy || 0) + (p.controle?.qManque || 0);
+        return total < att;
+      });
+
+      if (nonComptabilises.length > 0) {
+        const noms = nonComptabilises.map(p => {
+          const att = parseInt(p.qteAttendue) || 0;
+          const total = (p.controle?.qStock || 0) + (p.controle?.qDestroy || 0) + (p.controle?.qManque || 0);
+          return `${p.nom} : ${att - total} non comptabilisé(s)`;
+        });
+        const ok = window.confirm(`⚠️ Attention — des unités ne sont pas comptabilisées :\n\n${noms.join("\n")}\n\nSi elles sont manquantes, remplis le champ "Manquant".\nValider quand même ?`);
+        if (!ok) return;
+      }
+
+      const cmt = (tableRef.current.querySelector('[data-f="cmt"]') as HTMLTextAreaElement)?.value || "";
+      validerControle({ ...fiche, products }, cmt);
+    }
+
     return (
       <div style={{ marginTop: 16, borderTop: "1.5px solid #e8e0d0", paddingTop: 16 }}>
-        <p style={{ fontSize: 11, fontWeight: 700, color: "#c8a84b", textTransform: "uppercase", marginBottom: 10 }}>Saisir les quantités reçues</p>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 500 }}>
-            <thead><tr style={{ background: "#fafaf8", borderBottom: "1.5px solid #e8e0d0" }}>
-              <th style={{ padding: "8px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af" }}>Article</th>
-              <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#9ca3af", width: 55 }}>Att.</th>
-              <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#15803d", width: 90 }}>✓ En stock</th>
-              <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#dc2626", width: 90 }}>✗ Destruction</th>
-              <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#b45309", width: 80 }}>Manquant</th>
-              <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#1d4ed8", width: 55 }}>Solde</th>
-            </tr></thead>
-            <tbody>
-              {prods.map((p, pi) => {
-                const c = ctrl[`${fiche.id}_${pi}`] || {};
-                const qS = c.qStock ?? p.controle?.qStock ?? "";
-                const qD = c.qDestroy ?? p.controle?.qDestroy ?? "";
-                const qM = c.qManque ?? p.controle?.qManque ?? "";
-                const recu = parseInt(p.qteRecue) || 0;
-                const solde = recu - (parseInt(qS) || 0) - (parseInt(qD) || 0);
-                return (
-                  <tr key={pi} style={{ borderBottom: "1px solid #f5f3ee" }}>
-                    <td style={{ padding: "8px 10px" }}>
-                      <div style={{ fontWeight: 600 }}>{p.nom}</div>
-                      <div style={{ fontSize: 11, color: "#9ca3af" }}>{[p.lot && "Lot " + p.lot, p.origine, p.motif].filter(Boolean).join(" · ")}</div>
-                    </td>
-                    <td style={{ padding: "6px", textAlign: "center", color: "#9ca3af", fontWeight: 700 }}>{p.qteAttendue || "—"}</td>
-                    <td style={{ padding: "6px", textAlign: "center" }}>
-                      <input type="number" min="0" value={qS} placeholder="0"
-                        onChange={e => setCtrl(prev => ({ ...prev, [`${fiche.id}_${pi}`]: { ...(prev[`${fiche.id}_${pi}`] || {}), qStock: e.target.value } }))}
-                        style={{ width: 60, height: 34, textAlign: "center", border: "2px solid #bbf7d0", borderRadius: 8, background: "#f0fdf4", color: "#15803d", fontWeight: 700, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
-                    </td>
-                    <td style={{ padding: "6px", textAlign: "center" }}>
-                      <input type="number" min="0" value={qD} placeholder="0"
-                        onChange={e => setCtrl(prev => ({ ...prev, [`${fiche.id}_${pi}`]: { ...(prev[`${fiche.id}_${pi}`] || {}), qDestroy: e.target.value } }))}
-                        style={{ width: 60, height: 34, textAlign: "center", border: "2px solid #fecaca", borderRadius: 8, background: "#fff5f5", color: "#dc2626", fontWeight: 700, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
-                    </td>
-                    <td style={{ padding: "6px", textAlign: "center" }}>
-                      <input type="number" min="0" value={qM} placeholder="0"
-                        onChange={e => setCtrl(prev => ({ ...prev, [`${fiche.id}_${pi}`]: { ...(prev[`${fiche.id}_${pi}`] || {}), qManque: e.target.value } }))}
-                        style={{ width: 54, height: 34, textAlign: "center", border: "2px solid #fde68a", borderRadius: 8, background: "#fffbf0", color: "#b45309", fontWeight: 700, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
-                    </td>
-                    <td style={{ padding: "6px", textAlign: "center" }}>
-                      <span style={{ display: "inline-block", minWidth: 34, padding: "5px 7px", borderRadius: 8, fontSize: 13, fontWeight: 700, background: solde > 0 ? "#dbeafe" : solde < 0 ? "#fee2e2" : "#dcfce7", color: solde > 0 ? "#1d4ed8" : solde < 0 ? "#dc2626" : "#15803d" }}>{solde}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <p style={{ fontSize: 11, fontWeight: 700, color: "#c8a84b", textTransform: "uppercase", marginBottom: 10 }}>
+          Pointer le retour
+        </p>
+
+        {erreurs.length > 0 && (
+          <div style={{ background: "#fee2e2", border: "1.5px solid #fecaca", borderRadius: 10, padding: "10px 14px", marginBottom: 12 }}>
+            {erreurs.map((e, i) => <div key={i} style={{ fontSize: 13, color: "#dc2626", fontWeight: 600 }}>⛔ {e}</div>)}
+          </div>
+        )}
+
+        <div ref={tableRef}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 480 }}>
+              <thead><tr style={{ background: "#fafaf8", borderBottom: "1.5px solid #e8e0d0" }}>
+                <th style={{ padding: "8px 10px", textAlign: "left", fontSize: 11, color: "#9ca3af" }}>Article</th>
+                <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#9ca3af", width: 50 }}>Att.</th>
+                <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#15803d", width: 90 }}>✓ En stock</th>
+                <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#dc2626", width: 90 }}>✗ Détruit</th>
+                <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#b45309", width: 90 }}>⚠ Manquant</th>
+                <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#6b7280", width: 70 }}>Total reçu</th>
+              </tr></thead>
+              <tbody>
+                {prods.map((p, pi) => {
+                  const att = parseInt(p.qteAttendue) || 0;
+                  return (
+                    <tr key={pi} data-pi={pi} style={{ borderBottom: "1px solid #f5f3ee" }}>
+                      <td style={{ padding: "8px 10px" }}>
+                        <div style={{ fontWeight: 600 }}>{p.nom}</div>
+                        <div style={{ fontSize: 11, color: "#9ca3af" }}>{[p.lot && "Lot " + p.lot, p.origine].filter(Boolean).join(" · ")}</div>
+                      </td>
+                      <td style={{ padding: "6px", textAlign: "center", fontWeight: 700, color: "#6b7280", fontSize: 14 }}>{att || "—"}</td>
+                      <td style={{ padding: "6px", textAlign: "center" }}>
+                        <input data-f="stock" type="number" min="0" max={att || undefined}
+                          defaultValue={p.controle?.qStock || ""}
+                          placeholder="0"
+                          style={{ width: 60, height: 36, textAlign: "center", border: "2px solid #bbf7d0", borderRadius: 8, background: "#f0fdf4", color: "#15803d", fontWeight: 700, fontSize: 14, outline: "none", fontFamily: "inherit" }}
+                          onInput={e => {
+                            const row = (e.target as HTMLElement).closest('[data-pi]');
+                            const s = parseInt((row?.querySelector('[data-f="stock"]') as HTMLInputElement)?.value) || 0;
+                            const d = parseInt((row?.querySelector('[data-f="destroy"]') as HTMLInputElement)?.value) || 0;
+                            const totalEl = row?.querySelector('[data-f="total"]') as HTMLElement;
+                            if (totalEl) { totalEl.textContent = String(s + d); totalEl.style.color = att > 0 && (s + d) > att ? "#dc2626" : "#1a2e1a"; }
+                          }} />
+                      </td>
+                      <td style={{ padding: "6px", textAlign: "center" }}>
+                        <input data-f="destroy" type="number" min="0" max={att || undefined}
+                          defaultValue={p.controle?.qDestroy || ""}
+                          placeholder="0"
+                          style={{ width: 60, height: 36, textAlign: "center", border: "2px solid #fecaca", borderRadius: 8, background: "#fff5f5", color: "#dc2626", fontWeight: 700, fontSize: 14, outline: "none", fontFamily: "inherit" }}
+                          onInput={e => {
+                            const row = (e.target as HTMLElement).closest('[data-pi]');
+                            const s = parseInt((row?.querySelector('[data-f="stock"]') as HTMLInputElement)?.value) || 0;
+                            const d = parseInt((row?.querySelector('[data-f="destroy"]') as HTMLInputElement)?.value) || 0;
+                            const totalEl = row?.querySelector('[data-f="total"]') as HTMLElement;
+                            if (totalEl) { totalEl.textContent = String(s + d); totalEl.style.color = att > 0 && (s + d) > att ? "#dc2626" : "#1a2e1a"; }
+                          }} />
+                      </td>
+                      <td style={{ padding: "6px", textAlign: "center" }}>
+                        <input data-f="manque" type="number" min="0"
+                          defaultValue={p.controle?.qManque || ""}
+                          placeholder="0"
+                          style={{ width: 60, height: 36, textAlign: "center", border: "2px solid #fde68a", borderRadius: 8, background: "#fffbf0", color: "#b45309", fontWeight: 700, fontSize: 14, outline: "none", fontFamily: "inherit" }} />
+                      </td>
+                      <td style={{ padding: "6px", textAlign: "center" }}>
+                        <span data-f="total" style={{ fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>
+                          {(p.controle?.qStock || 0) + (p.controle?.qDestroy || 0) || "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 12, padding: "10px 14px", background: "#f5f3ee", borderRadius: 10, fontSize: 12, color: "#6b7280" }}>
+            💡 <strong>Total reçu</strong> = En stock + Détruit. Si des colis sont introuvables, indique-les dans <strong>Manquant</strong>. Le total ne peut pas dépasser la quantité attendue.
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <label style={LBL}>Commentaire préparateur</label>
+            <textarea data-f="cmt" defaultValue={fiche.commentPrep || ""}
+              style={{ ...INP, minHeight: 55, resize: "vertical" }} />
+          </div>
         </div>
-        <div style={{ marginTop: 10 }}>
-          <label style={LBL}>Commentaire préparateur</label>
-          <textarea defaultValue={fiche.commentPrep || ""}
-            onChange={e => setCmtPrep(prev => ({ ...prev, [fiche.id!]: e.target.value }))}
-            style={{ ...INP, minHeight: 55, resize: "vertical" }} />
-        </div>
-        <button onClick={() => validerControle(fiche)}
+
+        <button onClick={handleValider}
           style={{ width: "100%", marginTop: 12, padding: 14, background: "#c8a84b", color: "#0a0a0a", border: "none", borderRadius: 12, cursor: "pointer", fontSize: 15, fontWeight: 700, fontFamily: "inherit" }}>
           ✓ Valider le retour
         </button>
@@ -649,6 +725,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                       <span style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 }}>✓ Traité</span>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
+                      <button style={{ ...BTN("#dbeafe", "#1d4ed8"), padding: "7px 12px", fontSize: 12 }} onClick={() => repointerFiche(r)}>📋 Repointer</button>
                       <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "7px 12px", fontSize: 12 }} onClick={() => genPDF(r)}>📄 PDF</button>
                       <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "7px 10px", fontSize: 11 }} onClick={() => { setModal("delete"); setModalData({ type: "ret", id: r.id, numero: r.numero }); }}>🗑</button>
                     </div>
