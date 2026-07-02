@@ -195,27 +195,39 @@ function LignesPrevu({ rows, onChange }: { rows: ProduitLigne[]; onChange: (r: P
 
   return (
     <div>
-      {/* Headers */}
-      <div style={{ display: "grid", gridTemplateColumns: "2.5fr 0.8fr 1fr 0.7fr 0.7fr 1.8fr 24px", gap: 6, marginBottom: 4 }}>
-        {["Produit", "Lot", "Origine", "Att.", "Reçu", "Motif", ""].map((h, i) => (
-          <span key={i} style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>
-        ))}
-      </div>
       {rows.map((row, i) => (
-        <div key={i} style={{ display: "grid", gridTemplateColumns: "2.5fr 0.8fr 1fr 0.7fr 0.7fr 1.8fr 24px", gap: 6, marginBottom: 6, alignItems: "center" }}>
-          <InputProduit value={row.nom} onChange={v => up(i, "nom", v)} list={articlesList} />
-          <input style={INP} placeholder="Lot" value={row.lot} onChange={e => up(i, "lot", e.target.value)} />
-          <input style={INP} placeholder="Origine" value={row.origine} onChange={e => up(i, "origine", e.target.value)} />
-          <input style={{ ...INP, textAlign: "center" }} type="number" placeholder="Att." value={row.qteAttendue} onChange={e => up(i, "qteAttendue", e.target.value)} />
-          <input style={{ ...INP, textAlign: "center" }} type="number" placeholder="Reçu" value={row.qteRecue} onChange={e => up(i, "qteRecue", e.target.value)} />
-          <select style={INP} value={row.motif} onChange={e => up(i, "motif", e.target.value)}>
-            <option value="">-- Motif --</option>
-            {MOTIFS.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <button type="button" onClick={() => del(i)} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16, padding: 2 }}>🗑</button>
+        <div key={i} style={{ background: "#f9f8f6", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", marginBottom: 10, position: "relative" }}>
+          {/* Ligne 1 : produit + motif */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={LBL}>Produit</label>
+              <InputProduit value={row.nom} onChange={v => up(i, "nom", v)} list={articlesList} />
+            </div>
+            <div>
+              <label style={LBL}>Motif du retour</label>
+              <select style={INP} value={row.motif} onChange={e => up(i, "motif", e.target.value)}>
+                <option value="">-- Motif --</option>
+                {MOTIFS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          {/* Ligne 2 : lot + origine + qté attendue seulement */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <div><label style={LBL}>Lot</label><input style={INP} placeholder="—" value={row.lot} onChange={e => up(i, "lot", e.target.value)} /></div>
+            <div><label style={LBL}>Origine</label><input style={INP} placeholder="—" value={row.origine} onChange={e => up(i, "origine", e.target.value)} /></div>
+            <div><label style={LBL}>Qté attendue</label><input style={{ ...INP, textAlign: "center" }} type="number" placeholder="0" value={row.qteAttendue} onChange={e => up(i, "qteAttendue", e.target.value)} /></div>
+          </div>
+          {/* Bouton supprimer */}
+          {rows.length > 1 && (
+            <button type="button" onClick={() => del(i)}
+              style={{ position: "absolute", top: 10, right: 10, background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16, padding: 4 }}>🗑</button>
+          )}
         </div>
       ))}
-      <button type="button" onClick={add} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", marginTop: 4, fontFamily: "inherit" }}>+ Ajouter un produit</button>
+      <button type="button" onClick={add}
+        style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", fontFamily: "inherit" }}>
+        + Ajouter un produit
+      </button>
     </div>
   );
 }
@@ -229,31 +241,52 @@ function LignesEntrepot({ rows, onChange }: { rows: ProduitLigne[]; onChange: (r
 
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "2.5fr 0.8fr 1fr 0.7fr 1.8fr 80px 24px", gap: 6, marginBottom: 4 }}>
-        {["Article", "Lot", "Origine", "Qté", "État", "Décision", ""].map((h, i) => (
-          <span key={i} style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, textTransform: "uppercase" }}>{h}</span>
-        ))}
-      </div>
       {rows.map((row, i) => (
-        <div key={i} style={{ display: "grid", gridTemplateColumns: "2.5fr 0.8fr 1fr 0.7fr 1.8fr 80px 24px", gap: 6, marginBottom: 6, alignItems: "center" }}>
-          <InputProduit value={row.nom} onChange={v => up(i, "nom", v)} placeholder="Article" list={articlesList} />
-          <input style={INP} placeholder="Lot" value={row.lot} onChange={e => up(i, "lot", e.target.value)} />
-          <input style={INP} placeholder="Origine" value={row.origine} onChange={e => up(i, "origine", e.target.value)} />
-          <input style={{ ...INP, textAlign: "center" }} type="number" placeholder="Qté" value={row.qteRecue} onChange={e => up(i, "qteRecue", e.target.value)} />
-          <select style={INP} value={row.motif} onChange={e => up(i, "motif", e.target.value)}>
-            <option value="">-- État --</option>
-            {ETATS.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <div style={{ display: "flex", gap: 4 }}>
-            <button type="button" onClick={() => up(i, "decisionArticle", row.decisionArticle === "accepte" ? null : "accepte")}
-              style={{ flex: 1, padding: "6px 4px", borderRadius: 7, border: `1.5px solid ${row.decisionArticle === "accepte" ? "#15803d" : "#bbf7d0"}`, background: row.decisionArticle === "accepte" ? "#dcfce7" : "transparent", color: "#15803d", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓</button>
-            <button type="button" onClick={() => up(i, "decisionArticle", row.decisionArticle === "destruction" ? null : "destruction")}
-              style={{ flex: 1, padding: "6px 4px", borderRadius: 7, border: `1.5px solid ${row.decisionArticle === "destruction" ? "#dc2626" : "#fecaca"}`, background: row.decisionArticle === "destruction" ? "#fee2e2" : "transparent", color: "#dc2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✗</button>
+        <div key={i} style={{ background: "#f9f8f6", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", marginBottom: 10, position: "relative" }}>
+          {/* Ligne 1 : article + état */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={LBL}>Article</label>
+              <InputProduit value={row.nom} onChange={v => up(i, "nom", v)} placeholder="Article" list={articlesList} />
+            </div>
+            <div>
+              <label style={LBL}>État</label>
+              <select style={INP} value={row.motif} onChange={e => up(i, "motif", e.target.value)}>
+                <option value="">-- État --</option>
+                {ETATS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
           </div>
-          <button type="button" onClick={() => del(i)} style={{ background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16, padding: 2 }}>🗑</button>
+          {/* Ligne 2 : lot + origine + qté + stock + destruction */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 10, alignItems: "flex-end" }}>
+            <div><label style={LBL}>Lot</label><input style={INP} placeholder="—" value={row.lot} onChange={e => up(i, "lot", e.target.value)} /></div>
+            <div><label style={LBL}>Origine</label><input style={INP} placeholder="—" value={row.origine} onChange={e => up(i, "origine", e.target.value)} /></div>
+            <div><label style={LBL}>Qté reçue</label><input style={{ ...INP, textAlign: "center" }} type="number" placeholder="0" value={row.qteRecue} onChange={e => up(i, "qteRecue", e.target.value)} /></div>
+            <div>
+              <label style={{ ...LBL, color: "#15803d" }}>✓ En stock</label>
+              <input style={{ ...INP, textAlign: "center", border: "1.5px solid #bbf7d0", background: "#f0fdf4", color: "#15803d", fontWeight: 700 }}
+                type="number" placeholder="0"
+                value={(row as any).qteStock || ""}
+                onChange={e => up(i, "qteStock" as any, e.target.value)} />
+            </div>
+            <div>
+              <label style={{ ...LBL, color: "#dc2626" }}>✗ Destruction</label>
+              <input style={{ ...INP, textAlign: "center", border: "1.5px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontWeight: 700 }}
+                type="number" placeholder="0"
+                value={(row as any).qteDestruction || ""}
+                onChange={e => up(i, "qteDestruction" as any, e.target.value)} />
+            </div>
+          </div>
+          {rows.length > 1 && (
+            <button type="button" onClick={() => del(i)}
+              style={{ position: "absolute", top: 10, right: 10, background: "transparent", border: "none", color: "#ccc", cursor: "pointer", fontSize: 16, padding: 4 }}>🗑</button>
+          )}
         </div>
       ))}
-      <button type="button" onClick={add} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", marginTop: 4, fontFamily: "inherit" }}>+ Ajouter un article</button>
+      <button type="button" onClick={add}
+        style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", border: "1.5px dashed #c8a84b", borderRadius: 10, background: "transparent", cursor: "pointer", fontSize: 13, color: "#c8a84b", fontFamily: "inherit" }}>
+        + Ajouter un article
+      </button>
     </div>
   );
 }
@@ -333,7 +366,12 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
   }
 
   async function submitEntrepot() {
-    const prods = eRows.filter(r => r.nom.trim());
+    const prods = eRows.filter(r => r.nom.trim()).map(r => ({
+      ...r,
+      qteStock: parseInt((r as any).qteStock) || 0,
+      qteDestruction: parseInt((r as any).qteDestruction) || 0,
+      decisionArticle: ((r as any).qteStock > 0 ? "accepte" : (r as any).qteDestruction > 0 ? "destruction" : null) as any
+    }));
     if (!eAgt.trim() || !prods.length) { alert("Reçu par et au moins un article requis."); return; }
     const numero = await getNextNumero();
     const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "entrepot", agent: eAgt.trim(), products: prods, comment: eCmt.trim(), dateLiv: eDat, clientConnu: eCli.trim() || null, transporteurConnu: eTra.trim() || null, rattache: false, statut: "nouveau", commentPrep: "" };
@@ -574,7 +612,16 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                   <span style={{ fontSize: 12, color: "#6b7280" }}>📅 {r.date} · 👤 {r.agent}</span>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12 }}>
-                  {(r.products || []).map((p, i) => <span key={i} style={{ background: "#fff", border: "1px solid #e8e0d0", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#6b7280" }}>{p.nom}{p.qteRecue ? ` × ${p.qteRecue}` : ""}{p.decisionArticle === "accepte" ? " ✓" : p.decisionArticle === "destruction" ? " ✗" : ""}</span>)}
+                  {(r.products || []).map((p, i) => {
+                    const qS = (p as any).qteStock; const qD = (p as any).qteDestruction;
+                    return (
+                      <span key={i} style={{ background: "#fff", border: "1px solid #e8e0d0", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#6b7280", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        {p.nom}{p.qteRecue ? ` × ${p.qteRecue}` : ""}
+                        {qS > 0 && <span style={{ color: "#15803d", fontWeight: 600 }}>✓{qS}</span>}
+                        {qD > 0 && <span style={{ color: "#dc2626", fontWeight: 600 }}>✗{qD}</span>}
+                      </span>
+                    );
+                  })}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button style={BTN("#fef3c7", "#b45309")} onClick={() => { setModal("rattach"); setModalData(r); }}>🔗 Rattacher à une commande</button>
