@@ -218,7 +218,7 @@ function AutocompleteInput({ value, onChange, suggestions, placeholder, required
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SYSTÈME ARRIVAGES — composants ajoutés à moorea-qualite
+// SYSTÈME ARRIVAGES - composants ajoutés à moorea-qualite
 // ═══════════════════════════════════════════════════════════════════════════
 
 const NOTE_COLORS_ARR: Record<number, string> = { 1: "#dc2626", 2: "#f97316", 3: "#eab308", 4: "#22c55e", 5: "#15803d" };
@@ -316,7 +316,7 @@ function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode
             const nouvelleDate = window.prompt("Nouvelle date de livraison (JJ/MM/AAAA) :", arrivage.date || "");
             if (!nouvelleDate) return;
             const [dd, mm, yyyy] = nouvelleDate.split("/");
-            if (!dd || !mm || !yyyy || isNaN(new Date(`${yyyy}-${mm}-${dd}`).getTime())) { alert("Format invalide — utilise JJ/MM/AAAA"); return; }
+            if (!dd || !mm || !yyyy || isNaN(new Date(`${yyyy}-${mm}-${dd}`).getTime())) { alert("Format invalide - utilise JJ/MM/AAAA"); return; }
             const { ref: fbRef, update: fbUpdate } = await import("firebase/database");
             const { db: dbImport } = await import("./firebase");
             await fbUpdate(fbRef(dbImport, `arrivages/${arrivage.id}`), { date: nouvelleDate });
@@ -485,18 +485,18 @@ async function imprimerEtiquettePalette(arrivage: any, paletteIndex?: number, co
 <button class="btn-close" onclick="window.close()">✕ Fermer</button>
 <div class="etiquette">
   <div class="lot">${lotLabel}</div>
-  <div class="produit">${(arrivage.produit || "—").toUpperCase()}</div>
-  <div class="fourn">${(arrivage.fournisseur || "—").toUpperCase()}</div>
+  <div class="produit">${(arrivage.produit || "-").toUpperCase()}</div>
+  <div class="fourn">${(arrivage.fournisseur || "-").toUpperCase()}</div>
   <div class="infos">
-    <div class="info-cell"><div class="info-lbl">DATE ARRIVEE</div><div class="info-val">${arrivage.date || "—"}</div></div>
-    <div class="info-cell"><div class="info-lbl">ORIGINE</div><div class="info-val">${(arrivage.origine || "—").toUpperCase()}</div></div>
-    <div class="info-cell"><div class="info-lbl">POIDS BRUT</div><div class="info-val">${arrivage.poids_brut || "—"} KG</div></div>
-    <div class="info-cell"><div class="info-lbl">POIDS NET</div><div class="info-val">${arrivage.poids_net || "—"} KG</div></div>
-    <div class="info-cell"><div class="info-lbl">LOT FOURNISSEUR</div><div class="info-val">${arrivage.lot_fournisseur || "—"}</div></div>
+    <div class="info-cell"><div class="info-lbl">DATE ARRIVEE</div><div class="info-val">${arrivage.date || "-"}</div></div>
+    <div class="info-cell"><div class="info-lbl">ORIGINE</div><div class="info-val">${(arrivage.origine || "-").toUpperCase()}</div></div>
+    <div class="info-cell"><div class="info-lbl">POIDS BRUT</div><div class="info-val">${arrivage.poids_brut || "-"} KG</div></div>
+    <div class="info-cell"><div class="info-lbl">POIDS NET</div><div class="info-val">${arrivage.poids_net || "-"} KG</div></div>
+    <div class="info-cell"><div class="info-lbl">LOT FOURNISSEUR</div><div class="info-val">${arrivage.lot_fournisseur || "-"}</div></div>
     <div class="info-cell"><div class="info-lbl">LOT INTERNE</div><div class="info-val">${lot}${palRef ? `-${palRef}` : ""}</div></div>
   </div>
   <div class="bottom">
-    <div><div class="qty">${qte || "—"}</div><div class="unite">${(arrivage.unite || "COLIS").toUpperCase()}</div></div>
+    <div><div class="qty">${qte || "-"}</div><div class="unite">${(arrivage.unite || "COLIS").toUpperCase()}</div></div>
     <div class="qr-block">${qrHtml}<p>SCANNER → FICHE PALETTE</p></div>
   </div>
 </div>
@@ -1032,10 +1032,10 @@ function PalettePublique({ id }: { id: string }) {
             {[
               { label: "Date arrivée", value: arrivage.date },
               { label: "Quantité", value: `${arrivage.quantite} ${arrivage.unite}` },
-              { label: "Poids brut", value: arrivage.poids_brut ? `${arrivage.poids_brut} kg` : "—" },
-              { label: "Poids net", value: arrivage.poids_net ? `${arrivage.poids_net} kg` : "—" },
-              { label: "Origine", value: arrivage.origine || "—" },
-              { label: "Lot fournisseur", value: arrivage.lot_fournisseur || "—" },
+              { label: "Poids brut", value: arrivage.poids_brut ? `${arrivage.poids_brut} kg` : "-" },
+              { label: "Poids net", value: arrivage.poids_net ? `${arrivage.poids_net} kg` : "-" },
+              { label: "Origine", value: arrivage.origine || "-" },
+              { label: "Lot fournisseur", value: arrivage.lot_fournisseur || "-" },
             ].map(f => (
               <div key={f.label} style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px" }}>
                 <p style={{ margin: "0 0 2px", fontSize: 10, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.label}</p>
@@ -1065,7 +1065,7 @@ function PalettePublique({ id }: { id: string }) {
         {arrivage.destruction && (
           <div style={{ background: "#fef2f2", borderRadius: 16, padding: 16, marginBottom: 14, border: "1.5px solid #fca5a5" }}>
             <p style={{ margin: "0 0 4px", fontWeight: 700, color: "#dc2626" }}>🗑 Destruction enregistrée</p>
-            <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.destruction.quantite} {arrivage.unite} — {arrivage.destruction.raison}</p>
+            <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.destruction.quantite} {arrivage.unite} - {arrivage.destruction.raison}</p>
             <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Le {arrivage.destruction.date}</p>
           </div>
         )}
@@ -1095,7 +1095,7 @@ function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLitige, o
 
   return (
     <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.05)", marginBottom: 10, overflow: "hidden", borderLeft: `4px solid ${borderColor}` }}>
-      {/* Header — cliquable pour ouvrir */}
+      {/* Header - cliquable pour ouvrir */}
       <div onClick={() => setOpen(!open)} style={{ padding: "13px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>
@@ -1149,7 +1149,7 @@ function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLitige, o
           {a.destruction && (
             <div style={{ padding: "10px 16px", background: "#fef2f2", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #e8e0d0" }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: "#dc2626" }}>🗑 Destruction</span>
-              <span style={{ fontSize: 12, color: "#dc2626" }}>{a.destruction.quantite} {a.unite} — {a.destruction.raison}</span>
+              <span style={{ fontSize: 12, color: "#dc2626" }}>{a.destruction.quantite} {a.unite} - {a.destruction.raison}</span>
               <span style={{ fontSize: 11, color: "#9ca3af" }}>{a.destruction.date}</span>
             </div>
           )}
@@ -1260,7 +1260,7 @@ function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { arrivage
             {a.rapport?.observations && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>📝 {a.rapport.observations}</span>}
           </div>
 
-          {/* Colis manquant — alerte WhatsApp */}
+          {/* Colis manquant - alerte WhatsApp */}
           <div style={{ marginBottom: 10, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 10, padding: "10px 12px" }}>
             <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#93c5fd" }}>📦 Colis manquant</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -1276,13 +1276,13 @@ function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { arrivage
                 if (!recu || recu >= attendu) { alert("Saisis un nombre de colis reçus inférieur aux attendus"); return; }
                 const produit = a.produit || a.article || a.nom || `Lot #${a.lot_interne}`;
                 const now = new Date().toLocaleString("fr-FR");
-                const msg = `📦 ALERTE COLIS MANQUANT — MOOREA
+                const msg = `📦 ALERTE COLIS MANQUANT - MOOREA
 ${now}
 
 Produit : ${produit}
 Fournisseur : ${a.fournisseur}
-Lot Moorea : ${a.lot_interne || "—"}
-Date arrivage : ${a.date || "—"}
+Lot Moorea : ${a.lot_interne || "-"}
+Date arrivage : ${a.date || "-"}
 
 Attendus : ${attendu} colis
 Reçus : ${recu} colis
@@ -1313,7 +1313,7 @@ Merci de régulariser.`;
             </div>
             {a.destruction && (
               <p style={{ margin: "6px 0 0", fontSize: 11, color: "#fca5a5" }}>
-                ✓ {a.destruction.quantite} colis détruits le {a.destruction.date} — {a.destruction.raison}
+                ✓ {a.destruction.quantite} colis détruits le {a.destruction.date} - {a.destruction.raison}
               </p>
             )}
           </div>
@@ -1428,7 +1428,7 @@ function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, o
               </label>
             </div>
           </div>
-          {/* Fournisseurs — en attente + traités regroupés */}
+          {/* Fournisseurs - en attente + traités regroupés */}
           {allFourn.map(f => (
             <FournisseurBlock key={f} fournisseur={f}
               produits={byFournisseur[f] || []}
@@ -2056,7 +2056,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
   {article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"}
 ];
 
-  // useEffect de secours — force le rendu de la table config avec les 607 articles
+  // useEffect de secours - force le rendu de la table config avec les 607 articles
   useEffect(() => {
     const renderConfigFallback = () => {
       const tbody = document.getElementById("s-cfg-body");
@@ -2388,12 +2388,12 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
       <div class="team-grid">
         <div class="team-card gms" onclick="sStartSession('GMS')">
           <div class="ico">🌿</div><h2>GMS</h2>
-          <p id="s-modal-gms-count">— articles</p>
+          <p id="s-modal-gms-count">- articles</p>
           <p style="margin-top:3px;font-size:11px">19h00</p>
         </div>
         <div class="team-card prestige" onclick="sStartSession('PRESTIGE')">
           <div class="ico">✨</div><h2>Prestige</h2>
-          <p id="s-modal-prestige-count">— articles</p>
+          <p id="s-modal-prestige-count">- articles</p>
           <p style="margin-top:3px;font-size:11px">Nuit</p>
         </div>
       </div>
@@ -2637,7 +2637,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
               positions[art].push(i);
             });
           });
-          if (Object.keys(positions).length < 5) { toast("Pas assez de données — comptez encore quelques sessions !"); return; }
+          if (Object.keys(positions).length < 5) { toast("Pas assez de données - comptez encore quelques sessions !"); return; }
           const avgPos: Record<string, number> = {};
           Object.entries(positions).forEach(([art, poses]) => {
             avgPos[art] = poses.reduce((a, b) => a + b, 0) / poses.length;
@@ -2686,7 +2686,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
           const statusEl = document.getElementById("s-upload-status");
           if (statusEl) statusEl.textContent = "⏳ Enregistrement...";
           await saveStock(file.name, allArticles);
-          if (statusEl) statusEl.textContent = "✓ " + file.name + " — " + allArticles.length + " articles enregistrés";
+          if (statusEl) statusEl.textContent = "✓ " + file.name + " - " + allArticles.length + " articles enregistrés";
           const gms = allArticles.filter(a => getEquipe(a) === "GMS").length;
           const pres = allArticles.filter(a => getEquipe(a) === "PRESTIGE").length;
           const mi = document.getElementById("s-modal-stock-info");
@@ -2855,7 +2855,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
             const hasCnt = a.compte1 !== null && a.compte1 !== undefined;
             (totCell as any).textContent = hasCnt ? t : "-";
             if (ecartCell) {
-              if (!hasCnt) { (ecartCell as any).textContent = "—"; (ecartCell as HTMLElement).style.color = "#6b7280"; }
+              if (!hasCnt) { (ecartCell as any).textContent = "-"; (ecartCell as HTMLElement).style.color = "#6b7280"; }
               else { const e = t - a.nb_colis; (ecartCell as any).textContent = (e > 0 ? "+" : "") + e; (ecartCell as HTMLElement).style.color = e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d"; }
             }
           }
@@ -2916,7 +2916,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
           const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="0" value="${qd}" onchange="sSetCount(${a.id},9,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
           const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
-          const ecartStr = ecartVal === null ? "—" : (ecartVal > 0 ? "+" : "") + ecartVal;
+          const ecartStr = ecartVal === null ? "-" : (ecartVal > 0 ? "+" : "") + ecartVal;
           const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, qty]: any) => `lot ${l} · ${qty} col.`).join(" | ") : (a.lots?.join(" ") || "");
           // Highlight search terms
           let artLabel = a.article;
@@ -2941,13 +2941,13 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
             return (a.article + " " + (a.famille || "")).toLowerCase().includes(q);
           });
           if (otherMatches.length) {
-            let otherHtml = `<tr><td colspan="5" style="padding:8px 12px;font-size:11px;font-weight:700;color:#c8a84b;background:#fffbf0;letter-spacing:.5px">— ARTICLES EN ${otherTeam} —</td></tr>`;
+            let otherHtml = `<tr><td colspan="5" style="padding:8px 12px;font-size:11px;font-weight:700;color:#c8a84b;background:#fffbf0;letter-spacing:.5px">- ARTICLES EN ${otherTeam} -</td></tr>`;
             otherMatches.forEach((a: any) => {
               const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, qty]: any) => `lot ${l} · ${qty} col.`).join(" | ") : (a.lots?.join(" ") || "");
               const enc = encodeURIComponent(JSON.stringify({ id: a.id, article: a.article, famille: a.famille, nb_colis: a.nb_colis, lots: a.lots || [], lotsQty: a.lotsQty || {}, lot: a.lot || "", equipe: a.equipe }));
               otherHtml += `<tr style="background:#fffbf0;border-left:3px solid #c8a84b">
                 <td style="font-weight:500">${a.article}<br><span style="font-size:10px;color:#c8a84b;font-weight:600">📦 ${otherTeam} · ${a.nb_colis} colis</span>${lotsStr ? `<br><span style="font-size:10px;color:#6b7280">${lotsStr}</span>` : ""}</td>
-                <td colspan="3" style="text-align:center;color:#6b7280;font-size:12px;font-style:italic">—</td>
+                <td colspan="3" style="text-align:center;color:#6b7280;font-size:12px;font-style:italic">-</td>
                 <td style="text-align:right"><button class="btn btn-sm btn-gold" data-enc="${enc}" onclick="sRecupererArticle(this.dataset.enc)">← Récupérer</button></td>
               </tr>`;
             });
@@ -3054,7 +3054,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
         if (!tbody) return;
         if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
         tbody.innerHTML = rows.map(a => {
-          if (!counted(a)) return `<tr><td style="font-weight:500">${a.article}</td><td style="text-align:right">${a.nb_colis}</td><td style="color:#6b7280;text-align:right">—</td><td>—</td><td><span class="badge badge-nc">Non compté</span></td></tr>`;
+          if (!counted(a)) return `<tr><td style="font-weight:500">${a.article}</td><td style="text-align:right">${a.nb_colis}</td><td style="color:#6b7280;text-align:right">-</td><td>-</td><td><span class="badge badge-nc">Non compté</span></td></tr>`;
           const e = ecart(a), sign = e > 0 ? "+" : "";
           const cls = e > 0 ? "ep" : e < 0 ? "en" : "ez";
           const badge = e === 0 ? `<span class="badge badge-ok">OK</span>` : e > 0 ? `<span class="badge badge-surplus">Surplus</span>` : `<span class="badge badge-manque">Manque</span>`;
@@ -3068,7 +3068,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
       // CSV
       (window as any).sExportCSV = () => {
         const now = new Date().toLocaleString("fr-FR");
-        let csv = `Inventaire ${currentTeam} — ${now}\nArticle,Stock sys.,Empl.1,Détruit,Total,Écart,Statut\n`;
+        let csv = `Inventaire ${currentTeam} - ${now}\nArticle,Stock sys.,Empl.1,Détruit,Total,Écart,Statut\n`;
         articles.forEach(a => { const e = counted(a) ? ecart(a) : ""; const st = !counted(a) ? "Non compté" : e === 0 ? "OK" : (e as number) > 0 ? "Surplus" : "Manque"; csv += `"${a.article}",${a.nb_colis},${a.compte1 ?? ""},${a.detruire ?? ""},${counted(a) ? a.compte : ""},${e},"${st}"\n`; });
         const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
         const url = URL.createObjectURL(blob);
@@ -3094,7 +3094,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
           const e = counted(a) ? ecart(a) : null;
           const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q}`).join(" | ") : (a.lots?.join(" | ") || "");
           const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
-          return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${counted(a) ? a.compte : "—"}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "—"}</td></tr>`;
+          return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${counted(a) ? a.compte : "-"}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "-"}</td></tr>`;
         });
         const manq = sorted.filter(a => counted(a) && ecart(a) < 0).length;
         const exc = sorted.filter(a => counted(a) && ecart(a) > 0).length;
@@ -3126,7 +3126,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
             const e = ecartFn(a); const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
             const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q} col.`).join(" | ") : (a.lots?.join(" | ") || "");
             const c = getCompte(a); const cd = getDetruire(a);
-            return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${c !== null ? c : "—"}</td><td class="nb" style="color:#dc2626">${cd || ""}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "—"}</td></tr>`;
+            return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${c !== null ? c : "-"}</td><td class="nb" style="color:#dc2626">${cd || ""}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "-"}</td></tr>`;
           });
           const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>🌿 Moorea · Inventaire ${team}</h1><p>${s.dateLabel} · ${arts.length} articles · Imprimé le ${now} · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="nb" style="color:#dc2626">Détruire</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
           openPdfWindow(html, `Moorea · Inventaire ${team}`);
@@ -3275,7 +3275,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
           .map((a: any) => { const n = a.article.toLowerCase(); const score = n.startsWith(q) ? 4 : n.includes(" " + q) ? 3 : n.includes(q) ? 2 : q.split(" ").every((w: string) => n.includes(w)) ? 1 : 0; return { ...a, score }; })
           .filter((a: any) => a.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 10);
         if (!scored.length) {
-          box.innerHTML = `<div style="padding:10px 14px;font-size:13px;color:#6b7280;font-style:italic">Aucun résultat — sera ajouté comme nouvel article</div>`;
+          box.innerHTML = `<div style="padding:10px 14px;font-size:13px;color:#6b7280;font-style:italic">Aucun résultat - sera ajouté comme nouvel article</div>`;
           box.style.display = "block"; return;
         }
         box.innerHTML = scored.map((a: any) => {
@@ -3327,7 +3327,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
         const lbl = document.getElementById("s-fusion-label");
         if (lbl) {
           if (fusionSelected.length === 0) lbl.textContent = "Sélectionnez 2 articles à fusionner";
-          else if (fusionSelected.length === 1) lbl.textContent = "1 sélectionné — choisissez le 2e";
+          else if (fusionSelected.length === 1) lbl.textContent = "1 sélectionné - choisissez le 2e";
           else lbl.textContent = fusionSelected[0] + " + " + fusionSelected[1];
         }
         sRenderConfig();
@@ -3459,17 +3459,17 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
             </div>
             <div style="background:${compte!==null?ec+"18":"#f9fafb"};border-radius:10px;padding:10px;border:${compte!==null?`1.5px solid ${ec}`:"none"}">
               <p style="margin:0 0 2px;font-size:10px;color:#9ca3af;text-transform:uppercase">Compté</p>
-              <p style="margin:0;font-size:20px;font-weight:800;color:${ec}">${compte!==null?compte:"—"}</p>
+              <p style="margin:0;font-size:20px;font-weight:800;color:${ec}">${compte!==null?compte:"-"}</p>
             </div>
           </div>
           ${ecart!==null?`<div style="background:${ec}18;border-radius:10px;padding:10px;border:1.5px solid ${ec};margin-bottom:12px">
-            <p style="margin:0;font-size:14px;font-weight:700;color:${ec}">Écart : ${ecart>0?"+":""}${ecart} ${ecart===0?"— OK ✓":ecart<0?"manquant"+(Math.abs(ecart)>1?"s":""):"surplus"}</p>
+            <p style="margin:0;font-size:14px;font-weight:700;color:${ec}">Écart : ${ecart>0?"+":""}${ecart} ${ecart===0?"- OK ✓":ecart<0?"manquant"+(Math.abs(ecart)>1?"s":""):"surplus"}</p>
           </div>`:""}
           ${paletteIdx&&enSession?`<div style="background:#f0fdf4;border-radius:10px;padding:10px;border:1px solid #bbf7d0">
-            <p style="margin:0;font-size:12px;color:#15803d;font-weight:700">✓ Emplacement P${paletteIdx} ajouté — saisissez les colis</p>
+            <p style="margin:0;font-size:12px;color:#15803d;font-weight:700">✓ Emplacement P${paletteIdx} ajouté - saisissez les colis</p>
           </div>`:""}
           ${!enSession?`<div style="background:#fffbeb;border-radius:10px;padding:10px;border:1px solid #fde68a">
-            <p style="margin:0;font-size:12px;color:#d97706;font-weight:600">⚠️ Article ${getEquipe(artAll)} — pas dans la session ${currentTeam||"en cours"}</p>
+            <p style="margin:0;font-size:12px;color:#d97706;font-weight:600">⚠️ Article ${getEquipe(artAll)} - pas dans la session ${currentTeam||"en cours"}</p>
           </div>`:compte===null?`<div style="background:#eff6ff;border-radius:10px;padding:10px;border:1px solid #bfdbfe">
             <p style="margin:0;font-size:12px;color:#1d4ed8;font-weight:600">📋 Dans la liste mais pas encore compté</p>
           </div>`:""}`;
@@ -3648,7 +3648,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
       const rowBg = idx % 2 === 0 ? "#fff" : "#f9fafb";
       return `<tr style="background:${rowBg}">
         <td style="padding:8px 12px;font-weight:700;font-size:13px;border-bottom:1px solid #f0f0f0">${emp.nom}</td>
-        <td style="padding:8px 10px;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${emp.dept || "—"}</td>
+        <td style="padding:8px 10px;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${emp.dept || "-"}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${fmtMins(emp.totalPlanifie)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;font-weight:600;border-bottom:1px solid #f0f0f0">${fmtMins(emp.totalTravaille)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px;font-weight:800;color:${balColor};border-bottom:1px solid #f0f0f0">${fmtMins(emp.totalBalance)}</td>
@@ -3742,15 +3742,15 @@ function RHApp({ onClose }: { onClose: () => void }) {
       const rowBg = isAbsent ? "#fff5f5" : balMins < -30 ? "#fffbeb" : "#fff";
 
       const creneauxHtml = creneaux.map((c: any) =>
-        c.entree ? `<span style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px;padding:2px 8px;font-size:11px;margin-right:4px">🟢 ${c.entree} → 🔴 ${c.sortie || "—"}</span>` : ""
+        c.entree ? `<span style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px;padding:2px 8px;font-size:11px;margin-right:4px">🟢 ${c.entree} → 🔴 ${c.sortie || "-"}</span>` : ""
       ).join("");
 
       rows += `<tr style="background:${rowBg}">
         <td style="padding:7px 10px;font-size:12px;font-weight:600;border-bottom:1px solid #f0f0f0;white-space:nowrap">${fmtDate(date)}</td>
         <td style="padding:7px 10px;font-size:11px;border-bottom:1px solid #f0f0f0">${isAbsent ? '<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px">⚠ ABSENT</span>' : creneauxHtml}</td>
-        <td style="padding:7px 10px;text-align:center;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${plan || "—"}</td>
-        <td style="padding:7px 10px;text-align:center;font-size:12px;font-weight:600;border-bottom:1px solid #f0f0f0">${trav || "—"}</td>
-        <td style="padding:7px 10px;text-align:center;font-size:13px;font-weight:800;color:${balColor};border-bottom:1px solid #f0f0f0">${bal || "—"}</td>
+        <td style="padding:7px 10px;text-align:center;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${plan || "-"}</td>
+        <td style="padding:7px 10px;text-align:center;font-size:12px;font-weight:600;border-bottom:1px solid #f0f0f0">${trav || "-"}</td>
+        <td style="padding:7px 10px;text-align:center;font-size:13px;font-weight:800;color:${balColor};border-bottom:1px solid #f0f0f0">${bal || "-"}</td>
       </tr>`;
     });
 
@@ -3820,7 +3820,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
         <PageHeader titre="👥 RH · Pointeuse" couleur="#0ea5e9" onBack={onClose} />
         <div style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, marginBottom: 24 }}>Accès restreint — entrez le code</p>
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, marginBottom: 24 }}>Accès restreint - entrez le code</p>
           <input type="password" maxLength={4} value={pin} onChange={e => {
             const v = e.target.value;
             setPin(v);
@@ -3878,7 +3878,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
                 <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>En retard</p>
               </div>
               <div style={{ background: "#f0fdf4", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #bbf7d0", textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#16a34a" }}>{plusSupp ? plusSupp.nom.split(" ")[0] : "—"}</p>
+                <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#16a34a" }}>{plusSupp ? plusSupp.nom.split(" ")[0] : "-"}</p>
                 <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>+ d'heures sup</p>
               </div>
             </div>
@@ -3978,7 +3978,7 @@ function RHApp({ onClose }: { onClose: () => void }) {
                         const bal = parseHHMM(j.balance);
                         return (
                           <span key={ji} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 8, background: bal < 0 ? "#fff5f5" : bal > 0 ? "#f0fdf4" : "#f9fafb", border: `1px solid ${bal < 0 ? "#fecaca" : bal > 0 ? "#bbf7d0" : "#e8e0d0"}`, color: bal < 0 ? "#dc2626" : bal > 0 ? "#16a34a" : "#6b7280" }}>
-                            {j.date} {j.jour} {j.balance || "—"}
+                            {j.date} {j.jour} {j.balance || "-"}
                           </span>
                         );
                       })}
@@ -4282,9 +4282,9 @@ function EtiquettesModule({ onClose }: { onClose: () => void }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 12 }}>
             {filtres.map(p => (
               <div key={p.id} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, borderTop: "3px solid #f59e0b" }}>
-                <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 2 }}>{p.nomAnglais || "—"}</p>
+                <p style={{ fontWeight: 800, fontSize: 14, marginBottom: 2 }}>{p.nomAnglais || "-"}</p>
                 <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "right", marginBottom: 8 }}>{p.nomArabe}</p>
-                <p style={{ fontSize: 11, color: "#6b7280" }}>🌍 {p.origine || "—"}</p>
+                <p style={{ fontSize: 11, color: "#6b7280" }}>🌍 {p.origine || "-"}</p>
                 {p.lotNo && <p style={{ fontSize: 11, color: "#6b7280" }}>📦 {p.lotNo}</p>}
                 {p.expDate && <p style={{ fontSize: 11, color: "#6b7280" }}>📅 {p.expDate}</p>}
                 <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
@@ -4340,7 +4340,7 @@ function EtiquettesModule({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-      {topBar(`🖨️ Lot — ${nbSel} sélectionnée${nbSel > 1 ? "s" : ""}`, <>
+      {topBar(`🖨️ Lot - ${nbSel} sélectionnée${nbSel > 1 ? "s" : ""}`, <>
         <button style={{ ...btn("#e8e0d0", "#374151"), fontSize: 12 }}
           onClick={() => { const all = nbSel === produits.length; const s: Record<string, boolean> = {}; produits.forEach(p => { s[p.id] = !all; }); setLotSel(s); }}>
           {nbSel === produits.length ? "Tout désélectionner" : "Tout sélectionner"}
@@ -4360,7 +4360,7 @@ function EtiquettesModule({ onClose }: { onClose: () => void }) {
                 <input type="checkbox" checked={checked} onChange={() => setLotSel(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
                   style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#f59e0b", flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: checked ? "#1a2e1a" : "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nomAnglais || "—"}</p>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: checked ? "#1a2e1a" : "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nomAnglais || "-"}</p>
                   <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{p.nomArabe}</p>
                 </div>
               </div>
@@ -4488,7 +4488,7 @@ function QrCodeDashboard({ onClose }: { onClose: () => void }) {
 
             {/* GRAPHIQUE 7 JOURS */}
             <div style={{ background: "#fff", borderRadius: 14, padding: 16, border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
-              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: "#1a2e1a" }}>Scans — 7 derniers jours</p>
+              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: "#1a2e1a" }}>Scans - 7 derniers jours</p>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 160, borderBottom: "2px solid #f0f0f0", paddingBottom: 4 }}>
                 {dayCounts.map((d) => (
                   <div key={d.date} style={{ flex: 1, textAlign: "center" }}>
@@ -4541,8 +4541,8 @@ function QrCodeDashboard({ onClose }: { onClose: () => void }) {
                       const d = s.timestamp ? new Date(s.timestamp) : null;
                       return (
                         <tr key={s.id} style={{ borderTop: "1px solid #f5f5f5" }}>
-                          <td style={{ padding: "8px 16px" }}>{d ? d.toLocaleDateString("fr-FR") : "—"}</td>
-                          <td style={{ padding: "8px 12px" }}>{d ? d.toLocaleTimeString("fr-FR") : "—"}</td>
+                          <td style={{ padding: "8px 16px" }}>{d ? d.toLocaleDateString("fr-FR") : "-"}</td>
+                          <td style={{ padding: "8px 12px" }}>{d ? d.toLocaleTimeString("fr-FR") : "-"}</td>
                           <td style={{ padding: "8px 12px" }}>{browser}</td>
                           <td style={{ padding: "8px 12px" }}>{device}</td>
                         </tr>
@@ -4651,7 +4651,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
   const [arrivageSelId, setArrivageSelId] = useState<string>("");
   const [arrivageQty, setArrivageQty] = useState<Record<string, number>>({});
 
-  // Charger les arrivages Yukon depuis Firebase — groupés par date
+  // Charger les arrivages Yukon depuis Firebase - groupés par date
   useEffect(() => {
     const unsub = onValue(ref(db, "arrivages"), (snap: any) => {
       if (!snap.exists()) return;
@@ -4661,7 +4661,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
       // Grouper par date
       const byDate: Record<string, any[]> = {};
       yukon.forEach((a: any) => {
-        const date = a.date || "—";
+        const date = a.date || "-";
         if (!byDate[date]) byDate[date] = [];
         byDate[date].push(a);
       });
@@ -4867,7 +4867,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                     }}
                       defaultValue=""
                       style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #16a34a", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
-                      <option value="" disabled>{stockDate ? `✓ ${stockDate}` : "— Choisir —"}</option>
+                      <option value="" disabled>{stockDate ? `✓ ${stockDate}` : "- Choisir -"}</option>
                       {sessions.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                     </select>
                   ) : (
@@ -4917,7 +4917,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                   setArrivageQty(newArrivageQty);
                 }}
                   style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #c8a84b", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
-                  <option value="">— Sélectionner une date d'arrivage —</option>
+                  <option value="">- Sélectionner une date d'arrivage -</option>
                   {arrivagesYukon.map(g => (
                     <option key={g.id} value={g.id}>{g.label}</option>
                   ))}
@@ -4959,8 +4959,8 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                     const stockKey = art.stockNom || art.id;
                     const stockQty = stocks[stockKey] ?? 0;
                     const stockMissing = stockDate && stocks[stockKey] === undefined;
-                    const ventesJours = ventes[art.id] || 0;       // Sales (4j) — saisie
-                    const ventesSemaine = ventesHebdo[art.id] || 0; // Weekly Sales — saisie
+                    const ventesJours = ventes[art.id] || 0;       // Sales (4j) - saisie
+                    const ventesSemaine = ventesHebdo[art.id] || 0; // Weekly Sales - saisie
                     // Back Stock = MAX(0, Stock - Sales)
                     const backStock = Math.max(0, stockQty - ventesJours);
                     // Saturday Order = ROUND(MAX(0, (WeeklySales×1.1) - BackStock) × 60%, 0)
@@ -4977,13 +4977,13 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                           {art.nom}
                           {stockMissing && <span style={{ display: "block", fontSize: 9, color: "#dc2626", fontWeight: 700 }}>⚠ Absent</span>}
                         </td>
-                        {/* Dernière commande — lecture seule */}
-                        <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#9ca3af", fontSize: 12 }}>—</td>
-                        {/* Quantité reçue (arrivage) — bleue */}
+                        {/* Dernière commande - lecture seule */}
+                        <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#9ca3af", fontSize: 12 }}>-</td>
+                        {/* Quantité reçue (arrivage) - bleue */}
                         <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 700, fontSize: 13, color: dernQty > 0 ? "#60a5fa" : "#9ca3af" }}>
-                          {dernQty > 0 ? dernQty : "—"}
+                          {dernQty > 0 ? dernQty : "-"}
                         </td>
-                        {/* Stock inventaire — saisie manuelle */}
+                        {/* Stock inventaire - saisie manuelle */}
                         <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
                           <input type="number" min="0" value={stocks[stockKey] ?? ""} placeholder="0"
                             onChange={async e => {
@@ -4996,7 +4996,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                             }}
                             style={{ width: "100%", maxWidth: 55, padding: "3px 4px", border: `1.5px solid ${stockMissing ? "#fca5a5" : "#c8a84b"}`, borderRadius: 6, fontSize: 12, textAlign: "center", outline: "none", background: stockMissing ? "#fff5f5" : "#fffbf0", fontWeight: 700 }} />
                         </td>
-                        {/* Ventes X jours — saisie */}
+                        {/* Ventes X jours - saisie */}
                         <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
                           <input type="number" min="0" value={ventes[art.id] || ""} placeholder="0"
                             onChange={e => saveVentes({ ...ventes, [art.id]: parseInt(e.target.value) || 0 })}
@@ -5004,9 +5004,9 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                         </td>
                         {/* Back Stock = Stock - Ventes */}
                         <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 700, color: ventesJours > 0 ? (backStock > 0 ? "#15803d" : "#dc2626") : "#9ca3af", borderBottom: "1px solid #f0f0f0", fontSize: 13 }}>
-                          {ventesJours > 0 ? backStock : "—"}
+                          {ventesJours > 0 ? backStock : "-"}
                         </td>
-                        {/* Ventes semaine — saisie manuelle */}
+                        {/* Ventes semaine - saisie manuelle */}
                         <td style={{ padding: "7px 4px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
                           <input type="number" min="0" value={ventesHebdo[art.id] || ""} placeholder="0"
                             onChange={e => saveVentesHebdo({ ...ventesHebdo, [art.id]: parseInt(e.target.value) || 0 })}
@@ -5014,11 +5014,11 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                         </td>
                         {/* Cmd Samedi */}
                         <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 800, fontSize: 15, color: cmdSam > 0 ? "#16a34a" : "#9ca3af", borderBottom: "1px solid #f0f0f0", borderLeft: "2px solid #bbf7d0", background: cmdSam > 0 ? "#f0fdf4" : "transparent" }}>
-                          {cmdSam > 0 ? cmdSam : "—"}
+                          {cmdSam > 0 ? cmdSam : "-"}
                         </td>
                         {/* Cmd Mardi */}
                         <td style={{ padding: "7px 4px", textAlign: "center", fontWeight: 800, fontSize: 15, color: cmdMar > 0 ? "#16a34a" : "#9ca3af", borderBottom: "1px solid #f0f0f0", borderLeft: "1px solid #e8e0d0", background: cmdMar > 0 ? "#f0fdf4" : "transparent" }}>
-                          {cmdMar > 0 ? cmdMar : "—"}
+                          {cmdMar > 0 ? cmdMar : "-"}
                         </td>
                       </tr>
                     );
@@ -5055,7 +5055,7 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                           style={{ flex: 1, minWidth: 120, padding: "6px 10px", border: "1.5px solid #c8a84b", borderRadius: 8, fontSize: 13 }} />
                         <select value={editArticle.stockNom || ""} onChange={e => setEditArticle({ ...editArticle, stockNom: e.target.value })}
                           style={{ flex: 2, minWidth: 180, padding: "6px 8px", border: "1.5px solid #16a34a", borderRadius: 8, fontSize: 12, background: "#fff" }}>
-                          <option value="">— Pas de liaison stock —</option>
+                          <option value="">- Pas de liaison stock -</option>
                           {STOCK_LIST.filter(s => s).map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                         <input type="number" value={editArticle.colisVente} onChange={e => setEditArticle({ ...editArticle, colisVente: parseInt(e.target.value) || 1 })}
@@ -5124,8 +5124,8 @@ function YukonApp({ onClose }: { onClose: () => void }) {
         {page === "recap" && (
           <div>
             <div style={{ background: "#1a2e1a", borderRadius: 16, padding: "16px 20px", marginBottom: 16 }}>
-              <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 18, color: "#c8a84b", fontFamily: "'Syne', sans-serif" }}>📋 Récap Yukon — Semaine {new Date().toLocaleDateString("fr-FR")}</p>
-              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Ventes sur {joursVentes} jours · Stock du {stockDate || "—"}</p>
+              <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 18, color: "#c8a84b", fontFamily: "'Syne', sans-serif" }}>📋 Récap Yukon - Semaine {new Date().toLocaleDateString("fr-FR")}</p>
+              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Ventes sur {joursVentes} jours · Stock du {stockDate || "-"}</p>
             </div>
 
             {/* Tableau récap */}
@@ -5154,8 +5154,8 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                     return (
                       <tr key={art.id} style={{ background: idx % 2 === 0 ? "#fff" : "#fafaf9", borderBottom: "1px solid #f0f0f0" }}>
                         <td style={{ padding: "10px 14px", fontWeight: 600 }}>{art.nom}</td>
-                        <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 800, fontSize: 16, color: cmdSamArrondi > 0 ? "#16a34a" : "#9ca3af" }}>{cmdSamArrondi > 0 ? cmdSamArrondi : "—"}</td>
-                        <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 800, fontSize: 16, color: cmdMarArrondi > 0 ? "#16a34a" : "#9ca3af" }}>{cmdMarArrondi > 0 ? cmdMarArrondi : "—"}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 800, fontSize: 16, color: cmdSamArrondi > 0 ? "#16a34a" : "#9ca3af" }}>{cmdSamArrondi > 0 ? cmdSamArrondi : "-"}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "center", fontWeight: 800, fontSize: 16, color: cmdMarArrondi > 0 ? "#16a34a" : "#9ca3af" }}>{cmdMarArrondi > 0 ? cmdMarArrondi : "-"}</td>
                       </tr>
                     );
                   })}
@@ -5173,13 +5173,13 @@ function YukonApp({ onClose }: { onClose: () => void }) {
                   const cmdSam = Math.max(0, art.colisCommande > 1 ? Math.ceil(Math.max(0, Math.ceil(venteJour * 6 - Math.max(0, stockQty - venteJour * 4))) / art.colisCommande) * art.colisCommande : Math.max(0, Math.ceil(venteJour * 6 - Math.max(0, stockQty - venteJour * 4))));
                   const cmdMar = Math.max(0, art.colisCommande > 1 ? Math.ceil(Math.max(0, Math.ceil(venteJour * 6 - Math.max(0, stockQty - venteJour * 5))) / art.colisCommande) * art.colisCommande : Math.max(0, Math.ceil(venteJour * 6 - Math.max(0, stockQty - venteJour * 5))));
                   if (cmdSam === 0 && cmdMar === 0) return null;
-                  return `${art.nom} : Sam ${cmdSam > 0 ? cmdSam : "—"} · Mar ${cmdMar > 0 ? cmdMar : "—"}`;
+                  return `${art.nom} : Sam ${cmdSam > 0 ? cmdSam : "-"} · Mar ${cmdMar > 0 ? cmdMar : "-"}`;
                 })
                 .filter(Boolean)
                 .join("\n");
               // Sauvegarder comme dernière commande
               await update(ref(db, "yukon/dernieres_commandes"), {});
-              const texte = `COMMANDE YUKON — ${new Date().toLocaleDateString("fr-FR")}\nVentes sur ${joursVentes}j\n\n${lignes}`;
+              const texte = `COMMANDE YUKON - ${new Date().toLocaleDateString("fr-FR")}\nVentes sur ${joursVentes}j\n\n${lignes}`;
               navigator.clipboard.writeText(texte).then(() => alert("✅ Copié !"));
             }} style={{ width: "100%", padding: "14px", borderRadius: 14, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 15, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
               📋 Copier la commande
@@ -5569,7 +5569,7 @@ export default function App() {
           }
 
           if (!arr.length) {
-            showToast("Aucun arrivage détecté — vérifie la console", "error");
+            showToast("Aucun arrivage détecté - vérifie la console", "error");
             console.log("Lines parsed:", lines.slice(0, 50));
             setImportingArr(false); return;
           }
@@ -5726,7 +5726,7 @@ export default function App() {
 
   const partagerWhatsApp = async (r: any) => {
     const dLabel = r.decision === "stock"
-      ? "✅ Conforme — Entrée en stock"
+      ? "✅ Conforme - Entrée en stock"
       : r.decision === "reserve"
       ? "⚠️ Réserve"
       : "❌ Refus";
@@ -5734,28 +5734,28 @@ export default function App() {
     const colisLine = (() => {
       if (!r.nbColisRecu) return "";
       if (r.nbColisAttendu && parseInt(r.nbColisRecu) < parseInt(r.nbColisAttendu)) {
-        return `${r.nbColisRecu} colis reçus / ${r.nbColisAttendu} attendus — ${parseInt(r.nbColisAttendu) - parseInt(r.nbColisRecu)} colis manquants`;
+        return `${r.nbColisRecu} colis reçus / ${r.nbColisAttendu} attendus - ${parseInt(r.nbColisAttendu) - parseInt(r.nbColisRecu)} colis manquants`;
       } else if (r.nbColisAttendu && parseInt(r.nbColisRecu) > parseInt(r.nbColisAttendu)) {
-        return `${r.nbColisRecu} colis reçus / ${r.nbColisAttendu} attendus — ${parseInt(r.nbColisRecu) - parseInt(r.nbColisAttendu)} colis en surplus`;
+        return `${r.nbColisRecu} colis reçus / ${r.nbColisAttendu} attendus - ${parseInt(r.nbColisRecu) - parseInt(r.nbColisAttendu)} colis en surplus`;
       }
       return `${r.nbColisRecu} colis reçus`;
     })();
 
     const reserveLine = r.nbColisRefuses && r.nbColisTotal
       ? r.decision === "reserve"
-        ? `${dLabel} — ${r.nbColisRefuses} colis en réserve (${r.pourcentage}%)`
-        : `${dLabel} — ${r.nbColisRefuses} colis refusés (${r.pourcentage}%)`
+        ? `${dLabel} - ${r.nbColisRefuses} colis en réserve (${r.pourcentage}%)`
+        : `${dLabel} - ${r.nbColisRefuses} colis refusés (${r.pourcentage}%)`
       : dLabel;
 
     const scoreLine = r.score
-      ? `Score qualité : ${r.score}/5${r.observations ? " — " + r.observations : ""}`
+      ? `Score qualité : ${r.score}/5${r.observations ? " - " + r.observations : ""}`
       : r.observations || "";
 
     const msg = `🍃 RAPPORT AGRÉAGE MOOREA
-Rapport n° ${r.numeroRapport || "—"}
+Rapport n° ${r.numeroRapport || "-"}
 ${r.date} · ${r.heure}${r.agreeur ? " · " + r.agreeur : ""}
 
-${r.produit}${r.origine ? " — " + r.origine : ""}
+${r.produit}${r.origine ? " - " + r.origine : ""}
 Fournisseur : ${r.fournisseur}${r.lotMoorea ? " · Lot " + r.lotMoorea : ""}
 ${colisLine}
 
@@ -6007,7 +6007,7 @@ _PDF joint_`;
     doc.text("MOOREA", M, 14);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
-    doc.text("Rapport Qualité — Arrivages", M + 32, 14);
+    doc.text("Rapport Qualité - Arrivages", M + 32, 14);
     doc.setTextColor(150, 150, 150);
     doc.setFontSize(8);
     doc.text(`${r.date} à ${r.heure}`, W - M, 14, { align: "right" });
@@ -6043,7 +6043,7 @@ _PDF joint_`;
       doc.text(label + " :", M + 2, y);
       doc.setTextColor(26, 46, 26);
       if (bold) doc.setFont("helvetica", "bold");
-      doc.text(value || "—", M + 45, y);
+      doc.text(value || "-", M + 45, y);
       doc.setFont("helvetica", "normal");
       y += 6;
     };
@@ -6071,7 +6071,7 @@ _PDF joint_`;
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
-      doc.text(`${q}/5 — ${noteLabels[q]}`, M + 6, y + 4.5);
+      doc.text(`${q}/5 - ${noteLabels[q]}`, M + 6, y + 4.5);
       y += 12;
     }
 
@@ -6184,7 +6184,7 @@ _PDF joint_`;
     const dLabel = r.decision === "stock" ? "✅ ENTRÉE EN STOCK" : r.decision === "reserve" ? "⚠️ RÉSERVE" : "❌ REFUS";
     const dBg = r.decision === "stock" ? "#f0fdf4" : r.decision === "reserve" ? "#fffbeb" : "#fef2f2";
     const scoreColor = r.score ? NOTE_COLORS[Math.round(parseFloat(r.score))] : "#aaa";
-    const scoreLabel = r.score ? NOTE_LABELS[Math.round(parseFloat(r.score))] : "—";
+    const scoreLabel = r.score ? NOTE_LABELS[Math.round(parseFloat(r.score))] : "-";
 
     const etiqHTML = r.etiquetteAbsente
       ? `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;">✕ Étiquette absente</span>`
@@ -6203,11 +6203,11 @@ _PDF joint_`;
     <tr>
       <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
         <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Colis attendus</div>
-        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.nbColisAttendu || "—"}</div>
+        <div style="font-size:14px;color:#1a2e1a;font-weight:600;">${r.nbColisAttendu || "-"}</div>
       </td>
       <td style="padding:12px 24px;border-bottom:1px solid #f0f0f0;">
         <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Colis reçus</div>
-        <div style="font-size:14px;color:${r.nbColisRecu && r.nbColisAttendu && r.nbColisRecu !== r.nbColisAttendu ? "#d97706" : "#1a2e1a"};font-weight:600;">${r.nbColisRecu || "—"}${r.nbColisRecu && r.nbColisAttendu && r.nbColisRecu !== r.nbColisAttendu ? " ⚠" : ""}</div>
+        <div style="font-size:14px;color:${r.nbColisRecu && r.nbColisAttendu && r.nbColisRecu !== r.nbColisAttendu ? "#d97706" : "#1a2e1a"};font-weight:600;">${r.nbColisRecu || "-"}${r.nbColisRecu && r.nbColisAttendu && r.nbColisRecu !== r.nbColisAttendu ? " ⚠" : ""}</div>
       </td>
     </tr>` : "";
 
@@ -6278,32 +6278,32 @@ _PDF joint_`;
       <tr>
         <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
           <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Origine</div>
-          <div style="font-size:14px;color:#374151;font-weight:500;">${r.origine || "—"}</div>
+          <div style="font-size:14px;color:#374151;font-weight:500;">${r.origine || "-"}</div>
         </td>
         <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
           <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Température</div>
-          <div style="font-size:14px;color:${r.temperature && parseFloat(r.temperature) > 8 ? "#d97706" : "#1d4ed8"};font-weight:600;">🌡️ ${r.temperature ? r.temperature + "°C" : "—"}</div>
+          <div style="font-size:14px;color:${r.temperature && parseFloat(r.temperature) > 8 ? "#d97706" : "#1d4ed8"};font-weight:600;">🌡️ ${r.temperature ? r.temperature + "°C" : "-"}</div>
         </td>
       </tr>
       <tr>
         <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
           <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Lot Moorea</div>
-          <div style="font-size:14px;color:#374151;font-weight:600;">${r.lotMoorea || "—"}</div>
+          <div style="font-size:14px;color:#374151;font-weight:600;">${r.lotMoorea || "-"}</div>
         </td>
         <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
           <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Lot Fournisseur</div>
-          <div style="font-size:14px;color:#374151;font-weight:500;">${r.lotFournisseur || "—"}</div>
+          <div style="font-size:14px;color:#374151;font-weight:500;">${r.lotFournisseur || "-"}</div>
         </td>
       </tr>
       ${colisHTML}
       ${r.poids || r.conditionnement ? `<tr>
         <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
           <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Poids</div>
-          <div style="font-size:14px;color:#374151;">${r.poids || "—"}</div>
+          <div style="font-size:14px;color:#374151;">${r.poids || "-"}</div>
         </td>
         <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
           <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Conditionnement</div>
-          <div style="font-size:14px;color:#374151;">${r.conditionnement || "—"}</div>
+          <div style="font-size:14px;color:#374151;">${r.conditionnement || "-"}</div>
         </td>
       </tr>` : ""}
     </table>
@@ -6319,7 +6319,7 @@ _PDF joint_`;
           <div style="font-size:13px;color:#6b7280;">${scoreLabel}</div>
         </td>
         <td align="right" style="padding:16px 20px;">
-          <span style="font-size:36px;font-weight:900;color:${scoreColor};">${r.score || "—"}</span>
+          <span style="font-size:36px;font-weight:900;color:${scoreColor};">${r.score || "-"}</span>
           <span style="font-size:14px;color:#9ca3af;"> / 5</span>
         </td>
       </tr>
@@ -6781,7 +6781,7 @@ _PDF joint_`;
         });
       }
     } catch {
-      // Silencieux — le PDF est déjà généré
+      // Silencieux - le PDF est déjà généré
     }
 
     showToast("📄 Bon de reprise généré et sauvegardé");
@@ -6867,7 +6867,7 @@ _PDF joint_`;
   // ─── RENDER ───
 
   // Écran de chargement
-  // ─── PAGE FICHE PALETTE PUBLIQUE (scan QR — avant auth) ───
+  // ─── PAGE FICHE PALETTE PUBLIQUE (scan QR - avant auth) ───
   if (showPalette) {
     return <PalettePublique id={showPalette} />;
   }
@@ -6978,7 +6978,7 @@ _PDF joint_`;
     const textMain = darkMode ? "#e8e6f0" : "#1a2e1a";
     const textSub = darkMode ? "#9b97b2" : "#9ca3af";
 
-    // Ligne 1 — prioritaires
+    // Ligne 1 - prioritaires
     const row1 = [
       { icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, stat: nbAttente > 0 ? `${nbAttente} en attente auj.` : nbTraitesAujourdHui > 0 ? `${nbTraitesAujourdHui} traités auj.` : "Aucun arrivage auj.", action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
       { icon: "📊", label: "Rapports", color: "#16a34a", badge: null, stat: `${nbRapports} total`, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
@@ -6986,7 +6986,7 @@ _PDF joint_`;
       { icon: "🔍", label: "Chercher lot", color: "#3b82f6", badge: null, stat: "Traçabilité", action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
     ];
 
-    // Ligne 2 — secondaires
+    // Ligne 2 - secondaires
     const row2 = [
       { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", badge: null, stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
@@ -7092,12 +7092,12 @@ _PDF joint_`;
           {/* SECTION MOOREA */}
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
 
-          {/* Ligne 1 — 4 carrés */}
+          {/* Ligne 1 - 4 carrés */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}>
             {row1.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
-          {/* Ligne 2 — 3 carrés */}
+          {/* Ligne 2 - 3 carrés */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
             {row2.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
@@ -7237,16 +7237,16 @@ _PDF joint_`;
                     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                       <div style={{ background: "#fff", borderRadius: 10, padding: "8px 14px", border: "1px solid #e8e0d0", flex: 1, minWidth: 120 }}>
                         <p style={{ margin: "0 0 2px", fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Agréeur</p>
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>{a.rapport.agreeur || "—"}</p>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>{a.rapport.agreeur || "-"}</p>
                       </div>
                       <div style={{ background: "#fff", borderRadius: 10, padding: "8px 14px", border: "1px solid #e8e0d0", flex: 1, minWidth: 120 }}>
                         <p style={{ margin: "0 0 2px", fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Heure agréage</p>
-                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>{a.rapport.heure_agreage || "—"}</p>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>{a.rapport.heure_agreage || "-"}</p>
                       </div>
                       {a.rapport.qualite > 0 && (
                         <div style={{ background: NOTE_COLORS[a.rapport.qualite] + "15", borderRadius: 10, padding: "8px 14px", border: `1px solid ${NOTE_COLORS[a.rapport.qualite]}44`, flex: 1, minWidth: 120 }}>
                           <p style={{ margin: "0 0 2px", fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Note qualité</p>
-                          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: NOTE_COLORS[a.rapport.qualite] }}>{a.rapport.qualite}/5 — {NOTE_LABELS[a.rapport.qualite]}</p>
+                          <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: NOTE_COLORS[a.rapport.qualite] }}>{a.rapport.qualite}/5 - {NOTE_LABELS[a.rapport.qualite]}</p>
                         </div>
                       )}
                       {a.rapport.temperature && (
@@ -7452,7 +7452,7 @@ _PDF joint_`;
         {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
 
-            {/* Actions — Import déplacé dans le filtre */}
+            {/* Actions - Import déplacé dans le filtre */}
             {/* Preview import */}
             {previewArr && (() => {
               const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
@@ -7507,19 +7507,19 @@ _PDF joint_`;
                   const allAttente = arts.every((a: any) => a.statut === "en attente");
                   if (hasRefus) {
                     const refus = arts.filter((a: any) => a.statut === "refusé");
-                    refus.forEach((a: any) => lines.push(`❌ ${fourn} — Refus · Lot ${a.lot_interne || "—"} · ${a.produit || ""} · ${a.quantite || "—"} colis`));
+                    refus.forEach((a: any) => lines.push(`❌ ${fourn} - Refus · Lot ${a.lot_interne || "-"} · ${a.produit || ""} · ${a.quantite || "-"} colis`));
                   } else if (hasReserve) {
                     const reserves = arts.filter((a: any) => a.statut === "sous réserve");
-                    reserves.forEach((a: any) => lines.push(`⚠️ ${fourn} — Réserve · Lot ${a.lot_interne || "—"} · ${a.produit || ""} · ${a.quantite || "—"} colis`));
+                    reserves.forEach((a: any) => lines.push(`⚠️ ${fourn} - Réserve · Lot ${a.lot_interne || "-"} · ${a.produit || ""} · ${a.quantite || "-"} colis`));
                   } else if (allValides) {
                     lines.push(`✅ ${fourn}`);
                   } else if (allAttente) {
-                    lines.push(`📦 ${fourn} — Pas encore reçu`);
+                    lines.push(`📦 ${fourn} - Pas encore reçu`);
                   } else {
-                    lines.push(`⏳ ${fourn} — En cours`);
+                    lines.push(`⏳ ${fourn} - En cours`);
                   }
                 });
-                const msg = `ARRIVAGES MOOREA — ${today}\n\n${lines.join("\n")}`;
+                const msg = `ARRIVAGES MOOREA - ${today}\n\n${lines.join("\n")}`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
               }} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #25d366", background: "#f0fdf4", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#15803d", whiteSpace: "nowrap" }}>
                 📲 Récap WA
@@ -7572,7 +7572,7 @@ _PDF joint_`;
 
               // Grouper tous les arrivages par date
               const byDate: Record<string, any[]> = {};
-              filtered.forEach((a: any) => { const d = a.date || "—"; if (!byDate[d]) byDate[d] = []; byDate[d].push(a); });
+              filtered.forEach((a: any) => { const d = a.date || "-"; if (!byDate[d]) byDate[d] = []; byDate[d].push(a); });
 
               const handleScanForDate = async (e: React.ChangeEvent<HTMLInputElement>, arrivagesDate: any[]) => {
                 const f = e.target.files?.[0]; if (!f) return;
@@ -7669,7 +7669,7 @@ _PDF joint_`;
                     onRapport={() => ouvrirRapportDepuisArrivage(a)}
                     onLitige={() => { ouvrirRapportDepuisArrivage(a, true); update(ref(db, `arrivages/${a.id}`), { statut: "sous réserve", litige: { type: "sous réserve", raison: "", pct: "", lot_moorea: a.lot_interne||"", lot_fournisseur: a.lot_fournisseur||"", date: new Date().toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now(), ouvertApresValidation: a.statut==="validé" } }); }}
                     onClotureLitige={() => { update(ref(db, `arrivages/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") }).then(() => showToast("✅ Litige clôturé")); }}
-                    onDestruction={async (qte: string, raison: string) => { await update(ref(db, `arrivages/${a.id}`), { destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName||user?.email||"—" } }); showToast("🗑 Destruction enregistrée"); }}
+                    onDestruction={async (qte: string, raison: string) => { await update(ref(db, `arrivages/${a.id}`), { destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName||user?.email||"-" } }); showToast("🗑 Destruction enregistrée"); }}
                     onPDF={() => rapport && downloadPDF(rapport)}
                     onWA={() => rapport && partagerWhatsApp(rapport)}
                     user={user}
@@ -7691,7 +7691,7 @@ _PDF joint_`;
             <p style={{ fontWeight:700, fontSize:12, color:"#6b7280", margin:"0 0 16px", textTransform:"uppercase", letterSpacing:"0.8px", fontFamily:"'Syne',sans-serif" }}>📊 Stats fournisseurs</p>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
               <StatCardArr label="Total arrivages" value={arrivages.length} color="#c8a84b" />
-              <StatCardArr label="Taux conformité" value={arrivages.filter(a=>a.statut!=="en attente").length ? `${Math.round(arrivages.filter(a=>a.statut==="validé").length/Math.max(arrivages.filter(a=>a.statut!=="en attente").length,1)*100)}%` : "—"} color="#1a6b3a" />
+              <StatCardArr label="Taux conformité" value={arrivages.filter(a=>a.statut!=="en attente").length ? `${Math.round(arrivages.filter(a=>a.statut==="validé").length/Math.max(arrivages.filter(a=>a.statut!=="en attente").length,1)*100)}%` : "-"} color="#1a6b3a" />
               <StatCardArr label="Litiges ouverts" value={arrivages.filter(a=>a.litige?.statut==="ouvert").length} color="#dc2626" />
             </div>
             {(() => {
@@ -7831,7 +7831,7 @@ _PDF joint_`;
                         await update(ref(db, `arrivages/${a.id}`), {
                           recupere: true,
                           recupereLe: date,
-                          recuperePar: user?.displayName || user?.email || "—",
+                          recuperePar: user?.displayName || user?.email || "-",
                         });
                         showToast("✅ Lot marqué comme récupéré par le fournisseur");
                       }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
@@ -7843,7 +7843,7 @@ _PDF joint_`;
                         const raison = window.prompt("Raison de la destruction :");
                         if (!raison) return;
                         await update(ref(db, `arrivages/${a.id}`), {
-                          destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName || user?.email || "—", effectuee: true }
+                          destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName || user?.email || "-", effectuee: true }
                         });
                         showToast("🗑 Destruction enregistrée");
                       }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
@@ -8199,7 +8199,7 @@ _PDF joint_`;
                       {/* Total = colis reçus */}
                       <div style={{ background: "#fff", borderRadius: 10, padding: "10px 14px", marginBottom: 12, border: `1px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span style={{ fontSize: 13, color: "#6b7280" }}>Total colis</span>
-                        <span style={{ fontSize: 18, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{totalColis || "—"}</span>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{totalColis || "-"}</span>
                       </div>
                       <F label={`Nombre de colis à ${decision === "reserve" ? "mettre en réserve" : "refuser"}`}>
                         <input type="number" value={nbColisAEcarter} onChange={e => setNbColisAEcarter(e.target.value)} placeholder={`Ex: ${totalColis ? Math.round(parseFloat(totalColis) * 0.2) : 10}`} min="0" max={totalColis || undefined} style={{ border: `1.5px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }} />
@@ -8240,7 +8240,7 @@ _PDF joint_`;
               📷 Scanner une palette → Créer un rapport
             </button>
 
-            {/* TOGGLES DÉCISION — toujours visibles */}
+            {/* TOGGLES DÉCISION - toujours visibles */}
             {(() => {
               const types = [
                 { id: "stock", label: "Conformes", color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
@@ -8549,7 +8549,7 @@ _PDF joint_`;
 
                 {(r.etiquetteAbsente || (r.etiquette && ETIQUETTE_ITEMS.some(item => !r.etiquette[item.id]))) && (
                   <div style={{ marginBottom: 8 }}>
-                    <p style={{ fontSize: 11, color: "#dc2626", fontWeight: 600, marginBottom: 4 }}>🏷️ {r.etiquetteAbsente ? "Étiquette absente" : "Étiquette — éléments manquants :"}</p>
+                    <p style={{ fontSize: 11, color: "#dc2626", fontWeight: 600, marginBottom: 4 }}>🏷️ {r.etiquetteAbsente ? "Étiquette absente" : "Étiquette - éléments manquants :"}</p>
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       {ETIQUETTE_ITEMS.filter(item => !r.etiquette?.[item.id]).map(item => (
                         <span key={item.id} style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 6, padding: "2px 8px" }}>{item.label}</span>
