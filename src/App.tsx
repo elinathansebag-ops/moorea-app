@@ -6108,30 +6108,33 @@ _PDF joint_`;
 
     // Ligne 1 — prioritaires
     const row1 = [
-      { icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
-      { icon: "📊", label: "Rapports", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
-      { icon: "📦", label: "Stock", color: "#0891b2", badge: null, action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
-      { icon: "🔍", label: "Chercher lot", color: "#3b82f6", badge: null, action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
+      { icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, stat: nbAttente > 0 ? `${nbAttente} en attente` : "À jour ✓", action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
+      { icon: "📊", label: "Rapports", color: "#16a34a", badge: null, stat: `${nbRapports} total`, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
+      { icon: "📦", label: "Stock", color: "#0891b2", badge: null, stat: "GMS & Prestige", action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
+      { icon: "🔍", label: "Chercher lot", color: "#3b82f6", badge: null, stat: "Traçabilité", action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
     ];
 
     // Ligne 2 — secondaires
     const row2 = [
-      { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", badge: null, action: () => { setShowAccueil(false); setShowYukon(true); } },
-      { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", badge: null, action: () => { setShowAccueil(false); setShowRH(true); } },
+      { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", badge: null, stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
+      { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", badge: null, stat: "Temps & présences", action: () => { setShowAccueil(false); setShowRH(true); } },
     ];
 
     // Leofresh
     const leofreshBtns = [
-      { icon: "🏷️", label: "Étiquettes", color: "#f59e0b", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
-      { icon: "📊", label: "QR Code", color: "#27ae60", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowQrCode(true); } },
+      { icon: "🏷️", label: "Étiquettes", color: "#f59e0b", stat: "Export bilingue", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
+      { icon: "📊", label: "QR Code", color: "#27ae60", stat: "Scans réseau", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowQrCode(true); } },
     ];
 
-    function CardCarré({ icon, label, color, badge, action }: any) {
+    function CardCarré({ icon, label, color, badge, stat, action }: any) {
       return (
-        <button onClick={action} style={{ background: cardBg, border: `1.5px solid ${cardBorder}`, borderRadius: 14, padding: "14px 8px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, position: "relative" }}>
-          {badge && <span style={{ position: "absolute", top: 8, right: 8, background: color, color: "#fff", fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20 }}>{badge}</span>}
-          <span style={{ fontSize: 24, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: color + "18", borderRadius: 12 }}>{icon}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: textMain, lineHeight: 1.2 }}>{label}</span>
+        <button onClick={action} style={{ background: cardBg, border: `1.5px solid ${cardBorder}`, borderRadius: 16, padding: "16px 8px 14px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, position: "relative", width: "100%", transition: "border-color .15s, box-shadow .15s" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = color; (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 16px ${color}22`; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = cardBorder; (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}>
+          {badge && <span style={{ position: "absolute", top: 8, right: 8, background: color, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>{badge}</span>}
+          <span style={{ fontSize: 26, width: 50, height: 50, display: "flex", alignItems: "center", justifyContent: "center", background: color + "18", borderRadius: 14 }}>{icon}</span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: textMain, lineHeight: 1.2 }}>{label}</span>
+          <span style={{ fontSize: 10, color: color, fontWeight: 600, background: color + "15", padding: "2px 8px", borderRadius: 20 }}>{stat}</span>
         </button>
       );
     }
@@ -6190,7 +6193,7 @@ _PDF joint_`;
           </div>
         )}
 
-        <div style={{ maxWidth: 520, margin: "0 auto", padding: "16px 16px 100px" }}>
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 16px 100px" }}>
 
           {/* PANNEAU LEOFRESH */}
           {showLeofresh && (
@@ -6199,9 +6202,10 @@ _PDF joint_`;
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
                 {leofreshBtns.map(b => (
                   <button key={b.label} onClick={b.action}
-                    style={{ background: darkMode ? "#22200a" : "#fff", border: `1.5px solid ${b.color}33`, borderRadius: 12, padding: "14px 8px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 24, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "22", borderRadius: 12 }}>{b.icon}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: textMain }}>{b.label}</span>
+                    style={{ background: darkMode ? "#22200a" : "#fff", border: `1.5px solid ${b.color}33`, borderRadius: 14, padding: "16px 8px 14px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
+                    <span style={{ fontSize: 26, width: 50, height: 50, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "22", borderRadius: 14 }}>{b.icon}</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: textMain }}>{b.label}</span>
+                    <span style={{ fontSize: 10, color: b.color, fontWeight: 600, background: b.color + "15", padding: "2px 8px", borderRadius: 20 }}>{b.stat}</span>
                   </button>
                 ))}
               </div>
@@ -6211,13 +6215,13 @@ _PDF joint_`;
           {/* SECTION MOOREA */}
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
 
-          {/* Ligne 1 — 4 carés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+          {/* Ligne 1 — 4 carrés */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}>
             {row1.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
-          {/* Ligne 2 — carés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+          {/* Ligne 2 — 2 carrés */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
             {row2.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
@@ -6726,7 +6730,11 @@ _PDF joint_`;
 
               return (
                 <>
-                  {Object.entries(byDate).sort((a,b)=>b[0].localeCompare(a[0])).map(([date, arr]) => {
+                  {Object.entries(byDate).sort((a,b) => {
+                    // Convertir DD/MM/YYYY en timestamp pour tri correct
+                    const toTs = (d: string) => { const p = d.split("/"); return p.length === 3 ? new Date(+p[2], +p[1]-1, +p[0]).getTime() : 0; };
+                    return toTs(b[0]) - toTs(a[0]);
+                  }).map(([date, arr]) => {
                     const enAttente = arr.filter((a: any) => a.statut === "en attente");
                     const traites = arr.filter((a: any) => a.statut !== "en attente");
                     return (
