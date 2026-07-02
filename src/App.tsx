@@ -6237,8 +6237,8 @@ _PDF joint_`;
             {row1.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
-          {/* Ligne 2 — 2 carrés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+          {/* Ligne 2 — 3 carrés */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
             {row2.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
