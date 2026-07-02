@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import jsPDF from "jspdf";
+import { CLIENTS_LIST } from "./ClientsList";
 
 // ── Types ──
 interface ProduitLigne {
@@ -161,13 +162,17 @@ function InputProduit({ value, onChange, placeholder, list }: { value: string; o
 
   useEffect(() => { setQ(value); }, [value]);
 
-  const filtered = q.length > 1 ? list.filter(a => a.toLowerCase().includes(q.toLowerCase())).slice(0, 8) : [];
+  // Recherche intelligente : chaque mot tapé doit apparaître dans le nom
+  const filtered = q.trim().length > 1 ? (() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    return list.filter(a => words.every(w => a.toLowerCase().includes(w))).slice(0, 10);
+  })() : [];
 
   return (
     <div ref={ref2} style={{ position: "relative" }}>
       <input style={INP} value={q} placeholder={placeholder || "Produit"}
         onChange={e => { setQ(e.target.value); onChange(e.target.value); setShow(true); }}
-        onFocus={() => setShow(true)}
+        onFocus={() => q.trim().length > 1 && setShow(true)}
         onBlur={() => setTimeout(() => setShow(false), 150)}
         autoComplete="off" />
       {show && filtered.length > 0 && (
@@ -186,7 +191,37 @@ function InputProduit({ value, onChange, placeholder, list }: { value: string; o
   );
 }
 
-// ── Lignes produits (formulaire commercial) ──
+// ── Composant recherche client ──
+function InputClient({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [show, setShow] = useState(false);
+  const [q, setQ] = useState(value);
+  useEffect(() => { setQ(value); }, [value]);
+  const filtered = q.length > 1 ? (() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    return CLIENTS_LIST.filter(c => words.every(w => c.toLowerCase().includes(w))).slice(0, 8);
+  })() : [];
+  return (
+    <div style={{ position: "relative" }}>
+      <input style={INP} value={q} placeholder={placeholder || "ex : Carrefour Billy"}
+        onChange={e => { setQ(e.target.value); onChange(e.target.value); setShow(true); }}
+        onFocus={() => setShow(true)}
+        onBlur={() => setTimeout(() => setShow(false), 150)}
+        autoComplete="off" />
+      {show && filtered.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid rgba(200,168,75,.4)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.12)", zIndex: 400, maxHeight: 220, overflowY: "auto", marginTop: 3 }}>
+          {filtered.map((c, i) => (
+            <div key={i} onMouseDown={() => { onChange(c); setQ(c); setShow(false); }}
+              style={{ padding: "9px 14px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f5f3ee" }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f5f3ee"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#fff"}>
+              {c}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function LignesPrevu({ rows, onChange }: { rows: ProduitLigne[]; onChange: (r: ProduitLigne[]) => void }) {
   const articlesList = (window as any).__STOCK_ARTICLES__ || [];
   const up = (i: number, f: keyof ProduitLigne, v: any) => onChange(rows.map((r, j) => j === i ? { ...r, [f]: v } : r));
@@ -578,7 +613,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
           <strong>{modalData?.numero}</strong> · {(modalData?.products || []).map((p: any) => p.nom).join(", ")}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <div><label style={LBL}>Client</label><input style={INP} value={rCli} onChange={e => setRCli(e.target.value)} /></div>
+          <div><label style={LBL}>Client</label><InputClient value={rCli} onChange={setRCli} /></div>
           <div><label style={LBL}>N° BL</label><input style={INP} type="number" value={rBl} onChange={e => setRBl(e.target.value)} /></div>
           <div><label style={LBL}>Transporteur</label><input style={INP} value={rTra} onChange={e => setRTra(e.target.value)} /></div>
           <div><label style={LBL}>Date livraison</label><input style={INP} type="date" value={rDat} onChange={e => setRDat(e.target.value)} /></div>
@@ -803,7 +838,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
         <Ovl close={() => setModal("choix")}>
           <p style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>📋 Nouveau retour prévu</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <div><label style={LBL}>Client</label><input style={INP} value={fCli} onChange={e => setFCli(e.target.value)} placeholder="ex : Carrefour Billy" /></div>
+            <div><label style={LBL}>Client</label><InputClient value={fCli} onChange={setFCli} /></div>
             <div><label style={LBL}>N° BL</label><input style={INP} type="number" value={fBl} onChange={e => setFBl(e.target.value)} /></div>
             <div><label style={LBL}>Transporteur</label><input style={INP} value={fTra} onChange={e => setFTra(e.target.value)} /></div>
             <div><label style={LBL}>Date livraison</label><input style={INP} type="date" value={fDat} onChange={e => setFDat(e.target.value)} /></div>
@@ -829,7 +864,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
             <div><label style={LBL}>Reçu par</label><input style={INP} value={eAgt} onChange={e => setEAgt(e.target.value)} /></div>
             <div><label style={LBL}>Date réception</label><input style={INP} type="date" value={eDat} onChange={e => setEDat(e.target.value)} /></div>
-            <div><label style={LBL}>Client (si connu)</label><input style={INP} value={eCli} onChange={e => setECli(e.target.value)} placeholder="optionnel" /></div>
+            <div><label style={LBL}>Client (si connu)</label><InputClient value={eCli} onChange={setECli} placeholder="optionnel" /></div>
             <div><label style={LBL}>Transporteur (si connu)</label><input style={INP} value={eTra} onChange={e => setETra(e.target.value)} placeholder="optionnel" /></div>
           </div>
           <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: 8 }}>Articles reçus</p>
@@ -869,24 +904,63 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
             {modalData.source === "commercial" && (
               <button style={{ ...BTN("#dbeafe", "#1d4ed8"), justifyContent: "flex-start" }}
-                onClick={() => setRecapMsg(`📦 RETOUR CLIENT À RÉCEPTIONNER — ${modalData.fiche?.numero}\n\n🏪 Client : ${modalData.fiche?.client}\n📋 BL : ${modalData.fiche?.bl}\n📅 Date : ${modalData.fiche?.dateLiv || modalData.fiche?.date}\n🚛 Transporteur : ${modalData.fiche?.transporteur || "—"}\n\nArticles :\n${(modalData.fiche?.products || []).map((p: any) => `  - ${p.nom}${p.qteAttendue ? " — " + p.qteAttendue + " attendus" : ""}${p.motif ? " (" + p.motif + ")" : ""}`).join("\n")}`)}>
+                onClick={() => {
+                  const f = modalData.fiche;
+                  const lignes = (f?.products || []).map((p: any) =>
+                    `  - ${p.nom}${p.qteAttendue ? " \u2014 " + p.qteAttendue + " attendu(s)" : ""}${p.motif ? " (" + p.motif + ")" : ""}`
+                  ).join("\n");
+                  setRecapMsg(
+                    "\ud83d\udce6 RETOUR CLIENT \u00c0 R\u00c9CEPTIONNER \u2014 " + f?.numero + "\n\n" +
+                    "\ud83c\udfea " + f?.client + "\n" +
+                    "\ud83d\udccb BL " + f?.bl + "\n" +
+                    "\ud83d\udcc5 Date livraison : " + (f?.dateLiv || f?.date) + "\n" +
+                    "\ud83d\ude9b Transporteur : " + (f?.transporteur || "\u2014") + "\n" +
+                    "\n" + lignes +
+                    (f?.comment ? "\n\n\ud83d\udcac " + f.comment : "")
+                  );
+                }}>
                 📦 Message au préparateur
               </button>
             )}
             {modalData.source === "entrepot" && (
               <button style={{ ...BTN("#fef3c7", "#b45309"), justifyContent: "flex-start" }}
-                onClick={() => setRecapMsg(`⚠️ RETOUR NON DÉCLARÉ REÇU — ${modalData.fiche?.numero}\n\n📅 ${modalData.fiche?.date} · 👤 ${modalData.fiche?.agent}\n${modalData.fiche?.clientConnu ? "🏪 Client : " + modalData.fiche.clientConnu : "🏪 Client : non identifié"}\n\nArticles :\n${(modalData.fiche?.products || []).map((p: any) => `  - ${p.nom}${p.qteRecue ? " × " + p.qteRecue : ""}${p.motif ? " (" + p.motif + ")" : ""}`).join("\n")}\n\n⚡ Action requise : rattacher à une commande`)}>
+                onClick={() => {
+                  const f = modalData.fiche;
+                  const lignes = (f?.products || []).map((p: any) =>
+                    `  - ${p.nom}${p.qteRecue ? " \u00d7 " + p.qteRecue : ""}${p.motif ? " (" + p.motif + ")" : ""}${(p as any).qteStock > 0 ? " \u2713" + (p as any).qteStock + " stock" : ""}${(p as any).qteDestruction > 0 ? " \u2717" + (p as any).qteDestruction + " d\u00e9truit" : ""}`
+                  ).join("\n");
+                  setRecapMsg(
+                    "\u26a0\ufe0f RETOUR NON D\u00c9CLAR\u00c9 RE\u00c7U \u2014 " + f?.numero + "\n\n" +
+                    "\ud83d\udcc5 " + f?.date + "  \ud83d\udc64 " + f?.agent + "\n" +
+                    (f?.clientConnu ? "\ud83c\udfea Client : " + f.clientConnu + "\n" : "\ud83c\udfea Client : non identifi\u00e9\n") +
+                    (f?.transporteurConnu ? "\ud83d\ude9b Transporteur : " + f.transporteurConnu + "\n" : "") +
+                    "\n" + lignes +
+                    "\n\n\u26a1 Action requise : rattacher \u00e0 une commande" +
+                    (f?.comment ? "\n\n\ud83d\udcac " + f.comment : "")
+                  );
+                }}>
                 ⚠️ Alerter le commercial
               </button>
             )}
             {modalData.source === "valide" && (
               <button style={{ ...BTN("#dcfce7", "#15803d"), justifyContent: "flex-start" }}
                 onClick={() => {
-                  const prods = modalData.fiche?.products || [];
+                  const f = modalData.fiche;
+                  const prods = f?.products || [];
                   const totS = prods.reduce((s: number, p: any) => s + (p.controle?.qStock || 0), 0);
                   const totD = prods.reduce((s: number, p: any) => s + (p.controle?.qDestroy || 0), 0);
                   const totM = prods.reduce((s: number, p: any) => s + (p.controle?.qManque || 0), 0);
-                  setRecapMsg(`✅ RETOUR RÉCEPTIONNÉ ET POINTÉ — ${modalData.fiche?.numero}\n\n🏪 ${modalData.fiche?.client} · BL ${modalData.fiche?.bl}\n\n✓ En stock : ${totS}\n✗ Détruits : ${totD}\n⚠ Manquants : ${totM}${modalData.fiche?.commentPrep ? "\n\n💬 " + modalData.fiche.commentPrep : ""}`);
+                  const lignes = prods.map((p: any) => {
+                    const s = p.controle?.qStock || 0; const d = p.controle?.qDestroy || 0; const m = p.controle?.qManque || 0;
+                    return `  - ${p.nom}${s > 0 ? " \u2713" + s + " stock" : ""}${d > 0 ? " \u2717" + d + " d\u00e9truit" : ""}${m > 0 ? " \u26a0" + m + " manquant" : ""}`;
+                  }).join("\n");
+                  setRecapMsg(
+                    "\u2705 RETOUR POINT\u00c9 \u2014 " + f?.numero + "\n\n" +
+                    "\ud83c\udfea " + f?.client + "  \ud83d\udccb BL " + f?.bl + "\n\n" +
+                    lignes + "\n\n" +
+                    "\u2714 En stock : " + totS + "  \u2716 D\u00e9truits : " + totD + (totM > 0 ? "  \u26a0 Manquants : " + totM : "") +
+                    (f?.commentPrep ? "\n\n\ud83d\udcac " + f.commentPrep : "")
+                  );
                 }}>
                 ✅ Envoyer le bilan au commercial
               </button>
