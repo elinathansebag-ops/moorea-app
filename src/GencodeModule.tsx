@@ -4651,7 +4651,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
               </div>
             </div>
 
-            {listeFiltered.length === 0 && <div style={{ background:'#fff', borderRadius:14, padding:32, textAlign:'center', color:'#aaa' }}>Aucun gencode lié — utilise l'onglet "À rattacher"</div>}
+            {listeFiltered.length === 0 && <div style={{ background:'#fff', borderRadius:14, padding:32, textAlign:'center', color:'#aaa' }}>Aucun gencode lié — utilise l&apos;onglet &quot;À rattacher&quot;</div>}
 
             {/* Liste */}
             <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
