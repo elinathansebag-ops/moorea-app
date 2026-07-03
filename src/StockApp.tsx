@@ -615,7 +615,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
   {article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"}
 ];
 
-export function StockApp({ onExit }: { onExit: () => void }) {
+export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1705,12 +1705,14 @@ export function StockApp({ onExit }: { onExit: () => void }) {
         const q = (document.getElementById("s-cfg-srch") as HTMLInputElement)?.value.toLowerCase() || "";
         const tbody = document.getElementById("s-cfg-body");
         if (!tbody) return;
-        // Toujours utiliser STOCK_DATA_EMBEDDED comme source de base
-        const embedded = STOCK_DATA_EMBEDDED.map((s: any) => ({ article: s.article, equipe: s.equipe, famille: "" }));
+        // Source: Firebase catalogue > stock importé > STOCK_CONFIG_ARTICLES
+        const catArticles = (typeof catalogueArticles !== 'undefined' && catalogueArticles && catalogueArticles.length > 0)
+          ? catalogueArticles.map((a: any) => ({ article: a.libelle, equipe: a.equipe || _byArticle?.[a.libelle?.toLowerCase().trim()] || "PRESTIGE", famille: "" }))
+          : STOCK_CONFIG_ARTICLES.map((s: any) => ({ article: s.article, equipe: s.equipe, famille: "" }));
         const source = allArticles.length ? allArticles.map((a: any) => ({
           article: a.article, famille: a.famille || "",
           equipe: _byArticle?.[a.article?.toLowerCase().trim()] || a.equipe || "PRESTIGE"
-        })) : embedded;
+        })) : catArticles;
         const getEq = (a: any) => _byArticle?.[a.article?.toLowerCase().trim()] || a.equipe || "PRESTIGE";
         let rows = source.filter((a: any) => {
           if (q && !a.article.toLowerCase().includes(q)) return false;

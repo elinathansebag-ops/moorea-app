@@ -611,7 +611,12 @@ _PDF joint_`;
   const score = scoreGlobal(notes);
 
   // Suggestions depuis l'historique
-  const suggestionsProduits = [...new Set(rapports.map(r => r.produit).filter(Boolean))];
+  const suggestionsProduits = [
+    ...new Set([
+      ...(catalogueArticles.length > 0 ? catalogueArticles.map(a => a.libelle) : []),
+      ...rapports.map(r => r.produit).filter(Boolean)
+    ])
+  ];
   const suggestionsFournisseurs = [...new Set(rapports.map(r => r.fournisseur).filter(Boolean))];
   const suggestionsOrigines = [...new Set(rapports.map(r => r.origine).filter(Boolean))];
   const suggestionsCalibres = [...new Set(rapports.map(r => r.calibre).filter(Boolean))];
@@ -1747,7 +1752,7 @@ _PDF joint_`;
 
 
   if (showRetours) {
-    const stockArticles = STOCK_ARTICLES_LIST.map((s: any) => s.article);
+    const stockArticles = catalogueArticles.length > 0 ? catalogueArticles.map(a => a.libelle) : [];
     return <RetoursModule onClose={() => { setShowRetours(false); setShowAccueil(true); }} stockArticles={stockArticles} />;
   }
 
