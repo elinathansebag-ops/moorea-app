@@ -1050,9 +1050,10 @@ interface Article {
 
 
 // Ligne simple : nom gencode | recherche par code/libellé | bouton Fusionner
-function SimpleRow({ article, allArticlesList, onSave }: {
+function SimpleRow({ article, allArticlesList, usedCodes, onSave }: {
   article: Article;
   allArticlesList: {article: string, code: string}[];
+  usedCodes: Set<string>;
   onSave: (nomGeslot: string[], code: string) => void;
 }) {
   // Trouver l'article sélectionné depuis code_article ou nom_geslot
@@ -1077,7 +1078,7 @@ function SimpleRow({ article, allArticlesList, onSave }: {
     if (q.length < 1) {
       // Suggestions auto
       const sugg = article.suggestions || [];
-      return allArticlesList.filter(a => sugg.includes(a.article)).slice(0, 8);
+      return allArticlesList.filter(a => sugg.includes(a.article)).slice(0, 12);
     }
     const words = norm(q).split(/\s+/).filter(Boolean);
     const results = allArticlesList.filter(a =>
@@ -1085,9 +1086,9 @@ function SimpleRow({ article, allArticlesList, onSave }: {
     );
     if (results.length === 0 && words.length === 1 && words[0].length <= 3) {
       const letters = words[0].split('');
-      return allArticlesList.filter(a => a && a.article && letters.every(l => norm(a.article).includes(l))).slice(0, 50);
+      return allArticlesList.filter(a => a && a.article && letters.every(l => norm(a.article).includes(l))).slice(0, 200);
     }
-    return results.slice(0, 50);
+    return results.slice(0, 200);
   })();
 
   const isLinked = !!(article.code_article || article.nom_geslot?.length > 0);
@@ -1117,7 +1118,7 @@ function SimpleRow({ article, allArticlesList, onSave }: {
           style={{ width:'100%', padding:'7px 10px', border:`1.5px solid ${selected?'#27ae60':'#ddd'}`, borderRadius:8, fontSize:12, outline:'none', fontFamily:'inherit', boxSizing:'border-box', background: selected?'#f0fff4':'#fff' }}
         />
         {open && filtered.length > 0 && (
-          <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#fff', border:'1.5px solid #3b82f6', borderRadius:8, zIndex:200, maxHeight:200, overflowY:'auto', boxShadow:'0 4px 20px rgba(0,0,0,.12)' }}>
+          <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#fff', border:'1.5px solid #3b82f6', borderRadius:8, zIndex:200, maxHeight:320, overflowY:'auto', boxShadow:'0 4px 20px rgba(0,0,0,.12)' }}>
             {q.length < 1 && <div style={{ padding:'4px 10px', fontSize:9, fontWeight:700, color:'#aaa', background:'#f5f5f5' }}>SUGGESTIONS</div>}
             {filtered.map(g => (
               <button key={g.code || g.article} onMouseDown={() => { setSelected(g); setQ(''); setOpen(false); }}
@@ -1220,7 +1221,7 @@ export default function GencodeModule({ onClose }: { onClose: () => void }) {
     normQ(a.conditionnement||'').includes(q) ||
     normQ(a.origine||'').includes(q) ||
     a.nom_geslot?.some((n: string) => normQ(n).includes(q))
-  ).slice(0, 50);
+  ).slice(0, 200);
 
   const S: React.CSSProperties = { padding:'8px 10px', border:'1.5px solid #e0e0e0', borderRadius:8, fontSize:12, outline:'none', fontFamily:'inherit', width:'100%' };
 
@@ -1343,7 +1344,7 @@ export default function GencodeModule({ onClose }: { onClose: () => void }) {
                         if (linkSearch === 'linked') return isLinked;
                         return true;
                       })
-                      .map(a => <SimpleRow key={a.id} article={a} allArticlesList={ALL_ARTICLES} onSave={(g, code) => saveLinkForArticle(a.id, g, code)} />)
+                      .map(a => <SimpleRow key={a.id} article={a} allArticlesList={ALL_ARTICLES} usedCodes={new Set(articles.filter(x=>x.id!==a.id&&x.code_article).map(x=>x.code_article!))} onSave={(g, code) => saveLinkForArticle(a.id, g, code)} />)
                     }
                   </div>
                 </div>
