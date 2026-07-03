@@ -4576,6 +4576,12 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
     setTimeout(() => setStatus(''), 2000);
   }
 
+  function unlinkArticle(articleId: string) {
+    update(ref(db, `gencode_articles/${articleId}`), { code_article: '', nom_geslot: [] });
+    setArticles(prev => prev.map(a => a.id === articleId ? { ...a, code_article: '', nom_geslot: [] } : a));
+    setPage('rattacher');
+  }
+
   function importDefaults() {
     setStatus('⏳ Import...');
     const obj: any = {};
@@ -4597,123 +4603,128 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
     return true;
   });
 
+  const page1 = (
+    <div>
+      <div style={{ background:'#fff', borderRadius:14, padding:'12px 16px', marginBottom:12, display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher gencode, produit, EAN..."
+          style={{ flex:1, minWidth:200, padding:'9px 14px', border:'1.5px solid #e0e0e0', borderRadius:10, fontSize:13, outline:'none', fontFamily:'inherit' }} />
+        <div style={{ display:'flex', gap:6 }}>
+          {(['','barquette','colis','sachet','autre'] as string[]).map(v => (
+            <button key={v} onClick={() => setTypeFilter(v)}
+              style={{ padding:'6px 12px', borderRadius:20, border:`1px solid ${typeFilter===v?'#3b82f6':'#e0e0e0'}`, background:typeFilter===v?'#3b82f6':'#fff', color:typeFilter===v?'#fff':'#555', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap' }}>
+              {v === '' ? 'Tous' : v === 'barquette' ? 'Barquette' : v === 'colis' ? 'Colis' : v === 'sachet' ? 'Sachet' : 'Autre'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {listeFiltered.length === 0 && (
+        <div style={{ background:'#fff', borderRadius:14, padding:32, textAlign:'center', color:'#aaa' }}>
+          Aucun gencode lie - utilisez l&apos;onglet rattacher
+        </div>
+      )}
+      <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'80px 1fr 130px 140px 36px', background:'#f0f4ff', padding:'8px 14px', borderBottom:'1px solid #c7d7ff', gap:10 }}>
+          <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>TYPE</span>
+          <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>GENCODE</span>
+          <span style={{ fontSize:11, fontWeight:700, color:'#27ae60' }}>CODE ARTICLE</span>
+          <span style={{ fontSize:11, fontWeight:700, color:'#999' }}>EAN</span>
+          <span />
+        </div>
+        <div style={{ maxHeight:'70vh', overflowY:'auto' }}>
+          {listeFiltered.map(a => {
+            const type = getType(a.conditionnement);
+            const linkedArticle = ALL_ARTICLES.find(x => x.code === a.code_article);
+            return (
+              <div key={a.id} style={{ display:'grid', gridTemplateColumns:'80px 1fr 130px 140px 36px', padding:'8px 14px', borderBottom:'1px solid #f5f5f5', gap:10, alignItems:'center' }}>
+                <span style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:10, background:TYPE_BG[type], color:TYPE_COLORS[type] }}>{type}</span>
+                <div>
+                  <div style={{ fontSize:12, fontWeight:700 }}>{a.produit}{a.variete ? ` - ${a.variete}` : ''}</div>
+                  <div style={{ fontSize:11, color:'#555' }}>{a.conditionnement}</div>
+                  {a.origine && <div style={{ fontSize:10, color:'#3b82f6' }}>{a.origine}</div>}
+                </div>
+                <div>
+                  {a.code_article && <div style={{ fontFamily:'monospace', fontWeight:700, color:'#27ae60', fontSize:11 }}>{a.code_article}</div>}
+                  {linkedArticle && <div style={{ fontSize:10, color:'#555' }}>{linkedArticle.article}</div>}
+                </div>
+                <div style={{ fontFamily:'monospace', fontSize:10, color:'#aaa' }}>{a.ean}</div>
+                <button onClick={() => unlinkArticle(a.id)} title="Modifier"
+                  style={{ background:'#f0f4ff', border:'none', borderRadius:6, width:32, height:32, cursor:'pointer', fontSize:13 }}>
+                  edit
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  const page2 = (
+    <div>
+      {unlinked.length === 0 ? (
+        <div style={{ background:'#fff', borderRadius:14, padding:32, textAlign:'center' }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>OK</div>
+          <p style={{ fontSize:14, fontWeight:700, color:'#27ae60' }}>Tous les gencodes sont rattaches !</p>
+        </div>
+      ) : (
+        <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', background:'#fff8e6', padding:'8px 14px', borderBottom:'2px solid #fde68a', gap:10 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:'#b45309' }}>Gencode sans lien</span>
+            <span style={{ fontSize:11, fontWeight:700, color:'#27ae60' }}>Chercher dans les 4020 articles</span>
+            <span style={{ fontSize:11, fontWeight:700, color:'#555' }}>Action</span>
+          </div>
+          <div style={{ maxHeight:'75vh', overflowY:'auto' }}>
+            {unlinked.map(a => (
+              <LinkRow key={a.id} article={a} usedCodes={usedCodes}
+                onFuse={(code, libelle) => { saveLink(a.id, code, libelle); setPage('liste'); }} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ minHeight:'100vh', background:'#f5f3ee', fontFamily:"'Syne', sans-serif" }}>
-      {/* TOP BAR */}
       <div style={{ background:'#0a0a0a', borderBottom:'3px solid #3b82f6', position:'sticky', top:0, zIndex:200, paddingTop:'env(safe-area-inset-top,0px)' }}>
         <div style={{ maxWidth:1000, margin:'0 auto', height:56, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={onClose} style={{ background:'rgba(255,255,255,.1)', border:'none', borderRadius:8, color:'#fff', padding:'6px 12px', cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit' }}>← Retour</button>
-            <span style={{ fontWeight:800, fontSize:15, color:'#fff' }}>🏷️ Gencodes <span style={{ color:'#3b82f6' }}>GMS</span></span>
+            <button onClick={onClose} style={{ background:'rgba(255,255,255,.1)', border:'none', borderRadius:8, color:'#fff', padding:'6px 12px', cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit' }}>
+              Retour
+            </button>
+            <span style={{ fontWeight:800, fontSize:15, color:'#fff' }}>
+              Gencodes <span style={{ color:'#3b82f6' }}>GMS</span>
+            </span>
           </div>
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-            <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{linked.length} liés</span>
-            <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{unlinked.length} à lier</span>
+            <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{linked.length} lies</span>
+            <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{unlinked.length} a lier</span>
             <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{articles.length} total</span>
           </div>
         </div>
       </div>
-
-      {/* NAVIGATION */}
       <div style={{ background:'#0a0a0a', borderBottom:'1px solid #222' }}>
         <div style={{ maxWidth:1000, margin:'0 auto', display:'flex', gap:4, padding:'0 16px 8px' }}>
           <button onClick={() => setPage('liste')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='liste'?700:500, color:page==='liste'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='liste'?'#3b82f6':'transparent', fontFamily:'inherit' }}>
-            📋 Gencodes liés ({linked.length})
+            Gencodes lies ({linked.length})
           </button>
           <button onClick={() => setPage('rattacher')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='rattacher'?700:500, color:page==='rattacher'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='rattacher'?'#f59e0b':'transparent', fontFamily:'inherit' }}>
-            🔗 À rattacher ({unlinked.length})
+            A rattacher ({unlinked.length})
           </button>
         </div>
       </div>
-
       <div style={{ maxWidth:1000, margin:'0 auto', padding:'16px 16px 80px' }}>
         {status && <div style={{ padding:'8px 14px', borderRadius:8, marginBottom:10, background:'#eafaf1', color:'#1e8449', fontSize:12, fontWeight:600 }}>{status}</div>}
-
         {!imported && (
           <div style={{ background:'#fff', border:'2px dashed #3b82f6', borderRadius:16, padding:24, textAlign:'center', marginBottom:16 }}>
             <p style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>Base vide - {ALL_GENCODE_ARTICLES.length} gencodes disponibles</p>
-            <button onClick={importDefaults} style={{ background:'#3b82f6', color:'#fff', border:'none', borderRadius:8, padding:'10px 20px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>⬇️ Importer</button>
+            <button onClick={importDefaults} style={{ background:'#3b82f6', color:'#fff', border:'none', borderRadius:8, padding:'10px 20px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+              Importer
+            </button>
           </div>
         )}
-
-        {/* ── PAGE 1 : LISTE GENCODES LIÉS ── */}
-        {page === 'liste' && (
-          <div>
-            {/* Recherche + filtres */}
-            <div style={{ background:'#fff', borderRadius:14, padding:'12px 16px', marginBottom:12, display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Rechercher gencode, produit, EAN..."
-                style={{ flex:1, minWidth:200, padding:'9px 14px', border:'1.5px solid #e0e0e0', borderRadius:10, fontSize:13, outline:'none', fontFamily:'inherit' }} />
-              <div style={{ display:'flex', gap:6 }}>
-                {[['','Tous'],['barquette','🔵 Barquette'],['colis','🟡 Colis'],['sachet','🟣 Sachet'],['autre','⚪ Autre']].map(([v,l]) => (
-                  <button key={v} onClick={() => setTypeFilter(v)}
-                    style={{ padding:'6px 12px', borderRadius:20, border:`1px solid ${typeFilter===v?'#3b82f6':'#e0e0e0'}`, background:typeFilter===v?'#3b82f6':'#fff', color:typeFilter===v?'#fff':'#555', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap' }}>{l}</button>
-                ))}
-              </div>
-            </div>
-
-            {listeFiltered.length === 0 && <div style={{ background:'#fff', borderRadius:14, padding:32, textAlign:'center', color:'#aaa' }}>Aucun gencode lié - utilise l&apos;onglet &quot;À rattacher&quot;</div>}
-
-            {/* Liste */}
-            <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
-              <div style={{ display:'grid', gridTemplateColumns:'auto 1fr auto auto 36px', background:'#f0f4ff', padding:'8px 14px', borderBottom:'1px solid #c7d7ff', gap:10 }}>
-                <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>TYPE</span>
-                <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>ARTICLE & CONDITIONNEMENT</span>
-                <span style={{ fontSize:11, fontWeight:700, color:'#27ae60' }}>CODE ARTICLE</span>
-                <span style={{ fontSize:11, fontWeight:700, color:'#999' }}>EAN</span>
-                <span />
-              <div style={{ maxHeight:'70vh', overflowY:'auto' }}>
-                {listeFiltered.map(a => {
-                  const type = getType(a.conditionnement);
-                  const linkedArticle = ALL_ARTICLES.find(x => x.code === a.code_article);
-                  return (
-                    <div key={a.id} style={{ display:'grid', gridTemplateColumns:'auto 1fr auto auto 36px', padding:'8px 14px', borderBottom:'1px solid #f5f5f5', gap:10, alignItems:'center' }}>
-                      <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:10, background:TYPE_BG[type], color:TYPE_COLORS[type], whiteSpace:'nowrap' }}>{type}</span>
-                      <div>
-                        <div style={{ fontSize:12, fontWeight:700 }}>{a.produit}{a.variete?` · ${a.variete}`:''}</div>
-                        <div style={{ fontSize:11, color:'#555' }}>{a.conditionnement}</div>
-                        {a.origine && <div style={{ fontSize:10, color:'#3b82f6' }}>📍 {a.origine}</div>}
-                      </div>
-                      <div style={{ fontSize:11, textAlign:'right' }}>
-                        {a.code_article && <div style={{ fontFamily:'monospace', fontWeight:700, color:'#27ae60' }}>{a.code_article}</div>}
-                        {linkedArticle && <div style={{ fontSize:10, color:'#555', maxWidth:180, textAlign:'right' }}>{linkedArticle.article}</div>}
-                      </div>
-                      <div style={{ fontFamily:'monospace', fontSize:11, color:'#aaa', textAlign:'right' }}>{a.ean}</div>
-                      <button onClick={() => { update(ref(db, `gencode_articles/${a.id}`), { code_article: '', nom_geslot: [] }); setPage('rattacher'); }}
-                        title="Modifier le lien"
-                        style={{ background:'#f0f4ff', border:'none', borderRadius:6, width:32, height:32, cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' }}>✏️</button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── PAGE 2 : À RATTACHER ── */}
-        {page === 'rattacher' && (
-          <div>
-            {unlinked.length === 0 ? (
-              <div style={{ background:'#fff', borderRadius:14, padding:32, textAlign:'center' }}>
-                <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
-                <p style={{ fontSize:14, fontWeight:700, color:'#27ae60' }}>Tous les gencodes sont rattachés !</p>
-              </div>
-            ) : (
-              <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', background:'#fff8e6', padding:'8px 14px', borderBottom:'2px solid #fde68a', gap:10 }}>
-                  <span style={{ fontSize:11, fontWeight:700, color:'#b45309' }}>Gencode sans lien</span>
-                  <span style={{ fontSize:11, fontWeight:700, color:'#27ae60' }}>Chercher dans les 4020 articles</span>
-                  <span style={{ fontSize:11, fontWeight:700, color:'#555' }}>Action</span>
-                </div>
-                <div style={{ maxHeight:'75vh', overflowY:'auto' }}>
-                  {unlinked.map(a => (
-                    <LinkRow key={a.id} article={a} usedCodes={usedCodes}
-                      onFuse={(code, libelle) => { saveLink(a.id, code, libelle); setPage('liste'); }} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {page === 'liste' && page1}
+        {page === 'rattacher' && page2}
       </div>
     </div>
   );
