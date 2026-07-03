@@ -2056,6 +2056,9 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
   {article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"}
 ];
 
+function StockApp({ onExit }: { onExit: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
