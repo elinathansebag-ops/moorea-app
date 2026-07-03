@@ -57,6 +57,9 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
 
   // Chercher le gencode correspondant à cet article
   const matchedGencode = gencodeArticles?.find(g =>
+    // Priorité: code_article
+    (arrivage.code_article && g.code_article && g.code_article === arrivage.code_article) ||
+    // Fallback: nom
     g.nom_geslot?.some((n: string) => n === arrivage.produit || n.toLowerCase() === (arrivage.produit || '').toLowerCase())
   );
 
@@ -89,7 +92,9 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
             style={{ width: 18, height: 18, cursor: "pointer", marginRight: 10, marginTop: 2, flexShrink: 0 }} />
         )}
         <div style={{ flex: 1 }}>
-          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{arrivage.produit}{arrivage.variete ? ` · ${arrivage.variete}` : ""}</p>
+          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{arrivage.produit}{arrivage.variete ? ` · ${arrivage.variete}` : ""}
+            {arrivage.code_article && <span style={{ marginLeft: 6, fontSize: 10, fontFamily: "monospace", color: "#27ae60", background: "#f0fff4", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>{arrivage.code_article}</span>}
+          </p>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
             <PillArr>📦 {arrivage.quantite} {arrivage.unite}</PillArr>
             {arrivage.lot_interne && <PillArr>🔖 {arrivage.lot_interne}</PillArr>}
@@ -1227,4 +1232,3 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     </div>
   );
 }
-
