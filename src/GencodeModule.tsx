@@ -4508,7 +4508,7 @@ function LinkRow({ article, usedCodes, onFuse }: {
 
       {/* Recherche article */}
       <div style={{ position:'relative' }}>
-        <input value={q || (selected ? `${selected.code} — ${selected.article}` : '')}
+        <input value={q || (selected ? `${selected.code} - ${selected.article}` : '')}
           onChange={e => { setQ(e.target.value); setSelected(null); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 200)}
@@ -4631,7 +4631,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
 
         {!imported && (
           <div style={{ background:'#fff', border:'2px dashed #3b82f6', borderRadius:16, padding:24, textAlign:'center', marginBottom:16 }}>
-            <p style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>Base vide — {ALL_GENCODE_ARTICLES.length} gencodes disponibles</p>
+            <p style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>Base vide - {ALL_GENCODE_ARTICLES.length} gencodes disponibles</p>
             <button onClick={importDefaults} style={{ background:'#3b82f6', color:'#fff', border:'none', borderRadius:8, padding:'10px 20px', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>⬇️ Importer</button>
           </div>
         )}
@@ -4651,7 +4651,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
               </div>
             </div>
 
-            {listeFiltered.length === 0 && <div style={{ background:'#fff', borderRadius:14, padding:32, textAlign:'center', color:'#aaa' }}>Aucun gencode lié — utilise l&apos;onglet &quot;À rattacher&quot;</div>}
+            {listeFiltered.length === 0 && <div style={{ background:'#fff', borderRadius:14, padding:32, textAlign:'center', color:'#aaa' }}>Aucun gencode lié - utilise l&apos;onglet &quot;À rattacher&quot;</div>}
 
             {/* Liste */}
             <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
