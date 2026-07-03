@@ -8,11 +8,6 @@ export const EMAILJS_TEMPLATE_ID = "template_ct6xaeg";
 export const EMAILJS_PUBLIC_KEY = "ZwcIMzI6JE0IkLZ8O";
 export const DESTINATAIRES = "commercial@moorea.fr,qualite@moorea.fr,agreage@moorea.fr";
 
-// ─── CONFIG EMAILJS ───
-const EMAILJS_SERVICE_ID = "service_xheyrpi";
-const EMAILJS_TEMPLATE_ID = "template_ct6xaeg";
-const EMAILJS_PUBLIC_KEY = "ZwcIMzI6JE0IkLZ8O";
-const DESTINATAIRES = "commercial@moorea.fr,qualite@moorea.fr,agreage@moorea.fr";
 
 export const CRITERES = [
   { id: "qualite", label: "Qualité visuelle", icon: "👁", desc: "Aspect général", accent: "#22c55e" },
