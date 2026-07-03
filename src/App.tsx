@@ -49,7 +49,7 @@ export default function App() {
   const [pageMode, setPageMode] = useState<"qualite" | "arrivages" | "historique_arr" | "stats_arr" | "saisie_arr">("arrivages");
   const [arrivages, setArrivages] = useState<any[]>([]);
   const [gencodeArticles, setGencodeArticles] = useState<any[]>([]);
-  const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "" });
+  const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "" });
   const [previewArr, setPreviewArr] = useState<any[] | null>(null);
   const [importingArr, setImportingArr] = useState(false);
   const [horsListeMode, setHorsListeMode] = useState(false);
@@ -86,7 +86,13 @@ export default function App() {
   const [showGencodeChecker, setShowGencodeChecker] = useState(false);
   const [showCatalogue, setShowCatalogue] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
-  const [catalogueArticles, setCatalogueArticles] = useState<{code:string,libelle:string}[]>([]);
+  const [catalogueArticles, setCatalogueArticles] = useState<{code:string,libelle:string,equipe:string}[]>([]);
+  // Helper: trouver le code article depuis le libellé
+  const getCodeArticle = (libelle: string): string => {
+    if (!libelle || !catalogueArticles.length) return "";
+    const found = catalogueArticles.find(a => a.libelle.toLowerCase() === libelle.toLowerCase());
+    return found?.code || "";
+  };
 
   // Charger les articles du catalogue depuis Firebase
   useEffect(() => {
@@ -252,7 +258,7 @@ export default function App() {
     if (!formArr.fournisseur || !formArr.produit || !formArr.quantite) { showToast("⚠ Champs requis manquants", "error"); return; }
     const now2 = new Date();
     await push(ref(db, "arrivages"), { ...formArr, statut: "en attente", date: now2.toLocaleDateString("fr-FR"), timestamp: Date.now() });
-    setFormArr({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "" });
+    setFormArr({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "" });
     setPageMode("arrivages"); showToast("Arrivage enregistré ✓");
   };
 
@@ -465,7 +471,7 @@ export default function App() {
       setPreviewArr(null); setImportingArr(false); return;
     }
 
-    for (const a of nouveaux) await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now() });
+    for (const a of nouveaux) { const ca = getCodeArticle(a.produit); await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now(), ...(ca ? {code_article: ca} : {}) }); }
     setPreviewArr(null); setImportingArr(false);
 
     if (doublons > 0) {
@@ -2460,7 +2466,7 @@ _PDF joint_`;
             </div>
             <div className="grid-2">
               <F label="Fournisseur" required><input value={formArr.fournisseur} onChange={e=>setFormArr({...formArr,fournisseur:e.target.value})} placeholder="Ex : PICVERT" /></F>
-              <F label="Produit" required><input value={formArr.produit} onChange={e=>setFormArr({...formArr,produit:e.target.value})} placeholder="Ex : Tomate grappe" /></F>
+              <F label="Produit" required><AutocompleteInput value={formArr.produit} onChange={v=>setFormArr({...formArr,produit:v,code_article:getCodeArticle(v)})} suggestions={suggestionsProduits} placeholder="Ex : Tomate grappe" required /></F>
               <F label="Variété"><input value={formArr.variete} onChange={e=>setFormArr({...formArr,variete:e.target.value})} /></F>
               <F label="Origine"><input value={formArr.origine} onChange={e=>setFormArr({...formArr,origine:e.target.value})} /></F>
               <F label="N° Lot interne"><input value={formArr.lot_interne} onChange={e=>setFormArr({...formArr,lot_interne:e.target.value})} /></F>
