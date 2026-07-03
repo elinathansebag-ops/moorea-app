@@ -4559,7 +4559,8 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
           ...ALL_GENCODE_ARTICLES.find(a => a.id === id) || {},
           ...v, id,
           suggestions: ALL_GENCODE_ARTICLES.find(a => a.id === id)?.suggestions || v.suggestions || [],
-          code_article: v.code_article || '',
+          // Priorité: lien manuel Firebase > lien auto pré-calculé
+          code_article: v.code_article || ALL_GENCODE_ARTICLES.find(a => a.id === id)?.code_article || '',
           nom_geslot: v.nom_geslot || [],
         })) as Article[];
         setArticles(loaded);
@@ -4574,6 +4575,23 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
     setArticles(prev => prev.map(a => a.id === articleId ? { ...a, code_article: code, nom_geslot: [libelle] } : a));
     setStatus(`✅ Lié : ${code}`);
     setTimeout(() => setStatus(''), 2000);
+  }
+
+  function syncAutoLinks() {
+    // Mettre à jour Firebase avec les liens auto pour les articles sans lien manuel
+    const updates: any = {};
+    ALL_GENCODE_ARTICLES.forEach(gc => {
+      if (gc.code_article) {
+        const existing = articles.find(a => a.id === gc.id);
+        if (!existing?.code_article) {
+          updates[`gencode_articles/${gc.id}/code_article`] = gc.code_article;
+          updates[`gencode_articles/${gc.id}/nom_geslot`] = gc.nom_geslot || [];
+        }
+      }
+    });
+    update(ref(db, '/'), updates);
+    setStatus(`Synchronisation de ${Object.keys(updates).length / 2} liens automatiques...`);
+    setTimeout(() => setStatus(''), 3000);
   }
 
   function unlinkArticle(articleId: string) {
@@ -4697,6 +4715,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
             </span>
           </div>
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {imported && <button onClick={syncAutoLinks} style={{ background:'rgba(255,255,255,.15)', border:'none', borderRadius:6, color:'#fff', padding:'4px 10px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>Sync auto</button>}
             <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{linked.length} lies</span>
             <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{unlinked.length} a lier</span>
             <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{articles.length} total</span>
