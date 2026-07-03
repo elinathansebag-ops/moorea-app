@@ -1120,9 +1120,9 @@ function SimpleRow({ article, allArticlesList, onSave }: {
           <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#fff', border:'1.5px solid #3b82f6', borderRadius:8, zIndex:200, maxHeight:200, overflowY:'auto', boxShadow:'0 4px 20px rgba(0,0,0,.12)' }}>
             {q.length < 1 && <div style={{ padding:'4px 10px', fontSize:9, fontWeight:700, color:'#aaa', background:'#f5f5f5' }}>SUGGESTIONS</div>}
             {filtered.map(g => (
-              <button key={g.code} onMouseDown={() => { setSelected(g); setQ(''); setOpen(false); }}
+              <button key={g.code || g.article} onMouseDown={() => { setSelected(g); setQ(''); setOpen(false); }}
                 style={{ display:'block', width:'100%', textAlign:'left', background: selected?.code===g.code?'#f0fff4':'#fff', border:'none', borderBottom:'1px solid #f5f5f5', padding:'8px 12px', cursor:'pointer', fontSize:11, fontFamily:'inherit', color: selected?.code===g.code?'#1a6b3a':'#333', fontWeight: selected?.code===g.code?700:400 }}>
-                {selected?.code===g.code?'✅ ':''}<span style={{fontFamily:'monospace',color:'#3b82f6'}}>{g.code}</span> — {g.article}
+                {selected?.code===g.code?'✅ ':''}{g.code ? g.code + ' — ' : ''}{g.article}
               </button>
             ))}
           </div>
@@ -1309,50 +1309,46 @@ export default function GencodeModule({ onClose }: { onClose: () => void }) {
               <div style={{ background:'#fff', borderRadius:16, padding:24, textAlign:'center' }}>
                 <p style={{ fontSize:14, color:'#aaa' }}>Importe d'abord la base depuis l'onglet Rechercher</p>
               </div>
-            ) : (() => {
-              const linked = articles.filter(a => a.code_article || a.nom_geslot?.length > 0);
-              const unlinked = articles.filter(a => !a.code_article && !a.nom_geslot?.length);
-              const [showAll, setShowAll] = [false, () => {}]; // handled by linkFilter below
-              return (
-                <>
-                  {/* Barre de progression */}
-                  <div style={{ background:'#fff', borderRadius:14, padding:'12px 16px', marginBottom:12 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                      <span style={{ fontSize:13, fontWeight:700 }}>Progression</span>
-                      <span style={{ fontSize:13, fontWeight:800, color:'#3b82f6' }}>{linked.length}/{articles.length}</span>
-                    </div>
-                    <div style={{ background:'#f0f0f0', borderRadius:10, height:10, overflow:'hidden', marginBottom:10 }}>
-                      <div style={{ background:'#3b82f6', height:'100%', width:`${(linked.length/articles.length)*100}%`, borderRadius:10 }} />
-                    </div>
-                    <div style={{ display:'flex', gap:8 }}>
-                      {[['all','Tous ('+articles.length+')'],['unlinked','À rattacher ('+unlinked.length+')'],['linked','Liés ('+linked.length+')']].map(([v,l]) => (
-                        <button key={v} onClick={() => setLinkSearch(v)}
-                          style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${linkSearch===v?'#3b82f6':'#ddd'}`, background:linkSearch===v?'#3b82f6':'#fff', color:linkSearch===v?'#fff':'#555', fontSize:12, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>{l}</button>
-                      ))}
-                    </div>
+            ) : (
+              <>
+                {/* Barre de progression */}
+                <div style={{ background:'#fff', borderRadius:14, padding:'12px 16px', marginBottom:12 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                    <span style={{ fontSize:13, fontWeight:700 }}>Progression</span>
+                    <span style={{ fontSize:13, fontWeight:800, color:'#3b82f6' }}>{linkedCount}/{articles.length}</span>
                   </div>
+                  <div style={{ background:'#f0f0f0', borderRadius:10, height:10, overflow:'hidden', marginBottom:10 }}>
+                    <div style={{ background:'#3b82f6', height:'100%', width:`${(linkedCount/articles.length)*100}%`, borderRadius:10 }} />
+                  </div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    {([['all','Tous ('+articles.length+')'],['unlinked','À rattacher ('+(articles.length-linkedCount)+')'],['linked','Liés ('+linkedCount+')']] as [string,string][]).map(([v,l]) => (
+                      <button key={v} onClick={() => setLinkSearch(v)}
+                        style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${linkSearch===v?'#3b82f6':'#ddd'}`, background:linkSearch===v?'#3b82f6':'#fff', color:linkSearch===v?'#fff':'#555', fontSize:12, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
 
-                  {/* Tableau compact */}
-                  <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 120px', background:'#f0f4ff', padding:'8px 16px', borderBottom:'2px solid #c7d7ff', gap:12 }}>
-                      <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>Gencode</span>
-                      <span style={{ fontSize:11, fontWeight:700, color:'#1a6b3a' }}>Article (code + libellé)</span>
-                      <span style={{ fontSize:11, fontWeight:700, color:'#555' }}>Action</span>
-                    </div>
-                    <div style={{ maxHeight:'65vh', overflowY:'auto' }}>
-                      {articles
-                        .filter(a => {
-                          if (linkSearch === 'unlinked') return !a.code_article && !a.nom_geslot?.length;
-                          if (linkSearch === 'linked') return !!(a.code_article || a.nom_geslot?.length);
-                          return true;
-                        })
-                        .map(a => <SimpleRow key={a.id} article={a} allArticlesList={ALL_ARTICLES} onSave={(g, code) => saveLinkForArticle(a.id, g, code)} />)
-                      }
-                    </div>
+                {/* Tableau */}
+                <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 120px', background:'#f0f4ff', padding:'8px 16px', borderBottom:'2px solid #c7d7ff', gap:12 }}>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>Gencode</span>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#1a6b3a' }}>Article (code + libellé)</span>
+                    <span style={{ fontSize:11, fontWeight:700, color:'#555' }}>Action</span>
                   </div>
-                </>
-              );
-            })()}
+                  <div style={{ maxHeight:'65vh', overflowY:'auto' }}>
+                    {articles
+                      .filter(a => {
+                        const isLinked = !!(a.code_article || a.nom_geslot?.length);
+                        if (linkSearch === 'unlinked') return !isLinked;
+                        if (linkSearch === 'linked') return isLinked;
+                        return true;
+                      })
+                      .map(a => <SimpleRow key={a.id} article={a} allArticlesList={ALL_ARTICLES} onSave={(g, code) => saveLinkForArticle(a.id, g, code)} />)
+                    }
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
