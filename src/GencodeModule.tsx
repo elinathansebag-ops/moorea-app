@@ -1034,8 +1034,9 @@ const ALL_GENCODE_ARTICLES: Article[] =
   {id:"g0423",produit:"",variete:"",origine:"",conditionnement:"asperge pointe blanche Perou200g x 4",ean:"8436004760572",rajout:"",code_article:"ASPERG0022",nom_geslot:["ASPERGE POINTE BLANCHE (BARQUETTE 200G X 4)"],suggestions:["ASPERGE POINTE BLANCHE (BARQUETTE 200G X 4)"],suggestions_codes:["ASPERG0022"]},
   {id:"g0424",produit:"",variete:"",origine:"",conditionnement:"asperge pointe verte Perou 200g x 6",ean:"8436004470252",rajout:"",code_article:"ASPERG0015",nom_geslot:["ASPERGE POINTE VERTE (BARQUETTE 200G X 6)"],suggestions:["ASPERGE POINTE VERTE (BARQUETTE 200G X 6)"],suggestions_codes:["ASPERG0015"]},
   {id:"g0425",produit:"",variete:"",origine:"",conditionnement:"asperge blanche Perou 420g x 8",ean:"8436004470086",rajout:"",code_article:"ASPERG0041",nom_geslot:["ASPERGE BLANCHE ESPAGNE (BOTTE 420G X 8)"],suggestions:["ASPERGE BLANCHE ESPAGNE (BOTTE 420G X 8)"],suggestions_codes:["ASPERG0041"]}
-]
-mport { useState, useEffect, useRef } from "react";
+];
+
+import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue, remove } from "./firebase";
 import * as XLSX from "xlsx";
 
