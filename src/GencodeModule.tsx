@@ -1081,11 +1081,11 @@ function SimpleRow({ article, allArticlesList, onSave }: {
     }
     const words = norm(q).split(/\s+/).filter(Boolean);
     const results = allArticlesList.filter(a =>
-      words.every(w => norm(a.article).includes(w) || norm(a.code).includes(w))
+      a && a.article && words.every(w => norm(a.article).includes(w) || norm(a.code || '').includes(w))
     );
     if (results.length === 0 && words.length === 1 && words[0].length <= 3) {
       const letters = words[0].split('');
-      return allArticlesList.filter(a => letters.every(l => norm(a.article).includes(l))).slice(0, 50);
+      return allArticlesList.filter(a => a && a.article && letters.every(l => norm(a.article).includes(l))).slice(0, 50);
     }
     return results.slice(0, 50);
   })();
