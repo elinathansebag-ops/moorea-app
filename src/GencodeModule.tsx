@@ -4038,7 +4038,7 @@ const ALL_ARTICLES: {article: string, code: string}[] =
   {article:"ZAPOTE MAMEY PEROU (VRAC 2 KG)",code:"ZAPOTE"}
 ];
 
-ort { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { db, ref, update, onValue } from "./firebase";
 
 interface Article {
