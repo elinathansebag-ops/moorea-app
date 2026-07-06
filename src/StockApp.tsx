@@ -1411,16 +1411,18 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       (window as any).sAddLoc = (id: number, loc: number) => {
         const a = articles.find(x => x.id === id); if (!a) return;
         a["compte" + loc] = 0;
-        // Révéler la cellule cachée et le prochain bouton +
-        const cell = document.querySelector(`input.qty-in-loc[data-id="${id}"][data-loc="${loc}"]`) as HTMLInputElement;
-        const btnCurrent = document.querySelector(`button.add-loc-btn[data-id="${id}"][data-loc="${loc}"]`) as HTMLElement;
-        const btnNext = document.querySelector(`button.add-loc-btn[data-id="${id}"][data-loc="${loc + 1}"]`) as HTMLElement;
-        if (cell) {
-          cell.style.display = ""; cell.value = ""; cell.focus();
-          if (btnCurrent) btnCurrent.style.display = "none";
-          if (btnNext && loc < 8) btnNext.style.display = "";
-        } else sRenderTable();
         clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);
+        const btn = document.querySelector(`button.add-loc-btn[data-id="${id}"][data-loc="${loc}"]`) as HTMLElement;
+        if (btn) {
+          const inp = document.createElement("input");
+          inp.className = "qty-in"; inp.type = "number"; inp.min = "0"; inp.inputMode = "decimal"; inp.value = "";
+          inp.oninput = function () { (window as any).sSetCount(id, loc, (this as any).value); };
+          inp.onchange = function () { (window as any).sSetCount(id, loc, (this as any).value); };
+          btn.parentNode?.insertBefore(inp, btn);
+          if (loc < 8) btn.setAttribute("onclick", `sAddLoc(${id},${loc + 1})`);
+          else btn.remove();
+          inp.focus();
+        } else sRenderTable();
       };
 
       const updateMetricsC = () => {
@@ -1452,24 +1454,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const other = currentTeam === "GMS" ? "Prestige" : "GMS";
           const moveBtn = `<button onclick="sMoveToOther(${a.id})" style="padding:2px 7px;border:1px solid #e8e0d0;border-radius:6px;background:transparent;color:#6b7280;cursor:pointer;font-size:11px">${other} →</button>`;
           const locs = [a.compte1, a.compte2, a.compte3, a.compte4, a.compte5, a.compte6, a.compte7, a.compte8];
-          // Trouver la dernière cellule remplie
-          let lastFilled = 0;
-          locs.forEach((v: any, i: number) => { if (v !== null && v !== undefined) lastFilled = i + 1; });
-          const nextEmpty = lastFilled + 1;
-          // Pré-rendre toutes les cellules (cachées si non remplies)
           let inp = `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${q1}" oninput="sSetCount(${a.id},1,this.value)" onchange="sSetCount(${a.id},1,this.value)">`;
-          for (let ci = 2; ci <= 8; ci++) {
-            const cv = locs[ci - 1];
-            const isVisible = cv !== null && cv !== undefined;
-            const dispStyle = isVisible ? "" : "display:none";
-            inp += `<input class="qty-in qty-in-loc" data-id="${a.id}" data-loc="${ci}" type="number" min="0" inputmode="decimal" value="${isVisible ? cv : ""}" style="${dispStyle}" oninput="sSetCount(${a.id},${ci},this.value)" onchange="sSetCount(${a.id},${ci},this.value)">`;
-          }
-          // Boutons + : un seul visible à la fois
-          for (let ci = 1; ci <= 8; ci++) {
-            const isNextBtn = ci === (lastFilled < 1 ? 1 : lastFilled + 1);
-            const dispStyle = isNextBtn && lastFilled < 8 && q1 !== "" ? "" : (ci === 1 && q1 === "" ? "" : "display:none");
-            if (ci <= 8) inp += `<button class="add-loc-btn" data-id="${a.id}" data-loc="${ci}" style="${dispStyle}" onclick="sAddLoc(${a.id},${ci})">+</button>`;
-          }
+          let lastFilled = 1;
+          locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v}" oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
+          if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" data-loc="${q1 !== "" ? lastFilled + 1 : 1}" onclick="sAddLoc(${a.id},${q1 !== "" ? lastFilled + 1 : 1})">+</button>`;
           const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="0" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
           const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
