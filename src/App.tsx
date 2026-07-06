@@ -1944,12 +1944,12 @@ _PDF joint_`;
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
 
           {/* Ligne 1 - 4 carrés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12} as any} className="grid-4 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}>
             {row1.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
           {/* Ligne 2 - 3 carrés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
             {row2.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
