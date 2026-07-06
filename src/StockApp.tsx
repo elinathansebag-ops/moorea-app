@@ -1410,13 +1410,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       (window as any).sAddLoc = (id: number, loc: number) => {
         const a = articles.find(x => x.id === id); if (!a) return;
-        a["compte" + loc] = 0;
+        a["compte" + loc] = null; // null pas 0 — ne compte pas tant que l'user n'a pas saisi
         clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);
         const btn = document.querySelector(`button.add-loc-btn[data-id="${id}"][data-loc="${loc}"]`) as HTMLElement;
         if (btn) {
           const inp = document.createElement("input");
           inp.className = "qty-in"; inp.type = "number"; inp.min = "0"; inp.value = "";
-          (inp as any).onchange = function () { (window as any).sSetCount(id, loc, (this as any).value); };
+          // oninput = mise à jour immédiate à chaque frappe
+          inp.addEventListener("input", function () { (window as any).sSetCount(id, loc, (this as any).value); });
+          inp.addEventListener("change", function () { (window as any).sSetCount(id, loc, (this as any).value); });
           btn.parentNode?.insertBefore(inp, btn);
           if (loc < 8) btn.setAttribute("onclick", `sAddLoc(${id},${loc + 1})`);
           else btn.remove();
@@ -1453,11 +1455,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const other = currentTeam === "GMS" ? "Prestige" : "GMS";
           const moveBtn = `<button onclick="sMoveToOther(${a.id})" style="padding:2px 7px;border:1px solid #e8e0d0;border-radius:6px;background:transparent;color:#6b7280;cursor:pointer;font-size:11px">${other} →</button>`;
           const locs = [a.compte1, a.compte2, a.compte3, a.compte4, a.compte5, a.compte6, a.compte7, a.compte8];
-          let inp = `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${q1}" onchange="sSetCount(${a.id},1,this.value)">`;
+          let inp = `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${q1}" oninput="sSetCount(${a.id},1,this.value)" onchange="sSetCount(${a.id},1,this.value)">`;
           let lastFilled = 1;
-          locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v}" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
+          locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v}" oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
           if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" data-loc="${q1 !== "" ? lastFilled + 1 : 1}" onclick="sAddLoc(${a.id},${q1 !== "" ? lastFilled + 1 : 1})">+</button>`;
-          const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="0" value="${qd}" onchange="sSetCount(${a.id},9,this.value)">`;
+          const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="0" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
           const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
           const ecartStr = ecartVal === null ? "-" : (ecartVal > 0 ? "+" : "") + ecartVal;
@@ -2057,4 +2059,3 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     </div>
   );
 }
-
