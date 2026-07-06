@@ -744,7 +744,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .toggle-switch.gms input:checked + .toggle-slider{background:#c8a84b}
 #stock-root input[type=number]{-webkit-appearance:none;appearance:none}
 #stock-pdf-overlay{display:none;position:fixed;inset:0;background:#f5f3ee;z-index:700;overflow-y:auto}
-@media print{#stock-pdf-overlay > div:first-child{display:none!important}#stock-pdf-overlay{display:block!important;position:fixed!important;left:0;top:0;width:100%;background:#fff}#stock-pdf-content{display:block!important;visibility:visible!important}html,body{visibility:hidden!important}#stock-pdf-overlay *{visibility:visible!important}@page{size:A4 portrait;margin:10mm}}
+@media print{body *{display:none!important}#stock-pdf-overlay{display:block!important}#stock-pdf-overlay *{display:revert!important}#stock-pdf-overlay > div:first-child{display:none!important}@page{size:A4 portrait;margin:10mm}}
 #stock-fusion-bar{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#fff;padding:12px 24px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.3);align-items:center;gap:12px;z-index:300;white-space:nowrap}
     `;
     document.head.appendChild(styleEl);
@@ -756,7 +756,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     <div style="display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 12px) 20px 12px;background:#0a0a0a;position:sticky;top:0;z-index:1">
       <span style="color:#c8a84b;font-weight:700;font-size:14px">📄 Rapport PDF</span>
       <div style="display:flex;gap:8px">
-        <button onclick="window.print()" style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🖨 Imprimer</button>
+        <button onclick="window.print()" style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:10px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🖨️ Imprimer / Sauvegarder PDF</button>
         <button onclick="document.getElementById('stock-pdf-overlay').style.display='none'" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit">✕ Fermer</button>
       </div>
     </div>
@@ -1712,11 +1712,18 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       // PDF
       const openPdfWindow = (html: string, title: string) => {
+        // Extraire le contenu body
         const b1=html.indexOf('<body');const b2=html.indexOf('>',b1)+1;const b3=html.lastIndexOf('</body>');
         const bodyContent=(b1>=0&&b3>=0)?html.slice(b2,b3):html;
+        // Extraire le CSS
+        const s1=html.indexOf('<style');const s2=html.indexOf('>',s1)+1;const s3=html.indexOf('</style>',s1);
+        const css=(s1>=0&&s3>=0)?html.slice(s2,s3):'';
+        // Afficher dans l'overlay plein écran
         const pdfContent=document.getElementById('stock-pdf-content');
         const pdfOverlay=document.getElementById('stock-pdf-overlay');
-        if(pdfContent) pdfContent.innerHTML=bodyContent;
+        if(pdfContent){
+          pdfContent.innerHTML=`<style>${css}</style>${bodyContent}`;
+        }
         if(pdfOverlay) pdfOverlay.style.display='block';
       };
 
