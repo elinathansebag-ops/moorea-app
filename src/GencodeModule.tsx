@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue } from "./firebase";
 
 interface Article {
@@ -4039,7 +4039,7 @@ const ALL_ARTICLES: {article: string, code: string}[] =
   {article:"ZAPOTE MAMEY PEROU (VRAC 2 KG)",code:"ZAPOTE"}
 ];
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue } from "./firebase";
 
 interface Article {
@@ -4565,7 +4565,15 @@ function LinkRow({ article, usedCodes, onFuse }: {
 export default function GencodeModule({ onClose, catalogueArticles }: { onClose: () => void; catalogueArticles?: any[] }) {
   const [articles, setArticles] = useState<Article[]>([]);
   const [imported, setImported] = useState(false);
-  const [page, setPage] = useState<'liste'|'rattacher'>('liste');
+  const [page, setPage] = useState<'liste'|'rattacher'|'scanner'>('liste');
+  const [scannedEan, setScannedEan] = useState('');
+  const [scanResult, setScanResult] = useState<any>(null);
+  const [scanSearch, setScanSearch] = useState('');
+  const [scanSelected, setScanSelected] = useState<{article:string,code:string}|null>(null);
+  const [scanning, setScanning] = useState(false);
+  const videoRef = useRef<HTMLVideoElement|null>(null);
+  const canvasRef = useRef<HTMLCanvasElement|null>(null);
+  const streamRef = useRef<MediaStream|null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [status, setStatus] = useState('');
@@ -4762,6 +4770,9 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
           <button onClick={() => setPage('rattacher')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='rattacher'?700:500, color:page==='rattacher'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='rattacher'?'#f59e0b':'transparent', fontFamily:'inherit' }}>
             A rattacher ({unlinked.length})
           </button>
+          <button onClick={() => { setPage('scanner'); setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); }} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='scanner'?700:500, color:page==='scanner'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='scanner'?'#a855f7':'transparent', fontFamily:'inherit' }}>
+            Scanner
+          </button>
         </div>
       </div>
       <div style={{ maxWidth:1000, margin:'0 auto', padding:'16px 16px 80px' }}>
@@ -4776,6 +4787,118 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
         )}
         {page === 'liste' && page1}
         {page === 'rattacher' && page2}
+        {page === 'scanner' && (
+          <div>
+            <div style={{ background:'#fff', borderRadius:14, padding:16, marginBottom:12, textAlign:'center' }}>
+              {!scannedEan ? (
+                <div>
+                  <p style={{ fontSize:13, color:'#666', marginBottom:12 }}>Scanne le code-barres du produit physique</p>
+                  <div style={{ position:'relative', background:'#000', borderRadius:12, overflow:'hidden', maxWidth:400, margin:'0 auto', height:250 }}>
+                    <video ref={videoRef} style={{ width:'100%', height:'100%', objectFit:'cover' }} playsInline muted />
+                    <canvas ref={canvasRef} style={{ display:'none' }} />
+                    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
+                      <div style={{ width:200, height:80, border:'2px solid #a855f7', borderRadius:8 }} />
+                    </div>
+                  </div>
+                  <button onClick={() => {
+                    const loadJsQR = (): Promise<any> => new Promise((res, rej) => {
+                      if ((window as any).jsQR) { res((window as any).jsQR); return; }
+                      const s = document.createElement('script');
+                      s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+                      s.onload = () => res((window as any).jsQR); s.onerror = rej;
+                      document.head.appendChild(s);
+                    });
+                    navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' } }).then(async stream => {
+                      streamRef.current = stream;
+                      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+                      setScanning(true);
+                      const jsQR = await loadJsQR();
+                      let active = true;
+                      const tick = () => {
+                        if (!active || !videoRef.current || !canvasRef.current) return;
+                        const v = videoRef.current, c = canvasRef.current;
+                        if (v.readyState !== v.HAVE_ENOUGH_DATA) { requestAnimationFrame(tick); return; }
+                        c.width = v.videoWidth; c.height = v.videoHeight;
+                        const ctx = c.getContext('2d')!; ctx.drawImage(v,0,0,c.width,c.height);
+                        const img = ctx.getImageData(0,0,c.width,c.height);
+                        const code = jsQR(img.data, img.width, img.height, { inversionAttempts:'dontInvert' });
+                        if (code && /^\d{8,13}$/.test(code.data.trim())) {
+                          active = false;
+                          stream.getTracks().forEach(t => t.stop());
+                          setScanning(false);
+                          const ean = code.data.trim();
+                          setScannedEan(ean);
+                          const found = articles.find(a => a.ean === ean);
+                          setScanResult(found || null);
+                          return;
+                        }
+                        if (active) requestAnimationFrame(tick);
+                      };
+                      requestAnimationFrame(tick);
+                    }).catch(() => setStatus('Camera non disponible'));
+                  }} style={{ marginTop:12, background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                    {scanning ? 'Scan en cours...' : 'Demarrer le scan'}
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ background:'#f5f3ff', borderRadius:10, padding:'10px 16px', marginBottom:12, display:'inline-block' }}>
+                    <div style={{ fontSize:11, color:'#a855f7', fontWeight:700, marginBottom:2 }}>EAN SCANNE</div>
+                    <div style={{ fontFamily:'monospace', fontSize:18, fontWeight:800, letterSpacing:2 }}>{scannedEan}</div>
+                  </div>
+                  {scanResult ? (
+                    <div style={{ background:'#f0fff4', border:'1px solid #a9dfbf', borderRadius:10, padding:12, marginBottom:12, textAlign:'left' }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:'#27ae60', marginBottom:4 }}>Gencode trouve !</div>
+                      <div style={{ fontSize:13, fontWeight:700 }}>{scanResult.produit} {scanResult.variete}</div>
+                      <div style={{ fontSize:11, color:'#555' }}>{scanResult.conditionnement}</div>
+                      {(scanResult.codes_articles?.length > 0 || scanResult.code_article) && (
+                        <div style={{ marginTop:6, fontSize:11, color:'#27ae60' }}>
+                          Deja lie : {(scanResult.codes_articles?.length ? scanResult.codes_articles : [scanResult.code_article]).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ background:'#fff3cd', border:'1px solid #fde68a', borderRadius:10, padding:12, marginBottom:12 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:'#b45309' }}>EAN non trouve dans la base</div>
+                    </div>
+                  )}
+                  <button onClick={() => { setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); setScanning(false); streamRef.current?.getTracks().forEach(t => t.stop()); }}
+                    style={{ background:'#f0f0f0', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, cursor:'pointer', fontFamily:'inherit', marginBottom:12 }}>
+                    Scanner un autre
+                  </button>
+                </div>
+              )}
+            </div>
+            {scannedEan && scanResult && (
+              <div style={{ background:'#fff', borderRadius:14, padding:16 }}>
+                <p style={{ fontSize:13, fontWeight:700, marginBottom:10 }}>Lier a un article :</p>
+                <div style={{ position:'relative', marginBottom:10 }}>
+                  <input value={scanSearch} onChange={e => setScanSearch(e.target.value)} placeholder="Chercher par code ou libelle..."
+                    style={{ width:'100%', padding:'10px 14px', border:'1.5px solid #a855f7', borderRadius:10, fontSize:13, outline:'none', fontFamily:'inherit', boxSizing:'border-box' }} />
+                  {scanSearch.length >= 2 && (
+                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#fff', border:'1.5px solid #a855f7', borderRadius:10, zIndex:300, maxHeight:300, overflowY:'auto', boxShadow:'0 4px 20px rgba(0,0,0,.15)' }}>
+                      {ALL_ARTICLES.filter(a => a && a.article && (norm(a.article).includes(norm(scanSearch)) || norm(a.code||'').includes(norm(scanSearch)))).slice(0,100).map(g => (
+                        <button key={g.code} onMouseDown={() => { setScanSelected(g); setScanSearch(`${g.code} - ${g.article}`); }}
+                          style={{ display:'block', width:'100%', textAlign:'left', background: scanSelected?.code===g.code?'#f5f3ff':'#fff', border:'none', borderBottom:'1px solid #f0f0f0', padding:'8px 12px', cursor:'pointer', fontSize:12, fontFamily:'inherit' }}>
+                          <span style={{ fontFamily:'monospace', color:'#a855f7', marginRight:6 }}>{g.code}</span>{g.article}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => {
+                  if (scanSelected && scanResult) {
+                    saveLink(scanResult.id, scanSelected.code, scanSelected.article);
+                    setScanSearch(''); setScanSelected(null);
+                  }
+                }} disabled={!scanSelected}
+                  style={{ width:'100%', background:scanSelected?'#a855f7':'#e0e0e0', color:'#fff', border:'none', borderRadius:10, padding:'12px', fontSize:14, fontWeight:700, cursor:scanSelected?'pointer':'not-allowed', fontFamily:'inherit' }}>
+                  Fusionner
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
