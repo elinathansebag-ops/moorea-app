@@ -1701,6 +1701,36 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
 
       (window as any).sExportPDF = () => {
+        // Popup avec options imprimer + clôturer
+        const existing = document.getElementById("s-print-popup");
+        if (existing) existing.remove();
+        const popup = document.createElement("div");
+        popup.id = "s-print-popup";
+        popup.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center";
+        popup.innerHTML = `
+          <div style="background:#fff;border-radius:16px;padding:24px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+            <h3 style="margin:0 0 8px;font-size:16px;font-weight:800">📄 Inventaire ${currentTeam}</h3>
+            <p style="margin:0 0 20px;font-size:13px;color:#666">${articles.length} articles · ${articles.filter((a:any)=>counted(a)).length} comptés</p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <button onclick="(function(){document.getElementById('s-print-popup').remove();window._doPrintPDF();})()" 
+                style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+                🖨️ Imprimer / PDF
+              </button>
+              <button onclick="(function(){document.getElementById('s-print-popup').remove();window._doCloturerStock();})()" 
+                style="background:#15803d;color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+                🔒 Clôturer le stock
+              </button>
+              <button onclick="document.getElementById('s-print-popup').remove()" 
+                style="background:#f5f5f5;border:none;border-radius:10px;padding:10px;font-size:13px;cursor:pointer;font-family:inherit;color:#555">
+                Annuler
+              </button>
+            </div>
+          </div>`;
+        popup.addEventListener("click", (e) => { if (e.target === popup) popup.remove(); });
+        document.body.appendChild(popup);
+      };
+
+      (window as any)._doPrintPDF = () => {
         const now = new Date().toLocaleString("fr-FR");
         const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
         const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}.nb{text-align:center}.ec{text-align:center;font-weight:700}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0}}`;
@@ -1715,6 +1745,16 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const nc = sorted.filter(a => !counted(a)).length;
         const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>🌿 Moorea · Inventaire ${currentTeam}</h1><p>${now} · ${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
         openPdfWindow(html, `Moorea · Inventaire ${currentTeam}`);
+      };
+
+      (window as any)._doCloturerStock = async () => {
+        if (!currentImportId) { toast("Aucun stock chargé"); return; }
+        if (!confirm("Clôturer ce stock ? Il sera archivé et ne pourra plus être modifié.")) return;
+        try {
+          await setDoc(doc(db, "stocks", currentImportId), { cloture: true, clotureDatee: new Date().toISOString() }, { merge: true });
+          toast("🔒 Stock clôturé !");
+          setTimeout(() => (window as any).sShowPage("stocks"), 1500);
+        } catch { toast("Erreur clôture"); }
       };
 
       // PDF depuis stock existant
