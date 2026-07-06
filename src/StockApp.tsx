@@ -830,7 +830,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-sm" onclick="sChanterFichier()">📂 Changer fichier</button>
           <button class="btn btn-gold" onclick="sTerminerComptage()">✓ Terminer et voir les écarts</button>
-          <button class="btn btn-sm" style="border:1px solid #3b82f6;color:#3b82f6;background:transparent" onclick="sSyncGMSPermanent()">🔄 Sync GMS permanent</button>
         </div>
       </div>
       <div class="card" style="padding:.75rem 1.25rem;margin-bottom:1rem">
@@ -907,6 +906,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       </div>
       <div id="s-config-content" style="display:none">
         <p style="font-size:13px;color:#6b7280;margin-bottom:1.25rem">Liste des articles et leur équipe.</p>
+        <div style="margin-bottom:1rem">
+          <button onclick="sSyncGMSPermanent()" style="background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Sync GMS permanent dans le catalogue</button>
+        </div>
         <div class="card">
           <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
             <button class="pill active" id="s-cf-tous" onclick="sSetCF('tous')">Tous</button>
