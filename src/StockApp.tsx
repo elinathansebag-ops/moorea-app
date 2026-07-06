@@ -1468,7 +1468,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
           html += `<tr data-id="${a.id}">
             <td style="font-weight:500">${artLabel}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}<br>${moveBtn}</td>
-            <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}${destroy}</div></td>
+            <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
             <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>
             <td style="text-align:center">${destroy}</td>
