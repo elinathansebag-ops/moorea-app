@@ -1856,13 +1856,13 @@ _PDF joint_`;
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
       return (
-        <button onClick={action} style={{ background: cardBg, border: `1.5px solid ${cardBorder}`, borderRadius: 16, padding: "16px 8px 14px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, position: "relative", width: "100%", transition: "border-color .15s, box-shadow .15s" }}
+        <button onClick={action} style={{ background: cardBg, border: `1.5px solid ${cardBorder}`, borderRadius: 16, padding: "clamp(10px, 3vw, 16px) clamp(4px, 2vw, 8px) clamp(10px, 3vw, 14px)", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: "clamp(4px, 1.5vw, 7px)", position: "relative", width: "100%", transition: "border-color .15s, box-shadow .15s", WebkitTapHighlightColor: "transparent" }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = color; (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 16px ${color}22`; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = cardBorder; (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}>
-          {badge && <span style={{ position: "absolute", top: 8, right: 8, background: color, color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20 }}>{badge}</span>}
-          <span style={{ fontSize: 26, width: 50, height: 50, display: "flex", alignItems: "center", justifyContent: "center", background: color + "18", borderRadius: 14 }}>{icon}</span>
-          <span style={{ fontSize: 12, fontWeight: 800, color: textMain, lineHeight: 1.2 }}>{label}</span>
-          <span style={{ fontSize: 10, color: color, fontWeight: 600, background: color + "15", padding: "2px 8px", borderRadius: 20 }}>{stat}</span>
+          {badge && <span style={{ position: "absolute", top: 6, right: 6, background: color, color: "#fff", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 20 }}>{badge}</span>}
+          <span style={{ fontSize: "clamp(20px, 5vw, 26px)", width: "clamp(36px, 9vw, 50px)", height: "clamp(36px, 9vw, 50px)", display: "flex", alignItems: "center", justifyContent: "center", background: color + "18", borderRadius: 12 }}>{icon}</span>
+          <span style={{ fontSize: "clamp(10px, 2.5vw, 12px)", fontWeight: 800, color: textMain, lineHeight: 1.2 }}>{label}</span>
+          <span style={{ fontSize: "clamp(9px, 2vw, 10px)", color: color, fontWeight: 600, background: color + "15", padding: "2px 6px", borderRadius: 20 }}>{stat}</span>
         </button>
       );
     }
@@ -1921,7 +1921,7 @@ _PDF joint_`;
           </div>
         )}
 
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 16px 100px" }}>
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "clamp(8px, 3vw, 16px) clamp(8px, 3vw, 16px) 100px" }}>
 
           {/* PANNEAU LEOFRESH */}
           {showLeofresh && (
@@ -1944,12 +1944,12 @@ _PDF joint_`;
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
 
           {/* Ligne 1 - 4 carrés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12} as any} className="grid-4 }}>
             {row1.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
           {/* Ligne 2 - 3 carrés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "clamp(6px, 2vw, 12px)" }}>
             {row2.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 

@@ -1178,3 +1178,4 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     </div>
   );
 }
+

@@ -668,6 +668,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .progress-bg{height:7px;background:#e8e0d0;border-radius:4px;overflow:hidden;margin-bottom:1.5rem}
 #stock-root .progress-bar{height:100%;background:#c8a84b;border-radius:4px;transition:width .3s}
 #stock-root table{width:100%;border-collapse:collapse;font-size:13px}
+#stock-root .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 #stock-root thead tr{border-bottom:2px solid #e8e0d0}
 #stock-root th{text-align:left;padding:9px 12px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
 #stock-root td{padding:9px 12px;border-bottom:1px solid #e8e0d0;vertical-align:middle}
@@ -676,6 +677,19 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .search-input{padding:8px 14px;border:1.5px solid #e8e0d0;border-radius:20px;background:#fff;color:#0a0a0a;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;flex:1;min-width:200px}
 #stock-root .qty-in{width:72px;padding:6px 8px;border:1.5px solid #e8e0d0;border-radius:8px;text-align:center;font-size:13px;font-family:'DM Sans',sans-serif;background:#fff;color:#0a0a0a;outline:none}
 #stock-root .qty-in-destroy{width:60px;padding:6px 8px;border:1.5px solid #fecaca;border-radius:8px;text-align:center;font-size:13px;font-family:inherit;background:#fff;color:#dc2626;outline:none}
+@media(max-width:600px){
+  #stock-root table{font-size:11px}
+  #stock-root th,#stock-root td{padding:4px 5px}
+  #stock-root .qty-in{width:52px!important;padding:5px 3px!important;font-size:13px}
+  #stock-root .qty-in-destroy{width:44px!important;padding:4px 3px!important;font-size:12px}
+  #stock-root .add-loc-btn{padding:5px 8px!important;font-size:13px}
+  #stock-root .nav-btn{padding:8px 10px!important;font-size:12px}
+  #stock-root .section-title{font-size:13px!important;padding:10px 12px!important}
+  #stock-root .card{padding:10px!important}
+  #stock-calc-modal{width:210px!important;right:8px!important;bottom:80px!important}
+  #stock-calc-fab{bottom:16px!important;right:16px!important;width:44px!important;height:44px!important}
+  #stock-scan-fab{bottom:76px!important;right:16px!important;width:44px!important;height:44px!important}
+}
 #stock-root .add-loc-btn{width:26px;height:26px;border-radius:50%;border:1.5px solid #c8a84b;background:transparent;color:#c8a84b;cursor:pointer;font-size:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;padding:0}
 #stock-root .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
 #stock-root .badge-ok{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0}

@@ -95,6 +95,52 @@ export const styles = `
   .dark .card { background: var(--bg2) !important; border-color: var(--border) !important; }
   .dark input, .dark select, .dark textarea { background: var(--bg3) !important; color: var(--text) !important; border-color: var(--border) !important; }
   .dark input::placeholder { color: var(--text2) !important; }
+
+  /* ── RESPONSIVE MOBILE ────────────────────────────────── */
+  @media (max-width: 600px) {
+    /* Grilles accueil */
+    .grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+    .grid-3 { grid-template-columns: repeat(2, 1fr) !important; }
+
+    /* Padding réduit */
+    .page-content { padding: 12px 10px 80px !important; }
+
+    /* Textes */
+    h1 { font-size: 18px !important; }
+    .page-header-title { font-size: 15px !important; }
+
+    /* Formulaires arrivage */
+    .form-row { flex-direction: column !important; }
+    .form-row > * { width: 100% !important; min-width: unset !important; }
+
+    /* Stock table */
+    #stock-root table { font-size: 11px !important; }
+    #stock-root .qty-in { width: 52px !important; padding: 4px !important; }
+    #stock-root th, #stock-root td { padding: 4px 5px !important; }
+    #stock-root .s-tot-cell, #stock-root .s-ecart-cell { min-width: 36px !important; }
+
+    /* Boutons header */
+    .page-header { padding: 10px 12px !important; }
+    .btn, .btn-sm { padding: 6px 10px !important; font-size: 11px !important; }
+    .btn-gold { padding: 8px 14px !important; font-size: 12px !important; }
+
+    /* Agréage */
+    .arr-fournisseur-header { flex-wrap: wrap !important; gap: 6px !important; }
+    .arr-produit-row { padding: 10px !important; }
+    .arr-colis-row { flex-wrap: wrap !important; }
+
+    /* Input font-size 16px pour éviter le zoom iOS */
+    input, select, textarea { font-size: 16px !important; }
+
+    /* Calculatrice stock */
+    #stock-calc-modal { width: 200px !important; right: 10px !important; }
+    #stock-calc-modal .calc-btn { padding: 7px 0 !important; font-size: 12px !important; }
+  }
+
+  @media (max-width: 400px) {
+    .grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+    #stock-root .qty-in { width: 44px !important; font-size: 12px !important; }
+  }
 `;
 
 
@@ -102,16 +148,16 @@ export const styles = `
 export function PageHeader({ titre, couleur = "#c8a84b", onBack, onHome }: { titre: string; couleur?: string; onBack?: () => void; onHome?: () => void }) {
   return (
     <div style={{ background: "#0a0a0a", borderBottom: `3px solid ${couleur}`, position: "sticky", top: 0, zIndex: 200, paddingTop: "env(safe-area-inset-top, 0px)" }}>
-      <div style={{ maxWidth: 800, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
-        <div style={{ width: 80 }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px" }}>
+        <div style={{ minWidth: 70, flexShrink: 0 }}>
           {onBack && (
-            <button onClick={onBack} style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>← Retour</button>
+            <button onClick={onBack} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>← Retour</button>
           )}
         </div>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: couleur, fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1 }}>{titre}</p>
-        <div style={{ width: 80, display: "flex", justifyContent: "flex-end" }}>
+        <p style={{ margin: 0, fontSize: "clamp(11px, 3vw, 14px)", fontWeight: 700, color: couleur, fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 6px" }}>{titre}</p>
+        <div style={{ minWidth: 70, flexShrink: 0, display: "flex", justifyContent: "flex-end" }}>
           {onHome && (
-            <button onClick={onHome} style={{ padding: "7px 12px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
+            <button onClick={onHome} style={{ padding: "6px 10px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
           )}
         </div>
       </div>
