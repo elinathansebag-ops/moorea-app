@@ -4821,19 +4821,22 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                         };
                         requestAnimationFrame(tick);
                       } else {
-                        const jsQR = await new Promise<any>((res, rej) => { if ((window as any).jsQR) { res((window as any).jsQR); return; } const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'; s.onload = () => res((window as any).jsQR); s.onerror = rej; document.head.appendChild(s); });
-                        const tick = () => {
-                          if (!active || !videoRef.current || !canvasRef.current) return;
-                          const v = videoRef.current, c = canvasRef.current;
-                          if (v.readyState !== v.HAVE_ENOUGH_DATA) { requestAnimationFrame(tick); return; }
-                          c.width = v.videoWidth; c.height = v.videoHeight;
-                          const ctx = c.getContext('2d')!; ctx.drawImage(v,0,0,c.width,c.height);
-                          const img = ctx.getImageData(0,0,c.width,c.height);
-                          const code = jsQR(img.data, img.width, img.height, { inversionAttempts:'dontInvert' });
-                          if (code && /^\d{8,13}$/.test(code.data.trim())) { handleEan(code.data.trim()); return; }
-                          if (active) requestAnimationFrame(tick);
-                        };
-                        requestAnimationFrame(tick);
+                        // ZXing — iOS + tous navigateurs, lit EAN nativement
+                        const ZXingLib: any = await new Promise((res, rej) => {
+                          if ((window as any).ZXing) { res((window as any).ZXing); return; }
+                          const s = document.createElement('script');
+                          s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js';
+                          s.onload = () => res((window as any).ZXing); s.onerror = rej;
+                          document.head.appendChild(s);
+                        });
+                        if (videoRef.current) {
+                          const reader = new ZXingLib.BrowserMultiFormatReader();
+                          reader.decodeFromVideoElement(videoRef.current, (result: any) => {
+                            if (result && active && /^\d{8,13}$/.test(result.getText().trim())) {
+                              reader.reset(); handleEan(result.getText().trim());
+                            }
+                          });
+                        }
                       }
                     }).catch(() => setStatus('Camera non disponible'));
                   }} style={{ marginTop:12, background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>

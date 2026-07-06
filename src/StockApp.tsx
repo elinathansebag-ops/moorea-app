@@ -2091,18 +2091,18 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             };
             sScanRaf = requestAnimationFrame(tick);
           } else {
-            // Fallback jsQR pour QR codes
-            const tick = () => {
-              if (!sScanActive) return;
-              if (video.readyState !== video.HAVE_ENOUGH_DATA) { sScanRaf = requestAnimationFrame(tick); return; }
-              canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-              const ctx = canvas.getContext("2d")!; ctx.drawImage(video, 0, 0);
-              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
-              if (code) { handleRaw(code.data.trim()); return; }
-              sScanRaf = requestAnimationFrame(tick);
-            };
-            sScanRaf = requestAnimationFrame(tick);
+            // ZXing — iOS + tous navigateurs, lit EAN nativement
+            const ZXingLib: any = await new Promise((res, rej) => {
+              if ((window as any).ZXing) { res((window as any).ZXing); return; }
+              const s = document.createElement("script");
+              s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
+              s.onload = () => res((window as any).ZXing); s.onerror = rej;
+              document.head.appendChild(s);
+            });
+            const reader = new ZXingLib.BrowserMultiFormatReader();
+            reader.decodeFromVideoElement(video, (result: any) => {
+              if (result && sScanActive) { sScanActive = false; reader.reset(); handleRaw(result.getText().trim()); }
+            });
           }
         } catch (e: any) {
           const errEl = document.getElementById("s-scan-error") as HTMLElement;
