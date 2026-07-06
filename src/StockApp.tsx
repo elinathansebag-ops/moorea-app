@@ -744,7 +744,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .toggle-switch.gms input:checked + .toggle-slider{background:#c8a84b}
 #stock-root input[type=number]{-webkit-appearance:none;appearance:none}
 #stock-pdf-overlay{display:none;position:fixed;inset:0;background:#f5f3ee;z-index:700;overflow-y:auto}
-@media print{#stock-pdf-overlay > div:first-child{display:none!important}#stock-pdf-overlay{display:block!important;position:static;background:#fff}body > *:not(#stock-pdf-overlay){display:none!important}@page{size:A4 landscape;margin:8mm}}
+@media print{#stock-pdf-overlay > div:first-child{display:none!important}#stock-pdf-overlay{display:block!important;position:fixed!important;left:0;top:0;width:100%;background:#fff}#stock-pdf-content{display:block!important;visibility:visible!important}html,body{visibility:hidden!important}#stock-pdf-overlay *{visibility:visible!important}@page{size:A4 portrait;margin:10mm}}
 #stock-fusion-bar{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#fff;padding:12px 24px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.3);align-items:center;gap:12px;z-index:300;white-space:nowrap}
     `;
     document.head.appendChild(styleEl);
@@ -2228,4 +2228,3 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     </div>
   );
 }
-
