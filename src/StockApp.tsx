@@ -1471,6 +1471,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}${destroy}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
             <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>
+            <td style="text-align:center">${destroy}</td>
             <td style="text-align:center;color:#6b7280;font-size:12px">${a.nb_colis}</td>
           </tr>`;
         });
