@@ -56,12 +56,14 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
   const [showGencodeScan, setShowGencodeScan] = useState(false);
 
   // Chercher le gencode correspondant à cet article
-  const matchedGencode = gencodeArticles?.find(g =>
-    // Priorité: code_article
-    (arrivage.code_article && g.code_article && g.code_article === arrivage.code_article) ||
-    // Fallback: nom
-    g.nom_geslot?.some((n: string) => n === arrivage.produit || n.toLowerCase() === (arrivage.produit || '').toLowerCase())
-  );
+  const matchedGencode = gencodeArticles?.find((g: any) => {
+    const codes = g.codes_articles?.length ? g.codes_articles : (g.code_article ? [g.code_article] : []);
+    // 1. code_article de l'arrivage dans la liste des codes liés
+    if (arrivage.code_article && codes.includes(arrivage.code_article)) return true;
+    // 2. Nom exact dans nom_geslot
+    if (g.nom_geslot?.some((n: string) => n && arrivage.produit && n.toLowerCase() === arrivage.produit.toLowerCase())) return true;
+    return false;
+  });
 
   const colisAttendu = arrivage.quantite || 0;
   const colisRecusNum = colisRecus === "" ? colisAttendu : parseInt(colisRecus) || 0;
@@ -662,14 +664,19 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
           if (code) {
-            // Extraire le lot de l'URL
+            const raw = code.data.trim();
+            // EAN-13 (gencode produit) — 13 chiffres
+            if (/^\d{13}$/.test(raw)) { active = false; onScan('EAN:' + raw); return; }
+            // EAN-8 ou UPC
+            if (/^\d{8,12}$/.test(raw)) { active = false; onScan('EAN:' + raw); return; }
+            // Extraire le lot de l'URL QR
             try {
-              const url = new URL(code.data);
+              const url = new URL(raw);
               const lot = url.searchParams.get("id") || url.searchParams.get("lot");
               if (lot) { active = false; onScan(lot); return; }
             } catch {
-              // Si c'est juste un numéro de lot direct
-              if (/^\d{3,6}$/.test(code.data.trim())) { active = false; onScan(code.data.trim()); return; }
+              // Numéro de lot direct
+              if (/^\d{3,6}$/.test(raw)) { active = false; onScan(raw); return; }
             }
           }
           rafRef.current = requestAnimationFrame(tick);
@@ -1232,3 +1239,4 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     </div>
   );
 }
+

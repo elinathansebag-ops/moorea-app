@@ -10,7 +10,8 @@ interface Article {
   ean: string;
   rajout: string;
   nom_geslot: string[];
-  code_article: string;
+  code_article: string;       // rétrocompat
+  codes_articles: string[];   // multi-liens
   suggestions: string[];
 }
 
@@ -4050,7 +4051,8 @@ interface Article {
   ean: string;
   rajout: string;
   nom_geslot: string[];
-  code_article: string;
+  code_article: string;       // rétrocompat
+  codes_articles: string[];   // multi-liens
   suggestions: string[];
 }
 
@@ -4578,6 +4580,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
           suggestions: ALL_GENCODE_ARTICLES.find(a => a.id === id)?.suggestions || v.suggestions || [],
           // Priorité: lien manuel Firebase > lien auto pré-calculé
           code_article: v.code_article || ALL_GENCODE_ARTICLES.find(a => a.id === id)?.code_article || '',
+          codes_articles: v.codes_articles || (v.code_article ? [v.code_article] : ALL_GENCODE_ARTICLES.find(a => a.id === id)?.code_article ? [ALL_GENCODE_ARTICLES.find(a => a.id === id)!.code_article] : []),
           nom_geslot: v.nom_geslot || [],
         })) as Article[];
         setArticles(loaded);
@@ -4588,10 +4591,22 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
   }, []);
 
   function saveLink(articleId: string, code: string, libelle: string) {
-    update(ref(db, `gencode_articles/${articleId}`), { code_article: code, nom_geslot: [libelle] });
-    setArticles(prev => prev.map(a => a.id === articleId ? { ...a, code_article: code, nom_geslot: [libelle] } : a));
-    setStatus(`✅ Lié : ${code}`);
+    const existing = articles.find(a => a.id === articleId);
+    const newCodes = [...new Set([...(existing?.codes_articles||[]), ...(existing?.code_article?[existing.code_article]:[]), code])];
+    const newNoms = [...new Set([...(existing?.nom_geslot||[]), libelle])];
+    update(ref(db, `gencode_articles/${articleId}`), { code_article: code, codes_articles: newCodes, nom_geslot: newNoms });
+    setArticles(prev => prev.map(a => a.id === articleId ? { ...a, code_article: code, codes_articles: newCodes, nom_geslot: newNoms } : a));
+    setStatus(`Lie : ${code} (${newCodes.length} lien${newCodes.length>1?'s':''})`);
     setTimeout(() => setStatus(''), 2000);
+  }
+
+  function removeLink(articleId: string, code: string) {
+    const existing = articles.find(a => a.id === articleId);
+    const newCodes = (existing?.codes_articles||[]).filter(c => c !== code);
+    const newNoms = existing?.nom_geslot||[];
+    const newPrimary = newCodes[0] || '';
+    update(ref(db, `gencode_articles/${articleId}`), { code_article: newPrimary, codes_articles: newCodes, nom_geslot: newNoms });
+    setArticles(prev => prev.map(a => a.id === articleId ? { ...a, code_article: newPrimary, codes_articles: newCodes } : a));
   }
 
   function syncAutoLinks() {
