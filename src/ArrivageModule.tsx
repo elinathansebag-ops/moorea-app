@@ -660,8 +660,16 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
         setScanning(true);
 
+        // Scan universel: BarcodeDetector ou ZXing canvas (iOS compatible)
+        const loadZXing = (): Promise<any> => new Promise((res, rej) => {
+          if ((window as any).ZXing) { res((window as any).ZXing); return; }
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
+          s.onload = () => res((window as any).ZXing); s.onerror = rej;
+          document.head.appendChild(s);
+        });
         if ('BarcodeDetector' in window) {
-          const detector = new (window as any).BarcodeDetector({ formats: ['ean_13','ean_8','qr_code','code_128','code_39','upc_a','upc_e'] });
+          const detector = new (window as any).BarcodeDetector({ formats: ['ean_13','ean_8','qr_code','code_128','upc_a','upc_e'] });
           const tick = async () => {
             if (!active || !videoRef.current) return;
             if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
@@ -671,20 +679,20 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           };
           rafRef.current = requestAnimationFrame(tick);
         } else {
-          // ZXing — iOS + tous navigateurs, lit EAN nativement
-          const ZXingLib: any = await new Promise((res, rej) => {
-            if ((window as any).ZXing) { res((window as any).ZXing); return; }
-            const s = document.createElement("script");
-            s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
-            s.onload = () => res((window as any).ZXing); s.onerror = rej;
-            document.head.appendChild(s);
-          });
-          const reader = new ZXingLib.BrowserMultiFormatReader();
-          if (videoRef.current) {
-            reader.decodeFromVideoElement(videoRef.current, (result: any) => {
-              if (result && active) { reader.reset(); handleRaw(result.getText().trim()); }
-            });
-          }
+          const ZX: any = await loadZXing();
+          const reader = new ZX.BrowserMultiFormatReader();
+          const ctx = canvasRef.current!.getContext('2d')!;
+          const tick = () => {
+            if (!active || !videoRef.current || !canvasRef.current) return;
+            if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+              canvasRef.current.width = videoRef.current.videoWidth;
+              canvasRef.current.height = videoRef.current.videoHeight;
+              ctx.drawImage(videoRef.current, 0, 0);
+              try { const r = reader.decodeFromCanvas(canvasRef.current); if (r) { handleRaw(r.getText().trim()); return; } } catch {}
+            }
+            rafRef.current = requestAnimationFrame(tick);
+          };
+          rafRef.current = requestAnimationFrame(tick);
         }
       } catch (e: any) {
         setError(e.name === "NotAllowedError" ? "Accès à la caméra refusé. Autorise l'accès dans les réglages." : "Caméra indisponible : " + e.message);

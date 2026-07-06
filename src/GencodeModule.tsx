@@ -4821,22 +4821,30 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                         };
                         requestAnimationFrame(tick);
                       } else {
-                        // ZXing — iOS + tous navigateurs, lit EAN nativement
-                        const ZXingLib: any = await new Promise((res, rej) => {
+                        // ZXing canvas tick — iOS compatible
+                        const ZX: any = await new Promise((res, rej) => {
                           if ((window as any).ZXing) { res((window as any).ZXing); return; }
                           const s = document.createElement('script');
                           s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js';
                           s.onload = () => res((window as any).ZXing); s.onerror = rej;
                           document.head.appendChild(s);
                         });
-                        if (videoRef.current) {
-                          const reader = new ZXingLib.BrowserMultiFormatReader();
-                          reader.decodeFromVideoElement(videoRef.current, (result: any) => {
-                            if (result && active && /^\d{8,13}$/.test(result.getText().trim())) {
-                              reader.reset(); handleEan(result.getText().trim());
-                            }
-                          });
-                        }
+                        const reader = new ZX.BrowserMultiFormatReader();
+                        const ctx = canvasRef.current!.getContext('2d')!;
+                        const tick = () => {
+                          if (!active || !videoRef.current || !canvasRef.current) return;
+                          if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+                            canvasRef.current.width = videoRef.current.videoWidth;
+                            canvasRef.current.height = videoRef.current.videoHeight;
+                            ctx.drawImage(videoRef.current, 0, 0);
+                            try {
+                              const r = reader.decodeFromCanvas(canvasRef.current);
+                              if (r && /^\d{8,13}$/.test(r.getText().trim())) { handleEan(r.getText().trim()); return; }
+                            } catch {}
+                          }
+                          requestAnimationFrame(tick);
+                        };
+                        requestAnimationFrame(tick);
                       }
                     }).catch(() => setStatus('Camera non disponible'));
                   }} style={{ marginTop:12, background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>

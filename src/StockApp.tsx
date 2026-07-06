@@ -2091,18 +2091,26 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             };
             sScanRaf = requestAnimationFrame(tick);
           } else {
-            // ZXing — iOS + tous navigateurs, lit EAN nativement
-            const ZXingLib: any = await new Promise((res, rej) => {
+            // ZXing canvas tick — iOS compatible
+            const ZX: any = await new Promise((res, rej) => {
               if ((window as any).ZXing) { res((window as any).ZXing); return; }
               const s = document.createElement("script");
               s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
               s.onload = () => res((window as any).ZXing); s.onerror = rej;
               document.head.appendChild(s);
             });
-            const reader = new ZXingLib.BrowserMultiFormatReader();
-            reader.decodeFromVideoElement(video, (result: any) => {
-              if (result && sScanActive) { sScanActive = false; reader.reset(); handleRaw(result.getText().trim()); }
-            });
+            const reader = new ZX.BrowserMultiFormatReader();
+            const ctx = canvas.getContext("2d")!;
+            const tick = () => {
+              if (!sScanActive) return;
+              if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+                try { const r = reader.decodeFromCanvas(canvas); if (r) { sScanActive = false; handleRaw(r.getText().trim()); return; } } catch {}
+              }
+              sScanRaf = requestAnimationFrame(tick);
+            };
+            sScanRaf = requestAnimationFrame(tick);
           }
         } catch (e: any) {
           const errEl = document.getElementById("s-scan-error") as HTMLElement;
