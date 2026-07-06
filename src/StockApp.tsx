@@ -2235,3 +2235,4 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     </div>
   );
 }
+

@@ -640,7 +640,6 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
 
     const start = async () => {
       try {
-        const jsQR = await loadJsQR();
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
         });
@@ -652,36 +651,54 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         }
         setScanning(true);
 
-        const tick = () => {
-          if (!active || !videoRef.current || !canvasRef.current) return;
-          const video = videoRef.current;
-          const canvas = canvasRef.current;
-          if (video.readyState !== video.HAVE_ENOUGH_DATA) { rafRef.current = requestAnimationFrame(tick); return; }
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          const ctx = canvas.getContext("2d")!;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-          if (code) {
-            const raw = code.data.trim();
-            // EAN-13 (gencode produit) — 13 chiffres
-            if (/^\d{13}$/.test(raw)) { active = false; onScan('EAN:' + raw); return; }
-            // EAN-8 ou UPC
-            if (/^\d{8,12}$/.test(raw)) { active = false; onScan('EAN:' + raw); return; }
-            // Extraire le lot de l'URL QR
-            try {
-              const url = new URL(raw);
-              const lot = url.searchParams.get("id") || url.searchParams.get("lot");
-              if (lot) { active = false; onScan(lot); return; }
-            } catch {
-              // Numéro de lot direct
-              if (/^\d{3,6}$/.test(raw)) { active = false; onScan(raw); return; }
-            }
-          }
-          rafRef.current = requestAnimationFrame(tick);
+        const handleRaw = (raw: string) => {
+          if (!active) return;
+          if (/^\d{8,13}$/.test(raw)) { active = false; onScan('EAN:' + raw); return; }
+          try {
+            const url = new URL(raw);
+            const lot = url.searchParams.get("id") || url.searchParams.get("lot");
+            if (lot) { active = false; onScan(lot); return; }
+          } catch {}
+          if (/^\d{3,6}$/.test(raw)) { active = false; onScan(raw); return; }
         };
-        rafRef.current = requestAnimationFrame(tick);
+
+        if ('BarcodeDetector' in window) {
+          const detector = new (window as any).BarcodeDetector({
+            formats: ['ean_13','ean_8','qr_code','code_128','code_39','upc_a','upc_e']
+          });
+          const tick = async () => {
+            if (!active || !videoRef.current) return;
+            if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+              try {
+                const codes = await detector.detect(videoRef.current);
+                if (codes.length > 0) { handleRaw(codes[0].rawValue.trim()); return; }
+              } catch {}
+            }
+            rafRef.current = requestAnimationFrame(tick);
+          };
+          rafRef.current = requestAnimationFrame(tick);
+        } else {
+          // Fallback jsQR
+          const jsQR = await new Promise<any>((res, rej) => {
+            if ((window as any).jsQR) { res((window as any).jsQR); return; }
+            const s = document.createElement("script");
+            s.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+            s.onload = () => res((window as any).jsQR); s.onerror = rej;
+            document.head.appendChild(s);
+          });
+          const tick = () => {
+            if (!active || !videoRef.current || !canvasRef.current) return;
+            const video = videoRef.current, canvas = canvasRef.current;
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) { rafRef.current = requestAnimationFrame(tick); return; }
+            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            const ctx = canvas.getContext("2d")!; ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+            if (code) { handleRaw(code.data.trim()); return; }
+            rafRef.current = requestAnimationFrame(tick);
+          };
+          rafRef.current = requestAnimationFrame(tick);
+        }
       } catch (e: any) {
         setError(e.name === "NotAllowedError" ? "Accès à la caméra refusé. Autorise l'accès dans les réglages." : "Caméra indisponible : " + e.message);
       }

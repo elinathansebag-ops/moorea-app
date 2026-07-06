@@ -4801,40 +4801,40 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                     </div>
                   </div>
                   <button onClick={() => {
-                    const loadJsQR = (): Promise<any> => new Promise((res, rej) => {
-                      if ((window as any).jsQR) { res((window as any).jsQR); return; }
-                      const s = document.createElement('script');
-                      s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-                      s.onload = () => res((window as any).jsQR); s.onerror = rej;
-                      document.head.appendChild(s);
-                    });
                     navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' } }).then(async stream => {
                       streamRef.current = stream;
                       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
                       setScanning(true);
-                      const jsQR = await loadJsQR();
                       let active = true;
-                      const tick = () => {
-                        if (!active || !videoRef.current || !canvasRef.current) return;
-                        const v = videoRef.current, c = canvasRef.current;
-                        if (v.readyState !== v.HAVE_ENOUGH_DATA) { requestAnimationFrame(tick); return; }
-                        c.width = v.videoWidth; c.height = v.videoHeight;
-                        const ctx = c.getContext('2d')!; ctx.drawImage(v,0,0,c.width,c.height);
-                        const img = ctx.getImageData(0,0,c.width,c.height);
-                        const code = jsQR(img.data, img.width, img.height, { inversionAttempts:'dontInvert' });
-                        if (code && /^\d{8,13}$/.test(code.data.trim())) {
-                          active = false;
-                          stream.getTracks().forEach(t => t.stop());
-                          setScanning(false);
-                          const ean = code.data.trim();
-                          setScannedEan(ean);
-                          const found = articles.find(a => a.ean === ean);
-                          setScanResult(found || null);
-                          return;
-                        }
-                        if (active) requestAnimationFrame(tick);
+                      const handleEan = (ean: string) => {
+                        active = false; stream.getTracks().forEach(t => t.stop()); setScanning(false);
+                        setScannedEan(ean); const found = articles.find(a => a.ean === ean); setScanResult(found || null);
                       };
-                      requestAnimationFrame(tick);
+                      if ('BarcodeDetector' in window) {
+                        const detector = new (window as any).BarcodeDetector({ formats: ['ean_13','ean_8','qr_code','code_128','upc_a','upc_e'] });
+                        const tick = async () => {
+                          if (!active || !videoRef.current) return;
+                          if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+                            try { const codes = await detector.detect(videoRef.current); if (codes.length > 0 && /^\d{8,13}$/.test(codes[0].rawValue.trim())) { handleEan(codes[0].rawValue.trim()); return; } } catch {}
+                          }
+                          requestAnimationFrame(tick);
+                        };
+                        requestAnimationFrame(tick);
+                      } else {
+                        const jsQR = await new Promise<any>((res, rej) => { if ((window as any).jsQR) { res((window as any).jsQR); return; } const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'; s.onload = () => res((window as any).jsQR); s.onerror = rej; document.head.appendChild(s); });
+                        const tick = () => {
+                          if (!active || !videoRef.current || !canvasRef.current) return;
+                          const v = videoRef.current, c = canvasRef.current;
+                          if (v.readyState !== v.HAVE_ENOUGH_DATA) { requestAnimationFrame(tick); return; }
+                          c.width = v.videoWidth; c.height = v.videoHeight;
+                          const ctx = c.getContext('2d')!; ctx.drawImage(v,0,0,c.width,c.height);
+                          const img = ctx.getImageData(0,0,c.width,c.height);
+                          const code = jsQR(img.data, img.width, img.height, { inversionAttempts:'dontInvert' });
+                          if (code && /^\d{8,13}$/.test(code.data.trim())) { handleEan(code.data.trim()); return; }
+                          if (active) requestAnimationFrame(tick);
+                        };
+                        requestAnimationFrame(tick);
+                      }
                     }).catch(() => setStatus('Camera non disponible'));
                   }} style={{ marginTop:12, background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
                     {scanning ? 'Scan en cours...' : 'Demarrer le scan'}
