@@ -1859,7 +1859,7 @@ _PDF joint_`;
         <button onClick={action} style={{ background: cardBg, border: `1.5px solid ${cardBorder}`, borderRadius: 16, padding: "clamp(10px, 3vw, 16px) clamp(4px, 2vw, 8px) clamp(10px, 3vw, 14px)", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: "clamp(4px, 1.5vw, 7px)", position: "relative", width: "100%", transition: "border-color .15s, box-shadow .15s", WebkitTapHighlightColor: "transparent" }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = color; (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 16px ${color}22`; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = cardBorder; (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}>
-          {badge && <span style={{ position: "absolute", top: 6, right: 6, background: color, color: "#fff", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 20 }}>{badge}</span>}
+                    <span style={{ fontSize: 22, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: color + "18", borderRadius: 12 }}>{icon}</span>span>
           <span style={{ fontSize: "clamp(20px, 5vw, 26px)", width: "clamp(36px, 9vw, 50px)", height: "clamp(36px, 9vw, 50px)", display: "flex", alignItems: "center", justifyContent: "center", background: color + "18", borderRadius: 12 }}>{icon}</span>
           <span style={{ fontSize: "clamp(10px, 2.5vw, 12px)", fontWeight: 800, color: textMain, lineHeight: 1.2 }}>{label}</span>
           <span style={{ fontSize: "clamp(9px, 2vw, 10px)", color: color, fontWeight: 600, background: color + "15", padding: "2px 6px", borderRadius: 20 }}>{stat}</span>
@@ -1949,7 +1949,7 @@ _PDF joint_`;
           </div>
 
           {/* Ligne 2 - 3 carrés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "clamp(6px, 2vw, 12px)" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
             {row2.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
 
