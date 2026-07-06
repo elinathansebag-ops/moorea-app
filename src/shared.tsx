@@ -97,49 +97,26 @@ export const styles = `
   .dark input::placeholder { color: var(--text2) !important; }
 
   /* ── RESPONSIVE MOBILE ────────────────────────────────── */
-  @media (max-width: 600px) {
-    /* Grilles accueil */
-    .grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
-    .grid-3 { grid-template-columns: repeat(2, 1fr) !important; }
-
-    /* Padding réduit */
-    .page-content { padding: 12px 10px 80px !important; }
-
-    /* Textes */
-    h1 { font-size: 18px !important; }
-    .page-header-title { font-size: 15px !important; }
-
-    /* Formulaires arrivage */
-    .form-row { flex-direction: column !important; }
-    .form-row > * { width: 100% !important; min-width: unset !important; }
+  @media (max-width: 640px) {
+    /* Éviter le zoom iOS sur les inputs */
+    input, select, textarea { font-size: 16px !important; }
 
     /* Stock table */
     #stock-root table { font-size: 11px !important; }
-    #stock-root .qty-in { width: 52px !important; padding: 4px !important; }
+    #stock-root .qty-in { width: 52px !important; padding: 4px !important; font-size: 14px !important; }
     #stock-root th, #stock-root td { padding: 4px 5px !important; }
-    #stock-root .s-tot-cell, #stock-root .s-ecart-cell { min-width: 36px !important; }
-
-    /* Boutons header */
-    .page-header { padding: 10px 12px !important; }
-    .btn, .btn-sm { padding: 6px 10px !important; font-size: 11px !important; }
-    .btn-gold { padding: 8px 14px !important; font-size: 12px !important; }
-
-    /* Agréage */
-    .arr-fournisseur-header { flex-wrap: wrap !important; gap: 6px !important; }
-    .arr-produit-row { padding: 10px !important; }
-    .arr-colis-row { flex-wrap: wrap !important; }
-
-    /* Input font-size 16px pour éviter le zoom iOS */
-    input, select, textarea { font-size: 16px !important; }
+    #stock-root .tbl-wrap { overflow-x: auto; }
+    #stock-root .btn, #stock-root .btn-sm { padding: 5px 8px !important; font-size: 11px !important; }
+    #stock-root .nav-btn { padding: 7px 8px !important; font-size: 11px !important; }
+    #stock-root #s-toolbar { flex-wrap: wrap !important; gap: 6px !important; }
 
     /* Calculatrice stock */
-    #stock-calc-modal { width: 200px !important; right: 10px !important; }
-    #stock-calc-modal .calc-btn { padding: 7px 0 !important; font-size: 12px !important; }
-  }
+    #stock-calc-modal { width: 200px !important; right: 8px !important; bottom: 80px !important; }
+    #stock-calc-modal .calc-btn { padding: 8px 0 !important; font-size: 13px !important; }
+    #stock-calc-fab { width: 44px !important; height: 44px !important; font-size: 18px !important; }
 
-  @media (max-width: 400px) {
-    .grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
-    #stock-root .qty-in { width: 44px !important; font-size: 12px !important; }
+    /* Agréage */
+    .arr-row-btns { flex-wrap: wrap !important; }
   }
 `;
 
@@ -154,7 +131,7 @@ export function PageHeader({ titre, couleur = "#c8a84b", onBack, onHome }: { tit
             <button onClick={onBack} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>← Retour</button>
           )}
         </div>
-        <p style={{ margin: 0, fontSize: "clamp(11px, 3vw, 14px)", fontWeight: 700, color: couleur, fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 6px" }}>{titre}</p>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: couleur, fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 6px" }}>{titre}</p>
         <div style={{ minWidth: 70, flexShrink: 0, display: "flex", justifyContent: "flex-end" }}>
           {onHome && (
             <button onClick={onHome} style={{ padding: "6px 10px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
