@@ -1469,7 +1469,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           let lastFilled = 1;
           locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v}" oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
           if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" onclick="sAddNextLoc(${a.id})">+</button>`;
-          const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="0" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
+          const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
           const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
           const ecartStr = ecartVal === null ? "-" : (ecartVal > 0 ? "+" : "") + ecartVal;
