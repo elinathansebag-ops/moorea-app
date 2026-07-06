@@ -4793,60 +4793,35 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
               {!scannedEan ? (
                 <div>
                   <p style={{ fontSize:13, color:'#666', marginBottom:12 }}>Scanne le code-barres du produit physique</p>
-                  <div style={{ position:'relative', background:'#000', borderRadius:12, overflow:'hidden', maxWidth:400, margin:'0 auto', height:250 }}>
-                    <video ref={videoRef} style={{ width:'100%', height:'100%', objectFit:'cover' }} playsInline muted />
-                    <canvas ref={canvasRef} style={{ display:'none' }} />
-                    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
-                      <div style={{ width:200, height:80, border:'2px solid #a855f7', borderRadius:8 }} />
-                    </div>
-                  </div>
-                  <button onClick={() => {
-                    navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' } }).then(async stream => {
-                      streamRef.current = stream;
-                      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+                  <div id="gencode-scan-container" style={{ position:'relative', borderRadius:12, overflow:'hidden', maxWidth:400, margin:'0 auto', height:280 }} />
+                  <button onClick={async () => {
+                    try {
+                      await new Promise<void>((res, rej) => {
+                        if ((window as any).Html5Qrcode) { res(); return; }
+                        const s = document.createElement('script');
+                        s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+                        s.onload = () => res(); s.onerror = rej;
+                        document.head.appendChild(s);
+                      });
                       setScanning(true);
-                      let active = true;
-                      const handleEan = (ean: string) => {
-                        active = false; stream.getTracks().forEach(t => t.stop()); setScanning(false);
-                        setScannedEan(ean); const found = articles.find(a => a.ean === ean); setScanResult(found || null);
-                      };
-                      if ('BarcodeDetector' in window) {
-                        const detector = new (window as any).BarcodeDetector({ formats: ['ean_13','ean_8','qr_code','code_128','upc_a','upc_e'] });
-                        const tick = async () => {
-                          if (!active || !videoRef.current) return;
-                          if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-                            try { const codes = await detector.detect(videoRef.current); if (codes.length > 0 && /^\d{8,13}$/.test(codes[0].rawValue.trim())) { handleEan(codes[0].rawValue.trim()); return; } } catch {}
+                      const scanner = new (window as any).Html5Qrcode('gencode-scan-container', { verbose: false });
+                      (streamRef.current as any) = scanner;
+                      await scanner.start(
+                        { facingMode: 'environment' },
+                        { fps: 10, qrbox: { width: 280, height: 120 } },
+                        (text: string) => {
+                          const ean = text.trim();
+                          if (/^\d{8,13}$/.test(ean)) {
+                            scanner.stop().catch(() => {});
+                            setScanning(false);
+                            setScannedEan(ean);
+                            const found = articles.find((a:any) => a.ean === ean);
+                            setScanResult(found || null);
                           }
-                          requestAnimationFrame(tick);
-                        };
-                        requestAnimationFrame(tick);
-                      } else {
-                        // ZXing canvas tick — iOS compatible
-                        const ZX: any = await new Promise((res, rej) => {
-                          if ((window as any).ZXing) { res((window as any).ZXing); return; }
-                          const s = document.createElement('script');
-                          s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js';
-                          s.onload = () => res((window as any).ZXing); s.onerror = rej;
-                          document.head.appendChild(s);
-                        });
-                        const reader = new ZX.BrowserMultiFormatReader();
-                        const ctx = canvasRef.current!.getContext('2d')!;
-                        const tick = () => {
-                          if (!active || !videoRef.current || !canvasRef.current) return;
-                          if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-                            canvasRef.current.width = videoRef.current.videoWidth;
-                            canvasRef.current.height = videoRef.current.videoHeight;
-                            ctx.drawImage(videoRef.current, 0, 0);
-                            try {
-                              const r = reader.decodeFromCanvas(canvasRef.current);
-                              if (r && /^\d{8,13}$/.test(r.getText().trim())) { handleEan(r.getText().trim()); return; }
-                            } catch {}
-                          }
-                          requestAnimationFrame(tick);
-                        };
-                        requestAnimationFrame(tick);
-                      }
-                    }).catch(() => setStatus('Camera non disponible'));
+                        },
+                        () => {}
+                      );
+                    } catch(e:any) { setStatus('Camera non disponible : ' + e.message);
                   }} style={{ marginTop:12, background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
                     {scanning ? 'Scan en cours...' : 'Demarrer le scan'}
                   </button>

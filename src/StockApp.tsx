@@ -2056,62 +2056,31 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         (document.getElementById("s-scan-error") as HTMLElement).style.display = "none";
         sScanActive = true;
         try {
-          const jsQR = await loadJsQRStock();
-          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } });
-          sScanStream = stream;
-          const video = document.getElementById("s-scan-video") as HTMLVideoElement;
-          video.srcObject = stream; await video.play();
-          const canvas = document.getElementById("s-scan-canvas") as HTMLCanvasElement;
           const handleRaw = (raw: string) => {
-            sScanActive = false; stream.getTracks().forEach(t => t.stop()); cancelAnimationFrame(sScanRaf);
-            // EAN barcode (8-13 chiffres)
+            sScanActive = false;
             if (/^\d{8,13}$/.test(raw)) { (window as any).sVerifierEANDansStock(raw); return; }
-            // QR code URL avec lot
             let lot = "";
             try { const u = new URL(raw); lot = u.searchParams.get("id") || u.searchParams.get("lot") || ""; } catch {}
             if (!lot && /^\d{3,6}$/.test(raw)) lot = raw;
             if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
             (window as any).sVerifierLotDansStock(lot);
           };
-
-          // Essayer BarcodeDetector (EAN natif) puis fallback jsQR (QR uniquement)
-          const useBarcodeDetector = 'BarcodeDetector' in window;
-          if (useBarcodeDetector) {
-            const detector = new (window as any).BarcodeDetector({
-              formats: ['ean_13','ean_8','qr_code','code_128','code_39','upc_a','upc_e']
-            });
-            const tick = async () => {
-              if (!sScanActive) return;
-              if (video.readyState !== video.HAVE_ENOUGH_DATA) { sScanRaf = requestAnimationFrame(tick); return; }
-              try {
-                const codes = await detector.detect(video);
-                if (codes.length > 0) { handleRaw(codes[0].rawValue.trim()); return; }
-              } catch {}
-              sScanRaf = requestAnimationFrame(tick);
-            };
-            sScanRaf = requestAnimationFrame(tick);
-          } else {
-            // ZXing canvas tick — iOS compatible
-            const ZX: any = await new Promise((res, rej) => {
-              if ((window as any).ZXing) { res((window as any).ZXing); return; }
-              const s = document.createElement("script");
-              s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
-              s.onload = () => res((window as any).ZXing); s.onerror = rej;
-              document.head.appendChild(s);
-            });
-            const reader = new ZX.BrowserMultiFormatReader();
-            const ctx = canvas.getContext("2d")!;
-            const tick = () => {
-              if (!sScanActive) return;
-              if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0);
-                try { const r = reader.decodeFromCanvas(canvas); if (r) { sScanActive = false; handleRaw(r.getText().trim()); return; } } catch {}
-              }
-              sScanRaf = requestAnimationFrame(tick);
-            };
-            sScanRaf = requestAnimationFrame(tick);
-          }
+          // html5-qrcode — EAN + QR, fonctionne sur iOS et Android
+          await new Promise<void>((res, rej) => {
+            if ((window as any).Html5Qrcode) { res(); return; }
+            const s = document.createElement("script");
+            s.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+            s.onload = () => res(); s.onerror = rej;
+            document.head.appendChild(s);
+          });
+          const h5scanner = new (window as any).Html5Qrcode("s-scan-video", { verbose: false });
+          sScanStream = { _h5: h5scanner } as any;
+          await h5scanner.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 280, height: 120 } },
+            (text: string) => { if (sScanActive) { sScanActive = false; h5scanner.stop().catch(() => {}); handleRaw(text.trim()); } },
+            () => {}
+          );
         } catch (e: any) {
           const errEl = document.getElementById("s-scan-error") as HTMLElement;
           const msgEl = document.getElementById("s-scan-error-msg");
@@ -2218,7 +2187,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       (window as any).sRescanPalette = () => { document.getElementById("s-scan-result")!.style.display = "none"; sScanActive = true; (window as any).sScannerPalette(); };
       (window as any).sFermerScanner = () => {
         sScanActive = false; cancelAnimationFrame(sScanRaf);
-        sScanStream?.getTracks().forEach(t => t.stop()); sScanStream = null;
+        if ((sScanStream as any)?._h5) { (sScanStream as any)._h5.stop().catch(() => {}); }
+        else { sScanStream?.getTracks().forEach(t => t.stop()); }
+        sScanStream = null;
         const page = document.getElementById("s-page-scanner");
         if (page) page.style.display = "none";
       };
