@@ -1712,19 +1712,14 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       // PDF
       const openPdfWindow = (html: string, title: string) => {
-        // Extraire le contenu body
-        const b1=html.indexOf('<body');const b2=html.indexOf('>',b1)+1;const b3=html.lastIndexOf('</body>');
-        const bodyContent=(b1>=0&&b3>=0)?html.slice(b2,b3):html;
-        // Extraire le CSS
-        const s1=html.indexOf('<style');const s2=html.indexOf('>',s1)+1;const s3=html.indexOf('</style>',s1);
-        const css=(s1>=0&&s3>=0)?html.slice(s2,s3):'';
-        // Afficher dans l'overlay plein écran
-        const pdfContent=document.getElementById('stock-pdf-content');
-        const pdfOverlay=document.getElementById('stock-pdf-overlay');
-        if(pdfContent){
-          pdfContent.innerHTML=`<style>${css}</style>${bodyContent}`;
+        // Ouvrir un nouvel onglet avec le contenu PDF
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+          newTab.document.open();
+          newTab.document.write(html);
+          newTab.document.close();
+          newTab.document.title = title;
         }
-        if(pdfOverlay) pdfOverlay.style.display='block';
       };
 
       (window as any).sExportPDF = () => {
