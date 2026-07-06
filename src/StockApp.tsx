@@ -1123,7 +1123,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         articles.forEach((a, idx) => {
           if (counted(a)) {
             const locs: any = {};
-            for (let i = 1; i <= 8; i++) if (a["compte" + i] !== null && a["compte" + i] !== undefined) locs["c" + i] = a["compte" + i];
+            for (let i = 1; i <= 8; i++) { const v = a["compte" + i]; if (v !== null && v !== undefined && v !== 0) locs["c" + i] = v; }
             data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: a._saisieTs || Date.now(), _idx: idx };
           }
         });
@@ -1467,7 +1467,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const locs = [a.compte1, a.compte2, a.compte3, a.compte4, a.compte5, a.compte6, a.compte7, a.compte8];
           let inp = `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${q1}" oninput="sSetCount(${a.id},1,this.value)" onchange="sSetCount(${a.id},1,this.value)">`;
           let lastFilled = 1;
-          locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v}" oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
+          locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v > 0 ? v : ""}" oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
           if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" onclick="sAddNextLoc(${a.id})">+</button>`;
           const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
