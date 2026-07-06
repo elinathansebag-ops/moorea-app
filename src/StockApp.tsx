@@ -1415,9 +1415,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const btn = document.querySelector(`button.add-loc-btn[data-id="${id}"][data-loc="${loc}"]`) as HTMLElement;
         if (btn) {
           const inp = document.createElement("input");
-          inp.className = "qty-in"; inp.type = "number"; inp.min = "0"; inp.inputMode = "decimal"; inp.value = "";
-          inp.oninput = function () { (window as any).sSetCount(id, loc, (this as any).value); };
-          inp.onchange = function () { (window as any).sSetCount(id, loc, (this as any).value); };
+          inp.className = "qty-in";
+          inp.type = "number"; inp.min = "0"; inp.inputMode = "decimal"; inp.value = "";
+          // Data attributes pour l'event delegation - pas de closure
+          inp.setAttribute("data-id", String(id));
+          inp.setAttribute("data-loc", String(loc));
+          inp.setAttribute("data-qty", "1");
           btn.parentNode?.insertBefore(inp, btn);
           if (loc < 8) btn.setAttribute("onclick", `sAddLoc(${id},${loc + 1})`);
           else btn.remove();
@@ -1444,6 +1447,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         });
         const tbody = document.getElementById("s-tbl-body");
         if (!tbody) return;
+        setupTableDelegation();
         if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
         let html = "";
         rows.forEach(a => {
@@ -1598,6 +1602,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         });
         const tbody = document.getElementById("s-etbl-body");
         if (!tbody) return;
+        setupTableDelegation();
         if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
         tbody.innerHTML = rows.map(a => {
           if (!counted(a)) return `<tr><td style="font-weight:500">${a.article}</td><td style="text-align:right">${a.nb_colis}</td><td style="color:#6b7280;text-align:right">-</td><td>-</td><td><span class="badge badge-nc">Non compté</span></td></tr>`;
