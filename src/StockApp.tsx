@@ -1266,7 +1266,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (sid) sid.textContent = "📋 Session : " + currentSessionId;
         document.getElementById("s-nav-comptage")?.classList.remove("hidden");
         document.getElementById("s-nav-ecarts")?.classList.add("hidden");
-        loadComptages(team).then(async () => { await loadOrdreOptimise(); updateMetricsC(); sRenderTable(); });
+        loadComptages(team).then(async () => { await loadOrdreOptimise(); updateMetricsC(); sRenderTable(); setTimeout(setupTableDelegation, 100); });
         const srchEl = document.getElementById("s-srch");
         if (srchEl) {
           (srchEl as HTMLInputElement).value = "";
@@ -1447,7 +1447,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         });
         const tbody = document.getElementById("s-tbl-body");
         if (!tbody) return;
-        setupTableDelegation();
         if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
         let html = "";
         rows.forEach(a => {
@@ -1602,7 +1601,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         });
         const tbody = document.getElementById("s-etbl-body");
         if (!tbody) return;
-        setupTableDelegation();
         if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
         tbody.innerHTML = rows.map(a => {
           if (!counted(a)) return `<tr><td style="font-weight:500">${a.article}</td><td style="text-align:right">${a.nb_colis}</td><td style="color:#6b7280;text-align:right">-</td><td>-</td><td><span class="badge badge-nc">Non compté</span></td></tr>`;
