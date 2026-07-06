@@ -1408,6 +1408,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         comptageTimeout = setTimeout(saveComptages, 1500);
       };
 
+      (window as any).sAddNextLoc = (id: number) => {
+        const a = articles.find(x => x.id === id); if (!a) return;
+        let nextLoc = 1;
+        for (let i = 1; i <= 8; i++) {
+          if (a["compte" + i] !== null && a["compte" + i] !== undefined) nextLoc = i + 1;
+        }
+        if (nextLoc <= 8) (window as any).sAddLoc(id, nextLoc);
+      };
+
       (window as any).sAddLoc = (id: number, loc: number) => {
         const a = articles.find(x => x.id === id); if (!a) return;
         a["compte" + loc] = 0;
@@ -1422,8 +1431,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           inp.setAttribute("data-loc", String(loc));
           inp.setAttribute("data-qty", "1");
           btn.parentNode?.insertBefore(inp, btn);
-          if (loc < 8) btn.setAttribute("onclick", `sAddLoc(${id},${loc + 1})`);
-          else btn.remove();
+          // bouton reste - sAddNextLoc calcule le prochain loc
           inp.focus();
         } else sRenderTable();
       };
@@ -1460,7 +1468,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           let inp = `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${q1}" oninput="sSetCount(${a.id},1,this.value)" onchange="sSetCount(${a.id},1,this.value)">`;
           let lastFilled = 1;
           locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v}" oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
-          if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" data-loc="${q1 !== "" ? lastFilled + 1 : 1}" onclick="sAddLoc(${a.id},${q1 !== "" ? lastFilled + 1 : 1})">+</button>`;
+          if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" onclick="sAddNextLoc(${a.id})">+</button>`;
           const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="0" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
           const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
@@ -2049,7 +2057,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddLoc","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
