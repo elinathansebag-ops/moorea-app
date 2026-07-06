@@ -2062,30 +2062,48 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const video = document.getElementById("s-scan-video") as HTMLVideoElement;
           video.srcObject = stream; await video.play();
           const canvas = document.getElementById("s-scan-canvas") as HTMLCanvasElement;
-          const tick = () => {
-            if (!sScanActive) return;
-            if (video.readyState !== video.HAVE_ENOUGH_DATA) { sScanRaf = requestAnimationFrame(tick); return; }
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-            const ctx = canvas.getContext("2d")!; ctx.drawImage(video, 0, 0);
-            const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
-            if (code) {
-              sScanActive = false; stream.getTracks().forEach(t => t.stop()); cancelAnimationFrame(sScanRaf);
-              const raw = code.data.trim();
-              // 1. EAN barcode (8-13 chiffres) → chercher dans gencodes
-              if (/^\d{8,13}$/.test(raw)) {
-                (window as any).sVerifierEANDansStock(raw); return;
-              }
-              // 2. QR code URL avec lot
-              let lot = "";
-              try { const u = new URL(raw); lot = u.searchParams.get("id") || u.searchParams.get("lot") || ""; } catch {}
-              if (!lot && /^\d{3,6}$/.test(raw)) lot = raw;
-              if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
-              (window as any).sVerifierLotDansStock(lot); return;
-            }
-            sScanRaf = requestAnimationFrame(tick);
+          const handleRaw = (raw: string) => {
+            sScanActive = false; stream.getTracks().forEach(t => t.stop()); cancelAnimationFrame(sScanRaf);
+            // EAN barcode (8-13 chiffres)
+            if (/^\d{8,13}$/.test(raw)) { (window as any).sVerifierEANDansStock(raw); return; }
+            // QR code URL avec lot
+            let lot = "";
+            try { const u = new URL(raw); lot = u.searchParams.get("id") || u.searchParams.get("lot") || ""; } catch {}
+            if (!lot && /^\d{3,6}$/.test(raw)) lot = raw;
+            if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
+            (window as any).sVerifierLotDansStock(lot);
           };
-          sScanRaf = requestAnimationFrame(tick);
+
+          // Essayer BarcodeDetector (EAN natif) puis fallback jsQR (QR uniquement)
+          const useBarcodeDetector = 'BarcodeDetector' in window;
+          if (useBarcodeDetector) {
+            const detector = new (window as any).BarcodeDetector({
+              formats: ['ean_13','ean_8','qr_code','code_128','code_39','upc_a','upc_e']
+            });
+            const tick = async () => {
+              if (!sScanActive) return;
+              if (video.readyState !== video.HAVE_ENOUGH_DATA) { sScanRaf = requestAnimationFrame(tick); return; }
+              try {
+                const codes = await detector.detect(video);
+                if (codes.length > 0) { handleRaw(codes[0].rawValue.trim()); return; }
+              } catch {}
+              sScanRaf = requestAnimationFrame(tick);
+            };
+            sScanRaf = requestAnimationFrame(tick);
+          } else {
+            // Fallback jsQR pour QR codes
+            const tick = () => {
+              if (!sScanActive) return;
+              if (video.readyState !== video.HAVE_ENOUGH_DATA) { sScanRaf = requestAnimationFrame(tick); return; }
+              canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+              const ctx = canvas.getContext("2d")!; ctx.drawImage(video, 0, 0);
+              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+              if (code) { handleRaw(code.data.trim()); return; }
+              sScanRaf = requestAnimationFrame(tick);
+            };
+            sScanRaf = requestAnimationFrame(tick);
+          }
         } catch (e: any) {
           const errEl = document.getElementById("s-scan-error") as HTMLElement;
           const msgEl = document.getElementById("s-scan-error-msg");
@@ -2217,4 +2235,3 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     </div>
   );
 }
-
