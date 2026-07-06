@@ -1410,13 +1410,13 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       (window as any).sAddLoc = (id: number, loc: number) => {
         const a = articles.find(x => x.id === id); if (!a) return;
-        a["compte" + loc] = null; // null pas 0 — ne compte pas tant que l'user n'a pas saisi
+        a["compte" + loc] = 0;
         clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);
         const btn = document.querySelector(`button.add-loc-btn[data-id="${id}"][data-loc="${loc}"]`) as HTMLElement;
         if (btn) {
           const inp = document.createElement("input");
           inp.className = "qty-in"; inp.type = "number"; inp.min = "0"; inp.value = "";
-          // oninput = mise à jour immédiate à chaque frappe
+          // oninput = mise à jour immédiate à chaque frappe (pas seulement au blur)
           inp.addEventListener("input", function () { (window as any).sSetCount(id, loc, (this as any).value); });
           inp.addEventListener("change", function () { (window as any).sSetCount(id, loc, (this as any).value); });
           btn.parentNode?.insertBefore(inp, btn);
