@@ -828,7 +828,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           <div id="s-session-id-display" style="font-size:11px;color:#6b7280;margin-top:3px"></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-sm" onclick="sChanterFichier()">📂 Changer fichier</button>
           <button class="btn btn-gold" onclick="sTerminerComptage()">✓ Terminer et voir les écarts</button>
         </div>
       </div>
@@ -1342,9 +1341,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
                 ${s.cloture ? "" : `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>`}
                 ${s.cloture
                   ? `<span style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 10px;border-radius:8px;font-weight:600">✓ Clôturé</span>
-                     <button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>`
+                     <button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>
+                     <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}')">🔓 Rouvrir</button>`
                   : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>`}
-                <button class="btn btn-sm" onclick="sDupliquer('${sid}')" title="Dupliquer">📋</button>
                 <button class="btn btn-sm btn-danger" onclick="sDeleteStock('${sid}')">🗑</button>
               </div>
             </div>`;
@@ -1368,6 +1367,16 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const snap = await getDoc(doc(db, "stocks", sid));
           if (snap.exists()) await setDoc(doc(db, "stocks", sid), { ...snap.data(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") });
           toast("Stock clôturé"); renderStockList();
+        } catch { toast("Erreur"); }
+      };
+
+      // Rouvrir un stock clôturé
+      (window as any).sReouvrir = async (sid: string) => {
+        if (!confirm("Rouvrir ce stock pour le modifier ?")) return;
+        try {
+          await setDoc(doc(db, "stocks", sid), { cloture: false, clotureDate: null }, { merge: true });
+          toast("🔓 Stock rouvert !");
+          (window as any).sShowPage("stocks");
         } catch { toast("Erreur"); }
       };
 
@@ -2062,10 +2071,16 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
             if (code) {
               sScanActive = false; stream.getTracks().forEach(t => t.stop()); cancelAnimationFrame(sScanRaf);
+              const raw = code.data.trim();
+              // 1. EAN barcode (8-13 chiffres) → chercher dans gencodes
+              if (/^\d{8,13}$/.test(raw)) {
+                (window as any).sVerifierEANDansStock(raw); return;
+              }
+              // 2. QR code URL avec lot
               let lot = "";
-              try { const u = new URL(code.data); lot = u.searchParams.get("id") || u.searchParams.get("lot") || ""; } catch {}
-              if (!lot && /^\d{3,6}$/.test(code.data.trim())) lot = code.data.trim();
-              if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "QR non reconnu" }); return; }
+              try { const u = new URL(raw); lot = u.searchParams.get("id") || u.searchParams.get("lot") || ""; } catch {}
+              if (!lot && /^\d{3,6}$/.test(raw)) lot = raw;
+              if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
               (window as any).sVerifierLotDansStock(lot); return;
             }
             sScanRaf = requestAnimationFrame(tick);
@@ -2077,6 +2092,38 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           if (errEl) errEl.style.display = "flex";
           if (msgEl) msgEl.textContent = e.name === "NotAllowedError" ? "Accès caméra refusé" : e.message;
         }
+      };
+
+      (window as any).sVerifierEANDansStock = (ean: string) => {
+        // Chercher dans gencodeArticles (chargés depuis Firebase)
+        const gc = (window as any)._gencodeArticles?.find((g: any) => g.ean === ean);
+        if (!gc) { (window as any).sAfficherResultatScan({ found: false, msg: `EAN ${ean} non trouvé dans les gencodes` }); return; }
+        // Chercher l'article correspondant dans le stock
+        const code = gc.code_article || "";
+        const libelle = gc.nom_geslot?.[0] || gc.produit || "";
+        const artInStock = articles.find((a: any) =>
+          (code && a.code === code) ||
+          (libelle && a.article.toLowerCase() === libelle.toLowerCase())
+        );
+        if (!artInStock) {
+          (window as any).sAfficherResultatScan({ found: false, msg: `Gencode trouvé : ${gc.produit} ${gc.conditionnement}\nMais article non trouvé dans ce stock` });
+          return;
+        }
+        // Scroller vers l'article dans le tableau
+        const row = document.querySelector(`tr[data-id="${artInStock.id}"]`) as HTMLElement;
+        if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.style.background = "#fef3c7"; setTimeout(() => row.style.background = "", 2000); }
+        const html = `<div style="text-align:left">
+          <div style="font-size:11px;color:#3b82f6;font-weight:700;margin-bottom:4px">📦 GENCODE TROUVÉ</div>
+          <div style="font-weight:700;font-size:14px">${gc.produit} ${gc.variete || ""}</div>
+          <div style="font-size:12px;color:#555;margin-top:2px">${gc.conditionnement}</div>
+          <div style="font-family:monospace;font-size:12px;color:#3b82f6;margin-top:4px">${ean}</div>
+          <div style="margin-top:10px;padding:8px 12px;background:#f0fff4;border-radius:8px;border:1px solid #a9dfbf">
+            <div style="font-size:11px;color:#27ae60;font-weight:700">✅ Article en stock</div>
+            <div style="font-weight:600;margin-top:2px">${artInStock.article}</div>
+            <div style="font-size:11px;color:#666">Stock : ${artInStock.nb_colis} colis · Compté : ${artInStock.compte ?? "-"}</div>
+          </div>
+        </div>`;
+        (window as any).sAfficherResultatScan({ found: true, html });
       };
 
       (window as any).sVerifierLotDansStock = (lot: string) => {
@@ -2157,7 +2204,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
@@ -2170,3 +2217,4 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     </div>
   );
 }
+

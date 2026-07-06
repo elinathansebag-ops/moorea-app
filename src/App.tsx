@@ -1733,6 +1733,25 @@ _PDF joint_`;
       <ScannerQR
         onScan={(id) => {
           setShowScanner(false);
+          // Détection EAN gencode
+          if (id.startsWith('EAN:')) {
+            const ean = id.slice(4);
+            const gc = gencodeArticles?.find((g: any) => g.ean === ean);
+            if (gc) {
+              const libelle = gc.nom_geslot?.[0] || gc.produit || '';
+              const code = gc.code_article || '';
+              setFormArr(prev => ({ ...prev, produit: libelle, code_article: code }));
+              setPageMode('arrivages');
+              setVue('form');
+              setShowAccueil(false);
+              showToast('Gencode reconnu : ' + (libelle || ean));
+            } else {
+              showToast('Gencode ' + ean + ' non trouvé dans la base', 'error');
+              setShowAccueil(false);
+              setPageMode('arrivages');
+            }
+            return;
+          }
           if (scannerMode === "rapport") {
             // Cherche l'arrivage et ouvre le formulaire rapport
             const found = arrivages.find((a: any) => a.id === id || a.lot_interne === id);
@@ -2164,8 +2183,9 @@ _PDF joint_`;
 
   // ─── PAGE STOCK INVENTAIRE (EMBARQUÉE) ───
   if (showStock) {
+    (window as any)._gencodeArticles = gencodeArticles;
     return (
-      <>{fabScanner}<StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} /></>
+      <>{fabScanner}<StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} /></>
     );
   }
 
