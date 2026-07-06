@@ -972,15 +972,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     <button class="calc-btn" onclick="sCalcNum('4')">4</button>
     <button class="calc-btn" onclick="sCalcNum('5')">5</button>
     <button class="calc-btn" onclick="sCalcNum('6')">6</button>
-    <button class="calc-btn op" onclick="sCalcOp('/')">÷</button>
+    <button class="calc-btn eq" onclick="sCalcEqual()">=</button>
     <button class="calc-btn" onclick="sCalcNum('1')">1</button>
     <button class="calc-btn" onclick="sCalcNum('2')">2</button>
     <button class="calc-btn" onclick="sCalcNum('3')">3</button>
-    <button class="calc-btn eq" onclick="sCalcEqual()">=</button>
-    <button class="calc-btn" style="grid-column:span 2" onclick="sCalcNum('0')">0</button>
-    <button class="calc-btn" onclick="sCalcNum('.')">.</button>
-    <button class="calc-btn op" onclick="sCalcOp('±')">±</button>
-    <button class="calc-btn use" onclick="sCalcUse()">↑ Utiliser</button>
+    <button class="calc-btn" style="grid-column:span 1" onclick="sCalcNum('0')">0</button>
+    <button class="calc-btn use" style="grid-column:span 4" onclick="sCalcUse()">↑ Utiliser</button>
   </div>
 </div>
     `;
