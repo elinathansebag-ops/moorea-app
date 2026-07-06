@@ -3,7 +3,7 @@ import { db, ref, update, onValue } from "./firebase";
 
 interface Article {
   id: string;
-  produit: string;
+  produit: string
   variete: string;
   origine: string;
   conditionnement: string;
@@ -4821,7 +4821,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                         },
                         () => {}
                       );
-                    } catch(e:any) { setStatus('Camera non disponible : ' + e.message);
+                    } catch(e:any) { setStatus('Camera non disponible : ' + e.message); }
                   }} style={{ marginTop:12, background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
                     {scanning ? 'Scan en cours...' : 'Demarrer le scan'}
                   </button>
