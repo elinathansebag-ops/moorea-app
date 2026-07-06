@@ -962,9 +962,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
   <div class="calc-screen"><div class="expr" id="s-calc-expr"></div><div class="result" id="s-calc-result">0</div></div>
   <div class="calc-grid">
     <button class="calc-btn clear" onclick="sCalcClear()">C</button>
-    <button class="calc-btn op" onclick="sCalcOp('±')">±</button>
-    <button class="calc-btn op" onclick="sCalcOp('%')">%</button>
-    <button class="calc-btn op" onclick="sCalcOp('/')">÷</button>
+    <button class="calc-btn op" onclick="sCalcBackspace()">⌫</button>
+    <button class="calc-btn op" onclick="sCalcOp('+')">+</button>
+    <button class="calc-btn op" onclick="sCalcOp('-')">−</button>
     <button class="calc-btn" onclick="sCalcNum('7')">7</button>
     <button class="calc-btn" onclick="sCalcNum('8')">8</button>
     <button class="calc-btn" onclick="sCalcNum('9')">9</button>
@@ -972,14 +972,14 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     <button class="calc-btn" onclick="sCalcNum('4')">4</button>
     <button class="calc-btn" onclick="sCalcNum('5')">5</button>
     <button class="calc-btn" onclick="sCalcNum('6')">6</button>
-    <button class="calc-btn op" onclick="sCalcOp('-')">−</button>
+    <button class="calc-btn op" onclick="sCalcOp('/')">÷</button>
     <button class="calc-btn" onclick="sCalcNum('1')">1</button>
     <button class="calc-btn" onclick="sCalcNum('2')">2</button>
     <button class="calc-btn" onclick="sCalcNum('3')">3</button>
-    <button class="calc-btn op" onclick="sCalcOp('+')">+</button>
+    <button class="calc-btn eq" onclick="sCalcEqual()">=</button>
     <button class="calc-btn" style="grid-column:span 2" onclick="sCalcNum('0')">0</button>
     <button class="calc-btn" onclick="sCalcNum('.')">.</button>
-    <button class="calc-btn eq" onclick="sCalcEqual()">=</button>
+    <button class="calc-btn op" onclick="sCalcOp('±')">±</button>
     <button class="calc-btn use" onclick="sCalcUse()">↑ Utiliser</button>
   </div>
 </div>
@@ -1900,6 +1900,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const e = document.getElementById("s-calc-expr"); if (e) e.textContent = "";
         const r = document.getElementById("s-calc-result"); if (r) r.textContent = "0";
       };
+      (window as any).sCalcBackspace = () => {
+        if (calcJustEvaled) { calcCurrent = "0"; calcJustEvaled = false; }
+        else if (calcCurrent.length > 1) { calcCurrent = calcCurrent.slice(0, -1); }
+        else { calcCurrent = "0"; }
+        const r = document.getElementById("s-calc-result"); if (r) r.textContent = calcCurrent;
+      };
       (window as any).sCalcUse = () => {
         const val = document.getElementById("s-calc-result")?.textContent;
         if (calcLastFocused && document.contains(calcLastFocused)) { calcLastFocused.value = val; calcLastFocused.dispatchEvent(new Event("change")); }
@@ -2154,7 +2160,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
