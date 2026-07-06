@@ -2294,7 +2294,7 @@ _PDF joint_`;
       {/* HEADER UNIFORME */}
       <PageHeader
         titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
-        onBack={vue === "form" ? () => setVue("historique" as any) : vue === "historique" ? () => { setVue("__none__" as any); setPageMode("arrivages"); } : undefined}
+        onBack={vue === "form" ? () => setVue("historique" as any) : vue === "historique" ? () => { setShowAccueil(true); } : undefined}
         onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }}
       />
 
