@@ -1712,14 +1712,13 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       // PDF
       const openPdfWindow = (html: string, title: string) => {
-        // Ouvrir un nouvel onglet avec le contenu PDF
-        const newTab = window.open('', '_blank');
-        if (newTab) {
-          newTab.document.open();
-          newTab.document.write(html);
-          newTab.document.close();
-          newTab.document.title = title;
-        }
+        // Dans une PWA : remplacer la page, imprimer, puis revenir
+        window.addEventListener('afterprint', () => window.location.reload(), { once: true });
+        document.title = title;
+        document.open();
+        document.write(html);
+        document.close();
+        setTimeout(() => window.print(), 300);
       };
 
       (window as any).sExportPDF = () => {
