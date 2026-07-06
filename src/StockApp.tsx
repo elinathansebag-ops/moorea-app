@@ -830,6 +830,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-sm" onclick="sChanterFichier()">📂 Changer fichier</button>
           <button class="btn btn-gold" onclick="sTerminerComptage()">✓ Terminer et voir les écarts</button>
+          <button class="btn btn-sm" style="border:1px solid #3b82f6;color:#3b82f6;background:transparent" onclick="sSyncGMSPermanent()">🔄 Sync GMS permanent</button>
         </div>
       </div>
       <div class="card" style="padding:.75rem 1.25rem;margin-bottom:1rem">
@@ -1525,6 +1526,38 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         updateMetricsC(); sRenderTable(); saveComptages();
       };
 
+      (window as any).sSyncGMSPermanent = async () => {
+        try {
+          toast("⏳ Synchronisation en cours...");
+          // 1. Lire config/overrides pour les mouvements manuels passés
+          const snap = await getDoc(doc(db, "config", "overrides"));
+          const ov = snap.exists() ? (snap.data() as any).data || {} : {};
+          // 2. Collecter tous les articles GMS : current session + overrides
+          const gmsArticles = new Map<string, string>(); // article -> code
+          // Articles de la session courante
+          allArticles.filter(a => getEquipe(a) === "GMS").forEach(a => {
+            if (a.code) gmsArticles.set(a.article, a.code);
+          });
+          // Articles des overrides GMS
+          Object.entries(ov).forEach(([art, team]: any) => {
+            if (team === "GMS") {
+              const found = allArticles.find(a => a.article === art);
+              if (found?.code) gmsArticles.set(art, found.code);
+            }
+          });
+          // 3. Mettre à jour moorea_articles pour chaque article GMS
+          let count = 0;
+          const updates: any = {};
+          gmsArticles.forEach((code, art) => {
+            const key = code.replace(/[.#$/\[\]]/g, "_");
+            updates["moorea_articles/" + key + "/equipe"] = "GMS";
+            count++;
+          });
+          if (count > 0) await update(ref(db, "/"), updates);
+          toast("✅ " + count + " articles GMS synchronisés dans le catalogue");
+        } catch(e: any) { toast("Erreur: " + e.message); }
+      };
+
       (window as any).sMoveToOther = async (id: number) => {
         const a = articles.find(x => x.id === id); if (!a) return;
         const newTeam = currentTeam === "GMS" ? "PRESTIGE" : "GMS";
@@ -1532,11 +1565,17 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         updateMetricsC(); sRenderTable();
         clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 500);
         try {
+          // 1. Sauvegarder dans config/overrides (pour le stock)
           const snap = await getDoc(doc(db, "config", "overrides"));
           const ov = snap.exists() ? (snap.data() as any).data || {} : {};
           ov[a.article] = newTeam;
           await setDoc(doc(db, "config", "overrides"), { data: ov });
-          toast(a.article.split(" ").slice(0, 3).join(" ") + " → " + newTeam);
+          // 2. Mettre à jour moorea_articles (catalogue central) si le code article existe
+          if (a.code) {
+            const key = a.code.replace(/[.#$/\[\]]/g, "_");
+            await update(ref(db, `moorea_articles/${key}`), { equipe: newTeam });
+          }
+          toast(a.article.split(" ").slice(0, 3).join(" ") + " → " + newTeam + " (permanent)");
         } catch { toast("Déplacé"); }
       };
 
@@ -2057,7 +2096,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
