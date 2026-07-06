@@ -1154,15 +1154,31 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
 
       // ── Ordre optimisé ──
+      const getArticleRoot = (name: string): string => {
+        // Extraire les 2 premiers mots significatifs comme clé de famille
+        const words = name.toUpperCase().replace(/\(.*\)/g, '').trim().split(/\s+/);
+        return words.slice(0, 2).join(' ');
+      };
+
       const loadOrdreOptimise = async () => {
         try {
           const snap = await getDoc(doc(db, "config", "ordre"));
           if (!snap.exists()) return;
           const avgPos = (snap.data() as any).data || {};
+          // Trier par position optimisée, puis regrouper les variantes du même produit
           articles.sort((a: any, b: any) => {
-            const posA = avgPos[a.article] ?? 9999;
-            const posB = avgPos[b.article] ?? 9999;
-            return posA - posB;
+            const rootA = getArticleRoot(a.article);
+            const rootB = getArticleRoot(b.article);
+            // Position optimisée de la famille (minimum du groupe)
+            const familyPosA = Math.min(...articles
+              .filter(x => getArticleRoot(x.article) === rootA)
+              .map(x => avgPos[x.article] ?? 9999));
+            const familyPosB = Math.min(...articles
+              .filter(x => getArticleRoot(x.article) === rootB)
+              .map(x => avgPos[x.article] ?? 9999));
+            if (familyPosA !== familyPosB) return familyPosA - familyPosB;
+            // Même famille → tri alphabétique pour regrouper les variantes
+            return a.article.localeCompare(b.article);
           });
           toast("📊 Ordre optimisé appliqué");
         } catch {}
