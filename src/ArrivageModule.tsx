@@ -619,143 +619,70 @@ export function GencodeChecker({ onClose, expectedEan, expectedArticle }: { onCl
 }
 
 export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; onClose: () => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState("");
   const [scanning, setScanning] = useState(false);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number>(0);
+  const stopRef = useRef<(() => void) | null>(null);
+
+  const handleRaw = (raw: string) => {
+    if (/^\d{8,13}$/.test(raw)) { onScan('EAN:' + raw); return; }
+    try {
+      const url = new URL(raw);
+      const lot = url.searchParams.get("id") || url.searchParams.get("lot");
+      if (lot) { onScan(lot); return; }
+    } catch {}
+    if (/^\d{3,6}$/.test(raw)) { onScan(raw); return; }
+    onScan(raw);
+  };
 
   useEffect(() => {
-    let active = true;
-
-    const loadJsQR = (): Promise<any> => new Promise((res, rej) => {
-      if ((window as any).jsQR) { res((window as any).jsQR); return; }
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
-      s.onload = () => res((window as any).jsQR);
-      s.onerror = rej;
-      document.head.appendChild(s);
-    });
-
+    let done = false;
     const start = async () => {
       try {
-        const handleRaw = (raw: string) => {
-          if (!active) return;
-          active = false;
-          if (/^\d{8,13}$/.test(raw)) { onScan('EAN:' + raw); return; }
-          try {
-            const url = new URL(raw);
-            const lot = url.searchParams.get("id") || url.searchParams.get("lot");
-            if (lot) { onScan(lot); return; }
-          } catch {}
-          if (/^\d{3,6}$/.test(raw)) { onScan(raw); return; }
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
-        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-        setScanning(true);
-
-        // Scan universel: BarcodeDetector ou ZXing canvas (iOS compatible)
-        const loadZXing = (): Promise<any> => new Promise((res, rej) => {
-          if ((window as any).ZXing) { res((window as any).ZXing); return; }
+        // Charger html5-qrcode (EAN + QR, fonctionne sur iOS)
+        await new Promise<void>((res, rej) => {
+          if ((window as any).Html5Qrcode) { res(); return; }
           const s = document.createElement("script");
-          s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js";
-          s.onload = () => res((window as any).ZXing); s.onerror = rej;
+          s.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+          s.onload = () => res(); s.onerror = rej;
           document.head.appendChild(s);
         });
-        if ('BarcodeDetector' in window) {
-          const detector = new (window as any).BarcodeDetector({ formats: ['ean_13','ean_8','qr_code','code_128','upc_a','upc_e'] });
-          const tick = async () => {
-            if (!active || !videoRef.current) return;
-            if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-              try { const codes = await detector.detect(videoRef.current); if (codes.length > 0) { handleRaw(codes[0].rawValue.trim()); return; } } catch {}
-            }
-            rafRef.current = requestAnimationFrame(tick);
-          };
-          rafRef.current = requestAnimationFrame(tick);
-        } else {
-          const ZX: any = await loadZXing();
-          const reader = new ZX.BrowserMultiFormatReader();
-          const ctx = canvasRef.current!.getContext('2d')!;
-          const tick = () => {
-            if (!active || !videoRef.current || !canvasRef.current) return;
-            if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-              canvasRef.current.width = videoRef.current.videoWidth;
-              canvasRef.current.height = videoRef.current.videoHeight;
-              ctx.drawImage(videoRef.current, 0, 0);
-              try { const r = reader.decodeFromCanvas(canvasRef.current); if (r) { handleRaw(r.getText().trim()); return; } } catch {}
-            }
-            rafRef.current = requestAnimationFrame(tick);
-          };
-          rafRef.current = requestAnimationFrame(tick);
-        }
+        if (done) return;
+        setScanning(true);
+        const scanner = new (window as any).Html5Qrcode("qr-scanner-container", { verbose: false });
+        stopRef.current = () => scanner.stop().catch(() => {});
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 280, height: 120 } },
+          (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } },
+          () => {}
+        );
       } catch (e: any) {
-        setError(e.name === "NotAllowedError" ? "Accès à la caméra refusé. Autorise l'accès dans les réglages." : "Caméra indisponible : " + e.message);
+        setError(e.name === "NotAllowedError" ? "Accès à la caméra refusé." : "Caméra indisponible : " + e.message);
       }
     };
-
     start();
-    return () => {
-      active = false;
-      cancelAnimationFrame(rafRef.current);
-      streamRef.current?.getTracks().forEach(t => t.stop());
-    };
+    return () => { done = true; stopRef.current?.(); };
   }, []);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000", zIndex: 999, display: "flex", flexDirection: "column" }}>
-      <PageHeader titre="📷 Scanner QR palette" onBack={onClose} onHome={onClose} />
-
-      {/* Caméra */}
-      <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover" }} playsInline muted />
-        <canvas ref={canvasRef} style={{ display: "none" }} />
-
-        {/* Viseur */}
-        {scanning && !error && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-            <div style={{ width: 240, height: 240, position: "relative" }}>
-              {/* Coins du viseur */}
-              {[{ top: 0, left: 0 }, { top: 0, right: 0 }, { bottom: 0, left: 0 }, { bottom: 0, right: 0 }].map((pos, i) => (
-                <div key={i} style={{ position: "absolute", width: 40, height: 40, ...pos, border: "4px solid #c8a84b", borderRadius: 4,
-                  borderRight: "right" in pos ? "4px solid #c8a84b" : "none",
-                  borderLeft: "left" in pos ? "4px solid #c8a84b" : "none",
-                  borderBottom: "bottom" in pos ? "4px solid #c8a84b" : "none",
-                  borderTop: "top" in pos ? "4px solid #c8a84b" : "none",
-                }} />
-              ))}
-              {/* Ligne de scan animée */}
-              <div style={{ position: "absolute", left: 0, right: 0, height: 2, background: "#c8a84b", animation: "scan-line 2s linear infinite", top: "50%" }} />
-            </div>
-          </div>
-        )}
-
-        <style>{`
-          @keyframes scan-line {
-            0% { transform: translateY(-120px); opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { transform: translateY(120px); opacity: 1; }
-          }
-        `}</style>
-
+      <PageHeader titre="📷 Scanner" onBack={onClose} onHome={onClose} />
+      <div style={{ flex: 1, position: "relative" }}>
+        <div id="qr-scanner-container" style={{ width: "100%", height: "100%" }} />
         {error && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-            <div style={{ background: "#fff", borderRadius: 16, padding: 24, textAlign: "center", maxWidth: 320 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📷</div>
-              <p style={{ fontWeight: 700, color: "#dc2626", marginBottom: 8 }}>Caméra indisponible</p>
-              <p style={{ fontSize: 13, color: "#6b7280" }}>{error}</p>
+            <div style={{ background: "#fff", borderRadius: 12, padding: 20, textAlign: "center" }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🚫</div>
+              <p style={{ color: "#dc2626", fontSize: 14 }}>{error}</p>
+              <button onClick={onClose} style={{ marginTop: 12, padding: "8px 20px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>Fermer</button>
             </div>
           </div>
         )}
-      </div>
-
-      <div style={{ background: "#0a0a0a", padding: "14px 20px", textAlign: "center", flexShrink: 0 }}>
-        <p style={{ margin: 0, fontSize: 13, color: "rgba(255,255,255,0.6)" }}>Pointez la caméra vers le QR code de la palette</p>
+        {!scanning && !error && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ color: "#fff", fontSize: 14 }}>Chargement caméra...</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1251,4 +1178,3 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     </div>
   );
 }
-
