@@ -15,9 +15,24 @@ const DEFAULT_ROWS = 4;
 const DEFAULT_COLS = 8;
 const DEFAULT_ECHELLE = 4; // une échelle toutes les 4 places par défaut (0 = désactivé)
 
-type WallConfig = { rows: number; cols: number; label: string; echelleEvery?: number; cellSpans?: Record<string, number>; cellSplits?: Record<string, number> };
+type WallConfig = { rows: number; cols: number; label: string; echelleEvery?: number; baySlots?: Record<string, number> };
+
+// ─── DÉCOUPAGE DU MUR EN SECTIONS PHYSIQUES (entre deux échelles) ───
+// Chaque section a une largeur fixe (en "emplacements bruts"). Le nombre de
+// palettes qu'on y met (1, 2, 3...) est réglable indépendamment par section
+// et par niveau, sans jamais changer la taille physique de la section.
+function getBays(cfg: WallConfig): { start: number; width: number }[] {
+  const every = cfg.echelleEvery && cfg.echelleEvery > 0 ? cfg.echelleEvery : cfg.cols;
+  const bays: { start: number; width: number }[] = [];
+  for (let s = 0; s < cfg.cols; s += every) bays.push({ start: s, width: Math.min(every, cfg.cols - s) });
+  return bays.length ? bays : [{ start: 0, width: cfg.cols }];
+}
 type PalettePos = {
   produit: string;
+  type?: "produit" | "archive" | "packaging";
+  produit2?: string;
+  quantite2?: string;
+  unite2?: string;
   fournisseur?: string;
   lot_interne?: string;
   quantite?: string;
@@ -70,6 +85,13 @@ function groupPresetsByOrigine(presets: Preset[]): { origine: string; items: Pre
   return Object.entries(groups).map(([origine, items]) => ({ origine, items }));
 }
 
+// ─── TYPE DE PALETTE (produit / archive / packaging) ───
+const PALETTE_TYPES: Record<string, { label: string; icon: string; color: string }> = {
+  produit: { label: "Produit", icon: "🥦", color: "#16a34a" },
+  archive: { label: "Archive", icon: "🗄️", color: "#6b7280" },
+  packaging: { label: "Packaging", icon: "📦", color: "#0ea5e9" },
+};
+
 // ─── STATUT DLC (couleur selon urgence) ───
 function dlcStatus(dlc?: string): { color: string; bg: string; label: string } | null {
   if (!dlc) return null;
@@ -83,20 +105,23 @@ function dlcStatus(dlc?: string): { color: string; bg: string; label: string } |
 }
 
 // ─── VISUEL PALETTE (planches de bois + infos essentielles) ───
-function PaletteVisual({ produit, quantite, unite, dlc, color }: { produit?: string; quantite?: string; unite?: string; dlc?: string; color?: string }) {
+function PaletteVisual({ produit, produit2, quantite, unite, dlc, color, type }: { produit?: string; produit2?: string; quantite?: string; unite?: string; dlc?: string; color?: string; type?: string }) {
   const status = dlcStatus(dlc);
+  const meta = type && type !== "produit" ? PALETTE_TYPES[type] : null;
+  const borderColor = color || meta?.color;
   return (
     <div style={{
       display: "flex", flexDirection: "column", alignItems: "center", width: "100%", gap: 1.5,
-      border: color ? `2px solid ${color}` : "none",
-      background: color ? `${color}1f` : "transparent",
+      border: borderColor ? `2px solid ${borderColor}` : "none",
+      background: borderColor ? `${borderColor}1f` : "transparent",
       borderRadius: 7, padding: "4px 3px 3px",
     }}>
+      {meta && <span style={{ fontSize: 9 }}>{meta.icon}</span>}
       <span style={{
         fontSize: 8.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.15, textAlign: "center",
         maxWidth: 72, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
         overflow: "hidden", wordBreak: "break-word" as const,
-      }}>{produit}</span>
+      }}>{produit}{produit2 ? ` + ${produit2}` : ""}</span>
       {quantite && <span style={{ fontSize: 8, color: "#6b7280", fontWeight: 600 }}>{quantite} {unite || ""}</span>}
       {status && (
         <span style={{ fontSize: 7.5, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "1px 4px", lineHeight: 1.3 }}>
@@ -140,12 +165,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [cfgLabel, setCfgLabel] = useState("");
   const [cfgEchelle, setCfgEchelle] = useState(DEFAULT_ECHELLE);
 
-  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number; sub?: number } | null>(null);
-  const [moving, setMoving] = useState<{ wallId: string; row: number; col: number; sub?: number; data: PalettePos } | null>(null);
+  const [selectedCell, setSelectedCell] = useState<{ row: number; bay: number; slot: number } | null>(null);
+  const [moving, setMoving] = useState<{ wallId: string; row: number; bay: number; slot: number; data: PalettePos } | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [dragActiveKey, setDragActiveKey] = useState<string | null>(null); // case source pendant le drag
   const [ghost, setGhost] = useState<{ x: number; y: number; produit: string } | null>(null);
-  const dragInfoRef = useRef<{ row: number; col: number; sub?: number; data?: PalettePos; startX: number; startY: number; moved: boolean } | null>(null);
+  const dragInfoRef = useRef<{ row: number; bay: number; slot: number; data?: PalettePos; startX: number; startY: number; moved: boolean } | null>(null);
   const rackScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -154,7 +179,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const [addMode, setAddMode] = useState<"modele" | "libre">("libre");
   const [presetLocked, setPresetLocked] = useState(false);
-  const [freeForm, setFreeForm] = useState({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
+  const [freeForm, setFreeForm] = useState({ produit: "", type: "produit" as "produit" | "archive" | "packaging", produit2: "", quantite2: "", unite2: "colis", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
   const [saving, setSaving] = useState(false);
 
   // ─── FIREBASE: config des murs ───
@@ -217,13 +242,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       clearTimeout(t);
     };
   }, [activeWall, cfg.rows, cfg.cols, cfg.echelleEvery]);
-  const cellKey = (row: number, col: number, sub?: number) => sub !== undefined ? `${row}_${col}_${sub}` : `${row}_${col}`;
+  const cellKey = (row: number, bay: number, slot: number) => `${row}_${bay}_${slot}`;
 
-  // ─── FUSION / DIVISION D'EMPLACEMENTS ───
-  const [cfgFusionNiveau, setCfgFusionNiveau] = useState(1);
-  const [cfgFusionEmplacement, setCfgFusionEmplacement] = useState(1);
-  const [cfgFusionType, setCfgFusionType] = useState<"fusion" | "division">("fusion");
-  const [cfgFusionCount, setCfgFusionCount] = useState(2);
+  // ─── NOMBRE DE PALETTES PAR SECTION (entre échelles) ───
+  const [cfgBayNiveau, setCfgBayNiveau] = useState(1);
+  const [cfgBayIndex, setCfgBayIndex] = useState(0);
+  const [cfgBayCount, setCfgBayCount] = useState(1);
 
   // ─── CONFIG MUR ───
   const openConfig = () => {
@@ -239,44 +263,40 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setShowConfig(false);
   };
 
-  // ─── APPLIQUER UNE FUSION (grande palette) OU UNE DIVISION (petites palettes) ───
-  const applyCellRule = async () => {
-    const row = cfgFusionNiveau - 1, col = cfgFusionEmplacement - 1;
-    if (row < 0 || row >= cfg.rows || col < 0 || col >= cfg.cols) { alert("Niveau/Emplacement hors de la grille actuelle"); return; }
-    const key = `${row}_${col}`;
-    const spans: Record<string, number> = { ...(cfg.cellSpans || {}) };
-    const splits: Record<string, number> = { ...(cfg.cellSplits || {}) };
-    delete spans[key]; delete splits[key];
-    if (cfgFusionType === "fusion") {
-      if (col + cfgFusionCount > cfg.cols) { alert("La fusion dépasse la largeur du mur — réduis le nombre d'emplacements ou choisis un emplacement de départ plus tôt."); return; }
-      spans[key] = cfgFusionCount;
-    } else {
-      splits[key] = cfgFusionCount;
-    }
-    await update(ref(db, `rack_config/${activeWall}`), { cellSpans: spans, cellSplits: splits });
+  // ─── RÉGLER LE NOMBRE DE PALETTES DANS UNE SECTION (à un niveau donné) ───
+  const applyBayRule = async () => {
+    const row = cfgBayNiveau - 1;
+    if (row < 0 || row >= cfg.rows) { alert("Niveau hors de la grille actuelle"); return; }
+    const bays = getBays(cfg);
+    const bay = bays[cfgBayIndex];
+    if (!bay) { alert("Section invalide"); return; }
+    const key = `${row}_${cfgBayIndex}`;
+    const slots: Record<string, number> = { ...(cfg.baySlots || {}) };
+    if (cfgBayCount === bay.width) delete slots[key]; // = normal, on retire le réglage
+    else slots[key] = cfgBayCount;
+    await update(ref(db, `rack_config/${activeWall}`), { baySlots: slots });
   };
 
-  const removeCellRule = async (key: string) => {
-    const spans: Record<string, number> = { ...(cfg.cellSpans || {}) };
-    const splits: Record<string, number> = { ...(cfg.cellSplits || {}) };
-    delete spans[key]; delete splits[key];
-    await update(ref(db, `rack_config/${activeWall}`), { cellSpans: spans, cellSplits: splits });
+  const removeBayRule = async (key: string) => {
+    const slots: Record<string, number> = { ...(cfg.baySlots || {}) };
+    delete slots[key];
+    await update(ref(db, `rack_config/${activeWall}`), { baySlots: slots });
   };
 
   // ─── CLIC SUR UNE CASE ───
-  const handleCellClick = (row: number, col: number, sub?: number) => {
-    const key = cellKey(row, col, sub);
+  const handleCellClick = (row: number, bay: number, slot: number) => {
+    const key = cellKey(row, bay, slot);
     const occupied = positions[key];
 
     if (moving) {
       if (occupied) { alert("Cet emplacement est déjà occupé — choisis une case vide."); return; }
-      finishMove(row, col, sub);
+      finishMove(row, bay, slot);
       return;
     }
 
-    setSelectedCell({ row, col, sub });
+    setSelectedCell({ row, bay, slot });
     if (!occupied) {
-      setFreeForm({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
+      setFreeForm({ produit: "", type: "produit", produit2: "", quantite2: "", unite2: "colis", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
       setAddMode(WALL_PRESETS[activeWall] ? "modele" : "libre");
       setPresetLocked(false);
     }
@@ -284,14 +304,15 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   // ─── AJOUT PALETTE (saisie libre) ───
   const handleAddFree = async () => {
-    if (!freeForm.produit.trim()) { alert("Le produit est requis"); return; }
+    if (!freeForm.produit.trim()) { alert(freeForm.type === "produit" ? "Le produit est requis" : "La description est requise"); return; }
     if (!selectedCell) return;
     setSaving(true);
     try {
-      const key = cellKey(selectedCell.row, selectedCell.col, selectedCell.sub);
-      await update(ref(db, `rack_positions/${activeWall}`), {
-        [key]: { ...freeForm, date_stockage: new Date().toLocaleDateString("fr-FR"), timestamp: Date.now() }
-      });
+      const key = cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot);
+      const cleanProduit2 = freeForm.produit2.trim();
+      const payload: any = { ...freeForm, produit2: cleanProduit2 || undefined, quantite2: cleanProduit2 ? freeForm.quantite2 : undefined, unite2: cleanProduit2 ? freeForm.unite2 : undefined, date_stockage: new Date().toLocaleDateString("fr-FR"), timestamp: Date.now() };
+      Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
+      await update(ref(db, `rack_positions/${activeWall}`), { [key]: payload });
       setSelectedCell(null);
       setPresetLocked(false);
     } catch { alert("Erreur lors de l'enregistrement"); }
@@ -311,31 +332,31 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setAddMode("modele");
   };
 
-  // ─── MONTER / DESCENDRE (rapide, même colonne — désactivé sur les cases fusionnées/divisées) ───
-  const quickMove = async (destRow: number, destCol: number) => {
+  // ─── MONTER / DESCENDRE (même section, même sous-place) ───
+  const quickMove = async (destRow: number) => {
     if (!selectedCell) return;
-    const data = positions[cellKey(selectedCell.row, selectedCell.col, selectedCell.sub)];
+    const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
     if (!data) return;
-    const destKey = cellKey(destRow, destCol);
+    const destKey = cellKey(destRow, selectedCell.bay, selectedCell.slot);
     await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: data });
-    await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.col, selectedCell.sub)}`));
+    await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)}`));
     setSelectedCell(null);
   };
 
   // ─── DÉPLACER AILLEURS (autre case, y compris autre mur) ───
   const startMove = () => {
     if (!selectedCell) return;
-    const data = positions[cellKey(selectedCell.row, selectedCell.col, selectedCell.sub)];
+    const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
     if (!data) return;
-    setMoving({ wallId: activeWall, row: selectedCell.row, col: selectedCell.col, sub: selectedCell.sub, data });
+    setMoving({ wallId: activeWall, row: selectedCell.row, bay: selectedCell.bay, slot: selectedCell.slot, data });
     setSelectedCell(null);
   };
 
-  const finishMove = async (row: number, col: number, sub?: number) => {
+  const finishMove = async (row: number, bay: number, slot: number) => {
     if (!moving) return;
-    const destKey = cellKey(row, col, sub);
+    const destKey = cellKey(row, bay, slot);
     await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: moving.data });
-    await remove(ref(db, `rack_positions/${moving.wallId}/${cellKey(moving.row, moving.col, moving.sub)}`));
+    await remove(ref(db, `rack_positions/${moving.wallId}/${cellKey(moving.row, moving.bay, moving.slot)}`));
     setMoving(null);
   };
 
@@ -343,19 +364,18 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   // ─── DÉPLACEMENT TACTILE UNIVERSEL (souris + doigt) via Pointer Events ───
   // handleCellClick est appelé ici pour un simple tap (pas de mouvement significatif)
-  const onPointerDownCell = (e: React.PointerEvent, row: number, col: number, sub?: number) => {
-    const data = moving ? undefined : positionsRef.current[cellKey(row, col, sub)];
-    dragInfoRef.current = { row, col, sub, data, startX: e.clientX, startY: e.clientY, moved: false };
-    if (data) setDragActiveKey(cellKey(row, col, sub));
+  const onPointerDownCell = (e: React.PointerEvent, row: number, bay: number, slot: number) => {
+    const data = moving ? undefined : positionsRef.current[cellKey(row, bay, slot)];
+    dragInfoRef.current = { row, bay, slot, data, startX: e.clientX, startY: e.clientY, moved: false };
+    if (data) setDragActiveKey(cellKey(row, bay, slot));
   };
 
   useEffect(() => {
-    const findCell = (x: number, y: number): { row: number; col: number; sub?: number } | null => {
+    const findCell = (x: number, y: number): { row: number; bay: number; slot: number } | null => {
       const el = document.elementFromPoint(x, y) as HTMLElement | null;
       const cellEl = el?.closest("[data-rack-cell]") as HTMLElement | null;
       if (!cellEl) return null;
-      const sub = cellEl.dataset.sub !== undefined ? Number(cellEl.dataset.sub) : undefined;
-      return { row: Number(cellEl.dataset.row), col: Number(cellEl.dataset.col), sub };
+      return { row: Number(cellEl.dataset.row), bay: Number(cellEl.dataset.bay), slot: Number(cellEl.dataset.slot) };
     };
 
     const onMove = (e: PointerEvent) => {
@@ -366,21 +386,21 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       if (!info.moved) return;
       setGhost({ x: e.clientX, y: e.clientY, produit: info.data.produit });
       const target = findCell(e.clientX, e.clientY);
-      setDragOverKey(target ? cellKey(target.row, target.col, target.sub) : null);
+      setDragOverKey(target ? cellKey(target.row, target.bay, target.slot) : null);
     };
 
     const finishTap = (info: NonNullable<typeof dragInfoRef.current>) => {
-      handleCellClick(info.row, info.col, info.sub);
+      handleCellClick(info.row, info.bay, info.slot);
     };
 
-    const finishDrag = async (info: NonNullable<typeof dragInfoRef.current>, target: { row: number; col: number; sub?: number } | null) => {
+    const finishDrag = async (info: NonNullable<typeof dragInfoRef.current>, target: { row: number; bay: number; slot: number } | null) => {
       if (!info.data || !target) return;
-      if (target.row === info.row && target.col === info.col && target.sub === info.sub) return;
-      const destKey = cellKey(target.row, target.col, target.sub);
+      if (target.row === info.row && target.bay === info.bay && target.slot === info.slot) return;
+      const destKey = cellKey(target.row, target.bay, target.slot);
       if (positionsRef.current[destKey]) return; // occupé, on ignore le dépôt
       const wall = activeWallRef.current;
       await update(ref(db, `rack_positions/${wall}`), { [destKey]: info.data });
-      await remove(ref(db, `rack_positions/${wall}/${cellKey(info.row, info.col, info.sub)}`));
+      await remove(ref(db, `rack_positions/${wall}/${cellKey(info.row, info.bay, info.slot)}`));
     };
 
     const onUp = (e: PointerEvent) => {
@@ -417,27 +437,33 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   // ─── SORTIR DU RACK ───
   const handleRemove = async () => {
     if (!selectedCell) return;
-    const data = positions[cellKey(selectedCell.row, selectedCell.col, selectedCell.sub)];
+    const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
     if (!data) return;
     if (!window.confirm(`Sortir "${data.produit}" du rack ?`)) return;
     try {
       await push(ref(db, "rack_historique"), {
         ...data, wallId: activeWall, wallLabel: cfg.label,
-        row: selectedCell.row, col: selectedCell.col,
+        row: selectedCell.row, bay: selectedCell.bay, slot: selectedCell.slot,
         sortieLe: new Date().toLocaleDateString("fr-FR"), action: "sortie",
       });
-      await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.col, selectedCell.sub)}`));
+      await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)}`));
       setSelectedCell(null);
     } catch { alert("Erreur"); }
   };
 
   const nbOccupees = Object.keys(positions).length;
-  const nbTotal = cfg.rows * cfg.cols;
+  const bays = getBays(cfg);
+  const nbTotal = Array.from({ length: cfg.rows }, (_, row) => row).reduce(
+    (sum, row) => sum + bays.reduce((s, bay, i) => s + (cfg.baySlots?.[`${row}_${i}`] || bay.width), 0), 0
+  );
 
-  const selectedData = selectedCell ? positions[cellKey(selectedCell.row, selectedCell.col, selectedCell.sub)] : null;
-  const selectedIsSpecial = selectedCell ? (selectedCell.sub !== undefined || (cfg.cellSpans?.[`${selectedCell.row}_${selectedCell.col}`] ?? 1) > 1) : false;
-  const canUp = selectedCell && !selectedIsSpecial ? (selectedCell.row + 1 < cfg.rows && !positions[cellKey(selectedCell.row + 1, selectedCell.col)]) : false;
-  const canDown = selectedCell && !selectedIsSpecial ? (selectedCell.row - 1 >= 0 && !positions[cellKey(selectedCell.row - 1, selectedCell.col)]) : false;
+  const selectedData = selectedCell ? positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)] : null;
+  const selectedBayInfo = selectedCell ? bays[selectedCell.bay] : null;
+  const selectedBaySlotCount = selectedCell && selectedBayInfo ? (cfg.baySlots?.[`${selectedCell.row}_${selectedCell.bay}`] || selectedBayInfo.width) : 1;
+  const targetBaySlotCountUp = selectedCell ? (cfg.baySlots?.[`${selectedCell.row + 1}_${selectedCell.bay}`] || (bays[selectedCell.bay]?.width ?? 1)) : 0;
+  const targetBaySlotCountDown = selectedCell ? (cfg.baySlots?.[`${selectedCell.row - 1}_${selectedCell.bay}`] || (bays[selectedCell.bay]?.width ?? 1)) : 0;
+  const canUp = selectedCell ? (selectedCell.row + 1 < cfg.rows && selectedCell.slot < targetBaySlotCountUp && !positions[cellKey(selectedCell.row + 1, selectedCell.bay, selectedCell.slot)]) : false;
+  const canDown = selectedCell ? (selectedCell.row - 1 >= 0 && selectedCell.slot < targetBaySlotCountDown && !positions[cellKey(selectedCell.row - 1, selectedCell.bay, selectedCell.slot)]) : false;
 
   const suggestionsProduits = [...new Set(catalogueArticles.map((a: any) => a.libelle).filter(Boolean))];
   const suggestionsFournisseurs = [...new Set(arrivages.map((a: any) => a.fournisseur).filter(Boolean))];
@@ -504,87 +530,47 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 <span style={{ fontSize: 10, fontWeight: 800, color: "#52525b", background: "#fff", border: "1px solid #d4d4d8", borderRadius: 5, padding: "2px 5px" }}>N{row + 1}</span>
               </div>
               <div style={{ display: "flex", flex: 1 }}>
-                {(() => {
-                  const cellSpans = cfg.cellSpans || {};
-                  const cellSplits = cfg.cellSplits || {};
-                  const absorbed = new Set<number>();
-                  for (let c = 0; c < cfg.cols; c++) {
-                    const span = cellSpans[`${row}_${c}`];
-                    if (span && span > 1) for (let k = 1; k < span; k++) absorbed.add(c + k);
-                  }
-                  return Array.from({ length: cfg.cols }, (_, col) => col).flatMap(col => {
-                    if (absorbed.has(col)) return [];
-                    const echelleEvery = cfg.echelleEvery ?? 0;
-                    const els: any[] = [];
-                    if (col > 0 && echelleEvery > 0 && col % echelleEvery === 0) {
-                      els.push(<EchelleDivider key={`ech-${col}`} height={118} />);
-                    }
-                    const span = cellSpans[`${row}_${col}`] || 1;
-                    const splitN = cellSplits[`${row}_${col}`] || 1;
-
-                    // ─── EMPLACEMENT DIVISÉ (plusieurs petites palettes côte à côte) ───
-                    if (splitN > 1) {
-                      els.push(
-                        <div key={col} style={{ flex: 1, minWidth: 86, display: "flex", gap: 2 }}>
-                          {Array.from({ length: splitN }, (_, sub) => sub).map(sub => {
-                            const key = cellKey(row, col, sub);
-                            const data = positions[key];
-                            const isMovingSource = !!moving && moving.wallId === activeWall && moving.row === row && moving.col === col && moving.sub === sub;
-                            return (
-                              <button key={sub}
-                                data-rack-cell data-row={row} data-col={col} data-sub={sub}
-                                onPointerDown={e => onPointerDownCell(e, row, col, sub)}
-                                style={{
-                                  flex: 1, minWidth: 28, height: 118, cursor: data ? "grab" : "pointer", padding: "4px 1px 0",
-                                  touchAction: data ? "none" : "auto",
-                                  background: dragOverKey === key ? "rgba(139,92,246,0.18)" : "#fdf4ff",
-                                  border: "1px dashed #d8b4fe", borderRadius: 4,
-                                  display: "flex", alignItems: "flex-end", justifyContent: "center",
-                                  position: "relative", WebkitTapHighlightColor: "transparent",
-                                }}>
-                                {data ? <PaletteVisual produit={data.produit} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} /> : (
-                                  <div style={{ width: 16, height: 12, border: "1.5px dashed #d8b4fe", borderRadius: 2, marginBottom: 3 }} />
-                                )}
-                                {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
-                                {dragActiveKey === key && <div style={{ position: "absolute", inset: 0, background: "rgba(139,92,246,0.25)", borderRadius: 4 }} />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      );
-                      return els;
-                    }
-
-                    // ─── EMPLACEMENT NORMAL OU FUSIONNÉ (grande palette sur plusieurs places) ───
-                    const key = cellKey(row, col);
-                    const data = positions[key];
-                    const isMovingSource = !!moving && moving.wallId === activeWall && moving.row === row && moving.col === col && moving.sub === undefined;
-                    els.push(
-                      <button key={col}
-                        data-rack-cell data-row={row} data-col={col}
-                        onPointerDown={e => onPointerDownCell(e, row, col)}
-                        style={{
-                          flex: span, minWidth: 86 * span + 3 * (span - 1), height: 118, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
-                          touchAction: data ? "none" : "auto",
-                          background: dragOverKey === key ? "rgba(139,92,246,0.18)" : span > 1 ? "rgba(139,92,246,0.07)" : "transparent",
-                          border: "none",
-                          borderLeft: col === 0 ? "6px solid #3f3f46" : dragOverKey === key ? "3px dashed #8b5cf6" : "3px solid #71717a",
-                          borderRight: (col + span - 1) === cfg.cols - 1 ? "6px solid #3f3f46" : "none",
-                          borderBottom: dragOverKey === key ? "6px dashed #8b5cf6" : span > 1 ? "6px solid #8b5cf6" : "6px solid #52525b",
-                          display: "flex", alignItems: "flex-end", justifyContent: "center",
-                          position: "relative", WebkitTapHighlightColor: "transparent",
-                        }}>
-                        {data ? <PaletteVisual produit={data.produit} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} /> : (
-                          <div style={{ width: span > 1 ? 70 : 42, height: 24, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 5 }} />
-                        )}
-                        {span > 1 && <span style={{ position: "absolute", top: 4, right: 6, fontSize: 9, fontWeight: 800, color: "#8b5cf6", background: "#fff", borderRadius: 4, padding: "0 3px" }}>×{span}</span>}
-                        {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
-                        {dragActiveKey === key && <div style={{ position: "absolute", inset: 0, background: "rgba(139,92,246,0.25)", borderRadius: 4 }} />}
-                      </button>
-                    );
-                    return els;
-                  });
-                })()}
+                {bays.flatMap((bay, bayIdx) => {
+                  const els: any[] = [];
+                  if (bayIdx > 0) els.push(<EchelleDivider key={`ech-${bayIdx}`} height={118} />);
+                  const n = cfg.baySlots?.[`${row}_${bayIdx}`] || bay.width;
+                  const isCustom = n !== bay.width;
+                  els.push(
+                    <div key={bayIdx} style={{ flex: bay.width, minWidth: 86 * bay.width, display: "flex", gap: 2 }}>
+                      {Array.from({ length: n }, (_, slot) => slot).map(slot => {
+                        const key = cellKey(row, bayIdx, slot);
+                        const data = positions[key];
+                        const isMovingSource = !!moving && moving.wallId === activeWall && moving.row === row && moving.bay === bayIdx && moving.slot === slot;
+                        const isFirst = slot === 0;
+                        const isLast = slot === n - 1;
+                        return (
+                          <button key={slot}
+                            data-rack-cell data-row={row} data-bay={bayIdx} data-slot={slot}
+                            onPointerDown={e => onPointerDownCell(e, row, bayIdx, slot)}
+                            style={{
+                              flex: 1, minWidth: Math.max(30, (86 * bay.width) / n), height: 118, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
+                              touchAction: data ? "none" : "auto",
+                              background: dragOverKey === key ? "rgba(139,92,246,0.18)" : isCustom ? "rgba(139,92,246,0.06)" : "transparent",
+                              border: "none",
+                              borderLeft: isFirst ? "6px solid #3f3f46" : dragOverKey === key ? "3px dashed #8b5cf6" : "3px solid #71717a",
+                              borderRight: isLast ? "6px solid #3f3f46" : "none",
+                              borderBottom: dragOverKey === key ? "6px dashed #8b5cf6" : isCustom ? "6px solid #8b5cf6" : "6px solid #52525b",
+                              display: "flex", alignItems: "flex-end", justifyContent: "center",
+                              position: "relative", WebkitTapHighlightColor: "transparent",
+                            }}>
+                            {data ? <PaletteVisual produit={data.produit} produit2={data.produit2} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} type={data.type} /> : (
+                              <div style={{ width: n === 1 ? 70 : Math.max(18, 42 * bay.width / n), height: 24, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 5 }} />
+                            )}
+                            {isCustom && isFirst && <span style={{ position: "absolute", top: 4, left: 6, fontSize: 9, fontWeight: 800, color: "#8b5cf6", background: "#fff", borderRadius: 4, padding: "0 3px" }}>{n}/section</span>}
+                            {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
+                            {dragActiveKey === key && <div style={{ position: "absolute", inset: 0, background: "rgba(139,92,246,0.25)", borderRadius: 4 }} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                  return els;
+                })}
               </div>
             </div>
           ))}
@@ -646,66 +632,49 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 16px" }}>Ajoute un montant de séparation visuel tous les X emplacements, pour repérer où un rack s'arrête et où le suivant commence.</p>
 
             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 14, marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "#6d28d9", display: "block", marginBottom: 3 }}>🔀 FUSIONNER / DIVISER UN EMPLACEMENT</label>
-              <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 10px" }}>Fusionner : pour une très grande palette qui prend la place de plusieurs. Diviser : pour plusieurs petites palettes dans un seul emplacement.</p>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "#6d28d9", display: "block", marginBottom: 3 }}>🔀 NOMBRE DE PALETTES PAR SECTION</label>
+              <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 10px" }}>Chaque section (entre deux échelles, ou le mur entier si pas d'échelle) garde toujours la même taille physique — tu choisis juste combien de palettes y rentrent, niveau par niveau : 1 (très grande), 2, 3...</p>
 
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Niveau</label>
-                  <input type="number" min={1} max={cfg.rows} value={cfgFusionNiveau} onChange={e => setCfgFusionNiveau(Number(e.target.value))}
+                  <input type="number" min={1} max={cfg.rows} value={cfgBayNiveau} onChange={e => setCfgBayNiveau(Number(e.target.value))}
                     style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, boxSizing: "border-box" as const }} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Emplacement (départ)</label>
-                  <input type="number" min={1} max={cfg.cols} value={cfgFusionEmplacement} onChange={e => setCfgFusionEmplacement(Number(e.target.value))}
-                    style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, boxSizing: "border-box" as const }} />
+                <div style={{ flex: 2 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Section (entre échelles)</label>
+                  <select value={cfgBayIndex} onChange={e => { const i = Number(e.target.value); setCfgBayIndex(i); const b = getBays(cfg)[i]; if (b) setCfgBayCount(b.width); }}
+                    style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
+                    {getBays(cfg).map((b, i) => (
+                      <option key={i} value={i}>Section {i + 1} (emplacements {b.start + 1} à {b.start + b.width})</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <button onClick={() => setCfgFusionType("fusion")}
-                  style={{ flex: 1, padding: "8px", borderRadius: 8, border: `2px solid ${cfgFusionType === "fusion" ? "#8b5cf6" : "#e5e7eb"}`, background: cfgFusionType === "fusion" ? "#f5f3ff" : "#fff", color: cfgFusionType === "fusion" ? "#6d28d9" : "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                  🔗 Fusionner
-                </button>
-                <button onClick={() => setCfgFusionType("division")}
-                  style={{ flex: 1, padding: "8px", borderRadius: 8, border: `2px solid ${cfgFusionType === "division" ? "#8b5cf6" : "#e5e7eb"}`, background: cfgFusionType === "division" ? "#f5f3ff" : "#fff", color: cfgFusionType === "division" ? "#6d28d9" : "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                  ✂️ Diviser
-                </button>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", flex: 1 }}>
-                  {cfgFusionType === "fusion" ? "Nombre d'emplacements à fusionner" : "Nombre de petites places"}
-                </label>
-                <select value={cfgFusionCount} onChange={e => setCfgFusionCount(Number(e.target.value))}
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", flex: 1 }}>Nombre de palettes dans cette section, à ce niveau</label>
+                <select value={cfgBayCount} onChange={e => setCfgBayCount(Number(e.target.value))}
                   style={{ padding: "6px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, fontWeight: 700 }}>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                  <option value={4}>4</option>
+                  {Array.from({ length: Math.max(getBays(cfg)[cfgBayIndex]?.width || 1, 4) }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>{n}{n === (getBays(cfg)[cfgBayIndex]?.width || 1) ? " (normal)" : ""}</option>
+                  ))}
                 </select>
               </div>
 
-              <button onClick={applyCellRule} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
-                Appliquer à Niveau {cfgFusionNiveau} · Emplacement {cfgFusionEmplacement}
+              <button onClick={applyBayRule} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
+                Appliquer à Niveau {cfgBayNiveau} · Section {cfgBayIndex + 1}
               </button>
 
-              {(Object.keys(cfg.cellSpans || {}).length > 0 || Object.keys(cfg.cellSplits || {}).length > 0) && (
+              {Object.keys(cfg.baySlots || {}).length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  {Object.entries(cfg.cellSpans || {}).map(([key, span]) => {
-                    const [r, c] = key.split("_").map(Number);
+                  {Object.entries(cfg.baySlots || {}).map(([key, n]) => {
+                    const [r, b] = key.split("_").map(Number);
+                    const bayInfo = getBays(cfg)[b];
                     return (
-                      <div key={"span-" + key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px" }}>
-                        <span style={{ fontSize: 11, color: "#6d28d9" }}>🔗 Niveau {r + 1} · Emplacement {c + 1} → fusionné sur {span} places</span>
-                        <button onClick={() => removeCellRule(key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
-                      </div>
-                    );
-                  })}
-                  {Object.entries(cfg.cellSplits || {}).map(([key, n]) => {
-                    const [r, c] = key.split("_").map(Number);
-                    return (
-                      <div key={"split-" + key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fdf4ff", border: "1px solid #f3c9ff", borderRadius: 8, padding: "6px 10px" }}>
-                        <span style={{ fontSize: 11, color: "#a21caf" }}>✂️ Niveau {r + 1} · Emplacement {c + 1} → divisé en {n} petites places</span>
-                        <button onClick={() => removeCellRule(key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
+                      <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px" }}>
+                        <span style={{ fontSize: 11, color: "#6d28d9" }}>🔀 Niveau {r + 1} · Section {b + 1}{bayInfo ? ` (emp. ${bayInfo.start + 1}-${bayInfo.start + bayInfo.width})` : ""} → {n} palette{n > 1 ? "s" : ""}</span>
+                        <button onClick={() => removeBayRule(key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
                       </div>
                     );
                   })}
@@ -730,7 +699,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif" }}>➕ Placer une palette</h2>
               <button onClick={() => setSelectedCell(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
             </div>
-            <p style={{ margin: "0 0 16px", fontSize: 12, color: "#9ca3af" }}>{cfg.label} · Niveau {selectedCell.row + 1} · Emplacement {selectedCell.col + 1}{selectedCell.sub !== undefined ? ` (petite place ${selectedCell.sub + 1})` : ""}</p>
+            <p style={{ margin: "0 0 16px", fontSize: 12, color: "#9ca3af" }}>{cfg.label} · Niveau {selectedCell.row + 1} · Section {selectedCell.bay + 1} · Place {selectedCell.slot + 1}/{selectedBaySlotCount}</p>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
               {WALL_PRESETS[activeWall] && (
@@ -771,6 +740,16 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
             {addMode === "libre" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {!presetLocked && (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {(["produit", "archive", "packaging"] as const).map(t => (
+                      <button key={t} onClick={() => setFreeForm({ ...freeForm, type: t })}
+                        style={{ flex: 1, padding: "7px 4px", borderRadius: 8, border: `2px solid ${freeForm.type === t ? PALETTE_TYPES[t].color : "#e5e7eb"}`, background: freeForm.type === t ? `${PALETTE_TYPES[t].color}18` : "#fff", color: freeForm.type === t ? PALETTE_TYPES[t].color : "#6b7280", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
+                        {PALETTE_TYPES[t].icon} {PALETTE_TYPES[t].label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {presetLocked ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: 10, padding: "10px 12px" }}>
                     <div style={{ width: 22, height: 22, borderRadius: 5, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
@@ -789,10 +768,41 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                         <button onClick={() => setFreeForm({ ...freeForm, color: "" })} style={{ marginLeft: "auto", background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 11 }}>retirer</button>
                       </div>
                     )}
-                    <AutocompleteInput value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
-                    <AutocompleteInput value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
-                    <input value={freeForm.origine} onChange={e => setFreeForm({ ...freeForm, origine: e.target.value })} placeholder="🌍 Origine (pays)"
-                      style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
+                    {freeForm.type === "produit" ? (
+                      <AutocompleteInput value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
+                    ) : (
+                      <input value={freeForm.produit} onChange={e => setFreeForm({ ...freeForm, produit: e.target.value })} placeholder={freeForm.type === "archive" ? "Description archive *" : "Description packaging *"}
+                        style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
+                    )}
+                    {freeForm.type === "produit" && freeForm.produit2 === "" && (
+                      <button onClick={() => setFreeForm({ ...freeForm, produit2: " " })} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#8b5cf6", fontWeight: 700, fontSize: 12, cursor: "pointer", padding: 0 }}>
+                        + Ajouter un 2e article (palette mixte)
+                      </button>
+                    )}
+                    {freeForm.type === "produit" && freeForm.produit2 !== "" && (
+                      <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>2e article de la palette</span>
+                          <button onClick={() => setFreeForm({ ...freeForm, produit2: "", quantite2: "" })} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>retirer</button>
+                        </div>
+                        <AutocompleteInput value={freeForm.produit2.trim()} onChange={v => setFreeForm({ ...freeForm, produit2: v })} suggestions={suggestionsProduits} placeholder="Produit 2 * (catalogue)" />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input type="number" value={freeForm.quantite2} onChange={e => setFreeForm({ ...freeForm, quantite2: e.target.value })} placeholder="Qté"
+                            style={{ flex: 1, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                          <select value={freeForm.unite2} onChange={e => setFreeForm({ ...freeForm, unite2: e.target.value })}
+                            style={{ width: 90, padding: "9px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
+                            <option>colis</option><option>kg</option><option>palette</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                    {freeForm.type === "produit" && (
+                      <>
+                        <AutocompleteInput value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
+                        <input value={freeForm.origine} onChange={e => setFreeForm({ ...freeForm, origine: e.target.value })} placeholder="🌍 Origine (pays)"
+                          style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
+                      </>
+                    )}
                   </>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
@@ -805,11 +815,13 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                     <option>colis</option><option>kg</option><option>palette</option>
                   </select>
                 </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>DLC (date limite de consommation)</label>
-                  <input type="date" value={freeForm.dlc} onChange={e => setFreeForm({ ...freeForm, dlc: e.target.value })}
-                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
-                </div>
+                {freeForm.type === "produit" && (
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>DLC (date limite de consommation)</label>
+                    <input type="date" value={freeForm.dlc} onChange={e => setFreeForm({ ...freeForm, dlc: e.target.value })}
+                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
+                  </div>
+                )}
                 {!presetLocked && (
                   <textarea value={freeForm.notes} onChange={e => setFreeForm({ ...freeForm, notes: e.target.value })} placeholder="Notes (optionnel)" rows={2}
                     style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, resize: "vertical" as const }} />
@@ -832,6 +844,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               <div>
                 <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#1a2e1a", display: "flex", alignItems: "center", gap: 8 }}>
                   {selectedData.color && <span style={{ width: 14, height: 14, borderRadius: 4, background: selectedData.color, border: "1px solid rgba(0,0,0,0.15)", display: "inline-block" }} />}
+                  {selectedData.type && selectedData.type !== "produit" && <span>{PALETTE_TYPES[selectedData.type].icon}</span>}
                   {selectedData.produit}
                 </h2>
                 <p style={{ margin: "3px 0 0", fontSize: 13, color: "#6b7280" }}>{selectedData.fournisseur || "-"}{selectedData.origine ? ` · 🌍 ${selectedData.origine}` : ""}</p>
@@ -840,9 +853,10 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             </div>
 
             <div style={{ background: "#f9fafb", borderRadius: 12, padding: "12px 14px", marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}>
-              <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>📍 {cfg.label} · Niveau {selectedCell.row + 1} · Emplacement {selectedCell.col + 1}{selectedCell.sub !== undefined ? ` (petite place ${selectedCell.sub + 1})` : ""}</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>📍 {cfg.label} · Niveau {selectedCell.row + 1} · Section {selectedCell.bay + 1} · Place {selectedCell.slot + 1}/{selectedBaySlotCount}</p>
               {selectedData.lot_interne && <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>🔖 Lot {selectedData.lot_interne}</p>}
               {selectedData.quantite && <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>📦 {selectedData.quantite} {selectedData.unite}</p>}
+              {selectedData.produit2 && <p style={{ margin: 0, fontSize: 12, color: "#7c3aed", fontWeight: 600 }}>➕ {selectedData.produit2}{selectedData.quantite2 ? ` — ${selectedData.quantite2} ${selectedData.unite2}` : ""}</p>}
               {selectedData.dlc && (() => {
                 const s = dlcStatus(selectedData.dlc);
                 return s ? (
@@ -857,11 +871,11 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-              <button onClick={() => quickMove(selectedCell.row + 1, selectedCell.col)} disabled={!canUp}
+              <button onClick={() => quickMove(selectedCell.row + 1)} disabled={!canUp}
                 style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: canUp ? "#fff" : "#f9fafb", color: canUp ? "#374151" : "#d1d5db", fontWeight: 700, fontSize: 13, cursor: canUp ? "pointer" : "not-allowed" }}>
                 ⬆ Monter
               </button>
-              <button onClick={() => quickMove(selectedCell.row - 1, selectedCell.col)} disabled={!canDown}
+              <button onClick={() => quickMove(selectedCell.row - 1)} disabled={!canDown}
                 style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: canDown ? "#fff" : "#f9fafb", color: canDown ? "#374151" : "#d1d5db", fontWeight: 700, fontSize: 13, cursor: canDown ? "pointer" : "not-allowed" }}>
                 ⬇ Descendre
               </button>
