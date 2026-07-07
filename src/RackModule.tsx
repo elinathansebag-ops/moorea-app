@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader } from "./shared";
+import { PageHeader, AutocompleteInput } from "./shared";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MODULE ROTATION RACKS — gère 4 murs de rack, chacun avec ses propres
@@ -12,43 +12,66 @@ import { PageHeader } from "./shared";
 const WALL_IDS = ["mur1", "mur2", "mur3", "mur4"];
 const DEFAULT_ROWS = 4;
 const DEFAULT_COLS = 8;
+const DEFAULT_ECHELLE = 4; // une échelle toutes les 4 places par défaut (0 = désactivé)
 
-type WallConfig = { rows: number; cols: number; label: string };
+type WallConfig = { rows: number; cols: number; label: string; echelleEvery?: number };
 type PalettePos = {
   produit: string;
   fournisseur?: string;
   lot_interne?: string;
   quantite?: string;
   unite?: string;
+  dlc?: string;
   notes?: string;
   arrivage_id?: string;
   date_stockage?: string;
   timestamp?: number;
 };
 
-// ─── VISUEL PALETTE (planches de bois + cartons empilés) ───
-function PaletteVisual({ produit, lot }: { produit?: string; lot?: string }) {
+// ─── STATUT DLC (couleur selon urgence) ───
+function dlcStatus(dlc?: string): { color: string; bg: string; label: string } | null {
+  if (!dlc) return null;
+  const d = new Date(dlc);
+  if (isNaN(d.getTime())) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((d.getTime() - today.getTime()) / 86400000);
+  if (diffDays < 0) return { color: "#dc2626", bg: "#fef2f2", label: "Dépassée" };
+  if (diffDays <= 3) return { color: "#d97706", bg: "#fffbeb", label: `J-${diffDays}` };
+  return { color: "#16a34a", bg: "#f0fdf4", label: d.toLocaleDateString("fr-FR") };
+}
+
+// ─── VISUEL PALETTE (planches de bois + infos essentielles) ───
+function PaletteVisual({ produit, quantite, unite, dlc }: { produit?: string; quantite?: string; unite?: string; dlc?: string }) {
+  const status = dlcStatus(dlc);
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
-      {/* Cartons empilés */}
-      <div style={{ display: "flex", gap: 2, marginBottom: 2 }}>
-        {[0, 1].map(i => (
-          <div key={i} style={{ width: 16, height: 13, background: "linear-gradient(180deg,#dba86a,#c48c4a)", border: "1px solid #8a6032", borderRadius: 2, position: "relative" }}>
-            <div style={{ position: "absolute", top: 5.5, left: 0, right: 0, height: 1.5, background: "#8a6032cc" }} />
-          </div>
-        ))}
-      </div>
-      <div style={{ width: 15, height: 12, background: "linear-gradient(180deg,#dba86a,#c48c4a)", border: "1px solid #8a6032", borderRadius: 2, position: "relative", marginBottom: 3 }}>
-        <div style={{ position: "absolute", top: 5, left: 0, right: 0, height: 1.5, background: "#8a6032cc" }} />
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", gap: 1 }}>
+      <span style={{ fontSize: 9, fontWeight: 800, color: "#1a2e1a", maxWidth: 66, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>{produit}</span>
+      {quantite && <span style={{ fontSize: 8, color: "#6b7280", fontWeight: 600 }}>{quantite} {unite || ""}</span>}
+      {status && (
+        <span style={{ fontSize: 7.5, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "1px 4px", lineHeight: 1.3 }}>
+          {status.label === "Dépassée" || status.label.startsWith("J-") ? `⚠ ${status.label}` : `DLC ${status.label}`}
+        </span>
+      )}
       {/* Planches de la palette bois */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 1.5, width: 44 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 1.5, width: 40, marginTop: 2 }}>
         <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
         <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
         <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
       </div>
-      <span style={{ fontSize: 8.5, fontWeight: 800, color: "#1a2e1a", marginTop: 3, maxWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{produit}</span>
-      {lot && <span style={{ fontSize: 7.5, color: "#6b7280" }}>#{lot}</span>}
+    </div>
+  );
+}
+
+// ─── VISUEL ÉCHELLE (montant de séparation entre deux racks) ───
+function EchelleDivider({ height }: { height: number }) {
+  return (
+    <div style={{
+      width: 13, height, flexShrink: 0, margin: "0 3px",
+      background: "repeating-linear-gradient(45deg, #52525b 0px, #52525b 3px, #71717a 3px, #71717a 7px)",
+      border: "2px solid #27272a", borderRadius: 2, position: "relative",
+    }}>
+      <div style={{ position: "absolute", top: 2, left: "50%", transform: "translateX(-50%)", width: 6, height: 6, borderRadius: "50%", background: "#27272a" }} />
+      <div style={{ position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)", width: 6, height: 6, borderRadius: "50%", background: "#27272a" }} />
     </div>
   );
 }
@@ -58,17 +81,21 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [configs, setConfigs] = useState<Record<string, WallConfig>>({});
   const [positions, setPositions] = useState<Record<string, PalettePos>>({});
   const [arrivages, setArrivages] = useState<any[]>([]);
+  const [catalogueArticles, setCatalogueArticles] = useState<any[]>([]);
 
   const [showConfig, setShowConfig] = useState(false);
   const [cfgRows, setCfgRows] = useState(DEFAULT_ROWS);
   const [cfgCols, setCfgCols] = useState(DEFAULT_COLS);
   const [cfgLabel, setCfgLabel] = useState("");
+  const [cfgEchelle, setCfgEchelle] = useState(DEFAULT_ECHELLE);
 
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [moving, setMoving] = useState<{ wallId: string; row: number; col: number; data: PalettePos } | null>(null);
+  const [dragSource, setDragSource] = useState<{ row: number; col: number; data: PalettePos } | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
   const [addMode, setAddMode] = useState<"libre" | "existant">("libre");
-  const [freeForm, setFreeForm] = useState({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", notes: "" });
+  const [freeForm, setFreeForm] = useState({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", notes: "" });
   const [searchArrivage, setSearchArrivage] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -98,19 +125,29 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     return () => u();
   }, []);
 
-  const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: `Mur ${WALL_IDS.indexOf(activeWall) + 1}` };
+  // ─── FIREBASE: catalogue d'articles (pour l'autocomplete Produit) ───
+  useEffect(() => {
+    const u = onValue(ref(db, "moorea_articles"), snap => {
+      const d = snap.val();
+      setCatalogueArticles(d ? Object.values(d) : []);
+    });
+    return () => u();
+  }, []);
+
+  const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: `Mur ${WALL_IDS.indexOf(activeWall) + 1}`, echelleEvery: DEFAULT_ECHELLE };
   const cellKey = (row: number, col: number) => `${row}_${col}`;
 
   // ─── CONFIG MUR ───
   const openConfig = () => {
-    setCfgRows(cfg.rows); setCfgCols(cfg.cols); setCfgLabel(cfg.label);
+    setCfgRows(cfg.rows); setCfgCols(cfg.cols); setCfgLabel(cfg.label); setCfgEchelle(cfg.echelleEvery ?? DEFAULT_ECHELLE);
     setShowConfig(true);
   };
 
   const saveConfig = async () => {
     const rows = Math.max(1, Number(cfgRows) || DEFAULT_ROWS);
     const cols = Math.max(1, Number(cfgCols) || DEFAULT_COLS);
-    await update(ref(db, `rack_config/${activeWall}`), { rows, cols, label: cfgLabel.trim() || `Mur ${WALL_IDS.indexOf(activeWall) + 1}` });
+    const echelleEvery = Math.max(0, Number(cfgEchelle) || 0);
+    await update(ref(db, `rack_config/${activeWall}`), { rows, cols, echelleEvery, label: cfgLabel.trim() || `Mur ${WALL_IDS.indexOf(activeWall) + 1}` });
     setShowConfig(false);
   };
 
@@ -127,7 +164,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
     setSelectedCell({ row, col });
     if (!occupied) {
-      setFreeForm({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", notes: "" });
+      setFreeForm({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", notes: "" });
       setAddMode("libre");
       setSearchArrivage("");
     }
@@ -161,6 +198,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           lot_interne: a.lot_interne || "",
           quantite: a.quantite ? String(a.quantite) : "",
           unite: a.unite || "colis",
+          dlc: a.dlc || "",
           notes: "",
           arrivage_id: a.id,
           date_stockage: new Date().toLocaleDateString("fr-FR"),
@@ -202,6 +240,17 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const cancelMove = () => setMoving(null);
 
+  // ─── GLISSER-DÉPOSER (déplacement rapide dans le même mur) ───
+  const handleDrop = async (destRow: number, destCol: number) => {
+    if (!dragSource) return;
+    const destKey = cellKey(destRow, destCol);
+    if (positions[destKey]) { setDragSource(null); setDragOverKey(null); return; }
+    await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: dragSource.data });
+    await remove(ref(db, `rack_positions/${activeWall}/${cellKey(dragSource.row, dragSource.col)}`));
+    setDragSource(null);
+    setDragOverKey(null);
+  };
+
   // ─── SORTIR DU RACK ───
   const handleRemove = async () => {
     if (!selectedCell) return;
@@ -225,6 +274,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const selectedData = selectedCell ? positions[cellKey(selectedCell.row, selectedCell.col)] : null;
   const canUp = selectedCell ? (selectedCell.row + 1 < cfg.rows && !positions[cellKey(selectedCell.row + 1, selectedCell.col)]) : false;
   const canDown = selectedCell ? (selectedCell.row - 1 >= 0 && !positions[cellKey(selectedCell.row - 1, selectedCell.col)]) : false;
+
+  const suggestionsProduits = [...new Set(catalogueArticles.map((a: any) => a.libelle).filter(Boolean))];
+  const suggestionsFournisseurs = [...new Set(arrivages.map((a: any) => a.fournisseur).filter(Boolean))];
 
   const filteredArrivages = searchArrivage.length >= 1
     ? arrivages.filter(a =>
@@ -287,32 +339,46 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         {/* GRILLE DU RACK — structure réaliste : montants + traverses + palettes */}
         <div style={{ background: "linear-gradient(180deg, #eef1f5, #dde3ea)", border: "5px solid #3f3f46", borderRadius: 10, padding: "18px 14px 10px", overflowX: "auto", boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)" }}>
           {Array.from({ length: cfg.rows }, (_, i) => cfg.rows - 1 - i).map(row => (
-            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 74 + 40 }}>
+            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 80 + 40 }}>
               <div style={{ width: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ fontSize: 10, fontWeight: 800, color: "#52525b", background: "#fff", border: "1px solid #d4d4d8", borderRadius: 5, padding: "2px 5px" }}>N{row + 1}</span>
               </div>
               <div style={{ display: "flex", flex: 1 }}>
-                {Array.from({ length: cfg.cols }, (_, col) => col).map(col => {
+                {Array.from({ length: cfg.cols }, (_, col) => col).flatMap(col => {
                   const key = cellKey(row, col);
                   const data = positions[key];
                   const isMovingSource = !!moving && moving.wallId === activeWall && moving.row === row && moving.col === col;
-                  return (
+                  const echelleEvery = cfg.echelleEvery ?? 0;
+                  const els: any[] = [];
+                  if (col > 0 && echelleEvery > 0 && col % echelleEvery === 0) {
+                    els.push(<EchelleDivider key={`ech-${col}`} height={104} />);
+                  }
+                  els.push(
                     <button key={col} onClick={() => handleCellClick(row, col)}
+                      draggable={!!data}
+                      onDragStart={e => { if (data) { setDragSource({ row, col, data }); e.dataTransfer.setData("text/plain", key); e.dataTransfer.effectAllowed = "move"; } }}
+                      onDragEnd={() => { setDragSource(null); setDragOverKey(null); }}
+                      onDragOver={e => { if (dragSource && !data) { e.preventDefault(); setDragOverKey(key); } }}
+                      onDragLeave={() => setDragOverKey(prev => prev === key ? null : prev)}
+                      onDrop={e => { e.preventDefault(); handleDrop(row, col); }}
                       style={{
-                        flex: 1, minWidth: 70, height: 82, cursor: "pointer", padding: "6px 3px 0",
-                        background: "transparent", border: "none",
-                        borderLeft: col === 0 ? "6px solid #3f3f46" : "3px solid #71717a",
+                        flex: 1, minWidth: 76, height: 104, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
+                        background: dragOverKey === key ? "rgba(139,92,246,0.18)" : "transparent",
+                        border: "none",
+                        borderLeft: col === 0 ? "6px solid #3f3f46" : dragOverKey === key ? "3px dashed #8b5cf6" : "3px solid #71717a",
                         borderRight: col === cfg.cols - 1 ? "6px solid #3f3f46" : "none",
-                        borderBottom: "6px solid #52525b",
+                        borderBottom: dragOverKey === key ? "6px dashed #8b5cf6" : "6px solid #52525b",
                         display: "flex", alignItems: "flex-end", justifyContent: "center",
                         position: "relative",
                       }}>
-                      {data ? <PaletteVisual produit={data.produit} lot={data.lot_interne} /> : (
+                      {data ? <PaletteVisual produit={data.produit} quantite={data.quantite} unite={data.unite} dlc={data.dlc} /> : (
                         <div style={{ width: 42, height: 24, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 5 }} />
                       )}
                       {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
+                      {dragSource && dragSource.row === row && dragSource.col === col && <div style={{ position: "absolute", inset: 0, background: "rgba(139,92,246,0.25)", borderRadius: 4 }} />}
                     </button>
                   );
+                  return els;
                 })}
               </div>
             </div>
@@ -324,7 +390,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         </div>
 
         <p style={{ marginTop: 12, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
-          Clique sur un emplacement vide (case pointillée) pour y placer une palette, ou sur une palette pour la gérer.
+          Glisse une palette vers une case vide pour la déplacer rapidement, ou clique dessus pour monter/descendre/déplacer sur un autre mur/sortir.
         </p>
       </div>
 
@@ -348,6 +414,10 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const }} />
               </div>
             </div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>ÉCHELLE (séparation) TOUTES LES ... PLACES</label>
+            <input type="number" min="0" value={cfgEchelle} onChange={e => setCfgEchelle(Number(e.target.value))} placeholder="Ex: 4 — 0 pour désactiver"
+              style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const, marginBottom: 4 }} />
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 16px" }}>Ajoute un montant de séparation visuel tous les X emplacements, pour repérer où un rack s'arrête et où le suivant commence.</p>
             <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 16 }}>⚠️ Réduire les dimensions ne supprime pas les palettes déjà placées hors de la nouvelle grille — pense à les déplacer avant.</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowConfig(false)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>Annuler</button>
@@ -380,10 +450,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
             {addMode === "libre" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <input value={freeForm.produit} onChange={e => setFreeForm({ ...freeForm, produit: e.target.value })} placeholder="Produit *"
-                  style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
-                <input value={freeForm.fournisseur} onChange={e => setFreeForm({ ...freeForm, fournisseur: e.target.value })} placeholder="Fournisseur"
-                  style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
+                <AutocompleteInput value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
+                <AutocompleteInput value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
                 <div style={{ display: "flex", gap: 8 }}>
                   <input value={freeForm.lot_interne} onChange={e => setFreeForm({ ...freeForm, lot_interne: e.target.value })} placeholder="N° Lot"
                     style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
@@ -393,6 +461,11 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                     style={{ width: 90, padding: "10px 8px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14 }}>
                     <option>colis</option><option>kg</option><option>palette</option>
                   </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>DLC (date limite de consommation)</label>
+                  <input type="date" value={freeForm.dlc} onChange={e => setFreeForm({ ...freeForm, dlc: e.target.value })}
+                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                 </div>
                 <textarea value={freeForm.notes} onChange={e => setFreeForm({ ...freeForm, notes: e.target.value })} placeholder="Notes (optionnel)" rows={2}
                   style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, resize: "vertical" as const }} />
@@ -437,6 +510,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>📍 {cfg.label} · Niveau {selectedCell.row + 1} · Emplacement {selectedCell.col + 1}</p>
               {selectedData.lot_interne && <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>🔖 Lot {selectedData.lot_interne}</p>}
               {selectedData.quantite && <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>📦 {selectedData.quantite} {selectedData.unite}</p>}
+              {selectedData.dlc && (() => {
+                const s = dlcStatus(selectedData.dlc);
+                return s ? (
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: s.color }}>
+                    ⏳ DLC : {new Date(selectedData.dlc).toLocaleDateString("fr-FR")} {s.label === "Dépassée" ? "— dépassée !" : s.label.startsWith("J-") ? `— dans ${s.label.slice(2)} j` : ""}
+                  </p>
+                ) : null;
+              })()}
               {selectedData.date_stockage && <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>📅 Stocké le {selectedData.date_stockage}</p>}
               {selectedData.notes && <p style={{ margin: 0, fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>"{selectedData.notes}"</p>}
               {selectedData.arrivage_id && <p style={{ margin: 0, fontSize: 11, color: "#8b5cf6", fontWeight: 600 }}>🔗 Relié à un arrivage</p>}
