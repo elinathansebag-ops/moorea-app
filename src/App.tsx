@@ -11,6 +11,7 @@ import { RHApp } from "./RHApp";
 import { EtiquettesModule } from "./EtiquettesModule";
 import { QrCodeDashboard } from "./QrCodeDashboard";
 import { YukonApp } from "./YukonApp";
+import { RackModule } from "./RackModule";
 
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
@@ -86,6 +87,7 @@ export default function App() {
   const [showGencodeChecker, setShowGencodeChecker] = useState(false);
   const [showCatalogue, setShowCatalogue] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
+  const [showRack, setShowRack] = useState(false);
   const [catalogueArticles, setCatalogueArticles] = useState<{code:string,libelle:string,equipe:string}[]>([]);
   // Helper: trouver le code article depuis le libellé
   const getCodeArticle = (libelle: string): string => {
@@ -1537,6 +1539,10 @@ _PDF joint_`;
     return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
 
+  if (showRack) {
+    return <RackModule onClose={() => { setShowRack(false); setShowAccueil(true); }} />;
+  }
+
   if (showAccueil) {
     const getHello = () => {
       const h = new Date().getHours();
@@ -1567,6 +1573,7 @@ _PDF joint_`;
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", badge: null, stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
       { icon: "📚", label: "Catalogue", color: "#27ae60", badge: catalogueArticles.length > 0 ? catalogueArticles.length : null, stat: "Base articles Moorea", action: () => { setShowAccueil(false); setShowCatalogue(true); } },
+      { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
     ];
 
     const leofreshBtns = [
