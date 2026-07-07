@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, AutocompleteInput } from "./shared";
 
@@ -10,6 +10,7 @@ import { PageHeader, AutocompleteInput } from "./shared";
 // ═══════════════════════════════════════════════════════════════════════════
 
 const WALL_IDS = ["mur1", "mur2", "mur3", "mur4"];
+const WALL_DEFAULT_LABELS = ["Frigo Haricot Vert", "Mini Légumes", "Mur Gingembre", "Stockage"];
 const DEFAULT_ROWS = 4;
 const DEFAULT_COLS = 8;
 const DEFAULT_ECHELLE = 4; // une échelle toutes les 4 places par défaut (0 = désactivé)
@@ -91,8 +92,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [moving, setMoving] = useState<{ wallId: string; row: number; col: number; data: PalettePos } | null>(null);
-  const [dragSource, setDragSource] = useState<{ row: number; col: number; data: PalettePos } | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [dragActiveKey, setDragActiveKey] = useState<string | null>(null); // case source pendant le drag
+  const [ghost, setGhost] = useState<{ x: number; y: number; produit: string } | null>(null);
+  const dragInfoRef = useRef<{ row: number; col: number; data?: PalettePos; startX: number; startY: number; moved: boolean } | null>(null);
+  const positionsRef = useRef(positions);
+  const activeWallRef = useRef(activeWall);
 
   const [addMode, setAddMode] = useState<"libre" | "existant">("libre");
   const [freeForm, setFreeForm] = useState({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", notes: "" });
@@ -115,6 +120,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     return () => u();
   }, [activeWall]);
 
+  useEffect(() => { positionsRef.current = positions; }, [positions]);
+  useEffect(() => { activeWallRef.current = activeWall; }, [activeWall]);
+
   // ─── FIREBASE: arrivages (pour lier une palette existante) ───
   useEffect(() => {
     const u = onValue(ref(db, "arrivages"), snap => {
@@ -134,7 +142,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     return () => u();
   }, []);
 
-  const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: `Mur ${WALL_IDS.indexOf(activeWall) + 1}`, echelleEvery: DEFAULT_ECHELLE };
+  const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)], echelleEvery: DEFAULT_ECHELLE };
   const cellKey = (row: number, col: number) => `${row}_${col}`;
 
   // ─── CONFIG MUR ───
@@ -147,7 +155,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     const rows = Math.max(1, Number(cfgRows) || DEFAULT_ROWS);
     const cols = Math.max(1, Number(cfgCols) || DEFAULT_COLS);
     const echelleEvery = Math.max(0, Number(cfgEchelle) || 0);
-    await update(ref(db, `rack_config/${activeWall}`), { rows, cols, echelleEvery, label: cfgLabel.trim() || `Mur ${WALL_IDS.indexOf(activeWall) + 1}` });
+    await update(ref(db, `rack_config/${activeWall}`), { rows, cols, echelleEvery, label: cfgLabel.trim() || WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)] });
     setShowConfig(false);
   };
 
@@ -240,16 +248,77 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const cancelMove = () => setMoving(null);
 
-  // ─── GLISSER-DÉPOSER (déplacement rapide dans le même mur) ───
-  const handleDrop = async (destRow: number, destCol: number) => {
-    if (!dragSource) return;
-    const destKey = cellKey(destRow, destCol);
-    if (positions[destKey]) { setDragSource(null); setDragOverKey(null); return; }
-    await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: dragSource.data });
-    await remove(ref(db, `rack_positions/${activeWall}/${cellKey(dragSource.row, dragSource.col)}`));
-    setDragSource(null);
-    setDragOverKey(null);
+  // ─── DÉPLACEMENT TACTILE UNIVERSEL (souris + doigt) via Pointer Events ───
+  // handleCellClick est appelé ici pour un simple tap (pas de mouvement significatif)
+  const onPointerDownCell = (e: React.PointerEvent, row: number, col: number) => {
+    const data = moving ? undefined : positionsRef.current[cellKey(row, col)];
+    dragInfoRef.current = { row, col, data, startX: e.clientX, startY: e.clientY, moved: false };
+    if (data) setDragActiveKey(cellKey(row, col));
   };
+
+  useEffect(() => {
+    const findCell = (x: number, y: number): { row: number; col: number } | null => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null;
+      const cellEl = el?.closest("[data-rack-cell]") as HTMLElement | null;
+      if (!cellEl) return null;
+      return { row: Number(cellEl.dataset.row), col: Number(cellEl.dataset.col) };
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const info = dragInfoRef.current;
+      if (!info || !info.data) return; // rien à déplacer (case vide ou pas de drag en cours)
+      const dx = e.clientX - info.startX, dy = e.clientY - info.startY;
+      if (!info.moved && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) info.moved = true;
+      if (!info.moved) return;
+      setGhost({ x: e.clientX, y: e.clientY, produit: info.data.produit });
+      const target = findCell(e.clientX, e.clientY);
+      setDragOverKey(target ? cellKey(target.row, target.col) : null);
+    };
+
+    const finishTap = (info: NonNullable<typeof dragInfoRef.current>) => {
+      handleCellClick(info.row, info.col);
+    };
+
+    const finishDrag = async (info: NonNullable<typeof dragInfoRef.current>, target: { row: number; col: number } | null) => {
+      if (!info.data || !target) return;
+      if (target.row === info.row && target.col === info.col) return;
+      const destKey = cellKey(target.row, target.col);
+      if (positionsRef.current[destKey]) return; // occupé, on ignore le dépôt
+      const wall = activeWallRef.current;
+      await update(ref(db, `rack_positions/${wall}`), { [destKey]: info.data });
+      await remove(ref(db, `rack_positions/${wall}/${cellKey(info.row, info.col)}`));
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const info = dragInfoRef.current;
+      dragInfoRef.current = null;
+      setGhost(null);
+      setDragOverKey(null);
+      setDragActiveKey(null);
+      if (!info) return;
+      if (info.moved && info.data) {
+        finishDrag(info, findCell(e.clientX, e.clientY));
+      } else if (!info.moved) {
+        finishTap(info);
+      }
+    };
+
+    const onCancel = () => {
+      dragInfoRef.current = null;
+      setGhost(null);
+      setDragOverKey(null);
+      setDragActiveKey(null);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [handleCellClick]);
 
   // ─── SORTIR DU RACK ───
   const handleRemove = async () => {
@@ -305,11 +374,11 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         {/* ONGLETS MURS */}
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
           {WALL_IDS.map((id, i) => {
-            const c = configs[id] || { label: `Mur ${i + 1}` };
+            const c = configs[id] || { label: WALL_DEFAULT_LABELS[i] };
             return (
               <button key={id} onClick={() => setActiveWall(id)}
                 style={{ flex: 1, padding: "12px 4px", borderRadius: 12, border: `2px solid ${activeWall === id ? "#8b5cf6" : "#e5e7eb"}`, background: activeWall === id ? "#f5f3ff" : "#fff", fontWeight: 700, fontSize: 13, color: activeWall === id ? "#6d28d9" : "#6b7280", cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
-                {c.label || `Mur ${i + 1}`}
+                {c.label || WALL_DEFAULT_LABELS[i]}
               </button>
             );
           })}
@@ -354,28 +423,25 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                     els.push(<EchelleDivider key={`ech-${col}`} height={104} />);
                   }
                   els.push(
-                    <button key={col} onClick={() => handleCellClick(row, col)}
-                      draggable={!!data}
-                      onDragStart={e => { if (data) { setDragSource({ row, col, data }); e.dataTransfer.setData("text/plain", key); e.dataTransfer.effectAllowed = "move"; } }}
-                      onDragEnd={() => { setDragSource(null); setDragOverKey(null); }}
-                      onDragOver={e => { if (dragSource && !data) { e.preventDefault(); setDragOverKey(key); } }}
-                      onDragLeave={() => setDragOverKey(prev => prev === key ? null : prev)}
-                      onDrop={e => { e.preventDefault(); handleDrop(row, col); }}
+                    <button key={col}
+                      data-rack-cell data-row={row} data-col={col}
+                      onPointerDown={e => onPointerDownCell(e, row, col)}
                       style={{
                         flex: 1, minWidth: 76, height: 104, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
+                        touchAction: data ? "none" : "auto",
                         background: dragOverKey === key ? "rgba(139,92,246,0.18)" : "transparent",
                         border: "none",
                         borderLeft: col === 0 ? "6px solid #3f3f46" : dragOverKey === key ? "3px dashed #8b5cf6" : "3px solid #71717a",
                         borderRight: col === cfg.cols - 1 ? "6px solid #3f3f46" : "none",
                         borderBottom: dragOverKey === key ? "6px dashed #8b5cf6" : "6px solid #52525b",
                         display: "flex", alignItems: "flex-end", justifyContent: "center",
-                        position: "relative",
+                        position: "relative", WebkitTapHighlightColor: "transparent",
                       }}>
                       {data ? <PaletteVisual produit={data.produit} quantite={data.quantite} unite={data.unite} dlc={data.dlc} /> : (
                         <div style={{ width: 42, height: 24, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 5 }} />
                       )}
                       {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
-                      {dragSource && dragSource.row === row && dragSource.col === col && <div style={{ position: "absolute", inset: 0, background: "rgba(139,92,246,0.25)", borderRadius: 4 }} />}
+                      {dragActiveKey === key && <div style={{ position: "absolute", inset: 0, background: "rgba(139,92,246,0.25)", borderRadius: 4 }} />}
                     </button>
                   );
                   return els;
@@ -390,9 +456,18 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         </div>
 
         <p style={{ marginTop: 12, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
-          Glisse une palette vers une case vide pour la déplacer rapidement, ou clique dessus pour monter/descendre/déplacer sur un autre mur/sortir.
+          Glisse une palette (souris ou doigt) vers une case vide pour la déplacer rapidement, ou tape/clique dessus pour monter/descendre/déplacer sur un autre mur/sortir.
         </p>
       </div>
+
+      {/* APERÇU FLOTTANT PENDANT LE DÉPLACEMENT TACTILE */}
+      {ghost && (
+        <div style={{ position: "fixed", left: ghost.x - 38, top: ghost.y - 46, width: 76, pointerEvents: "none", zIndex: 4000 }}>
+          <div style={{ background: "#fff", border: "2px solid #8b5cf6", borderRadius: 10, padding: "8px 6px", boxShadow: "0 10px 28px rgba(0,0,0,0.3)", textAlign: "center", transform: "scale(1.05) rotate(-2deg)" }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "#1a2e1a", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ghost.produit}</span>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CONFIG MUR */}
       {showConfig && (
@@ -400,7 +475,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 380 }}>
             <h2 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 16px", fontFamily: "'Syne', sans-serif" }}>⚙️ Configurer ce mur</h2>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>NOM DU MUR</label>
-            <input value={cfgLabel} onChange={e => setCfgLabel(e.target.value)} placeholder={`Mur ${WALL_IDS.indexOf(activeWall) + 1}`}
+            <input value={cfgLabel} onChange={e => setCfgLabel(e.target.value)} placeholder={WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)]}
               style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, marginBottom: 14, boxSizing: "border-box" as const, fontFamily: "'Syne', sans-serif" }} />
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
               <div style={{ flex: 1 }}>
