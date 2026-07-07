@@ -26,6 +26,33 @@ type PalettePos = {
   timestamp?: number;
 };
 
+// ─── VISUEL PALETTE (planches de bois + cartons empilés) ───
+function PaletteVisual({ produit, lot }: { produit?: string; lot?: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+      {/* Cartons empilés */}
+      <div style={{ display: "flex", gap: 2, marginBottom: 2 }}>
+        {[0, 1].map(i => (
+          <div key={i} style={{ width: 16, height: 13, background: "linear-gradient(180deg,#dba86a,#c48c4a)", border: "1px solid #8a6032", borderRadius: 2, position: "relative" }}>
+            <div style={{ position: "absolute", top: 5.5, left: 0, right: 0, height: 1.5, background: "#8a6032cc" }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ width: 15, height: 12, background: "linear-gradient(180deg,#dba86a,#c48c4a)", border: "1px solid #8a6032", borderRadius: 2, position: "relative", marginBottom: 3 }}>
+        <div style={{ position: "absolute", top: 5, left: 0, right: 0, height: 1.5, background: "#8a6032cc" }} />
+      </div>
+      {/* Planches de la palette bois */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 1.5, width: 44 }}>
+        <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
+        <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
+        <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
+      </div>
+      <span style={{ fontSize: 8.5, fontWeight: 800, color: "#1a2e1a", marginTop: 3, maxWidth: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{produit}</span>
+      {lot && <span style={{ fontSize: 7.5, color: "#6b7280" }}>#{lot}</span>}
+    </div>
+  );
+}
+
 export function RackModule({ onClose }: { onClose: () => void }) {
   const [activeWall, setActiveWall] = useState(WALL_IDS[0]);
   const [configs, setConfigs] = useState<Record<string, WallConfig>>({});
@@ -257,12 +284,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* GRILLE DU RACK */}
-        <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 8, overflowX: "auto" }}>
+        {/* GRILLE DU RACK — structure réaliste : montants + traverses + palettes */}
+        <div style={{ background: "linear-gradient(180deg, #eef1f5, #dde3ea)", border: "5px solid #3f3f46", borderRadius: 10, padding: "18px 14px 10px", overflowX: "auto", boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)" }}>
           {Array.from({ length: cfg.rows }, (_, i) => cfg.rows - 1 - i).map(row => (
-            <div key={row} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <div style={{ width: 56, fontSize: 11, fontWeight: 700, color: "#8a6f2e", flexShrink: 0 }}>Niv. {row + 1}</div>
-              <div style={{ display: "flex", gap: 6, flex: 1, minWidth: cfg.cols * 70 }}>
+            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 74 + 40 }}>
+              <div style={{ width: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: "#52525b", background: "#fff", border: "1px solid #d4d4d8", borderRadius: 5, padding: "2px 5px" }}>N{row + 1}</span>
+              </div>
+              <div style={{ display: "flex", flex: 1 }}>
                 {Array.from({ length: cfg.cols }, (_, col) => col).map(col => {
                   const key = cellKey(row, col);
                   const data = positions[key];
@@ -270,32 +299,32 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   return (
                     <button key={col} onClick={() => handleCellClick(row, col)}
                       style={{
-                        flex: 1, minWidth: 64, minHeight: 58, borderRadius: 8, cursor: "pointer", padding: 4,
-                        border: `1.5px solid ${isMovingSource ? "#f59e0b" : data ? "#86efac" : "#e5e7eb"}`,
-                        background: isMovingSource ? "#fef3c7" : data ? "#f0fdf4" : "#fafafa",
-                        color: data ? "#15803d" : "#9ca3af",
-                        display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 2,
-                        opacity: isMovingSource ? 0.5 : 1,
-                        fontFamily: "'Syne', sans-serif",
+                        flex: 1, minWidth: 70, height: 82, cursor: "pointer", padding: "6px 3px 0",
+                        background: "transparent", border: "none",
+                        borderLeft: col === 0 ? "6px solid #3f3f46" : "3px solid #71717a",
+                        borderRight: col === cfg.cols - 1 ? "6px solid #3f3f46" : "none",
+                        borderBottom: "6px solid #52525b",
+                        display: "flex", alignItems: "flex-end", justifyContent: "center",
+                        position: "relative",
                       }}>
-                      {data ? (
-                        <>
-                          <span style={{ fontSize: 10, fontWeight: 800, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 62 }}>{data.produit}</span>
-                          <span style={{ fontSize: 9, color: "#6b7280" }}>{data.lot_interne || data.fournisseur || ""}</span>
-                        </>
-                      ) : (
-                        <span style={{ fontSize: 10 }}>P{col + 1}</span>
+                      {data ? <PaletteVisual produit={data.produit} lot={data.lot_interne} /> : (
+                        <div style={{ width: 42, height: 24, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 5 }} />
                       )}
+                      {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
                     </button>
                   );
                 })}
               </div>
             </div>
           ))}
+          {/* Traverse basse (pied du rack) */}
+          <div style={{ display: "flex", marginLeft: 34 }}>
+            <div style={{ height: 10, flex: 1, background: "linear-gradient(180deg,#52525b,#3f3f46)", borderRadius: "0 0 4px 4px" }} />
+          </div>
         </div>
 
         <p style={{ marginTop: 12, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
-          Clique sur une case vide pour y placer une palette, ou sur une case occupée pour la gérer.
+          Clique sur un emplacement vide (case pointillée) pour y placer une palette, ou sur une palette pour la gérer.
         </p>
       </div>
 
