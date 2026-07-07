@@ -720,6 +720,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .modal-box{background:#fff;border-radius:20px;padding:2rem;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
 #stock-root .empty-state{text-align:center;padding:2.5rem;color:#bbb}
 #stock-root .tbl-wrap{overflow-x:auto}
+#stock-pdf-overlay{display:none;position:fixed;inset:0;background:#f5f3ee;z-index:700;flex-direction:column}
+#stock-pdf-frame{flex:1;width:100%;border:none;background:#fff;display:block}
 #stock-toast{position:fixed;bottom:24px;right:24px;background:#0a0a0a;color:#c8a84b;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9999;border:1px solid rgba(200,168,75,0.3)}
 #stock-toast.show{opacity:1}
 #stock-calc-fab{position:fixed;bottom:24px;right:24px;width:50px;height:50px;background:#c8a84b;border:none;border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 16px rgba(200,168,75,.4);z-index:400}
@@ -743,8 +745,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .toggle-switch input:checked + .toggle-slider:before{transform:translateX(28px)}
 #stock-root .toggle-switch.gms input:checked + .toggle-slider{background:#c8a84b}
 #stock-root input[type=number]{-webkit-appearance:none;appearance:none}
-#stock-pdf-overlay{display:none;position:fixed;inset:0;background:#f5f3ee;z-index:700;overflow-y:auto}
-@media print{body{visibility:hidden!important}#stock-pdf-overlay{visibility:visible!important;position:fixed!important;left:0;top:0;width:100%;height:auto;background:#fff!important;display:block!important}#stock-pdf-overlay *{visibility:visible!important}#stock-pdf-overlay > div:first-child{display:none!important;visibility:hidden!important}@page{size:A4 portrait;margin:10mm}}
 #stock-fusion-bar{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0a0a0a;color:#fff;padding:12px 24px;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.3);align-items:center;gap:12px;z-index:300;white-space:nowrap}
     `;
     document.head.appendChild(styleEl);
@@ -753,12 +753,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
     el.innerHTML = `
 <div id="stock-root">
   <div id="stock-pdf-overlay">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 12px) 20px 12px;background:#0a0a0a;position:sticky;top:0;z-index:1">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 12px) 20px 12px;background:#0a0a0a;flex-shrink:0">
       <button onclick="document.getElementById('stock-pdf-overlay').style.display='none'" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">← Retour</button>
       <span style="color:#c8a84b;font-weight:700;font-size:14px">📄 Rapport PDF</span>
-      <button onclick="window.print()" style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🖨️ Imprimer</button>
+      <button onclick="var f=document.getElementById('stock-pdf-frame');if(f&&f.contentWindow)f.contentWindow.print()" style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">🖨️ Imprimer</button>
     </div>
-    <div id="stock-pdf-content" style="max-width:900px;margin:0 auto;padding:24px 20px;background:#fff;min-height:100vh"></div>
+    <iframe id="stock-pdf-frame" title="Aperçu PDF"></iframe>
   </div>
 
   <div class="topbar">
@@ -1034,12 +1034,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let _byArticle: any = null;
       let calcLastFocused: any = null;
 
-      // Init _byArticle from embedded STOCK_DATA
-      const STOCK_DATA_EMBEDDED: Array<{article: string, equipe: string}> = [
-        {article:"AGRETTI (BOTTE X 10)",equipe:"PRESTIGE"},{article:"AGRETTI (BOTTE X 12)",equipe:"PRESTIGE"},{article:"AIL DE LA VICTOIRE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"AIL DES OURS (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"AIL FRAIS (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"AIL NOIR (SACHET 2 PIECES)",equipe:"PRESTIGE"},{article:"ANANAS PAIN SUCRE BENIN (VRAC) CAT 1",equipe:"PRESTIGE"},{article:"ARTICHAUT (X 12 PIECES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (24 PIÈCES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (34 PIÈCES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (44 PIÈCES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (54 PIECES)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (BOTTE X 10)",equipe:"PRESTIGE"},{article:"ARTICHAUT POIVRADE (BOTTE X 12)",equipe:"PRESTIGE"},{article:"ASPERGE BLANCHE CAL. 16+ (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ASPERGE BLANCHE CAL.16+ (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"ASPERGE BLANCHE CAL.22+ (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"ASPERGE BLANCHE CAL.22+ (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ASPERGE SAUVAGE (BOTTE 200G X 10)",equipe:"PRESTIGE"},{article:"ASPERGE SAUVAGE (BOTTE 200G X 5)",equipe:"PRESTIGE"},{article:"ASPERGE VERTE CAL.16+ (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ASPERGE VERTE ESPAGNE CAL.XL (BOTTE 500G X 8)",equipe:"PRESTIGE"},{article:"AUBERGINE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"AUBERGINE GRAFFITY (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"AUBERGINE JAPONAISE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"AUBERGINE JAPONAISE (VRAC)",equipe:"PRESTIGE"},{article:"AUBERGINE RONDE (VRAC 2.5KG)",equipe:"PRESTIGE"},{article:"AUBERGINE RONDE (VRAC 4.5 KG)",equipe:"PRESTIGE"},{article:"AUBERGINE RONDE (VRAC)",equipe:"PRESTIGE"},{article:"BAIE DU MIRACLE (SACHET 2 PIECES X 5)",equipe:"PRESTIGE"},{article:"BETTERAVE BLANCHE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BETTERAVE CHIOGGIA (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BETTERAVE CRAPAUDINE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BETTERAVE JAUNE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BETTERAVE RAINBOW (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BLACK VANILLA (2 POTS X6)",equipe:"PRESTIGE"},{article:"BLETTE MULTICOLORE (VRAC)",equipe:"PRESTIGE"},{article:"BLETTE MULTICOLORE (X 10 BOTTES)",equipe:"PRESTIGE"},{article:"BLUE FOOT MUSHROOM (CHAMPIGNON PIED BLUE)",equipe:"PRESTIGE"},{article:"BOULE D OR (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"BROCOLIS BIMI (BARQUETTE 200G X 10)",equipe:"PRESTIGE"},{article:"BROCOLIS BIMI (BARQUETTE 200G X 8)",equipe:"PRESTIGE"},{article:"CAPUCINE TUBEREUSE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"CARAMBOLE MALAISIE CAT 1",equipe:"PRESTIGE"},{article:"CAROTTE (SACHET 1KG X 10)",equipe:"PRESTIGE"},{article:"CAROTTE BLANCHE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE JAUNE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE RAINBOW (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE ROUGE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE SABLES (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CAROTTE VIOLETTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CASTELFRANCO (VRAC)",equipe:"PRESTIGE"},{article:"CAVOLONERO (BOTTE 250G X 5)",equipe:"PRESTIGE"},{article:"CEBETTE (BOTTE X 14)",equipe:"PRESTIGE"},{article:"CEBETTE ALLEMAGNE (BOTTE X 14)",equipe:"PRESTIGE"},{article:"CEBETTE EGYPTE (BOTTE X 14)",equipe:"PRESTIGE"},{article:"CELERI BRANCHE COUPE (SACHET 500G X 12)",equipe:"PRESTIGE"},{article:"CELERI RAVE (VRAC)",equipe:"PRESTIGE"},{article:"CERFEUIL TUBEREUX (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON CEPES (BOITE 500G)",equipe:"PRESTIGE"},{article:"CHAMPIGNON CHANTERELLES GRISES (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON CHANTERELLES JAUNE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON ENOKI (SACHET 100G X 10)",equipe:"PRESTIGE"},{article:"CHAMPIGNON ERINGY (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON ERINGY (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON GIROLLE (BOITE 500G)",equipe:"PRESTIGE"},{article:"CHAMPIGNON GIROLLE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON GIROLLE (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON LICHEN (BARQUETTE)",equipe:"PRESTIGE"},{article:"CHAMPIGNON MORILLE (BOITE 400G)",equipe:"PRESTIGE"},{article:"CHAMPIGNON MORILLE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON PIED DE MOUTON (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON PORTOBELLO (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON SHIMEJI BLANC (BARQUETTE 150G X 20)",equipe:"PRESTIGE"},{article:"CHAMPIGNON SHIMEJI BRUN (BARQUETTE 150G X 20)",equipe:"PRESTIGE"},{article:"CHAMPIGNON SHITAKE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON SHITAKE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"CHAMPIGNON TROMPETTE DE LA MORT (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"CHATAIGNE FRAICHE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CHOUX BABY PAK-CHOI (VRAC 6 KG)",equipe:"PRESTIGE"},{article:"CHOUX CHINOIS (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"CHOUX CHINOIS (VRAC)",equipe:"PRESTIGE"},{article:"CHOUX CHINOIS (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX CHOI SAM (VRAC 7 KG)",equipe:"PRESTIGE"},{article:"CHOUX DOUX (6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX DOUX (VRAC)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS BLANC (VRAC 6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS JAUNE (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS JAUNE (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS VIOLET (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS VIOLET (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS VERT (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX FLEURS VERT (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX KAI LAN (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"CHOUX KAI LAN (VRAC 6 KG)",equipe:"PRESTIGE"},{article:"CHOUX KAI LAN (VRAC)",equipe:"PRESTIGE"},{article:"CHOUX KALE ROUGE (BOTTE 250G X 5)",equipe:"PRESTIGE"},{article:"CHOUX KALE VERT (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"CHOUX KALE VERT (VRAC 4 KG)",equipe:"GMS"},{article:"CHOUX POINTU BLANC (VRAC)",equipe:"PRESTIGE"},{article:"CHOUX POINTU BLANC (X10 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX POINTU BLANC (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX PONTOISE (6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX PONTOISE (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX RAVE (X 25 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX ROMANESCO (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX ROMANESCO (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX ROMANESCO BLANC (X6 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX ROMANESCO JAUNE (X8 PIECES)",equipe:"PRESTIGE"},{article:"CHOUX SHANGAI (VRAC 8 KG)",equipe:"PRESTIGE"},{article:"CHOUX SHANGAI (VRAC)",equipe:"PRESTIGE"},{article:"CIME DI RAPA (VRAC)",equipe:"PRESTIGE"},{article:"COCO PLAT ESPAGNE CAL FIN",equipe:"PRESTIGE"},{article:"COCO PLAT MAROC CAL FIN 4 KG",equipe:"GMS"},{article:"COCO PLAT MAROC IFCO SACHET 500G X 10",equipe:"GMS"},{article:"COCO PLAT MAROC SACHET 500G X 10",equipe:"GMS"},{article:"CONCOMBRE (VRAC)",equipe:"PRESTIGE"},{article:"CONCOMBRE MINI (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"CONCOMBRE MINI (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"COURGE BLEU DE HONGRIE (VRAC 15 KG)",equipe:"PRESTIGE"},{article:"COURGE BUTTERNUT (VRAC 10 KG)",equipe:"GMS"},{article:"COURGE JACK BE LITTLE (VRAC X 12)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC 12 KG)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC 15 KG)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC 16 KG)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC 18 KG)",equipe:"PRESTIGE"},{article:"COURGE KABOCHA (VRAC)",equipe:"PRESTIGE"},{article:"COURGE POTIMARRON (X 12 KILOS)",equipe:"PRESTIGE"},{article:"COURGE SPAGHETTI (VRAC 12 KG)",equipe:"PRESTIGE"},{article:"COURGETTE BLANCHE (VRAC 5 KG)",equipe:"GMS"},{article:"COURGETTE BLANCHE (VRAC)",equipe:"GMS"},{article:"COURGETTE JAUNE (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"COURGETTE JAUNE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"COURGETTE RONDE (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"COURGETTE RONDE (VRAC)",equipe:"PRESTIGE"},{article:"COURGETTE RONDE JAUNE (VRAC)",equipe:"PRESTIGE"},{article:"COURGETTE RONDE VERTE VIRGINIA (VRAC)",equipe:"PRESTIGE"},{article:"COURGETTE VIOLON (VRAC)",equipe:"PRESTIGE"},{article:"ECHALOTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ECHALOTTE ECHALION (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"ENDIVE ROUGE (VRAC 2.5KG)",equipe:"PRESTIGE"},{article:"FENOUIL",equipe:"GMS"},{article:"FEVE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"FEVE (VRAC)",equipe:"GMS"},{article:"GINGEMBRE CHINE (VRAC 12.5 KG)",equipe:"PRESTIGE"},{article:"GINGEMBRE CHINE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"GINGEMBRE CHINE (VRAC 5 KG)",equipe:"GMS"},{article:"GINGEMBRE BRESIL (VRAC 5 KG)",equipe:"GMS"},{article:"GIROLLE MUSHROOMS (3KG)",equipe:"PRESTIGE"},{article:"HARICOT KILOMETRE (VRAC 6 KG)",equipe:"PRESTIGE"},{article:"HARICOT VERT (2.7 KG)",equipe:"GMS"},{article:"HARICOT VERT KENYA (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"HARICOT VERT KENYA (BARQUETTE 350G X 8)",equipe:"GMS"},{article:"HARICOT VERT KENYA (BARQUETTE 500G X 8)",equipe:"GMS"},{article:"HARICOT VERT EGYPTE (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"HARICOT VERT EGYPTE (BARQUETTE 500G X 8)",equipe:"GMS"},{article:"HARICOT VERT RWANDA (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"HARICOT VERT RWANDA (BARQUETTE 500G X 8)",equipe:"GMS"},{article:"HELIANTHES (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"HERBES ANETH (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES BASILIC (POT X 6)",equipe:"PRESTIGE"},{article:"HERBES BASILIC (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES BASILIC THAI (1 KG)",equipe:"PRESTIGE"},{article:"HERBES CERFEUIL (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES CIBOULETTE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES CORIANDRE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES ESTRAGON (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES FENOUIL SEC (BOTTE)",equipe:"PRESTIGE"},{article:"HERBES LIVECHE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES MARJOLAINE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES MELISSE (X5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES MENTHE (X5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES MENTHE POIVRE (BOTTE X 5)",equipe:"PRESTIGE"},{article:"HERBES PERSIL FRISEE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"HERBES PERSIL FRISEE (X5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES PERSIL PLAT (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES SARIETTES (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES SARRIETTE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES SAUGE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES THYM (POT X 6)",equipe:"PRESTIGE"},{article:"HERBES THYM (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES THYM CITRON (X5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES VERVEINE (X 5 BOTTES)",equipe:"PRESTIGE"},{article:"HERBES VERVEINE (X6 POTS)",equipe:"PRESTIGE"},{article:"KIWI HAYWARD CAL.36 (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"LAITUE CELTUCE (VRAC 12 KG)",equipe:"PRESTIGE"},{article:"LAITUE CELTUCE (VRAC 15 KG)",equipe:"PRESTIGE"},{article:"LAITUE CELTUCE (VRAC 16 KG)",equipe:"PRESTIGE"},{article:"LAITUE CELTUCE (VRAC)",equipe:"PRESTIGE"},{article:"LIME BRESIL CAL 48 (FILET 500GR X 10)",equipe:"GMS"},{article:"LIME BRESIL CAL 48 IFCO (FILET 500GR X 12)",equipe:"GMS"},{article:"LIME BRESIL CAL. 54 (FILET 500GR X 12)",equipe:"GMS"},{article:"LIME BRESIL CAL. 54",equipe:"GMS"},{article:"LIME CAL. 48",equipe:"GMS"},{article:"MANGUE KENT (AVION) BRESIL CAL. 10",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) BRESIL CAL. 12",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) CAL. 10",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) PEROU CAL 11",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) PEROU CAL. 12",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) PEROU CAL.10",equipe:"PRESTIGE"},{article:"MANGUE KENT (AVION) PEROU CAL.14",equipe:"PRESTIGE"},{article:"MANGUE KENT CAL. 10",equipe:"PRESTIGE"},{article:"MANGUE VERTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"MANGUE VERTE (VRAC 7 KG)",equipe:"PRESTIGE"},{article:"MANGUE VERTE (VRAC)",equipe:"PRESTIGE"},{article:"MANGUE AVION",equipe:"GMS"},{article:"MANGUE KENT (AVION) CAL. 12",equipe:"GMS"},{article:"MINI ASPERGE VERTE (BARQUETTE 200G X 10)",equipe:"PRESTIGE"},{article:"MINI AUBERGINE BLANCHE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"MINI AUBERGINE NOIR NATURINDA (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"MINI AUBERGINE THAI (BARQUETTE 100G X 10)",equipe:"PRESTIGE"},{article:"MINI AUBERGINE THAI (BARQUETTE 250G X 4)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE CHIOGGIA HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE CHIOGGIA PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE JAUNE HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE JAUNE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE MIXTE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE ROUGE HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE ROUGE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE ROUGE SALES (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI BETTERAVE JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI BETTERAVE ROSE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI BETTERAVE ROUGE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI CAROTTE BLANCHE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE JAUNE JACQ (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE JAUNE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE JAUNE SALES (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE MIXTE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE ORANGE JACQ (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE ORANGE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE ORANGE SALES (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE VIOLETTE PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI CAROTTE AFRIQUE DU SUD (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"MINI CAROTTE FANE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI CAROTTE MULTICOLORE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI CAROTTE MULTICOLORE ESPAGNE (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI CHOUX FLEURS (BARQUETTE 4 PCES X 4)",equipe:"PRESTIGE"},{article:"MINI CHOUX FLEURS FRANCE (2 P X 8)",equipe:"GMS"},{article:"MINI CONCOMBRE ESPAGNE (BARQUETTE 200G X 8)",equipe:"PRESTIGE"},{article:"MINI CONCOMBRE (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"MINI CONCOMBRE ESPAGNE (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"MINI CONCOMBRE ESPAGNE (BARQUETTE 250G X 6)",equipe:"GMS"},{article:"MINI CONCOMBRE PAYS BAS",equipe:"GMS"},{article:"MINI COURGETTE FLEUR (15 PIECES)",equipe:"PRESTIGE"},{article:"MINI COURGETTE FLEUR FEMELLE SALES (BARQUETTE 10 PCS)",equipe:"PRESTIGE"},{article:"MINI COURGETTE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI COURGETTE RONDE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI COURGE KABOCHA (6 PIECES)",equipe:"PRESTIGE"},{article:"MINI ENDIVE SALES (X 4 BQ DE 200G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL JACQ (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL SALES (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI FENOUIL ESPAGNE (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI FLEUR COURGETTE MALE SALES (BARQUETTE 10 PCS)",equipe:"PRESTIGE"},{article:"MINI LEGUMES MIXTE (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"MINI LEGUMES MIXTE KENYA (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"MINI LEGUMES PANACHE (BARQUETTE X 8)",equipe:"GMS"},{article:"MINI MAIS THAILANDE (BARQUETTE 125G X 12)",equipe:"PRESTIGE"},{article:"MINI MAIS (BARQUETTE 100G X 1)",equipe:"GMS"},{article:"MINI MAIS (BARQUETTE 125G X 12)",equipe:"GMS"},{article:"MINI MAIS KENYA (BARQUETTE 125G X 12)",equipe:"GMS"},{article:"MINI MANGUE MARIAN PLUM (BARQUETTE 200G X 5)",equipe:"PRESTIGE"},{article:"MINI NAVET HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI NAVET JACQ (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI NAVET PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI NAVET (BARQUETTE 400G)",equipe:"GMS"},{article:"MINI NAVET AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI PANAIS ROYAUME UNI (VRAC 4KG)",equipe:"GMS"},{article:"MINI PATISSON JAUNE AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI PATISSON VERT AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI NOIX DE COCO (BARQUETTE 100G)",equipe:"PRESTIGE"},{article:"MINI POIRE (VRAC 6 KG)",equipe:"PRESTIGE"},{article:"MINI POIREAUX HOTGAME (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI POIREAUX PICVERT (BARQUETTE 400G)",equipe:"PRESTIGE"},{article:"MINI POIREAUX AFRIQUE DU SUD (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI POIREAUX ESPAGNE (BARQUETTE 200G X 6)",equipe:"GMS"},{article:"MINI POIVRON JAUNE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON MIXTE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON MIXTE (VRAC 4 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON ROUGE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON VERT (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"MINI POIVRON MIXTE (VRAC 3 KG)",equipe:"GMS"},{article:"MINI POIVRON MIXTE ESPAGNE (200 GR X 12)",equipe:"GMS"},{article:"MINI POIVRON MIXTE ESPAGNE 2€ (BARQUETTE 200G X 12)",equipe:"GMS"},{article:"MINI POMME ROCKIT (X4 BQ)",equipe:"PRESTIGE"},{article:"NOIX DE COCO (X10 PIECES)",equipe:"PRESTIGE"},{article:"NOIX DE COCO AVEC EMBRYON (VRAC)",equipe:"PRESTIGE"},{article:"NOIX DE COCO (X8 PIECES)",equipe:"GMS"},{article:"NOIX DE COCO A BOIRE (X6 PIECES)",equipe:"GMS"},{article:"NOIX DE COCO A BOIRE THAILANDE (X9 PIECES)",equipe:"GMS"},{article:"NOIX DE COCO COTE D IVOIRE (X8 PIECES)",equipe:"GMS"},{article:"OCA DU PEROU (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"OIGNON CALCOT (4 BOTTES X 25)",equipe:"PRESTIGE"},{article:"OIGNON JAUNE GRELOT (500 GR X 10)",equipe:"PRESTIGE"},{article:"OIGNON ROSCOFF (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"OIGNON ROSCOFF (X10 TRESSES 1KG)",equipe:"PRESTIGE"},{article:"OIGNON BLANC GRELOT (VRAC 5 KG)",equipe:"GMS"},{article:"OIGNON JAUNE GRELOT (VRAC 5 KG)",equipe:"GMS"},{article:"PANAIS (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"PAPAYE GOLDEN CAL 7 (VRAC)",equipe:"PRESTIGE"},{article:"PAPAYE LEGUME (VRAC 15 KG)",equipe:"PRESTIGE"},{article:"PAPAYE LEGUME (VRAC)",equipe:"PRESTIGE"},{article:"PAPAYE VERTE (4 P)",equipe:"PRESTIGE"},{article:"PAPAYE VERTE (VRAC)",equipe:"PRESTIGE"},{article:"PAPAYE VERTE THAILANDE (4 KGS)",equipe:"PRESTIGE"},{article:"PAPAYE GOLDEN (VRAC)",equipe:"GMS"},{article:"PAPAYE GOLDEN BRESIL (COLIS)",equipe:"GMS"},{article:"PATATE DOUCE EGYPTE CAL.L 1 CARTON 6 KG CAT 1",equipe:"PRESTIGE"},{article:"PATATE DOUCE EGYPTE CAL.L 2 CARTON 6 KG CAT 1",equipe:"PRESTIGE"},{article:"PATATE DOUCE BLANCHE (VRAC 10 KG)",equipe:"GMS"},{article:"PATATE DOUCE BLANCHE (VRAC 6 KG)",equipe:"GMS"},{article:"PATATE DOUCE EGYPTE CAL.M CARTON 6 KG CAT 1",equipe:"GMS"},{article:"PATATE DOUCE EGYPTE CAL.XL CARTON 6 KG",equipe:"GMS"},{article:"PATATE DOUCE VIOLETTE (VRAC 10 KG)",equipe:"GMS"},{article:"PATATE DOUCE VIOLETTE (VRAC 6 KG)",equipe:"GMS"},{article:"PERSIL RACINE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"PHYSALIS (BARQUETTE 100G X 12)",equipe:"PRESTIGE"},{article:"PHYSALIS COLOMBIE (BARQUETTE 100G X 12)",equipe:"GMS"},{article:"PIMENT ANTILLAIS (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT HABANERO JAUNE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT HABANERO ROUGE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT JALAPENO ROUGE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT JALAPENO VERT (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT JAUNE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT OISEAU ROUGE (BARQUETTE 100G X 6)",equipe:"PRESTIGE"},{article:"PIMENT OISEAU ROUGE MAROC (BARQUETTE 100G X 6)",equipe:"PRESTIGE"},{article:"PIMENT PADRONE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT VEGETARIEN (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"PIMENT ANTILLAIS (VRAC 3.5 KG)",equipe:"GMS"},{article:"PIMENT ANTILLAIS (VRAC 4 KG)",equipe:"GMS"},{article:"PIMENT ANTILLAIS (VRAC)",equipe:"GMS"},{article:"PIMENT ANTILLAIS HONDURAS (VRAC 3.5 KG)",equipe:"GMS"},{article:"PIMENT ANTILLAIS MAROC (BARQUETTE 75G X 6)",equipe:"GMS"},{article:"PIMENT OISEAU ROUGE AFRIQUE DU SUD (BARQUETTE 100G X 6)",equipe:"GMS"},{article:"PIMENT OISEAU VERT AFRIQUE DU SUD (BARQUETTE 100G X 6)",equipe:"GMS"},{article:"PIMENT OISEAU VERT MAROC (BARQUETTE 100G X 6)",equipe:"GMS"},{article:"PIMENT VEGETARIEN (VRAC 1 KG)",equipe:"GMS"},{article:"PIMENT VEGETARIEN (VRAC)",equipe:"GMS"},{article:"PITAYA ROUGE (VRAC)",equipe:"PRESTIGE"},{article:"PITAYA ROUGE (VRAC 3 KG)",equipe:"GMS"},{article:"PITAYA ROUGE (VRAC 4.5 KG)",equipe:"GMS"},{article:"PITAYA JAUNE (VRAC 2.5KG)",equipe:"GMS"},{article:"PITAYA JAUNE (VRAC 3 KG)",equipe:"GMS"},{article:"POIRE CONFERENCE",equipe:"PRESTIGE"},{article:"POIRE NASHI (VRAC)",equipe:"GMS"},{article:"POIRE NASHI CHINE (VRAC 5 KG)",equipe:"GMS"},{article:"POIVRADE (VRAC)",equipe:"PRESTIGE"},{article:"POIVRE VERT (BARQUETTE 100G)",equipe:"PRESTIGE"},{article:"POIS GOURMAND EGYPTE (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"POIS GOURMAND EGYPTE (COLIS 2KG)",equipe:"GMS"},{article:"POIS GOURMAND KENYA (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"POIS GOURMAND KENYA (BARQUETTE 250G X 9)",equipe:"GMS"},{article:"POIS GOURMAND KENYA (COLIS 2KG)",equipe:"GMS"},{article:"POIS GOURMAND KENYA (VRAC 2 KG)",equipe:"GMS"},{article:"POIS GOURMAND ZIMBABWE (BARQUETTE 250G X 12)",equipe:"GMS"},{article:"POMELOS CHINE CAL 9",equipe:"PRESTIGE"},{article:"POMELOS OROBLANCO (VRAC)",equipe:"GMS"},{article:"POMELOS SWEETIE (VRAC)",equipe:"GMS"},{article:"POMME (VRAC)",equipe:"PRESTIGE"},{article:"POMME DE TERRE NOIRMOUTIER (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"POMME DE TERRE POMPADOUR FRANCE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"POMME DE TERRE RATTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"POMME DE TERRE VITELOTTE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RACINE CURCUMA (BARQUETTE 100G X 10)",equipe:"PRESTIGE"},{article:"RACINE CURCUMA (BARQUETTE 100G)",equipe:"PRESTIGE"},{article:"RACINE CURCUMA (BARQUETTE 200G X 5)",equipe:"PRESTIGE"},{article:"RACINE CURCUMA THAILANDE (BARQUETTE 100G X 10)",equipe:"PRESTIGE"},{article:"RACINE GALANGA (BARQUETTE 100G X 10)",equipe:"PRESTIGE"},{article:"RACINE GALANGA (BARQUETTE 100G)",equipe:"PRESTIGE"},{article:"RACINE GALANGA (BARQUETTE 200G X 5)",equipe:"PRESTIGE"},{article:"RACINE JICAMA (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"RACINE JICAMA (VRAC)",equipe:"PRESTIGE"},{article:"RACINE LOTUS (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"RACINE MANIOC (VRAC 18 KG)",equipe:"PRESTIGE"},{article:"RACINE TARO (VRAC)",equipe:"PRESTIGE"},{article:"RACINE WASABI",equipe:"PRESTIGE"},{article:"RACINE EDDO (VRAC 10 KG)",equipe:"GMS"},{article:"RACINE MANIOC (VRAC 5 KG)",equipe:"GMS"},{article:"RADIS BLUE MEAT (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RADIS GLACON (X 15 BOTTES)",equipe:"PRESTIGE"},{article:"RADIS GREEN MEAT (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RADIS MULTICOLORE (X 10 BOTTES)",equipe:"PRESTIGE"},{article:"RADIS MULTICOLORE (X 12 BOTTES)",equipe:"PRESTIGE"},{article:"RADIS NOIR (10 PIECES)",equipe:"PRESTIGE"},{article:"RADIS RED MEAT (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RADIS ROSE (BOTTE X 12)",equipe:"PRESTIGE"},{article:"RADIS ROUGE (X 15 BOTTES)",equipe:"PRESTIGE"},{article:"RADIS ROUGE (X 12 BOTTES)",equipe:"GMS"},{article:"RAIFORT (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"RAISIN BLANC",equipe:"PRESTIGE"},{article:"RAISIN MIDNIGHT BEAUTY (VRAC 4.5 KG)",equipe:"PRESTIGE"},{article:"RAISIN NOIR",equipe:"PRESTIGE"},{article:"RAISIN TIMPSON (VRAC 4.5 KG)",equipe:"PRESTIGE"},{article:"RAISIN BLANC SANS PEPIN (4.5KG)",equipe:"GMS"},{article:"RAISIN DE MER (BARQUETTE 100G)",equipe:"GMS"},{article:"RUTABAGA (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"SALADE FRISEE FINE (BARQUETTE 500G X 10)",equipe:"PRESTIGE"},{article:"SALADE ICEBERG",equipe:"PRESTIGE"},{article:"SALADE PISSENLIT BLANC (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"SALADE PISSENLIT VERT (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"SALADE TREVISE (VRAC)",equipe:"PRESTIGE"},{article:"SALADE TREVISE PRECOCE (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"SALADE ICEBERG ESPAGNE (PIECE X 12)",equipe:"GMS"},{article:"SALICORNE (VRAC 1 KG)",equipe:"PRESTIGE"},{article:"SALICORNE MAROC (VRAC 1 KG)",equipe:"GMS"},{article:"SALSIFIS (1 KG X 5)",equipe:"PRESTIGE"},{article:"SALSIFIS (VRAC 10 KG)",equipe:"PRESTIGE"},{article:"SUGAR SNAPS KENYA (BARQUETTE 150G X 6)",equipe:"GMS"},{article:"SUGAR SNAPS KENYA (BARQUETTE 250G X 6)",equipe:"GMS"},{article:"TOMATE ANANAS (VRAC)",equipe:"PRESTIGE"},{article:"TOMATE ANCIENNE (VRAC 3.4 KG)",equipe:"PRESTIGE"},{article:"TOMATE ANCIENNE (VRAC 3.5 KG)",equipe:"PRESTIGE"},{article:"TOMATE CERISE",equipe:"PRESTIGE"},{article:"TOMATE CERISE JAUNE (BARQUETTE 250G X 9)",equipe:"PRESTIGE"},{article:"TOMATE COEUR DE BOEUF",equipe:"PRESTIGE"},{article:"TOMATE DATTERINO (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"TOMATE JAUNE GRAPPE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"TOMATE MELI MELO (VRAC 3 KG)",equipe:"PRESTIGE"},{article:"TOMATE NOIRE DE CRIMEE",equipe:"PRESTIGE"},{article:"TOMATE PIENNOLO (3 KG)",equipe:"PRESTIGE"},{article:"TOMATE VERTE GRAPPE (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"TOMATE AMELA (VRAC 1 KG)",equipe:"GMS"},{article:"TOMATE ANANAS (VRAC 3.5 KG)",equipe:"GMS"},{article:"TOMATE CERISE NOIR GRAPPES (Vrac 3kg)",equipe:"GMS"},{article:"TOMATE NOIRE DE CRIMEE (VRAC 3.5 KG)",equipe:"GMS"},{article:"TOMATILLO (VRAC 3 KG)",equipe:"GMS"},{article:"TOMBERRY JAUNE (X 8 BQ)",equipe:"PRESTIGE"},{article:"TOMBERRY ROUGE (X 8 BQ)",equipe:"PRESTIGE"},{article:"TOPINAMBOUR (VRAC 5 KG)",equipe:"PRESTIGE"},{article:"TREVISE PRECOCE (VRAC)",equipe:"PRESTIGE"},{article:"TREVISE TARDIVE (VRAC)",equipe:"PRESTIGE"},{article:"TRUFFE AESTIVUM",equipe:"PRESTIGE"},{article:"TRUFFE MELANOSPORUM",equipe:"PRESTIGE"},{article:"BRISURE DE TRUFFE (Melanosporum) 50g",equipe:"GMS"},{article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"},{article:"AGRUMES LIMEQUAT LIMON SNACK (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"AGRUMES LIMON SNACK (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"AMANDE FRAICHE (VRAC 5 KG)",equipe:"GMS"},{article:"ANANAS AVION CAL. 6",equipe:"GMS"},{article:"ANANAS CAYENNE CAL.A1 CAT 1",equipe:"GMS"},{article:"ANANAS CAYENNE CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE BENIN CAL. 10 (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE CAL. 10 (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE GHANA (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE GHANA CAL. 10 (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS PAIN SUCRE TOGO (VRAC) CAT 1",equipe:"GMS"},{article:"ANANAS VICTORIA CAL 7",equipe:"GMS"},{article:"ANANAS VICTORIA CAL.8",equipe:"GMS"},{article:"ANONE ESPAGNE",equipe:"GMS"},{article:"AUBERGINE AFRIQUE DU SUD (BARQUETTE 200G X 8)",equipe:"GMS"},{article:"AUBERGINE DIAKHATOU (VRAC 5 KG)",equipe:"GMS"},{article:"AVOCAT COCKTAIL (VRAC 2 KG)",equipe:"GMS"},{article:"BAIE DU MIRACLE (SACHET 2 PIECES X 10)",equipe:"GMS"},{article:"BANANE PLANTAIN (VRAC 5 KG)",equipe:"GMS"},{article:"BANANE PLANTAIN (VRAC)",equipe:"GMS"},{article:"BANANE PLANTAIN COLOMBIE (VRAC 9 KG)",equipe:"GMS"},{article:"BETTERAVE CRUE",equipe:"GMS"},{article:"CARAMBOLE BRESIL CAT 1",equipe:"GMS"},{article:"CARAMBOLE CAT 1",equipe:"GMS"},{article:"CARAMBOLE MALAISIE CAT 1",equipe:"PRESTIGE"},{article:"CAVOLONERO (VRAC 5 KG)",equipe:"GMS"},{article:"CELERI RAVE (FILET 10KG)",equipe:"GMS"},{article:"CELERI RAVE (X8 PIECES)",equipe:"GMS"},{article:"CERISE ARGENTINE (2.5 KG)",equipe:"GMS"},{article:"CERISE ARGENTINE (250 GR X 8) CAT 1",equipe:"GMS"},{article:"CERISE CHILI (2.5 KG)",equipe:"GMS"},{article:"CERISE CHILI (250 GR X 8) CAT 1",equipe:"GMS"},{article:"CHAYOTTE (VRAC)",equipe:"GMS"},{article:"CHOUX BRUXELLES (SACHET 500G X 10)",equipe:"GMS"},{article:"CHOUX BRUXELLES (VRAC 5 KG)",equipe:"GMS"},{article:"CHOUX FLEURS BABY (6 PIECES)",equipe:"GMS"},{article:"CHRISTOPHINE (VRAC 6 KG)",equipe:"GMS"},{article:"CITRON AMALFI (VRAC 8 KG)",equipe:"GMS"},{article:"CITRON BERGAMOTE (VRAC 2 KG)",equipe:"GMS"},{article:"CITRON BERGAMOTE (VRAC 4 KG)",equipe:"GMS"},{article:"CITRON BERGAMOTE (VRAC 6 KG)",equipe:"GMS"},{article:"CITRON BERGAMOTE (VRAC 8 KG)",equipe:"GMS"},{article:"CITRON CALAMANSI (VRAC 1 KG)",equipe:"GMS"},{article:"CITRON CAVIAR GUATEMALA (1 KG)",equipe:"GMS"},{article:"CITRON CAVIAR MAROC (100 GR X 4)",equipe:"GMS"},{article:"CITRON CAVIAR MAROC (BARQUETTE 40 GR X 4)",equipe:"GMS"},{article:"CITRON CEDRAT (VRAC 4.5 KG)",equipe:"GMS"},{article:"CITRON CEDRAT ITALIE (COLIS 2 PIECES)",equipe:"GMS"},{article:"CITRON COMBAWA",equipe:"GMS"},{article:"CITRON COMBAWA (3 KG)",equipe:"GMS"},{article:"CITRON COMBAWA (VRAC 2.5KG)",equipe:"GMS"},{article:"CITRON COMBAWA MAROC (3 PCE X 6)",equipe:"GMS"},{article:"CITRON DEKOPON (VRAC 4 KG)",equipe:"GMS"},{article:"CITRON LIMONCELLO (VRAC 8 KG)",equipe:"GMS"},{article:"CITRON LIMQUAT (VRAC 2 KG)",equipe:"GMS"},{article:"CITRON MEYER (VRAC 1 KG)",equipe:"GMS"},{article:"CITRON MEYER (VRAC 3 KG)",equipe:"GMS"},{article:"CITRON MEYER (VRAC)",equipe:"GMS"},{article:"CITRON NICE FRANCE (VRAC 5 KG)",equipe:"GMS"},{article:"CITRON ROSE (VRAC 2.5KG)",equipe:"GMS"},{article:"CITRON SUDACHI (VRAC 1 KG)",equipe:"GMS"},{article:"CITRON TANGELO (VRAC)",equipe:"GMS"},{article:"CITRON YUZU (VRAC 1 KG)",equipe:"GMS"},{article:"CITRON YUZU (VRAC)",equipe:"GMS"},{article:"CITRON YUZU ESPAGNE (2 P X 4)",equipe:"GMS"},{article:"CITRON YUZU MAROC (2 P X 4)",equipe:"GMS"},{article:"CITRON ZEBRE (1 KG)",equipe:"GMS"},{article:"CITRON ZEBRE (1.5 KG)",equipe:"GMS"},{article:"CITRONNELLE MAROC (SACHET 100G X 20)",equipe:"GMS"},{article:"COEUR DE PALMIER (VRAC 5 KG)",equipe:"GMS"},{article:"COING (VRAC)",equipe:"GMS"},{article:"COING TURQUIE (VRAC)",equipe:"GMS"},{article:"COMBAVAS INDONESIE (VRAC 2 KG) CAT 1",equipe:"GMS"},{article:"COMBAVAS INDONESIE (VRAC 3 KG)",equipe:"GMS"},{article:"CONCOMBRE CONCOMBRE (VRAC 6 KG)",equipe:"GMS"},{article:"COROSSOL EQUATEUR (VRAC 5 KG)",equipe:"GMS"},{article:"COROSSOL EQUATEUR (VRAC)",equipe:"GMS"},{article:"COTES DE BLETTES (VRAC)",equipe:"GMS"},{article:"FIGUE BRESIL (VRAC 1.2KG)",equipe:"GMS"},{article:"FIGUE DE BARBARIE (VRAC)",equipe:"GMS"},{article:"FIGUE FRAICHE (VRAC)",equipe:"GMS"},{article:"FIGUE NOIR CAL.30",equipe:"GMS"},{article:"FIGUE NOIR PEROU (1 KG)",equipe:"GMS"},{article:"FIGUE NOIRE AFRIQUE DU SUD (VRAC 1 KG)",equipe:"GMS"},{article:"FRECINETTE (VRAC 3 KG)",equipe:"GMS"},{article:"FRECINETTE COLOMBIE (VRAC 3 KG) CAT 1",equipe:"GMS"},{article:"FRUIT A PAIN (VRAC)",equipe:"GMS"},{article:"FRUIT DU JACQUIER",equipe:"GMS"},{article:"FRUITS GRENADE (VRAC)",equipe:"GMS"},{article:"FRUITS GRENADE CAL.10",equipe:"GMS"},{article:"FRUITS GRENADE CAL.12",equipe:"GMS"},{article:"FRUITS GRENADILLA (2 KG)",equipe:"GMS"},{article:"GINGEMBRE BRESIL (2 KG)",equipe:"GMS"},{article:"GINGEMBRE BRESIL (VRAC 13 KG)",equipe:"GMS"},{article:"GINGEMBRE CHINE (12 KG)",equipe:"GMS"},{article:"GINGEMBRE CHINE (VRAC 13 KG)",equipe:"GMS"},{article:"GINGEMBRE PEROU (2 KG)",equipe:"GMS"},{article:"GOMBO HONDURAS (VRAC 5 KG)",equipe:"GMS"},{article:"GOYAVE (2 KG)",equipe:"GMS"},{article:"GRENADE (VRAC X 9)",equipe:"GMS"},{article:"GRENADE CAL.7",equipe:"GMS"},{article:"GRENADE PEROU CAL.8",equipe:"GMS"},{article:"GRENADE TURQUIE CAL.8",equipe:"GMS"},{article:"GROSEILLE ROUGE (BARQUETTE 100G X 8)",equipe:"GMS"},{article:"HARICOT RWANDA (BARQUETTE 350G X 8)",equipe:"GMS"},{article:"HERBES ANETH (VRAC 1 KG)",equipe:"GMS"},{article:"HERBES MENTHE (VRAC 1 KG X 1)",equipe:"GMS"},{article:"KIWANO FRANCE (8 PIÈCES)",equipe:"GMS"},{article:"KIWI GOLD ITALIE (BARQUETTE 4 PCES)",equipe:"GMS"},{article:"KIWI GOLD ITALIE (VRAC 6 KG)",equipe:"GMS"},{article:"KIWI GOLD ITALIE (VRAC)",equipe:"GMS"},{article:"KIWI GOLDEN ITALIE (3 KG)",equipe:"GMS"},{article:"KIWI ITALIE (3 KG)",equipe:"GMS"},{article:"KIWI ROUGE ITALIE",equipe:"GMS"},{article:"KUMQUAT AFRIQUE DU SUD (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"KUMQUAT AFRIQUE DU SUD (VRAC 2 KG)",equipe:"GMS"},{article:"KUMQUAT ESPAGNE (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"KUMQUAT ESPAGNE (VRAC 2 KG)",equipe:"GMS"},{article:"KUMQUAT MAROC (VRAC 2 KG)",equipe:"GMS"},{article:"LICHI BOUQUET (VRAC 5 KG)",equipe:"GMS"},{article:"LICHI BRANCHE MAURICE (VRAC 5 KG)",equipe:"GMS"},{article:"LITCHI BOUQUET (6 KG)",equipe:"GMS"},{article:"MAIS BLANC PEROU (VRAC 1.5 KG)",equipe:"GMS"},{article:"MAIS EPI (BARQUETTE 2 PCS X 8)",equipe:"GMS"},{article:"MAIS EPI NOIRE (VRAC 2 KG)",equipe:"GMS"},{article:"MAIS EPI SENEGAL (2 EPI BARQ X 7)",equipe:"GMS"},{article:"MANGOUSTAN (2 KG)",equipe:"GMS"},{article:"MANGUE BATEAU CAL.8",equipe:"GMS"},{article:"MANGUE KENT COTE D IVOIRE CAL. 12",equipe:"GMS"},{article:"MANGUE NAM DOK MAI 5 KG",equipe:"GMS"},{article:"MARRONS SOUS VIDE FRANCE BOGUE (BARQUETTE 400G X 12)",equipe:"GMS"},{article:"MELON CAL.5 PHILIBON (VRAC)",equipe:"GMS"},{article:"MELON CAL.6 (6 PIECES)",equipe:"GMS"},{article:"MELON CHARENTAIS (PIECE X 6)",equipe:"GMS"},{article:"MELON JAUNE CAL.6 (X6 PIECES)",equipe:"GMS"},{article:"MELON VERT",equipe:"GMS"},{article:"MELON VERT BRESIL CAL.6",equipe:"GMS"},{article:"MELON VERT CAL.6",equipe:"GMS"},{article:"MELON VERT ESPAGNE CAL.6",equipe:"GMS"},{article:"NECTARINE BLANCHE (VRAC)",equipe:"GMS"},{article:"NECTARINE JAUNE CAL.A",equipe:"PRESTIGE"},{article:"ORANGE AMER (VRAC)",equipe:"GMS"},{article:"ORANGE CHOCOLAT ESPAGNE (VRAC)",equipe:"GMS"},{article:"ORANGE SANGUINE (VRAC)",equipe:"GMS"},{article:"ORANGE VALENCIA",equipe:"PRESTIGE"},{article:"PAMPLEMOUSSE BLANC (VRAC)",equipe:"GMS"},{article:"PAPAYE FORMOSE CAL. 3",equipe:"GMS"},{article:"PAPAYE GOLDEN CAL.8 (VRAC)",equipe:"GMS"},{article:"PASSION (VRAC 2 KG)",equipe:"GMS"},{article:"PASSION AFRIQUE DU SUD (COLIS 2KG)",equipe:"GMS"},{article:"PASSION COLOMBIE (3 PIECES X 8)",equipe:"GMS"},{article:"PASSION COLOMBIE (5 P X 8)",equipe:"GMS"},{article:"PASSION COLOMBIE (VRAC 2 KG)",equipe:"GMS"},{article:"PASSION VIETNAM (COLIS 2KG)",equipe:"GMS"},{article:"PASSION ZIMBABWE (COLIS 2KG)",equipe:"GMS"},{article:"PASTEQUE",equipe:"GMS"},{article:"PASTEQUE BRESIL ( X 6 PIECES )",equipe:"GMS"},{article:"PASTEQUE BRESIL CAL. 5",equipe:"GMS"},{article:"PECHE BLANCHE CAL.A",equipe:"GMS"},{article:"PECHE JAUNE CAL.A (VRAC)",equipe:"GMS"},{article:"PETIT POIS (VRAC)",equipe:"GMS"},{article:"PETITS POIS KENYA (BARQUETTE 250G X 8)",equipe:"GMS"},{article:"POMME CANNELLE",equipe:"GMS"},{article:"PRUNE CYTHERE (VRAC 5 KG)",equipe:"GMS"},{article:"RAMBOUTAN (2 KG) CAT 1",equipe:"PRESTIGE"},{article:"SALAK (VRAC 2 KG)",equipe:"GMS"},{article:"SAPOTILLE (2 KG)",equipe:"GMS"},{article:"TAMARILLO ROUGE (VRAC 2.5KG)",equipe:"GMS"},{article:"TAMARIN THAILANDE (BARQUETTE 400G X 16)",equipe:"GMS"},{article:"TAMARIN THAILANDE (BARQUETTE 450G X 20)",equipe:"GMS"},{article:"TRANSPORT",equipe:"PRESTIGE"},
-      ];
+      // Init _byArticle depuis STOCK_CONFIG_ARTICLES (source unique, plus de duplication)
       _byArticle = {};
-      STOCK_DATA_EMBEDDED.forEach(s => { _byArticle[s.article.toLowerCase().trim()] = s.equipe; });
+      STOCK_CONFIG_ARTICLES.forEach(s => { _byArticle[s.article.toLowerCase().trim()] = s.equipe; });
 
       // Sync status
       const setSyncStatus = (s: string, l: string) => {
@@ -1163,7 +1160,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       // ── Ordre optimisé ──
       const getArticleRoot = (name: string): string => {
-        // Extraire les 2 premiers mots significatifs comme clé de famille
         const words = name.toUpperCase().replace(/\(.*\)/g, '').trim().split(/\s+/);
         return words.slice(0, 2).join(' ');
       };
@@ -1173,11 +1169,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const snap = await getDoc(doc(db, "config", "ordre"));
           if (!snap.exists()) return;
           const avgPos = (snap.data() as any).data || {};
-          // Trier par position optimisée, puis regrouper les variantes du même produit
           articles.sort((a: any, b: any) => {
             const rootA = getArticleRoot(a.article);
             const rootB = getArticleRoot(b.article);
-            // Position optimisée de la famille (minimum du groupe)
             const familyPosA = Math.min(...articles
               .filter(x => getArticleRoot(x.article) === rootA)
               .map(x => avgPos[x.article] ?? 9999));
@@ -1185,7 +1179,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
               .filter(x => getArticleRoot(x.article) === rootB)
               .map(x => avgPos[x.article] ?? 9999));
             if (familyPosA !== familyPosB) return familyPosA - familyPosB;
-            // Même famille → tri alphabétique pour regrouper les variantes
             return a.article.localeCompare(b.article);
           });
           toast("📊 Ordre optimisé appliqué");
@@ -1463,12 +1456,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const inp = document.createElement("input");
           inp.className = "qty-in";
           inp.type = "number"; inp.min = "0"; inp.inputMode = "decimal"; inp.value = "";
-          // Data attributes pour l'event delegation - pas de closure
           inp.setAttribute("data-id", String(id));
           inp.setAttribute("data-loc", String(loc));
           inp.setAttribute("data-qty", "1");
           btn.parentNode?.insertBefore(inp, btn);
-          // bouton reste - sAddNextLoc calcule le prochain loc
           inp.focus();
         } else sRenderTable();
       };
@@ -1511,7 +1502,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
           const ecartStr = ecartVal === null ? "-" : (ecartVal > 0 ? "+" : "") + ecartVal;
           const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, qty]: any) => `lot ${l} · ${qty} col.`).join(" | ") : (a.lots?.join(" ") || "");
-          // Highlight search terms
           let artLabel = a.article;
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
           html += `<tr data-id="${a.id}">
@@ -1525,7 +1515,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         });
         tbody.innerHTML = html;
 
-        // Articles de l'autre équipe matching la recherche
         if (q) {
           const otherTeam = currentTeam === "GMS" ? "PRESTIGE" : "GMS";
           const otherMatches = allArticles.filter((a: any) => {
@@ -1565,23 +1554,18 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       (window as any).sSyncGMSPermanent = async () => {
         try {
           toast("⏳ Synchronisation en cours...");
-          // 1. Lire config/overrides pour les mouvements manuels passés
           const snap = await getDoc(doc(db, "config", "overrides"));
           const ov = snap.exists() ? (snap.data() as any).data || {} : {};
-          // 2. Collecter tous les articles GMS : current session + overrides
-          const gmsArticles = new Map<string, string>(); // article -> code
-          // Articles de la session courante
+          const gmsArticles = new Map<string, string>();
           allArticles.filter(a => getEquipe(a) === "GMS").forEach(a => {
             if (a.code) gmsArticles.set(a.article, a.code);
           });
-          // Articles des overrides GMS
           Object.entries(ov).forEach(([art, team]: any) => {
             if (team === "GMS") {
               const found = allArticles.find(a => a.article === art);
               if (found?.code) gmsArticles.set(art, found.code);
             }
           });
-          // 3. Mettre à jour moorea_articles pour chaque article GMS
           let count = 0;
           const updates: any = {};
           gmsArticles.forEach((code, art) => {
@@ -1601,12 +1585,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         updateMetricsC(); sRenderTable();
         clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 500);
         try {
-          // 1. Sauvegarder dans config/overrides (pour le stock)
           const snap = await getDoc(doc(db, "config", "overrides"));
           const ov = snap.exists() ? (snap.data() as any).data || {} : {};
           ov[a.article] = newTeam;
           await setDoc(doc(db, "config", "overrides"), { data: ov });
-          // 2. Mettre à jour moorea_articles (catalogue central) si le code article existe
           if (a.code) {
             const key = a.code.replace(/[.#$/\[\]]/g, "_");
             await update(ref(db, `moorea_articles/${key}`), { equipe: newTeam });
@@ -1708,16 +1690,13 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         toast("CSV téléchargé");
       };
 
-      // PDF
+      // PDF — aperçu dans un iframe isolé (srcdoc), plus de conflit de style avec #stock-root
+      // et impression ciblée uniquement sur le contenu de l'iframe (plus besoin du hack visibility:hidden)
       const openPdfWindow = (html: string, title: string) => {
-        const b1=html.indexOf('<body');const b2=html.indexOf('>',b1)+1;const b3=html.lastIndexOf('</body>');
-        const bodyContent=(b1>=0&&b3>=0)?html.slice(b2,b3):html;
-        const s1=html.indexOf('<style');const s2=html.indexOf('>',s1)+1;const s3=html.indexOf('</style>',s1);
-        const css=(s1>=0&&s3>=0)?html.slice(s2,s3):'';
-        const pdfContent=document.getElementById('stock-pdf-content');
-        const pdfOverlay=document.getElementById('stock-pdf-overlay');
-        if(pdfContent) pdfContent.innerHTML=`<style>${css}</style>${bodyContent}`;
-        if(pdfOverlay) pdfOverlay.style.display='block';
+        const frame = document.getElementById("stock-pdf-frame") as HTMLIFrameElement | null;
+        const pdfOverlay = document.getElementById("stock-pdf-overlay");
+        if (frame) frame.srcdoc = html;
+        if (pdfOverlay) pdfOverlay.style.display = "flex";
       };
 
       (window as any).sExportPDF = () => {
@@ -1835,7 +1814,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const q = (document.getElementById("s-cfg-srch") as HTMLInputElement)?.value.toLowerCase() || "";
         const tbody = document.getElementById("s-cfg-body");
         if (!tbody) return;
-        // Source: Firebase catalogue > stock importé > STOCK_CONFIG_ARTICLES
         const catArticles = (typeof catalogueArticles !== 'undefined' && catalogueArticles && catalogueArticles.length > 0)
           ? catalogueArticles.map((a: any) => ({ article: a.libelle, equipe: a.equipe || _byArticle?.[a.libelle?.toLowerCase().trim()] || "PRESTIGE", famille: "" }))
           : STOCK_CONFIG_ARTICLES.map((s: any) => ({ article: s.article, equipe: s.equipe, famille: "" }));
@@ -1865,7 +1843,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         }).join("");
       };
       (window as any).sRenderConfig = sRenderConfig;
-      // Pré-remplir la table de config immédiatement
       setTimeout(() => sRenderConfig(), 100);
 
       (window as any).sToggleEquipe = async (enc: string, isGMS: boolean) => {
@@ -1886,8 +1863,39 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
 
       // Fusion (simplifié)
-      (window as any).sConfirmerFusion = () => { toast("Fusion non disponible dans cette version"); };
-      (window as any).sAnnulerFusion = () => { document.getElementById("s-fusion-bar")!.style.display = "none"; };
+      (window as any).sAnnulerFusion = () => {
+        fusionMode = false; fusionSelected = [];
+        const bar = document.getElementById("s-fusion-bar");
+        if (bar) bar.style.display = "none";
+        const btn = document.getElementById("s-btn-fusion-mode");
+        if (btn) { btn.style.background = ""; btn.style.color = ""; }
+        sRenderConfig();
+      };
+
+      (window as any).sToggleFusionMode = () => {
+        fusionMode = !fusionMode;
+        fusionSelected = [];
+        const bar = document.getElementById("s-fusion-bar");
+        if (bar) bar.style.display = fusionMode ? "flex" : "none";
+        const btn = document.getElementById("s-btn-fusion-mode");
+        if (btn) { btn.style.background = fusionMode ? "#c8a84b" : ""; btn.style.color = fusionMode ? "#0a0a0a" : ""; }
+        sRenderConfig();
+      };
+
+      (window as any).sConfirmerFusion = async () => {
+        if (fusionSelected.length < 2) { toast("Sélectionnez 2 articles"); return; }
+        const [art1, art2] = fusionSelected;
+        const nom = prompt("Nom final de l'article fusionné :", art1);
+        if (!nom) return;
+        try {
+          const snap = await getDoc(doc(db, "config", "fusions"));
+          const fusions = snap.exists() ? (snap.data() as any).list || [] : [];
+          fusions.push({ art1, art2, nom, date: new Date().toISOString() });
+          await setDoc(doc(db, "config", "fusions"), { list: fusions });
+          toast(art1 + " + " + art2 + ' fusionnés en "' + nom + '"');
+        } catch { toast("Erreur"); }
+        (window as any).sAnnulerFusion();
+      };
 
       // Calculatrice
       (window as any).sCalcNum = (n: string) => {
@@ -1950,7 +1958,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (!box) return;
         if (!val || val.length < 2) { box.style.display = "none"; return; }
         const q = val.toLowerCase();
-        let source: any[] = [...STOCK_DATA_EMBEDDED];
+        let source: any[] = [...STOCK_CONFIG_ARTICLES];
         histoCache.forEach(a => { if (!source.find((s: any) => s.article === a.article)) source.push(a); });
         const scored = source
           .filter((a: any) => !articles.find(x => x.article === a.article))
@@ -1993,7 +2001,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         updateMetricsC(); sRenderTable();
         clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 500);
         toast(a.article.split(" ").slice(0, 3).join(" ") + " → " + currentTeam);
-        // Save override
         getDoc(doc(db, "config", "overrides")).then(snap => {
           const ov = snap.exists() ? (snap.data() as any).data || {} : {};
           ov[a.article] = currentTeam;
@@ -2015,52 +2022,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         sRenderConfig();
       };
 
-      (window as any).sToggleFusionMode = () => {
-        fusionMode = !fusionMode;
-        fusionSelected = [];
-        const bar = document.getElementById("s-fusion-bar");
-        if (bar) bar.style.display = fusionMode ? "flex" : "none";
-        const btn = document.getElementById("s-btn-fusion-mode");
-        if (btn) { btn.style.background = fusionMode ? "#c8a84b" : ""; btn.style.color = fusionMode ? "#0a0a0a" : ""; }
-        sRenderConfig();
-      };
-
-      (window as any).sConfirmerFusion = async () => {
-        if (fusionSelected.length < 2) { toast("Sélectionnez 2 articles"); return; }
-        const [art1, art2] = fusionSelected;
-        const nom = prompt("Nom final de l'article fusionné :", art1);
-        if (!nom) return;
-        try {
-          const snap = await getDoc(doc(db, "config", "fusions"));
-          const fusions = snap.exists() ? (snap.data() as any).list || [] : [];
-          fusions.push({ art1, art2, nom, date: new Date().toISOString() });
-          await setDoc(doc(db, "config", "fusions"), { list: fusions });
-          toast(art1 + " + " + art2 + ' fusionnés en "' + nom + '"');
-        } catch { toast("Erreur"); }
-        (window as any).sAnnulerFusion();
-      };
-
-      (window as any).sAnnulerFusion = () => {
-        fusionMode = false; fusionSelected = [];
-        const bar = document.getElementById("s-fusion-bar");
-        if (bar) bar.style.display = "none";
-        const btn = document.getElementById("s-btn-fusion-mode");
-        if (btn) { btn.style.background = ""; btn.style.color = ""; }
-        sRenderConfig();
-      };
-
       // ── Scanner palette dans stock ──
       let sScanStream: MediaStream | null = null;
       let sScanRaf = 0;
       let sScanActive = false;
-
-      const loadJsQRStock = (): Promise<any> => new Promise((res, rej) => {
-        if ((window as any).jsQR) { res((window as any).jsQR); return; }
-        const s = document.createElement("script");
-        s.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
-        s.onload = () => res((window as any).jsQR); s.onerror = rej;
-        document.head.appendChild(s);
-      });
 
       (window as any).sScannerPalette = async () => {
         const page = document.getElementById("s-page-scanner");
@@ -2104,10 +2069,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
 
       (window as any).sVerifierEANDansStock = (ean: string) => {
-        // Chercher dans gencodeArticles (chargés depuis Firebase)
         const gc = (window as any)._gencodeArticles?.find((g: any) => g.ean === ean);
         if (!gc) { (window as any).sAfficherResultatScan({ found: false, msg: `EAN ${ean} non trouvé dans les gencodes` }); return; }
-        // Chercher l'article correspondant dans le stock
         const code = gc.code_article || "";
         const libelle = gc.nom_geslot?.[0] || gc.produit || "";
         const artInStock = articles.find((a: any) =>
@@ -2118,7 +2081,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           (window as any).sAfficherResultatScan({ found: false, msg: `Gencode trouvé : ${gc.produit} ${gc.conditionnement}\nMais article non trouvé dans ce stock` });
           return;
         }
-        // Scroller vers l'article dans le tableau
         const row = document.querySelector(`tr[data-id="${artInStock.id}"]`) as HTMLElement;
         if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.style.background = "#fef3c7"; setTimeout(() => row.style.background = "", 2000); }
         const html = `<div style="text-align:left">
@@ -2136,7 +2098,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
 
       (window as any).sVerifierLotDansStock = (lot: string) => {
-        // Gère MRA.4561-2 → extrait lot de base + index palette
         const paletteMatch = lot.match(/^(.+?)(?:-(\d+))?$/);
         const baseLot = paletteMatch?.[1] || lot;
         const paletteIdx = paletteMatch?.[2] ? parseInt(paletteMatch[2]) : null;
@@ -2148,7 +2109,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (!artAll) { (window as any).sAfficherResultatScan({ found: false, msg: `Lot #${lot} introuvable dans ce stock` }); return; }
         const enSession = !!artSession;
         const art = artSession || artAll;
-        // Si multi-palette : ouvre le prochain emplacement libre
         if (paletteIdx !== null && enSession) {
           let nextLoc = 1;
           for (let i = 1; i <= 8; i++) {
