@@ -482,25 +482,49 @@ export function GencodeChecker({ onClose, expectedEan, expectedArticle }: { onCl
     const start = async () => {
       try {
         const ZXing = await loadZXing();
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } } });
+        let stream: MediaStream;
+        try {
+          // Tente d'abord avec autofocus continu + haute résolution (meilleure netteté)
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'environment',
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              advanced: [{ focusMode: 'continuous' } as any],
+            }
+          });
+        } catch {
+          // Fallback si le navigateur/la caméra ne supporte pas ces contraintes avancées
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } } });
+        }
         if (!activeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
         if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
         setScanning(true);
         const hints = new Map();
         hints.set(2, [15, 14, 13, 12, 11]); // EAN13, EAN8, UPC-A, UPC-E, Code128
+        hints.set(3, true); // TRY_HARDER : plus de tentatives par image, tolère les codes imparfaits
         const reader = new ZXing.MultiFormatReader();
         reader.setHints(hints);
+
+        // Fraction de l'image (centrée) réellement analysée = zone du viseur affiché à l'écran.
+        // Recadrer réduit la quantité de pixels à traiter (donc plus rapide) et ignore le bruit
+        // autour du code (donc plus tolérant à un alignement imparfait).
+        const fracW = 0.75, fracH = 0.45;
 
         const tick = () => {
           if (!activeRef.current || !videoRef.current || !canvasRef.current) return;
           const v = videoRef.current, c = canvasRef.current;
           if (v.readyState !== v.HAVE_ENOUGH_DATA) { rafRef.current = requestAnimationFrame(tick); return; }
-          c.width = v.videoWidth; c.height = v.videoHeight;
+          const sw = Math.round(v.videoWidth * fracW);
+          const sh = Math.round(v.videoHeight * fracH);
+          const sx = Math.round((v.videoWidth - sw) / 2);
+          const sy = Math.round((v.videoHeight - sh) / 2);
+          c.width = sw; c.height = sh;
           const ctx = c.getContext('2d')!;
-          ctx.drawImage(v, 0, 0, c.width, c.height);
+          ctx.drawImage(v, sx, sy, sw, sh, 0, 0, sw, sh);
           try {
-            const lum = new ZXing.RGBLuminanceSource(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+            const lum = new ZXing.RGBLuminanceSource(ctx.getImageData(0, 0, sw, sh).data, sw, sh);
             const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
             const res = reader.decode(bmp);
             if (res?.getText()) {
@@ -621,6 +645,7 @@ export function GencodeChecker({ onClose, expectedEan, expectedArticle }: { onCl
 export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; onClose: () => void }) {
   const [error, setError] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [manualCode, setManualCode] = useState("");
   const stopRef = useRef<(() => void) | null>(null);
 
   const handleRaw = (raw: string) => {
@@ -650,12 +675,39 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         setScanning(true);
         const scanner = new (window as any).Html5Qrcode("qr-scanner-container", { verbose: false });
         stopRef.current = () => scanner.stop().catch(() => {});
-        await scanner.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 280, height: 120 } },
-          (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } },
-          () => {}
-        );
+
+        // Limiter les formats scannés = moins de calcul par frame = détection plus rapide
+        const Formats = (window as any).Html5QrcodeSupportedFormats;
+        const formatsToSupport = Formats ? [
+          Formats.QR_CODE, Formats.EAN_13, Formats.EAN_8, Formats.CODE_128, Formats.UPC_A, Formats.UPC_E,
+        ] : undefined;
+
+        const baseConfig = {
+          fps: 15, // était 10 → plus de tentatives de décodage par seconde
+          qrbox: { width: 280, height: 140 },
+          disableFlip: false,
+          ...(formatsToSupport ? { formatsToSupport } : {}),
+          // Utilise le détecteur de code-barres natif du navigateur si dispo (Android Chrome, Safari 17+) : bien plus rapide/fiable que le décodage JS pur
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        };
+
+        try {
+          // Tente d'abord avec autofocus continu (meilleure netteté sans devoir viser parfaitement)
+          await scanner.start(
+            { facingMode: "environment", advanced: [{ focusMode: "continuous" }] } as any,
+            baseConfig,
+            (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } },
+            () => {}
+          );
+        } catch {
+          // Fallback si la contrainte avancée n'est pas supportée
+          await scanner.start(
+            { facingMode: "environment" },
+            baseConfig,
+            (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } },
+            () => {}
+          );
+        }
       } catch (e: any) {
         setError(e.name === "NotAllowedError" ? "Accès à la caméra refusé." : "Caméra indisponible : " + e.message);
       }
@@ -684,6 +736,20 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           </div>
         )}
       </div>
+      {/* Saisie manuelle en secours — utile sur iPhone/iPad quand la caméra a du mal (focus, luminosité) */}
+      {!error && (
+        <div style={{ padding: "10px 14px calc(env(safe-area-inset-bottom, 0px) + 10px)", background: "#0a0a0a", borderTop: "1px solid rgba(255,255,255,0.1)", display: "flex", gap: 8 }}>
+          <input
+            value={manualCode}
+            onChange={e => setManualCode(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && manualCode.trim()) handleRaw(manualCode.trim()); }}
+            placeholder="Ou saisir le code / lot manuellement…"
+            style={{ flex: 1, padding: "11px 14px", border: "1.5px solid rgba(255,255,255,0.25)", borderRadius: 10, background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, outline: "none" }}
+          />
+          <button onClick={() => { if (manualCode.trim()) handleRaw(manualCode.trim()); }}
+            style={{ padding: "11px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>→</button>
+        </div>
+      )}
     </div>
   );
 }
