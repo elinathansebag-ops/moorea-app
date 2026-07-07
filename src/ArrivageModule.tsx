@@ -834,16 +834,14 @@ export function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLi
       {/* Header - cliquable pour ouvrir */}
       <div onClick={() => setOpen(!open)} style={{ padding: "13px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>
-            {a.lot_interne && <span style={{ color: "#c8a84b", fontWeight: 800, marginRight: 8 }}>#{a.lot_interne}</span>}
-            {a.produit || a.article || a.nom || a.designation || `Article #${a.lot_interne}`}{a.variete ? ` · ${a.variete}` : ""}
+          <p style={{ margin: "0 0 3px", fontWeight: 700, fontSize: 14, color: "#1a2e1a", fontFamily: "'Syne', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {a.produit || a.article || a.nom || a.designation || a.lot_interne || "—"}{a.variete ? ` · ${a.variete}` : ""}
             {a.hors_liste && <span style={{ marginLeft: 8, fontSize: 10, background: "#fff3e0", color: "#e65100", padding: "2px 7px", borderRadius: 10, fontWeight: 600 }}>Hors liste</span>}
             {a.destruction && <span style={{ marginLeft: 8, fontSize: 10, background: "#fef2f2", color: "#dc2626", padding: "2px 7px", borderRadius: 10, fontWeight: 600 }}>🗑 {a.destruction.quantite} détruits</span>}
           </p>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-            <PillArr>🏭 {a.fournisseur}</PillArr>
-            <PillArr>📦 {a.quantite} {a.unite}</PillArr>
-            {a.origine && <PillArr>🌍 {a.origine}</PillArr>}
+            {a.lot_interne && <span style={{ fontSize: 11, color: "#c8a84b", fontWeight: 700 }}>#{a.lot_interne}</span>}
+            <span style={{ fontSize: 11, color: "#6b7280" }}>🏭 {a.fournisseur}</span>
             <span style={{ fontSize: 11, color: "#9ca3af" }}>📅 {a.date}</span>
           </div>
         </div>
@@ -1178,4 +1176,3 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     </div>
   );
 }
-
