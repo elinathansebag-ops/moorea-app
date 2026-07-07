@@ -37,9 +37,9 @@ const WALL_PRESETS: Record<string, Preset[]> = {
   mur1: [
     { produit: "Haricots Verts 500 GR", color: "#f59e0b", colorLabel: "Orange", designation: "GREEN BEANS", origine: "Kenya" },
     { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya", note: "Sticker 2€" },
+    { produit: "Haricots Verts 400 GR (Sticker 2€)", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya" },
     { produit: "Haricots Verts 250 GR", color: "#16a34a", colorLabel: "Green", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 250 GR", color: "#ec4899", colorLabel: "Rose", designation: "GREEN BEANS", origine: "Kenya", note: "Lidl" },
+    { produit: "Haricots Verts 250 GR Lidl", color: "#ec4899", colorLabel: "Rose", designation: "GREEN BEANS", origine: "Kenya" },
     { produit: "Haricots Verts 250 GR", color: "#78350f", colorLabel: "Marron", designation: "GREEN BEANS", origine: "Rwanda" },
     { produit: "Haricots Verts 500 GR", color: "#78350f", colorLabel: "Marron", designation: "GREEN BEANS", origine: "Rwanda" },
     { produit: "Pois Gourmands / Mangetout 250 GR", color: "#7c3aed", colorLabel: "Purple", designation: "SNOW PEAS", origine: "Kenya" },
