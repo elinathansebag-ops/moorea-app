@@ -963,45 +963,45 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { a
   };
 
   return (
-    <div style={{ marginBottom: 6, borderRadius: 10, overflow: "hidden", border: `1px solid rgba(255,255,255,0.1)`, borderLeft: `3px solid ${borderColor}` }}>
+    <div style={{ marginBottom: 6, borderRadius: 10, overflow: "hidden", border: "1px solid #e8e0d0", borderLeft: `3px solid ${borderColor}` }}>
       {/* Header */}
-      <div onClick={() => setOpen(!open)} style={{ background: "rgba(255,255,255,0.06)", padding: "9px 12px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#fff" }}>
+      <div onClick={() => setOpen(!open)} style={{ background: "#f9fafb", padding: "9px 12px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {a.produit || a.article || a.nom || a.designation || a.libelle || a.description ||
-              <span style={{ color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>Article sans nom</span>}
-            {a.lot_interne && <span style={{ color: "#c8a84b", marginLeft: 8, fontWeight: 500, fontSize: 12 }}>· Lot #{a.lot_interne}</span>}
-            <span style={{ fontWeight: 400, color: "rgba(255,255,255,0.5)", marginLeft: 6, fontSize: 12 }}>· {a.fournisseur}</span>
+              <span style={{ color: "#9ca3af", fontStyle: "italic" }}>Article sans nom</span>}
+            {a.lot_interne && <span style={{ color: "#c8a84b", marginLeft: 8, fontWeight: 700, fontSize: 12 }}>· Lot #{a.lot_interne}</span>}
+            <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6, fontSize: 12 }}>· {a.fournisseur}</span>
           </p>
-          <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-            {a.quantite} {a.unite}
-            {a.destruction && <span style={{ color: "#ef4444", marginLeft: 8 }}>🗑 {a.destruction.quantite} détruits</span>}
+          <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
+            📦 {a.quantite} {a.unite}
+            {a.destruction && <span style={{ color: "#dc2626", marginLeft: 8, fontWeight: 700 }}>🗑 {a.destruction.quantite} détruits</span>}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
           <BadgeArrivage status={a.statut} />
           <span style={{ fontSize: 14, color: "#c8a84b", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
         </div>
       </div>
       {/* Accordéon */}
       {open && (
-        <div style={{ background: "rgba(0,0,0,0.2)", padding: "12px" }}>
+        <div style={{ background: "#fff", padding: "12px" }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            {a.rapport?.qualite && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>⭐ Qualité {a.rapport.qualite}/5</span>}
-            {a.rapport?.temperature && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>🌡 Temp {a.rapport.temperature}</span>}
-            {a.rapport?.poids_brut && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>⚖️ Brut {a.rapport.poids_brut} kg</span>}
-            {a.rapport?.poids_net && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>🥬 Net {a.rapport.poids_net} kg</span>}
-            {a.rapport?.observations && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", padding: "3px 8px", borderRadius: 8 }}>📝 {a.rapport.observations}</span>}
+            {a.rapport?.qualite && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>⭐ Qualité {a.rapport.qualite}/5</span>}
+            {a.rapport?.temperature && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>🌡 Temp {a.rapport.temperature}</span>}
+            {a.rapport?.poids_brut && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>⚖️ Brut {a.rapport.poids_brut} kg</span>}
+            {a.rapport?.poids_net && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>🥬 Net {a.rapport.poids_net} kg</span>}
+            {a.rapport?.observations && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>📝 {a.rapport.observations}</span>}
           </div>
 
           {/* Colis manquant - alerte WhatsApp */}
-          <div style={{ marginBottom: 10, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", borderRadius: 10, padding: "10px 12px" }}>
-            <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#93c5fd" }}>📦 Colis manquant</p>
+          <div style={{ marginBottom: 10, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px" }}>
+            <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#1d4ed8" }}>📦 Colis manquant</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Attendus : <strong style={{ color: "#fff" }}>{a.quantite}</strong></span>
+              <span style={{ fontSize: 12, color: "#6b7280" }}>Attendus : <strong style={{ color: "#1a2e1a" }}>{a.quantite}</strong></span>
               <input type="number" min="0" max={a.quantite} id={`colis-recus-${a.id}`}
                 placeholder="Colis reçus"
-                style={{ width: 110, padding: "6px 10px", border: "1px solid rgba(59,130,246,0.4)", borderRadius: 8, background: "rgba(0,0,0,0.3)", color: "#fff", fontSize: 13, outline: "none" }} />
+                style={{ width: 110, padding: "6px 10px", border: "1px solid #bfdbfe", borderRadius: 8, background: "#fff", color: "#1a2e1a", fontSize: 13, outline: "none" }} />
               <button onClick={() => {
                 const input = document.getElementById(`colis-recus-${a.id}`) as HTMLInputElement;
                 const recu = parseInt(input?.value || "0");
@@ -1031,30 +1031,30 @@ Merci de régulariser.`;
           </div>
 
           {/* Déclarer une perte */}
-          <div style={{ marginBottom: 10, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 12px" }}>
-            <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#fca5a5" }}>🗑 Déclarer une perte</p>
+          <div style={{ marginBottom: 10, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 12px" }}>
+            <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#dc2626" }}>🗑 Déclarer une perte</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input type="number" min="1" max={a.quantite} value={perteQty} onChange={e => setPerteQty(e.target.value)}
                 placeholder={`Nb colis (/ ${a.quantite})`}
-                style={{ width: 120, padding: "6px 10px", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 8, background: "rgba(0,0,0,0.3)", color: "#fff", fontSize: 13, outline: "none" }} />
+                style={{ width: 120, padding: "6px 10px", border: "1px solid #fca5a5", borderRadius: 8, background: "#fff", color: "#1a2e1a", fontSize: 13, outline: "none" }} />
               <input type="text" value={perteRaison} onChange={e => setPerteRaison(e.target.value)}
                 placeholder="Raison (ex: marchandise avariée)"
-                style={{ flex: 1, minWidth: 140, padding: "6px 10px", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 8, background: "rgba(0,0,0,0.3)", color: "#fff", fontSize: 13, outline: "none" }} />
+                style={{ flex: 1, minWidth: 140, padding: "6px 10px", border: "1px solid #fca5a5", borderRadius: 8, background: "#fff", color: "#1a2e1a", fontSize: 13, outline: "none" }} />
               <button onClick={handlePerte} disabled={savingPerte || !perteQty || !perteRaison}
-                style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: (!perteQty || !perteRaison) ? "rgba(239,68,68,0.3)" : "#ef4444", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: (!perteQty || !perteRaison) ? "#fca5a5" : "#dc2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                 {savingPerte ? "..." : "Confirmer"}
               </button>
             </div>
             {a.destruction && (
-              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#fca5a5" }}>
+              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#dc2626" }}>
                 ✓ {a.destruction.quantite} colis détruits le {a.destruction.date} - {a.destruction.raison}
               </p>
             )}
           </div>
 
           {/* Rapport de réserve */}
-          <div style={{ marginBottom: 10, background: "rgba(217,119,6,0.1)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 10, padding: "10px 12px" }}>
-            <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 12, color: "#fcd34d" }}>⚠️ Rapport de réserve</p>
+          <div style={{ marginBottom: 10, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "10px 12px" }}>
+            <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 12, color: "#92400e" }}>⚠️ Rapport de réserve</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button onClick={() => onOuvreRapport(a, true)}
                 style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#d97706", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
@@ -1062,7 +1062,7 @@ Merci de régulariser.`;
               </button>
               {a.statut !== "sous réserve" && (
                 <button onClick={handleReserve} disabled={savingReserve}
-                  style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(217,119,6,0.5)", background: "transparent", color: "#fcd34d", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                  style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fff", color: "#92400e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
                   {savingReserve ? "..." : "Passer en réserve"}
                 </button>
               )}
@@ -1078,7 +1078,7 @@ Merci de régulariser.`;
               const { db: dbImport } = await import("./firebase");
               await fbUpdate(fbRef(dbImport, `arrivages/${a.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
             }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#d97706", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>↺ Re-pointer</button>
-            <button onClick={() => onDelete(a.id)} style={{ padding: "5px 10px", background: "transparent", border: "1px solid rgba(252,165,165,0.4)", color: "#fca5a5", borderRadius: 8, cursor: "pointer", fontSize: 11 }}>🗑 Supprimer</button>
+            <button onClick={() => onDelete(a.id)} style={{ padding: "5px 10px", background: "#fff", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, cursor: "pointer", fontSize: 11 }}>🗑 Supprimer</button>
           </div>
         </div>
       )}
