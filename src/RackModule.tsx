@@ -30,9 +30,7 @@ function getBays(cfg: WallConfig): { start: number; width: number }[] {
 type PalettePos = {
   produit: string;
   type?: "produit" | "archive" | "packaging";
-  produit2?: string;
-  quantite2?: string;
-  unite2?: string;
+  extraItems?: { nom: string; quantite?: string; unite?: string }[];
   fournisseur?: string;
   lot_interne?: string;
   quantite?: string;
@@ -105,7 +103,7 @@ function dlcStatus(dlc?: string): { color: string; bg: string; label: string } |
 }
 
 // ─── VISUEL PALETTE (planches de bois + infos essentielles) ───
-function PaletteVisual({ produit, produit2, quantite, unite, dlc, color, type }: { produit?: string; produit2?: string; quantite?: string; unite?: string; dlc?: string; color?: string; type?: string }) {
+function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type }: { produit?: string; extraItems?: { nom: string; quantite?: string; unite?: string }[]; quantite?: string; unite?: string; dlc?: string; color?: string; type?: string }) {
   const status = dlcStatus(dlc);
   const meta = type && type !== "produit" ? PALETTE_TYPES[type] : null;
   const borderColor = color || meta?.color;
@@ -121,7 +119,10 @@ function PaletteVisual({ produit, produit2, quantite, unite, dlc, color, type }:
         fontSize: 8.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.15, textAlign: "center",
         maxWidth: 72, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
         overflow: "hidden", wordBreak: "break-word" as const,
-      }}>{produit}{produit2 ? ` + ${produit2}` : ""}</span>
+      }}>{produit}</span>
+      {!!extraItems?.length && (
+        <span style={{ fontSize: 7, fontWeight: 800, color: "#7c3aed", background: "#f5f3ff", borderRadius: 4, padding: "1px 4px" }}>+{extraItems.length} article{extraItems.length > 1 ? "s" : ""}</span>
+      )}
       {quantite && <span style={{ fontSize: 8, color: "#6b7280", fontWeight: 600 }}>{quantite} {unite || ""}</span>}
       {status && (
         <span style={{ fontSize: 7.5, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "1px 4px", lineHeight: 1.3 }}>
@@ -179,7 +180,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const [addMode, setAddMode] = useState<"modele" | "libre">("libre");
   const [presetLocked, setPresetLocked] = useState(false);
-  const [freeForm, setFreeForm] = useState({ produit: "", type: "produit" as "produit" | "archive" | "packaging", produit2: "", quantite2: "", unite2: "colis", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
+  const [freeForm, setFreeForm] = useState({ produit: "", type: "produit" as "produit" | "archive" | "packaging", extraItems: [] as { nom: string; quantite?: string; unite?: string }[], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
   const [saving, setSaving] = useState(false);
 
   // ─── FIREBASE: config des murs ───
@@ -296,21 +297,29 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
     setSelectedCell({ row, bay, slot });
     if (!occupied) {
-      setFreeForm({ produit: "", type: "produit", produit2: "", quantite2: "", unite2: "colis", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
+      setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
       setAddMode(WALL_PRESETS[activeWall] ? "modele" : "libre");
       setPresetLocked(false);
     }
   };
 
   // ─── AJOUT PALETTE (saisie libre) ───
+  // ─── GESTION DE LA LISTE D'ARTICLES SUPPLÉMENTAIRES (palette mixte / packaging) ───
+  const addExtraItem = () => setFreeForm({ ...freeForm, extraItems: [...freeForm.extraItems, { nom: "", quantite: "", unite: "colis" }] });
+  const updateExtraItem = (idx: number, patch: Partial<{ nom: string; quantite: string; unite: string }>) => {
+    const items = freeForm.extraItems.map((it, i) => i === idx ? { ...it, ...patch } : it);
+    setFreeForm({ ...freeForm, extraItems: items });
+  };
+  const removeExtraItem = (idx: number) => setFreeForm({ ...freeForm, extraItems: freeForm.extraItems.filter((_, i) => i !== idx) });
+
   const handleAddFree = async () => {
     if (!freeForm.produit.trim()) { alert(freeForm.type === "produit" ? "Le produit est requis" : "La description est requise"); return; }
     if (!selectedCell) return;
     setSaving(true);
     try {
       const key = cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot);
-      const cleanProduit2 = freeForm.produit2.trim();
-      const payload: any = { ...freeForm, produit2: cleanProduit2 || undefined, quantite2: cleanProduit2 ? freeForm.quantite2 : undefined, unite2: cleanProduit2 ? freeForm.unite2 : undefined, date_stockage: new Date().toLocaleDateString("fr-FR"), timestamp: Date.now() };
+      const cleanItems = freeForm.extraItems.filter(it => it.nom.trim());
+      const payload: any = { ...freeForm, extraItems: cleanItems.length ? cleanItems : undefined, date_stockage: new Date().toLocaleDateString("fr-FR"), timestamp: Date.now() };
       Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
       await update(ref(db, `rack_positions/${activeWall}`), { [key]: payload });
       setSelectedCell(null);
@@ -558,7 +567,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                               display: "flex", alignItems: "flex-end", justifyContent: "center",
                               position: "relative", WebkitTapHighlightColor: "transparent",
                             }}>
-                            {data ? <PaletteVisual produit={data.produit} produit2={data.produit2} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} type={data.type} /> : (
+                            {data ? <PaletteVisual produit={data.produit} extraItems={data.extraItems} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} type={data.type} /> : (
                               <div style={{ width: n === 1 ? 70 : Math.max(18, 42 * bay.width / n), height: 24, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 5 }} />
                             )}
                             {isCustom && isFirst && <span style={{ position: "absolute", top: 4, left: 6, fontSize: 9, fontWeight: 800, color: "#8b5cf6", background: "#fff", borderRadius: 4, padding: "0 3px" }}>{n}/section</span>}
@@ -774,26 +783,33 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                       <input value={freeForm.produit} onChange={e => setFreeForm({ ...freeForm, produit: e.target.value })} placeholder={freeForm.type === "archive" ? "Description archive *" : "Description packaging *"}
                         style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                     )}
-                    {freeForm.type === "produit" && freeForm.produit2 === "" && (
-                      <button onClick={() => setFreeForm({ ...freeForm, produit2: " " })} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#8b5cf6", fontWeight: 700, fontSize: 12, cursor: "pointer", padding: 0 }}>
-                        + Ajouter un 2e article (palette mixte)
-                      </button>
-                    )}
-                    {freeForm.type === "produit" && freeForm.produit2 !== "" && (
-                      <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>2e article de la palette</span>
-                          <button onClick={() => setFreeForm({ ...freeForm, produit2: "", quantite2: "" })} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>retirer</button>
-                        </div>
-                        <AutocompleteInput value={freeForm.produit2.trim()} onChange={v => setFreeForm({ ...freeForm, produit2: v })} suggestions={suggestionsProduits} placeholder="Produit 2 * (catalogue)" />
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <input type="number" value={freeForm.quantite2} onChange={e => setFreeForm({ ...freeForm, quantite2: e.target.value })} placeholder="Qté"
-                            style={{ flex: 1, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-                          <select value={freeForm.unite2} onChange={e => setFreeForm({ ...freeForm, unite2: e.target.value })}
-                            style={{ width: 90, padding: "9px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
-                            <option>colis</option><option>kg</option><option>palette</option>
-                          </select>
-                        </div>
+                    {(freeForm.type === "produit" || freeForm.type === "packaging") && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {freeForm.extraItems.map((item, idx) => (
+                          <div key={idx} style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>Article {idx + 2} de la palette</span>
+                              <button onClick={() => removeExtraItem(idx)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>retirer</button>
+                            </div>
+                            {freeForm.type === "produit" ? (
+                              <AutocompleteInput value={item.nom} onChange={v => updateExtraItem(idx, { nom: v })} suggestions={suggestionsProduits} placeholder={`Produit ${idx + 2} * (catalogue)`} />
+                            ) : (
+                              <input value={item.nom} onChange={e => updateExtraItem(idx, { nom: e.target.value })} placeholder={`Description ${idx + 2} *`}
+                                style={{ padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                            )}
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <input type="number" value={item.quantite} onChange={e => updateExtraItem(idx, { quantite: e.target.value })} placeholder="Qté"
+                                style={{ flex: 1, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                              <select value={item.unite} onChange={e => updateExtraItem(idx, { unite: e.target.value })}
+                                style={{ width: 90, padding: "9px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
+                                <option>colis</option><option>kg</option><option>palette</option>
+                              </select>
+                            </div>
+                          </div>
+                        ))}
+                        <button onClick={addExtraItem} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#8b5cf6", fontWeight: 700, fontSize: 12, cursor: "pointer", padding: 0 }}>
+                          + Ajouter un article {freeForm.extraItems.length > 0 ? `(${freeForm.extraItems.length + 2}ᵉ)` : "(palette mixte)"}
+                        </button>
                       </div>
                     )}
                     {freeForm.type === "produit" && (
@@ -856,7 +872,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>📍 {cfg.label} · Niveau {selectedCell.row + 1} · Section {selectedCell.bay + 1} · Place {selectedCell.slot + 1}/{selectedBaySlotCount}</p>
               {selectedData.lot_interne && <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>🔖 Lot {selectedData.lot_interne}</p>}
               {selectedData.quantite && <p style={{ margin: 0, fontSize: 12, color: "#374151" }}>📦 {selectedData.quantite} {selectedData.unite}</p>}
-              {selectedData.produit2 && <p style={{ margin: 0, fontSize: 12, color: "#7c3aed", fontWeight: 600 }}>➕ {selectedData.produit2}{selectedData.quantite2 ? ` — ${selectedData.quantite2} ${selectedData.unite2}` : ""}</p>}
+              {selectedData.extraItems?.map((item, idx) => (
+                <p key={idx} style={{ margin: 0, fontSize: 12, color: "#7c3aed", fontWeight: 600 }}>➕ {item.nom}{item.quantite ? ` — ${item.quantite} ${item.unite}` : ""}</p>
+              ))}
               {selectedData.dlc && (() => {
                 const s = dlcStatus(selectedData.dlc);
                 return s ? (
