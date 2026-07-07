@@ -125,6 +125,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [dragActiveKey, setDragActiveKey] = useState<string | null>(null); // case source pendant le drag
   const [ghost, setGhost] = useState<{ x: number; y: number; produit: string } | null>(null);
   const dragInfoRef = useRef<{ row: number; col: number; data?: PalettePos; startX: number; startY: number; moved: boolean } | null>(null);
+  const rackScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const positionsRef = useRef(positions);
   const activeWallRef = useRef(activeWall);
 
@@ -173,6 +176,27 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   }, []);
 
   const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)], echelleEvery: DEFAULT_ECHELLE };
+
+  // ─── DÉTECTION DU CONTENU MASQUÉ (scroll horizontal du rack) ───
+  useEffect(() => {
+    const checkScroll = () => {
+      const el = rackScrollRef.current;
+      if (!el) return;
+      setCanScrollLeft(el.scrollLeft > 4);
+      setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    };
+    checkScroll();
+    const el = rackScrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    window.addEventListener("resize", checkScroll);
+    const t = setTimeout(checkScroll, 200); // re-check après layout final
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
+      clearTimeout(t);
+    };
+  }, [activeWall, cfg.rows, cfg.cols, cfg.echelleEvery]);
   const cellKey = (row: number, col: number) => `${row}_${col}`;
 
   // ─── CONFIG MUR ───
@@ -451,7 +475,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* GRILLE DU RACK — structure réaliste : montants + traverses + palettes */}
-        <div style={{ background: "linear-gradient(180deg, #eef1f5, #dde3ea)", border: "5px solid #3f3f46", borderRadius: 10, padding: "18px 14px 10px", overflowX: "auto", boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)" }}>
+        <div style={{ position: "relative" }}>
+          <style>{`@keyframes rackScrollHint{0%,100%{opacity:.35}50%{opacity:1}}`}</style>
+          <div ref={rackScrollRef} style={{ background: "linear-gradient(180deg, #eef1f5, #dde3ea)", border: "5px solid #3f3f46", borderRadius: 10, padding: "18px 14px 10px", overflowX: "auto", boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)" }}>
           {Array.from({ length: cfg.rows }, (_, i) => cfg.rows - 1 - i).map(row => (
             <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 90 + 40 }}>
               <div style={{ width: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -498,6 +524,18 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           <div style={{ display: "flex", marginLeft: 34 }}>
             <div style={{ height: 10, flex: 1, background: "linear-gradient(180deg,#52525b,#3f3f46)", borderRadius: "0 0 4px 4px" }} />
           </div>
+          </div>
+
+          {canScrollLeft && (
+            <div style={{ position: "absolute", left: 5, top: 5, bottom: 5, width: 34, borderRadius: "6px 0 0 6px", background: "linear-gradient(90deg, rgba(221,227,234,0.98), rgba(221,227,234,0))", pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+              <span style={{ fontSize: 18, fontWeight: 800, color: "#3f3f46", marginLeft: 3, animation: "rackScrollHint 1.4s ease-in-out infinite" }}>‹</span>
+            </div>
+          )}
+          {canScrollRight && (
+            <div style={{ position: "absolute", right: 5, top: 5, bottom: 5, width: 34, borderRadius: "0 6px 6px 0", background: "linear-gradient(270deg, rgba(221,227,234,0.98), rgba(221,227,234,0))", pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+              <span style={{ fontSize: 18, fontWeight: 800, color: "#3f3f46", marginRight: 3, animation: "rackScrollHint 1.4s ease-in-out infinite" }}>›</span>
+            </div>
+          )}
         </div>
 
         <p style={{ marginTop: 12, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
