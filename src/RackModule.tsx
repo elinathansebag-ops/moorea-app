@@ -24,6 +24,7 @@ type PalettePos = {
   unite?: string;
   dlc?: string;
   color?: string;
+  origine?: string;
   notes?: string;
   arrivage_id?: string;
   date_stockage?: string;
@@ -31,17 +32,20 @@ type PalettePos = {
 };
 
 // ─── MODÈLES PRÉ-CONFIGURÉS PAR MUR (nom + code couleur d'étiquette) ───
-type Preset = { produit: string; color: string; colorLabel: string; designation: string; note?: string };
+type Preset = { produit: string; color: string; colorLabel: string; designation: string; origine?: string; note?: string };
 const WALL_PRESETS: Record<string, Preset[]> = {
   mur1: [
-    { produit: "Haricots Verts 500 GR", color: "#f59e0b", colorLabel: "Orange", designation: "GREEN BEANS" },
-    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS" },
-    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", note: "Sticker 2€" },
-    { produit: "Haricots Verts 250 GR", color: "#16a34a", colorLabel: "Green", designation: "GREEN BEANS" },
-    { produit: "Pois Gourmands / Mangetout 250 GR", color: "#7c3aed", colorLabel: "Purple", designation: "SNOW PEAS" },
-    { produit: "Pois Gourmands / Mangetout 150 GR", color: "#2563eb", colorLabel: "Blue", designation: "SNOW PEAS" },
-    { produit: "Pois Sucrés 250 GR", color: "#eab308", colorLabel: "Yellow", designation: "SUGAR SNAPS / SNAP PEAS" },
-    { produit: "Pois Sucrés 150 GR", color: "#dc2626", colorLabel: "Red", designation: "SUGAR SNAPS / SNAP PEAS" },
+    { produit: "Haricots Verts 500 GR", color: "#f59e0b", colorLabel: "Orange", designation: "GREEN BEANS", origine: "Kenya" },
+    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya" },
+    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya", note: "Sticker 2€" },
+    { produit: "Haricots Verts 250 GR", color: "#16a34a", colorLabel: "Green", designation: "GREEN BEANS", origine: "Kenya" },
+    { produit: "Haricots Verts 250 GR", color: "#ec4899", colorLabel: "Rose", designation: "GREEN BEANS", origine: "Kenya", note: "Lidl" },
+    { produit: "Haricots Verts 250 GR", color: "#78350f", colorLabel: "Marron", designation: "GREEN BEANS", origine: "Rwanda" },
+    { produit: "Haricots Verts 500 GR", color: "#78350f", colorLabel: "Marron", designation: "GREEN BEANS", origine: "Rwanda" },
+    { produit: "Pois Gourmands / Mangetout 250 GR", color: "#7c3aed", colorLabel: "Purple", designation: "SNOW PEAS", origine: "Kenya" },
+    { produit: "Pois Gourmands / Mangetout 150 GR", color: "#2563eb", colorLabel: "Blue", designation: "SNOW PEAS", origine: "Kenya" },
+    { produit: "Pois Sucrés 250 GR", color: "#eab308", colorLabel: "Yellow", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya" },
+    { produit: "Pois Sucrés 150 GR", color: "#dc2626", colorLabel: "Red", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya" },
   ],
 };
 
@@ -61,9 +65,17 @@ function dlcStatus(dlc?: string): { color: string; bg: string; label: string } |
 function PaletteVisual({ produit, quantite, unite, dlc, color }: { produit?: string; quantite?: string; unite?: string; dlc?: string; color?: string }) {
   const status = dlcStatus(dlc);
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", gap: 1 }}>
-      {color && <div style={{ width: 22, height: 5, background: color, borderRadius: 2, marginBottom: 1, border: "1px solid rgba(0,0,0,0.15)" }} />}
-      <span style={{ fontSize: 9, fontWeight: 800, color: "#1a2e1a", maxWidth: 66, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>{produit}</span>
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center", width: "100%", gap: 1.5,
+      border: color ? `2px solid ${color}` : "none",
+      background: color ? `${color}1f` : "transparent",
+      borderRadius: 7, padding: "4px 3px 3px",
+    }}>
+      <span style={{
+        fontSize: 8.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.15, textAlign: "center",
+        maxWidth: 72, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
+        overflow: "hidden", wordBreak: "break-word" as const,
+      }}>{produit}</span>
       {quantite && <span style={{ fontSize: 8, color: "#6b7280", fontWeight: 600 }}>{quantite} {unite || ""}</span>}
       {status && (
         <span style={{ fontSize: 7.5, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "1px 4px", lineHeight: 1.3 }}>
@@ -118,7 +130,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const [addMode, setAddMode] = useState<"modele" | "libre" | "existant">("libre");
   const [presetLocked, setPresetLocked] = useState(false);
-  const [freeForm, setFreeForm] = useState({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", notes: "" });
+  const [freeForm, setFreeForm] = useState({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
   const [searchArrivage, setSearchArrivage] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -190,7 +202,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
     setSelectedCell({ row, col });
     if (!occupied) {
-      setFreeForm({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", notes: "" });
+      setFreeForm({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
       setAddMode(WALL_PRESETS[activeWall] ? "modele" : "libre");
       setPresetLocked(false);
       setSearchArrivage("");
@@ -215,14 +227,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   // ─── SÉLECTION D'UN MODÈLE PRÉ-CONFIGURÉ ───
   const selectPreset = (p: Preset) => {
-    setFreeForm({ ...freeForm, produit: p.produit, color: p.color });
+    setFreeForm({ ...freeForm, produit: p.produit, color: p.color, origine: p.origine || "" });
     setPresetLocked(true);
     setAddMode("libre"); // il ne reste qu'à saisir lot + quantité + DLC
   };
 
   const unlockPreset = () => {
     setPresetLocked(false);
-    setFreeForm({ ...freeForm, produit: "", color: "" });
+    setFreeForm({ ...freeForm, produit: "", color: "", origine: "" });
     setAddMode("modele");
   };
 
@@ -441,7 +453,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         {/* GRILLE DU RACK — structure réaliste : montants + traverses + palettes */}
         <div style={{ background: "linear-gradient(180deg, #eef1f5, #dde3ea)", border: "5px solid #3f3f46", borderRadius: 10, padding: "18px 14px 10px", overflowX: "auto", boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)" }}>
           {Array.from({ length: cfg.rows }, (_, i) => cfg.rows - 1 - i).map(row => (
-            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 80 + 40 }}>
+            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 90 + 40 }}>
               <div style={{ width: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ fontSize: 10, fontWeight: 800, color: "#52525b", background: "#fff", border: "1px solid #d4d4d8", borderRadius: 5, padding: "2px 5px" }}>N{row + 1}</span>
               </div>
@@ -453,14 +465,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   const echelleEvery = cfg.echelleEvery ?? 0;
                   const els: any[] = [];
                   if (col > 0 && echelleEvery > 0 && col % echelleEvery === 0) {
-                    els.push(<EchelleDivider key={`ech-${col}`} height={104} />);
+                    els.push(<EchelleDivider key={`ech-${col}`} height={118} />);
                   }
                   els.push(
                     <button key={col}
                       data-rack-cell data-row={row} data-col={col}
                       onPointerDown={e => onPointerDownCell(e, row, col)}
                       style={{
-                        flex: 1, minWidth: 76, height: 104, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
+                        flex: 1, minWidth: 86, height: 118, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
                         touchAction: data ? "none" : "auto",
                         background: dragOverKey === key ? "rgba(139,92,246,0.18)" : "transparent",
                         border: "none",
@@ -570,7 +582,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                     <div style={{ width: 20, height: 20, borderRadius: 5, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a" }}>{p.produit}</p>
-                      <p style={{ margin: "1px 0 0", fontSize: 11, color: "#9ca3af" }}>{p.colorLabel} · {p.designation}{p.note ? ` · ${p.note}` : ""}</p>
+                      <p style={{ margin: "1px 0 0", fontSize: 11, color: "#9ca3af" }}>{p.colorLabel} · {p.designation}{p.origine ? ` · ${p.origine}` : ""}{p.note ? ` · ${p.note}` : ""}</p>
                     </div>
                   </button>
                 ))}
@@ -582,7 +594,10 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 {presetLocked ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: 10, padding: "10px 12px" }}>
                     <div style={{ width: 22, height: 22, borderRadius: 5, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", flex: 1 }}>{freeForm.produit}</span>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", display: "block" }}>{freeForm.produit}</span>
+                      {freeForm.origine && <span style={{ fontSize: 11, color: "#6b7280" }}>🌍 {freeForm.origine}</span>}
+                    </div>
                     <button onClick={unlockPreset} style={{ background: "none", border: "none", color: "#6d28d9", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>↺ Changer</button>
                   </div>
                 ) : (
@@ -596,6 +611,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                     )}
                     <AutocompleteInput value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
                     <AutocompleteInput value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
+                    <input value={freeForm.origine} onChange={e => setFreeForm({ ...freeForm, origine: e.target.value })} placeholder="🌍 Origine (pays)"
+                      style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                   </>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
@@ -652,7 +669,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   {selectedData.color && <span style={{ width: 14, height: 14, borderRadius: 4, background: selectedData.color, border: "1px solid rgba(0,0,0,0.15)", display: "inline-block" }} />}
                   {selectedData.produit}
                 </h2>
-                <p style={{ margin: "3px 0 0", fontSize: 13, color: "#6b7280" }}>{selectedData.fournisseur || "-"}</p>
+                <p style={{ margin: "3px 0 0", fontSize: 13, color: "#6b7280" }}>{selectedData.fournisseur || "-"}{selectedData.origine ? ` · 🌍 ${selectedData.origine}` : ""}</p>
               </div>
               <button onClick={() => setSelectedCell(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
             </div>
