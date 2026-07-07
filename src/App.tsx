@@ -132,6 +132,9 @@ export default function App() {
   const [sigNom, setSigNom] = useState("");
   const [sigPrenom, setSigPrenom] = useState("");
   const [sigImat, setSigImat] = useState("");
+  const [gencodeInconnu, setGencodeInconnu] = useState<string | null>(null);
+  const [nouveauProduitNom, setNouveauProduitNom] = useState("");
+  const [savingNouveauGencode, setSavingNouveauGencode] = useState(false);
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
 
@@ -279,7 +282,6 @@ export default function App() {
           const lib = await loadPDF();
           const pdf = await lib.getDocument({ data: evt.target!.result }).promise;
 
-          // Extrait tous les items avec position Y (page*10000 + y pour trier globalement)
           const allItems: { str: string; x: number; y: number; globalY: number }[] = [];
           for (let p = 1; p <= pdf.numPages; p++) {
             const pg = await pdf.getPage(p);
@@ -290,12 +292,11 @@ export default function App() {
                 str: s,
                 x: Math.round(i.transform[4]),
                 y: Math.round(i.transform[5]),
-                globalY: (pdf.numPages - p) * 100000 + Math.round(i.transform[5]) // inverse car Y va du bas vers le haut
+                globalY: (pdf.numPages - p) * 100000 + Math.round(i.transform[5])
               });
             });
           }
 
-          // Regroupe par ligne (même globalY ± 4px), triées par X
           const lineMap = new Map<number, { str: string; x: number }[]>();
           allItems.forEach(item => {
             const key = Math.round(item.globalY / 4) * 4;
@@ -303,7 +304,6 @@ export default function App() {
             lineMap.get(key)!.push({ str: item.str, x: item.x });
           });
 
-          // Trie les lignes (de haut en bas = globalY décroissant) et les tokens par X
           const lines: string[] = [];
           [...lineMap.entries()]
             .sort((a, b) => b[0] - a[0])
@@ -314,10 +314,9 @@ export default function App() {
 
           const arr: any[] = [];
           let curLot = "", curFourn = "", curDate = now2.toLocaleDateString("fr-FR");
-          let pendingLibelle = ""; // libellé en attente d'être associé à un SL
+          let pendingLibelle = "";
 
           for (const line of lines) {
-            // === LIGNE LOT/FOURNISSEUR ===
             const lotM = line.match(/Lot\s+(\d{7,})\s+Fournisseur\s+\d+\s+(.+?)\s+Date\s+arriv[eé]e\s+(\d{2}\/\d{2}\/\d{4})/i);
             if (lotM) {
               curLot = lotM[1];
@@ -328,39 +327,28 @@ export default function App() {
               continue;
             }
 
-            // Ignore les lignes d'en-tête et totaux
             if (/^(SL|Article|Libelle|Rec\.|Nb colis|Totaux|Total|PAGE|DATE|MOOREA COMMERCE|JOURNAL|Pour le|Acheteur)/i.test(line)) {
               continue;
             }
 
-            // === LIGNE ARTICLE avec SL ===
-            // Pattern : SL (01-99) suivi de nb_colis suivi d'un décimal
-            // Ex: "01 540 3240,00" ou "02 VS800 CHAMPIGNON ERINGY 20 80,00"
             const slM = line.match(/^(\d{2})\s+(.+)/);
             if (slM && parseInt(slM[1]) >= 1 && parseInt(slM[1]) <= 99 && curFourn) {
               const rest = slM[2];
 
-              // Cherche nb_colis : premier entier suivi d'un espace puis d'un décimal (x,xx)
               const colisM = rest.match(/(?:^|\s)(\d{1,4})\s+(?:\d+\s+)?(\d+[,\.]\d+)/);
               let nbColis = 0;
               let libelleFromLine = "";
 
               if (colisM) {
                 nbColis = parseInt(colisM[1]);
-                // Le libellé est tout ce qui précède le nb_colis dans cette ligne
                 const colisIdx = rest.indexOf(colisM[0]);
                 libelleFromLine = rest.slice(0, colisIdx).trim();
-                // Retire le code article en début si présent
                 libelleFromLine = libelleFromLine.replace(/^[A-Z0-9]{3,15}\s*/, "").trim();
               }
 
-              // Détermine le libellé final : 
-              // Si pendingLibelle existe → l'utiliser (libellé sur ligne précédente)
-              // Sinon utiliser ce qu'on a extrait de cette ligne
               let libelleFinal = pendingLibelle || libelleFromLine;
               libelleFinal = libelleFinal.replace(/\s+/g, " ").trim();
 
-              // Extrait l'origine
               const origineM = libelleFinal.match(/\b(FRANCE|ESPAGNE|MAROC|KENYA|COLOMBIE|BRESIL|EGYPTE|PEROU|ISRAEL|PAYS.BAS|ITALIE|ALLEMAGNE|BELGIQUE|GHANA|SENEGAL|HONDURAS|CHINE|HOLLANDE|THAÏLANDE|INDE|THAI)\b/i);
 
               if (nbColis > 0 && libelleFinal.length > 2) {
@@ -377,17 +365,11 @@ export default function App() {
                   timestamp: Date.now(),
                 });
               }
-              pendingLibelle = ""; // reset après utilisation
+              pendingLibelle = "";
               continue;
             }
 
-            // === LIGNE LIBELLÉ SEUL (sans SL) ===
-            // Ex: "PATATE DOUCE EGYPTE CAL.L 1 CARTON 6 KG CAT 1"
-            // Ex: "HARICOT VERT KENYA (BARQUETTE 350G X 8)"
-            // C'est une ligne qui contient du texte descriptif sans numéro SL
-            // On la mémorise comme libellé en attente
             if (curFourn && line.length > 5 && !/^\d+[,\.]\d+/.test(line)) {
-              // Retire les codes article purs (ex: "PATATE0036", "HARICO0031")
               const cleaned = line.replace(/^[A-Z]{2,}[0-9]{3,}\s*/, "").trim();
               if (cleaned.length > 3 && /[A-Z]{3,}/.test(cleaned)) {
                 pendingLibelle = (pendingLibelle ? pendingLibelle + " " : "") + cleaned;
@@ -426,7 +408,6 @@ export default function App() {
               const rawDate = row[9];
               let parsedDate: Date | null = null;
               if (typeof rawDate === "number" && rawDate > 1000 && rawDate < 100000) {
-                // Numéro de série Excel → date réelle (jours depuis 30/12/1899)
                 const excelEpoch = new Date(1899, 11, 30);
                 parsedDate = new Date(excelEpoch.getTime() + rawDate * 86400000);
               } else if (typeof rawDate === "string" && rawDate.includes("/")) {
@@ -453,8 +434,6 @@ export default function App() {
     if (!previewArr) return;
     setImportingArr(true);
 
-    // Filtrer les doublons : garder seulement les articles pas encore dans Firebase
-    // Un doublon = même produit + même fournisseur + même date
     const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
     const clesExistantes = new Set(
       existants.map((a: any) => `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`)
@@ -515,14 +494,11 @@ export default function App() {
   const scoreGlobal = (n: Record<string, number>) => {
     const { qualite = 0, couleur = 0, emballage = 0 } = n;
     if (!qualite && !couleur && !emballage) return null;
-    // Poids : qualite 40%, couleur 40%, emballage 20%
     const filled = (qualite > 0 ? 1 : 0) + (couleur > 0 ? 1 : 0) + (emballage > 0 ? 1 : 0);
     if (filled === 0) return null;
-    // Si tous les critères sont remplis : calcul pondéré
     if (qualite > 0 && couleur > 0 && emballage > 0) {
       return (qualite * 0.4 + couleur * 0.4 + emballage * 0.2).toFixed(1);
     }
-    // Si seulement quelques critères : moyenne simple
     const vals = [qualite, couleur, emballage].filter(v => v > 0);
     return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
   };
@@ -543,7 +519,6 @@ export default function App() {
       await remove(rapportRef);
       setConfirmDelete(null);
       showToast("🗑 Rapport supprimé");
-      // Force update local state immediately
       setRapports(prev => prev.filter(r => r.firebaseKey !== firebaseKey));
     } catch (err) {
       console.error(err);
@@ -591,9 +566,7 @@ ${scoreLine}
 
 _PDF joint_`;
 
-    // Ouvre WhatsApp d'abord
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
-    // Puis génère le PDF après
     setTimeout(() => downloadPDF(r), 800);
   };
 
@@ -616,7 +589,6 @@ _PDF joint_`;
 
   const score = scoreGlobal(notes);
 
-  // Suggestions depuis l'historique
   const suggestionsProduits = [
     ...new Set([
       ...(catalogueArticles.length > 0 ? catalogueArticles.map(a => a.libelle) : []),
@@ -664,13 +636,11 @@ _PDF joint_`;
       const { date, heure } = now();
       const decisionFinale = conformite === "conforme" ? "stock" : decision;
 
-      // Numéro de rapport : S{semaine}-{année}-{séquence}
       const now2 = new Date();
       const startOfYear = new Date(now2.getFullYear(), 0, 1);
       const weekNum = Math.ceil(((now2.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
       const weekStr = weekNum.toString().padStart(2, "0");
       const yearStr = now2.getFullYear().toString();
-      // Séquence basée sur les rapports existants de cette semaine
       const sameWeekCount = rapports.filter(r => r.numeroRapport?.startsWith(`S${weekStr}-${yearStr}`)).length + 1;
       const seqStr = sameWeekCount.toString().padStart(3, "0");
       const numeroRapport = `S${weekStr}-${yearStr}-${seqStr}`;
@@ -694,19 +664,16 @@ _PDF joint_`;
 
       const rapportAvecPhotos = { ...rapport, photos };
 
-      // 1. Upload photos ImgBB en parallèle (fire and forget)
       let photoUrls: string[] = [];
       if (photos.length > 0) {
         showToast("⏳ Upload des photos…");
         photoUrls = await uploadPhotosImgBB(photos);
       }
 
-      // 2. Enregistre dans Firebase avec URLs photos + lien arrivage si applicable
       const rapportFinal = { ...rapport, photoUrls, ...(rapportArrivage ? { arrivage_id: rapportArrivage.id } : {}) };
       const rapportsRef = ref(db, "rapports");
       await push(rapportsRef, rapportFinal);
 
-      // 3. Si lié à un arrivage, mettre à jour son statut
       if (rapportArrivage) {
         const statut = rapport.decision === "stock" ? "validé" : rapport.decision === "reserve" ? "sous réserve" : "refusé";
         await update(ref(db, `arrivages/${rapportArrivage.id}`), { statut, archived: true, rapport_id: rapport.numeroRapport, validatedAt: Date.now() });
@@ -716,11 +683,9 @@ _PDF joint_`;
         setVue("historique");
       }
 
-      // 4. Envoie email avec PDF
       showToast("⏳ Envoi de l'email…");
       await envoyerEmail(rapportAvecPhotos);
 
-      // 5. Reset et navigation
       reset();
       window.scrollTo(0, 0);
       showToast("✉ Rapport envoyé ✓");
@@ -764,7 +729,6 @@ _PDF joint_`;
     setEtiquette(r.etiquette || initialEtiquette);
     setObservations(r.observations || "");
     setControles(r.controles || { temperature: "", fraicheur: "", sanitaire: "", maturite: "", coloration: "" });
-    // Charge les photos existantes depuis ImgBB pour les afficher
     setPhotos(r.photoUrls?.length > 0 ? r.photoUrls.map((url: string) => ({ name: "photo", url })) : []);
     setEditRapport(r);
     setVue("form");
@@ -780,7 +744,6 @@ _PDF joint_`;
     try {
       const decisionFinale = conformite === "conforme" ? "stock" : decision;
 
-      // Upload uniquement les nouvelles photos (celles sans URL ImgBB)
       let photoUrls = editRapport.photoUrls || [];
       const newPhotos = photos.filter((p: any) => !p.url?.startsWith("http"));
       if (newPhotos.length > 0) {
@@ -788,7 +751,6 @@ _PDF joint_`;
         const newUrls = await uploadPhotosImgBB(newPhotos);
         photoUrls = [...photoUrls, ...newUrls];
       }
-      // Garde aussi les photos ImgBB déjà dans le state
       const existingImgBB = photos.filter((p: any) => p.url?.startsWith("http")).map((p: any) => p.url);
       photoUrls = [...new Set([...existingImgBB, ...photoUrls])];
 
@@ -820,201 +782,15 @@ _PDF joint_`;
     }
   };
 
-  // ─── GÉNÉRER PDF ───
+  // ─── GÉNÉRER PDF (aperçu écran) ───
   const generatePDF = async (r: any): Promise<string> => {
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const W = 210; const M = 14; const CW = W - M * 2;
-    let y = 0;
-
-    const addPage = () => { doc.addPage(); y = 14; };
-    const checkY = (needed = 10) => { if (y + needed > 275) addPage(); };
-
-    doc.setFillColor(10, 10, 10);
-    doc.rect(0, 0, W, 22, "F");
-    doc.setFillColor(200, 168, 75);
-    doc.rect(0, 22, W, 2, "F");
-    doc.setTextColor(200, 168, 75);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("MOOREA", M, 14);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    doc.text("Rapport Qualité - Arrivages", M + 32, 14);
-    doc.setTextColor(150, 150, 150);
-    doc.setFontSize(8);
-    doc.text(`${r.date} à ${r.heure}`, W - M, 14, { align: "right" });
-    y = 32;
-
-    const dc = decisionColor(r.decision);
-    doc.setFillColor(dc[0], dc[1], dc[2]);
-    doc.roundedRect(M, y, CW, 12, 3, 3, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text(decisionLabel(r.decision), W / 2, y + 8, { align: "center" });
-    y += 18;
-
-    const section = (title: string) => {
-      checkY(14);
-      doc.setFillColor(245, 243, 238);
-      doc.rect(M, y, CW, 8, "F");
-      doc.setFillColor(200, 168, 75);
-      doc.rect(M, y, 3, 8, "F");
-      doc.setTextColor(138, 111, 46);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.text(title.toUpperCase(), M + 6, y + 5.5);
-      y += 12;
-    };
-
-    const row = (label: string, value: string, bold = false) => {
-      checkY(7);
-      doc.setTextColor(107, 114, 128);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.text(label + " :", M + 2, y);
-      doc.setTextColor(26, 46, 26);
-      if (bold) doc.setFont("helvetica", "bold");
-      doc.text(value || "-", M + 45, y);
-      doc.setFont("helvetica", "normal");
-      y += 6;
-    };
-
-    section("📦 Informations du colis");
-    row("Fournisseur", r.fournisseur, true);
-    row("Produit", r.produit, true);
-    row("Origine", r.origine);
-    if (r.calibre) row("Calibre", r.calibre);
-    if (r.poids) row("Poids", r.poids);
-    if (r.conditionnement) row("Conditionnement", r.conditionnement);
-    if (r.lotMoorea) row("N° Lot Moorea", r.lotMoorea);
-    if (r.lotFournisseur) row("N° Lot Fournisseur", r.lotFournisseur);
-    if (r.temperature) row("Température réception", r.temperature + " °C");
-    y += 4;
-
-    section("👁 Qualité visuelle");
-    const noteLabels: Record<number, string> = { 1: "Insuffisant", 2: "Passable", 3: "Correct", 4: "Bon", 5: "Excellent" };
-    const noteColors: Record<number, [number,number,number]> = { 1: [239,68,68], 2: [249,115,22], 3: [234,179,8], 4: [34,197,94], 5: [21,128,61] };
-    const q = r.notes?.qualite;
-    if (q > 0) {
-      const nc = noteColors[q];
-      doc.setFillColor(nc[0], nc[1], nc[2]);
-      doc.roundedRect(M + 2, y - 2, 60, 9, 2, 2, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text(`${q}/5 - ${noteLabels[q]}`, M + 6, y + 4.5);
-      y += 12;
-    }
-
-    section("⚖️ Poids");
-    if (r.poidsStatut === "ok") {
-      doc.setFillColor(240, 253, 244);
-      doc.roundedRect(M + 2, y - 2, 50, 9, 2, 2, "F");
-      doc.setTextColor(22, 163, 74);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text("Poids OK", M + 6, y + 4.5);
-    } else if (r.poidsStatut === "ecart") {
-      doc.setFillColor(255, 251, 235);
-      doc.roundedRect(M + 2, y - 2, 80, 9, 2, 2, "F");
-      doc.setTextColor(217, 119, 6);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text(`⚠ Écart${r.poidsEcart ? " : " + r.poidsEcart : ""}`, M + 6, y + 4.5);
-    }
-    y += 12;
-
-    section("🏷️ Conformité étiquette colis");
-    if (r.etiquetteAbsente) {
-      doc.setFillColor(254, 242, 242);
-      doc.roundedRect(M + 2, y - 2, 50, 9, 2, 2, "F");
-      doc.setTextColor(220, 38, 38);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text("Etiquette absente", M + 6, y + 4.5);
-      y += 12;
-    } else {
-      const cols = 3; const itemW = CW / cols;
-      ETIQUETTE_ITEMS.forEach((item, idx) => {
-        const col = idx % cols; const rowIdx = Math.floor(idx / cols);
-        const ix = M + col * itemW; const iy = y + rowIdx * 8;
-        checkY(8);
-        const ok = r.etiquette?.[item.id] !== false;
-        doc.setFillColor(ok ? 240 : 254, ok ? 253 : 242, ok ? 244 : 242);
-        doc.roundedRect(ix, iy - 1, itemW - 2, 7, 1.5, 1.5, "F");
-        doc.setTextColor(ok ? 22 : 220, ok ? 163 : 38, ok ? 74 : 38);
-        doc.setFont("helvetica", ok ? "normal" : "bold");
-        doc.setFontSize(7.5);
-        doc.text(`${ok ? "OK" : "NC"} ${item.label}`, ix + 3, iy + 4);
-      });
-      y += Math.ceil(ETIQUETTE_ITEMS.length / cols) * 8 + 6;
-    }
-
-    if (r.decision !== "stock" && r.nbColisRefuses !== null) {
-      checkY(20);
-      const dc2 = decisionColor(r.decision);
-      doc.setFillColor(dc2[0], dc2[1], dc2[2]);
-      doc.roundedRect(M, y, CW, 18, 3, 3, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      const label2 = r.decision === "reserve" ? "Colis en réserve" : "Colis refusés";
-      doc.text(`${label2} : ${r.nbColisRefuses} / ${r.nbColisTotal} (${r.pourcentage}%)`, W / 2, y + 11, { align: "center" });
-      y += 24;
-    }
-
-    if (r.observations) {
-      checkY(20);
-      section("💬 Observations");
-      const lines = doc.splitTextToSize(r.observations, CW - 8);
-      doc.setFillColor(250, 248, 245);
-      doc.roundedRect(M, y - 2, CW, lines.length * 5 + 8, 3, 3, "F");
-      doc.setTextColor(107, 114, 128);
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(8.5);
-      doc.text(lines, M + 4, y + 4);
-      y += lines.length * 5 + 12;
-    }
-
-    if (r.photos && r.photos.length > 0) {
-      checkY(60);
-      section("📷 Photos");
-      const imgW = (CW - 8) / 3;
-      const imgH = imgW * 0.75;
-      const totalRows = Math.ceil(r.photos.length / 3);
-      for (let rowI = 0; rowI < totalRows; rowI++) {
-        checkY(imgH + 4);
-        for (let col = 0; col < 3; col++) {
-          const i = rowI * 3 + col;
-          if (i >= r.photos.length) break;
-          const px = M + col * (imgW + 4);
-          try {
-            doc.addImage(r.photos[i].url, "JPEG", px, y, imgW, imgH, undefined, "FAST");
-          } catch {}
-        }
-        y += imgH + 4;
-      }
-      y += 4;
-    }
-
-    doc.setFillColor(10, 10, 10);
-    doc.rect(0, 285, W, 12, "F");
-    doc.setFillColor(200, 168, 75);
-    doc.rect(0, 285, W, 1, "F");
-    doc.setTextColor(150, 150, 150);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.text(`Généré automatiquement par Moorea · Agréage Rungis · ${r.date} à ${r.heure}${r.lotMoorea ? " · Lot " + r.lotMoorea : ""}`, W / 2, 291, { align: "center" });
-
-    return doc.output("datauristring");
+    return generatePDFBase64(r);
   };
 
   // ─── GÉNÉRER HTML EMAIL ───
   const buildEmailHTML = (r: any): string => {
     const dColor = decisionHex(r.decision);
     const dLabel = r.decision === "stock" ? "✅ ENTRÉE EN STOCK" : r.decision === "reserve" ? "⚠️ RÉSERVE" : "❌ REFUS";
-    const dBg = r.decision === "stock" ? "#f0fdf4" : r.decision === "reserve" ? "#fffbeb" : "#fef2f2";
     const scoreColor = r.score ? NOTE_COLORS[Math.round(parseFloat(r.score))] : "#aaa";
     const scoreLabel = r.score ? NOTE_LABELS[Math.round(parseFloat(r.score))] : "-";
 
@@ -1070,8 +846,6 @@ _PDF joint_`;
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f0ede6;font-family:Arial,Helvetica,sans-serif;">
 <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.12);">
-
-  <!-- HEADER -->
   <div style="background:#0a0a0a;padding:22px 28px;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td>
@@ -1086,14 +860,10 @@ _PDF joint_`;
     </tr></table>
   </div>
   <div style="height:4px;background:linear-gradient(90deg,#c8a84b,#e8c87b,#c8a84b);"></div>
-
-  <!-- DECISION BANNER -->
   <div style="background:${dColor};padding:18px 28px;text-align:center;">
     <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:1px;">${dLabel}</div>
     ${r.conformite === "conforme" ? `<div style="font-size:12px;color:rgba(255,255,255,0.8);margin-top:4px;">Lot validé pour mise en stock</div>` : ""}
   </div>
-
-  <!-- INFOS -->
   <div style="padding:0 0 8px;">
     <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Informations du colis</div>
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
@@ -1140,8 +910,6 @@ _PDF joint_`;
       </tr>` : ""}
     </table>
   </div>
-
-  <!-- SCORE QUALITE -->
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Qualité visuelle</div>
   <div style="padding:16px 28px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:12px;border:1px solid #e8e0d0;overflow:hidden;">
@@ -1157,34 +925,22 @@ _PDF joint_`;
       </tr>
     </table>
   </div>
-
-  <!-- ETIQUETTE -->
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Conformité étiquette</div>
   <div style="padding:14px 28px;">${etiqHTML}</div>
-
-  <!-- POIDS -->
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Contrôle poids</div>
   <div style="padding:14px 28px;">${poidsHTML}</div>
-
   ${reserveHTML}
-
-  <!-- COMMENTAIRE -->
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Commentaire</div>
   <div style="padding:16px 28px;">
     <div style="background:#faf8f5;border-radius:10px;padding:14px 18px;font-size:13px;color:#6b7280;font-style:italic;border:1px solid #e8e0d0;line-height:1.6;">${r.observations || "Aucun commentaire"}</div>
   </div>
-
-  <!-- PHOTOS -->
   ${r.photos && r.photos.filter((p: any) => p.url).length > 0 ? `
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Photos (${r.photos.filter((p: any) => p.url).length})</div>
   <div style="padding:16px 28px 8px;">${photosHTML}</div>` : ""}
-
-  <!-- FOOTER -->
   <div style="background:#0a0a0a;padding:16px 28px;text-align:center;border-top:3px solid #c8a84b;">
     <div style="color:#c8a84b;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:4px;">MOOREA · MARCHÉ DE RUNGIS</div>
     <div style="color:rgba(255,255,255,0.4);font-size:11px;">Rapport généré le ${r.date} à ${r.heure}${r.lotMoorea ? " · Lot " + r.lotMoorea : ""}${r.agreeur ? " · Agréeur : " + r.agreeur : ""}</div>
   </div>
-
 </div>
 </body>
 </html>`;
@@ -1197,12 +953,10 @@ _PDF joint_`;
       const htmlContent = buildEmailHTML(r);
       const subject = `${r.numeroRapport ? "[" + r.numeroRapport + "] " : ""}Rapport Agréage Moorea - ${r.produit} | ${r.fournisseur} | ${r.date}`;
 
-      // Générer PDF en base64
       const pdfDataUri = await generatePDFBase64(r);
       const pdfBase64 = pdfDataUri.split(",")[1];
       const pdfFilename = `rapport-${r.numeroRapport || r.date}-${r.produit}.pdf`.replace(/\s+/g, "-");
 
-      // CC : agréeur si email connu
       const ccList: string[] = [];
       if (r.agreeur && r.agreeur.includes("@")) ccList.push(r.agreeur);
 
@@ -1259,7 +1013,6 @@ _PDF joint_`;
     doc.text(decisionLabel(r.decision), W / 2, y + 8, { align: "center" });
     y += 14;
 
-    // Colis en réserve/refus juste sous le bandeau
     if (r.decision !== "stock" && r.nbColisRefuses !== null) {
       const dc2 = decisionColor(r.decision);
       doc.setFillColor(dc2[0], dc2[1], dc2[2], 0.15);
@@ -1284,7 +1037,6 @@ _PDF joint_`;
       doc.text(title, M + 6, y + 5.5); y += 12;
     };
 
-    // INFORMATIONS EN 2 COLONNES
     section("INFORMATIONS DU COLIS");
     const col1 = M + 2; const col2 = M + CW / 2 + 2;
     const colW = CW / 2 - 6;
@@ -1304,13 +1056,11 @@ _PDF joint_`;
 
     for (let i = 0; i < infoItems.length; i += 2) {
       checkY(7);
-      // Colonne gauche
       doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
       doc.text(infoItems[i][0] + " :", col1, y);
       doc.setTextColor(26, 46, 26); doc.setFont("helvetica", "bold");
       const val1 = doc.splitTextToSize(infoItems[i][1] || "-", colW - 20);
       doc.text(val1[0], col1 + 30, y);
-      // Colonne droite
       if (infoItems[i + 1]) {
         doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal");
         doc.text(infoItems[i + 1][0] + " :", col2, y);
@@ -1364,7 +1114,6 @@ _PDF joint_`;
     } else if (r.poidsStatut==="ecart") {
       doc.setFillColor(255,251,235); doc.roundedRect(M+2,y-2,80,9,2,2,"F");
       doc.setTextColor(217,119,6); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      // Ecart en grammes seulement
       const ecartVal = r.poidsEcart ? r.poidsEcart.toString().replace(/[^0-9]/g, "") : "";
       doc.text(`Ecart${ecartVal ? " : " + ecartVal + " g" : ""}`,M+6,y+4.5);
     }
@@ -1398,7 +1147,6 @@ _PDF joint_`;
       doc.text(lines,M+4,y+4); y+=lines.length*5+12;
     }
 
-    // TABLEAU CONTROLES
     if (r.controles && Object.values(r.controles).some((v: any) => v)) {
       checkY(50); section("CONTROLES QUALITE");
       const controleItems = [
@@ -1409,7 +1157,6 @@ _PDF joint_`;
         { id: "coloration", label: "Coloration" },
       ];
       const colW2 = CW / 3;
-      // Header
       doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
       doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
       doc.text("Critere", M + 4, y + 5.5);
@@ -1435,7 +1182,6 @@ _PDF joint_`;
       y += 4;
     }
 
-    // Photos : combine photoUrls (ImgBB) ET photos base64 si disponibles
     const allPhotos = [
       ...(r.photoUrls?.length > 0 ? r.photoUrls.map((url: string) => ({ url })) : []),
       ...(r.photos?.length > 0 ? r.photos.filter((p: any) => p.url) : []),
@@ -1467,7 +1213,6 @@ _PDF joint_`;
     return doc.output("datauristring");
   };
 
-
   // ─── BON DE RETOUR TRANSPORTEUR ───
   const genererBonRetour = (r: any) => {
     setSigNom(""); setSigPrenom(""); setSigImat("");
@@ -1489,7 +1234,6 @@ _PDF joint_`;
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const W = 210; const M = 14; const CW = W - M * 2;
 
-    // Header
     doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
     doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
     doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
@@ -1499,14 +1243,12 @@ _PDF joint_`;
 
     let y = 32;
 
-    // Titre
     doc.setFillColor(220, 38, 38);
     doc.roundedRect(M, y, CW, 14, 3, 3, "F");
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
     doc.text("MARCHANDISE REFUSEE - BON DE REPRISE FOURNISSEUR", W / 2, y + 9, { align: "center" });
     y += 20;
 
-    // Numéro rapport + date
     doc.setTextColor(26, 46, 26); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
     if (r.numeroRapport) {
       doc.setFont("helvetica", "bold"); doc.setTextColor(200, 168, 75);
@@ -1514,7 +1256,6 @@ _PDF joint_`;
     }
     y += 10;
 
-    // Section infos
     const section = (title: string) => {
       doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
       doc.setFillColor(200, 168, 75); doc.rect(M, y, 3, 8, "F");
@@ -1548,7 +1289,6 @@ _PDF joint_`;
     }
     y += 4;
 
-    // Motif refus
     section("MOTIF DU REFUS");
     if (r.nbColisRefuses) {
       doc.setFillColor(254, 242, 242); doc.roundedRect(M + 2, y - 2, CW - 4, 10, 2, 2, "F");
@@ -1564,7 +1304,6 @@ _PDF joint_`;
     }
     y += 6;
 
-    // Zone transporteur
     y += 6;
     doc.setFillColor(248, 248, 248); doc.roundedRect(M, y, CW, 68, 3, 3, "F");
     doc.setDrawColor(200, 200, 200); doc.roundedRect(M, y, CW, 68, 3, 3, "S");
@@ -1581,7 +1320,6 @@ _PDF joint_`;
     }
     y += 76;
 
-    // Footer
     doc.setFillColor(10, 10, 10); doc.rect(0, 285, W, 12, "F");
     doc.setFillColor(200, 168, 75); doc.rect(0, 285, W, 1, "F");
     doc.setTextColor(150, 150, 150); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
@@ -1594,7 +1332,6 @@ _PDF joint_`;
     const blob = new Blob([byteArr], { type: "application/pdf" });
     window.open(URL.createObjectURL(blob), "_blank");
 
-    // Sauvegarder dans Firebase
     try {
       if (r.firebaseKey) {
         const { set } = await import("firebase/database");
@@ -1612,9 +1349,7 @@ _PDF joint_`;
           },
         });
       }
-    } catch {
-      // Silencieux - le PDF est déjà généré
-    }
+    } catch {}
 
     showToast("📄 Bon de reprise généré et sauvegardé");
     setSignatureModal(null);
@@ -1638,7 +1373,6 @@ _PDF joint_`;
     setScanning(true);
     showToast("⏳ Analyse de l'étiquette…");
     try {
-      // Compresse l'image avant envoi
       const base64 = await new Promise<string>((resolve) => {
         const img = new Image();
         img.onload = () => {
@@ -1685,7 +1419,7 @@ _PDF joint_`;
     }
   };
 
-  // ─── FAB SCANNER GLOBAL ─── (avant tous les return de page)
+  // ─── FAB SCANNER GLOBAL ───
   const fabScanner = !showScanner && !showPalette && !showStock && !showRH && (
     <button
       onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
@@ -1697,9 +1431,6 @@ _PDF joint_`;
   );
 
   // ─── RENDER ───
-
-  // Écran de chargement
-  // ─── PAGE FICHE PALETTE PUBLIQUE (scan QR - avant auth) ───
   if (showPalette) {
     return <PalettePublique id={showPalette} />;
   }
@@ -1710,7 +1441,6 @@ _PDF joint_`;
     </div>
   );
 
-  // Écran de connexion
   if (!user || !user.email?.endsWith("@moorea.fr")) return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0a0a", padding: 24 }}>
       <div style={{ marginBottom: 32, textAlign: "center" }}>
@@ -1725,8 +1455,6 @@ _PDF joint_`;
       <p style={{ marginTop: 16, fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Accès réservé aux comptes @moorea.fr</p>
     </div>
   );
-
-  // ─── PAGE FICHE PALETTE (scan QR) ───
 
   if (showScanner) {
     return (
@@ -1746,14 +1474,15 @@ _PDF joint_`;
               setShowAccueil(false);
               showToast('Gencode reconnu : ' + (libelle || ean));
             } else {
-              showToast('Gencode ' + ean + ' non trouvé dans la base', 'error');
+              setGencodeInconnu(ean);
+              setNouveauProduitNom('');
               setShowAccueil(false);
               setPageMode('arrivages');
+              showToast('Gencode ' + ean + ' inconnu - enregistre-le sous un nom', 'error');
             }
             return;
           }
           if (scannerMode === "rapport") {
-            // Cherche l'arrivage et ouvre le formulaire rapport
             const found = arrivages.find((a: any) => a.id === id || a.lot_interne === id);
             if (found) {
               ouvrirRapportDepuisArrivage(found);
@@ -1774,7 +1503,6 @@ _PDF joint_`;
       />
     );
   }
-
 
   if (showRetours) {
     const stockArticles = catalogueArticles.length > 0 ? catalogueArticles.map(a => a.libelle) : [];
@@ -1829,29 +1557,24 @@ _PDF joint_`;
     const textMain = darkMode ? "#e8e6f0" : "#1a2e1a";
     const textSub = darkMode ? "#9b97b2" : "#9ca3af";
 
-    // Ligne 1 - prioritaires
     const row1 = [
       { icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, stat: nbAttente > 0 ? `${nbAttente} en attente auj.` : nbTraitesAujourdHui > 0 ? `${nbTraitesAujourdHui} traités auj.` : "Aucun arrivage auj.", action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
       { icon: "📊", label: "Rapports", color: "#16a34a", badge: null, stat: `${nbRapports} total`, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
       { icon: "📦", label: "Stock", color: "#0891b2", badge: null, stat: "GMS & Prestige", action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
-      { icon: "🔍", label: "Chercher lot", color: "#3b82f6", badge: null, stat: "Traçabilité", action: () => { setShowAccueil(false); setShowRecherche(true); setSearchLotQuery(""); } },
     ];
 
-    // Ligne 2 - secondaires
     const row2 = [
-      { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", badge: null, stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
-      { icon: "🧺", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
       { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", badge: null, stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
       { icon: "📚", label: "Catalogue", color: "#27ae60", badge: catalogueArticles.length > 0 ? catalogueArticles.length : null, stat: "Base articles Moorea", action: () => { setShowAccueil(false); setShowCatalogue(true); } },
     ];
 
-    // Leofresh
     const leofreshBtns = [
       { icon: "🏷️", label: "Étiquettes", color: "#f59e0b", stat: "Export bilingue", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
       { icon: "📊", label: "QR Code", color: "#27ae60", stat: "Scans réseau", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowQrCode(true); } },
       { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
       { icon: "📦", label: "IFCO", color: "#6366f1", stat: "Bacs & réconciliation", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowIFCO(true); } },
+      { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowYukon(true); } },
     ];
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
@@ -1871,8 +1594,6 @@ _PDF joint_`;
       <>{fabScanner}
       <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
-
-        {/* HEADER */}
         <div style={{ background: darkMode ? "#080a12" : "linear-gradient(135deg, #1a3a1a 0%, #2d5a1e 40%, #8a6f2e 100%)", padding: "calc(env(safe-area-inset-top, 0px) + 16px) 16px 20px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
@@ -1880,7 +1601,6 @@ _PDF joint_`;
               <h1 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: "#fff" }}>{getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋</h1>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              {/* Toggle Leofresh discret */}
               <button onClick={() => setShowLeofresh(!showLeofresh)}
                 style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.2)"}`, background: showLeofresh ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
                 🍋 Leofresh
@@ -1891,8 +1611,6 @@ _PDF joint_`;
               <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>Déco</button>
             </div>
           </div>
-
-          {/* STATS */}
           <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
             {[
               { label: "En attente", value: nbAttente, color: "#fbbf24" },
@@ -1908,7 +1626,6 @@ _PDF joint_`;
           </div>
         </div>
 
-        {/* NOTIFS */}
         {notifLitiges.length > 0 && (
           <div style={{ background: darkMode ? "#2d1a1a" : "#fef2f2", borderBottom: "3px solid #dc2626", padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
@@ -1923,7 +1640,22 @@ _PDF joint_`;
 
         <div style={{ maxWidth: 900, margin: "0 auto", padding: "12px 12px 100px" }}>
 
-          {/* PANNEAU LEOFRESH */}
+          {/* BANDEAU RECHERCHE LOT */}
+          <div style={{ background: darkMode ? "#1a1d27" : "#fff", border: `1.5px solid ${darkMode ? "#2d3148" : "#e8e0d0"}`, borderRadius: 16, padding: "14px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
+            <span style={{ fontSize: 22, flexShrink: 0 }}>🔍</span>
+            <input
+              value={searchLotQuery}
+              onChange={e => setSearchLotQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && searchLotQuery.trim()) { setShowAccueil(false); setShowRecherche(true); } }}
+              placeholder="Chercher un lot, un produit ou un fournisseur…"
+              style={{ flex: 1, border: "none", outline: "none", fontSize: 15, fontFamily: "'Syne', sans-serif", background: "transparent", color: textMain, minWidth: 0 }}
+            />
+            <button onClick={() => { setShowAccueil(false); setShowRecherche(true); }}
+              style={{ padding: "9px 18px", borderRadius: 10, border: "none", background: "#3b82f6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", flexShrink: 0, fontFamily: "'Syne', sans-serif" }}>
+              Chercher →
+            </button>
+          </div>
+
           {showLeofresh && (
             <div style={{ marginBottom: 16, background: darkMode ? "#1a1808" : "#fffbeb", borderRadius: 14, border: "1.5px solid #f59e0b55", padding: "14px" }}>
               <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: ".6px" }}>🍋 Leofresh</p>
@@ -1939,27 +1671,19 @@ _PDF joint_`;
               </div>
             </div>
           )}
-
-          {/* SECTION MOOREA */}
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
-
-          {/* Ligne 1 - 4 carrés */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 12 }}>
             {row1.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
-
-          {/* Ligne 2 - 3 carrés */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
             {row2.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
-
         </div>
       </div>
       </>
     );
   }
 
-  // ─── PAGE LITIGES HUB ───
   if (showLitiges) {
     const nbRefusASigner = arrivages.filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee).length;
     const nbRapportsLitiges = rapports.filter(r => !r.archivé && (r.decision === "refus" || r.decision === "reserve")).length;
@@ -1968,17 +1692,10 @@ _PDF joint_`;
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="⚠️ Litiges Moorea" couleur="#dc2626" onBack={() => { setShowLitiges(false); setShowAccueil(true); }} onHome={() => { setShowLitiges(false); setShowAccueil(true); }} />
-
-        {/* 2 gros boutons */}
         <div style={{ maxWidth: 520, margin: "-24px auto 0", padding: "0 20px 60px", position: "relative" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-            {/* Bouton 1 : Historique rapports litiges */}
             <button onClick={() => { setShowLitiges(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision(""); setSortBy("decision"); }}
-              style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 20px", borderRadius: 16, cursor: "pointer", border: "1.5px solid #e8e0d0", background: "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", transition: "all 0.15s" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#dc2626"; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px rgba(220,38,38,0.12)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e8e0d0"; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 10px rgba(0,0,0,0.06)"; }}
-            >
+              style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 20px", borderRadius: 16, cursor: "pointer", border: "1.5px solid #e8e0d0", background: "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", transition: "all 0.15s" }}>
               <span style={{ fontSize: 28, width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", background: "#fef2f2", borderRadius: 14, flexShrink: 0 }}>📋</span>
               <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1a2e1a" }}>Historique des rapports</p>
@@ -1987,13 +1704,8 @@ _PDF joint_`;
               {nbRapportsLitiges > 0 && <span style={{ background: "#dc2626", color: "#fff", fontSize: 13, fontWeight: 700, padding: "4px 10px", borderRadius: 20, flexShrink: 0 }}>{nbRapportsLitiges}</span>}
               <span style={{ color: "#d1d5db", fontSize: 18 }}>›</span>
             </button>
-
-            {/* Bouton 2 : Refus à faire signer */}
             <button onClick={() => { setShowLitiges(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision("refus"); setSortBy("date_desc"); }}
-              style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 20px", borderRadius: 16, cursor: "pointer", border: "1.5px solid #e8e0d0", background: "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", transition: "all 0.15s" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#d97706"; (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 20px rgba(217,119,6,0.12)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e8e0d0"; (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 10px rgba(0,0,0,0.06)"; }}
-            >
+              style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 20px", borderRadius: 16, cursor: "pointer", border: "1.5px solid #e8e0d0", background: "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", transition: "all 0.15s" }}>
               <span style={{ fontSize: 28, width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", background: "#fffbeb", borderRadius: 14, flexShrink: 0 }}>🔄</span>
               <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1a2e1a" }}>Refus à faire signer</p>
@@ -2002,10 +1714,7 @@ _PDF joint_`;
               {nbRefusASigner > 0 && <span style={{ background: "#d97706", color: "#fff", fontSize: 13, fontWeight: 700, padding: "4px 10px", borderRadius: 20, flexShrink: 0 }}>{nbRefusASigner}</span>}
               <span style={{ color: "#d1d5db", fontSize: 18 }}>›</span>
             </button>
-
           </div>
-
-          {/* Stats */}
           <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
             {[
               { label: "Rapports refus", value: rapports.filter(r => r.decision === "refus").length, color: "#dc2626" },
@@ -2024,7 +1733,6 @@ _PDF joint_`;
     );
   }
 
-  // ─── PAGE RECHERCHE LOT ───
   if (showRecherche) {
     const resultats = searchLotQuery.length >= 2
       ? arrivages.filter(a =>
@@ -2039,9 +1747,7 @@ _PDF joint_`;
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="🔍 Chercher un lot" couleur="#3b82f6" onBack={() => { setShowRecherche(false); setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
-
         <div style={{ maxWidth: 600, margin: "0 auto", padding: "16px 20px 60px" }}>
-          {/* Barre de recherche */}
           <div style={{ background: "#fff", borderRadius: 16, padding: "16px", marginBottom: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
             <input
               value={searchLotQuery}
@@ -2057,14 +1763,10 @@ _PDF joint_`;
               <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280" }}>{resultats.length} résultat{resultats.length > 1 ? "s" : ""}</p>
             )}
           </div>
-
-          {/* Résultats */}
           {resultats.map(a => {
             const rapport = rapports.find(r => r.arrivage_id === a.id);
             return (
               <div key={a.id} style={{ background: "#fff", borderRadius: 16, marginBottom: 14, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", borderLeft: `4px solid ${a.statut === "validé" ? "#22c55e" : a.statut === "refusé" ? "#dc2626" : a.statut === "sous réserve" ? "#d97706" : "#9ca3af"}` }}>
-
-                {/* Header lot */}
                 <div style={{ padding: "14px 18px", borderBottom: "1px solid #f5f3ee" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div>
@@ -2080,8 +1782,6 @@ _PDF joint_`;
                   </div>
                   <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>📅 Arrivage du {a.date}</p>
                 </div>
-
-                {/* Agréage */}
                 <div style={{ padding: "12px 18px", borderBottom: "1px solid #f5f3ee", background: a.rapport ? "#faf8f3" : "#fafafa" }}>
                   <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#8a6f2e", textTransform: "uppercase", letterSpacing: "0.5px" }}>✅ Agréage</p>
                   {a.rapport ? (
@@ -2111,8 +1811,6 @@ _PDF joint_`;
                     <p style={{ margin: 0, fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>Pas encore agréé</p>
                   )}
                 </div>
-
-                {/* Rapport lié */}
                 {rapport && (
                   <div style={{ padding: "12px 18px", borderBottom: "1px solid #f5f3ee", background: "#f0fdf4" }}>
                     <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: "0.5px" }}>📋 Rapport qualité lié</p>
@@ -2128,8 +1826,6 @@ _PDF joint_`;
                     </div>
                   </div>
                 )}
-
-                {/* Données de stock */}
                 <div style={{ padding: "12px 18px", background: "#fafafa" }}>
                   <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.5px" }}>📦 Données de stock</p>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -2163,11 +1859,9 @@ _PDF joint_`;
                     )}
                   </div>
                 </div>
-
               </div>
             );
           })}
-
           {searchLotQuery.length >= 2 && resultats.length === 0 && (
             <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 20, border: "1.5px solid #e8e0d0" }}>
               <div style={{ fontSize: 36, marginBottom: 10 }}>🔎</div>
@@ -2181,7 +1875,6 @@ _PDF joint_`;
     );
   }
 
-  // ─── PAGE STOCK INVENTAIRE (EMBARQUÉE) ───
   if (showStock) {
     (window as any)._gencodeArticles = gencodeArticles;
     return (
@@ -2193,13 +1886,63 @@ _PDF joint_`;
     <div className="app">
       <style>{styles}</style>
 
-      {/* POPUP ETIQUETTE MULTI-PALETTES */}
       {popupEtiquette && (
         <PopupEtiquetteMulti arrivage={popupEtiquette} onClose={() => setPopupEtiquette(null)} />
       )}
 
       {toast && (
         <div className="toast" style={{ position: "fixed", top: 20, right: 20, zIndex: 999, background: toast.type === "error" ? "#fef2f2" : "#f0fdf4", color: toast.type === "error" ? "#dc2626" : "#15803d", border: `1.5px solid ${toast.type === "error" ? "#fca5a5" : "#86efac"}`, borderRadius: 12, padding: "11px 20px", fontWeight: 500, fontSize: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>{toast.msg}</div>
+      )}
+
+      {/* MODAL GENCODE INCONNU → ENREGISTRER SOUS UN NOM */}
+      {gencodeInconnu && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#0a0a0a" }}>🏷️ Gencode inconnu</h2>
+              <button onClick={() => setGencodeInconnu(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
+            </div>
+            <p style={{ margin: "0 0 14px", fontSize: 13, color: "#6b7280" }}>Ce code n'existe pas encore dans la base des gencodes.</p>
+            <p style={{ fontFamily: "monospace", fontSize: 15, fontWeight: 700, color: "#dc2626", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 12px", marginBottom: 16, textAlign: "center" }}>{gencodeInconnu}</p>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 6 }}>NOM DE L'ARTICLE</label>
+            <input
+              value={nouveauProduitNom}
+              onChange={e => setNouveauProduitNom(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && nouveauProduitNom.trim()) document.getElementById("btn-save-gencode-inconnu")?.click(); }}
+              placeholder="Ex: Tomate grappe"
+              autoFocus
+              style={{ width: "100%", padding: "11px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, marginBottom: 16, boxSizing: "border-box" as const, fontFamily: "'Syne', sans-serif", outline: "none" }}
+            />
+            <button
+              id="btn-save-gencode-inconnu"
+              disabled={!nouveauProduitNom.trim() || savingNouveauGencode}
+              onClick={async () => {
+                if (!nouveauProduitNom.trim() || !gencodeInconnu) return;
+                setSavingNouveauGencode(true);
+                try {
+                  await push(ref(db, "gencode_articles"), {
+                    ean: gencodeInconnu,
+                    produit: nouveauProduitNom.trim(),
+                    nom_geslot: [],
+                    codes_articles: [],
+                    createdAt: Date.now(),
+                  });
+                  setFormArr(prev => ({ ...prev, produit: nouveauProduitNom.trim() }));
+                  setPageMode("arrivages");
+                  setVue("form");
+                  showToast("✅ Article enregistré : " + nouveauProduitNom.trim());
+                  setGencodeInconnu(null);
+                } catch {
+                  showToast("Erreur lors de l'enregistrement", "error");
+                } finally {
+                  setSavingNouveauGencode(false);
+                }
+              }}
+              style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: !nouveauProduitNom.trim() ? "#e5e7eb" : "linear-gradient(135deg, #0a0a0a, #2a2a2a)", color: !nouveauProduitNom.trim() ? "#9ca3af" : "#c8a84b", cursor: !nouveauProduitNom.trim() ? "not-allowed" : "pointer", fontSize: 15, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+              {savingNouveauGencode ? "Enregistrement..." : "💾 Enregistrer et continuer"}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* MODAL SIGNATURE TRANSPORTEUR */}
@@ -2210,7 +1953,6 @@ _PDF joint_`;
               <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif", margin: 0 }}>🖊 Visa Transporteur</h2>
               <button onClick={() => setSignatureModal(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#6b7280" }}>✕</button>
             </div>
-
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={{ flex: 1 }}>
@@ -2227,7 +1969,6 @@ _PDF joint_`;
                 <input value={sigImat} onChange={e => setSigImat(e.target.value.toUpperCase())} placeholder="Ex: AB-123-CD" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, fontFamily: "'Syne', sans-serif", boxSizing: "border-box", textTransform: "uppercase" }} />
               </div>
             </div>
-
             <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 6 }}>SIGNATURE</label>
             <div style={{ border: "2px dashed #d1d5db", borderRadius: 12, background: "#fafafa", marginBottom: 12, position: "relative" }}>
               <canvas
@@ -2263,7 +2004,6 @@ _PDF joint_`;
                 onPointerUp={() => { isDrawing.current = false; }}
               />
             </div>
-
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => {
                 const canvas = signatureCanvasRef.current;
@@ -2291,7 +2031,6 @@ _PDF joint_`;
         </div>
       )}
 
-      {/* HEADER UNIFORME */}
       <PageHeader
         titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
         onBack={vue === "form" ? () => setVue("historique" as any) : vue === "historique" ? () => { setShowAccueil(true); } : undefined}
@@ -2299,13 +2038,8 @@ _PDF joint_`;
       />
 
       <div className="content-wrap">
-
-        {/* ══ VUE ARRIVAGES ══ */}
         {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
-
-            {/* Actions - Import déplacé dans le filtre */}
-            {/* Preview import */}
             {previewArr && (() => {
               const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
               const clesExistantes = new Set(existants.map((a: any) => `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`));
@@ -2340,14 +2074,12 @@ _PDF joint_`;
                 </div>
               );
             })()}
-            {/* Filtre + actions */}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
                 📊 Import
                 <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
               </label>
               <button onClick={() => {
-                // Grouper par fournisseur et statut
                 const today = new Date().toLocaleDateString("fr-FR");
                 const byFourn: Record<string, any[]> = {};
                 arrivages.forEach((a: any) => { if (!byFourn[a.fournisseur]) byFourn[a.fournisseur] = []; byFourn[a.fournisseur].push(a); });
@@ -2381,8 +2113,6 @@ _PDF joint_`;
                 {selectMode ? "✕" : "☑"}
               </button>
             </div>
-
-            {/* Barre d'actions selection */}
             {selectMode && (
               <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 16px", marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151" }}>
@@ -2412,7 +2142,6 @@ _PDF joint_`;
                 )}
               </div>
             )}
-            {/* Accordéon date/fournisseur */}
             {(() => {
               const filtered = arrivages.filter(a => !filtersArr.q || `${a.produit} ${a.fournisseur}`.toLowerCase().includes(filtersArr.q.toLowerCase()));
               if (filtered.length === 0 && arrivages.length === 0) return (
@@ -2422,7 +2151,6 @@ _PDF joint_`;
                 </div>
               );
 
-              // Grouper tous les arrivages par date
               const byDate: Record<string, any[]> = {};
               filtered.forEach((a: any) => { const d = a.date || "-"; if (!byDate[d]) byDate[d] = []; byDate[d].push(a); });
 
@@ -2460,7 +2188,6 @@ _PDF joint_`;
               return (
                 <>
                   {Object.entries(byDate).sort((a,b) => {
-                    // Convertir DD/MM/YYYY en timestamp pour tri correct
                     const toTs = (d: string) => { const p = d.split("/"); return p.length === 3 ? new Date(+p[2], +p[1]-1, +p[0]).getTime() : 0; };
                     return toTs(b[0]) - toTs(a[0]);
                   }).map(([date, arr]) => {
@@ -2473,11 +2200,9 @@ _PDF joint_`;
                 </>
               );
             })()}
-            {/* fin accordéons */}
           </div>
         )}
 
-        {/* ══ VUE SAISIE ARRIVAGE ══ */}
         {pageMode === "saisie_arr" && vue !== "form" && vue !== "historique" && (
           <div className="card fade-up" style={{ padding: "20px 24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -2503,7 +2228,6 @@ _PDF joint_`;
           </div>
         )}
 
-        {/* ══ VUE HISTORIQUE ARRIVAGES ══ */}
         {pageMode === "historique_arr" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
             <p style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>
@@ -2537,7 +2261,6 @@ _PDF joint_`;
           </div>
         )}
 
-        {/* ══ VUE STATS ARRIVAGES ══ */}
         {pageMode === "stats_arr" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
             <p style={{ fontWeight:700, fontSize:12, color:"#6b7280", margin:"0 0 16px", textTransform:"uppercase", letterSpacing:"0.8px", fontFamily:"'Syne',sans-serif" }}>📊 Stats fournisseurs</p>
@@ -2576,7 +2299,6 @@ _PDF joint_`;
           </div>
         )}
 
-        {/* MODAL HORS LISTE */}
         {horsListeMode && (
           <div style={{ position:"fixed", inset:0, zIndex:200, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
             <div style={{ background:"#fff", borderRadius:20, width:"100%", maxWidth:480, boxShadow:"0 8px 40px rgba(0,0,0,0.18)", overflow:"hidden", maxHeight:"90vh", overflowY:"auto" }}>
@@ -2605,15 +2327,12 @@ _PDF joint_`;
           </div>
         )}
 
-        {/* ══ VUE STOCK REFUS ══ */}
         {(vue as any) === "stock_refus" && (
           <div className="fade-up">
             <div style={{ marginBottom: 16 }}>
               <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, color: "#dc2626", margin: "0 0 4px" }}>🔴 Stock Refus</p>
               <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Lots refusés en attente de récupération par le fournisseur</p>
             </div>
-
-            {/* Stats */}
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
               {[
                 { label: "En attente", value: arrivages.filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere).length, color: "#dc2626" },
@@ -2621,15 +2340,12 @@ _PDF joint_`;
                 { label: "Détruits", value: arrivages.filter(a => a.destruction?.effectuee).length, color: "#6b7280" },
               ].map(s => <StatCardArr key={s.label} label={s.label} value={s.value} color={s.color} />)}
             </div>
-
-            {/* Lots en attente */}
             {arrivages.filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee).length === 0 && (
               <div style={{ textAlign: "center", padding: "3rem", background: "#f0fdf4", borderRadius: 20, border: "1px solid #bbf7d0" }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
                 <p style={{ margin: 0, fontWeight: 700, color: "#16a34a", fontFamily: "'Syne', sans-serif" }}>Aucun lot en attente !</p>
               </div>
             )}
-
             {arrivages
               .filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee)
               .map(a => {
@@ -2637,7 +2353,6 @@ _PDF joint_`;
                 return (
                   <div key={a.id} style={{ background: "#fff", borderRadius: 16, boxShadow: "0 2px 16px rgba(220,38,38,0.08)", marginBottom: 12, overflow: "hidden", borderLeft: "4px solid #dc2626" }}>
                     <div style={{ padding: "14px 18px" }}>
-                      {/* Header lot */}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                         <div>
                           <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 15, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{a.produit}</p>
@@ -2651,8 +2366,6 @@ _PDF joint_`;
                         </div>
                         <span style={{ fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", padding: "4px 10px", borderRadius: 20 }}>❌ À récupérer</span>
                       </div>
-
-                      {/* Raison du litige */}
                       {a.litige && (
                         <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 10 }}>
                           <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: "#991b1b", textTransform: "uppercase", letterSpacing: "0.5px" }}>Motif du refus</p>
@@ -2661,8 +2374,6 @@ _PDF joint_`;
                           {a.litige.ouvertApresValidation && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#d97706", fontWeight: 600 }}>⚠️ Litige ouvert après validation initiale</p>}
                         </div>
                       )}
-
-                      {/* Rapport lié */}
                       {rapport && (
                         <div style={{ background: "#faf8f3", border: "1px solid #e8e0d0", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", gap: 10, alignItems: "center" }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#8a6f2e" }}>📋 {rapport.numeroRapport}</span>
@@ -2671,8 +2382,6 @@ _PDF joint_`;
                         </div>
                       )}
                     </div>
-
-                    {/* Actions */}
                     <div style={{ borderTop: "1px solid #f0f0f0", padding: "10px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => ouvrirRapportDepuisArrivage(a)} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
                         📋 {rapport ? "Nouveau rapport" : "Faire un rapport"}
@@ -2705,8 +2414,6 @@ _PDF joint_`;
                   </div>
                 );
               })}
-
-            {/* Lots récupérés */}
             {arrivages.filter(a => a.recupere || a.destruction?.effectuee).length > 0 && (
               <div style={{ marginTop: 24 }}>
                 <p style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>
@@ -2732,11 +2439,8 @@ _PDF joint_`;
           </div>
         )}
 
-        {/* FORMULAIRE */}
         {vue === "form" && (
           <div className="fade-up">
-
-            {/* BANDEAU ARRIVAGE LIÉ */}
             {rapportArrivage && (
               <div style={{ marginBottom: 16, background: rapportArrivage.litige ? "#fef2f2" : "#f0fdf4", border: `2px solid ${rapportArrivage.litige ? "#fca5a5" : "#bbf7d0"}`, borderRadius: 16, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
@@ -2755,7 +2459,6 @@ _PDF joint_`;
                 </button>
               </div>
             )}
-
             <div style={{ marginBottom: 16, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 20, padding: "20px 24px" }}>
               <div className="section-title">📦 Colis</div>
               <div className="grid-2">
@@ -2781,7 +2484,6 @@ _PDF joint_`;
                 </div>
               )}
             </div>
-
             <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
               <F label="Fournisseur" required><AutocompleteInput value={fournisseur} onChange={setFournisseur} suggestions={suggestionsFournisseurs} placeholder="Nom du fournisseur" required /></F>
               <div className="grid-2">
@@ -2794,7 +2496,6 @@ _PDF joint_`;
                 <F label="N° Lot Fournisseur"><input value={lotFournisseur} onChange={e => setLotFournisseur(e.target.value)} placeholder="N° lot fournisseur" /></F>
               </div>
             </div>
-
             <div style={{ marginBottom: 16, background: "#f0f8ff", border: "1.5px solid #bfdbfe", borderRadius: 20, padding: "16px 24px", display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🌡</div>
               <div style={{ flex: 1 }}>
@@ -2802,7 +2503,6 @@ _PDF joint_`;
                 <input type="number" value={temperature} onChange={e => setTemperature(e.target.value)} placeholder="Ex: 4" step="0.1" style={{ border: "1.5px solid #bfdbfe", background: "#fff" }} />
               </div>
             </div>
-
             <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
               <div className="section-title">Évaluation qualité</div>
               {CRITERES.map((c) => (
@@ -2817,7 +2517,6 @@ _PDF joint_`;
                   <NoteSelector value={notes[c.id as keyof typeof notes]} onChange={v => setNotes({ ...notes, [c.id]: v })} />
                 </div>
               ))}
-
               <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #f0f0f0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff7ed", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>⚖️</div>
@@ -2845,8 +2544,6 @@ _PDF joint_`;
                   </div>
                 )}
               </div>
-
-              {/* TABLEAU CONTROLES C/NC */}
               <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #f0f0f0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f0f4ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✅</div>
@@ -2887,7 +2584,6 @@ _PDF joint_`;
                   </tbody>
                 </table>
               </div>
-
               <div>
                 <label onClick={() => { setEtiquetteAbsente(v => !v); setEtiquette(initialEtiquette); }}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, cursor: "pointer", marginBottom: 10, background: etiquetteAbsente ? "#fef2f2" : "#f9fafb", border: `2px solid ${etiquetteAbsente ? "#dc2626" : "#e5e7eb"}`, transition: "all 0.15s" }}>
@@ -2912,7 +2608,6 @@ _PDF joint_`;
                   </div>
                 )}
               </div>
-
               {score && (
                 <div style={{ marginTop: 20, background: "linear-gradient(135deg, #f0fdf4, #dcfce7)", borderRadius: 14, padding: "14px 18px", border: "1px solid #e0d0a0" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -2922,7 +2617,6 @@ _PDF joint_`;
                     </div>
                     <ScoreCircle score={score} />
                   </div>
-                  {/* Suggestion automatique */}
                   <div style={{
                     background: parseFloat(score) >= 4 ? "#f0fdf4" : parseFloat(score) >= 3 ? "#fffbeb" : "#fef2f2",
                     border: `1px solid ${parseFloat(score) >= 4 ? "#bbf7d0" : parseFloat(score) >= 3 ? "#fcd34d" : "#fca5a5"}`,
@@ -2939,7 +2633,6 @@ _PDF joint_`;
                 </div>
               )}
             </div>
-
             <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
               <div className="section-title">📷 Photos</div>
               <div style={{ border: "2px dashed #e8e0d0", borderRadius: 14, padding: "20px", textAlign: "center", background: "#faf8f5", marginBottom: photos.length ? 16 : 0 }}>
@@ -2987,15 +2680,11 @@ _PDF joint_`;
                 </div>
               )}
             </div>
-
             <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
               <div className="section-title">📋 Commentaire & Conformité</div>
-              
               <F label="Commentaire">
                 <textarea value={observations} onChange={e => setObservations(e.target.value)} placeholder="Remarques sur la qualité, état du lot, anomalies constatées…" rows={3} style={{ resize: "vertical" }} />
               </F>
-
-              {/* CONFORMITE */}
               <p style={{ fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>Conformité</p>
               <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
                 <button onClick={() => { setConformite("conforme"); setDecision(""); setPourcentage(""); }} style={{
@@ -3017,8 +2706,6 @@ _PDF joint_`;
                   transition: "all 0.2s", touchAction: "manipulation",
                 }}>❌ Non conforme</button>
               </div>
-
-              {/* SI NON CONFORME → Réserve ou Refus */}
               {conformite === "non_conforme" && (
                 <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
                   <p style={{ fontSize: 12, fontWeight: 700, color: "#991b1b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>Type de non-conformité</p>
@@ -3042,13 +2729,11 @@ _PDF joint_`;
                       transition: "all 0.2s", touchAction: "manipulation",
                     }}>🔴 Refus</button>
                   </div>
-
                   {(decision === "reserve" || decision === "refus") && (
                     <div>
                       <p style={{ fontSize: 11, fontWeight: 600, color: decision === "reserve" ? "#92400e" : "#991b1b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
                         {decision === "reserve" ? "Détail de la réserve" : "Détail du refus"}
                       </p>
-                      {/* Total = colis reçus */}
                       <div style={{ background: "#fff", borderRadius: 10, padding: "10px 14px", marginBottom: 12, border: `1px solid ${decision === "reserve" ? "#fcd34d" : "#fca5a5"}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span style={{ fontSize: 13, color: "#6b7280" }}>Total colis</span>
                         <span style={{ fontSize: 18, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{totalColis || "-"}</span>
@@ -3070,7 +2755,6 @@ _PDF joint_`;
                 </div>
               )}
             </div>
-
             <button className="btn-primary" onClick={editRapport ? sauvegarderEdition : soumettre} disabled={sendingId === "new" || sendingId === "edit"} style={{ opacity: (sendingId === "new" || sendingId === "edit") ? 0.7 : 1 }}>
               {sendingId === "new" ? "⏳ Envoi en cours…" : sendingId === "edit" ? "⏳ Modification…" : editRapport ? "💾 Sauvegarder les modifications" : "✉ Envoyer le rapport"}
             </button>
@@ -3082,24 +2766,18 @@ _PDF joint_`;
           </div>
         )}
 
-        {/* HISTORIQUE */}
         {vue === "historique" && (
           <div className="fade-up">
-
-            {/* BOUTON SCANNER POUR RAPPORT */}
             <button onClick={() => { setScannerMode("rapport"); setShowScanner(true); }}
               style={{ width: "100%", marginBottom: 12, padding: "11px", borderRadius: 12, border: "1.5px solid #c8a84b", background: "#faf8f0", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               📷 Scanner une palette → Créer un rapport
             </button>
-
-            {/* TOGGLES DÉCISION - toujours visibles */}
             {(() => {
               const types = [
                 { id: "stock", label: "Conformes", color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
                 { id: "reserve", label: "Réserves", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
                 { id: "refus", label: "Refus", color: "#dc2626", bg: "#fef2f2", border: "#fca5a5" },
               ];
-              const activeFilters: string[] = filterDecision ? [filterDecision] : types.map(t => t.id);
               const toggle = (id: string) => {
                 if (filterDecision === id) setFilterDecision("");
                 else setFilterDecision(id);
@@ -3112,7 +2790,6 @@ _PDF joint_`;
                     Tous
                   </button>
                   {types.map(t => {
-                    const active = filterDecision === t.id || !filterDecision;
                     const selected = filterDecision === t.id;
                     return (
                       <button key={t.id} onClick={() => toggle(t.id)}
@@ -3128,7 +2805,6 @@ _PDF joint_`;
                 </div>
               );
             })()}
-
             <div style={{ marginBottom: 10, display: "flex", gap: 8 }}>
               <input
                 type="text"
@@ -3152,8 +2828,6 @@ _PDF joint_`;
                 📊 Stats
               </button>
             </div>
-
-            {/* PANNEAU FILTRES */}
             {showFilters && (
               <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 14 }}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
@@ -3187,16 +2861,14 @@ _PDF joint_`;
                 </div>
               </div>
             )}
-
             {(() => {
-              // ─── FILTRAGE ───
               const parseDate = (dateStr: string) => {
                 if (!dateStr) return null;
                 const [d, m, y] = dateStr.split("/");
                 return new Date(`${y}-${m}-${d}`);
               };
               const filtered = rapports.filter(r => {
-                if (r.archivé) return false; // exclure archivés de l'historique
+                if (r.archivé) return false;
                 const matchText = !searchText ||
                   r.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
                   r.fournisseur?.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -3211,7 +2883,6 @@ _PDF joint_`;
                 return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin;
               });
 
-              // ─── TRI ───
               const decisionOrder: Record<string, number> = { refus: 0, reserve: 1, stock: 2 };
               const sorted = [...filtered].sort((a, b) => {
                 switch (sortBy) {
@@ -3225,7 +2896,6 @@ _PDF joint_`;
                 }
               });
 
-              // ─── STATS ───
               if (showStats) {
                 const total = filtered.length;
                 const nbRefus = filtered.filter(r => r.decision === "refus").length;
@@ -3234,7 +2904,6 @@ _PDF joint_`;
                 const tauxRefus = total > 0 ? Math.round((nbRefus / total) * 100) : 0;
                 const tauxReserve = total > 0 ? Math.round((nbReserve / total) * 100) : 0;
 
-                // Stats par fournisseur
                 const statsFourn: Record<string, { total: number; refus: number; reserve: number }> = {};
                 filtered.forEach(r => {
                   if (!r.fournisseur) return;
@@ -3245,7 +2914,6 @@ _PDF joint_`;
                 });
                 const topFourn = Object.entries(statsFourn).sort((a, b) => b[1].refus - a[1].refus).slice(0, 5);
 
-                // Stats par produit
                 const statsProd: Record<string, { total: number; refus: number }> = {};
                 filtered.forEach(r => {
                   if (!r.produit) return;
@@ -3257,7 +2925,6 @@ _PDF joint_`;
 
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    {/* Chiffres clés */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
                       {[
                         { label: "Total rapports", value: total, color: "#1a2e1a", bg: "#f0fdf4" },
@@ -3271,8 +2938,6 @@ _PDF joint_`;
                         </div>
                       ))}
                     </div>
-
-                    {/* Répartition */}
                     <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
                       <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>Répartition</p>
                       {[
@@ -3291,8 +2956,6 @@ _PDF joint_`;
                         </div>
                       ))}
                     </div>
-
-                    {/* Top fournisseurs */}
                     {topFourn.length > 0 && (
                       <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
                         <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>Top fournisseurs (refus)</p>
@@ -3307,8 +2970,6 @@ _PDF joint_`;
                         ))}
                       </div>
                     )}
-
-                    {/* Top produits */}
                     {topProd.length > 0 && (
                       <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
                         <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>Top produits (refus)</p>
@@ -3370,7 +3031,6 @@ _PDF joint_`;
                     {r.score && <ScoreCircle score={r.score} />}
                   </div>
                 </div>
-
                 {(r.decision === "reserve" || r.decision === "refus") && r.nbColisRefuses !== null && (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", background: r.decision === "reserve" ? "#fffbeb" : "#fef2f2", borderRadius: 10, padding: "8px 14px", marginBottom: 10, border: `1px solid ${r.decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }}>
                     <span style={{ fontSize: 13, color: "#6b7280" }}>Colis {r.decision === "reserve" ? "en réserve" : "refusés"} :</span>
@@ -3378,7 +3038,6 @@ _PDF joint_`;
                     <span style={{ fontSize: 12, color: "#9ca3af" }}>({r.pourcentage}%)</span>
                   </div>
                 )}
-
                 {(r.photoUrls?.length > 0 || r.photos?.length > 0) && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 10 }}>
                     {(r.photoUrls?.length > 0 ? r.photoUrls : r.photos?.map((p: any) => p.url) || []).slice(0, 6).map((url: string, pi: number) => (
@@ -3388,7 +3047,6 @@ _PDF joint_`;
                     ))}
                   </div>
                 )}
-
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", borderTop: "1px solid #f0f0f0", paddingTop: 10, marginBottom: 8 }}>
                   {CRITERES.map(c => r.notes?.[c.id] > 0 && (
                     <span key={c.id} className="pill" style={{ background: c.accent + "12", color: c.accent, border: `1px solid ${c.accent}30` }}>
@@ -3398,7 +3056,6 @@ _PDF joint_`;
                   {r.poidsStatut === "ok" && <span className="pill" style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0" }}>⚖️ Poids OK</span>}
                   {r.poidsStatut === "ecart" && <span className="pill" style={{ background: "#fffbeb", color: "#d97706", border: "1px solid #fcd34d" }}>⚠ Écart poids{r.poidsEcart ? ` · ${r.poidsEcart}` : ""}</span>}
                 </div>
-
                 {(r.etiquetteAbsente || (r.etiquette && ETIQUETTE_ITEMS.some(item => !r.etiquette[item.id]))) && (
                   <div style={{ marginBottom: 8 }}>
                     <p style={{ fontSize: 11, color: "#dc2626", fontWeight: 600, marginBottom: 4 }}>🏷️ {r.etiquetteAbsente ? "Étiquette absente" : "Étiquette - éléments manquants :"}</p>
@@ -3409,9 +3066,7 @@ _PDF joint_`;
                     </div>
                   </div>
                 )}
-
                 {r.observations && <p style={{ fontSize: 13, color: "#6b7280", fontStyle: "italic", borderTop: "1px solid #f0fdf4", paddingTop: 8, marginTop: 8 }}>"{r.observations}"</p>}
-
                 <div className="action-row" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f0f0f0" }}>
                   <button onClick={() => downloadPDF(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     📤 Envoyer PDF
@@ -3465,7 +3120,6 @@ _PDF joint_`;
                     🗑
                   </button>
                 </div>
-
                 {confirmDelete === r.firebaseKey && (
                   <div style={{ marginTop: 10, background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "14px 16px" }}>
                     <p style={{ fontSize: 13, color: "#991b1b", fontWeight: 600, marginBottom: 10 }}>Supprimer ce rapport ?</p>
@@ -3490,7 +3144,6 @@ _PDF joint_`;
           </div>
         )}
 
-        {/* ARCHIVES */}
         {vue === "archives" && (
           <div className="fade-up">
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
