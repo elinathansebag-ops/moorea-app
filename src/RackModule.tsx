@@ -23,10 +23,26 @@ type PalettePos = {
   quantite?: string;
   unite?: string;
   dlc?: string;
+  color?: string;
   notes?: string;
   arrivage_id?: string;
   date_stockage?: string;
   timestamp?: number;
+};
+
+// ─── MODÈLES PRÉ-CONFIGURÉS PAR MUR (nom + code couleur d'étiquette) ───
+type Preset = { produit: string; color: string; colorLabel: string; designation: string; note?: string };
+const WALL_PRESETS: Record<string, Preset[]> = {
+  mur1: [
+    { produit: "Haricots Verts 500 GR", color: "#f59e0b", colorLabel: "Orange", designation: "GREEN BEANS" },
+    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS" },
+    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", note: "Sticker 2€" },
+    { produit: "Haricots Verts 250 GR", color: "#16a34a", colorLabel: "Green", designation: "GREEN BEANS" },
+    { produit: "Pois Gourmands / Mangetout 250 GR", color: "#7c3aed", colorLabel: "Purple", designation: "SNOW PEAS" },
+    { produit: "Pois Gourmands / Mangetout 150 GR", color: "#2563eb", colorLabel: "Blue", designation: "SNOW PEAS" },
+    { produit: "Pois Sucrés 250 GR", color: "#eab308", colorLabel: "Yellow", designation: "SUGAR SNAPS / SNAP PEAS" },
+    { produit: "Pois Sucrés 150 GR", color: "#dc2626", colorLabel: "Red", designation: "SUGAR SNAPS / SNAP PEAS" },
+  ],
 };
 
 // ─── STATUT DLC (couleur selon urgence) ───
@@ -42,10 +58,11 @@ function dlcStatus(dlc?: string): { color: string; bg: string; label: string } |
 }
 
 // ─── VISUEL PALETTE (planches de bois + infos essentielles) ───
-function PaletteVisual({ produit, quantite, unite, dlc }: { produit?: string; quantite?: string; unite?: string; dlc?: string }) {
+function PaletteVisual({ produit, quantite, unite, dlc, color }: { produit?: string; quantite?: string; unite?: string; dlc?: string; color?: string }) {
   const status = dlcStatus(dlc);
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", gap: 1 }}>
+      {color && <div style={{ width: 22, height: 5, background: color, borderRadius: 2, marginBottom: 1, border: "1px solid rgba(0,0,0,0.15)" }} />}
       <span style={{ fontSize: 9, fontWeight: 800, color: "#1a2e1a", maxWidth: 66, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.1 }}>{produit}</span>
       {quantite && <span style={{ fontSize: 8, color: "#6b7280", fontWeight: 600 }}>{quantite} {unite || ""}</span>}
       {status && (
@@ -99,8 +116,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const positionsRef = useRef(positions);
   const activeWallRef = useRef(activeWall);
 
-  const [addMode, setAddMode] = useState<"libre" | "existant">("libre");
-  const [freeForm, setFreeForm] = useState({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", notes: "" });
+  const [addMode, setAddMode] = useState<"modele" | "libre" | "existant">("libre");
+  const [presetLocked, setPresetLocked] = useState(false);
+  const [freeForm, setFreeForm] = useState({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", notes: "" });
   const [searchArrivage, setSearchArrivage] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -172,8 +190,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
     setSelectedCell({ row, col });
     if (!occupied) {
-      setFreeForm({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", notes: "" });
-      setAddMode("libre");
+      setFreeForm({ produit: "", fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", notes: "" });
+      setAddMode(WALL_PRESETS[activeWall] ? "modele" : "libre");
+      setPresetLocked(false);
       setSearchArrivage("");
     }
   };
@@ -189,8 +208,22 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         [key]: { ...freeForm, date_stockage: new Date().toLocaleDateString("fr-FR"), timestamp: Date.now() }
       });
       setSelectedCell(null);
+      setPresetLocked(false);
     } catch { alert("Erreur lors de l'enregistrement"); }
     setSaving(false);
+  };
+
+  // ─── SÉLECTION D'UN MODÈLE PRÉ-CONFIGURÉ ───
+  const selectPreset = (p: Preset) => {
+    setFreeForm({ ...freeForm, produit: p.produit, color: p.color });
+    setPresetLocked(true);
+    setAddMode("libre"); // il ne reste qu'à saisir lot + quantité + DLC
+  };
+
+  const unlockPreset = () => {
+    setPresetLocked(false);
+    setFreeForm({ ...freeForm, produit: "", color: "" });
+    setAddMode("modele");
   };
 
   // ─── AJOUT PALETTE (depuis un arrivage existant) ───
@@ -437,7 +470,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                         display: "flex", alignItems: "flex-end", justifyContent: "center",
                         position: "relative", WebkitTapHighlightColor: "transparent",
                       }}>
-                      {data ? <PaletteVisual produit={data.produit} quantite={data.quantite} unite={data.unite} dlc={data.dlc} /> : (
+                      {data ? <PaletteVisual produit={data.produit} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} /> : (
                         <div style={{ width: 42, height: 24, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 5 }} />
                       )}
                       {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
@@ -513,6 +546,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             <p style={{ margin: "0 0 16px", fontSize: 12, color: "#9ca3af" }}>{cfg.label} · Niveau {selectedCell.row + 1} · Emplacement {selectedCell.col + 1}</p>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {WALL_PRESETS[activeWall] && (
+                <button onClick={() => setAddMode("modele")}
+                  style={{ flex: 1, padding: "9px", borderRadius: 10, border: `2px solid ${addMode === "modele" ? "#8b5cf6" : "#e5e7eb"}`, background: addMode === "modele" ? "#f5f3ff" : "#fff", color: addMode === "modele" ? "#6d28d9" : "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  🎨 Modèles
+                </button>
+              )}
               <button onClick={() => setAddMode("libre")}
                 style={{ flex: 1, padding: "9px", borderRadius: 10, border: `2px solid ${addMode === "libre" ? "#8b5cf6" : "#e5e7eb"}`, background: addMode === "libre" ? "#f5f3ff" : "#fff", color: addMode === "libre" ? "#6d28d9" : "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                 ✏️ Saisie libre
@@ -523,12 +562,44 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
+            {addMode === "modele" && WALL_PRESETS[activeWall] && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 4 }}>
+                {WALL_PRESETS[activeWall].map((p, i) => (
+                  <button key={i} onClick={() => selectPreset(p)}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", textAlign: "left" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 5, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a" }}>{p.produit}</p>
+                      <p style={{ margin: "1px 0 0", fontSize: 11, color: "#9ca3af" }}>{p.colorLabel} · {p.designation}{p.note ? ` · ${p.note}` : ""}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {addMode === "libre" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <AutocompleteInput value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
-                <AutocompleteInput value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
+                {presetLocked ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ width: 22, height: 22, borderRadius: 5, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", flex: 1 }}>{freeForm.produit}</span>
+                    <button onClick={unlockPreset} style={{ background: "none", border: "none", color: "#6d28d9", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>↺ Changer</button>
+                  </div>
+                ) : (
+                  <>
+                    {freeForm.color && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f9fafb", borderRadius: 10, padding: "6px 10px" }}>
+                        <div style={{ width: 16, height: 16, borderRadius: 4, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)" }} />
+                        <span style={{ fontSize: 11, color: "#6b7280" }}>Couleur d'étiquette sélectionnée</span>
+                        <button onClick={() => setFreeForm({ ...freeForm, color: "" })} style={{ marginLeft: "auto", background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 11 }}>retirer</button>
+                      </div>
+                    )}
+                    <AutocompleteInput value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
+                    <AutocompleteInput value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
+                  </>
+                )}
                 <div style={{ display: "flex", gap: 8 }}>
-                  <input value={freeForm.lot_interne} onChange={e => setFreeForm({ ...freeForm, lot_interne: e.target.value })} placeholder="N° Lot"
+                  <input value={freeForm.lot_interne} onChange={e => setFreeForm({ ...freeForm, lot_interne: e.target.value })} placeholder="N° Lot" autoFocus={presetLocked}
                     style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                   <input type="number" value={freeForm.quantite} onChange={e => setFreeForm({ ...freeForm, quantite: e.target.value })} placeholder="Qté"
                     style={{ width: 90, padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
@@ -542,14 +613,16 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   <input type="date" value={freeForm.dlc} onChange={e => setFreeForm({ ...freeForm, dlc: e.target.value })}
                     style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                 </div>
-                <textarea value={freeForm.notes} onChange={e => setFreeForm({ ...freeForm, notes: e.target.value })} placeholder="Notes (optionnel)" rows={2}
-                  style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, resize: "vertical" as const }} />
+                {!presetLocked && (
+                  <textarea value={freeForm.notes} onChange={e => setFreeForm({ ...freeForm, notes: e.target.value })} placeholder="Notes (optionnel)" rows={2}
+                    style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, resize: "vertical" as const }} />
+                )}
                 <button onClick={handleAddFree} disabled={saving || !freeForm.produit.trim()}
                   style={{ padding: "12px", borderRadius: 10, border: "none", background: !freeForm.produit.trim() ? "#e5e7eb" : "#8b5cf6", color: !freeForm.produit.trim() ? "#9ca3af" : "#fff", fontWeight: 700, fontSize: 14, cursor: !freeForm.produit.trim() ? "not-allowed" : "pointer" }}>
                   {saving ? "Enregistrement..." : "✓ Placer la palette"}
                 </button>
               </div>
-            ) : (
+            ) : addMode === "existant" ? (
               <div>
                 <input value={searchArrivage} onChange={e => setSearchArrivage(e.target.value)} placeholder="🔍 Chercher un produit, fournisseur, lot..." autoFocus
                   style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, marginBottom: 10, boxSizing: "border-box" as const }} />
@@ -564,7 +637,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -575,7 +648,10 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
               <div>
-                <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#1a2e1a" }}>{selectedData.produit}</h2>
+                <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#1a2e1a", display: "flex", alignItems: "center", gap: 8 }}>
+                  {selectedData.color && <span style={{ width: 14, height: 14, borderRadius: 4, background: selectedData.color, border: "1px solid rgba(0,0,0,0.15)", display: "inline-block" }} />}
+                  {selectedData.produit}
+                </h2>
                 <p style={{ margin: "3px 0 0", fontSize: 13, color: "#6b7280" }}>{selectedData.fournisseur || "-"}</p>
               </div>
               <button onClick={() => setSelectedCell(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
