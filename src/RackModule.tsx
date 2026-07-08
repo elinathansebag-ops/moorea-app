@@ -347,6 +347,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   // ─── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ───
   const [mappingSearch, setMappingSearch] = useState("");
   const [bulkRealArticle, setBulkRealArticle] = useState("");
+  const [editingPresetKey, setEditingPresetKey] = useState<string | null>(null);
 
   // ─── CONFIG MUR ───
   const openConfig = () => {
@@ -401,13 +402,33 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       designation: newPresetDesignation.trim(),
       origine: newPresetOrigine.trim() || undefined,
     };
-    await push(ref(db, `rack_presets/${activeWall}`), preset);
-    setNewPresetNom(""); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation("");
+    if (editingPresetKey) {
+      await update(ref(db, `rack_presets/${activeWall}/${editingPresetKey}`), preset);
+      setEditingPresetKey(null);
+    } else {
+      await push(ref(db, `rack_presets/${activeWall}`), preset);
+    }
+    setNewPresetNom(""); setNewPresetColor("#16a34a"); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation("");
+  };
+
+  const startEditPreset = (p: Preset & { _key: string }) => {
+    setEditingPresetKey(p._key);
+    setNewPresetNom(p.produit);
+    setNewPresetColor(p.color);
+    setNewPresetColorLabel(p.colorLabel || "");
+    setNewPresetOrigine(p.origine || "");
+    setNewPresetDesignation(p.designation || "");
+  };
+
+  const cancelEditPreset = () => {
+    setEditingPresetKey(null);
+    setNewPresetNom(""); setNewPresetColor("#16a34a"); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation("");
   };
 
   const removeCustomPreset = async (wallId: string, key: string) => {
     if (!window.confirm("Supprimer ce modèle ?")) return;
     await remove(ref(db, `rack_presets/${wallId}/${key}`));
+    if (editingPresetKey === key) cancelEditPreset();
   };
 
   // ─── CORRESPONDANCE NOM RACK → VRAI NOM CATALOGUE ───
@@ -792,8 +813,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
           {/* ── CRÉER UN NOUVEAU MODÈLE (nom + couleur) ── */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>🎨 Créer un nouveau modèle — {cfg.label}</p>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Ajoute un modèle (nom + couleur) qui apparaîtra dans l'onglet "🎨 Modèles" de ce mur, comme ceux déjà prévus.</p>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>{editingPresetKey ? "✏️ Modifier le modèle" : "🎨 Créer un nouveau modèle"} — {cfg.label}</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>{editingPresetKey ? "Modifie ce modèle — les palettes déjà placées avec l'ancien nom/couleur ne changent pas rétroactivement." : "Ajoute un modèle (nom + couleur) qui apparaîtra dans l'onglet \"🎨 Modèles\" de ce mur, comme ceux déjà prévus."}</p>
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
               <input value={newPresetNom} onChange={e => setNewPresetNom(e.target.value)} placeholder="Nom du produit *"
                 style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
@@ -808,15 +829,23 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             </div>
             <input value={newPresetDesignation} onChange={e => setNewPresetDesignation(e.target.value)} placeholder="Désignation (ex: GREEN BEANS) — optionnel"
               style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
-            <button onClick={addNewPreset} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
-              + Ajouter ce modèle
-            </button>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              {editingPresetKey && (
+                <button onClick={cancelEditPreset} style={{ padding: "10px 16px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#f9fafb", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                  Annuler
+                </button>
+              )}
+              <button onClick={addNewPreset} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                {editingPresetKey ? "✓ Enregistrer les modifications" : "+ Ajouter ce modèle"}
+              </button>
+            </div>
             {(customPresets[activeWall] || []).length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {(customPresets[activeWall] || []).map(p => (
-                  <div key={p._key} style={{ display: "flex", alignItems: "center", gap: 8, background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px" }}>
+                  <div key={p._key} style={{ display: "flex", alignItems: "center", gap: 8, background: editingPresetKey === p._key ? "#ede9fe" : "#f5f3ff", border: `1px solid ${editingPresetKey === p._key ? "#a78bfa" : "#ddd6fe"}`, borderRadius: 8, padding: "6px 10px" }}>
                     <div style={{ width: 16, height: 16, borderRadius: 4, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
                     <span style={{ fontSize: 11, color: "#6d28d9", flex: 1 }}>{p.produit}{p.origine ? ` · 🌍 ${p.origine}` : ""}</span>
+                    <button onClick={() => startEditPreset(p)} style={{ background: "none", border: "none", color: "#6d28d9", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️</button>
                     <button onClick={() => removeCustomPreset(activeWall, p._key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
                   </div>
                 ))}
