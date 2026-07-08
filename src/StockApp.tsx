@@ -1034,9 +1034,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let histoCache: any[] = [];
       let _byArticle: any = null;
       let calcLastFocused: any = null;
-      let rackAggregates: Record<string, number> = {}; // article (lowercase, résolu) -> qté totale en rack aux niveaux 2 et 3
+      let rackPalettesMap: Record<string, { qty: number; loc: string }[]> = {}; // article (lowercase, résolu) -> liste des palettes {quantité, emplacement}, vues aux niveaux 2 et 3
       let rackNameMap: Record<string, { realName: string; factor: number }> = {}; // nom rack (lowercase) -> {vrai nom catalogue, facteur colis rack→stock}
+      let rackConfigCache: any = {}; // rack_config (labels des murs)
       let lastRackSnapshot: any = null; // recalculé si la correspondance change après coup
+      const RACK_WALL_IDS = ["mur1", "mur2", "mur3", "mur4"];
+      const RACK_WALL_DEFAULT_LABELS = ["Frigo Haricot Vert", "Mini Légumes", "Mur Gingembre", "Stockage"];
 
       // Init _byArticle depuis STOCK_CONFIG_ARTICLES (source unique, plus de duplication)
       _byArticle = {};
@@ -1048,11 +1051,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       // Les noms du rack sont résolus vers leur vrai nom catalogue via rack_name_mapping
       // (configurable dans Rotation Racks → ⚙️ Configurer → Faire correspondre les noms),
       // et la quantité est convertie via le facteur "1 colis rack = X colis stock" si défini.
-      const computeRackAggregates = (allWalls: any): Record<string, number> => {
-        const agg: Record<string, number> = {};
-        Object.values(allWalls || {}).forEach((wallPositions: any) => {
+      // Chaque palette du rack devient sa PROPRE case de comptage, avec son emplacement exact.
+      const computeRackPalettes = (allWalls: any): Record<string, { qty: number; loc: string }[]> => {
+        const map: Record<string, { qty: number; loc: string }[]> = {};
+        Object.entries(allWalls || {}).forEach(([wallId, wallPositions]: any) => {
+          const wallIdx = RACK_WALL_IDS.indexOf(wallId);
+          const wallLabel = rackConfigCache[wallId]?.label || RACK_WALL_DEFAULT_LABELS[wallIdx] || wallId;
           Object.entries(wallPositions || {}).forEach(([key, data]: any) => {
-            const rowIdx = parseInt(String(key).split("_")[0]);
+            const parts = String(key).split("_").map(Number);
+            const rowIdx = parts[0], bayIdx = parts[1], slotIdx = parts[2];
             const niveau = rowIdx + 1;
             if ((niveau === 2 || niveau === 3) && data?.produit) {
               const rawNom = String(data.produit).toLowerCase().trim();
@@ -1060,20 +1067,22 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
               const nom = mapped?.realName || rawNom;
               const factor = mapped?.factor || 1;
               const qty = (parseFloat(data.quantite) || 0) * factor;
-              if (qty > 0) agg[nom] = (agg[nom] || 0) + qty;
+              const loc = `${wallLabel} · N${niveau} · Sect.${(bayIdx ?? 0) + 1} · Place ${(slotIdx ?? 0) + 1}`;
+              if (qty > 0) { if (!map[nom]) map[nom] = []; map[nom].push({ qty, loc }); }
             }
           });
         });
-        return agg;
+        return map;
       };
-      onValue(ref(mainRtdb, "rack_positions"), snap => { lastRackSnapshot = snap.val(); rackAggregates = computeRackAggregates(lastRackSnapshot); });
+      onValue(ref(mainRtdb, "rack_positions"), snap => { lastRackSnapshot = snap.val(); rackPalettesMap = computeRackPalettes(lastRackSnapshot); });
+      onValue(ref(mainRtdb, "rack_config"), snap => { rackConfigCache = snap.val() || {}; rackPalettesMap = computeRackPalettes(lastRackSnapshot); });
       onValue(ref(mainRtdb, "rack_name_mapping"), snap => {
         const d = snap.val() || {};
         rackNameMap = {};
         Object.values(d).forEach((m: any) => {
           if (m?.rackName && m?.realName) rackNameMap[String(m.rackName).toLowerCase().trim()] = { realName: String(m.realName).toLowerCase().trim(), factor: parseFloat(m.factor) || 1 };
         });
-        rackAggregates = computeRackAggregates(lastRackSnapshot); // recalcule avec la correspondance à jour
+        rackPalettesMap = computeRackPalettes(lastRackSnapshot); // recalcule avec la correspondance à jour
       });
 
       // Sync status
@@ -1326,13 +1335,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         document.getElementById("s-nav-ecarts")?.classList.add("hidden");
         loadComptages(team).then(async () => {
           await loadOrdreOptimise();
-          // Auto-comptage : articles présents en rack aux niveaux 2/3 et pas encore comptés manuellement
+          // Auto-comptage : une case par palette vue en rack (niveaux 2/3), avec son emplacement, pas encore comptée manuellement
           articles.forEach(a => {
             if (a.compte1 === null || a.compte1 === undefined) {
-              const rackQty = rackAggregates[a.article?.toLowerCase().trim()];
-              if (rackQty) {
-                a.compte1 = rackQty;
-                a._autoRack = true;
+              const palettes = rackPalettesMap[a.article?.toLowerCase().trim()];
+              if (palettes && palettes.length) {
+                const slots = palettes.slice(0, 8); // max 8 emplacements disponibles
+                a._autoRackSlots = slots.map(() => true);
+                a._autoRackLocs = slots.map(s => s.loc);
+                slots.forEach((s, i) => { a["compte" + (i + 1)] = s.qty; });
                 let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0;
                 a.compte = t;
               }
@@ -1469,15 +1480,20 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const a = articles.find(x => x.id === id); if (!a) return;
         const v = val === "" ? null : Math.max(0, parseFloat(val) || 0);
         if (loc <= 8) a["compte" + loc] = v; else a.detruire = v;
-        if (loc === 1 && a._autoRack) delete a._autoRack; // touché manuellement → n'est plus "auto"
+        if (loc <= 8 && a._autoRackSlots?.[loc - 1]) a._autoRackSlots[loc - 1] = false; // touché manuellement → cette case n'est plus "auto"
         if (!a._saisieTs && v !== null) a._saisieTs = Date.now();
         const hasCount = a.compte1 !== null && a.compte1 !== undefined;
         if (hasCount) { let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0; a.compte = t; } else a.compte = null;
         updateMetricsC();
         const row = document.querySelector(`tr[data-id="${id}"]`);
         if (row) {
-          const autoBadge = row.querySelector(".s-auto-rack-badge");
-          if (autoBadge && loc === 1) (autoBadge as HTMLElement).style.display = "none";
+          if (loc <= 8) {
+            const inputEl = row.querySelector(`.qty-in[data-loc="${loc}"]`) as HTMLElement | null;
+            if (inputEl) { inputEl.removeAttribute("style"); inputEl.removeAttribute("title"); }
+            const stillAuto = a._autoRackSlots?.some((x: boolean) => x);
+            const badge = row.querySelector(".s-auto-rack-badge") as HTMLElement | null;
+            if (badge && !stillAuto) badge.style.display = "none";
+          }
           const totCell = row.querySelector(".s-tot-cell");
           const ecartCell = row.querySelector(".s-ecart-cell");
           if (totCell) {
@@ -1549,9 +1565,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const other = currentTeam === "GMS" ? "Prestige" : "GMS";
           const moveBtn = `<button onclick="sMoveToOther(${a.id})" style="padding:2px 7px;border:1px solid #e8e0d0;border-radius:6px;background:transparent;color:#6b7280;cursor:pointer;font-size:11px">${other} →</button>`;
           const locs = [a.compte1, a.compte2, a.compte3, a.compte4, a.compte5, a.compte6, a.compte7, a.compte8];
-          let inp = `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${q1}" oninput="sSetCount(${a.id},1,this.value)" onchange="sSetCount(${a.id},1,this.value)">`;
+          const autoStyle = "border:2px solid #8b5cf6 !important;background:#f5f3ff !important;color:#6d28d9 !important;font-weight:800 !important";
+          const locTitle = (i: number) => a._autoRackLocs?.[i] ? ` title="📦 ${a._autoRackLocs[i]}"` : ` title="📦 Vu en rack N2/N3"`;
+          let inp = `<input class="qty-in" data-loc="1" type="number" min="0" inputmode="decimal" value="${q1}"${a._autoRackSlots?.[0] ? ` style="${autoStyle}"${locTitle(0)}` : ""} oninput="sSetCount(${a.id},1,this.value)" onchange="sSetCount(${a.id},1,this.value)">`;
           let lastFilled = 1;
-          locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" type="number" min="0" inputmode="decimal" value="${v > 0 ? v : ""}" oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
+          locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" data-loc="${i + 1}" type="number" min="0" inputmode="decimal" value="${v > 0 ? v : ""}"${a._autoRackSlots?.[i] ? ` style="${autoStyle}"${locTitle(i)}` : ""} oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
           if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" onclick="sAddNextLoc(${a.id})">+</button>`;
           const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
@@ -1561,7 +1579,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           let artLabel = a.article;
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
           html += `<tr data-id="${a.id}">
-            <td style="font-weight:500">${artLabel}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}${a._autoRack ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 Auto — vu en rack N2/N3</span>` : ""}<br>${moveBtn}</td>
+            <td style="font-weight:500">${artLabel}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
             <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>
