@@ -154,6 +154,28 @@ function genPDF(fiche: FicheRetour) {
   doc.save("retour-" + fiche.numero + ".pdf");
 }
 
+// ── Recherche pondérée : priorise "commence par" avant "contient" ──
+function searchRanked(query: string, list: string[], max = 10): string[] {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  const words = q.split(/\s+/).filter(w => w.length > 0);
+  const scored = list
+    .map(item => {
+      const n = item.toLowerCase();
+      if (!words.every(w => n.includes(w))) return null;
+      let score = 0;
+      if (n.startsWith(q)) score = 5;
+      else if (n.split(/\s+/).some(word => word.startsWith(q))) score = 4; // un mot du nom commence par la requête
+      else if (n.includes(" " + q)) score = 3;
+      else if (n.includes(q)) score = 2;
+      else score = 1; // matché seulement via "chaque mot présent quelque part"
+      return { item, score };
+    })
+    .filter((x): x is { item: string; score: number } => x !== null)
+    .sort((a, b) => b.score - a.score || a.item.length - b.item.length);
+  return scored.slice(0, max).map(x => x.item);
+}
+
 // ── Composant recherche produit ──
 function InputProduit({ value, onChange, placeholder, list }: { value: string; onChange: (v: string) => void; placeholder?: string; list: string[] }) {
   const [show, setShow] = useState(false);
@@ -162,11 +184,8 @@ function InputProduit({ value, onChange, placeholder, list }: { value: string; o
 
   useEffect(() => { setQ(value); }, [value]);
 
-  // Recherche intelligente : chaque mot tapé doit apparaître dans le nom
-  const filtered = q.trim().length > 1 ? (() => {
-    const words = q.trim().toLowerCase().split(/\s+/).filter(w => w.length > 0);
-    return list.filter(a => words.every(w => a.toLowerCase().includes(w))).slice(0, 10);
-  })() : [];
+  // Recherche pondérée : "commence par" est prioritaire sur "contient"
+  const filtered = searchRanked(q, list, 10);
 
   return (
     <div ref={ref2} style={{ position: "relative" }}>
@@ -196,10 +215,7 @@ function InputClient({ value, onChange, placeholder }: { value: string; onChange
   const [show, setShow] = useState(false);
   const [q, setQ] = useState(value);
   useEffect(() => { setQ(value); }, [value]);
-  const filtered = q.length > 1 ? (() => {
-    const words = q.trim().toLowerCase().split(/\s+/).filter(w => w.length > 0);
-    return CLIENTS_LIST.filter(c => words.every(w => c.toLowerCase().includes(w))).slice(0, 8);
-  })() : [];
+  const filtered = searchRanked(q, CLIENTS_LIST, 8);
   return (
     <div style={{ position: "relative" }}>
       <input style={INP} value={q} placeholder={placeholder || "ex : Carrefour Billy"}
