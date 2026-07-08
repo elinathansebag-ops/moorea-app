@@ -1035,7 +1035,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let _byArticle: any = null;
       let calcLastFocused: any = null;
       let rackAggregates: Record<string, number> = {}; // article (lowercase, résolu) -> qté totale en rack aux niveaux 2 et 3
-      let rackNameMap: Record<string, string> = {}; // nom rack (lowercase) -> vrai nom catalogue (lowercase)
+      let rackNameMap: Record<string, { realName: string; factor: number }> = {}; // nom rack (lowercase) -> {vrai nom catalogue, facteur colis rack→stock}
       let lastRackSnapshot: any = null; // recalculé si la correspondance change après coup
 
       // Init _byArticle depuis STOCK_CONFIG_ARTICLES (source unique, plus de duplication)
@@ -1046,7 +1046,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       // Le rack stocke les positions sous rack_positions/{mur}/{niveau0}_{section}_{place}
       // niveau0 est indexé à partir de 0 → Niveau 2 = index 1, Niveau 3 = index 2
       // Les noms du rack sont résolus vers leur vrai nom catalogue via rack_name_mapping
-      // (configurable dans Rotation Racks → ⚙️ Configurer → Faire correspondre les noms)
+      // (configurable dans Rotation Racks → ⚙️ Configurer → Faire correspondre les noms),
+      // et la quantité est convertie via le facteur "1 colis rack = X colis stock" si défini.
       const computeRackAggregates = (allWalls: any): Record<string, number> => {
         const agg: Record<string, number> = {};
         Object.values(allWalls || {}).forEach((wallPositions: any) => {
@@ -1055,8 +1056,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             const niveau = rowIdx + 1;
             if ((niveau === 2 || niveau === 3) && data?.produit) {
               const rawNom = String(data.produit).toLowerCase().trim();
-              const nom = rackNameMap[rawNom] || rawNom;
-              const qty = parseFloat(data.quantite) || 0;
+              const mapped = rackNameMap[rawNom];
+              const nom = mapped?.realName || rawNom;
+              const factor = mapped?.factor || 1;
+              const qty = (parseFloat(data.quantite) || 0) * factor;
               if (qty > 0) agg[nom] = (agg[nom] || 0) + qty;
             }
           });
@@ -1067,7 +1070,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       onValue(ref(mainRtdb, "rack_name_mapping"), snap => {
         const d = snap.val() || {};
         rackNameMap = {};
-        Object.values(d).forEach((m: any) => { if (m?.rackName && m?.realName) rackNameMap[String(m.rackName).toLowerCase().trim()] = String(m.realName).toLowerCase().trim(); });
+        Object.values(d).forEach((m: any) => {
+          if (m?.rackName && m?.realName) rackNameMap[String(m.rackName).toLowerCase().trim()] = { realName: String(m.realName).toLowerCase().trim(), factor: parseFloat(m.factor) || 1 };
+        });
         rackAggregates = computeRackAggregates(lastRackSnapshot); // recalcule avec la correspondance à jour
       });
 

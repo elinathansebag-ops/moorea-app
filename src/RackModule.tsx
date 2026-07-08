@@ -216,7 +216,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [arrivages, setArrivages] = useState<any[]>([]);
   const [catalogueArticles, setCatalogueArticles] = useState<any[]>([]);
   const [customPresets, setCustomPresets] = useState<Record<string, (Preset & { _key: string })[]>>({});
-  const [nameMappings, setNameMappings] = useState<Record<string, { rackName: string; realName: string }>>({});
+  const [nameMappings, setNameMappings] = useState<Record<string, { rackName: string; realName: string; factor?: number }>>({});
 
   const [showConfig, setShowConfig] = useState(false);
   const [cfgRows, setCfgRows] = useState(DEFAULT_ROWS);
@@ -437,10 +437,17 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   // ─── CORRESPONDANCE NOM RACK → VRAI NOM CATALOGUE ───
   const safeKey = (s: string) => s.toLowerCase().trim().replace(/[.#$/\[\]]/g, "_");
 
-  const saveNameMapping = async (rackName: string, realName: string) => {
+  const saveNameMapping = async (rackName: string, realName: string, factor?: number) => {
     if (!rackName.trim()) return;
     if (!realName.trim()) { await remove(ref(db, `rack_name_mapping/${safeKey(rackName)}`)); return; }
-    await update(ref(db, `rack_name_mapping/${safeKey(rackName)}`), { rackName: rackName.trim(), realName: realName.trim() });
+    const existing = nameMappings[safeKey(rackName)];
+    await update(ref(db, `rack_name_mapping/${safeKey(rackName)}`), { rackName: rackName.trim(), realName: realName.trim(), factor: factor ?? existing?.factor ?? 1 });
+  };
+
+  const saveMappingFactor = async (rackName: string, factor: number) => {
+    const existing = nameMappings[safeKey(rackName)];
+    if (!existing?.realName) return;
+    await update(ref(db, `rack_name_mapping/${safeKey(rackName)}`), { factor: Math.max(0.01, factor) });
   };
 
   // ─── ATTACHER UN ARTICLE DU CATALOGUE À PLUSIEURS NOMS RACK D'UN COUP ───
@@ -861,7 +868,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           {/* ── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ── */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>🔗 Faire correspondre les noms au catalogue</p>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Relie les noms utilisés dans le rack (tous murs) à leur vrai nom dans le catalogue — utilisé pour que le Stock reconnaisse automatiquement les articles vus en rack aux niveaux 2 et 3. Un même article peut être relié à plusieurs noms rack différents.</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Relie les noms utilisés dans le rack (tous murs) à leur vrai nom dans le catalogue — utilisé pour que le Stock reconnaisse automatiquement les articles vus en rack aux niveaux 2 et 3. Un même article peut être relié à plusieurs noms rack différents. Si la taille du colis diffère entre le rack et le stock (ex: colis de 12 en rack, de 6 en stock), règle le facteur de conversion sous chaque correspondance.</p>
 
             {/* Rattacher un article à plusieurs noms rack d'un coup */}
             <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 14, marginBottom: 18 }}>
@@ -902,6 +909,15 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                       suggestions={suggestionsProduits}
                       placeholder="→ vrai nom catalogue (optionnel)"
                     />
+                    {mapping?.realName && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                        <span style={{ fontSize: 11, color: "#6b7280" }}>1 colis rack =</span>
+                        <input type="number" min="0.01" step="0.5" value={mapping.factor ?? 1}
+                          onChange={e => saveMappingFactor(rackName, Number(e.target.value))}
+                          style={{ width: 60, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 12, textAlign: "center", fontWeight: 700 }} />
+                        <span style={{ fontSize: 11, color: "#6b7280" }}>colis stock</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
