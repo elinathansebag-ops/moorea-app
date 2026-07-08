@@ -8,7 +8,7 @@ import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID,
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
 import { RHApp } from "./RHApp";
-import { EtiquettesModule } from "./EtiquettesModule";
+// import { EtiquettesModule } from "./EtiquettesModule"; // TEMP: fichier manquant sur GitHub — désactivé pour débloquer le build
 import { QrCodeDashboard } from "./QrCodeDashboard";
 import { YukonApp } from "./YukonApp";
 import { RackModule } from "./RackModule";
@@ -1516,7 +1516,15 @@ _PDF joint_`;
   }
 
   if (showEtiquettes) {
-    return <EtiquettesModule onClose={() => { setShowEtiquettes(false); setShowAccueil(true); }} />;
+    // TEMP: EtiquettesModule.tsx manquant sur GitHub — à réintégrer dès qu'on le retrouve
+    return (
+      <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Syne', sans-serif" }}>
+        <p style={{ fontSize: 40, marginBottom: 12 }}>🏷️</p>
+        <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>Module Étiquettes temporairement indisponible</p>
+        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20, textAlign: "center", maxWidth: 360 }}>Le fichier source a été perdu — il doit être retrouvé et réintégré.</p>
+        <button onClick={() => { setShowEtiquettes(false); setShowAccueil(true); }} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, cursor: "pointer" }}>← Retour à l'accueil</button>
+      </div>
+    );
   }
 
   if (showRH) {
