@@ -45,20 +45,20 @@ type PalettePos = {
 };
 
 // ─── MODÈLES PRÉ-CONFIGURÉS PAR MUR (nom + code couleur d'étiquette) ───
-type Preset = { produit: string; color: string; colorLabel: string; designation: string; origine?: string; note?: string };
+type Preset = { produit: string; color: string; colorLabel: string; designation: string; origine?: string; note?: string; colisQty?: number };
 const WALL_PRESETS: Record<string, Preset[]> = {
   mur1: [
-    { produit: "Haricots Verts 500 GR", color: "#f59e0b", colorLabel: "Orange", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 400 GR (Sticker 2€)", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 250 GR", color: "#16a34a", colorLabel: "Green", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 250 GR Lidl", color: "#ec4899", colorLabel: "Rose", designation: "GREEN BEANS", origine: "Kenya" },
+    { produit: "Haricots Verts 500 GR", color: "#f59e0b", colorLabel: "Orange", designation: "GREEN BEANS", origine: "Kenya", colisQty: 8 },
+    { produit: "Haricots Verts 400 GR", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya", colisQty: 8 },
+    { produit: "Haricots Verts 350 GR", color: "#ffffff", colorLabel: "Blanc", designation: "GREEN BEANS", origine: "Kenya", colisQty: 8 },
+    { produit: "Haricots Verts 250 GR", color: "#16a34a", colorLabel: "Green", designation: "GREEN BEANS", origine: "Kenya", colisQty: 12 },
+    { produit: "Haricots Verts 250 GR Lidl", color: "#ec4899", colorLabel: "Rose", designation: "GREEN BEANS", origine: "Kenya", colisQty: 12 },
     { produit: "Haricots Verts 250 GR", color: "#78350f", colorLabel: "Marron", designation: "GREEN BEANS", origine: "Rwanda" },
     { produit: "Haricots Verts 500 GR", color: "#78350f", colorLabel: "Marron", designation: "GREEN BEANS", origine: "Rwanda" },
-    { produit: "Pois Gourmands / Mangetout 250 GR", color: "#7c3aed", colorLabel: "Purple", designation: "SNOW PEAS", origine: "Kenya" },
-    { produit: "Pois Gourmands / Mangetout 150 GR", color: "#2563eb", colorLabel: "Blue", designation: "SNOW PEAS", origine: "Kenya" },
-    { produit: "Pois Sucrés 250 GR", color: "#eab308", colorLabel: "Yellow", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya" },
-    { produit: "Pois Sucrés 150 GR", color: "#dc2626", colorLabel: "Red", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya" },
+    { produit: "Pois Gourmands / Mangetout 250 GR", color: "#7c3aed", colorLabel: "Purple", designation: "SNOW PEAS", origine: "Kenya", colisQty: 12 },
+    { produit: "Pois Gourmands / Mangetout 150 GR", color: "#2563eb", colorLabel: "Blue", designation: "SNOW PEAS", origine: "Kenya", colisQty: 12 },
+    { produit: "Pois Sucrés 250 GR", color: "#eab308", colorLabel: "Yellow", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya", colisQty: 12 },
+    { produit: "Pois Sucrés 150 GR", color: "#dc2626", colorLabel: "Red", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya", colisQty: 12 },
   ],
 };
 
@@ -343,6 +343,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [newPresetColorLabel, setNewPresetColorLabel] = useState("");
   const [newPresetOrigine, setNewPresetOrigine] = useState("");
   const [newPresetDesignation, setNewPresetDesignation] = useState("");
+  const [newPresetColisQty, setNewPresetColisQty] = useState("");
 
   // ─── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ───
   const [mappingSearch, setMappingSearch] = useState("");
@@ -401,6 +402,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       colorLabel: newPresetColorLabel.trim() || newPresetColor,
       designation: newPresetDesignation.trim(),
       origine: newPresetOrigine.trim() || undefined,
+      colisQty: newPresetColisQty.trim() ? Number(newPresetColisQty) : undefined,
     };
     if (editingPresetKey) {
       await update(ref(db, `rack_presets/${activeWall}/${editingPresetKey}`), preset);
@@ -408,7 +410,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     } else {
       await push(ref(db, `rack_presets/${activeWall}`), preset);
     }
-    setNewPresetNom(""); setNewPresetColor("#16a34a"); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation("");
+    setNewPresetNom(""); setNewPresetColor("#16a34a"); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation(""); setNewPresetColisQty("");
   };
 
   const startEditPreset = (p: Preset & { _key: string }) => {
@@ -418,11 +420,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setNewPresetColorLabel(p.colorLabel || "");
     setNewPresetOrigine(p.origine || "");
     setNewPresetDesignation(p.designation || "");
+    setNewPresetColisQty(p.colisQty ? String(p.colisQty) : "");
   };
 
   const cancelEditPreset = () => {
     setEditingPresetKey(null);
-    setNewPresetNom(""); setNewPresetColor("#16a34a"); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation("");
+    setNewPresetNom(""); setNewPresetColor("#16a34a"); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation(""); setNewPresetColisQty("");
   };
 
   const removeCustomPreset = async (wallId: string, key: string) => {
@@ -828,6 +831,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
             </div>
             <input value={newPresetDesignation} onChange={e => setNewPresetDesignation(e.target.value)} placeholder="Désignation (ex: GREEN BEANS) — optionnel"
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 8 }} />
+            <input type="number" min="1" value={newPresetColisQty} onChange={e => setNewPresetColisQty(e.target.value)} placeholder="Quantité par colis (ex: 12) — optionnel"
               style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               {editingPresetKey && (
@@ -844,7 +849,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 {(customPresets[activeWall] || []).map(p => (
                   <div key={p._key} style={{ display: "flex", alignItems: "center", gap: 8, background: editingPresetKey === p._key ? "#ede9fe" : "#f5f3ff", border: `1px solid ${editingPresetKey === p._key ? "#a78bfa" : "#ddd6fe"}`, borderRadius: 8, padding: "6px 10px" }}>
                     <div style={{ width: 16, height: 16, borderRadius: 4, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                    <span style={{ fontSize: 11, color: "#6d28d9", flex: 1 }}>{p.produit}{p.origine ? ` · 🌍 ${p.origine}` : ""}</span>
+                    <span style={{ fontSize: 11, color: "#6d28d9", flex: 1 }}>{p.produit}{p.origine ? ` · 🌍 ${p.origine}` : ""}{p.colisQty ? ` · ×${p.colisQty}/colis` : ""}</span>
                     <button onClick={() => startEditPreset(p)} style={{ background: "none", border: "none", color: "#6d28d9", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️</button>
                     <button onClick={() => removeCustomPreset(activeWall, p._key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
                   </div>
@@ -1097,7 +1102,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                           <div style={{ width: 20, height: 20, borderRadius: 5, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
                           <div style={{ flex: 1 }}>
                             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a" }}>{p.produit}</p>
-                            <p style={{ margin: "1px 0 0", fontSize: 11, color: "#9ca3af" }}>{p.colorLabel} · {p.designation}{p.note ? ` · ${p.note}` : ""}</p>
+                            <p style={{ margin: "1px 0 0", fontSize: 11, color: "#9ca3af" }}>{p.colorLabel} · {p.designation}{p.colisQty ? ` · ×${p.colisQty}/colis` : ""}{p.note ? ` · ${p.note}` : ""}</p>
                           </div>
                         </button>
                       ))}
