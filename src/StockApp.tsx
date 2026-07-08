@@ -617,6 +617,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
 
 export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const mainRtdb = db; // DB principale (moorea-qualite) — c'est là que vivent les racks (rack_positions)
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1033,10 +1034,42 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let histoCache: any[] = [];
       let _byArticle: any = null;
       let calcLastFocused: any = null;
+      let rackAggregates: Record<string, number> = {}; // article (lowercase, résolu) -> qté totale en rack aux niveaux 2 et 3
+      let rackNameMap: Record<string, string> = {}; // nom rack (lowercase) -> vrai nom catalogue (lowercase)
+      let lastRackSnapshot: any = null; // recalculé si la correspondance change après coup
 
       // Init _byArticle depuis STOCK_CONFIG_ARTICLES (source unique, plus de duplication)
       _byArticle = {};
       STOCK_CONFIG_ARTICLES.forEach(s => { _byArticle[s.article.toLowerCase().trim()] = s.equipe; });
+
+      // ── Auto-comptage depuis les racks (Niveaux 2 et 3 — difficiles d'accès) ──
+      // Le rack stocke les positions sous rack_positions/{mur}/{niveau0}_{section}_{place}
+      // niveau0 est indexé à partir de 0 → Niveau 2 = index 1, Niveau 3 = index 2
+      // Les noms du rack sont résolus vers leur vrai nom catalogue via rack_name_mapping
+      // (configurable dans Rotation Racks → ⚙️ Configurer → Faire correspondre les noms)
+      const computeRackAggregates = (allWalls: any): Record<string, number> => {
+        const agg: Record<string, number> = {};
+        Object.values(allWalls || {}).forEach((wallPositions: any) => {
+          Object.entries(wallPositions || {}).forEach(([key, data]: any) => {
+            const rowIdx = parseInt(String(key).split("_")[0]);
+            const niveau = rowIdx + 1;
+            if ((niveau === 2 || niveau === 3) && data?.produit) {
+              const rawNom = String(data.produit).toLowerCase().trim();
+              const nom = rackNameMap[rawNom] || rawNom;
+              const qty = parseFloat(data.quantite) || 0;
+              if (qty > 0) agg[nom] = (agg[nom] || 0) + qty;
+            }
+          });
+        });
+        return agg;
+      };
+      onValue(ref(mainRtdb, "rack_positions"), snap => { lastRackSnapshot = snap.val(); rackAggregates = computeRackAggregates(lastRackSnapshot); });
+      onValue(ref(mainRtdb, "rack_name_mapping"), snap => {
+        const d = snap.val() || {};
+        rackNameMap = {};
+        Object.values(d).forEach((m: any) => { if (m?.rackName && m?.realName) rackNameMap[String(m.rackName).toLowerCase().trim()] = String(m.realName).toLowerCase().trim(); });
+        rackAggregates = computeRackAggregates(lastRackSnapshot); // recalcule avec la correspondance à jour
+      });
 
       // Sync status
       const setSyncStatus = (s: string, l: string) => {
@@ -1286,7 +1319,22 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (sid) sid.textContent = "📋 Session : " + currentSessionId;
         document.getElementById("s-nav-comptage")?.classList.remove("hidden");
         document.getElementById("s-nav-ecarts")?.classList.add("hidden");
-        loadComptages(team).then(async () => { await loadOrdreOptimise(); updateMetricsC(); sRenderTable(); setTimeout(setupTableDelegation, 100); });
+        loadComptages(team).then(async () => {
+          await loadOrdreOptimise();
+          // Auto-comptage : articles présents en rack aux niveaux 2/3 et pas encore comptés manuellement
+          articles.forEach(a => {
+            if (a.compte1 === null || a.compte1 === undefined) {
+              const rackQty = rackAggregates[a.article?.toLowerCase().trim()];
+              if (rackQty) {
+                a.compte1 = rackQty;
+                a._autoRack = true;
+                let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0;
+                a.compte = t;
+              }
+            }
+          });
+          updateMetricsC(); sRenderTable(); setTimeout(setupTableDelegation, 100);
+        });
         const srchEl = document.getElementById("s-srch");
         if (srchEl) {
           (srchEl as HTMLInputElement).value = "";
@@ -1416,12 +1464,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const a = articles.find(x => x.id === id); if (!a) return;
         const v = val === "" ? null : Math.max(0, parseFloat(val) || 0);
         if (loc <= 8) a["compte" + loc] = v; else a.detruire = v;
+        if (loc === 1 && a._autoRack) delete a._autoRack; // touché manuellement → n'est plus "auto"
         if (!a._saisieTs && v !== null) a._saisieTs = Date.now();
         const hasCount = a.compte1 !== null && a.compte1 !== undefined;
         if (hasCount) { let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0; a.compte = t; } else a.compte = null;
         updateMetricsC();
         const row = document.querySelector(`tr[data-id="${id}"]`);
         if (row) {
+          const autoBadge = row.querySelector(".s-auto-rack-badge");
+          if (autoBadge && loc === 1) (autoBadge as HTMLElement).style.display = "none";
           const totCell = row.querySelector(".s-tot-cell");
           const ecartCell = row.querySelector(".s-ecart-cell");
           if (totCell) {
@@ -1505,7 +1556,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           let artLabel = a.article;
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
           html += `<tr data-id="${a.id}">
-            <td style="font-weight:500">${artLabel}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}<br>${moveBtn}</td>
+            <td style="font-weight:500">${artLabel}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}${a._autoRack ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 Auto — vu en rack N2/N3</span>` : ""}<br>${moveBtn}</td>
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
             <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>

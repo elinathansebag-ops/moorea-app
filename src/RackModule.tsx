@@ -163,6 +163,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [positions, setPositions] = useState<Record<string, PalettePos>>({});
   const [arrivages, setArrivages] = useState<any[]>([]);
   const [catalogueArticles, setCatalogueArticles] = useState<any[]>([]);
+  const [customPresets, setCustomPresets] = useState<Record<string, (Preset & { _key: string })[]>>({});
+  const [nameMappings, setNameMappings] = useState<Record<string, { rackName: string; realName: string }>>({});
 
   const [showConfig, setShowConfig] = useState(false);
   const [cfgRows, setCfgRows] = useState(DEFAULT_ROWS);
@@ -227,7 +229,34 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     return () => u();
   }, []);
 
+  // ─── FIREBASE: modèles personnalisés créés par l'utilisateur (par mur) ───
+  useEffect(() => {
+    const u = onValue(ref(db, "rack_presets"), snap => {
+      const d = snap.val() || {};
+      const out: Record<string, (Preset & { _key: string })[]> = {};
+      Object.entries(d).forEach(([wallId, presets]: any) => {
+        out[wallId] = Object.entries(presets || {}).map(([key, p]: any) => ({ ...p, _key: key }));
+      });
+      setCustomPresets(out);
+    });
+    return () => u();
+  }, []);
+
+  // ─── FIREBASE: correspondance nom rack → vrai nom catalogue ───
+  useEffect(() => {
+    const u = onValue(ref(db, "rack_name_mapping"), snap => {
+      setNameMappings(snap.val() || {});
+    });
+    return () => u();
+  }, []);
+
   const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)], echelleEvery: DEFAULT_ECHELLE };
+
+  // ─── MODÈLES D'UN MUR = codés en dur + créés par l'utilisateur ───
+  const getPresetsForWall = (wallId: string): Preset[] => [
+    ...(WALL_PRESETS[wallId] || []),
+    ...(customPresets[wallId] || []),
+  ];
 
   // ─── DÉTECTION DU CONTENU MASQUÉ (scroll horizontal du rack) ───
   useEffect(() => {
@@ -255,6 +284,16 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [cfgBayNiveau, setCfgBayNiveau] = useState(1);
   const [cfgBayIndex, setCfgBayIndex] = useState(0);
   const [cfgBayCount, setCfgBayCount] = useState(1);
+
+  // ─── CRÉATION D'UN NOUVEAU MODÈLE (nom + couleur) ───
+  const [newPresetNom, setNewPresetNom] = useState("");
+  const [newPresetColor, setNewPresetColor] = useState("#16a34a");
+  const [newPresetColorLabel, setNewPresetColorLabel] = useState("");
+  const [newPresetOrigine, setNewPresetOrigine] = useState("");
+  const [newPresetDesignation, setNewPresetDesignation] = useState("");
+
+  // ─── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ───
+  const [mappingSearch, setMappingSearch] = useState("");
 
   // ─── CONFIG MUR ───
   const openConfig = () => {
@@ -288,6 +327,34 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     const slots: Record<string, number> = { ...(cfg.baySlots || {}) };
     delete slots[key];
     await update(ref(db, `rack_config/${activeWall}`), { baySlots: slots });
+  };
+
+  // ─── CRÉER UN NOUVEAU MODÈLE (nom + couleur) POUR LE MUR ACTIF ───
+  const addNewPreset = async () => {
+    if (!newPresetNom.trim()) { alert("Le nom du modèle est requis"); return; }
+    const preset: Preset = {
+      produit: newPresetNom.trim(),
+      color: newPresetColor,
+      colorLabel: newPresetColorLabel.trim() || newPresetColor,
+      designation: newPresetDesignation.trim(),
+      origine: newPresetOrigine.trim() || undefined,
+    };
+    await push(ref(db, `rack_presets/${activeWall}`), preset);
+    setNewPresetNom(""); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation("");
+  };
+
+  const removeCustomPreset = async (wallId: string, key: string) => {
+    if (!window.confirm("Supprimer ce modèle ?")) return;
+    await remove(ref(db, `rack_presets/${wallId}/${key}`));
+  };
+
+  // ─── CORRESPONDANCE NOM RACK → VRAI NOM CATALOGUE ───
+  const safeKey = (s: string) => s.toLowerCase().trim().replace(/[.#$/\[\]]/g, "_");
+
+  const saveNameMapping = async (rackName: string, realName: string) => {
+    if (!rackName.trim()) return;
+    if (!realName.trim()) { await remove(ref(db, `rack_name_mapping/${safeKey(rackName)}`)); return; }
+    await update(ref(db, `rack_name_mapping/${safeKey(rackName)}`), { rackName: rackName.trim(), realName: realName.trim() });
   };
 
   // ─── CLIC SUR UNE CASE ───
@@ -328,7 +395,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setIsEditing(false);
     if (!occupied) {
       setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
-      setAddMode(WALL_PRESETS[activeWall] ? "modele" : "libre");
+      setAddMode(getPresetsForWall(activeWall).length > 0 ? "modele" : "libre");
       setPresetLocked(false);
     }
   };
@@ -533,6 +600,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const nbTotal = Array.from({ length: cfg.rows }, (_, row) => row).reduce(
     (sum, row) => sum + bays.reduce((s, bay, i) => s + (cfg.baySlots?.[`${row}_${i}`] || bay.width), 0), 0
   );
+
+  // ─── LISTE DE TOUS LES NOMS UTILISÉS EN RACK (tous murs, modèles codés + persos) ───
+  const allRackNames = [...new Set(
+    WALL_IDS.flatMap(w => getPresetsForWall(w).map(p => p.produit)).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, "fr"));
+  const filteredMappingNames = mappingSearch.trim()
+    ? allRackNames.filter(n => n.toLowerCase().includes(mappingSearch.toLowerCase()))
+    : allRackNames;
 
   const selectedData = selectedCell ? positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)] : null;
   const selectedBayInfo = selectedCell ? bays[selectedCell.bay] : null;
@@ -770,6 +845,65 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               )}
             </div>
 
+            {/* ── CRÉER UN NOUVEAU MODÈLE (nom + couleur) ── */}
+            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 14, marginBottom: 14 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "#6d28d9", display: "block", marginBottom: 3 }}>🎨 CRÉER UN NOUVEAU MODÈLE POUR CE MUR</label>
+              <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 10px" }}>Ajoute un modèle (nom + couleur) qui apparaîtra dans l'onglet "🎨 Modèles" de ce mur, comme ceux déjà prévus.</p>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input value={newPresetNom} onChange={e => setNewPresetNom(e.target.value)} placeholder="Nom du produit *"
+                  style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                <input type="color" value={newPresetColor} onChange={e => setNewPresetColor(e.target.value)}
+                  style={{ width: 40, height: 34, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer" }} />
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input value={newPresetColorLabel} onChange={e => setNewPresetColorLabel(e.target.value)} placeholder="Nom couleur (ex: Orange)"
+                  style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                <input value={newPresetOrigine} onChange={e => setNewPresetOrigine(e.target.value)} placeholder="🌍 Origine"
+                  style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+              </div>
+              <input value={newPresetDesignation} onChange={e => setNewPresetDesignation(e.target.value)} placeholder="Désignation (ex: GREEN BEANS) — optionnel"
+                style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
+              <button onClick={addNewPreset} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
+                + Ajouter ce modèle
+              </button>
+              {(customPresets[activeWall] || []).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  {(customPresets[activeWall] || []).map(p => (
+                    <div key={p._key} style={{ display: "flex", alignItems: "center", gap: 8, background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px" }}>
+                      <div style={{ width: 16, height: 16, borderRadius: 4, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, color: "#6d28d9", flex: 1 }}>{p.produit}{p.origine ? ` · 🌍 ${p.origine}` : ""}</span>
+                      <button onClick={() => removeCustomPreset(activeWall, p._key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ── */}
+            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 14, marginBottom: 14 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "#6d28d9", display: "block", marginBottom: 3 }}>🔗 FAIRE CORRESPONDRE LES NOMS AU CATALOGUE</label>
+              <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 10px" }}>Relie chaque nom utilisé dans le rack (tous murs) à son vrai nom dans le catalogue — utilisé pour que le Stock reconnaisse automatiquement les articles vus en rack aux niveaux 2 et 3.</p>
+              <input value={mappingSearch} onChange={e => setMappingSearch(e.target.value)} placeholder="🔍 Filtrer les noms du rack..."
+                style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+                {filteredMappingNames.length === 0 && <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "center", padding: "10px 0" }}>Aucun nom trouvé</p>}
+                {filteredMappingNames.map(rackName => {
+                  const mapping = nameMappings[safeKey(rackName)];
+                  return (
+                    <div key={rackName} style={{ background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}>
+                      <p style={{ margin: "0 0 5px", fontSize: 12, fontWeight: 700, color: "#1a2e1a" }}>{rackName}</p>
+                      <AutocompleteInput
+                        value={mapping?.realName || ""}
+                        onChange={v => saveNameMapping(rackName, v)}
+                        suggestions={suggestionsProduits}
+                        placeholder="→ vrai nom catalogue (optionnel)"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 16 }}>⚠️ Réduire les dimensions ne supprime pas les palettes déjà placées hors de la nouvelle grille — pense à les déplacer avant.</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowConfig(false)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>Annuler</button>
@@ -790,7 +924,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             <p style={{ margin: "0 0 16px", fontSize: 12, color: "#9ca3af" }}>{cfg.label} · Niveau {selectedCell.row + 1} · Section {selectedCell.bay + 1} · Place {selectedCell.slot + 1}/{selectedBaySlotCount}</p>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {WALL_PRESETS[activeWall] && (
+              {getPresetsForWall(activeWall).length > 0 && (
                 <button onClick={() => setAddMode("modele")}
                   style={{ flex: 1, padding: "9px", borderRadius: 10, border: `2px solid ${addMode === "modele" ? "#8b5cf6" : "#e5e7eb"}`, background: addMode === "modele" ? "#f5f3ff" : "#fff", color: addMode === "modele" ? "#6d28d9" : "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                   🎨 Modèles
@@ -802,9 +936,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
-            {addMode === "modele" && WALL_PRESETS[activeWall] && (
+            {addMode === "modele" && getPresetsForWall(activeWall).length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 4 }}>
-                {groupPresetsByOrigine(WALL_PRESETS[activeWall]).map(group => (
+                {groupPresetsByOrigine(getPresetsForWall(activeWall)).map(group => (
                   <div key={group.origine}>
                     <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: ".4px", display: "flex", alignItems: "center", gap: 5 }}>
                       {originFlag(group.origine)} {group.origine} <span style={{ color: "#c4b5fd", fontWeight: 600 }}>({group.items.length})</span>
