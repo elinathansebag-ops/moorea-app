@@ -346,6 +346,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   // ─── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ───
   const [mappingSearch, setMappingSearch] = useState("");
+  const [bulkRealArticle, setBulkRealArticle] = useState("");
 
   // ─── CONFIG MUR ───
   const openConfig = () => {
@@ -416,6 +417,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     if (!rackName.trim()) return;
     if (!realName.trim()) { await remove(ref(db, `rack_name_mapping/${safeKey(rackName)}`)); return; }
     await update(ref(db, `rack_name_mapping/${safeKey(rackName)}`), { rackName: rackName.trim(), realName: realName.trim() });
+  };
+
+  // ─── ATTACHER UN ARTICLE DU CATALOGUE À PLUSIEURS NOMS RACK D'UN COUP ───
+  const toggleRackNameForArticle = async (rackName: string, checked: boolean) => {
+    if (checked) await saveNameMapping(rackName, bulkRealArticle);
+    else await saveNameMapping(rackName, "");
   };
 
   // ─── CLIC SUR UNE CASE ───
@@ -820,7 +827,32 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           {/* ── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ── */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>🔗 Faire correspondre les noms au catalogue</p>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Relie chaque nom utilisé dans le rack (tous murs) à son vrai nom dans le catalogue — utilisé pour que le Stock reconnaisse automatiquement les articles vus en rack aux niveaux 2 et 3.</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Relie les noms utilisés dans le rack (tous murs) à leur vrai nom dans le catalogue — utilisé pour que le Stock reconnaisse automatiquement les articles vus en rack aux niveaux 2 et 3. Un même article peut être relié à plusieurs noms rack différents.</p>
+
+            {/* Rattacher un article à plusieurs noms rack d'un coup */}
+            <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 14, marginBottom: 18 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#7c3aed" }}>📎 Attacher un article à plusieurs noms rack</p>
+              <RackAutocomplete value={bulkRealArticle} onChange={setBulkRealArticle} suggestions={suggestionsProduits} placeholder="Choisir un article du catalogue..." />
+              {bulkRealArticle.trim() && (
+                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4, maxHeight: 260, overflowY: "auto" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 11, color: "#9ca3af" }}>Coche tous les noms rack qui correspondent à "{bulkRealArticle}" :</p>
+                  {allRackNames.map(rackName => {
+                    const mapping = nameMappings[safeKey(rackName)];
+                    const checked = mapping?.realName === bulkRealArticle;
+                    const linkedElsewhere = mapping && mapping.realName !== bulkRealArticle ? mapping.realName : null;
+                    return (
+                      <label key={rackName} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, background: checked ? "#f5f3ff" : "transparent", cursor: "pointer" }}>
+                        <input type="checkbox" checked={checked} onChange={e => toggleRackNameForArticle(rackName, e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, color: "#1a2e1a", flex: 1 }}>{rackName}</span>
+                        {linkedElsewhere && <span style={{ fontSize: 10, color: "#d97706", whiteSpace: "nowrap" }}>relié à : {linkedElsewhere}</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase" }}>Ou nom par nom</p>
             <input value={mappingSearch} onChange={e => setMappingSearch(e.target.value)} placeholder="🔍 Filtrer les noms du rack..."
               style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
