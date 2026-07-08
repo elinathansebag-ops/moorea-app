@@ -168,6 +168,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const [selectedCell, setSelectedCell] = useState<{ row: number; bay: number; slot: number } | null>(null);
   const [moving, setMoving] = useState<{ wallId: string; row: number; bay: number; slot: number; data: PalettePos } | null>(null);
+  const [duplicating, setDuplicating] = useState<PalettePos | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [dragActiveKey, setDragActiveKey] = useState<string | null>(null); // case source pendant le drag
   const [ghost, setGhost] = useState<{ x: number; y: number; produit: string } | null>(null);
@@ -295,6 +296,28 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       return;
     }
 
+    if (duplicating) {
+      if (occupied) { alert("Cet emplacement est déjà occupé — choisis une case vide."); return; }
+      setFreeForm({
+        produit: duplicating.produit || "",
+        type: duplicating.type || "produit",
+        extraItems: duplicating.extraItems || [],
+        fournisseur: duplicating.fournisseur || "",
+        lot_interne: duplicating.lot_interne || "",
+        quantite: duplicating.quantite || "",
+        unite: duplicating.unite || "colis",
+        dlc: duplicating.dlc || "",
+        color: duplicating.color || "",
+        origine: duplicating.origine || "",
+        notes: duplicating.notes || "",
+      });
+      setPresetLocked(false);
+      setAddMode("libre");
+      setSelectedCell({ row, bay, slot });
+      setDuplicating(null);
+      return;
+    }
+
     setSelectedCell({ row, bay, slot });
     if (!occupied) {
       setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
@@ -358,6 +381,15 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
     if (!data) return;
     setMoving({ wallId: activeWall, row: selectedCell.row, bay: selectedCell.bay, slot: selectedCell.slot, data });
+    setSelectedCell(null);
+  };
+
+  // ─── DUPLIQUER UNE PALETTE (pré-remplit le formulaire sur une case vide) ───
+  const startDuplicate = () => {
+    if (!selectedCell) return;
+    const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
+    if (!data) return;
+    setDuplicating(data);
     setSelectedCell(null);
   };
 
@@ -490,6 +522,17 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               📦 Déplacement de "{moving.data.produit}" — clique sur une case vide pour la déposer (n'importe quel mur)
             </p>
             <button onClick={cancelMove} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #92400e", background: "#fff", color: "#92400e", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+              Annuler
+            </button>
+          </div>
+        )}
+
+        {duplicating && (
+          <div style={{ background: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 12, padding: "10px 16px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#6d28d9" }}>
+              📋 Duplication de "{duplicating.produit}" — clique sur une case vide pour créer la copie (à modifier avant de valider)
+            </p>
+            <button onClick={() => setDuplicating(null)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #6d28d9", background: "#fff", color: "#6d28d9", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
               Annuler
             </button>
           </div>
@@ -900,6 +943,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             </div>
             <button onClick={startMove} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #c8a84b", background: "#faf8f0", color: "#8a6f2e", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
               ↔ Déplacer ailleurs (autre case ou mur)
+            </button>
+            <button onClick={startDuplicate} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #c4b5fd", background: "#faf5ff", color: "#7c3aed", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
+              📋 Dupliquer (et modifier)
             </button>
             <button onClick={handleRemove} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
               🗑 Sortir du rack
