@@ -1035,7 +1035,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let _byArticle: any = null;
       let calcLastFocused: any = null;
       let rackPalettesMap: Record<string, { qty: number; loc: string }[]> = {}; // article (lowercase, résolu) -> liste des palettes {quantité, emplacement}, vues aux niveaux 2 et 3
-      let rackAllPalettesMap: Record<string, { qty: number; loc: string; id: string }[]> = {}; // idem mais TOUS les niveaux, avec id unique — pour rattachement manuel
       let rackNameMap: Record<string, { realName: string; factor: number }> = {}; // nom rack (lowercase) -> {vrai nom catalogue, facteur colis rack→stock}
       let rackConfigCache: any = {}; // rack_config (labels des murs)
       let lastRackSnapshot: any = null; // recalculé si la correspondance change après coup
@@ -1080,31 +1079,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         return map;
       };
 
-      // Comme computeRackPalettes mais SANS filtrer par niveau — pour laisser le préparateur
-      // rattacher manuellement un comptage à N'IMPORTE QUELLE palette du rack (tous niveaux).
-      const computeRackAllPalettes = (allWalls: any): Record<string, { qty: number; loc: string; id: string }[]> => {
-        const map: Record<string, { qty: number; loc: string; id: string }[]> = {};
-        Object.entries(allWalls || {}).forEach(([wallId, wallPositions]: any) => {
-          Object.entries(wallPositions || {}).forEach(([key, data]: any) => {
-            const parts = String(key).split("_").map(Number);
-            const rowIdx = parts[0], bayIdx = parts[1], slotIdx = parts[2];
-            const niveau = rowIdx + 1;
-            if (data?.produit) {
-              const rawNom = String(data.produit).toLowerCase().trim();
-              const mapped = rackNameMap[rawNom];
-              const nom = mapped?.realName || rawNom;
-              const factor = mapped?.factor || 1;
-              const qty = (parseFloat(data.quantite) || 0) * factor;
-              const loc = buildRackLoc(wallId, bayIdx, slotIdx, niveau);
-              const id = wallId + "/" + key;
-              if (qty > 0) { if (!map[nom]) map[nom] = []; map[nom].push({ qty, loc, id }); }
-            }
-          });
-        });
-        return map;
-      };
-      onValue(ref(mainRtdb, "rack_positions"), snap => { lastRackSnapshot = snap.val(); rackPalettesMap = computeRackPalettes(lastRackSnapshot); rackAllPalettesMap = computeRackAllPalettes(lastRackSnapshot); });
-      onValue(ref(mainRtdb, "rack_config"), snap => { rackConfigCache = snap.val() || {}; rackPalettesMap = computeRackPalettes(lastRackSnapshot); rackAllPalettesMap = computeRackAllPalettes(lastRackSnapshot); });
+
+      onValue(ref(mainRtdb, "rack_positions"), snap => { lastRackSnapshot = snap.val(); rackPalettesMap = computeRackPalettes(lastRackSnapshot); });
+      onValue(ref(mainRtdb, "rack_config"), snap => { rackConfigCache = snap.val() || {}; rackPalettesMap = computeRackPalettes(lastRackSnapshot); });
       onValue(ref(mainRtdb, "rack_name_mapping"), snap => {
         const d = snap.val() || {};
         rackNameMap = {};
@@ -1112,7 +1089,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           if (m?.rackName && m?.realName) rackNameMap[String(m.rackName).toLowerCase().trim()] = { realName: String(m.realName).toLowerCase().trim(), factor: parseFloat(m.factor) || 1 };
         });
         rackPalettesMap = computeRackPalettes(lastRackSnapshot); // recalcule avec la correspondance à jour
-        rackAllPalettesMap = computeRackAllPalettes(lastRackSnapshot);
       });
 
       // Sync status
@@ -1549,51 +1525,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (nextLoc <= 8) (window as any).sAddLoc(id, nextLoc);
       };
 
-      // ── LIER UN COMPTAGE À UNE PALETTE PRÉCISE DU RACK ("tiens, 10 colis = cette palette") ──
-      (window as any).sOpenRackPicker = (id: number) => {
-        const a = articles.find(x => x.id === id); if (!a) return;
-        const all = rackAllPalettesMap[a.article?.toLowerCase().trim()] || [];
-        const options = all.filter((p: any) => !(a._usedRackIds || []).includes(p.id));
-        (window as any)._rackPickerOptions = options;
-        const existing = document.getElementById("s-rack-picker-popup");
-        if (existing) existing.remove();
-        const popup = document.createElement("div");
-        popup.id = "s-rack-picker-popup";
-        popup.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
-        const rows = options.length
-          ? options.map((p: any, i: number) => `<button onclick="sConfirmRackPick(${id},${i})" style="width:100%;text-align:left;padding:10px 14px;border:1.5px solid #ddd6fe;background:#faf5ff;border-radius:10px;margin-bottom:8px;cursor:pointer;font-family:inherit;font-size:13px;color:#1a2e1a"><strong>${p.qty}</strong> colis — ${p.loc}</button>`).join("")
-          : `<p style="font-size:13px;color:#9ca3af;text-align:center;padding:14px 0">Aucune palette disponible en rack pour cet article.</p>`;
-        popup.innerHTML = `<div style="background:#fff;border-radius:16px;padding:20px;max-width:420px;width:100%;max-height:80vh;overflow-y:auto">
-          <h3 style="margin:0 0 4px;font-size:15px;font-weight:800;font-family:inherit">📦 Lier à une palette du rack</h3>
-          <p style="margin:0 0 14px;font-size:12px;color:#6b7280">${a.article}</p>
-          ${rows}
-          <button onclick="document.getElementById('s-rack-picker-popup').remove()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #e5e7eb;background:#f9fafb;color:#6b7280;cursor:pointer;font-family:inherit;font-size:13px;margin-top:4px">Annuler</button>
-        </div>`;
-        popup.addEventListener("click", e => { if (e.target === popup) popup.remove(); });
-        document.body.appendChild(popup);
-      };
-
-      (window as any).sConfirmRackPick = (id: number, idx: number) => {
-        const a = articles.find(x => x.id === id); if (!a) return;
-        const options = (window as any)._rackPickerOptions || [];
-        const picked = options[idx]; if (!picked) return;
-        let nextLoc = 1;
-        for (let i = 1; i <= 8; i++) { if (a["compte" + i] !== null && a["compte" + i] !== undefined) nextLoc = i + 1; }
-        if (nextLoc > 8) { toast("Toutes les cases sont déjà remplies (max 8)"); document.getElementById("s-rack-picker-popup")?.remove(); return; }
-        a["compte" + nextLoc] = picked.qty;
-        if (!a._autoRackSlots) a._autoRackSlots = [];
-        if (!a._autoRackLocs) a._autoRackLocs = [];
-        a._autoRackSlots[nextLoc - 1] = true;
-        a._autoRackLocs[nextLoc - 1] = picked.loc;
-        if (!a._usedRackIds) a._usedRackIds = [];
-        a._usedRackIds.push(picked.id);
-        let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0;
-        a.compte = t;
-        document.getElementById("s-rack-picker-popup")?.remove();
-        updateMetricsC(); sRenderTable();
-        clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 500);
-        toast("📦 Palette liée : " + picked.qty + " colis");
-      };
 
       (window as any).sAddLoc = (id: number, loc: number) => {
         const a = articles.find(x => x.id === id); if (!a) return;
@@ -1647,7 +1578,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           let lastFilled = 1;
           locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" data-loc="${i + 1}" type="number" min="0" inputmode="decimal" value="${v > 0 ? v : ""}"${a._autoRackSlots?.[i] ? ` style="${autoStyle}"${locTitle(i)}` : ""} oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
           if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" onclick="sAddNextLoc(${a.id})">+</button>`;
-          if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" onclick="sOpenRackPicker(${a.id})" title="Lier à une palette précise du rack" style="border-color:#8b5cf6;color:#8b5cf6">📦</button>`;
           const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
           const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
@@ -2327,7 +2257,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sOpenRackPicker","sConfirmRackPick","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
