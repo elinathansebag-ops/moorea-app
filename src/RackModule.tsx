@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader, AutocompleteInput } from "./shared";
+import { PageHeader } from "./shared";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MODULE ROTATION RACKS — gère 4 murs de rack, chacun avec ses propres
@@ -61,6 +61,58 @@ const WALL_PRESETS: Record<string, Preset[]> = {
     { produit: "Pois Sucrés 150 GR", color: "#dc2626", colorLabel: "Red", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya" },
   ],
 };
+
+// ─── RECHERCHE PONDÉRÉE : priorise "commence par" avant "contient quelque part" ───
+function searchRanked(query: string, list: string[], max = 50): string[] {
+  const q = query.trim().toLowerCase();
+  if (q.length < 1) return [];
+  const words = q.split(/\s+/).filter(w => w.length > 0);
+  const scored = list
+    .map(item => {
+      const n = item.toLowerCase();
+      if (!words.every(w => n.includes(w))) return null;
+      let score = 0;
+      if (n.startsWith(q)) score = 5;
+      else if (n.split(/\s+/).some(word => word.startsWith(q))) score = 4;
+      else if (n.includes(" " + q)) score = 3;
+      else if (n.includes(q)) score = 2;
+      else score = 1;
+      return { item, score };
+    })
+    .filter((x): x is { item: string; score: number } => x !== null)
+    .sort((a, b) => b.score - a.score || a.item.length - b.item.length);
+  return scored.slice(0, max).map(x => x.item);
+}
+
+// ─── AUTOCOMPLETE LOCAL (remplace l'ancien composant partagé mal trié) ───
+function RackAutocomplete({ value, onChange, suggestions, placeholder, required }: { value: string; onChange: (v: string) => void; suggestions: string[]; placeholder?: string; required?: boolean }) {
+  const [show, setShow] = useState(false);
+  const [q, setQ] = useState(value);
+  useEffect(() => { setQ(value); }, [value]);
+  const filtered = searchRanked(q, suggestions, 50);
+  return (
+    <div style={{ position: "relative" }}>
+      <input value={q} placeholder={placeholder} required={required}
+        onChange={e => { setQ(e.target.value); onChange(e.target.value); setShow(true); }}
+        onFocus={() => q.trim().length > 0 && setShow(true)}
+        onBlur={() => setTimeout(() => setShow(false), 150)}
+        autoComplete="off"
+        style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, outline: "none", fontFamily: "'Syne', sans-serif" }} />
+      {show && filtered.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.12)", zIndex: 3000, maxHeight: 260, overflowY: "auto", marginTop: 3 }}>
+          {filtered.map((a, i) => (
+            <div key={i} onMouseDown={() => { onChange(a); setQ(a); setShow(false); }}
+              style={{ padding: "9px 14px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f5f3ee" }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f5f3ee"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#fff"}>
+              {a}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── DRAPEAU PAR ORIGINE (repère visuel rapide) ───
 function originFlag(origine?: string): string {
@@ -299,6 +351,15 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const openConfig = () => {
     setCfgRows(cfg.rows); setCfgCols(cfg.cols); setCfgLabel(cfg.label); setCfgEchelle(cfg.echelleEvery ?? DEFAULT_ECHELLE);
     setShowConfig(true);
+  };
+
+  // Changer de mur depuis la page de configuration (sans revenir en arrière)
+  const switchConfigWall = (id: string) => {
+    setActiveWall(id);
+    const c = configs[id] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: WALL_DEFAULT_LABELS[WALL_IDS.indexOf(id)], echelleEvery: DEFAULT_ECHELLE };
+    setCfgRows(c.rows); setCfgCols(c.cols); setCfgLabel(c.label); setCfgEchelle(c.echelleEvery ?? DEFAULT_ECHELLE);
+    const newBays = getBays(c);
+    setCfgBayIndex(0); setCfgBayNiveau(1); setCfgBayCount(newBays[0]?.width || 1);
   };
 
   const saveConfig = async () => {
@@ -620,6 +681,175 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const suggestionsProduits = [...new Set(catalogueArticles.map((a: any) => a.libelle).filter(Boolean))];
   const suggestionsFournisseurs = [...new Set(arrivages.map((a: any) => a.fournisseur).filter(Boolean))];
 
+  // ═══════════════════════════════════════════════════════════════
+  // PAGE DÉDIÉE : GESTION DU MODULE (dimensions, sections, modèles, correspondances)
+  // ═══════════════════════════════════════════════════════════════
+  if (showConfig) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+        <PageHeader titre="⚙️ Gestion des racks" couleur="#8b5cf6" onBack={() => setShowConfig(false)} onHome={() => setShowConfig(false)} />
+        <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 80px" }}>
+
+          {/* NAVIGATION ENTRE MURS */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+            {WALL_IDS.map((id, i) => {
+              const c = configs[id] || { label: WALL_DEFAULT_LABELS[i] };
+              return (
+                <button key={id} onClick={() => switchConfigWall(id)}
+                  style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${activeWall === id ? "#8b5cf6" : "#e5e7eb"}`, background: activeWall === id ? "#f5f3ff" : "#fff", fontWeight: 700, fontSize: 12, color: activeWall === id ? "#6d28d9" : "#6b7280", cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                  {c.label || WALL_DEFAULT_LABELS[i]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── DIMENSIONS DU MUR ACTIF ── */}
+          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 14px" }}>📐 Dimensions — {cfg.label}</p>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>NOM DU MUR</label>
+            <input value={cfgLabel} onChange={e => setCfgLabel(e.target.value)} placeholder={WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)]}
+              style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, marginBottom: 14, boxSizing: "border-box" as const, fontFamily: "'Syne', sans-serif" }} />
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>NIVEAUX (hauteur)</label>
+                <input type="number" min="1" value={cfgRows} onChange={e => setCfgRows(Number(e.target.value))}
+                  style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>EMPLACEMENTS (largeur)</label>
+                <input type="number" min="1" value={cfgCols} onChange={e => setCfgCols(Number(e.target.value))}
+                  style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const }} />
+              </div>
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>ÉCHELLE (séparation) TOUTES LES ... PLACES</label>
+            <input type="number" min="0" value={cfgEchelle} onChange={e => setCfgEchelle(Number(e.target.value))} placeholder="Ex: 4 — 0 pour désactiver"
+              style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const, marginBottom: 4 }} />
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 12px" }}>Ajoute un montant de séparation visuel tous les X emplacements, pour repérer où un rack s'arrête et où le suivant commence.</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>⚠️ Réduire les dimensions ne supprime pas les palettes déjà placées hors de la nouvelle grille — pense à les déplacer avant.</p>
+            <button onClick={saveConfig} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#8b5cf6", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>
+              Enregistrer les dimensions
+            </button>
+          </div>
+
+          {/* ── NOMBRE DE PALETTES PAR SECTION ── */}
+          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>🔀 Nombre de palettes par section — {cfg.label}</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Chaque section (entre deux échelles, ou le mur entier si pas d'échelle) garde toujours la même taille physique — tu choisis juste combien de palettes y rentrent, niveau par niveau : 1 (très grande), 2, 3...</p>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Niveau</label>
+                <input type="number" min={1} max={cfg.rows} value={cfgBayNiveau} onChange={e => setCfgBayNiveau(Number(e.target.value))}
+                  style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, boxSizing: "border-box" as const }} />
+              </div>
+              <div style={{ flex: 2 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Section (entre échelles)</label>
+                <select value={cfgBayIndex} onChange={e => { const i = Number(e.target.value); setCfgBayIndex(i); const b = getBays(cfg)[i]; if (b) setCfgBayCount(b.width); }}
+                  style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
+                  {getBays(cfg).map((b, i) => (
+                    <option key={i} value={i}>Section {i + 1} (emplacements {b.start + 1} à {b.start + b.width})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", flex: 1 }}>Nombre de palettes dans cette section, à ce niveau</label>
+              <select value={cfgBayCount} onChange={e => setCfgBayCount(Number(e.target.value))}
+                style={{ padding: "6px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, fontWeight: 700 }}>
+                {Array.from({ length: Math.max(getBays(cfg)[cfgBayIndex]?.width || 1, 4) }, (_, i) => i + 1).map(n => (
+                  <option key={n} value={n}>{n}{n === (getBays(cfg)[cfgBayIndex]?.width || 1) ? " (normal)" : ""}</option>
+                ))}
+              </select>
+            </div>
+
+            <button onClick={applyBayRule} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
+              Appliquer à Niveau {cfgBayNiveau} · Section {cfgBayIndex + 1}
+            </button>
+
+            {Object.keys(cfg.baySlots || {}).length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {Object.entries(cfg.baySlots || {}).map(([key, n]) => {
+                  const [r, b] = key.split("_").map(Number);
+                  const bayInfo = getBays(cfg)[b];
+                  return (
+                    <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px" }}>
+                      <span style={{ fontSize: 11, color: "#6d28d9" }}>🔀 Niveau {r + 1} · Section {b + 1}{bayInfo ? ` (emp. ${bayInfo.start + 1}-${bayInfo.start + bayInfo.width})` : ""} → {n} palette{n > 1 ? "s" : ""}</span>
+                      <button onClick={() => removeBayRule(key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── CRÉER UN NOUVEAU MODÈLE (nom + couleur) ── */}
+          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>🎨 Créer un nouveau modèle — {cfg.label}</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Ajoute un modèle (nom + couleur) qui apparaîtra dans l'onglet "🎨 Modèles" de ce mur, comme ceux déjà prévus.</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input value={newPresetNom} onChange={e => setNewPresetNom(e.target.value)} placeholder="Nom du produit *"
+                style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+              <input type="color" value={newPresetColor} onChange={e => setNewPresetColor(e.target.value)}
+                style={{ width: 40, height: 34, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer" }} />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input value={newPresetColorLabel} onChange={e => setNewPresetColorLabel(e.target.value)} placeholder="Nom couleur (ex: Orange)"
+                style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+              <input value={newPresetOrigine} onChange={e => setNewPresetOrigine(e.target.value)} placeholder="🌍 Origine"
+                style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+            </div>
+            <input value={newPresetDesignation} onChange={e => setNewPresetDesignation(e.target.value)} placeholder="Désignation (ex: GREEN BEANS) — optionnel"
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
+            <button onClick={addNewPreset} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
+              + Ajouter ce modèle
+            </button>
+            {(customPresets[activeWall] || []).length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {(customPresets[activeWall] || []).map(p => (
+                  <div key={p._key} style={{ display: "flex", alignItems: "center", gap: 8, background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px" }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 4, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, color: "#6d28d9", flex: 1 }}>{p.produit}{p.origine ? ` · 🌍 ${p.origine}` : ""}</span>
+                    <button onClick={() => removeCustomPreset(activeWall, p._key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ── */}
+          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>🔗 Faire correspondre les noms au catalogue</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Relie chaque nom utilisé dans le rack (tous murs) à son vrai nom dans le catalogue — utilisé pour que le Stock reconnaisse automatiquement les articles vus en rack aux niveaux 2 et 3.</p>
+            <input value={mappingSearch} onChange={e => setMappingSearch(e.target.value)} placeholder="🔍 Filtrer les noms du rack..."
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
+              {filteredMappingNames.length === 0 && <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "center", padding: "10px 0" }}>Aucun nom trouvé</p>}
+              {filteredMappingNames.map(rackName => {
+                const mapping = nameMappings[safeKey(rackName)];
+                return (
+                  <div key={rackName} style={{ background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}>
+                    <p style={{ margin: "0 0 5px", fontSize: 12, fontWeight: 700, color: "#1a2e1a" }}>{rackName}</p>
+                    <RackAutocomplete
+                      value={mapping?.realName || ""}
+                      onChange={v => saveNameMapping(rackName, v)}
+                      suggestions={suggestionsProduits}
+                      placeholder="→ vrai nom catalogue (optionnel)"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <button onClick={() => setShowConfig(false)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+            ← Retour au rack
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <PageHeader titre="🗄️ Rotation Racks" couleur="#8b5cf6" onBack={onClose} onHome={onClose} />
@@ -769,150 +999,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* MODAL CONFIG MUR */}
-      {showConfig && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 380, maxHeight: "88vh", overflowY: "auto" }}>
-            <h2 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 16px", fontFamily: "'Syne', sans-serif" }}>⚙️ Configurer ce mur</h2>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>NOM DU MUR</label>
-            <input value={cfgLabel} onChange={e => setCfgLabel(e.target.value)} placeholder={WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)]}
-              style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, marginBottom: 14, boxSizing: "border-box" as const, fontFamily: "'Syne', sans-serif" }} />
-            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>NIVEAUX (hauteur)</label>
-                <input type="number" min="1" value={cfgRows} onChange={e => setCfgRows(Number(e.target.value))}
-                  style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>EMPLACEMENTS (largeur)</label>
-                <input type="number" min="1" value={cfgCols} onChange={e => setCfgCols(Number(e.target.value))}
-                  style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const }} />
-              </div>
-            </div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>ÉCHELLE (séparation) TOUTES LES ... PLACES</label>
-            <input type="number" min="0" value={cfgEchelle} onChange={e => setCfgEchelle(Number(e.target.value))} placeholder="Ex: 4 — 0 pour désactiver"
-              style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const, marginBottom: 4 }} />
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 16px" }}>Ajoute un montant de séparation visuel tous les X emplacements, pour repérer où un rack s'arrête et où le suivant commence.</p>
-
-            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 14, marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "#6d28d9", display: "block", marginBottom: 3 }}>🔀 NOMBRE DE PALETTES PAR SECTION</label>
-              <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 10px" }}>Chaque section (entre deux échelles, ou le mur entier si pas d'échelle) garde toujours la même taille physique — tu choisis juste combien de palettes y rentrent, niveau par niveau : 1 (très grande), 2, 3...</p>
-
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Niveau</label>
-                  <input type="number" min={1} max={cfg.rows} value={cfgBayNiveau} onChange={e => setCfgBayNiveau(Number(e.target.value))}
-                    style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, boxSizing: "border-box" as const }} />
-                </div>
-                <div style={{ flex: 2 }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Section (entre échelles)</label>
-                  <select value={cfgBayIndex} onChange={e => { const i = Number(e.target.value); setCfgBayIndex(i); const b = getBays(cfg)[i]; if (b) setCfgBayCount(b.width); }}
-                    style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
-                    {getBays(cfg).map((b, i) => (
-                      <option key={i} value={i}>Section {i + 1} (emplacements {b.start + 1} à {b.start + b.width})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", flex: 1 }}>Nombre de palettes dans cette section, à ce niveau</label>
-                <select value={cfgBayCount} onChange={e => setCfgBayCount(Number(e.target.value))}
-                  style={{ padding: "6px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, fontWeight: 700 }}>
-                  {Array.from({ length: Math.max(getBays(cfg)[cfgBayIndex]?.width || 1, 4) }, (_, i) => i + 1).map(n => (
-                    <option key={n} value={n}>{n}{n === (getBays(cfg)[cfgBayIndex]?.width || 1) ? " (normal)" : ""}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button onClick={applyBayRule} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
-                Appliquer à Niveau {cfgBayNiveau} · Section {cfgBayIndex + 1}
-              </button>
-
-              {Object.keys(cfg.baySlots || {}).length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  {Object.entries(cfg.baySlots || {}).map(([key, n]) => {
-                    const [r, b] = key.split("_").map(Number);
-                    const bayInfo = getBays(cfg)[b];
-                    return (
-                      <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px" }}>
-                        <span style={{ fontSize: 11, color: "#6d28d9" }}>🔀 Niveau {r + 1} · Section {b + 1}{bayInfo ? ` (emp. ${bayInfo.start + 1}-${bayInfo.start + bayInfo.width})` : ""} → {n} palette{n > 1 ? "s" : ""}</span>
-                        <button onClick={() => removeBayRule(key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* ── CRÉER UN NOUVEAU MODÈLE (nom + couleur) ── */}
-            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 14, marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "#6d28d9", display: "block", marginBottom: 3 }}>🎨 CRÉER UN NOUVEAU MODÈLE POUR CE MUR</label>
-              <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 10px" }}>Ajoute un modèle (nom + couleur) qui apparaîtra dans l'onglet "🎨 Modèles" de ce mur, comme ceux déjà prévus.</p>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input value={newPresetNom} onChange={e => setNewPresetNom(e.target.value)} placeholder="Nom du produit *"
-                  style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-                <input type="color" value={newPresetColor} onChange={e => setNewPresetColor(e.target.value)}
-                  style={{ width: 40, height: 34, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer" }} />
-              </div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input value={newPresetColorLabel} onChange={e => setNewPresetColorLabel(e.target.value)} placeholder="Nom couleur (ex: Orange)"
-                  style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-                <input value={newPresetOrigine} onChange={e => setNewPresetOrigine(e.target.value)} placeholder="🌍 Origine"
-                  style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-              </div>
-              <input value={newPresetDesignation} onChange={e => setNewPresetDesignation(e.target.value)} placeholder="Désignation (ex: GREEN BEANS) — optionnel"
-                style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
-              <button onClick={addNewPreset} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 10 }}>
-                + Ajouter ce modèle
-              </button>
-              {(customPresets[activeWall] || []).length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  {(customPresets[activeWall] || []).map(p => (
-                    <div key={p._key} style={{ display: "flex", alignItems: "center", gap: 8, background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 8, padding: "6px 10px" }}>
-                      <div style={{ width: 16, height: 16, borderRadius: 4, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                      <span style={{ fontSize: 11, color: "#6d28d9", flex: 1 }}>{p.produit}{p.origine ? ` · 🌍 ${p.origine}` : ""}</span>
-                      <button onClick={() => removeCustomPreset(activeWall, p._key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* ── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ── */}
-            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 14, marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "#6d28d9", display: "block", marginBottom: 3 }}>🔗 FAIRE CORRESPONDRE LES NOMS AU CATALOGUE</label>
-              <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 10px" }}>Relie chaque nom utilisé dans le rack (tous murs) à son vrai nom dans le catalogue — utilisé pour que le Stock reconnaisse automatiquement les articles vus en rack aux niveaux 2 et 3.</p>
-              <input value={mappingSearch} onChange={e => setMappingSearch(e.target.value)} placeholder="🔍 Filtrer les noms du rack..."
-                style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-                {filteredMappingNames.length === 0 && <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "center", padding: "10px 0" }}>Aucun nom trouvé</p>}
-                {filteredMappingNames.map(rackName => {
-                  const mapping = nameMappings[safeKey(rackName)];
-                  return (
-                    <div key={rackName} style={{ background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}>
-                      <p style={{ margin: "0 0 5px", fontSize: 12, fontWeight: 700, color: "#1a2e1a" }}>{rackName}</p>
-                      <AutocompleteInput
-                        value={mapping?.realName || ""}
-                        onChange={v => saveNameMapping(rackName, v)}
-                        suggestions={suggestionsProduits}
-                        placeholder="→ vrai nom catalogue (optionnel)"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 16 }}>⚠️ Réduire les dimensions ne supprime pas les palettes déjà placées hors de la nouvelle grille — pense à les déplacer avant.</p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setShowConfig(false)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>Annuler</button>
-              <button onClick={saveConfig} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "none", background: "#8b5cf6", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>Enregistrer</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL CASE VIDE → AJOUTER PALETTE */}
       {selectedCell && (!selectedData || isEditing) && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -991,7 +1077,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                       </div>
                     )}
                     {freeForm.type === "produit" ? (
-                      <AutocompleteInput value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
+                      <RackAutocomplete value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
                     ) : (
                       <input value={freeForm.produit} onChange={e => setFreeForm({ ...freeForm, produit: e.target.value })} placeholder={freeForm.type === "archive" ? "Description archive *" : "Description packaging *"}
                         style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
@@ -1005,7 +1091,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                               <button onClick={() => removeExtraItem(idx)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>retirer</button>
                             </div>
                             {freeForm.type === "produit" ? (
-                              <AutocompleteInput value={item.nom} onChange={v => updateExtraItem(idx, { nom: v })} suggestions={suggestionsProduits} placeholder={`Produit ${idx + 2} * (catalogue)`} />
+                              <RackAutocomplete value={item.nom} onChange={v => updateExtraItem(idx, { nom: v })} suggestions={suggestionsProduits} placeholder={`Produit ${idx + 2} * (catalogue)`} />
                             ) : (
                               <input value={item.nom} onChange={e => updateExtraItem(idx, { nom: e.target.value })} placeholder={`Description ${idx + 2} *`}
                                 style={{ padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
@@ -1027,7 +1113,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                     )}
                     {freeForm.type === "produit" && (
                       <>
-                        <AutocompleteInput value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
+                        <RackAutocomplete value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
                         <input value={freeForm.origine} onChange={e => setFreeForm({ ...freeForm, origine: e.target.value })} placeholder="🌍 Origine (pays)"
                           style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                       </>
