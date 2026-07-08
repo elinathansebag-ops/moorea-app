@@ -117,12 +117,16 @@ function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type 
       {meta && <span style={{ fontSize: 9 }}>{meta.icon}</span>}
       <span style={{
         fontSize: 8.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.15, textAlign: "center",
-        maxWidth: 72, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
+        maxWidth: 78, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
         overflow: "hidden", wordBreak: "break-word" as const,
       }}>{produit}</span>
-      {!!extraItems?.length && (
-        <span style={{ fontSize: 7, fontWeight: 800, color: "#7c3aed", background: "#f5f3ff", borderRadius: 4, padding: "1px 4px" }}>+{extraItems.length} article{extraItems.length > 1 ? "s" : ""}</span>
-      )}
+      {extraItems?.map((item, idx) => (
+        <span key={idx} style={{
+          fontSize: 7.5, fontWeight: 700, color: "#7c3aed", lineHeight: 1.15, textAlign: "center",
+          maxWidth: 78, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" as const,
+          overflow: "hidden", wordBreak: "break-word" as const,
+        }}>+ {item.nom}</span>
+      ))}
       {quantite && <span style={{ fontSize: 8, color: "#6b7280", fontWeight: 600 }}>{quantite} {unite || ""}</span>}
       {status && (
         <span style={{ fontSize: 7.5, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "1px 4px", lineHeight: 1.3 }}>
@@ -169,6 +173,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [selectedCell, setSelectedCell] = useState<{ row: number; bay: number; slot: number } | null>(null);
   const [moving, setMoving] = useState<{ wallId: string; row: number; bay: number; slot: number; data: PalettePos } | null>(null);
   const [duplicating, setDuplicating] = useState<PalettePos | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [dragActiveKey, setDragActiveKey] = useState<string | null>(null); // case source pendant le drag
   const [ghost, setGhost] = useState<{ x: number; y: number; produit: string } | null>(null);
@@ -313,12 +318,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       });
       setPresetLocked(false);
       setAddMode("libre");
+      setIsEditing(false);
       setSelectedCell({ row, bay, slot });
       setDuplicating(null);
       return;
     }
 
     setSelectedCell({ row, bay, slot });
+    setIsEditing(false);
     if (!occupied) {
       setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
       setAddMode(WALL_PRESETS[activeWall] ? "modele" : "libre");
@@ -342,11 +349,17 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     try {
       const key = cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot);
       const cleanItems = freeForm.extraItems.filter(it => it.nom.trim());
-      const payload: any = { ...freeForm, extraItems: cleanItems.length ? cleanItems : undefined, date_stockage: new Date().toLocaleDateString("fr-FR"), timestamp: Date.now() };
+      const existing = isEditing ? positions[key] : null;
+      const payload: any = {
+        ...freeForm, extraItems: cleanItems.length ? cleanItems : undefined,
+        date_stockage: existing?.date_stockage || new Date().toLocaleDateString("fr-FR"),
+        timestamp: existing?.timestamp || Date.now(),
+      };
       Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
       await update(ref(db, `rack_positions/${activeWall}`), { [key]: payload });
       setSelectedCell(null);
       setPresetLocked(false);
+      setIsEditing(false);
     } catch { alert("Erreur lors de l'enregistrement"); }
     setSaving(false);
   };
@@ -391,6 +404,29 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     if (!data) return;
     setDuplicating(data);
     setSelectedCell(null);
+  };
+
+  // ─── MODIFIER UNE PALETTE EXISTANTE (sur place, sans changer d'emplacement) ───
+  const startEdit = () => {
+    if (!selectedCell) return;
+    const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
+    if (!data) return;
+    setFreeForm({
+      produit: data.produit || "",
+      type: data.type || "produit",
+      extraItems: data.extraItems || [],
+      fournisseur: data.fournisseur || "",
+      lot_interne: data.lot_interne || "",
+      quantite: data.quantite || "",
+      unite: data.unite || "colis",
+      dlc: data.dlc || "",
+      color: data.color || "",
+      origine: data.origine || "",
+      notes: data.notes || "",
+    });
+    setPresetLocked(false);
+    setAddMode("libre");
+    setIsEditing(true);
   };
 
   const finishMove = async (row: number, bay: number, slot: number) => {
@@ -513,7 +549,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <PageHeader titre="🗄️ Rotation Racks" couleur="#8b5cf6" onBack={onClose} onHome={onClose} />
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 16px 60px" }}>
+      <div style={{ maxWidth: 1500, margin: "0 auto", padding: "16px 16px 60px" }}>
 
         {/* BANNIÈRE DÉPLACEMENT EN COURS */}
         {moving && (
@@ -584,7 +620,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               <div style={{ display: "flex", flex: 1 }}>
                 {bays.flatMap((bay, bayIdx) => {
                   const els: any[] = [];
-                  if (bayIdx > 0) els.push(<EchelleDivider key={`ech-${bayIdx}`} height={118} />);
+                  if (bayIdx > 0) els.push(<EchelleDivider key={`ech-${bayIdx}`} height={136} />);
                   const n = cfg.baySlots?.[`${row}_${bayIdx}`] || bay.width;
                   const isCustom = n !== bay.width;
                   els.push(
@@ -600,7 +636,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                             data-rack-cell data-row={row} data-bay={bayIdx} data-slot={slot}
                             onPointerDown={e => onPointerDownCell(e, row, bayIdx, slot)}
                             style={{
-                              flex: 1, minWidth: Math.max(30, (86 * bay.width) / n), height: 118, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
+                              flex: 1, minWidth: Math.max(30, (86 * bay.width) / n), height: 136, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
                               touchAction: data ? "none" : "auto",
                               background: dragOverKey === key ? "rgba(139,92,246,0.18)" : isCustom ? "rgba(139,92,246,0.06)" : "transparent",
                               border: "none",
@@ -744,12 +780,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       )}
 
       {/* MODAL CASE VIDE → AJOUTER PALETTE */}
-      {selectedCell && !selectedData && (
+      {selectedCell && (!selectedData || isEditing) && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 440, maxHeight: "88vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif" }}>➕ Placer une palette</h2>
-              <button onClick={() => setSelectedCell(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif" }}>{isEditing ? "✏️ Modifier la palette" : "➕ Placer une palette"}</h2>
+              <button onClick={() => { setSelectedCell(null); setIsEditing(false); }} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
             </div>
             <p style={{ margin: "0 0 16px", fontSize: 12, color: "#9ca3af" }}>{cfg.label} · Niveau {selectedCell.row + 1} · Section {selectedCell.bay + 1} · Place {selectedCell.slot + 1}/{selectedBaySlotCount}</p>
 
@@ -887,7 +923,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 )}
                 <button onClick={handleAddFree} disabled={saving || !freeForm.produit.trim()}
                   style={{ padding: "12px", borderRadius: 10, border: "none", background: !freeForm.produit.trim() ? "#e5e7eb" : "#8b5cf6", color: !freeForm.produit.trim() ? "#9ca3af" : "#fff", fontWeight: 700, fontSize: 14, cursor: !freeForm.produit.trim() ? "not-allowed" : "pointer" }}>
-                  {saving ? "Enregistrement..." : "✓ Placer la palette"}
+                  {saving ? "Enregistrement..." : isEditing ? "✓ Enregistrer les modifications" : "✓ Placer la palette"}
                 </button>
               </div>
             ) : null}
@@ -896,7 +932,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       )}
 
       {/* MODAL CASE OCCUPÉE → DÉTAIL / ACTIONS */}
-      {selectedCell && selectedData && (
+      {selectedCell && selectedData && !isEditing && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -941,6 +977,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 ⬇ Descendre
               </button>
             </div>
+            <button onClick={startEdit} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", color: "#1d4ed8", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
+              ✏️ Modifier
+            </button>
             <button onClick={startMove} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #c8a84b", background: "#faf8f0", color: "#8a6f2e", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
               ↔ Déplacer ailleurs (autre case ou mur)
             </button>
