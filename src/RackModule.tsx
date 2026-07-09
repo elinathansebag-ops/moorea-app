@@ -217,7 +217,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [arrivages, setArrivages] = useState<any[]>([]);
   const [catalogueArticles, setCatalogueArticles] = useState<any[]>([]);
   const [customPresets, setCustomPresets] = useState<Record<string, (Preset & { _key: string })[]>>({});
-  const [favoris, setFavoris] = useState<{ _key: string; article: string; color: string; colorLabel?: string }[]>([]);
+  const [favoris, setFavoris] = useState<{ _key: string; article: string; color: string }[]>([]);
 
   const [showConfig, setShowConfig] = useState(false);
   const [cfgRows, setCfgRows] = useState(DEFAULT_ROWS);
@@ -351,7 +351,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   // ─── ARTICLES FAVORIS (accès rapide + couleur) ───
   const [newFavArticle, setNewFavArticle] = useState("");
   const [newFavColor, setNewFavColor] = useState("#16a34a");
-  const [newFavColorLabel, setNewFavColorLabel] = useState("");
 
   // ─── CONFIG MUR ───
   const openConfig = () => {
@@ -439,8 +438,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const addFavori = async () => {
     if (!newFavArticle.trim()) { alert("Choisis un article du catalogue"); return; }
     if (favoris.some(f => f.article.toLowerCase() === newFavArticle.trim().toLowerCase())) { alert("Cet article est déjà dans les favoris"); return; }
-    await push(ref(db, "rack_favoris"), { article: newFavArticle.trim(), color: newFavColor, colorLabel: newFavColorLabel.trim() || undefined });
-    setNewFavArticle(""); setNewFavColor("#16a34a"); setNewFavColorLabel("");
+    await push(ref(db, "rack_favoris"), { article: newFavArticle.trim(), color: newFavColor });
+    setNewFavArticle(""); setNewFavColor("#16a34a");
   };
 
   const removeFavori = async (key: string) => {
@@ -738,8 +737,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               <input type="color" value={newFavColor} onChange={e => setNewFavColor(e.target.value)}
                 style={{ width: 40, height: 40, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer" }} />
             </div>
-            <input value={newFavColorLabel} onChange={e => setNewFavColorLabel(e.target.value)} placeholder="Nom couleur (optionnel, ex: Orange)"
-              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
             <button onClick={addFavori} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 12 }}>
               ⭐ Ajouter aux favoris
             </button>
