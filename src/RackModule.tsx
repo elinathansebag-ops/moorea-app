@@ -216,7 +216,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [positions, setPositions] = useState<Record<string, PalettePos>>({});
   const [arrivages, setArrivages] = useState<any[]>([]);
   const [catalogueArticles, setCatalogueArticles] = useState<any[]>([]);
-  const [customPresets, setCustomPresets] = useState<Record<string, (Preset & { _key: string })[]>>({});
   const [favoris, setFavoris] = useState<{ _key: string; article: string; color: string }[]>([]);
 
   const [showConfig, setShowConfig] = useState(false);
@@ -282,19 +281,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     return () => u();
   }, []);
 
-  // ─── FIREBASE: modèles personnalisés créés par l'utilisateur (par mur) ───
-  useEffect(() => {
-    const u = onValue(ref(db, "rack_presets"), snap => {
-      const d = snap.val() || {};
-      const out: Record<string, (Preset & { _key: string })[]> = {};
-      Object.entries(d).forEach(([wallId, presets]: any) => {
-        out[wallId] = Object.entries(presets || {}).map(([key, p]: any) => ({ ...p, _key: key }));
-      });
-      setCustomPresets(out);
-    });
-    return () => u();
-  }, []);
-
   // ─── FIREBASE: articles favoris (globaux, avec couleur) ───
   useEffect(() => {
     const u = onValue(ref(db, "rack_favoris"), snap => {
@@ -306,11 +292,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)], echelleEvery: DEFAULT_ECHELLE };
 
-  // ─── MODÈLES D'UN MUR = codés en dur + créés par l'utilisateur ───
-  const getPresetsForWall = (wallId: string): Preset[] => [
-    ...(WALL_PRESETS[wallId] || []),
-    ...(customPresets[wallId] || []),
-  ];
+  // ─── MODÈLES D'UN MUR (codés en dur) ───
+  const getPresetsForWall = (wallId: string): Preset[] => WALL_PRESETS[wallId] || [];
 
   // ─── DÉTECTION DU CONTENU MASQUÉ (scroll horizontal du rack) ───
   useEffect(() => {
@@ -339,17 +322,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [cfgBayIndex, setCfgBayIndex] = useState(0);
   const [cfgBayCount, setCfgBayCount] = useState(1);
 
-  // ─── CRÉATION D'UN NOUVEAU MODÈLE (nom + couleur) ───
-  const [newPresetNom, setNewPresetNom] = useState("");
-  const [newPresetColor, setNewPresetColor] = useState("#16a34a");
-  const [newPresetColorLabel, setNewPresetColorLabel] = useState("");
-  const [newPresetOrigine, setNewPresetOrigine] = useState("");
-  const [newPresetDesignation, setNewPresetDesignation] = useState("");
-
-  const [editingPresetKey, setEditingPresetKey] = useState<string | null>(null);
-
   // ─── ARTICLES FAVORIS (accès rapide + couleur) ───
-  const [newFavArticle, setNewFavArticle] = useState("");
+  const [favSearch, setFavSearch] = useState("");
   const [newFavColor, setNewFavColor] = useState("#16a34a");
 
   // ─── CONFIG MUR ───
@@ -395,55 +369,19 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     await update(ref(db, `rack_config/${activeWall}`), { baySlots: slots });
   };
 
-  // ─── CRÉER UN NOUVEAU MODÈLE (nom + couleur) POUR LE MUR ACTIF ───
-  const addNewPreset = async () => {
-    if (!newPresetNom.trim()) { alert("Le nom du modèle est requis"); return; }
-    const preset: Preset = {
-      produit: newPresetNom.trim(),
-      color: newPresetColor,
-      colorLabel: newPresetColorLabel.trim() || newPresetColor,
-      designation: newPresetDesignation.trim(),
-      origine: newPresetOrigine.trim() || undefined,
-    };
-    if (editingPresetKey) {
-      await update(ref(db, `rack_presets/${activeWall}/${editingPresetKey}`), preset);
-      setEditingPresetKey(null);
-    } else {
-      await push(ref(db, `rack_presets/${activeWall}`), preset);
-    }
-    setNewPresetNom(""); setNewPresetColor("#16a34a"); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation("");
-  };
-
-  const startEditPreset = (p: Preset & { _key: string }) => {
-    setEditingPresetKey(p._key);
-    setNewPresetNom(p.produit);
-    setNewPresetColor(p.color);
-    setNewPresetColorLabel(p.colorLabel || "");
-    setNewPresetOrigine(p.origine || "");
-    setNewPresetDesignation(p.designation || "");
-  };
-
-  const cancelEditPreset = () => {
-    setEditingPresetKey(null);
-    setNewPresetNom(""); setNewPresetColor("#16a34a"); setNewPresetColorLabel(""); setNewPresetOrigine(""); setNewPresetDesignation("");
-  };
-
-  const removeCustomPreset = async (wallId: string, key: string) => {
-    if (!window.confirm("Supprimer ce modèle ?")) return;
-    await remove(ref(db, `rack_presets/${wallId}/${key}`));
-    if (editingPresetKey === key) cancelEditPreset();
-  };
-
   // ─── AJOUTER / RETIRER UN ARTICLE FAVORI ───
-  const addFavori = async () => {
-    if (!newFavArticle.trim()) { alert("Choisis un article du catalogue"); return; }
-    if (favoris.some(f => f.article.toLowerCase() === newFavArticle.trim().toLowerCase())) { alert("Cet article est déjà dans les favoris"); return; }
-    await push(ref(db, "rack_favoris"), { article: newFavArticle.trim(), color: newFavColor });
-    setNewFavArticle(""); setNewFavColor("#16a34a");
+  const toggleFavori = async (article: string, checked: boolean) => {
+    if (checked) {
+      if (favoris.some(f => f.article.toLowerCase() === article.toLowerCase())) return;
+      await push(ref(db, "rack_favoris"), { article, color: newFavColor });
+    } else {
+      const existing = favoris.find(f => f.article.toLowerCase() === article.toLowerCase());
+      if (existing) await remove(ref(db, `rack_favoris/${existing._key}`));
+    }
   };
 
-  const removeFavori = async (key: string) => {
-    await remove(ref(db, `rack_favoris/${key}`));
+  const updateFavoriColor = async (key: string, color: string) => {
+    await update(ref(db, `rack_favoris/${key}`), { color });
   };
 
   // ─── CLIC SUR UNE CASE ───
@@ -725,33 +663,37 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             })}
           </div>
 
-          {/* ── ARTICLES FAVORIS (globaux, avec couleur) ── */}
+          {/* ── ARTICLES FAVORIS (globaux, à cocher dans tout le catalogue) ── */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>⭐ Articles favoris</p>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Mets en favori une vingtaine ou trentaine d'articles du catalogue avec une couleur — ils apparaîtront en accès rapide (avec leur couleur) quand tu poses une palette, sur n'importe quel mur. Comme c'est déjà le vrai nom du catalogue, aucune correspondance à faire ensuite.</p>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>⭐ Articles favoris ({favoris.length})</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Coche une vingtaine ou trentaine d'articles du catalogue et donne à chacun une couleur — ils apparaîtront en accès rapide (avec leur couleur) quand tu poses une palette, sur n'importe quel mur.</p>
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <div style={{ flex: 1 }}>
-                <RackAutocomplete value={newFavArticle} onChange={setNewFavArticle} suggestions={suggestionsProduits} placeholder="Choisir un article du catalogue..." />
-              </div>
-              <input type="color" value={newFavColor} onChange={e => setNewFavColor(e.target.value)}
-                style={{ width: 40, height: 40, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <input value={favSearch} onChange={e => setFavSearch(e.target.value)} placeholder="🔍 Chercher un article du catalogue..."
+                style={{ flex: 1, padding: "9px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, boxSizing: "border-box" as const }} />
+              <input type="color" value={newFavColor} onChange={e => setNewFavColor(e.target.value)} title="Couleur pour les prochains articles cochés"
+                style={{ width: 38, height: 38, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer", flexShrink: 0 }} />
             </div>
-            <button onClick={addFavori} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 12 }}>
-              ⭐ Ajouter aux favoris
-            </button>
 
-            {favoris.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 320, overflowY: "auto" }}>
-                {favoris.map(f => (
-                  <div key={f._key} style={{ display: "flex", alignItems: "center", gap: 8, background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, padding: "6px 10px" }}>
-                    <div style={{ width: 16, height: 16, borderRadius: 4, background: f.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: "#1a2e1a", flex: 1 }}>{f.article}</span>
-                    <button onClick={() => removeFavori(f._key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 420, overflowY: "auto" }}>
+              {(favSearch.trim() ? searchRanked(favSearch, suggestionsProduits, 50) : favoris.map(f => f.article)).map(article => {
+                const fav = favoris.find(f => f.article.toLowerCase() === article.toLowerCase());
+                const checked = !!fav;
+                return (
+                  <label key={article} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: checked ? "#faf5ff" : "#f9fafb", border: `1px solid ${checked ? "#e9d5ff" : "#e5e7eb"}`, cursor: "pointer" }}>
+                    <input type="checkbox" checked={checked} onChange={e => toggleFavori(article, e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: "#1a2e1a", flex: 1 }}>{article}</span>
+                    {checked && fav && (
+                      <input type="color" value={fav.color} onChange={e => updateFavoriColor(fav._key, e.target.value)} onClick={ev => ev.stopPropagation()}
+                        style={{ width: 28, height: 28, padding: 1, border: "1.5px solid #e5e7eb", borderRadius: 6, cursor: "pointer", flexShrink: 0 }} />
+                    )}
+                  </label>
+                );
+              })}
+              {favSearch.trim() === "" && favoris.length === 0 && (
+                <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "center", padding: "14px 0" }}>Aucun favori — cherche un article ci-dessus pour commencer.</p>
+              )}
+            </div>
           </div>
 
           {/* ── DIMENSIONS DU MUR ACTIF ── */}
@@ -830,48 +772,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                     </div>
                   );
                 })}
-              </div>
-            )}
-          </div>
-
-          {/* ── CRÉER UN NOUVEAU MODÈLE (nom + couleur) ── */}
-          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>{editingPresetKey ? "✏️ Modifier le modèle" : "🎨 Créer un nouveau modèle"} — {cfg.label}</p>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>{editingPresetKey ? "Modifie ce modèle — les palettes déjà placées avec l'ancien nom/couleur ne changent pas rétroactivement." : "Ajoute un modèle (nom + couleur) qui apparaîtra dans l'onglet \"🎨 Modèles\" de ce mur, comme ceux déjà prévus."}</p>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <input value={newPresetNom} onChange={e => setNewPresetNom(e.target.value)} placeholder="Nom du produit *"
-                style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-              <input type="color" value={newPresetColor} onChange={e => setNewPresetColor(e.target.value)}
-                style={{ width: 40, height: 34, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer" }} />
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <input value={newPresetColorLabel} onChange={e => setNewPresetColorLabel(e.target.value)} placeholder="Nom couleur (ex: Orange)"
-                style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-              <input value={newPresetOrigine} onChange={e => setNewPresetOrigine(e.target.value)} placeholder="🌍 Origine"
-                style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-            </div>
-            <input value={newPresetDesignation} onChange={e => setNewPresetDesignation(e.target.value)} placeholder="Désignation (ex: GREEN BEANS) — optionnel"
-              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 8 }} />
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              {editingPresetKey && (
-                <button onClick={cancelEditPreset} style={{ padding: "10px 16px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#f9fafb", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                  Annuler
-                </button>
-              )}
-              <button onClick={addNewPreset} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                {editingPresetKey ? "✓ Enregistrer les modifications" : "+ Ajouter ce modèle"}
-              </button>
-            </div>
-            {(customPresets[activeWall] || []).length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {(customPresets[activeWall] || []).map(p => (
-                  <div key={p._key} style={{ display: "flex", alignItems: "center", gap: 8, background: editingPresetKey === p._key ? "#ede9fe" : "#f5f3ff", border: `1px solid ${editingPresetKey === p._key ? "#a78bfa" : "#ddd6fe"}`, borderRadius: 8, padding: "6px 10px" }}>
-                    <div style={{ width: 16, height: 16, borderRadius: 4, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                    <span style={{ fontSize: 11, color: "#6d28d9", flex: 1 }}>{p.produit}{p.origine ? ` · 🌍 ${p.origine}` : ""}</span>
-                    <button onClick={() => startEditPreset(p)} style={{ background: "none", border: "none", color: "#6d28d9", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️</button>
-                    <button onClick={() => removeCustomPreset(activeWall, p._key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
-                  </div>
-                ))}
               </div>
             )}
           </div>
