@@ -111,14 +111,18 @@ const PALETTE_TYPES: Record<string, { label: string; icon: string; color: string
 };
 
 // ─── STATUT DLC (couleur selon urgence) ───
-function dlcStatus(dlc?: string): { color: string; bg: string; label: string } | null {
+// Une palette a besoin d'environ 10 jours pour être vendue avant sa DLC — en dessous
+// de ce seuil elle devient une alerte (orange), et en dessous de 3 jours ou dépassée,
+// alerte critique (rouge). Le flag `alerte` sert à compter/afficher les palettes à traiter.
+function dlcStatus(dlc?: string): { color: string; bg: string; label: string; alerte?: boolean } | null {
   if (!dlc) return null;
   const d = new Date(dlc);
   if (isNaN(d.getTime())) return null;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const diffDays = Math.round((d.getTime() - today.getTime()) / 86400000);
-  if (diffDays < 0) return { color: "#dc2626", bg: "#fef2f2", label: "Dépassée" };
-  if (diffDays <= 3) return { color: "#d97706", bg: "#fffbeb", label: `J-${diffDays}` };
+  if (diffDays < 0) return { color: "#dc2626", bg: "#fef2f2", label: "Dépassée", alerte: true };
+  if (diffDays <= 3) return { color: "#dc2626", bg: "#fef2f2", label: `J-${diffDays}`, alerte: true };
+  if (diffDays <= 10) return { color: "#d97706", bg: "#fffbeb", label: `J-${diffDays}`, alerte: true };
   return { color: "#16a34a", bg: "#f0fdf4", label: d.toLocaleDateString("fr-FR") };
 }
 
@@ -135,30 +139,30 @@ function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type 
       boxSizing: "border-box" as const,
       borderRadius: 7, padding: "4px 3px 3px",
     }}>
-      {meta && <span style={{ fontSize: 9 }}>{meta.icon}</span>}
+      {meta && <span style={{ fontSize: 11 }}>{meta.icon}</span>}
       <span style={{
-        fontSize: 8.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.15, textAlign: "center",
-        maxWidth: 78, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
+        fontSize: 10.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.2, textAlign: "center",
+        maxWidth: 100, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const,
         overflow: "hidden", wordBreak: "break-word" as const,
       }}>{produit}</span>
       {extraItems?.map((item, idx) => (
         <span key={idx} style={{
-          fontSize: 7.5, fontWeight: 700, color: "#7c3aed", lineHeight: 1.15, textAlign: "center",
-          maxWidth: 78, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" as const,
+          fontSize: 9, fontWeight: 700, color: "#7c3aed", lineHeight: 1.2, textAlign: "center",
+          maxWidth: 100, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
           overflow: "hidden", wordBreak: "break-word" as const,
         }}>+ {item.nom}</span>
       ))}
-      {quantite && <span style={{ fontSize: 8, color: "#6b7280", fontWeight: 600 }}>{quantite} {unite || ""}</span>}
+      {quantite && <span style={{ fontSize: 9.5, color: "#6b7280", fontWeight: 700 }}>{quantite} {unite || ""}</span>}
       {status && (
-        <span style={{ fontSize: 7.5, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "1px 4px", lineHeight: 1.3 }}>
+        <span style={{ fontSize: 9, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "2px 5px", lineHeight: 1.3 }}>
           {status.label === "Dépassée" || status.label.startsWith("J-") ? `⚠ ${status.label}` : `DLC ${status.label}`}
         </span>
       )}
       {/* Planches de la palette bois */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 1.5, width: 40, marginTop: 2 }}>
-        <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
-        <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
-        <div style={{ height: 3, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, width: 52, marginTop: 3 }}>
+        <div style={{ height: 4, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
+        <div style={{ height: 4, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
+        <div style={{ height: 4, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
       </div>
     </div>
   );
@@ -407,6 +411,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const handleAddFree = async () => {
     if (!freeForm.produit.trim()) { alert(freeForm.type === "produit" ? "L'article du catalogue est requis" : "La description est requise"); return; }
+    // La DLC est obligatoire pour toute palette de produit mise en rack (sert à l'alerte de rotation).
+    if (freeForm.type === "produit" && !freeForm.dlc) { alert("La DLC est obligatoire pour placer une palette de produit en rack"); return; }
     if (!selectedCell) return;
     setSaving(true);
     try {
@@ -594,6 +600,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   };
 
   const nbOccupees = Object.keys(positions).length;
+  // Palettes dont la DLC est dépassée ou à moins de 10 jours (pas assez de temps pour les vendre) — sur le mur affiché.
+  const nbAlertesDLC = Object.values(positions).filter(p => dlcStatus(p.dlc)?.alerte).length;
   const bays = getBays(cfg);
   const nbTotal = Array.from({ length: cfg.rows }, (_, row) => row).reduce(
     (sum, row) => sum + bays.reduce((s, bay, i) => s + (cfg.baySlots?.[`${row}_${i}`] || bay.width), 0), 0
@@ -810,11 +818,22 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a2e1a" }}>{cfg.rows}×{cfg.cols}</p>
               <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Niveaux×Places</p>
             </div>
+            <div>
+              <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: nbAlertesDLC > 0 ? "#dc2626" : "#9ca3af" }}>{nbAlertesDLC}</p>
+              <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>⚠️ DLC ≤10j</p>
+            </div>
           </div>
           <button onClick={openConfig} style={{ padding: "10px 16px", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
             ⚙️ Configurer
           </button>
         </div>
+        {nbAlertesDLC > 0 && (
+          <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 16px", marginBottom: 16, marginTop: -6 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#dc2626" }}>
+              ⚠️ {nbAlertesDLC} palette{nbAlertesDLC > 1 ? "s" : ""} sur ce mur {nbAlertesDLC > 1 ? "ont" : "a"} une DLC dépassée ou à moins de 10 jours — plus assez de temps pour les vendre, à traiter en priorité.
+            </p>
+          </div>
+        )}
 
         {/* GRILLE DU RACK — structure réaliste : montants + traverses + palettes */}
         <div style={{ position: "relative" }}>
@@ -827,18 +846,18 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           `}</style>
           <div ref={rackScrollRef} style={{ background: "linear-gradient(180deg, #eef1f5, #dde3ea)", border: "5px solid #3f3f46", borderRadius: 10, padding: "18px 14px 10px", overflowX: "auto", boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)" }}>
           {Array.from({ length: cfg.rows }, (_, i) => cfg.rows - 1 - i).map(row => (
-            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 90 + 40 }}>
+            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 112 + 40 }}>
               <div style={{ width: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ fontSize: 10, fontWeight: 800, color: "#52525b", background: "#fff", border: "1px solid #d4d4d8", borderRadius: 5, padding: "2px 5px" }}>N{row + 1}</span>
               </div>
               <div style={{ display: "flex", flex: 1 }}>
                 {bays.flatMap((bay, bayIdx) => {
                   const els: any[] = [];
-                  if (bayIdx > 0) els.push(<EchelleDivider key={`ech-${bayIdx}`} height={136} />);
+                  if (bayIdx > 0) els.push(<EchelleDivider key={`ech-${bayIdx}`} height={172} />);
                   const n = cfg.baySlots?.[`${row}_${bayIdx}`] || bay.width;
                   const isCustom = n !== bay.width;
                   els.push(
-                    <div key={bayIdx} style={{ flex: bay.width, minWidth: 86 * bay.width, display: "flex", gap: 2 }}>
+                    <div key={bayIdx} style={{ flex: bay.width, minWidth: 108 * bay.width, display: "flex", gap: 2 }}>
                       {Array.from({ length: n }, (_, slot) => slot).map(slot => {
                         const key = cellKey(row, bayIdx, slot);
                         const data = positions[key];
@@ -850,7 +869,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                             data-rack-cell data-row={row} data-bay={bayIdx} data-slot={slot}
                             onPointerDown={e => onPointerDownCell(e, row, bayIdx, slot)}
                             style={{
-                              flex: 1, minWidth: Math.max(30, (86 * bay.width) / n), height: 136, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
+                              flex: 1, minWidth: Math.max(38, (108 * bay.width) / n), height: 172, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
                               touchAction: data ? "none" : "auto",
                               background: dragOverKey === key ? "rgba(139,92,246,0.18)" : isCustom ? "rgba(139,92,246,0.06)" : "transparent",
                               border: "none",
@@ -861,7 +880,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                               position: "relative", WebkitTapHighlightColor: "transparent",
                             }}>
                             {data ? <PaletteVisual produit={data.produit} extraItems={data.extraItems} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} type={data.type} /> : (
-                              <div style={{ width: n === 1 ? 70 : Math.max(18, 42 * bay.width / n), height: 24, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 5 }} />
+                              <div style={{ width: n === 1 ? 88 : Math.max(24, 54 * bay.width / n), height: 28, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 6 }} />
                             )}
                             {isCustom && isFirst && <span style={{ position: "absolute", top: 4, left: 6, fontSize: 9, fontWeight: 800, color: "#8b5cf6", background: "#fff", borderRadius: 4, padding: "0 3px" }}>{n}/section</span>}
                             {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
@@ -1064,17 +1083,18 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 </div>
                 {freeForm.type === "produit" && (
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>DLC (date limite de consommation)</label>
-                    <input type="date" value={freeForm.dlc} onChange={e => setFreeForm({ ...freeForm, dlc: e.target.value })}
-                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
+                    <label style={{ fontSize: 11, fontWeight: 600, color: freeForm.dlc ? "#6b7280" : "#dc2626", display: "block", marginBottom: 3 }}>DLC (date limite de consommation) <span style={{ color: "#dc2626" }}>*obligatoire</span></label>
+                    <input type="date" required value={freeForm.dlc} onChange={e => setFreeForm({ ...freeForm, dlc: e.target.value })}
+                      style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${freeForm.dlc ? "#e5e7eb" : "#fca5a5"}`, borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, background: freeForm.dlc ? "#fff" : "#fef2f2" }} />
+                    {!freeForm.dlc && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#dc2626" }}>Requise pour pouvoir suivre la rotation et alerter avant péremption.</p>}
                   </div>
                 )}
                 {!presetLocked && (
                   <textarea value={freeForm.notes} onChange={e => setFreeForm({ ...freeForm, notes: e.target.value })} placeholder="Notes (optionnel)" rows={2}
                     style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, resize: "vertical" as const }} />
                 )}
-                <button onClick={handleAddFree} disabled={saving || !freeForm.produit.trim()}
-                  style={{ padding: "12px", borderRadius: 10, border: "none", background: !freeForm.produit.trim() ? "#e5e7eb" : "#8b5cf6", color: !freeForm.produit.trim() ? "#9ca3af" : "#fff", fontWeight: 700, fontSize: 14, cursor: !freeForm.produit.trim() ? "not-allowed" : "pointer" }}>
+                <button onClick={handleAddFree} disabled={saving || !freeForm.produit.trim() || (freeForm.type === "produit" && !freeForm.dlc)}
+                  style={{ padding: "12px", borderRadius: 10, border: "none", background: (!freeForm.produit.trim() || (freeForm.type === "produit" && !freeForm.dlc)) ? "#e5e7eb" : "#8b5cf6", color: (!freeForm.produit.trim() || (freeForm.type === "produit" && !freeForm.dlc)) ? "#9ca3af" : "#fff", fontWeight: 700, fontSize: 14, cursor: (!freeForm.produit.trim() || (freeForm.type === "produit" && !freeForm.dlc)) ? "not-allowed" : "pointer" }}>
                   {saving ? "Enregistrement..." : isEditing ? "✓ Enregistrer les modifications" : "✓ Placer la palette"}
                 </button>
               </div>
