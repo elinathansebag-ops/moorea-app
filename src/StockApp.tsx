@@ -2026,7 +2026,14 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (!box) return;
         if (!val || val.length < 2) { box.style.display = "none"; return; }
         const q = val.toLowerCase();
-        let source: any[] = [...STOCK_CONFIG_ARTICLES];
+        // ── Source de recherche : catalogue LIVE Firebase en priorité (sinon la vieille liste figée STOCK_CONFIG_ARTICLES) ──
+        // Avant ce correctif, seule STOCK_CONFIG_ARTICLES (liste codée en dur, non synchronisée) était utilisée ici,
+        // ce qui faisait "rater" tout article présent dans le catalogue mais absent de cette vieille liste.
+        const catSource = (typeof catalogueArticles !== 'undefined' && catalogueArticles && catalogueArticles.length > 0)
+          ? catalogueArticles.map((a: any) => ({ article: a.libelle, famille: "", equipe: a.equipe || _byArticle?.[a.libelle?.toLowerCase().trim()] || "PRESTIGE" }))
+          : [];
+        let source: any[] = catSource.length ? catSource : [...STOCK_CONFIG_ARTICLES];
+        STOCK_CONFIG_ARTICLES.forEach(s => { if (!source.find((x: any) => x.article === s.article)) source.push(s); });
         histoCache.forEach(a => { if (!source.find((s: any) => s.article === a.article)) source.push(a); });
         const scored = source
           .filter((a: any) => !articles.find(x => x.article === a.article))
