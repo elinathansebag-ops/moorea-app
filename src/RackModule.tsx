@@ -163,8 +163,9 @@ function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type 
   return (
     <div style={{
       display: "flex", flexDirection: "column", alignItems: "center", width: "100%", gap: 1.5,
-      border: borderColor ? `2px solid ${borderColor}` : "none",
-      background: borderColor ? `${borderColor}1f` : "transparent",
+      border: borderColor ? `3px solid ${borderColor}` : "1.5px dashed #d1d5db",
+      background: borderColor ? `${borderColor}33` : "transparent",
+      boxSizing: "border-box" as const,
       borderRadius: 7, padding: "4px 3px 3px",
     }}>
       {meta && <span style={{ fontSize: 9 }}>{meta.icon}</span>}
@@ -466,9 +467,15 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setAddMode("libre"); // il ne reste qu'à saisir lot + quantité + DLC
   };
 
+  const selectFavori = (f: { article: string; color: string }) => {
+    setFreeForm({ ...freeForm, produit: f.article, color: f.color, catalogueArticle: f.article, origine: "" });
+    setPresetLocked(true);
+    setAddMode("libre");
+  };
+
   const unlockPreset = () => {
     setPresetLocked(false);
-    setFreeForm({ ...freeForm, produit: "", color: "", origine: "" });
+    setFreeForm({ ...freeForm, produit: "", color: "", origine: "", catalogueArticle: "" });
     setAddMode("modele");
   };
 
@@ -944,7 +951,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             <p style={{ margin: "0 0 16px", fontSize: 12, color: "#9ca3af" }}>{cfg.label} · Niveau {selectedCell.row + 1} · Section {selectedCell.bay + 1} · Place {selectedCell.slot + 1}/{selectedBaySlotCount}</p>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {getPresetsForWall(activeWall).length > 0 && (
+              {(getPresetsForWall(activeWall).length > 0 || favoris.length > 0) && (
                 <button onClick={() => setAddMode("modele")}
                   style={{ flex: 1, padding: "9px", borderRadius: 10, border: `2px solid ${addMode === "modele" ? "#8b5cf6" : "#e5e7eb"}`, background: addMode === "modele" ? "#f5f3ff" : "#fff", color: addMode === "modele" ? "#6d28d9" : "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                   🎨 Modèles
@@ -956,8 +963,24 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
-            {addMode === "modele" && getPresetsForWall(activeWall).length > 0 && (
+            {addMode === "modele" && (getPresetsForWall(activeWall).length > 0 || favoris.length > 0) && (
               <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 4 }}>
+                {favoris.length > 0 && (
+                  <div>
+                    <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: ".4px" }}>
+                      ⭐ Favoris <span style={{ color: "#c4b5fd", fontWeight: 600 }}>({favoris.length})</span>
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {favoris.map(f => (
+                        <button key={f._key} onClick={() => selectFavori(f)}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", textAlign: "left" }}>
+                          <div style={{ width: 20, height: 20, borderRadius: 5, background: f.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", flex: 1 }}>{f.article}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {groupPresetsByOrigine(getPresetsForWall(activeWall)).map(group => (
                   <div key={group.origine}>
                     <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: ".4px", display: "flex", alignItems: "center", gap: 5 }}>
