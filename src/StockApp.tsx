@@ -2038,7 +2038,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const scored = source
           .filter((a: any) => !articles.find(x => x.article === a.article))
           .map((a: any) => { const n = a.article.toLowerCase(); const score = n.startsWith(q) ? 4 : n.includes(" " + q) ? 3 : n.includes(q) ? 2 : q.split(" ").every((w: string) => n.includes(w)) ? 1 : 0; return { ...a, score }; })
-          .filter((a: any) => a.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 10);
+          .filter((a: any) => a.score > 0).sort((a: any, b: any) => b.score - a.score);
         if (!scored.length) {
           box.innerHTML = `<div style="padding:10px 14px;font-size:13px;color:#6b7280;font-style:italic">Aucun résultat - sera ajouté comme nouvel article</div>`;
           box.style.display = "block"; return;
