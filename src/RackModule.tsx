@@ -45,23 +45,8 @@ type PalettePos = {
   catalogueArticle?: string; // article STOCK réel — sert directement au comptage auto, pas de correspondance séparée
 };
 
-// ─── MODÈLES PRÉ-CONFIGURÉS PAR MUR (nom + code couleur d'étiquette) ───
+// ─── FAVORIS (nom + couleur) — remplace l'ancien système de modèles codés en dur ───
 type Preset = { produit: string; color: string; colorLabel: string; designation: string; origine?: string; note?: string };
-const WALL_PRESETS: Record<string, Preset[]> = {
-  mur1: [
-    { produit: "Haricots Verts 500 GR x8", color: "#f59e0b", colorLabel: "Orange", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 400 GR x8", color: "#9ca3af", colorLabel: "Grey", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 350 GR x8", color: "#ffffff", colorLabel: "Blanc", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 250 GR x12", color: "#16a34a", colorLabel: "Green", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 250 GR Lidl x12", color: "#ec4899", colorLabel: "Rose", designation: "GREEN BEANS", origine: "Kenya" },
-    { produit: "Haricots Verts 250 GR", color: "#78350f", colorLabel: "Marron", designation: "GREEN BEANS", origine: "Rwanda" },
-    { produit: "Haricots Verts 500 GR", color: "#78350f", colorLabel: "Marron", designation: "GREEN BEANS", origine: "Rwanda" },
-    { produit: "Pois Gourmands / Mangetout 250 GR x12", color: "#7c3aed", colorLabel: "Purple", designation: "SNOW PEAS", origine: "Kenya" },
-    { produit: "Pois Gourmands / Mangetout 150 GR x12", color: "#2563eb", colorLabel: "Blue", designation: "SNOW PEAS", origine: "Kenya" },
-    { produit: "Pois Sucrés 250 GR x12", color: "#eab308", colorLabel: "Yellow", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya" },
-    { produit: "Pois Sucrés 150 GR x12", color: "#dc2626", colorLabel: "Red", designation: "SUGAR SNAPS / SNAP PEAS", origine: "Kenya" },
-  ],
-};
 
 // ─── RECHERCHE PONDÉRÉE : priorise "commence par" avant "contient quelque part" ───
 function searchRanked(query: string, list: string[], max = 50): string[] {
@@ -116,26 +101,6 @@ function RackAutocomplete({ value, onChange, suggestions, placeholder, required 
 }
 
 // ─── DRAPEAU PAR ORIGINE (repère visuel rapide) ───
-function originFlag(origine?: string): string {
-  const map: Record<string, string> = {
-    "Kenya": "🇰🇪", "Rwanda": "🇷🇼", "Ethiopie": "🇪🇹", "Éthiopie": "🇪🇹",
-    "France": "🇫🇷", "Maroc": "🇲🇦", "Egypte": "🇪🇬", "Égypte": "🇪🇬",
-    "Espagne": "🇪🇸", "Sénégal": "🇸🇳", "Senegal": "🇸🇳",
-  };
-  return (origine && map[origine]) || "🌍";
-}
-
-// ─── REGROUPEMENT DES MODÈLES PAR ORIGINE ───
-function groupPresetsByOrigine(presets: Preset[]): { origine: string; items: Preset[] }[] {
-  const groups: Record<string, Preset[]> = {};
-  presets.forEach(p => {
-    const key = p.origine || "Autre";
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(p);
-  });
-  return Object.entries(groups).map(([origine, items]) => ({ origine, items }));
-}
-
 // ─── TYPE DE PALETTE (produit / archive / packaging) ───
 const PALETTE_TYPES: Record<string, { label: string; icon: string; color: string }> = {
   produit: { label: "Produit", icon: "🥦", color: "#16a34a" },
@@ -241,7 +206,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const [addMode, setAddMode] = useState<"modele" | "libre">("libre");
   const [presetLocked, setPresetLocked] = useState(false);
-  const [freeForm, setFreeForm] = useState({ produit: "", type: "produit" as "produit" | "archive" | "packaging", extraItems: [] as { nom: string; quantite?: string; unite?: string }[], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "", catalogueArticle: "" });
+  const [freeForm, setFreeForm] = useState({ produit: "", type: "produit" as "produit" | "archive" | "packaging", extraItems: [] as { nom: string; quantite?: string; unite?: string }[], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
   const [saving, setSaving] = useState(false);
 
   // ─── FIREBASE: config des murs ───
@@ -292,9 +257,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   }, []);
 
   const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)], echelleEvery: DEFAULT_ECHELLE };
-
-  // ─── MODÈLES D'UN MUR (codés en dur) ───
-  const getPresetsForWall = (wallId: string): Preset[] => WALL_PRESETS[wallId] || [];
 
   // ─── DÉTECTION DU CONTENU MASQUÉ (scroll horizontal du rack) ───
   useEffect(() => {
@@ -410,7 +372,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         color: duplicating.color || "",
         origine: duplicating.origine || "",
         notes: duplicating.notes || "",
-        catalogueArticle: duplicating.catalogueArticle || "",
       });
       setPresetLocked(false);
       setAddMode("libre");
@@ -423,8 +384,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setSelectedCell({ row, bay, slot });
     setIsEditing(false);
     if (!occupied) {
-      setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "", catalogueArticle: "" });
-      setAddMode(getPresetsForWall(activeWall).length > 0 ? "modele" : "libre");
+      setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
+      setAddMode(favoris.length > 0 ? "modele" : "libre");
       setPresetLocked(false);
     }
   };
@@ -439,7 +400,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const removeExtraItem = (idx: number) => setFreeForm({ ...freeForm, extraItems: freeForm.extraItems.filter((_, i) => i !== idx) });
 
   const handleAddFree = async () => {
-    if (!freeForm.produit.trim()) { alert(freeForm.type === "produit" ? "Le produit est requis" : "La description est requise"); return; }
+    if (!freeForm.produit.trim()) { alert(freeForm.type === "produit" ? "L'article du catalogue est requis" : "La description est requise"); return; }
     if (!selectedCell) return;
     setSaving(true);
     try {
@@ -448,6 +409,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       const existing = isEditing ? positions[key] : null;
       const payload: any = {
         ...freeForm, extraItems: cleanItems.length ? cleanItems : undefined,
+        // Le produit EST l'article catalogue pour le type "produit" — un seul champ, une seule source de vérité.
+        catalogueArticle: freeForm.type === "produit" ? freeForm.produit.trim() : undefined,
         date_stockage: existing?.date_stockage || new Date().toLocaleDateString("fr-FR"),
         timestamp: existing?.timestamp || Date.now(),
       };
@@ -461,21 +424,15 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   };
 
   // ─── SÉLECTION D'UN MODÈLE PRÉ-CONFIGURÉ ───
-  const selectPreset = (p: Preset) => {
-    setFreeForm({ ...freeForm, produit: p.produit, color: p.color, origine: p.origine || "" });
-    setPresetLocked(true);
-    setAddMode("libre"); // il ne reste qu'à saisir lot + quantité + DLC
-  };
-
   const selectFavori = (f: { article: string; color: string }) => {
-    setFreeForm({ ...freeForm, produit: f.article, color: f.color, catalogueArticle: f.article, origine: "" });
+    setFreeForm({ ...freeForm, produit: f.article, color: f.color, origine: "" });
     setPresetLocked(true);
     setAddMode("libre");
   };
 
   const unlockPreset = () => {
     setPresetLocked(false);
-    setFreeForm({ ...freeForm, produit: "", color: "", origine: "", catalogueArticle: "" });
+    setFreeForm({ ...freeForm, produit: "", color: "", origine: "" });
     setAddMode("modele");
   };
 
@@ -525,7 +482,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       color: data.color || "",
       origine: data.origine || "",
       notes: data.notes || "",
-      catalogueArticle: data.catalogueArticle || "",
     });
     setPresetLocked(false);
     setAddMode("libre");
@@ -951,10 +907,10 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             <p style={{ margin: "0 0 16px", fontSize: 12, color: "#9ca3af" }}>{cfg.label} · Niveau {selectedCell.row + 1} · Section {selectedCell.bay + 1} · Place {selectedCell.slot + 1}/{selectedBaySlotCount}</p>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {(getPresetsForWall(activeWall).length > 0 || favoris.length > 0) && (
+              {favoris.length > 0 && (
                 <button onClick={() => setAddMode("modele")}
                   style={{ flex: 1, padding: "9px", borderRadius: 10, border: `2px solid ${addMode === "modele" ? "#8b5cf6" : "#e5e7eb"}`, background: addMode === "modele" ? "#f5f3ff" : "#fff", color: addMode === "modele" ? "#6d28d9" : "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                  🎨 Modèles
+                  ⭐ Favoris
                 </button>
               )}
               <button onClick={() => setAddMode("libre")}
@@ -963,42 +919,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
-            {addMode === "modele" && (getPresetsForWall(activeWall).length > 0 || favoris.length > 0) && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 4 }}>
-                {favoris.length > 0 && (
-                  <div>
-                    <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: ".4px" }}>
-                      ⭐ Favoris <span style={{ color: "#c4b5fd", fontWeight: 600 }}>({favoris.length})</span>
-                    </p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {favoris.map(f => (
-                        <button key={f._key} onClick={() => selectFavori(f)}
-                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", textAlign: "left" }}>
-                          <div style={{ width: 20, height: 20, borderRadius: 5, background: f.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", flex: 1 }}>{f.article}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {groupPresetsByOrigine(getPresetsForWall(activeWall)).map(group => (
-                  <div key={group.origine}>
-                    <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: ".4px", display: "flex", alignItems: "center", gap: 5 }}>
-                      {originFlag(group.origine)} {group.origine} <span style={{ color: "#c4b5fd", fontWeight: 600 }}>({group.items.length})</span>
-                    </p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {group.items.map((p, i) => (
-                        <button key={i} onClick={() => selectPreset(p)}
-                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", textAlign: "left" }}>
-                          <div style={{ width: 20, height: 20, borderRadius: 5, background: p.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>
-                            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a" }}>{p.produit}</p>
-                            <p style={{ margin: "1px 0 0", fontSize: 11, color: "#9ca3af" }}>{p.colorLabel} · {p.designation}{p.note ? ` · ${p.note}` : ""}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+            {addMode === "modele" && favoris.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 4 }}>
+                {favoris.map(f => (
+                  <button key={f._key} onClick={() => selectFavori(f)}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", textAlign: "left" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 5, background: f.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", flex: 1 }}>{f.article}</p>
+                  </button>
                 ))}
               </div>
             )}
@@ -1016,21 +944,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
                 {presetLocked ? (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: 10, padding: "10px 12px" }}>
-                      <div style={{ width: 22, height: 22, borderRadius: 5, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", display: "block" }}>{freeForm.produit}</span>
-                        {freeForm.origine && <span style={{ fontSize: 11, color: "#6b7280" }}>🌍 {freeForm.origine}</span>}
-                      </div>
-                      <button onClick={unlockPreset} style={{ background: "none", border: "none", color: "#6d28d9", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>↺ Changer</button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ width: 22, height: 22, borderRadius: 5, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", display: "block" }}>{freeForm.produit}</span>
+                      {freeForm.origine && <span style={{ fontSize: 11, color: "#6b7280" }}>🌍 {freeForm.origine}</span>}
                     </div>
-                    <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 10, padding: 10 }}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: "#15803d", display: "block", marginBottom: 4 }}>🔗 Article stock (pour le comptage auto)</label>
-                      <RackAutocomplete value={freeForm.catalogueArticle} onChange={v => setFreeForm({ ...freeForm, catalogueArticle: v })} suggestions={suggestionsProduits} placeholder="Choisir l'article du catalogue..." />
-                      <p style={{ fontSize: 10, color: "#6b7280", margin: "4px 0 0" }}>Si renseigné, cette palette compte directement dans cet article au Stock (niveaux 2/3).</p>
-                    </div>
-                  </>
+                    <button onClick={unlockPreset} style={{ background: "none", border: "none", color: "#6d28d9", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>↺ Changer</button>
+                  </div>
                 ) : (
                   <>
                     {freeForm.type === "produit" && favoris.length > 0 && (
@@ -1038,7 +959,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                         <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>⭐ Favoris (clic rapide)</p>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
                           {favoris.map(f => (
-                            <button key={f._key} onClick={() => setFreeForm({ ...freeForm, produit: f.article, catalogueArticle: f.article, color: f.color })}
+                            <button key={f._key} onClick={() => setFreeForm({ ...freeForm, produit: f.article, color: f.color })}
                               style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 20, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 11, fontFamily: "'Syne', sans-serif" }}>
                               <span style={{ width: 10, height: 10, borderRadius: "50%", background: f.color, border: "1px solid rgba(0,0,0,0.15)", display: "inline-block" }} />
                               {f.article}
@@ -1055,7 +976,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                       </div>
                     )}
                     {freeForm.type === "produit" ? (
-                      <RackAutocomplete value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Produit * (catalogue)" required />
+                      <RackAutocomplete value={freeForm.produit} onChange={v => setFreeForm({ ...freeForm, produit: v })} suggestions={suggestionsProduits} placeholder="Article du catalogue *" required />
                     ) : (
                       <input value={freeForm.produit} onChange={e => setFreeForm({ ...freeForm, produit: e.target.value })} placeholder={freeForm.type === "archive" ? "Description archive *" : "Description packaging *"}
                         style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
@@ -1094,11 +1015,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                         <RackAutocomplete value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
                         <input value={freeForm.origine} onChange={e => setFreeForm({ ...freeForm, origine: e.target.value })} placeholder="🌍 Origine (pays)"
                           style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
-                        <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 10, padding: 10 }}>
-                          <label style={{ fontSize: 11, fontWeight: 700, color: "#15803d", display: "block", marginBottom: 4 }}>🔗 Article stock (pour le comptage auto)</label>
-                          <RackAutocomplete value={freeForm.catalogueArticle} onChange={v => setFreeForm({ ...freeForm, catalogueArticle: v })} suggestions={suggestionsProduits} placeholder="Choisir l'article du catalogue..." />
-                          <p style={{ fontSize: 10, color: "#6b7280", margin: "4px 0 0" }}>Si renseigné, cette palette compte directement dans cet article au Stock (niveaux 2/3). Laisse vide si tu ne veux pas de comptage auto.</p>
-                        </div>
                       </>
                     )}
                   </>
