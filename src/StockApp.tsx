@@ -1034,10 +1034,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let histoCache: any[] = [];
       let _byArticle: any = null;
       let calcLastFocused: any = null;
-      let rackPalettesMap: Record<string, { qty: number; loc: string }[]> = {}; // article (lowercase, résolu) -> liste des palettes {quantité, emplacement}, vues aux niveaux 2 et 3
-      let rackNameMap: Record<string, { realName: string; factor: number }> = {}; // nom rack (lowercase) -> {vrai nom catalogue, facteur colis rack→stock}
+      let rackPalettesMap: Record<string, { qty: number; loc: string }[]> = {}; // article stock (lowercase) -> liste des palettes {quantité, emplacement}, vues aux niveaux 2 et 3
       let rackConfigCache: any = {}; // rack_config (labels des murs)
-      let lastRackSnapshot: any = null; // recalculé si la correspondance change après coup
+      let lastRackSnapshot: any = null; // recalculé si le rack change
       const RACK_WALL_IDS = ["mur1", "mur2", "mur3", "mur4"];
       const RACK_WALL_DEFAULT_LABELS = ["Frigo Haricot Vert", "Mini Légumes", "Mur Gingembre", "Stockage"];
 
@@ -1048,9 +1047,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       // ── Auto-comptage depuis les racks (Niveaux 2 et 3 — difficiles d'accès) ──
       // Le rack stocke les positions sous rack_positions/{mur}/{niveau0}_{section}_{place}
       // niveau0 est indexé à partir de 0 → Niveau 2 = index 1, Niveau 3 = index 2
-      // Les noms du rack sont résolus vers leur vrai nom catalogue via rack_name_mapping
-      // (configurable dans Rotation Racks → ⚙️ Configurer → Faire correspondre les noms),
-      // et la quantité est convertie via le facteur "1 colis rack = X colis stock" si défini.
+      // Chaque palette porte directement son article de catalogue (champ "catalogueArticle",
+      // choisi au moment où on la pose dans Rotation Racks) — pas de table de correspondance
+      // séparée à maintenir. Une palette sans catalogueArticle n'est simplement pas comptée.
       // Chaque palette du rack devient sa PROPRE case de comptage, avec son emplacement exact.
       const buildRackLoc = (wallId: string, bayIdx: number, slotIdx: number, niveau: number) => {
         const wallIdx = RACK_WALL_IDS.indexOf(wallId);
@@ -1065,12 +1064,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             const parts = String(key).split("_").map(Number);
             const rowIdx = parts[0], bayIdx = parts[1], slotIdx = parts[2];
             const niveau = rowIdx + 1;
-            if ((niveau === 2 || niveau === 3) && data?.produit) {
-              const rawNom = String(data.produit).toLowerCase().trim();
-              const mapped = rackNameMap[rawNom];
-              const nom = mapped?.realName || rawNom;
-              const factor = mapped?.factor || 1;
-              const qty = (parseFloat(data.quantite) || 0) * factor;
+            if ((niveau === 2 || niveau === 3) && data?.catalogueArticle) {
+              const nom = String(data.catalogueArticle).toLowerCase().trim();
+              const qty = parseFloat(data.quantite) || 0;
               const loc = buildRackLoc(wallId, bayIdx, slotIdx, niveau);
               if (qty > 0) { if (!map[nom]) map[nom] = []; map[nom].push({ qty, loc }); }
             }
@@ -1079,17 +1075,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         return map;
       };
 
-
       onValue(ref(mainRtdb, "rack_positions"), snap => { lastRackSnapshot = snap.val(); rackPalettesMap = computeRackPalettes(lastRackSnapshot); });
       onValue(ref(mainRtdb, "rack_config"), snap => { rackConfigCache = snap.val() || {}; rackPalettesMap = computeRackPalettes(lastRackSnapshot); });
-      onValue(ref(mainRtdb, "rack_name_mapping"), snap => {
-        const d = snap.val() || {};
-        rackNameMap = {};
-        Object.values(d).forEach((m: any) => {
-          if (m?.rackName && m?.realName) rackNameMap[String(m.rackName).toLowerCase().trim()] = { realName: String(m.realName).toLowerCase().trim(), factor: parseFloat(m.factor) || 1 };
-        });
-        rackPalettesMap = computeRackPalettes(lastRackSnapshot); // recalcule avec la correspondance à jour
-      });
 
       // Sync status
       const setSyncStatus = (s: string, l: string) => {
@@ -1585,8 +1572,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, qty]: any) => `lot ${l} · ${qty} col.`).join(" | ") : (a.lots?.join(" ") || "");
           let artLabel = a.article;
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
-          const rowHasAuto = a._autoRackSlots?.some((x: boolean) => x);
-          html += `<tr data-id="${a.id}"${rowHasAuto ? ` style="background:#faf5ff"` : ""}>
+          html += `<tr data-id="${a.id}">
             <td style="font-weight:500">${artLabel}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
