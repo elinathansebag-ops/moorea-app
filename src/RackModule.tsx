@@ -42,6 +42,7 @@ type PalettePos = {
   arrivage_id?: string;
   date_stockage?: string;
   timestamp?: number;
+  catalogueArticle?: string; // article STOCK réel — sert directement au comptage auto, pas de correspondance séparée
 };
 
 // ─── MODÈLES PRÉ-CONFIGURÉS PAR MUR (nom + code couleur d'étiquette) ───
@@ -216,7 +217,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [arrivages, setArrivages] = useState<any[]>([]);
   const [catalogueArticles, setCatalogueArticles] = useState<any[]>([]);
   const [customPresets, setCustomPresets] = useState<Record<string, (Preset & { _key: string })[]>>({});
-  const [nameMappings, setNameMappings] = useState<Record<string, { rackName: string; realName: string; factor?: number }>>({});
+  const [favoris, setFavoris] = useState<{ _key: string; article: string; color: string; colorLabel?: string }[]>([]);
 
   const [showConfig, setShowConfig] = useState(false);
   const [cfgRows, setCfgRows] = useState(DEFAULT_ROWS);
@@ -240,7 +241,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const [addMode, setAddMode] = useState<"modele" | "libre">("libre");
   const [presetLocked, setPresetLocked] = useState(false);
-  const [freeForm, setFreeForm] = useState({ produit: "", type: "produit" as "produit" | "archive" | "packaging", extraItems: [] as { nom: string; quantite?: string; unite?: string }[], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
+  const [freeForm, setFreeForm] = useState({ produit: "", type: "produit" as "produit" | "archive" | "packaging", extraItems: [] as { nom: string; quantite?: string; unite?: string }[], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "", catalogueArticle: "" });
   const [saving, setSaving] = useState(false);
 
   // ─── FIREBASE: config des murs ───
@@ -294,10 +295,11 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     return () => u();
   }, []);
 
-  // ─── FIREBASE: correspondance nom rack → vrai nom catalogue ───
+  // ─── FIREBASE: articles favoris (globaux, avec couleur) ───
   useEffect(() => {
-    const u = onValue(ref(db, "rack_name_mapping"), snap => {
-      setNameMappings(snap.val() || {});
+    const u = onValue(ref(db, "rack_favoris"), snap => {
+      const d = snap.val() || {};
+      setFavoris(Object.entries(d).map(([key, v]: any) => ({ ...v, _key: key })));
     });
     return () => u();
   }, []);
@@ -344,10 +346,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [newPresetOrigine, setNewPresetOrigine] = useState("");
   const [newPresetDesignation, setNewPresetDesignation] = useState("");
 
-  // ─── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ───
-  const [mappingSearch, setMappingSearch] = useState("");
-  const [bulkRealArticle, setBulkRealArticle] = useState("");
   const [editingPresetKey, setEditingPresetKey] = useState<string | null>(null);
+
+  // ─── ARTICLES FAVORIS (accès rapide + couleur) ───
+  const [newFavArticle, setNewFavArticle] = useState("");
+  const [newFavColor, setNewFavColor] = useState("#16a34a");
+  const [newFavColorLabel, setNewFavColorLabel] = useState("");
 
   // ─── CONFIG MUR ───
   const openConfig = () => {
@@ -431,26 +435,16 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     if (editingPresetKey === key) cancelEditPreset();
   };
 
-  // ─── CORRESPONDANCE NOM RACK → VRAI NOM CATALOGUE ───
-  const safeKey = (s: string) => s.toLowerCase().trim().replace(/[.#$/\[\]]/g, "_");
-
-  const saveNameMapping = async (rackName: string, realName: string, factor?: number) => {
-    if (!rackName.trim()) return;
-    if (!realName.trim()) { await remove(ref(db, `rack_name_mapping/${safeKey(rackName)}`)); return; }
-    const existing = nameMappings[safeKey(rackName)];
-    await update(ref(db, `rack_name_mapping/${safeKey(rackName)}`), { rackName: rackName.trim(), realName: realName.trim(), factor: factor ?? existing?.factor ?? 1 });
+  // ─── AJOUTER / RETIRER UN ARTICLE FAVORI ───
+  const addFavori = async () => {
+    if (!newFavArticle.trim()) { alert("Choisis un article du catalogue"); return; }
+    if (favoris.some(f => f.article.toLowerCase() === newFavArticle.trim().toLowerCase())) { alert("Cet article est déjà dans les favoris"); return; }
+    await push(ref(db, "rack_favoris"), { article: newFavArticle.trim(), color: newFavColor, colorLabel: newFavColorLabel.trim() || undefined });
+    setNewFavArticle(""); setNewFavColor("#16a34a"); setNewFavColorLabel("");
   };
 
-  const saveMappingFactor = async (rackName: string, factor: number) => {
-    const existing = nameMappings[safeKey(rackName)];
-    if (!existing?.realName) return;
-    await update(ref(db, `rack_name_mapping/${safeKey(rackName)}`), { factor: Math.max(0.01, factor) });
-  };
-
-  // ─── ATTACHER UN ARTICLE DU CATALOGUE À PLUSIEURS NOMS RACK D'UN COUP ───
-  const toggleRackNameForArticle = async (rackName: string, checked: boolean) => {
-    if (checked) await saveNameMapping(rackName, bulkRealArticle);
-    else await saveNameMapping(rackName, "");
+  const removeFavori = async (key: string) => {
+    await remove(ref(db, `rack_favoris/${key}`));
   };
 
   // ─── CLIC SUR UNE CASE ───
@@ -478,6 +472,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         color: duplicating.color || "",
         origine: duplicating.origine || "",
         notes: duplicating.notes || "",
+        catalogueArticle: duplicating.catalogueArticle || "",
       });
       setPresetLocked(false);
       setAddMode("libre");
@@ -490,7 +485,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setSelectedCell({ row, bay, slot });
     setIsEditing(false);
     if (!occupied) {
-      setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
+      setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "", catalogueArticle: "" });
       setAddMode(getPresetsForWall(activeWall).length > 0 ? "modele" : "libre");
       setPresetLocked(false);
     }
@@ -586,6 +581,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       color: data.color || "",
       origine: data.origine || "",
       notes: data.notes || "",
+      catalogueArticle: data.catalogueArticle || "",
     });
     setPresetLocked(false);
     setAddMode("libre");
@@ -697,14 +693,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     (sum, row) => sum + bays.reduce((s, bay, i) => s + (cfg.baySlots?.[`${row}_${i}`] || bay.width), 0), 0
   );
 
-  // ─── LISTE DE TOUS LES NOMS UTILISÉS EN RACK (tous murs, modèles codés + persos) ───
-  const allRackNames = [...new Set(
-    WALL_IDS.flatMap(w => getPresetsForWall(w).map(p => p.produit)).filter(Boolean)
-  )].sort((a, b) => a.localeCompare(b, "fr"));
-  const filteredMappingNames = mappingSearch.trim()
-    ? allRackNames.filter(n => n.toLowerCase().includes(mappingSearch.toLowerCase()))
-    : allRackNames;
-
   const selectedData = selectedCell ? positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)] : null;
   const selectedBayInfo = selectedCell ? bays[selectedCell.bay] : null;
   const selectedBaySlotCount = selectedCell && selectedBayInfo ? (cfg.baySlots?.[`${selectedCell.row}_${selectedCell.bay}`] || selectedBayInfo.width) : 1;
@@ -736,6 +724,37 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 </button>
               );
             })}
+          </div>
+
+          {/* ── ARTICLES FAVORIS (globaux, avec couleur) ── */}
+          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>⭐ Articles favoris</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Mets en favori une vingtaine ou trentaine d'articles du catalogue avec une couleur — ils apparaîtront en accès rapide (avec leur couleur) quand tu poses une palette, sur n'importe quel mur. Comme c'est déjà le vrai nom du catalogue, aucune correspondance à faire ensuite.</p>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <RackAutocomplete value={newFavArticle} onChange={setNewFavArticle} suggestions={suggestionsProduits} placeholder="Choisir un article du catalogue..." />
+              </div>
+              <input type="color" value={newFavColor} onChange={e => setNewFavColor(e.target.value)}
+                style={{ width: 40, height: 40, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer" }} />
+            </div>
+            <input value={newFavColorLabel} onChange={e => setNewFavColorLabel(e.target.value)} placeholder="Nom couleur (optionnel, ex: Orange)"
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
+            <button onClick={addFavori} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 12 }}>
+              ⭐ Ajouter aux favoris
+            </button>
+
+            {favoris.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 320, overflowY: "auto" }}>
+                {favoris.map(f => (
+                  <div key={f._key} style={{ display: "flex", alignItems: "center", gap: 8, background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, padding: "6px 10px" }}>
+                    <div style={{ width: 16, height: 16, borderRadius: 4, background: f.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: "#1a2e1a", flex: 1 }}>{f.article}</span>
+                    <button onClick={() => removeFavori(f._key)} style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── DIMENSIONS DU MUR ACTIF ── */}
@@ -858,65 +877,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
             )}
-          </div>
-
-          {/* ── CORRESPONDANCE NOM RACK ↔ VRAI NOM CATALOGUE ── */}
-          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>🔗 Faire correspondre les noms au catalogue</p>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Relie les noms utilisés dans le rack (tous murs) à leur vrai nom dans le catalogue — utilisé pour que le Stock reconnaisse automatiquement les articles vus en rack aux niveaux 2 et 3. Un même article peut être relié à plusieurs noms rack différents. Si la taille du colis diffère entre le rack et le stock (ex: colis de 12 en rack, de 6 en stock), règle le facteur de conversion sous chaque correspondance.</p>
-
-            {/* Rattacher un article à plusieurs noms rack d'un coup */}
-            <div style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 14, marginBottom: 18 }}>
-              <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#7c3aed" }}>📎 Attacher un article à plusieurs noms rack</p>
-              <RackAutocomplete value={bulkRealArticle} onChange={setBulkRealArticle} suggestions={suggestionsProduits} placeholder="Choisir un article du catalogue..." />
-              {bulkRealArticle.trim() && (
-                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 4, maxHeight: 260, overflowY: "auto" }}>
-                  <p style={{ margin: "0 0 4px", fontSize: 11, color: "#9ca3af" }}>Coche tous les noms rack qui correspondent à "{bulkRealArticle}" :</p>
-                  {allRackNames.map(rackName => {
-                    const mapping = nameMappings[safeKey(rackName)];
-                    const checked = mapping?.realName === bulkRealArticle;
-                    const linkedElsewhere = mapping && mapping.realName !== bulkRealArticle ? mapping.realName : null;
-                    return (
-                      <label key={rackName} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, background: checked ? "#f5f3ff" : "transparent", cursor: "pointer" }}>
-                        <input type="checkbox" checked={checked} onChange={e => toggleRackNameForArticle(rackName, e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }} />
-                        <span style={{ fontSize: 12, color: "#1a2e1a", flex: 1 }}>{rackName}</span>
-                        {linkedElsewhere && <span style={{ fontSize: 10, color: "#d97706", whiteSpace: "nowrap" }}>relié à : {linkedElsewhere}</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase" }}>Ou nom par nom</p>
-            <input value={mappingSearch} onChange={e => setMappingSearch(e.target.value)} placeholder="🔍 Filtrer les noms du rack..."
-              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const, marginBottom: 10 }} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
-              {filteredMappingNames.length === 0 && <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "center", padding: "10px 0" }}>Aucun nom trouvé</p>}
-              {filteredMappingNames.map(rackName => {
-                const mapping = nameMappings[safeKey(rackName)];
-                return (
-                  <div key={rackName} style={{ background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}>
-                    <p style={{ margin: "0 0 5px", fontSize: 12, fontWeight: 700, color: "#1a2e1a" }}>{rackName}</p>
-                    <RackAutocomplete
-                      value={mapping?.realName || ""}
-                      onChange={v => saveNameMapping(rackName, v)}
-                      suggestions={suggestionsProduits}
-                      placeholder="→ vrai nom catalogue (optionnel)"
-                    />
-                    {mapping?.realName && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-                        <span style={{ fontSize: 11, color: "#6b7280" }}>1 colis rack =</span>
-                        <input type="number" min="0.01" step="0.5" value={mapping.factor ?? 1}
-                          onChange={e => saveMappingFactor(rackName, Number(e.target.value))}
-                          style={{ width: 60, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 6, fontSize: 12, textAlign: "center", fontWeight: 700 }} />
-                        <span style={{ fontSize: 11, color: "#6b7280" }}>colis stock</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
           </div>
 
           <button onClick={() => setShowConfig(false)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
@@ -1136,16 +1096,37 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
                 {presetLocked ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: 10, padding: "10px 12px" }}>
-                    <div style={{ width: 22, height: 22, borderRadius: 5, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", display: "block" }}>{freeForm.produit}</span>
-                      {freeForm.origine && <span style={{ fontSize: 11, color: "#6b7280" }}>🌍 {freeForm.origine}</span>}
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#f5f3ff", border: "1.5px solid #ddd6fe", borderRadius: 10, padding: "10px 12px" }}>
+                      <div style={{ width: 22, height: 22, borderRadius: 5, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", display: "block" }}>{freeForm.produit}</span>
+                        {freeForm.origine && <span style={{ fontSize: 11, color: "#6b7280" }}>🌍 {freeForm.origine}</span>}
+                      </div>
+                      <button onClick={unlockPreset} style={{ background: "none", border: "none", color: "#6d28d9", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>↺ Changer</button>
                     </div>
-                    <button onClick={unlockPreset} style={{ background: "none", border: "none", color: "#6d28d9", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>↺ Changer</button>
-                  </div>
+                    <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 10, padding: 10 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: "#15803d", display: "block", marginBottom: 4 }}>🔗 Article stock (pour le comptage auto)</label>
+                      <RackAutocomplete value={freeForm.catalogueArticle} onChange={v => setFreeForm({ ...freeForm, catalogueArticle: v })} suggestions={suggestionsProduits} placeholder="Choisir l'article du catalogue..." />
+                      <p style={{ fontSize: 10, color: "#6b7280", margin: "4px 0 0" }}>Si renseigné, cette palette compte directement dans cet article au Stock (niveaux 2/3).</p>
+                    </div>
+                  </>
                 ) : (
                   <>
+                    {freeForm.type === "produit" && favoris.length > 0 && (
+                      <div>
+                        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>⭐ Favoris (clic rapide)</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+                          {favoris.map(f => (
+                            <button key={f._key} onClick={() => setFreeForm({ ...freeForm, produit: f.article, catalogueArticle: f.article, color: f.color })}
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 20, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 11, fontFamily: "'Syne', sans-serif" }}>
+                              <span style={{ width: 10, height: 10, borderRadius: "50%", background: f.color, border: "1px solid rgba(0,0,0,0.15)", display: "inline-block" }} />
+                              {f.article}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {freeForm.color && (
                       <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f9fafb", borderRadius: 10, padding: "6px 10px" }}>
                         <div style={{ width: 16, height: 16, borderRadius: 4, background: freeForm.color, border: "1px solid rgba(0,0,0,0.15)" }} />
@@ -1193,6 +1174,11 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                         <RackAutocomplete value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
                         <input value={freeForm.origine} onChange={e => setFreeForm({ ...freeForm, origine: e.target.value })} placeholder="🌍 Origine (pays)"
                           style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
+                        <div style={{ background: "#f0fdf4", border: "1.5px solid #bbf7d0", borderRadius: 10, padding: 10 }}>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#15803d", display: "block", marginBottom: 4 }}>🔗 Article stock (pour le comptage auto)</label>
+                          <RackAutocomplete value={freeForm.catalogueArticle} onChange={v => setFreeForm({ ...freeForm, catalogueArticle: v })} suggestions={suggestionsProduits} placeholder="Choisir l'article du catalogue..." />
+                          <p style={{ fontSize: 10, color: "#6b7280", margin: "4px 0 0" }}>Si renseigné, cette palette compte directement dans cet article au Stock (niveaux 2/3). Laisse vide si tu ne veux pas de comptage auto.</p>
+                        </div>
                       </>
                     )}
                   </>
@@ -1240,6 +1226,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   {selectedData.produit}
                 </h2>
                 <p style={{ margin: "3px 0 0", fontSize: 13, color: "#6b7280" }}>{selectedData.fournisseur || "-"}{selectedData.origine ? ` · 🌍 ${selectedData.origine}` : ""}</p>
+                {selectedData.catalogueArticle && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#15803d", fontWeight: 700 }}>🔗 {selectedData.catalogueArticle}</p>}
               </div>
               <button onClick={() => setSelectedCell(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
             </div>
