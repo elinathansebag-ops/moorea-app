@@ -74,20 +74,22 @@ function searchRanked(query: string, list: string[], max = 50): string[] {
 function RackAutocomplete({ value, onChange, suggestions, placeholder, required }: { value: string; onChange: (v: string) => void; suggestions: string[]; placeholder?: string; required?: boolean }) {
   const [show, setShow] = useState(false);
   const [q, setQ] = useState(value);
-  useEffect(() => { setQ(value); }, [value]);
+  // ─── FEEDBACK VISUEL : la case grise légèrement une fois qu'un produit est bien choisi dans la liste (vs. juste tapé) ───
+  const [picked, setPicked] = useState(false);
+  useEffect(() => { setQ(value); if (!value) setPicked(false); }, [value]);
   const filtered = searchRanked(q, suggestions, 50);
   return (
     <div style={{ position: "relative" }}>
       <input value={q} placeholder={placeholder} required={required}
-        onChange={e => { setQ(e.target.value); onChange(e.target.value); setShow(true); }}
+        onChange={e => { setQ(e.target.value); onChange(e.target.value); setShow(true); setPicked(false); }}
         onFocus={() => q.trim().length > 0 && setShow(true)}
         onBlur={() => setTimeout(() => setShow(false), 150)}
         autoComplete="off"
-        style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, outline: "none", fontFamily: "'Syne', sans-serif" }} />
+        style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${picked ? "#c7cad1" : "#e5e7eb"}`, borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const, outline: "none", fontFamily: "'Syne', sans-serif", background: picked ? "#eef0f2" : "#fff", transition: "background 0.15s ease, border-color 0.15s ease" }} />
       {show && filtered.length > 0 && (
         <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.12)", zIndex: 3000, maxHeight: 260, overflowY: "auto", marginTop: 3 }}>
           {filtered.map((a, i) => (
-            <div key={i} onMouseDown={() => { onChange(a); setQ(a); setShow(false); }}
+            <div key={i} onMouseDown={() => { onChange(a); setQ(a); setShow(false); setPicked(true); }}
               style={{ padding: "9px 14px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f5f3ee" }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "#f5f3ee"}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "#fff"}>
@@ -201,6 +203,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const rackScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [rackScrollLeft, setRackScrollLeft] = useState(0); // pour le curseur de défilement horizontal
+  const [rackMaxScroll, setRackMaxScroll] = useState(0);
   const positionsRef = useRef(positions);
   const activeWallRef = useRef(activeWall);
 
@@ -265,6 +269,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       if (!el) return;
       setCanScrollLeft(el.scrollLeft > 4);
       setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+      setRackScrollLeft(el.scrollLeft);
+      setRackMaxScroll(Math.max(0, el.scrollWidth - el.clientWidth));
     };
     checkScroll();
     const el = rackScrollRef.current;
@@ -812,7 +818,13 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
         {/* GRILLE DU RACK — structure réaliste : montants + traverses + palettes */}
         <div style={{ position: "relative" }}>
-          <style>{`@keyframes rackScrollHint{0%,100%{opacity:.35}50%{opacity:1}}`}</style>
+          <style>{`
+            @keyframes rackScrollHint{0%,100%{opacity:.35}50%{opacity:1}}
+            .rack-scrub{ -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:999px; background:#e5e7eb; outline:none; cursor:pointer; margin:0; }
+            .rack-scrub::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:#8b5cf6; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
+            .rack-scrub::-moz-range-thumb{ width:20px; height:20px; border-radius:50%; background:#8b5cf6; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
+            .rack-scrub::-moz-range-track{ background:#e5e7eb; height:6px; border-radius:999px; }
+          `}</style>
           <div ref={rackScrollRef} style={{ background: "linear-gradient(180deg, #eef1f5, #dde3ea)", border: "5px solid #3f3f46", borderRadius: 10, padding: "18px 14px 10px", overflowX: "auto", boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)" }}>
           {Array.from({ length: cfg.rows }, (_, i) => cfg.rows - 1 - i).map(row => (
             <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 90 + 40 }}>
@@ -881,6 +893,26 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
+
+        {/* CURSEUR DE DÉFILEMENT HORIZONTAL — permet de se déplacer de gauche à droite dans le rack */}
+        {rackMaxScroll > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "0 4px" }}>
+            <span style={{ fontSize: 13, color: "#8b5cf6", fontWeight: 800, flexShrink: 0 }}>◂</span>
+            <input
+              type="range"
+              className="rack-scrub"
+              min={0}
+              max={rackMaxScroll}
+              value={rackScrollLeft}
+              onChange={e => {
+                const v = Number(e.target.value);
+                setRackScrollLeft(v);
+                if (rackScrollRef.current) rackScrollRef.current.scrollLeft = v;
+              }}
+            />
+            <span style={{ fontSize: 13, color: "#8b5cf6", fontWeight: 800, flexShrink: 0 }}>▸</span>
+          </div>
+        )}
 
         <p style={{ marginTop: 12, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
           Glisse une palette (souris ou doigt) vers une case vide pour la déplacer rapidement, ou tape/clique dessus pour monter/descendre/déplacer sur un autre mur/sortir.
@@ -981,35 +1013,36 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                       <input value={freeForm.produit} onChange={e => setFreeForm({ ...freeForm, produit: e.target.value })} placeholder={freeForm.type === "archive" ? "Description archive *" : "Description packaging *"}
                         style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                     )}
-                    {(freeForm.type === "produit" || freeForm.type === "packaging") && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {freeForm.extraItems.map((item, idx) => (
-                          <div key={idx} style={{ background: "#faf5ff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>Article {idx + 2} de la palette</span>
-                              <button onClick={() => removeExtraItem(idx)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>retirer</button>
-                            </div>
-                            {freeForm.type === "produit" ? (
-                              <RackAutocomplete value={item.nom} onChange={v => updateExtraItem(idx, { nom: v })} suggestions={suggestionsProduits} placeholder={`Produit ${idx + 2} * (catalogue)`} />
-                            ) : (
-                              <input value={item.nom} onChange={e => updateExtraItem(idx, { nom: e.target.value })} placeholder={`Description ${idx + 2} *`}
-                                style={{ padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-                            )}
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <input type="number" value={item.quantite} onChange={e => updateExtraItem(idx, { quantite: e.target.value })} placeholder="Qté"
-                                style={{ flex: 1, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-                              <select value={item.unite} onChange={e => updateExtraItem(idx, { unite: e.target.value })}
-                                style={{ width: 90, padding: "9px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
-                                <option>colis</option><option>kg</option><option>palette</option>
-                              </select>
-                            </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, background: freeForm.extraItems.length > 0 ? "#faf5ff" : "transparent", border: freeForm.extraItems.length > 0 ? "1.5px solid #e9d5ff" : "none", borderRadius: 10, padding: freeForm.extraItems.length > 0 ? 10 : 0 }}>
+                      {freeForm.extraItems.length > 0 && (
+                        <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 800, color: "#7c3aed" }}>🔀 Palette mixte — {freeForm.extraItems.length + 1} produits sur cette palette</p>
+                      )}
+                      {freeForm.extraItems.map((item, idx) => (
+                        <div key={idx} style={{ background: "#fff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>Article {idx + 2} de la palette</span>
+                            <button onClick={() => removeExtraItem(idx)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>retirer</button>
                           </div>
-                        ))}
-                        <button onClick={addExtraItem} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#8b5cf6", fontWeight: 700, fontSize: 12, cursor: "pointer", padding: 0 }}>
-                          + Ajouter un article {freeForm.extraItems.length > 0 ? `(${freeForm.extraItems.length + 2}ᵉ)` : "(palette mixte)"}
-                        </button>
-                      </div>
-                    )}
+                          {freeForm.type === "produit" ? (
+                            <RackAutocomplete value={item.nom} onChange={v => updateExtraItem(idx, { nom: v })} suggestions={suggestionsProduits} placeholder={`Produit ${idx + 2} * (catalogue)`} />
+                          ) : (
+                            <input value={item.nom} onChange={e => updateExtraItem(idx, { nom: e.target.value })} placeholder={`Description ${idx + 2} *`}
+                              style={{ padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                          )}
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <input type="number" value={item.quantite} onChange={e => updateExtraItem(idx, { quantite: e.target.value })} placeholder="Qté"
+                              style={{ flex: 1, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                            <select value={item.unite} onChange={e => updateExtraItem(idx, { unite: e.target.value })}
+                              style={{ width: 90, padding: "9px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
+                              <option>colis</option><option>kg</option><option>palette</option>
+                            </select>
+                          </div>
+                        </div>
+                      ))}
+                      <button onClick={addExtraItem} style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "1.5px dashed #c4b5fd", background: "#faf5ff", color: "#7c3aed", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                        {freeForm.extraItems.length > 0 ? `+ Ajouter un ${freeForm.extraItems.length + 2}ᵉ produit` : "🔀 + Ajouter un 2ᵉ produit (palette mixte)"}
+                      </button>
+                    </div>
                     {freeForm.type === "produit" && (
                       <>
                         <RackAutocomplete value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
