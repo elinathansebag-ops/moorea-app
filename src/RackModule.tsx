@@ -1032,36 +1032,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                       <input value={freeForm.produit} onChange={e => setFreeForm({ ...freeForm, produit: e.target.value })} placeholder={freeForm.type === "archive" ? "Description archive *" : "Description packaging *"}
                         style={{ padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                     )}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, background: freeForm.extraItems.length > 0 ? "#faf5ff" : "transparent", border: freeForm.extraItems.length > 0 ? "1.5px solid #e9d5ff" : "none", borderRadius: 10, padding: freeForm.extraItems.length > 0 ? 10 : 0 }}>
-                      {freeForm.extraItems.length > 0 && (
-                        <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 800, color: "#7c3aed" }}>🔀 Palette mixte — {freeForm.extraItems.length + 1} produits sur cette palette</p>
-                      )}
-                      {freeForm.extraItems.map((item, idx) => (
-                        <div key={idx} style={{ background: "#fff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>Article {idx + 2} de la palette</span>
-                            <button onClick={() => removeExtraItem(idx)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>retirer</button>
-                          </div>
-                          {freeForm.type === "produit" ? (
-                            <RackAutocomplete value={item.nom} onChange={v => updateExtraItem(idx, { nom: v })} suggestions={suggestionsProduits} placeholder={`Produit ${idx + 2} * (catalogue)`} />
-                          ) : (
-                            <input value={item.nom} onChange={e => updateExtraItem(idx, { nom: e.target.value })} placeholder={`Description ${idx + 2} *`}
-                              style={{ padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-                          )}
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <input type="number" value={item.quantite} onChange={e => updateExtraItem(idx, { quantite: e.target.value })} placeholder="Qté"
-                              style={{ flex: 1, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
-                            <select value={item.unite} onChange={e => updateExtraItem(idx, { unite: e.target.value })}
-                              style={{ width: 90, padding: "9px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
-                              <option>colis</option><option>kg</option><option>palette</option>
-                            </select>
-                          </div>
-                        </div>
-                      ))}
-                      <button onClick={addExtraItem} style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "1.5px dashed #c4b5fd", background: "#faf5ff", color: "#7c3aed", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                        {freeForm.extraItems.length > 0 ? `+ Ajouter un ${freeForm.extraItems.length + 2}ᵉ produit` : "🔀 + Ajouter un 2ᵉ produit (palette mixte)"}
-                      </button>
-                    </div>
                     {freeForm.type === "produit" && (
                       <>
                         <RackAutocomplete value={freeForm.fournisseur} onChange={v => setFreeForm({ ...freeForm, fournisseur: v })} suggestions={suggestionsFournisseurs} placeholder="Fournisseur" />
@@ -1071,6 +1041,38 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                     )}
                   </>
                 )}
+                {/* Palette mixte (plusieurs produits) — accessible que le 1er article vienne d'un favori
+                    verrouillé ou d'une saisie libre, pas seulement en saisie libre. */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, background: freeForm.extraItems.length > 0 ? "#faf5ff" : "transparent", border: freeForm.extraItems.length > 0 ? "1.5px solid #e9d5ff" : "none", borderRadius: 10, padding: freeForm.extraItems.length > 0 ? 10 : 0 }}>
+                  {freeForm.extraItems.length > 0 && (
+                    <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 800, color: "#7c3aed" }}>🔀 Palette mixte — {freeForm.extraItems.length + 1} produits sur cette palette</p>
+                  )}
+                  {freeForm.extraItems.map((item, idx) => (
+                    <div key={idx} style={{ background: "#fff", border: "1.5px solid #e9d5ff", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>Article {idx + 2} de la palette</span>
+                        <button onClick={() => removeExtraItem(idx)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: 11, cursor: "pointer" }}>retirer</button>
+                      </div>
+                      {freeForm.type === "produit" ? (
+                        <RackAutocomplete value={item.nom} onChange={v => updateExtraItem(idx, { nom: v })} suggestions={suggestionsProduits} placeholder={`Produit ${idx + 2} * (catalogue)`} />
+                      ) : (
+                        <input value={item.nom} onChange={e => updateExtraItem(idx, { nom: e.target.value })} placeholder={`Description ${idx + 2} *`}
+                          style={{ padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                      )}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input type="number" value={item.quantite} onChange={e => updateExtraItem(idx, { quantite: e.target.value })} placeholder="Qté"
+                          style={{ flex: 1, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                        <select value={item.unite} onChange={e => updateExtraItem(idx, { unite: e.target.value })}
+                          style={{ width: 90, padding: "9px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
+                          <option>colis</option><option>kg</option><option>palette</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={addExtraItem} style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8, border: "1.5px dashed #c4b5fd", background: "#faf5ff", color: "#7c3aed", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                    {freeForm.extraItems.length > 0 ? `+ Ajouter un ${freeForm.extraItems.length + 2}ᵉ produit` : "🔀 + Ajouter un 2ᵉ produit (palette mixte)"}
+                  </button>
+                </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input value={freeForm.lot_interne} onChange={e => setFreeForm({ ...freeForm, lot_interne: e.target.value })} placeholder="N° Lot" autoFocus={presetLocked}
                     style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
