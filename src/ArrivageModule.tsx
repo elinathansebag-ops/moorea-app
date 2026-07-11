@@ -734,17 +734,11 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           return;
         }
 
-        // Demande explicite d'accès caméra en premier : si ça échoue, on récupère une
-        // vraie DOMException (nom clair : NotAllowedError, NotFoundError, NotReadableError...)
-        // plutôt que le message générique que html5-qrcode renvoie parfois.
-        try {
-          const testStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-          testStream.getTracks().forEach(t => t.stop());
-        } catch (permErr: any) {
-          if (!done) setError(cameraErrorMessage(permErr));
-          return;
-        }
-        if (done) return;
+        // Note : on ne fait plus de demande getUserMedia "de test" séparée ici — elle
+        // doublait chaque demande d'autorisation caméra (une pour le test, une pour
+        // html5-qrcode juste après), ce qui pouvait contribuer à un re-prompt système
+        // à chaque ouverture. html5-qrcode gère lui-même la demande d'accès ci-dessous,
+        // et ses erreurs sont interceptées par le catch plus bas via cameraErrorMessage.
 
         // Limiter les formats scannés = moins de calcul par frame = détection plus rapide
         const formatsToSupport = [
