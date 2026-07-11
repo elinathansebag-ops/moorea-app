@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import emailjs from "@emailjs/browser";
 import jsPDF from "jspdf";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { PageHeader, NoteSelector, ScoreCircle, F, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, DESTINATAIRES, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, CRITERES } from "./shared";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -245,19 +246,29 @@ async function imprimerEtiquettePalette(arrivage: any, paletteIndex?: number, co
   const lotLabel = palRef ? `MRA.${String(lot).padStart(4,"0")}-${palRef}` : `MRA.${String(lot).padStart(4,"0")}`;
   const qte = colisCount != null ? colisCount : arrivage.quantite;
 
+  // Formatage DLC (n'apparaît sur l'étiquette que si elle est renseignée sur l'arrivage)
+  let dlcLabel = "";
+  if (arrivage.dlc) {
+    const d = new Date(arrivage.dlc);
+    dlcLabel = isNaN(d.getTime()) ? String(arrivage.dlc) : d.toLocaleDateString("fr-FR");
+  }
+
   const w = window.open("", "_blank");
   if (!w) { alert("Autorise les popups pour imprimer l'étiquette"); return; }
-  w.document.write(`<html><body style="background:#FFE600;display:flex;align-items:center;justify-content:center;height:100vh;font-family:Arial;font-size:20px;font-weight:900">⏳ Génération...</body></html>`);
+  w.document.write(`<html><body style="background:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:Arial;font-size:20px;font-weight:900">⏳ GÉNÉRATION...</body></html>`);
 
-  const qrSvgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&bgcolor=FFE600&color=000000&margin=4`;
+  // QR le plus grand possible : on demande une image source haute résolution (500x500)
+  // pour qu'elle reste nette une fois affichée en grand sur l'étiquette imprimée.
+  // Fond blanc / trait noir uniquement — pas de couleur, pensé pour impression thermique.
+  const qrSvgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=3`;
   let qrDataUrl = "";
   try {
     qrDataUrl = await new Promise<string>((resolve) => {
       const img = new Image(); img.crossOrigin = "anonymous";
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        canvas.width = 200; canvas.height = 200;
-        canvas.getContext("2d")!.drawImage(img, 0, 0, 200, 200);
+        canvas.width = 500; canvas.height = 500;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, 500, 500);
         resolve(canvas.toDataURL("image/png"));
       };
       img.onerror = () => resolve("");
@@ -267,29 +278,45 @@ async function imprimerEtiquettePalette(arrivage: any, paletteIndex?: number, co
   } catch { qrDataUrl = ""; }
 
   const qrHtml = qrDataUrl
-    ? `<img src="${qrDataUrl}" style="width:130px;height:130px;border:3px solid #000" />`
-    : `<img src="${qrSvgUrl}" style="width:130px;height:130px;border:3px solid #000" onerror="this.style.display='none'" />`;
+    ? `<img src="${qrDataUrl}" class="qr-img" />`
+    : `<img src="${qrSvgUrl}" class="qr-img" onerror="this.style.display='none'" />`;
 
+  // Étiquette au format 110mm x 70mm — QR agrandi au maximum, infos réduites à
+  // l'essentiel (produit, quantité, DLC si renseignée, lot Moorea).
+  // Tout en majuscules, aucun fond de couleur (noir sur blanc) — pensé pour impression thermique.
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${lotLabel}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial Black,Arial,sans-serif;background:#fff;display:flex;justify-content:center;padding:20px}.etiquette{width:200mm;min-height:140mm;background:#FFE600;border:4px solid #000;padding:8mm;display:flex;flex-direction:column;gap:5mm}.lot{font-size:52px;font-weight:900;color:#000;letter-spacing:2px;border-bottom:3px solid #000;padding-bottom:4mm}.produit{font-size:28px;font-weight:900;color:#000;line-height:1.2}.fourn{font-size:22px;font-weight:700;color:#000}.infos{display:grid;grid-template-columns:1fr 1fr;gap:3mm}.info-cell{background:rgba(0,0,0,0.08);border-radius:3px;padding:3mm 4mm}.info-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#333}.info-val{font-size:20px;font-weight:900;color:#000}.bottom{display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto}.qty{font-size:80px;font-weight:900;color:#000;line-height:1}.unite{font-size:24px;font-weight:700;color:#000;margin-top:2mm}.qr-block{text-align:right}.qr-block p{font-size:11px;font-weight:700;color:#000;margin-top:2mm;text-align:center}.btn-print{position:fixed;top:10px;right:10px;padding:9px 18px;background:#000;color:#FFE600;border:none;border-radius:8px;font-weight:900;cursor:pointer;font-size:14px}.btn-close{position:fixed;top:10px;right:130px;padding:9px 18px;background:#666;color:#fff;border:none;border-radius:8px;font-weight:900;cursor:pointer;font-size:14px}@media print{.btn-print,.btn-close{display:none}body{padding:0}}</style>
+<style>
+@page{size:110mm 70mm;margin:0}
+*{margin:0;padding:0;box-sizing:border-box;text-transform:uppercase}
+body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.etiquette{width:110mm;height:70mm;background:#fff;border:3px solid #000;padding:4mm;display:flex;gap:4mm;overflow:hidden}
+.qr-col{display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.qr-img{width:60mm;height:60mm;border:2px solid #000;background:#fff;object-fit:contain}
+.info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between}
+.lot{font-size:20px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:2px solid #000;padding-bottom:1.5mm;word-break:break-word}
+.produit{font-size:16px;font-weight:900;color:#000;line-height:1.15;margin-top:1.5mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.qty-row{display:flex;align-items:baseline;gap:4px;margin-top:1.5mm}
+.qty{font-size:28px;font-weight:900;color:#000;line-height:1}
+.unite{font-size:12px;font-weight:700;color:#000}
+.dlc{margin-top:1.5mm;color:#000;font-size:13px;font-weight:900;border:2px solid #000;padding:1mm 2mm;display:inline-block;letter-spacing:0.5px}
+.btn-print{position:fixed;top:10px;right:10px;padding:9px 18px;background:#000;color:#fff;border:none;border-radius:8px;font-weight:900;cursor:pointer;font-size:14px;text-transform:none}
+.btn-close{position:fixed;top:10px;right:130px;padding:9px 18px;background:#666;color:#fff;border:none;border-radius:8px;font-weight:900;cursor:pointer;font-size:14px;text-transform:none}
+@media print{.btn-print,.btn-close{display:none}body{padding:0;background:#fff}}
+</style>
 </head><body>
 <button class="btn-print" onclick="window.print()">IMPRIMER</button>
 <button class="btn-close" onclick="window.close()">✕ Fermer</button>
 <div class="etiquette">
-  <div class="lot">${lotLabel}</div>
-  <div class="produit">${(arrivage.produit || "-").toUpperCase()}</div>
-  <div class="fourn">${(arrivage.fournisseur || "-").toUpperCase()}</div>
-  <div class="infos">
-    <div class="info-cell"><div class="info-lbl">DATE ARRIVEE</div><div class="info-val">${arrivage.date || "-"}</div></div>
-    <div class="info-cell"><div class="info-lbl">ORIGINE</div><div class="info-val">${(arrivage.origine || "-").toUpperCase()}</div></div>
-    <div class="info-cell"><div class="info-lbl">POIDS BRUT</div><div class="info-val">${arrivage.poids_brut || "-"} KG</div></div>
-    <div class="info-cell"><div class="info-lbl">POIDS NET</div><div class="info-val">${arrivage.poids_net || "-"} KG</div></div>
-    <div class="info-cell"><div class="info-lbl">LOT FOURNISSEUR</div><div class="info-val">${arrivage.lot_fournisseur || "-"}</div></div>
-    <div class="info-cell"><div class="info-lbl">LOT INTERNE</div><div class="info-val">${lot}${palRef ? `-${palRef}` : ""}</div></div>
-  </div>
-  <div class="bottom">
-    <div><div class="qty">${qte || "-"}</div><div class="unite">${(arrivage.unite || "COLIS").toUpperCase()}</div></div>
-    <div class="qr-block">${qrHtml}<p>SCANNER → FICHE PALETTE</p></div>
+  <div class="qr-col">${qrHtml}</div>
+  <div class="info-col">
+    <div>
+      <div class="lot">${lotLabel}</div>
+      <div class="produit">${(arrivage.produit || "-").toUpperCase()}</div>
+    </div>
+    <div>
+      <div class="qty-row"><span class="qty">${qte || "-"}</span><span class="unite">${(arrivage.unite || "COLIS").toUpperCase()}</span></div>
+      ${dlcLabel ? `<div class="dlc">DLC ${dlcLabel}</div>` : ""}
+    </div>
   </div>
 </div>
 </body></html>`;
@@ -646,6 +673,7 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
   const [error, setError] = useState("");
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
 
   const handleRaw = (raw: string) => {
@@ -663,24 +691,20 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
     let done = false;
     const start = async () => {
       try {
-        // Charger html5-qrcode (EAN + QR, fonctionne sur iOS)
-        await new Promise<void>((res, rej) => {
-          if ((window as any).Html5Qrcode) { res(); return; }
-          const s = document.createElement("script");
-          s.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
-          s.onload = () => res(); s.onerror = rej;
-          document.head.appendChild(s);
-        });
+        // html5-qrcode est maintenant importé directement (bundlé par Vite) au lieu d'être
+        // chargé depuis un CDN externe au moment de l'exécution — ça évite que le scanner
+        // tombe en panne si le CDN est lent, bloqué (pare-feu, réseau d'entreprise) ou hors ligne.
         if (done) return;
+        setError("");
         setScanning(true);
-        const scanner = new (window as any).Html5Qrcode("qr-scanner-container", { verbose: false });
+        const scanner = new Html5Qrcode("qr-scanner-container", { verbose: false });
         stopRef.current = () => scanner.stop().catch(() => {});
 
         // Limiter les formats scannés = moins de calcul par frame = détection plus rapide
-        const Formats = (window as any).Html5QrcodeSupportedFormats;
-        const formatsToSupport = Formats ? [
-          Formats.QR_CODE, Formats.EAN_13, Formats.EAN_8, Formats.CODE_128, Formats.UPC_A, Formats.UPC_E,
-        ] : undefined;
+        const formatsToSupport = [
+          Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+        ];
 
         const baseConfig = {
           fps: 15, // était 10 → plus de tentatives de décodage par seconde
@@ -709,12 +733,12 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           );
         }
       } catch (e: any) {
-        setError(e.name === "NotAllowedError" ? "Accès à la caméra refusé." : "Caméra indisponible : " + e.message);
+        setError(e?.name === "NotAllowedError" ? "Accès à la caméra refusé — autorise la caméra dans les réglages du navigateur." : "Caméra indisponible" + (e?.message ? " : " + e.message : "."));
       }
     };
     start();
     return () => { done = true; stopRef.current?.(); };
-  }, []);
+  }, [retryCount]);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000", zIndex: 999, display: "flex", flexDirection: "column" }}>
@@ -726,7 +750,10 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
             <div style={{ background: "#fff", borderRadius: 12, padding: 20, textAlign: "center" }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>🚫</div>
               <p style={{ color: "#dc2626", fontSize: 14 }}>{error}</p>
-              <button onClick={onClose} style={{ marginTop: 12, padding: "8px 20px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>Fermer</button>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
+                <button onClick={() => setRetryCount(c => c + 1)} style={{ padding: "8px 20px", background: "#c8a84b", color: "#0a0a0a", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>Réessayer</button>
+                <button onClick={onClose} style={{ padding: "8px 20px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>Fermer</button>
+              </div>
             </div>
           </div>
         )}

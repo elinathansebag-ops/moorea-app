@@ -50,7 +50,7 @@ export default function App() {
   const [pageMode, setPageMode] = useState<"qualite" | "arrivages" | "historique_arr" | "stats_arr" | "saisie_arr">("arrivages");
   const [arrivages, setArrivages] = useState<any[]>([]);
   const [gencodeArticles, setGencodeArticles] = useState<any[]>([]);
-  const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "" });
+  const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "" });
   const [previewArr, setPreviewArr] = useState<any[] | null>(null);
   const [importingArr, setImportingArr] = useState(false);
   const [horsListeMode, setHorsListeMode] = useState(false);
@@ -263,7 +263,7 @@ export default function App() {
     if (!formArr.fournisseur || !formArr.produit || !formArr.quantite) { showToast("⚠ Champs requis manquants", "error"); return; }
     const now2 = new Date();
     await push(ref(db, "arrivages"), { ...formArr, statut: "en attente", date: now2.toLocaleDateString("fr-FR"), timestamp: Date.now() });
-    setFormArr({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "" });
+    setFormArr({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "" });
     setPageMode("arrivages"); showToast("Arrivage enregistré ✓");
   };
 
@@ -2238,6 +2238,7 @@ _PDF joint_`;
                 </div>
               </F>
               <F label="Poids colis (kg)"><input type="number" step="0.1" value={formArr.poids_colis} onChange={e=>setFormArr({...formArr,poids_colis:e.target.value})} /></F>
+              <F label="DLC (si applicable)"><input type="date" value={formArr.dlc} onChange={e=>setFormArr({...formArr,dlc:e.target.value})} /></F>
             </div>
             <button className="btn-primary" onClick={submitArrivage}>✓ Enregistrer l'arrivage</button>
           </div>

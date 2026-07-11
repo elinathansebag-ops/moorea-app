@@ -139,27 +139,27 @@ function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type 
       boxSizing: "border-box" as const,
       borderRadius: 7, padding: "4px 3px 3px",
     }}>
-      {meta && <span style={{ fontSize: 11 }}>{meta.icon}</span>}
+      {meta && <span style={{ fontSize: 10 }}>{meta.icon}</span>}
       <span style={{
-        fontSize: 10.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.2, textAlign: "center",
-        maxWidth: 100, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const,
+        fontSize: 9.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.15, textAlign: "center",
+        maxWidth: 88, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as const,
         overflow: "hidden", wordBreak: "break-word" as const,
       }}>{produit}</span>
       {extraItems?.map((item, idx) => (
         <span key={idx} style={{
-          fontSize: 9, fontWeight: 700, color: "#7c3aed", lineHeight: 1.2, textAlign: "center",
-          maxWidth: 100, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const,
+          fontSize: 8, fontWeight: 700, color: "#7c3aed", lineHeight: 1.15, textAlign: "center",
+          maxWidth: 88, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" as const,
           overflow: "hidden", wordBreak: "break-word" as const,
         }}>+ {item.nom}</span>
       ))}
-      {quantite && <span style={{ fontSize: 9.5, color: "#6b7280", fontWeight: 700 }}>{quantite} {unite || ""}</span>}
+      {quantite && <span style={{ fontSize: 8.5, color: "#6b7280", fontWeight: 700 }}>{quantite} {unite || ""}</span>}
       {status && (
-        <span style={{ fontSize: 9, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "2px 5px", lineHeight: 1.3 }}>
+        <span style={{ fontSize: 8, fontWeight: 800, color: status.color, background: status.bg, borderRadius: 4, padding: "1px 4px", lineHeight: 1.3 }}>
           {status.label === "Dépassée" || status.label.startsWith("J-") ? `⚠ ${status.label}` : `DLC ${status.label}`}
         </span>
       )}
       {/* Planches de la palette bois */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 2, width: 52, marginTop: 3 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, width: 44, marginTop: 2 }}>
         <div style={{ height: 4, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
         <div style={{ height: 4, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
         <div style={{ height: 4, background: "linear-gradient(180deg,#c69563,#a1662f)", borderRadius: 1 }} />
@@ -601,7 +601,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
   const nbOccupees = Object.keys(positions).length;
   // Palettes dont la DLC est dépassée ou à moins de 10 jours (pas assez de temps pour les vendre) — sur le mur affiché.
-  const nbAlertesDLC = Object.values(positions).filter(p => dlcStatus(p.dlc)?.alerte).length;
+  // On garde row/bay/slot pour pouvoir cliquer directement sur une alerte et ouvrir cette palette précise.
+  const alertesDLC = Object.entries(positions)
+    .map(([key, p]) => ({ key, data: p, status: dlcStatus(p.dlc)! }))
+    .filter(a => !!a.status?.alerte)
+    .sort((a, b) => (a.status.label === "Dépassée" ? 0 : 1) - (b.status.label === "Dépassée" ? 0 : 1));
+  const nbAlertesDLC = alertesDLC.length;
   const bays = getBays(cfg);
   const nbTotal = Array.from({ length: cfg.rows }, (_, row) => row).reduce(
     (sum, row) => sum + bays.reduce((s, bay, i) => s + (cfg.baySlots?.[`${row}_${i}`] || bay.width), 0), 0
@@ -829,9 +834,22 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         </div>
         {nbAlertesDLC > 0 && (
           <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 16px", marginBottom: 16, marginTop: -6 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#dc2626" }}>
-              ⚠️ {nbAlertesDLC} palette{nbAlertesDLC > 1 ? "s" : ""} sur ce mur {nbAlertesDLC > 1 ? "ont" : "a"} une DLC dépassée ou à moins de 10 jours — plus assez de temps pour les vendre, à traiter en priorité.
+            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#dc2626" }}>
+              ⚠️ {nbAlertesDLC} palette{nbAlertesDLC > 1 ? "s" : ""} sur ce mur {nbAlertesDLC > 1 ? "ont" : "a"} une DLC dépassée ou à moins de 10 jours — clique pour l'ouvrir directement :
             </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {alertesDLC.map(a => {
+                const [row, bay, slot] = a.key.split("_").map(Number);
+                return (
+                  <button key={a.key} onClick={() => setSelectedCell({ row, bay, slot })}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${a.status.color}`, background: "#fff", color: a.status.color, fontWeight: 700, fontSize: 11.5, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                    <span>⚠</span>
+                    <span>{a.data.produit}</span>
+                    <span style={{ opacity: 0.75, fontWeight: 600 }}>· N{row + 1} · {a.status.label === "Dépassée" ? "Dépassée" : a.status.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -846,18 +864,18 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           `}</style>
           <div ref={rackScrollRef} style={{ background: "linear-gradient(180deg, #eef1f5, #dde3ea)", border: "5px solid #3f3f46", borderRadius: 10, padding: "18px 14px 10px", overflowX: "auto", boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)" }}>
           {Array.from({ length: cfg.rows }, (_, i) => cfg.rows - 1 - i).map(row => (
-            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 112 + 40 }}>
+            <div key={row} style={{ display: "flex", alignItems: "stretch", minWidth: cfg.cols * 96 + 40 }}>
               <div style={{ width: 34, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ fontSize: 10, fontWeight: 800, color: "#52525b", background: "#fff", border: "1px solid #d4d4d8", borderRadius: 5, padding: "2px 5px" }}>N{row + 1}</span>
               </div>
               <div style={{ display: "flex", flex: 1 }}>
                 {bays.flatMap((bay, bayIdx) => {
                   const els: any[] = [];
-                  if (bayIdx > 0) els.push(<EchelleDivider key={`ech-${bayIdx}`} height={172} />);
+                  if (bayIdx > 0) els.push(<EchelleDivider key={`ech-${bayIdx}`} height={150} />);
                   const n = cfg.baySlots?.[`${row}_${bayIdx}`] || bay.width;
                   const isCustom = n !== bay.width;
                   els.push(
-                    <div key={bayIdx} style={{ flex: bay.width, minWidth: 108 * bay.width, display: "flex", gap: 2 }}>
+                    <div key={bayIdx} style={{ flex: bay.width, minWidth: 92 * bay.width, display: "flex", gap: 2, justifyContent: n === 1 ? "center" : undefined }}>
                       {Array.from({ length: n }, (_, slot) => slot).map(slot => {
                         const key = cellKey(row, bayIdx, slot);
                         const data = positions[key];
@@ -869,7 +887,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                             data-rack-cell data-row={row} data-bay={bayIdx} data-slot={slot}
                             onPointerDown={e => onPointerDownCell(e, row, bayIdx, slot)}
                             style={{
-                              flex: 1, minWidth: Math.max(38, (108 * bay.width) / n), height: 172, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
+                              flex: n === 1 ? "0 0 auto" : 1, minWidth: Math.max(34, (92 * bay.width) / n), maxWidth: n === 1 ? 190 : undefined, width: n === 1 ? 190 : undefined, height: 150, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
                               touchAction: data ? "none" : "auto",
                               background: dragOverKey === key ? "rgba(139,92,246,0.18)" : isCustom ? "rgba(139,92,246,0.06)" : "transparent",
                               border: "none",
@@ -880,7 +898,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                               position: "relative", WebkitTapHighlightColor: "transparent",
                             }}>
                             {data ? <PaletteVisual produit={data.produit} extraItems={data.extraItems} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} type={data.type} /> : (
-                              <div style={{ width: n === 1 ? 88 : Math.max(24, 54 * bay.width / n), height: 28, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 6 }} />
+                              <div style={{ width: n === 1 ? 88 : Math.max(24, 54 * bay.width / n), height: 26, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 6 }} />
                             )}
                             {isCustom && isFirst && <span style={{ position: "absolute", top: 4, left: 6, fontSize: 9, fontWeight: 800, color: "#8b5cf6", background: "#fff", borderRadius: 4, padding: "0 3px" }}>{n}/section</span>}
                             {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update, push } from "./firebase";
 import { PageHeader } from "./shared";
+import { Html5Qrcode } from "html5-qrcode";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ─── COMPOSANT STOCK APP EMBARQUÉE ───
@@ -2119,15 +2120,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
             (window as any).sVerifierLotDansStock(lot);
           };
-          // html5-qrcode — EAN + QR, fonctionne sur iOS et Android
-          await new Promise<void>((res, rej) => {
-            if ((window as any).Html5Qrcode) { res(); return; }
-            const s = document.createElement("script");
-            s.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
-            s.onload = () => res(); s.onerror = rej;
-            document.head.appendChild(s);
-          });
-          const h5scanner = new (window as any).Html5Qrcode("s-scan-video", { verbose: false });
+          // html5-qrcode — EAN + QR, fonctionne sur iOS et Android.
+          // Importé directement (bundlé par Vite) au lieu d'être chargé depuis un CDN externe
+          // au moment de l'exécution — évite les pannes si le CDN est lent, bloqué (pare-feu,
+          // réseau d'entreprise) ou hors ligne.
+          const h5scanner = new Html5Qrcode("s-scan-video", { verbose: false });
           sScanStream = { _h5: h5scanner } as any;
           await h5scanner.start(
             { facingMode: "environment" },
@@ -2139,7 +2136,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const errEl = document.getElementById("s-scan-error") as HTMLElement;
           const msgEl = document.getElementById("s-scan-error-msg");
           if (errEl) errEl.style.display = "flex";
-          if (msgEl) msgEl.textContent = e.name === "NotAllowedError" ? "Accès caméra refusé" : e.message;
+          if (msgEl) msgEl.textContent = e?.name === "NotAllowedError" ? "Accès caméra refusé" : (e?.message || "Caméra indisponible");
         }
       };
 

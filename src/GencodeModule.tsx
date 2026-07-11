@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue } from "./firebase";
+import { Html5Qrcode } from "html5-qrcode";
 
 interface Article {
   id: string;
@@ -4796,15 +4797,11 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                   <div id="gencode-scan-container" style={{ position:'relative', borderRadius:12, overflow:'hidden', maxWidth:400, margin:'0 auto', height:280 }} />
                   <button onClick={async () => {
                     try {
-                      await new Promise<void>((res, rej) => {
-                        if ((window as any).Html5Qrcode) { res(); return; }
-                        const s = document.createElement('script');
-                        s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
-                        s.onload = () => res(); s.onerror = rej;
-                        document.head.appendChild(s);
-                      });
+                      // html5-qrcode est importé directement (bundlé par Vite) au lieu d'être
+                      // chargé depuis un CDN externe au moment de l'exécution — évite les pannes
+                      // si le CDN est lent, bloqué (pare-feu, réseau d'entreprise) ou hors ligne.
                       setScanning(true);
-                      const scanner = new (window as any).Html5Qrcode('gencode-scan-container', { verbose: false });
+                      const scanner = new Html5Qrcode('gencode-scan-container', { verbose: false });
                       (streamRef.current as any) = scanner;
                       await scanner.start(
                         { facingMode: 'environment' },
@@ -4821,7 +4818,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                         },
                         () => {}
                       );
-                    } catch(e:any) { setStatus('Camera non disponible : ' + e.message); }
+                    } catch(e:any) { setScanning(false); setStatus('Camera non disponible : ' + (e?.message || e)); }
                   }} style={{ marginTop:12, background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
                     {scanning ? 'Scan en cours...' : 'Demarrer le scan'}
                   </button>
