@@ -752,6 +752,19 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
         ];
 
+        // Résolution vidéo demandée plus haute = image plus nette = décodage plus fiable,
+        // surtout pour scanner un code affiché sur un écran (moins net qu'un code imprimé).
+        // IMPORTANT : ces réglages (advanced/width/height) vont dans `videoConstraints`,
+        // PAS dans le 1er argument de start() — celui-ci doit être un objet à UNE seule clé
+        // (facingMode OU deviceId), sinon html5-qrcode rejette avec "'cameraIdOrConfig'
+        // object should have exactly 1 key".
+        const videoConstraints = {
+          facingMode: "environment",
+          advanced: [{ focusMode: "continuous" }],
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        } as any;
+
         const baseConfig = {
           fps: 15, // était 10 → plus de tentatives de décodage par seconde
           // Carré et adaptatif (au lieu d'un rectangle fixe 280x140) : un QR est carré, un
@@ -768,10 +781,6 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         };
 
-        // Résolution vidéo demandée plus haute = image plus nette = décodage plus fiable,
-        // surtout pour scanner un code affiché sur un écran (moins net qu'un code imprimé).
-        const videoRes = { width: { ideal: 1920 }, height: { ideal: 1080 } };
-
         const onDecoded = (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } };
 
         // Chaque tentative utilise sa PROPRE instance Html5Qrcode. Rappeler .start() une
@@ -781,8 +790,8 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         try {
           const scanner1 = new Html5Qrcode("qr-scanner-container", { verbose: false });
           stopRef.current = () => scanner1.stop().catch(() => {});
-          // Tente d'abord avec autofocus continu (meilleure netteté sans devoir viser parfaitement)
-          await scanner1.start({ facingMode: "environment", advanced: [{ focusMode: "continuous" }], ...videoRes } as any, baseConfig, onDecoded, () => {});
+          // Tente d'abord avec autofocus continu + haute résolution (meilleure netteté)
+          await scanner1.start({ facingMode: "environment" }, { ...baseConfig, videoConstraints }, onDecoded, () => {});
         } catch {
           if (done) return;
           // Nettoyage de la tentative ratée avant d'en recréer une nouvelle sur le même conteneur
@@ -791,8 +800,8 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           if (done) return;
           const scanner2 = new Html5Qrcode("qr-scanner-container", { verbose: false });
           stopRef.current = () => scanner2.stop().catch(() => {});
-          // Fallback avec des contraintes simples si l'autofocus continu posait problème
-          await scanner2.start({ facingMode: "environment", ...videoRes } as any, baseConfig, onDecoded, () => {});
+          // Fallback avec des contraintes minimales si les contraintes avancées posaient problème
+          await scanner2.start({ facingMode: "environment" }, baseConfig, onDecoded, () => {});
         }
       } catch (e: any) {
         console.error("Erreur démarrage scanner caméra:", e);
