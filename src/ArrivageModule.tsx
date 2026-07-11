@@ -687,6 +687,31 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
     onScan(raw);
   };
 
+  // Traduit une erreur caméra (DOMException, string, ou objet renvoyé par html5-qrcode)
+  // en message clair en français, avec le détail brut pour pouvoir le lire à l'écran
+  // (pas d'accès à la console du navigateur du côté support).
+  const cameraErrorMessage = (e: any): string => {
+    const name = e?.name || "";
+    const raw = typeof e === "string" ? e : (e?.message || "");
+    const detail = raw || (() => { try { return JSON.stringify(e); } catch { return String(e); } })();
+    if (name === "NotAllowedError" || name === "PermissionDeniedError" || /NotAllowedError|Permission denied/i.test(detail)) {
+      return "Accès à la caméra refusé — autorise la caméra dans les réglages du navigateur (icône \"aA\" ou cadenas dans la barre d'adresse > Réglages du site > Caméra).";
+    }
+    if (name === "NotFoundError" || name === "DevicesNotFoundError" || /NotFoundError/i.test(detail)) {
+      return "Aucune caméra détectée sur cet appareil.";
+    }
+    if (name === "NotReadableError" || name === "TrackStartError" || /NotReadableError/i.test(detail)) {
+      return "La caméra est déjà utilisée par une autre application — ferme les autres apps/onglets qui l'utilisent et réessaie.";
+    }
+    if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError" || /OverconstrainedError/i.test(detail)) {
+      return "La caméra ne supporte pas les réglages demandés.";
+    }
+    if (name === "SecurityError" || /SecurityError/i.test(detail)) {
+      return "Accès caméra bloqué : la page doit être chargée en HTTPS.";
+    }
+    return `Caméra indisponible${detail ? " : " + detail : "."}`;
+  };
+
   useEffect(() => {
     let done = false;
     const start = async () => {
@@ -697,6 +722,30 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         if (done) return;
         setError("");
         setScanning(true);
+
+        // Vérifs préalables — évite un message d'erreur opaque si le contexte
+        // ne permet tout simplement pas l'accès caméra.
+        if (!window.isSecureContext) {
+          setError("Accès caméra bloqué : la page doit être chargée en HTTPS.");
+          return;
+        }
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setError("Ce navigateur ne supporte pas l'accès à la caméra sur cette page.");
+          return;
+        }
+
+        // Demande explicite d'accès caméra en premier : si ça échoue, on récupère une
+        // vraie DOMException (nom clair : NotAllowedError, NotFoundError, NotReadableError...)
+        // plutôt que le message générique que html5-qrcode renvoie parfois.
+        try {
+          const testStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+          testStream.getTracks().forEach(t => t.stop());
+        } catch (permErr: any) {
+          if (!done) setError(cameraErrorMessage(permErr));
+          return;
+        }
+        if (done) return;
+
         const scanner = new Html5Qrcode("qr-scanner-container", { verbose: false });
         stopRef.current = () => scanner.stop().catch(() => {});
 
@@ -733,7 +782,8 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           );
         }
       } catch (e: any) {
-        setError(e?.name === "NotAllowedError" ? "Accès à la caméra refusé — autorise la caméra dans les réglages du navigateur." : "Caméra indisponible" + (e?.message ? " : " + e.message : "."));
+        console.error("Erreur démarrage scanner caméra:", e);
+        if (!done) setError(cameraErrorMessage(e));
       }
     };
     start();
