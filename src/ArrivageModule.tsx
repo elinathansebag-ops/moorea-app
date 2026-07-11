@@ -746,9 +746,6 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         }
         if (done) return;
 
-        const scanner = new Html5Qrcode("qr-scanner-container", { verbose: false });
-        stopRef.current = () => scanner.stop().catch(() => {});
-
         // Limiter les formats scannés = moins de calcul par frame = détection plus rapide
         const formatsToSupport = [
           Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
@@ -764,22 +761,27 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         };
 
+        const onDecoded = (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } };
+
+        // Chaque tentative utilise sa PROPRE instance Html5Qrcode. Rappeler .start() une
+        // 2e fois sur la même instance après un échec provoque l'erreur interne de la
+        // librairie "Cannot transition to a new state, already under transition" — d'où
+        // une instance neuve à chaque essai, avec un vrai nettoyage entre les deux.
         try {
+          const scanner1 = new Html5Qrcode("qr-scanner-container", { verbose: false });
+          stopRef.current = () => scanner1.stop().catch(() => {});
           // Tente d'abord avec autofocus continu (meilleure netteté sans devoir viser parfaitement)
-          await scanner.start(
-            { facingMode: "environment", advanced: [{ focusMode: "continuous" }] } as any,
-            baseConfig,
-            (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } },
-            () => {}
-          );
+          await scanner1.start({ facingMode: "environment", advanced: [{ focusMode: "continuous" }] } as any, baseConfig, onDecoded, () => {});
         } catch {
-          // Fallback si la contrainte avancée n'est pas supportée
-          await scanner.start(
-            { facingMode: "environment" },
-            baseConfig,
-            (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } },
-            () => {}
-          );
+          if (done) return;
+          // Nettoyage de la tentative ratée avant d'en recréer une nouvelle sur le même conteneur
+          try { document.getElementById("qr-scanner-container")!.innerHTML = ""; } catch {}
+          await new Promise(r => setTimeout(r, 150));
+          if (done) return;
+          const scanner2 = new Html5Qrcode("qr-scanner-container", { verbose: false });
+          stopRef.current = () => scanner2.stop().catch(() => {});
+          // Fallback avec des contraintes simples si l'autofocus continu posait problème
+          await scanner2.start({ facingMode: "environment" }, baseConfig, onDecoded, () => {});
         }
       } catch (e: any) {
         console.error("Erreur démarrage scanner caméra:", e);
