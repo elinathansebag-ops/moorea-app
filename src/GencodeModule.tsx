@@ -4514,20 +4514,20 @@ function LinkRow({ article, usedCodes, onFuse }: {
   })();
 
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', borderBottom:'1px solid #f0f0f0', padding:'8px 14px', gap:10, alignItems:'center', background:'#fffef8' }}>
+    <div className="gc-linkrow" style={{ display:'flex', flexWrap:'wrap', borderBottom:'1px solid #f0f0f0', padding:'10px 14px', gap:10, alignItems:'center', background:'#fffef8' }}>
       {/* Gencode */}
-      <div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
+      <div className="gc-linkrow-col" style={{ flex:'1 1 200px', minWidth:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2, flexWrap:'wrap' }}>
           <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:10, background:TYPE_BG[type], color:TYPE_COLORS[type] }}>{type}</span>
-          {article.produit && <span style={{ fontSize:12, fontWeight:700 }}>{article.produit}{article.variete?` · ${article.variete}`:''}</span>}
+          {article.produit && <span style={{ fontSize:12, fontWeight:700, wordBreak:'break-word' }}>{article.produit}{article.variete?` · ${article.variete}`:''}</span>}
         </div>
         {article.origine && <div style={{ fontSize:10, color:'#3b82f6' }}>📍 {article.origine}</div>}
-        <div style={{ fontSize:11, color:'#555' }}>{article.conditionnement}</div>
+        <div style={{ fontSize:11, color:'#555', wordBreak:'break-word' }}>{article.conditionnement}</div>
         <div style={{ fontSize:10, fontFamily:'monospace', color:'#999' }}>{article.ean}</div>
       </div>
 
       {/* Recherche article */}
-      <div style={{ position:'relative' }}>
+      <div className="gc-linkrow-col" style={{ position:'relative', flex:'1 1 200px', minWidth:0 }}>
         <input value={q || (selected ? `${selected.code} - ${selected.article}` : '')}
           onChange={e => { setQ(e.target.value); setSelected(null); setOpen(true); }}
           onFocus={() => setOpen(true)}
@@ -4555,7 +4555,7 @@ function LinkRow({ article, usedCodes, onFuse }: {
 
       {/* Fusionner */}
       <button onClick={() => { if(selected) onFuse(selected.code, selected.article); }} disabled={!selected}
-        style={{ background:selected?'#27ae60':'#e0e0e0', color:'#fff', border:'none', borderRadius:8, padding:'8px 10px', fontSize:12, fontWeight:700, cursor:selected?'pointer':'not-allowed', fontFamily:'inherit' }}>
+        style={{ background:selected?'#27ae60':'#e0e0e0', color:'#fff', border:'none', borderRadius:8, padding:'8px 10px', fontSize:12, fontWeight:700, cursor:selected?'pointer':'not-allowed', fontFamily:'inherit', flexShrink:0, whiteSpace:'nowrap' }}>
         🔗 Fusionner
       </button>
     </div>
@@ -4682,7 +4682,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
         </div>
       )}
       <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'80px 1fr 130px 140px 36px', background:'#f0f4ff', padding:'8px 14px', borderBottom:'1px solid #c7d7ff', gap:10 }}>
+        <div className="gc-list-header" style={{ background:'#f0f4ff', padding:'8px 14px', borderBottom:'1px solid #c7d7ff', gap:10 }}>
           <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>TYPE</span>
           <span style={{ fontSize:11, fontWeight:700, color:'#3b82f6' }}>GENCODE</span>
           <span style={{ fontSize:11, fontWeight:700, color:'#27ae60' }}>CODE ARTICLE</span>
@@ -4694,21 +4694,25 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
             const type = getType(a.conditionnement);
             const linkedArticle = ALL_ARTICLES.find(x => x.code === a.code_article);
             return (
-              <div key={a.id} style={{ display:'grid', gridTemplateColumns:'80px 1fr 130px 140px 36px', padding:'8px 14px', borderBottom:'1px solid #f5f5f5', gap:10, alignItems:'center' }}>
-                <span style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:10, background:TYPE_BG[type], color:TYPE_COLORS[type] }}>{type}</span>
-                <div>
-                  <div style={{ fontSize:12, fontWeight:700 }}>{a.produit}{a.variete ? ` - ${a.variete}` : ''}</div>
-                  <div style={{ fontSize:11, color:'#555' }}>{a.conditionnement}</div>
+              <div key={a.id} className="gc-row" style={{ padding:'10px 14px', borderBottom:'1px solid #f5f5f5', gap:10, alignItems:'center' }}>
+                <span style={{ fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:10, background:TYPE_BG[type], color:TYPE_COLORS[type], flexShrink:0, alignSelf:'flex-start' }}>{type}</span>
+                <div className="gc-row-col" style={{ flex:'1 1 160px' }}>
+                  <div style={{ fontSize:12, fontWeight:700, wordBreak:'break-word' }}>{a.produit}{a.variete ? ` - ${a.variete}` : ''}</div>
+                  <div style={{ fontSize:11, color:'#555', wordBreak:'break-word' }}>{a.conditionnement}</div>
                   {a.origine && <div style={{ fontSize:10, color:'#3b82f6' }}>{a.origine}</div>}
                 </div>
-                <div>
+                <div className="gc-row-col">
+                  <span className="gc-row-label">Code article</span>
                   {a.code_article && <div style={{ fontFamily:'monospace', fontWeight:700, color:'#27ae60', fontSize:11 }}>{a.code_article}</div>}
-                  {linkedArticle && <div style={{ fontSize:10, color:'#555' }}>{linkedArticle.article}</div>}
+                  {linkedArticle && <div style={{ fontSize:10, color:'#555', wordBreak:'break-word' }}>{linkedArticle.article}</div>}
                 </div>
-                <div style={{ fontFamily:'monospace', fontSize:10, color:'#aaa' }}>{a.ean}</div>
+                <div className="gc-row-col">
+                  <span className="gc-row-label">EAN</span>
+                  <div style={{ fontFamily:'monospace', fontSize:11, color:'#aaa' }}>{a.ean}</div>
+                </div>
                 <button onClick={() => unlinkArticle(a.id)} title="Modifier"
-                  style={{ background:'#f0f4ff', border:'none', borderRadius:6, width:32, height:32, cursor:'pointer', fontSize:13 }}>
-                  edit
+                  style={{ background:'#f0f4ff', border:'none', borderRadius:6, width:32, height:32, cursor:'pointer', fontSize:13, flexShrink:0 }}>
+                  ✎
                 </button>
               </div>
             );
@@ -4727,7 +4731,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
         </div>
       ) : (
         <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', background:'#fff8e6', padding:'8px 14px', borderBottom:'2px solid #fde68a', gap:10 }}>
+          <div className="gc-list-header" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', background:'#fff8e6', padding:'8px 14px', borderBottom:'2px solid #fde68a', gap:10 }}>
             <span style={{ fontSize:11, fontWeight:700, color:'#b45309' }}>Gencode sans lien</span>
             <span style={{ fontSize:11, fontWeight:700, color:'#27ae60' }}>Chercher dans les 4020 articles</span>
             <span style={{ fontSize:11, fontWeight:700, color:'#555' }}>Action</span>
@@ -4745,33 +4749,55 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
 
   return (
     <div style={{ minHeight:'100vh', background:'#f5f3ee', fontFamily:"'Syne', sans-serif" }}>
+      <style>{`
+        .gc-topbar { flex-wrap: wrap; row-gap: 8px; }
+        .gc-stats { flex-wrap: wrap; }
+        .gc-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .gc-tabs::-webkit-scrollbar { display: none; }
+        .gc-tabs button { flex-shrink: 0; }
+        .gc-list-header { display: grid; grid-template-columns: 80px 1fr 130px 140px 36px; }
+        .gc-row { display: flex; flex-wrap: wrap; }
+        .gc-row-col { min-width: 0; }
+        .gc-row-label { display: none; }
+        @media (max-width: 480px) {
+          .gc-topbar { height: auto !important; padding: 10px 12px !important; }
+          .gc-stats span, .gc-stats button { font-size: 10px !important; padding: 3px 7px !important; }
+          .gc-tabs button { padding: 7px 14px !important; font-size: 12px !important; }
+        }
+        @media (max-width: 680px) {
+          .gc-list-header { display: none; }
+          .gc-row-label { display: block; font-size: 9px; font-weight: 700; color: #b0b0b0; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 1px; }
+          .gc-row-col { flex: 1 1 45%; }
+          .gc-linkrow-col { flex-basis: 100% !important; }
+        }
+      `}</style>
       <div style={{ background:'#0a0a0a', borderBottom:'3px solid #3b82f6', position:'sticky', top:0, zIndex:200, paddingTop:'env(safe-area-inset-top,0px)' }}>
-        <div style={{ maxWidth:1000, margin:'0 auto', height:56, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 16px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={onClose} style={{ background:'rgba(255,255,255,.1)', border:'none', borderRadius:8, color:'#fff', padding:'6px 12px', cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit' }}>
+        <div className="gc-topbar" style={{ maxWidth:1000, margin:'0 auto', minHeight:56, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'0 16px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+            <button onClick={onClose} style={{ background:'rgba(255,255,255,.1)', border:'none', borderRadius:8, color:'#fff', padding:'6px 12px', cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit', whiteSpace:'nowrap' }}>
               Retour
             </button>
-            <span style={{ fontWeight:800, fontSize:15, color:'#fff' }}>
+            <span style={{ fontWeight:800, fontSize:15, color:'#fff', whiteSpace:'nowrap' }}>
               Gencodes <span style={{ color:'#3b82f6' }}>GMS</span>
             </span>
           </div>
-          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-            {imported && <button onClick={syncAutoLinks} style={{ background:'rgba(255,255,255,.15)', border:'none', borderRadius:6, color:'#fff', padding:'4px 10px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>Sync auto</button>}
-            <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{linked.length} lies</span>
-            <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{unlinked.length} a lier</span>
-            <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6 }}>{articles.length} total</span>
+          <div className="gc-stats" style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {imported && <button onClick={syncAutoLinks} style={{ background:'rgba(255,255,255,.15)', border:'none', borderRadius:6, color:'#fff', padding:'4px 10px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap' }}>Sync auto</button>}
+            <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{linked.length} lies</span>
+            <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{unlinked.length} a lier</span>
+            <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{articles.length} total</span>
           </div>
         </div>
       </div>
       <div style={{ background:'#0a0a0a', borderBottom:'1px solid #222' }}>
-        <div style={{ maxWidth:1000, margin:'0 auto', display:'flex', gap:4, padding:'0 16px 8px' }}>
-          <button onClick={() => setPage('liste')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='liste'?700:500, color:page==='liste'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='liste'?'#3b82f6':'transparent', fontFamily:'inherit' }}>
+        <div className="gc-tabs" style={{ maxWidth:1000, margin:'0 auto', display:'flex', gap:4, padding:'0 16px 8px' }}>
+          <button onClick={() => setPage('liste')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='liste'?700:500, color:page==='liste'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='liste'?'#3b82f6':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             Gencodes lies ({linked.length})
           </button>
-          <button onClick={() => setPage('rattacher')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='rattacher'?700:500, color:page==='rattacher'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='rattacher'?'#f59e0b':'transparent', fontFamily:'inherit' }}>
+          <button onClick={() => setPage('rattacher')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='rattacher'?700:500, color:page==='rattacher'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='rattacher'?'#f59e0b':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             A rattacher ({unlinked.length})
           </button>
-          <button onClick={() => { setPage('scanner'); setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); }} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='scanner'?700:500, color:page==='scanner'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='scanner'?'#a855f7':'transparent', fontFamily:'inherit' }}>
+          <button onClick={() => { setPage('scanner'); setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); }} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='scanner'?700:500, color:page==='scanner'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='scanner'?'#a855f7':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             Scanner
           </button>
         </div>
@@ -4807,7 +4833,14 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                         { facingMode: 'environment' },
                         {
                           fps: 15,
-                          qrbox: { width: 280, height: 120 },
+                          // Rectangle large et adaptatif (au lieu d'une taille fixe 280x120) :
+                          // un code-barres photographié de près remplit souvent presque toute
+                          // la largeur du cadre — une boîte trop étroite le rognait sur les
+                          // bords et empêchait sa lecture (bug remonté : "le scan marche pas").
+                          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => ({
+                            width: Math.floor(Math.min(viewfinderWidth * 0.92, 420)),
+                            height: Math.floor(Math.min(viewfinderHeight * 0.4, 170)),
+                          }),
                           // Limite aux formats code-barres = décodage plus rapide/fiable
                           formatsToSupport: [
                             Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
