@@ -140,6 +140,9 @@ export default function App() {
   const [savingNouveauGencode, setSavingNouveauGencode] = useState(false);
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
+  // Aperçu PDF intégré au site (au lieu d'ouvrir un nouvel onglet) — voir genererBonRetourAvecSignature
+  const [pdfApercu, setPdfApercu] = useState<string | null>(null);
+  const pdfApercuIframeRef = useRef<HTMLIFrameElement>(null);
 
   // ─── AUTH ───
   useEffect(() => {
@@ -1338,10 +1341,10 @@ _PDF joint_`;
     const byteArr = new Uint8Array(byteChars.length);
     for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
     const blob = new Blob([byteArr], { type: "application/pdf" });
-    const opened = window.open(URL.createObjectURL(blob), "_blank");
-    if (!opened) {
-      showToast("⚠ Autorise les popups pour voir le PDF (le bon a quand même été enregistré)", "error");
-    }
+    // Aperçu intégré au site (au lieu d'ouvrir un nouvel onglet où on ne peut pas
+    // forcément choisir son imprimante) — voir la modale d'aperçu plus bas, qui
+    // déclenche aussi l'impression automatiquement à l'ouverture.
+    setPdfApercu(URL.createObjectURL(blob));
 
     try {
       if (r.firebaseKey) {
@@ -1370,15 +1373,20 @@ _PDF joint_`;
     }
   };
   const downloadPDF = async (r: any) => {
-    const pdfDataUri = await generatePDFBase64(r);
-    const pdfBase64 = pdfDataUri.split(",")[1];
-    const byteChars = atob(pdfBase64);
-    const byteArr = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([byteArr], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    showToast("📄 PDF ouvert");
+    try {
+      const pdfDataUri = await generatePDFBase64(r);
+      const pdfBase64 = pdfDataUri.split(",")[1];
+      const byteChars = atob(pdfBase64);
+      const byteArr = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([byteArr], { type: "application/pdf" });
+      // Aperçu intégré au site + impression automatique (même modale que le bon de
+      // reprise) au lieu d'ouvrir un nouvel onglet.
+      setPdfApercu(URL.createObjectURL(blob));
+    } catch (e: any) {
+      console.error("Erreur génération PDF rapport:", e);
+      showToast("Erreur génération PDF : " + (e?.message || String(e)), "error");
+    }
   };
 
   // ─── SCANNER ÉTIQUETTE VIA IA ───
@@ -2056,6 +2064,44 @@ _PDF joint_`;
               📦 Récupéré sans signature
             </button>
           </div>
+        </div>
+      )}
+
+      {/* APERÇU PDF INTÉGRÉ AU SITE — au lieu d'ouvrir un nouvel onglet (où on ne peut pas
+          forcément choisir son imprimante), le PDF s'affiche dans une fenêtre sur la page
+          elle-même, et l'impression se lance automatiquement dès que l'aperçu est prêt. */}
+      {pdfApercu && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", flexShrink: 0 }}>
+            <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 14 }}>📄 Aperçu du bon de reprise</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => { try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {} }}
+                style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+              >
+                🖨 Imprimer
+              </button>
+              <button
+                onClick={() => { URL.revokeObjectURL(pdfApercu); setPdfApercu(null); }}
+                style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+              >
+                ✕ Fermer
+              </button>
+            </div>
+          </div>
+          <iframe
+            ref={pdfApercuIframeRef}
+            src={pdfApercu}
+            title="Aperçu bon de reprise"
+            style={{ flex: 1, border: "none", background: "#fff" }}
+            onLoad={() => {
+              // Lance l'impression automatiquement dès que l'aperçu est chargé — l'utilisateur
+              // n'a qu'à choisir l'imprimante dans la boîte de dialogue du système qui s'ouvre.
+              // Le bouton "Imprimer" reste dispo au cas où ce déclenchement auto échoue
+              // (certains navigateurs/iOS bloquent l'appel s'il n'est pas jugé assez "direct").
+              try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {}
+            }}
+          />
         </div>
       )}
 
