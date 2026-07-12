@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue } from "./firebase";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 interface Article {
   id: string;
@@ -4805,7 +4805,22 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                       (streamRef.current as any) = scanner;
                       await scanner.start(
                         { facingMode: 'environment' },
-                        { fps: 10, qrbox: { width: 280, height: 120 } },
+                        {
+                          fps: 15,
+                          qrbox: { width: 280, height: 120 },
+                          // Limite aux formats code-barres = décodage plus rapide/fiable
+                          formatsToSupport: [
+                            Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+                            Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+                          ],
+                          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+                          // Autofocus continu + résolution plus haute = image plus nette
+                          videoConstraints: {
+                            facingMode: 'environment',
+                            advanced: [{ focusMode: 'continuous' } as any],
+                            width: { ideal: 1920 }, height: { ideal: 1080 },
+                          } as any,
+                        },
                         (text: string) => {
                           const ean = text.trim();
                           if (/^\d{8,13}$/.test(ean)) {
