@@ -4822,6 +4822,16 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                   <p style={{ fontSize:13, color:'#666', marginBottom:12 }}>Scanne le code-barres du produit physique</p>
                   <div id="gencode-scan-container" style={{ position:'relative', borderRadius:12, overflow:'hidden', maxWidth:400, margin:'0 auto', height:280 }} />
                   <button onClick={async () => {
+                    // Si un scan est déjà en cours, ce bouton sert à l'annuler (utile si la
+                    // détection reste bloquée) plutôt que de tenter d'en démarrer un 2e par-dessus.
+                    if (scanning) {
+                      try {
+                        const s = streamRef.current as any;
+                        if (s?.isScanning) s.stop().catch(() => {});
+                      } catch {}
+                      setScanning(false);
+                      return;
+                    }
                     try {
                       // html5-qrcode est importé directement (bundlé par Vite) au lieu d'être
                       // chargé depuis un CDN externe au moment de l'exécution — évite les pannes
@@ -4846,7 +4856,12 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                             Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
                             Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
                           ],
-                          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+                          // Le détecteur de code-barres natif du navigateur (BarcodeDetector)
+                          // est peu fiable pour les codes-barres 1D sur certains iPhone/Safari —
+                          // il ne renvoyait jamais de résultat ("Scan en cours..." bloqué en
+                          // permanence). Désactivé ici pour forcer le décodeur JS intégré à
+                          // html5-qrcode, plus lent mais nettement plus fiable pour l'EAN/UPC.
+                          experimentalFeatures: { useBarCodeDetectorIfSupported: false },
                           // Autofocus continu + résolution plus haute = image plus nette
                           videoConstraints: {
                             facingMode: 'environment',
@@ -4867,8 +4882,8 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                         () => {}
                       );
                     } catch(e:any) { setScanning(false); setStatus('Camera non disponible : ' + (e?.message || e)); }
-                  }} style={{ marginTop:12, background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
-                    {scanning ? 'Scan en cours...' : 'Demarrer le scan'}
+                  }} style={{ marginTop:12, background: scanning ? '#e5e7eb' : '#a855f7', color: scanning ? '#374151' : '#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                    {scanning ? '✕ Annuler le scan' : 'Demarrer le scan'}
                   </button>
                 </div>
               ) : (
