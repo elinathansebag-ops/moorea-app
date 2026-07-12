@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import jsPDF from "jspdf";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import RetoursModule from "./RetoursModule";
 import IFCOModule from "./IFCOModule";
@@ -1918,7 +1919,7 @@ _PDF joint_`;
       )}
 
       {toast && (
-        <div className="toast" style={{ position: "fixed", top: 20, right: 20, zIndex: 999, background: toast.type === "error" ? "#fef2f2" : "#f0fdf4", color: toast.type === "error" ? "#dc2626" : "#15803d", border: `1.5px solid ${toast.type === "error" ? "#fca5a5" : "#86efac"}`, borderRadius: 12, padding: "11px 20px", fontWeight: 500, fontSize: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>{toast.msg}</div>
+        <div className="toast" style={{ position: "fixed", top: 20, right: 20, zIndex: 99999, background: toast.type === "error" ? "#fef2f2" : "#f0fdf4", color: toast.type === "error" ? "#dc2626" : "#15803d", border: `1.5px solid ${toast.type === "error" ? "#fca5a5" : "#86efac"}`, borderRadius: 12, padding: "11px 20px", fontWeight: 500, fontSize: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>{toast.msg}</div>
       )}
 
       {/* MODAL GENCODE INCONNU → ENREGISTRER SOUS UN NOM */}
