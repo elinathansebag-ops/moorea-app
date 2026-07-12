@@ -4572,6 +4572,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
   const [scanSearch, setScanSearch] = useState('');
   const [scanSelected, setScanSelected] = useState<{article:string,code:string}|null>(null);
   const [scanning, setScanning] = useState(false);
+  const [manualEan, setManualEan] = useState('');
   const [scanDebug, setScanDebug] = useState('');
   const scanDebugLastUpdate = useRef(0);
   const scanAttempts = useRef(0);
@@ -4800,7 +4801,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
           <button onClick={() => setPage('rattacher')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='rattacher'?700:500, color:page==='rattacher'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='rattacher'?'#f59e0b':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             A rattacher ({unlinked.length})
           </button>
-          <button onClick={() => { setPage('scanner'); setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); }} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='scanner'?700:500, color:page==='scanner'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='scanner'?'#a855f7':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+          <button onClick={() => { setPage('scanner'); setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); setManualEan(''); }} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='scanner'?700:500, color:page==='scanner'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='scanner'?'#a855f7':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             Scanner
           </button>
         </div>
@@ -4902,6 +4903,31 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                     {scanning ? '✕ Annuler le scan' : 'Demarrer le scan'}
                   </button>
                   {scanDebug && <p style={{ marginTop:8, fontSize:10, color:'#9ca3af', fontFamily:'monospace' }}>{scanDebug}</p>}
+                  {/* Saisie manuelle — dépanne quand la caméra n'arrive pas à lire un code-barres
+                      abîmé, flou ou sur un emballage souple (fréquent, même avec un lecteur pro) */}
+                  <div style={{ marginTop:16, paddingTop:16, borderTop:'1px solid #f0f0f0' }}>
+                    <p style={{ fontSize:11, color:'#999', marginBottom:8 }}>Ou saisis le code manuellement :</p>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input value={manualEan} onChange={e => setManualEan(e.target.value.replace(/\D/g,''))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && manualEan.trim()) {
+                            const ean = manualEan.trim();
+                            setScannedEan(ean);
+                            setScanResult(articles.find((a:any) => a.ean === ean) || null);
+                          }
+                        }}
+                        placeholder="Ex: 6009665700052" inputMode="numeric"
+                        style={{ flex:1, padding:'10px 12px', border:'1.5px solid #e0e0e0', borderRadius:10, fontSize:14, outline:'none', fontFamily:'monospace' }} />
+                      <button onClick={() => {
+                        if (!manualEan.trim()) return;
+                        const ean = manualEan.trim();
+                        setScannedEan(ean);
+                        setScanResult(articles.find((a:any) => a.ean === ean) || null);
+                      }} style={{ background:'#a855f7', color:'#fff', border:'none', borderRadius:10, padding:'10px 18px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                        →
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div>
@@ -4925,7 +4951,12 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                       <div style={{ fontSize:12, fontWeight:700, color:'#b45309' }}>EAN non trouve dans la base</div>
                     </div>
                   )}
-                  <button onClick={() => { setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); setScanning(false); streamRef.current?.getTracks().forEach(t => t.stop()); }}
+                  <button onClick={() => {
+                    setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); setManualEan(''); setScanning(false);
+                    // streamRef contient l'instance Html5Qrcode (pas un MediaStream) — s'assurer
+                    // qu'elle est bien arrêtée si un scan était encore actif.
+                    try { const s = streamRef.current as any; if (s?.isScanning) s.stop().catch(() => {}); } catch {}
+                  }}
                     style={{ background:'#f0f0f0', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, cursor:'pointer', fontFamily:'inherit', marginBottom:12 }}>
                     Scanner un autre
                   </button>
