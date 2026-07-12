@@ -1230,6 +1230,11 @@ _PDF joint_`;
 
   const genererBonRetourAvecSignature = async () => {
     const r = signatureModal;
+    if (!r) return;
+    // Tout ce bloc est protégé par un try/catch : avant, la moindre valeur manquante
+    // (produit, fournisseur...) passée à jsPDF plantait la génération en silence — le
+    // bouton ne faisait rien, sans aucun message d'erreur ni PDF généré.
+    try {
     const canvas = signatureCanvasRef.current;
     const signatureDataUrl = canvas ? canvas.toDataURL("image/png") : null;
 
@@ -1268,8 +1273,8 @@ _PDF joint_`;
     section("INFORMATIONS DU COLIS");
     const col1 = M + 2; const col2 = M + CW / 2 + 2;
     const items: [string, string][] = [
-      ["Produit", r.produit],
-      ["Fournisseur", r.fournisseur],
+      ["Produit", r.produit || "-"],
+      ["Fournisseur", r.fournisseur || "-"],
       ["Origine", r.origine || "-"],
       ["Calibre", r.calibre || "-"],
       ["Poids", r.poids ? r.poids + " kg" : "-"],
@@ -1318,21 +1323,24 @@ _PDF joint_`;
     doc.text(`Immatriculation : ${sigImat || "_______________________"}`, M + 8, y + 42);
     doc.text("Signature :", M + 8, y + 54);
     if (signatureDataUrl) {
-      doc.addImage(signatureDataUrl, "PNG", M + 35, y + 46, 60, 18);
+      try { doc.addImage(signatureDataUrl, "PNG", M + 35, y + 46, 60, 18); } catch {}
     }
     y += 76;
 
     doc.setFillColor(10, 10, 10); doc.rect(0, 285, W, 12, "F");
     doc.setFillColor(200, 168, 75); doc.rect(0, 285, W, 1, "F");
     doc.setTextColor(150, 150, 150); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
-    doc.text(`Moorea - Agreage Rungis - ${r.date}${r.numeroRapport ? " - " + r.numeroRapport : ""}`, W / 2, 291, { align: "center" });
+    doc.text(`Moorea - Agreage Rungis - ${r.date || "-"}${r.numeroRapport ? " - " + r.numeroRapport : ""}`, W / 2, 291, { align: "center" });
 
     const pdfBase64 = doc.output("datauristring").split(",")[1];
     const byteChars = atob(pdfBase64);
     const byteArr = new Uint8Array(byteChars.length);
     for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
     const blob = new Blob([byteArr], { type: "application/pdf" });
-    window.open(URL.createObjectURL(blob), "_blank");
+    const opened = window.open(URL.createObjectURL(blob), "_blank");
+    if (!opened) {
+      showToast("⚠ Autorise les popups pour voir le PDF (le bon a quand même été enregistré)", "error");
+    }
 
     try {
       if (r.firebaseKey) {
@@ -1355,6 +1363,10 @@ _PDF joint_`;
 
     showToast("📄 Bon de reprise généré et sauvegardé");
     setSignatureModal(null);
+    } catch (e: any) {
+      console.error("Erreur génération bon de reprise:", e);
+      showToast("Erreur génération PDF : " + (e?.message || String(e)), "error");
+    }
   };
   const downloadPDF = async (r: any) => {
     const pdfDataUri = await generatePDFBase64(r);
