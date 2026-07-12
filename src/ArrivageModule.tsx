@@ -777,13 +777,22 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
 
         const onDecoded = (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } };
 
+        // scanner.stop() lève une exception SYNCHRONE (pas une simple rejection de promesse)
+        // si on l'appelle alors que le scanner n'est pas activement en train de tourner
+        // (start() pas encore résolu, déjà arrêté, etc.) — un `.catch()` seul ne suffit donc
+        // pas à l'intercepter. Sans ce garde-fou, cette exception remontait pendant le
+        // nettoyage de l'effet React et faisait planter toute l'appli (page blanche).
+        const safeStop = (s: Html5Qrcode) => {
+          try { if (s.isScanning) s.stop().catch(() => {}); } catch {}
+        };
+
         // Chaque tentative utilise sa PROPRE instance Html5Qrcode. Rappeler .start() une
         // 2e fois sur la même instance après un échec provoque l'erreur interne de la
         // librairie "Cannot transition to a new state, already under transition" — d'où
         // une instance neuve à chaque essai, avec un vrai nettoyage entre les deux.
         try {
           const scanner1 = new Html5Qrcode("qr-scanner-container", { verbose: false });
-          stopRef.current = () => scanner1.stop().catch(() => {});
+          stopRef.current = () => safeStop(scanner1);
           // Tente d'abord avec autofocus continu + haute résolution (meilleure netteté)
           await scanner1.start({ facingMode: "environment" }, { ...baseConfig, videoConstraints }, onDecoded, () => {});
         } catch {
@@ -793,7 +802,7 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           await new Promise(r => setTimeout(r, 150));
           if (done) return;
           const scanner2 = new Html5Qrcode("qr-scanner-container", { verbose: false });
-          stopRef.current = () => scanner2.stop().catch(() => {});
+          stopRef.current = () => safeStop(scanner2);
           // Fallback avec des contraintes minimales si les contraintes avancées posaient problème
           await scanner2.start({ facingMode: "environment" }, baseConfig, onDecoded, () => {});
         }

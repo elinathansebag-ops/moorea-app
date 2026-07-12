@@ -2129,7 +2129,13 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           await h5scanner.start(
             { facingMode: "environment" },
             { fps: 10, qrbox: { width: 280, height: 120 } },
-            (text: string) => { if (sScanActive) { sScanActive = false; h5scanner.stop().catch(() => {}); handleRaw(text.trim()); } },
+            (text: string) => {
+              if (sScanActive) {
+                sScanActive = false;
+                try { if (h5scanner.isScanning) h5scanner.stop().catch(() => {}); } catch {}
+                handleRaw(text.trim());
+              }
+            },
             () => {}
           );
         } catch (e: any) {
@@ -2233,8 +2239,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       (window as any).sRescanPalette = () => { document.getElementById("s-scan-result")!.style.display = "none"; sScanActive = true; (window as any).sScannerPalette(); };
       (window as any).sFermerScanner = () => {
         sScanActive = false; cancelAnimationFrame(sScanRaf);
-        if ((sScanStream as any)?._h5) { (sScanStream as any)._h5.stop().catch(() => {}); }
-        else { sScanStream?.getTracks().forEach(t => t.stop()); }
+        // scanner.stop() lève une exception SYNCHRONE (pas juste une rejection) si le
+        // scanner n'est pas en train de tourner — un simple .catch() ne suffit pas.
+        try {
+          if ((sScanStream as any)?._h5) { const h5 = (sScanStream as any)._h5; if (h5.isScanning) h5.stop().catch(() => {}); }
+          else { sScanStream?.getTracks().forEach(t => t.stop()); }
+        } catch {}
         sScanStream = null;
         const page = document.getElementById("s-page-scanner");
         if (page) page.style.display = "none";

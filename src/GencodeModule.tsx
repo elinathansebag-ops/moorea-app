@@ -4809,7 +4809,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                         (text: string) => {
                           const ean = text.trim();
                           if (/^\d{8,13}$/.test(ean)) {
-                            scanner.stop().catch(() => {});
+                            try { if (scanner.isScanning) scanner.stop().catch(() => {}); } catch {}
                             setScanning(false);
                             setScannedEan(ean);
                             const found = articles.find((a:any) => a.ean === ean);
