@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue } from "./firebase";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
 
 interface Article {
   id: string;
@@ -4855,11 +4855,12 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                           // en scannant tout le cadre on élimine ce risque, au prix d'un peu
                           // plus de calcul par image.
                           disableFlip: false,
-                          // Limite aux formats code-barres = décodage plus rapide/fiable
-                          formatsToSupport: [
-                            Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-                            Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
-                          ],
+                          // Pas de formatsToSupport ici : le restreindre à EAN/UPC/CODE128
+                          // provoquait une vraie erreur interne à html5-qrcode ("No MultiFormat
+                          // Readers were...") qui empêchait TOUT décodage, diagnostiquée via le
+                          // compteur affiché à l'écran. Sans ce filtre, la librairie utilise son
+                          // jeu de lecteurs par défaut (qui inclut EAN/UPC) — un peu plus lent
+                          // par image, mais qui fonctionne réellement.
                           // Le détecteur de code-barres natif du navigateur (BarcodeDetector)
                           // est peu fiable pour les codes-barres 1D sur certains iPhone/Safari —
                           // il ne renvoyait jamais de résultat ("Scan en cours..." bloqué en
