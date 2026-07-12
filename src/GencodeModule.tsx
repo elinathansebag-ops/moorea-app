@@ -4574,6 +4574,8 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
   const [scanning, setScanning] = useState(false);
   const [manualEan, setManualEan] = useState('');
   const [scanDebug, setScanDebug] = useState('');
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState('');
   const scanDebugLastUpdate = useRef(0);
   const scanAttempts = useRef(0);
   const videoRef = useRef<HTMLVideoElement|null>(null);
@@ -4654,6 +4656,52 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
     update(ref(db, 'gencode_articles'), obj);
     setTimeout(() => setStatus(`✅ ${ALL_GENCODE_ARTICLES.length} articles importés !`), 1500);
   }
+
+  // ── Lecture des chiffres par IA (OCR) ──────────────────────────────────────
+  // Le décodage du code-barres (les barres) s'est révélé peu fiable sur certains
+  // téléphones/emballages. Les chiffres sont imprimés en clair sous les barres —
+  // on prend une photo du cadre et on les fait lire par un moteur de reconnaissance
+  // de texte (Tesseract, tourne dans le navigateur, aucune clé API nécessaire).
+  const capturerEtLireParIA = async () => {
+    const container = document.getElementById('gencode-scan-container');
+    const video = container?.querySelector('video') as HTMLVideoElement | null;
+    if (!video || !video.videoWidth) {
+      setOcrStatus('Aucune caméra active — lance le scanner avant de prendre la photo.');
+      return;
+    }
+    setOcrRunning(true);
+    setOcrStatus('⏳ Lecture des chiffres par IA en cours...');
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const Tesseract = await import('tesseract.js');
+      const worker = await Tesseract.createWorker('eng');
+      await worker.setParameters({ tessedit_char_whitelist: '0123456789' });
+      const { data: { text } } = await worker.recognize(canvas);
+      await worker.terminate();
+
+      const digitsOnly = text.replace(/\D/g, '');
+      const match = digitsOnly.match(/\d{8,13}/);
+      if (match) {
+        const ean = match[0];
+        setOcrStatus('');
+        try { const s = streamRef.current as any; if (s?.isScanning) s.stop().catch(() => {}); } catch {}
+        setScanning(false);
+        setScannedEan(ean);
+        setScanResult(articles.find((a: any) => a.ean === ean) || null);
+      } else {
+        setOcrStatus(digitsOnly ? `IA : chiffres illisibles ("${digitsOnly}") — réessaie ou saisis-le à la main.` : 'IA : aucun chiffre reconnu — réessaie ou saisis-le à la main.');
+      }
+    } catch (e: any) {
+      setOcrStatus('Erreur IA : ' + (e?.message || String(e)));
+    } finally {
+      setOcrRunning(false);
+    }
+  };
 
   const usedCodes = new Set(articles.filter(a => a.code_article).map(a => a.code_article));
   const linked = articles.filter(a => a.code_article || a.nom_geslot?.length > 0);
@@ -4801,7 +4849,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
           <button onClick={() => setPage('rattacher')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='rattacher'?700:500, color:page==='rattacher'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='rattacher'?'#f59e0b':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             A rattacher ({unlinked.length})
           </button>
-          <button onClick={() => { setPage('scanner'); setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); setManualEan(''); }} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='scanner'?700:500, color:page==='scanner'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='scanner'?'#a855f7':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
+          <button onClick={() => { setPage('scanner'); setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); setManualEan(''); setOcrStatus(''); }} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='scanner'?700:500, color:page==='scanner'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='scanner'?'#a855f7':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             Scanner
           </button>
         </div>
@@ -4908,6 +4956,15 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                     {scanning ? '✕ Annuler le scan' : 'Demarrer le scan'}
                   </button>
                   {scanDebug && <p style={{ marginTop:8, fontSize:10, color:'#9ca3af', fontFamily:'monospace' }}>{scanDebug}</p>}
+                  {/* Lecture par IA (OCR) — quand le décodage des barres ne marche pas, on lit
+                      directement les chiffres imprimés en clair sous le code-barres. */}
+                  {scanning && (
+                    <button onClick={capturerEtLireParIA} disabled={ocrRunning}
+                      style={{ marginTop:8, background:'#0a0a0a', color:'#fff', border:'none', borderRadius:10, padding:'10px 20px', fontSize:13, fontWeight:700, cursor: ocrRunning ? 'not-allowed' : 'pointer', fontFamily:'inherit', opacity: ocrRunning ? 0.6 : 1 }}>
+                      {ocrRunning ? '⏳ Lecture IA en cours...' : '🤖 Lire les chiffres par IA'}
+                    </button>
+                  )}
+                  {ocrStatus && <p style={{ marginTop:8, fontSize:11, color:'#a855f7' }}>{ocrStatus}</p>}
                   {/* Saisie manuelle — dépanne quand la caméra n'arrive pas à lire un code-barres
                       abîmé, flou ou sur un emballage souple (fréquent, même avec un lecteur pro) */}
                   <div style={{ marginTop:16, paddingTop:16, borderTop:'1px solid #f0f0f0' }}>
@@ -4957,7 +5014,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                     </div>
                   )}
                   <button onClick={() => {
-                    setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); setManualEan(''); setScanning(false);
+                    setScannedEan(''); setScanResult(null); setScanSearch(''); setScanSelected(null); setManualEan(''); setOcrStatus(''); setScanning(false);
                     // streamRef contient l'instance Html5Qrcode (pas un MediaStream) — s'assurer
                     // qu'elle est bien arrêtée si un scan était encore actif.
                     try { const s = streamRef.current as any; if (s?.isScanning) s.stop().catch(() => {}); } catch {}
