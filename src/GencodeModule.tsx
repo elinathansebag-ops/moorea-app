@@ -4824,7 +4824,12 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
               {!scannedEan ? (
                 <div>
                   <p style={{ fontSize:13, color:'#666', marginBottom:12 }}>Scanne le code-barres du produit physique</p>
-                  <div id="gencode-scan-container" style={{ position:'relative', borderRadius:12, overflow:'hidden', maxWidth:400, margin:'0 auto', height:280 }} />
+                  {/* html5-qrcode construit son canvas de décodage à la taille CSS AFFICHÉE de
+                      ce conteneur (pas à la résolution native de la caméra) — un conteneur trop
+                      petit fait redescendre l'image en basse résolution avant même la tentative
+                      de lecture, ce qui peut empêcher le décodage d'un code-barres pourtant net
+                      et bien cadré. Agrandi au maximum disponible pour donner plus de détail. */}
+                  <div id="gencode-scan-container" style={{ position:'relative', borderRadius:12, overflow:'hidden', width:'100%', maxWidth:520, margin:'0 auto', height:380 }} />
                   <button onClick={async () => {
                     // Si un scan est déjà en cours, ce bouton sert à l'annuler (utile si la
                     // détection reste bloquée) plutôt que de tenter d'en démarrer un 2e par-dessus.
