@@ -2106,13 +2106,13 @@ _PDF joint_`;
       )}
 
       <PageHeader
-        titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
-        onBack={vue === "form" ? () => setVue("historique" as any) : vue === "historique" ? () => { setShowAccueil(true); } : undefined}
+        titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : vue === "archives" ? "Archives" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
+        onBack={vue === "form" ? () => setVue("historique" as any) : (vue === "historique" || vue === "archives") ? () => { setShowAccueil(true); } : undefined}
         onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }}
       />
 
       <div className="content-wrap">
-        {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
+        {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && vue !== "archives" && (
           <div className="fade-up">
             {previewArr && (() => {
               const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
@@ -2277,7 +2277,7 @@ _PDF joint_`;
           </div>
         )}
 
-        {pageMode === "saisie_arr" && vue !== "form" && vue !== "historique" && (
+        {pageMode === "saisie_arr" && vue !== "form" && vue !== "historique" && vue !== "archives" && (
           <div className="card fade-up" style={{ padding: "20px 24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>➕ Nouvel arrivage</p>
@@ -2303,7 +2303,7 @@ _PDF joint_`;
           </div>
         )}
 
-        {pageMode === "historique_arr" && vue !== "form" && vue !== "historique" && (
+        {pageMode === "historique_arr" && vue !== "form" && vue !== "historique" && vue !== "archives" && (
           <div className="fade-up">
             <p style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>
               📁 Historique · {arrivages.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length} arrivages
@@ -2336,7 +2336,7 @@ _PDF joint_`;
           </div>
         )}
 
-        {pageMode === "stats_arr" && vue !== "form" && vue !== "historique" && (
+        {pageMode === "stats_arr" && vue !== "form" && vue !== "historique" && vue !== "archives" && (
           <div className="fade-up">
             <p style={{ fontWeight:700, fontSize:12, color:"#6b7280", margin:"0 0 16px", textTransform:"uppercase", letterSpacing:"0.8px", fontFamily:"'Syne',sans-serif" }}>📊 Stats fournisseurs</p>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
