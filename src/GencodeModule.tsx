@@ -4572,6 +4572,9 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
   const [scanSearch, setScanSearch] = useState('');
   const [scanSelected, setScanSelected] = useState<{article:string,code:string}|null>(null);
   const [scanning, setScanning] = useState(false);
+  const [scanDebug, setScanDebug] = useState('');
+  const scanDebugLastUpdate = useRef(0);
+  const scanAttempts = useRef(0);
   const videoRef = useRef<HTMLVideoElement|null>(null);
   const canvasRef = useRef<HTMLCanvasElement|null>(null);
   const streamRef = useRef<MediaStream|null>(null);
@@ -4837,20 +4840,21 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                       // chargé depuis un CDN externe au moment de l'exécution — évite les pannes
                       // si le CDN est lent, bloqué (pare-feu, réseau d'entreprise) ou hors ligne.
                       setScanning(true);
+                      setScanDebug('');
+                      scanAttempts.current = 0;
+                      scanDebugLastUpdate.current = 0;
                       const scanner = new Html5Qrcode('gencode-scan-container', { verbose: false });
                       (streamRef.current as any) = scanner;
                       await scanner.start(
                         { facingMode: 'environment' },
                         {
                           fps: 15,
-                          // Rectangle large et adaptatif (au lieu d'une taille fixe 280x120) :
-                          // un code-barres photographié de près remplit souvent presque toute
-                          // la largeur du cadre — une boîte trop étroite le rognait sur les
-                          // bords et empêchait sa lecture (bug remonté : "le scan marche pas").
-                          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => ({
-                            width: Math.floor(Math.min(viewfinderWidth * 0.92, 420)),
-                            height: Math.floor(Math.min(viewfinderHeight * 0.4, 170)),
-                          }),
+                          // Pas de qrbox = on scanne l'image ENTIÈRE plutôt qu'une sous-zone.
+                          // Un rectangle de recadrage mal calé peut couper le code-barres ou
+                          // désaligner la zone réellement analysée vs. celle affichée à l'écran —
+                          // en scannant tout le cadre on élimine ce risque, au prix d'un peu
+                          // plus de calcul par image.
+                          disableFlip: false,
                           // Limite aux formats code-barres = décodage plus rapide/fiable
                           formatsToSupport: [
                             Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
@@ -4879,12 +4883,24 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                             setScanResult(found || null);
                           }
                         },
-                        () => {}
+                        (errorMessage: string) => {
+                          // Callback appelé à CHAQUE image analysée (souvent "aucun code trouvé"
+                          // — c'est normal). On garde une trace discrète (throttlée à 1x/seconde)
+                          // pour vérifier que le scan tourne bien et voir la vraie raison s'il
+                          // ne s'agit pas juste de "pas encore trouvé".
+                          scanAttempts.current++;
+                          const now = Date.now();
+                          if (now - scanDebugLastUpdate.current > 1000) {
+                            scanDebugLastUpdate.current = now;
+                            setScanDebug(`🔍 ${scanAttempts.current} images analysées — ${errorMessage.slice(0, 60)}`);
+                          }
+                        }
                       );
                     } catch(e:any) { setScanning(false); setStatus('Camera non disponible : ' + (e?.message || e)); }
                   }} style={{ marginTop:12, background: scanning ? '#e5e7eb' : '#a855f7', color: scanning ? '#374151' : '#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
                     {scanning ? '✕ Annuler le scan' : 'Demarrer le scan'}
                   </button>
+                  {scanDebug && <p style={{ marginTop:8, fontSize:10, color:'#9ca3af', fontFamily:'monospace' }}>{scanDebug}</p>}
                 </div>
               ) : (
                 <div>
