@@ -67,6 +67,37 @@ function decalerAnnee(dateStr: string, delta: number): string {
   return `${y}-${m}-${day}`;
 }
 
+function toLocalISO(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// ─── Semaines ISO 8601 (lundi → dimanche, semaine 1 = celle contenant le 4 janvier) ───
+function isoWeekMonday(year: number, week: number): Date {
+  const jan4 = new Date(year, 0, 4);
+  const jan4Day = (jan4.getDay() + 6) % 7; // 0=lundi ... 6=dimanche
+  const week1Monday = new Date(jan4);
+  week1Monday.setDate(jan4.getDate() - jan4Day);
+  const monday = new Date(week1Monday);
+  monday.setDate(week1Monday.getDate() + (week - 1) * 7);
+  return monday;
+}
+function isoWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const ftDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - ftDayNum + 3);
+  return 1 + Math.round((d.getTime() - firstThursday.getTime()) / (7 * 24 * 3600 * 1000));
+}
+function nbSemainesISO(year: number): number {
+  // Le 28 décembre appartient toujours à la dernière semaine ISO de l'année.
+  return isoWeekNumber(new Date(year, 11, 28));
+}
+
 export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [reference, setReference] = useState<RefLigne[] | null>(null);
   const [refError, setRefError] = useState(false);
@@ -88,6 +119,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   const [saving, setSaving] = useState(false);
   const [refRetry, setRefRetry] = useState(0);
   const [dailyRetry, setDailyRetry] = useState(0);
+  const [generatingSemaines, setGeneratingSemaines] = useState(false);
 
   // ─── Référence N-1 agrégée (statique, chargée une seule fois à l'ouverture ; relançable via refRetry) ───
   useEffect(() => {
@@ -135,6 +167,35 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
       setNewNom(""); setNewDebut(""); setNewFin("");
     } catch { alert("Erreur lors de la création de la période."); }
     setSaving(false);
+  };
+
+  // Crée en une fois une période par semaine ISO de l'année donnée (ex : 2026), nommée avec
+  // son propre numéro de semaine et le numéro de semaine équivalent l'année précédente
+  // (utile pour s'y retrouver, même si le repère N-1 réel utilisé par l'app reste basé sur
+  // les dates exactes, décalées d'un an, pas sur l'alignement strict des numéros de semaine).
+  const genererSemaines = async (year: number) => {
+    if (!window.confirm(`Créer une période pour chaque semaine de ${year} (avec repère semaine ${year - 1} équivalente) ?`)) return;
+    setGeneratingSemaines(true);
+    try {
+      const nb = nbSemainesISO(year);
+      const batch: Record<string, any> = {};
+      for (let w = 1; w <= nb; w++) {
+        const lundi = isoWeekMonday(year, w);
+        const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6);
+        const lundiN1 = new Date(lundi); lundiN1.setFullYear(lundiN1.getFullYear() - 1);
+        const semaineN1 = isoWeekNumber(lundiN1);
+        const key = `sem_${year}_S${String(w).padStart(2, "0")}`;
+        batch[key] = {
+          nom: `Semaine ${w} ${year} (réf. semaine ${semaineN1} ${year - 1})`,
+          dateDebut: toLocalISO(lundi),
+          dateFin: toLocalISO(dimanche),
+          createdAt: Date.now(),
+          createdBy: userName || "-",
+        };
+      }
+      await update(ref(db, "programme_achat_periodes"), batch);
+    } catch { alert("Erreur lors de la génération des semaines."); }
+    setGeneratingSemaines(false);
   };
 
   const supprimerPeriode = async (id: string) => {
@@ -253,8 +314,13 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
         <div style={{ maxWidth: 800, margin: "0 auto", padding: 16 }}>
           <button onClick={() => setShowNewForm(v => !v)} style={{
             width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a",
-            fontWeight: 700, fontSize: 14, cursor: "pointer", marginBottom: 12,
+            fontWeight: 700, fontSize: 14, cursor: "pointer", marginBottom: 8,
           }}>+ Nouvelle période</button>
+
+          <button onClick={() => genererSemaines(2026)} disabled={generatingSemaines} style={{
+            width: "100%", padding: "10px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fff", color: "#8a6d1f",
+            fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 12,
+          }}>{generatingSemaines ? "Génération en cours..." : "📅 Générer les périodes par semaine 2026 (repère 2025)"}</button>
 
           {showNewForm && (
             <div style={{ background: "#fff", borderRadius: 12, padding: 14, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
