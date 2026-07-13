@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader } from "./shared";
+import { PageHeader, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY } from "./shared";
+import emailjs from "@emailjs/browser";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MODULE ROTATION RACKS — gère 4 murs de rack, chacun avec ses propres
@@ -129,16 +130,24 @@ function dlcStatus(dlc?: string): { color: string; bg: string; label: string; al
 // ─── VISUEL PALETTE (planches de bois + infos essentielles) ───
 function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type }: { produit?: string; extraItems?: { nom: string; quantite?: string; unite?: string }[]; quantite?: string; unite?: string; dlc?: string; color?: string; type?: string }) {
   const status = dlcStatus(dlc);
+  const isExpired = status?.label === "Dépassée";
   const meta = type && type !== "produit" ? PALETTE_TYPES[type] : null;
   const borderColor = color || meta?.color;
   return (
-    <div style={{
+    <div className={isExpired ? "pal-alert-expired" : undefined} style={{
       display: "flex", flexDirection: "column", alignItems: "center", width: "100%", gap: 1.5,
-      border: borderColor ? `3px solid ${borderColor}` : "1.5px dashed #d1d5db",
-      background: borderColor ? `${borderColor}33` : "transparent",
+      border: isExpired ? "3px solid #dc2626" : borderColor ? `3px solid ${borderColor}` : "1.5px dashed #d1d5db",
+      background: isExpired ? "#fecaca" : borderColor ? `${borderColor}33` : "transparent",
       boxSizing: "border-box" as const,
       borderRadius: 7, padding: "4px 3px 3px",
+      position: "relative",
     }}>
+      {isExpired && (
+        <span style={{
+          position: "absolute", top: -9, right: -9, fontSize: 16, lineHeight: 1,
+          filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))",
+        }}>🔴</span>
+      )}
       {meta && <span style={{ fontSize: 10 }}>{meta.icon}</span>}
       <span style={{
         fontSize: 9.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.15, textAlign: "center",
@@ -263,6 +272,57 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     });
     return () => u();
   }, []);
+
+  // ─── FIREBASE: positions de TOUS les murs (indépendant du mur affiché à l'écran) ───
+  // Sert uniquement à surveiller les DLC dépassées sur l'ensemble du rack pour l'alerte email ci-dessous.
+  const [allPositions, setAllPositions] = useState<Record<string, Record<string, PalettePos>>>({});
+  useEffect(() => {
+    const u = onValue(ref(db, "rack_positions"), snap => {
+      setAllPositions(snap.val() || {});
+    });
+    return () => u();
+  }, []);
+
+  // ─── ALERTE EMAIL À AGRÉAGE : dès qu'une palette passe en DLC dépassée, on prévient une seule fois ───
+  // (pas de renvoi à chaque fois que quelqu'un ouvre la page — une trace "déjà envoyée" est gardée dans Firebase,
+  // partagée entre tous les appareils. L'envoi ne se déclenche que pendant que le module Rotation racks est ouvert
+  // dans un navigateur : il n'y a pas de tâche automatique côté serveur dans cette appli.)
+  useEffect(() => {
+    let cancelled = false;
+    const dejaEnvoyesRef = ref(db, "rack_alertes_envoyees");
+    const u = onValue(dejaEnvoyesRef, snap => {
+      if (cancelled) return;
+      const dejaEnvoyes: Record<string, boolean> = snap.val() || {};
+      const aPrevenir: { alertKey: string; wallLabel: string; produit: string; dlc: string }[] = [];
+      WALL_IDS.forEach((wallId, idx) => {
+        const wallPositions = allPositions[wallId] || {};
+        Object.entries(wallPositions).forEach(([key, p]) => {
+          const status = dlcStatus(p.dlc);
+          if (status?.label !== "Dépassée") return;
+          const alertKey = `${wallId}_${key}_${p.timestamp || p.dlc}`;
+          if (dejaEnvoyes[alertKey]) return;
+          aPrevenir.push({ alertKey, wallLabel: configs[wallId]?.label || WALL_DEFAULT_LABELS[idx], produit: p.produit, dlc: p.dlc || "" });
+        });
+      });
+      if (aPrevenir.length === 0) return;
+      (async () => {
+        try {
+          const liste = aPrevenir.map(a => `• ${a.produit} — ${a.wallLabel} — DLC du ${a.dlc ? new Date(a.dlc).toLocaleDateString("fr-FR") : "?"}`).join("\n");
+          await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+            to_email: "agreage@moorea.fr",
+            subject: `⚠ ${aPrevenir.length} palette(s) en DLC dépassée`,
+            message: `Bonjour,\n\nLes palettes suivantes ont dépassé leur DLC dans le rack de stockage :\n\n${liste}\n\nMerci de les traiter en priorité.`,
+          }, EMAILJS_PUBLIC_KEY);
+          const marquage: Record<string, boolean> = {};
+          aPrevenir.forEach(a => { marquage[a.alertKey] = true; });
+          await update(dejaEnvoyesRef, marquage);
+        } catch (e) {
+          console.error("Erreur envoi email alerte agréage:", e);
+        }
+      })();
+    });
+    return () => { cancelled = true; u(); };
+  }, [allPositions, configs]);
 
   const cfg: WallConfig = configs[activeWall] || { rows: DEFAULT_ROWS, cols: DEFAULT_COLS, label: WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)], echelleEvery: DEFAULT_ECHELLE };
 
@@ -857,6 +917,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         <div style={{ position: "relative" }}>
           <style>{`
             @keyframes rackScrollHint{0%,100%{opacity:.35}50%{opacity:1}}
+            @keyframes palAlertPulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,0.55)}50%{box-shadow:0 0 0 5px rgba(220,38,38,0)}}
+            .pal-alert-expired{ animation: palAlertPulse 1.3s infinite; }
             .rack-scrub{ -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:999px; background:#e5e7eb; outline:none; cursor:pointer; margin:0; }
             .rack-scrub::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:#8b5cf6; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
             .rack-scrub::-moz-range-thumb{ width:20px; height:20px; border-radius:50%; background:#8b5cf6; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
