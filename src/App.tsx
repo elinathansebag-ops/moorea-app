@@ -13,6 +13,7 @@ import { RHApp } from "./RHApp";
 import { QrCodeDashboard } from "./QrCodeDashboard";
 import { YukonApp } from "./YukonApp";
 import { RackModule } from "./RackModule";
+import { ProgrammeAchatModule } from "./ProgrammeAchatModule";
 
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
@@ -89,6 +90,7 @@ export default function App() {
   const [showCatalogue, setShowCatalogue] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
   const [showRack, setShowRack] = useState(false);
+  const [showProgrammeAchat, setShowProgrammeAchat] = useState(false);
   const [catalogueArticles, setCatalogueArticles] = useState<{code:string,libelle:string,equipe:string}[]>([]);
   // Helper: trouver le code article depuis le libellé
   const getCodeArticle = (libelle: string): string => {
@@ -1572,6 +1574,10 @@ _PDF joint_`;
     return <RackModule onClose={() => { setShowRack(false); setShowAccueil(true); }} />;
   }
 
+  if (showProgrammeAchat) {
+    return <ProgrammeAchatModule onClose={() => { setShowProgrammeAchat(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
+  }
+
   if (showAccueil) {
     const getHello = () => {
       const h = new Date().getHours();
@@ -1604,6 +1610,7 @@ _PDF joint_`;
       { icon: "📚", label: "Catalogue", color: "#27ae60", badge: catalogueArticles.length > 0 ? catalogueArticles.length : null, stat: "Base articles Moorea", action: () => { setShowAccueil(false); setShowCatalogue(true); } },
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
       { icon: "📦", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
+      { icon: "🛒", label: "Programme d'achat", color: "#ea580c", badge: null, stat: "Grosses périodes", action: () => { setShowAccueil(false); setShowProgrammeAchat(true); } },
     ];
 
     const leofreshBtns = [
