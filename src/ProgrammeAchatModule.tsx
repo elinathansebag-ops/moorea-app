@@ -59,7 +59,12 @@ function decalerAnnee(dateStr: string, delta: number): string {
   const d = new Date(dateStr + "T00:00:00");
   if (isNaN(d.getTime())) return dateStr;
   d.setFullYear(d.getFullYear() + delta);
-  return d.toISOString().slice(0, 10);
+  // Construit la chaîne à la main (composants locaux) — toISOString() repasse en UTC
+  // et décale d'un jour selon le fuseau horaire du navigateur (bug constaté en prod).
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
@@ -81,24 +86,28 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   const [newDebut, setNewDebut] = useState("");
   const [newFin, setNewFin] = useState("");
   const [saving, setSaving] = useState(false);
+  const [refRetry, setRefRetry] = useState(0);
+  const [dailyRetry, setDailyRetry] = useState(0);
 
-  // ─── Référence N-1 agrégée (statique, chargée une seule fois à l'ouverture) ───
+  // ─── Référence N-1 agrégée (statique, chargée une seule fois à l'ouverture ; relançable via refRetry) ───
   useEffect(() => {
-    fetch("/data/reference_ventes_2025.json")
+    setRefError(false);
+    fetch("/data/reference_ventes_2025.json", { cache: "no-store" })
       .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(data => setReference(data))
       .catch(() => setRefError(true));
-  }, []);
+  }, [refRetry]);
 
-  // ─── Référence N-1 détaillée jour par jour (chargée une fois qu'une période est ouverte) ───
+  // ─── Référence N-1 détaillée jour par jour (chargée une fois qu'une période est ouverte ; relançable via dailyRetry) ───
   useEffect(() => {
-    if (!selectedId || dailyRef || dailyLoading) return;
+    if (!selectedId || dailyRef) return;
     setDailyLoading(true);
-    fetch("/data/reference_ventes_jour_2025.json")
+    setDailyError(false);
+    fetch("/data/reference_ventes_jour_2025.json", { cache: "no-store" })
       .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(data => { setDailyRef(data); setDailyLoading(false); })
       .catch(() => { setDailyError(true); setDailyLoading(false); });
-  }, [selectedId]);
+  }, [selectedId, dailyRetry]);
 
   // ─── FIREBASE: liste des périodes ───
   useEffect(() => {
@@ -303,7 +312,10 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
           </p>
         )}
         {refError && (
-          <p style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13 }}>Impossible de charger les statistiques de référence.</p>
+          <p style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <span>Impossible de charger les statistiques de référence.</span>
+            <button onClick={() => setRefRetry(n => n + 1)} style={{ border: "none", background: "#dc2626", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Réessayer</button>
+          </p>
         )}
 
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -320,7 +332,12 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
         {onglet === "recherche" && (
           <>
             {dailyLoading && <p style={{ textAlign: "center", color: "#888", padding: 20 }}>Chargement du détail jour par jour de l'an dernier…</p>}
-            {dailyError && <p style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13 }}>Impossible de charger le détail jour par jour.</p>}
+            {dailyError && (
+              <p style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <span>Impossible de charger le détail jour par jour.</span>
+                <button onClick={() => setDailyRetry(n => n + 1)} style={{ border: "none", background: "#dc2626", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Réessayer</button>
+              </p>
+            )}
 
             <div style={{ background: "#fff", borderRadius: 10, padding: 12, marginBottom: 12 }}>
               <label style={{ fontSize: 12.5, fontWeight: 700, color: "#555" }}>👥 Tape un client</label>
