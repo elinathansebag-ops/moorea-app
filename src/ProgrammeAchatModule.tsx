@@ -19,7 +19,13 @@ import { PageHeader } from "./shared";
 // ═══════════════════════════════════════════════════════════════════════════
 
 type RefLigne = { a: string; c: string; g: string | null; f: string | null; colis: number };
-type RefJour = { a: string; c: string; d: string; colis: number };
+type RefJour = { a: string; c: string; d: string; colis: number; mtVente?: number };
+
+// Prix de vente unitaire (par colis) déduit du montant vente et de la quantité de la ligne.
+function prixUnitaire(r: RefJour): string {
+  if (!r.mtVente || !r.colis) return "-";
+  return (r.mtVente / r.colis).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+}
 
 type Periode = { nom: string; dateDebut: string; dateFin: string; createdAt: number; createdBy?: string };
 
@@ -330,6 +336,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                         <th style={{ padding: "8px 10px" }}>Date livraison N-1</th>
                         <th style={{ padding: "8px 10px" }}>Produit</th>
                         <th style={{ padding: "8px 10px", textAlign: "right" }}>Colis</th>
+                        <th style={{ padding: "8px 10px", textAlign: "right" }}>Prix vente / colis</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -338,10 +345,11 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                           <td style={{ padding: "6px 10px", whiteSpace: "nowrap" }}>{formatDate(r.d)}</td>
                           <td style={{ padding: "6px 10px" }}>{r.a}</td>
                           <td style={{ padding: "6px 10px", textAlign: "right", color: "#555" }}>{r.colis.toLocaleString("fr-FR")}</td>
+                          <td style={{ padding: "6px 10px", textAlign: "right", color: "#555" }}>{prixUnitaire(r)}</td>
                         </tr>
                       ))}
                       {resultatClient.length === 0 && (
-                        <tr><td colSpan={3} style={{ padding: 16, textAlign: "center", color: "#888" }}>Aucune commande trouvée pour ce client sur cette période l'an dernier.</td></tr>
+                        <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "#888" }}>Aucune commande trouvée pour ce client sur cette période l'an dernier.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -363,6 +371,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                         <th style={{ padding: "8px 10px" }}>Date livraison N-1</th>
                         <th style={{ padding: "8px 10px" }}>Client</th>
                         <th style={{ padding: "8px 10px", textAlign: "right" }}>Colis</th>
+                        <th style={{ padding: "8px 10px", textAlign: "right" }}>Prix vente / colis</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -371,10 +380,11 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                           <td style={{ padding: "6px 10px", whiteSpace: "nowrap" }}>{formatDate(r.d)}</td>
                           <td style={{ padding: "6px 10px" }}>{r.c}</td>
                           <td style={{ padding: "6px 10px", textAlign: "right", color: "#555" }}>{r.colis.toLocaleString("fr-FR")}</td>
+                          <td style={{ padding: "6px 10px", textAlign: "right", color: "#555" }}>{prixUnitaire(r)}</td>
                         </tr>
                       ))}
                       {resultatProduit.length === 0 && (
-                        <tr><td colSpan={3} style={{ padding: 16, textAlign: "center", color: "#888" }}>Aucune commande trouvée pour ce produit sur cette période l'an dernier.</td></tr>
+                        <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "#888" }}>Aucune commande trouvée pour ce produit sur cette période l'an dernier.</td></tr>
                       )}
                     </tbody>
                   </table>
