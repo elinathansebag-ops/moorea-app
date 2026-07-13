@@ -5,19 +5,28 @@ import { PageHeader } from "./shared";
 // ═══════════════════════════════════════════════════════════════════════════
 // MODULE PROGRAMME D'ACHAT — pour les grosses périodes (Noël, promos, etc.),
 // permet de préparer par période un plan de quantités par produit et par
-// client, en s'appuyant sur les statistiques de vente de l'année précédente
-// (fichier de référence agrégé, importé une fois dans public/data/).
+// client, en s'appuyant sur les statistiques de vente de l'année précédente.
+//
+// Deux fichiers de référence statiques (public/data/), tous deux issus du
+// même export N-1 (sept-déc 2025) :
+//  - reference_ventes_2025.json      → agrégé par produit+client (léger, ~2 Mo),
+//                                       utilisé pour les listes / tris par CA.
+//  - reference_ventes_jour_2025.json → détail jour par jour (plus lourd, ~8 Mo),
+//                                       chargé à la demande seulement quand on
+//                                       ouvre le détail d'un produit ou d'un client.
 // ═══════════════════════════════════════════════════════════════════════════
 
 type RefLigne = { a: string; c: string; g: string | null; f: string | null; colis: number; mtVente: number; mtAchat: number };
+type RefJour = { a: string; c: string; d: string; colis: number; mtVente: number };
 
 type Periode = { nom: string; dateDebut: string; dateFin: string; createdAt: number; createdBy?: string };
 
+// Une ligne = soit un objectif "produit" (quantité totale à acheter, tous clients),
+// soit un objectif "client" (quantité totale prévue vendue à ce client, tous produits).
 type Ligne = {
-  article: string;
-  client: string; // "" = ligne agrégée tous clients (vue "par produit")
-  qteVente?: string;
-  qteAchat?: string;
+  type: "produit" | "client";
+  nom: string;
+  qte?: string;
   notes?: string;
   updatedAt?: number;
   updatedBy?: string;
@@ -27,35 +36,54 @@ type Ligne = {
 function sanitizeKey(s: string): string {
   return s.replace(/[.#$\[\]\/]/g, "_").slice(0, 180);
 }
-function ligneKey(article: string, client: string): string {
-  return sanitizeKey(`${article}__${client || "TOUS"}`);
+function ligneKey(type: "produit" | "client", nom: string): string {
+  return `${type}__${sanitizeKey(nom)}`;
 }
 
 function formatEuros(n: number): string {
   return n.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " €";
 }
+function formatDate(d: string): string {
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "short" });
+}
 
 export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [reference, setReference] = useState<RefLigne[] | null>(null);
   const [refError, setRefError] = useState(false);
+  const [dailyRef, setDailyRef] = useState<RefJour[] | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState(false);
   const [periodes, setPeriodes] = useState<Record<string, Periode>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lignes, setLignes] = useState<Record<string, Ligne>>({});
   const [vue, setVue] = useState<"produit" | "client">("produit");
   const [search, setSearch] = useState("");
+  const [detailArticle, setDetailArticle] = useState<string | null>(null);
+  const [detailClient, setDetailClient] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newNom, setNewNom] = useState("");
   const [newDebut, setNewDebut] = useState("");
   const [newFin, setNewFin] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // ─── Référence N-1 (statique, chargée une seule fois à l'ouverture) ───
+  // ─── Référence N-1 agrégée (statique, chargée une seule fois à l'ouverture) ───
   useEffect(() => {
     fetch("/data/reference_ventes_2025.json")
       .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(data => setReference(data))
       .catch(() => setRefError(true));
   }, []);
+
+  // ─── Référence N-1 détaillée jour par jour (chargée seulement à la demande) ───
+  const chargerDetailJour = () => {
+    if (dailyRef || dailyLoading) return;
+    setDailyLoading(true);
+    fetch("/data/reference_ventes_jour_2025.json")
+      .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(data => { setDailyRef(data); setDailyLoading(false); })
+      .catch(() => { setDailyError(true); setDailyLoading(false); });
+  };
 
   // ─── FIREBASE: liste des périodes ───
   useEffect(() => {
@@ -94,44 +122,65 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     } catch { alert("Erreur"); }
   };
 
-  const majLigne = (article: string, client: string, champ: "qteVente" | "qteAchat", valeur: string) => {
+  const majLigne = (type: "produit" | "client", nom: string, valeur: string) => {
     if (!selectedId) return;
-    const key = ligneKey(article, client);
+    const key = ligneKey(type, nom);
     update(ref(db, `programme_achat_lignes/${selectedId}/${key}`), {
-      article, client, [champ]: valeur, updatedAt: Date.now(), updatedBy: userName || "-",
+      type, nom, qte: valeur, updatedAt: Date.now(), updatedBy: userName || "-",
     }).catch(() => {});
   };
 
-  // ─── Agrégation par produit (toutes clients confondus) ───
+  // ─── Agrégation par produit (tous clients confondus) ───
   const parProduit = useMemo(() => {
     if (!reference) return [];
-    const map = new Map<string, { article: string; gamme: string | null; colis: number; mtVente: number; mtAchat: number }>();
+    const map = new Map<string, { nom: string; gamme: string | null; colis: number; mtVente: number; mtAchat: number }>();
     for (const l of reference) {
-      const e = map.get(l.a) || { article: l.a, gamme: l.g, colis: 0, mtVente: 0, mtAchat: 0 };
+      const e = map.get(l.a) || { nom: l.a, gamme: l.g, colis: 0, mtVente: 0, mtAchat: 0 };
       e.colis += l.colis; e.mtVente += l.mtVente; e.mtAchat += l.mtAchat;
       map.set(l.a, e);
     }
     return Array.from(map.values()).sort((a, b) => b.mtVente - a.mtVente);
   }, [reference]);
 
-  const parClient = useMemo(() => reference ? [...reference].sort((a, b) => b.mtVente - a.mtVente) : [], [reference]);
+  // ─── Agrégation par client (tous produits confondus) ───
+  const parClient = useMemo(() => {
+    if (!reference) return [];
+    const map = new Map<string, { nom: string; colis: number; mtVente: number; nbArticles: Set<string> }>();
+    for (const l of reference) {
+      const e = map.get(l.c) || { nom: l.c, colis: 0, mtVente: 0, nbArticles: new Set<string>() };
+      e.colis += l.colis; e.mtVente += l.mtVente; e.nbArticles.add(l.a);
+      map.set(l.c, e);
+    }
+    return Array.from(map.values()).map(e => ({ nom: e.nom, colis: e.colis, mtVente: e.mtVente, nbArticles: e.nbArticles.size })).sort((a, b) => b.mtVente - a.mtVente);
+  }, [reference]);
 
   const q = search.trim().toLowerCase();
   const produitsAffiches = useMemo(() => {
-    const base = q ? parProduit.filter(p => p.article.toLowerCase().includes(q)) : parProduit;
+    const base = q ? parProduit.filter(p => p.nom.toLowerCase().includes(q)) : parProduit;
     return base.slice(0, q ? 300 : 150);
   }, [parProduit, q]);
   const clientsAffiches = useMemo(() => {
-    const base = q ? parClient.filter(l => l.a.toLowerCase().includes(q) || l.c.toLowerCase().includes(q)) : parClient;
+    const base = q ? parClient.filter(c => c.nom.toLowerCase().includes(q)) : parClient;
     return base.slice(0, q ? 300 : 150);
   }, [parClient, q]);
 
-  // Total des quantités à acheter saisies pour la période (vue produit), utile pour la commande fournisseur.
-  const totalAAcheter = useMemo(() => {
-    return Object.values(lignes).reduce((sum, l) => {
-      const n = parseFloat((l.qteAchat || "").replace(",", "."));
-      return sum + (isNaN(n) ? 0 : n);
-    }, 0);
+  // Détail jour par jour pour le produit ou client actuellement ouvert.
+  const detailRows = useMemo(() => {
+    if (!dailyRef) return [];
+    if (detailArticle) return dailyRef.filter(r => r.a === detailArticle).sort((a, b) => a.d.localeCompare(b.d));
+    if (detailClient) return dailyRef.filter(r => r.c === detailClient).sort((a, b) => a.d.localeCompare(b.d));
+    return [];
+  }, [dailyRef, detailArticle, detailClient]);
+
+  // Total des quantités saisies pour la période, par type (utile pour la commande fournisseur / le suivi commercial).
+  const totaux = useMemo(() => {
+    let achat = 0, vente = 0;
+    for (const l of Object.values(lignes)) {
+      const n = parseFloat((l.qte || "").replace(",", "."));
+      if (isNaN(n)) continue;
+      if (l.type === "produit") achat += n; else vente += n;
+    }
+    return { achat, vente };
   }, [lignes]);
 
   const periodesArr = Object.entries(periodes).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
@@ -195,6 +244,51 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     );
   }
 
+  // ─── ÉCRAN 3 : détail jour par jour d'un produit ou d'un client ───
+  if (detailArticle || detailClient) {
+    const titreDetail = detailArticle || detailClient || "";
+    const isArticle = !!detailArticle;
+    return (
+      <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
+        <PageHeader titre={titreDetail} couleur="#c8a84b" onBack={() => { setDetailArticle(null); setDetailClient(null); }} />
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: 12 }}>
+          <p style={{ fontSize: 12.5, color: "#888", margin: "0 0 10px" }}>
+            {isArticle ? "Détail des ventes N-1 de ce produit, jour par jour et client par client." : "Détail des achats N-1 de ce client, jour par jour et produit par produit."}
+          </p>
+          {dailyLoading && <p style={{ textAlign: "center", color: "#888", padding: 20 }}>Chargement du détail jour par jour…</p>}
+          {dailyError && <p style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13 }}>Impossible de charger le détail jour par jour.</p>}
+          {!dailyLoading && !dailyError && dailyRef && (
+            <div style={{ background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
+                    <th style={{ padding: "8px 10px" }}>Date livraison N-1</th>
+                    <th style={{ padding: "8px 10px" }}>{isArticle ? "Client" : "Produit"}</th>
+                    <th style={{ padding: "8px 6px", textAlign: "right" }}>Colis</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" }}>CA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailRows.map((r, idx) => (
+                    <tr key={idx} style={{ borderTop: "1px solid #f0f0f0" }}>
+                      <td style={{ padding: "6px 10px", whiteSpace: "nowrap" }}>{formatDate(r.d)}</td>
+                      <td style={{ padding: "6px 10px" }}>{isArticle ? r.c : r.a}</td>
+                      <td style={{ padding: "6px", textAlign: "right", color: "#555" }}>{r.colis.toLocaleString("fr-FR")}</td>
+                      <td style={{ padding: "6px 10px", textAlign: "right", color: "#555" }}>{formatEuros(r.mtVente)}</td>
+                    </tr>
+                  ))}
+                  {detailRows.length === 0 && (
+                    <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "#888" }}>Aucune ligne trouvée dans le détail N-1 pour cet élément.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // ─── ÉCRAN 2 : plan de la période sélectionnée ───
   return (
     <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
@@ -218,13 +312,16 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
           }}>👥 Par client</button>
         </div>
 
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={vue === "produit" ? "Rechercher un produit…" : "Rechercher un produit ou un client…"} style={{
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={vue === "produit" ? "Rechercher un produit…" : "Rechercher un client…"} style={{
           width: "100%", padding: 9, borderRadius: 8, border: "1px solid #d1d5db", marginBottom: 10, boxSizing: "border-box", fontSize: 13,
         }} />
 
-        <div style={{ background: "#fff", borderRadius: 10, padding: "8px 10px", marginBottom: 10, fontSize: 12.5, color: "#555" }}>
-          Total quantité à acheter saisie sur cette période : <b style={{ color: "#1a2e1a" }}>{totalAAcheter.toLocaleString("fr-FR")}</b> colis
+        <div style={{ background: "#fff", borderRadius: 10, padding: "8px 10px", marginBottom: 10, fontSize: 12.5, color: "#555", display: "flex", gap: 16 }}>
+          <span>Total à acheter (produits) : <b style={{ color: "#1a2e1a" }}>{totaux.achat.toLocaleString("fr-FR")}</b> colis</span>
+          <span>Total prévu vente (clients) : <b style={{ color: "#1a2e1a" }}>{totaux.vente.toLocaleString("fr-FR")}</b> colis</span>
         </div>
+
+        <p style={{ fontSize: 11.5, color: "#aaa", margin: "0 0 6px" }}>Clique sur une ligne pour voir le détail jour par jour de l'an dernier ({vue === "produit" ? "quel client a pris quoi, quand" : "quel produit, quand"}).</p>
 
         <div style={{ background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
           {vue === "produit" ? (
@@ -239,16 +336,16 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
               </thead>
               <tbody>
                 {produitsAffiches.map(p => {
-                  const l = lignes[ligneKey(p.article, "")];
+                  const l = lignes[ligneKey("produit", p.nom)];
                   return (
-                    <tr key={p.article} style={{ borderTop: "1px solid #f0f0f0" }}>
-                      <td style={{ padding: "6px 10px" }}>{p.article}</td>
+                    <tr key={p.nom} onClick={() => { setDetailArticle(p.nom); chargerDetailJour(); }} style={{ borderTop: "1px solid #f0f0f0", cursor: "pointer" }}>
+                      <td style={{ padding: "6px 10px" }}>{p.nom}</td>
                       <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{p.colis.toLocaleString("fr-FR")}</td>
                       <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{formatEuros(p.mtVente)}</td>
-                      <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                      <td style={{ padding: "6px 10px", textAlign: "right" }} onClick={e => e.stopPropagation()}>
                         <input
-                          defaultValue={l?.qteAchat || ""}
-                          onBlur={e => majLigne(p.article, "", "qteAchat", e.target.value)}
+                          defaultValue={l?.qte || ""}
+                          onBlur={e => majLigne("produit", p.nom, e.target.value)}
                           style={inputStyle}
                           placeholder="0"
                         />
@@ -265,24 +362,24 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead>
                 <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
-                  <th style={{ padding: "8px 10px" }}>Produit</th>
                   <th style={{ padding: "8px 10px" }}>Client</th>
+                  <th style={{ padding: "8px 6px", textAlign: "right" }}>Articles N-1</th>
                   <th style={{ padding: "8px 6px", textAlign: "right" }}>Colis N-1</th>
                   <th style={{ padding: "8px 10px", textAlign: "right" }}>Qté prévue vente</th>
                 </tr>
               </thead>
               <tbody>
-                {clientsAffiches.map((r, idx) => {
-                  const l = lignes[ligneKey(r.a, r.c)];
+                {clientsAffiches.map(c => {
+                  const l = lignes[ligneKey("client", c.nom)];
                   return (
-                    <tr key={r.a + "|" + r.c + "|" + idx} style={{ borderTop: "1px solid #f0f0f0" }}>
-                      <td style={{ padding: "6px 10px" }}>{r.a}</td>
-                      <td style={{ padding: "6px 10px", color: "#555" }}>{r.c}</td>
-                      <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{r.colis.toLocaleString("fr-FR")}</td>
-                      <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                    <tr key={c.nom} onClick={() => { setDetailClient(c.nom); chargerDetailJour(); }} style={{ borderTop: "1px solid #f0f0f0", cursor: "pointer" }}>
+                      <td style={{ padding: "6px 10px" }}>{c.nom}</td>
+                      <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{c.nbArticles}</td>
+                      <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{c.colis.toLocaleString("fr-FR")}</td>
+                      <td style={{ padding: "6px 10px", textAlign: "right" }} onClick={e => e.stopPropagation()}>
                         <input
-                          defaultValue={l?.qteVente || ""}
-                          onBlur={e => majLigne(r.a, r.c, "qteVente", e.target.value)}
+                          defaultValue={l?.qte || ""}
+                          onBlur={e => majLigne("client", c.nom, e.target.value)}
                           style={inputStyle}
                           placeholder="0"
                         />
