@@ -4657,6 +4657,40 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
     setTimeout(() => setStatus(`✅ ${ALL_GENCODE_ARTICLES.length} articles importés !`), 1500);
   }
 
+  // Validation du chiffre de contrôle EAN-13 / EAN-8 / UPC-A. L'OCR lit parfois les
+  // BARRES du code-barres elles-mêmes comme si c'était des chiffres (silhouettes
+  // verticales qui ressemblent à du texte) — ça pollue le texte reconnu de chiffres
+  // parasites mélangés aux vrais. Le chiffre de contrôle permet de rejeter
+  // automatiquement les suites de chiffres qui ne peuvent pas être un vrai gencode
+  // (1 chance sur 10 qu'une suite au hasard le valide par erreur).
+  function eanChecksumValid(digits: string): boolean {
+    const n = digits.length;
+    if (n !== 8 && n !== 12 && n !== 13) return false;
+    const nums = digits.split('').map(Number);
+    const check = nums[n - 1];
+    const firstWeight = n === 13 ? 1 : 3; // EAN-13 commence par un poids 1, EAN-8/UPC-A par 3
+    let sum = 0;
+    for (let i = 0; i < n - 1; i++) {
+      const weight = (i % 2 === 0) ? firstWeight : (firstWeight === 1 ? 3 : 1);
+      sum += nums[i] * weight;
+    }
+    return ((10 - (sum % 10)) % 10) === check;
+  }
+
+  // Cherche, dans tout le texte reconnu par l'IA, la première sous-séquence de
+  // chiffres qui forme un gencode valide (13 puis 12 puis 8 chiffres) plutôt que de
+  // prendre la 1ère suite de chiffres venue — évite d'être trompé par des barres
+  // mal interprétées comme des chiffres avant ou après le vrai code.
+  function findValidEanInText(digitsOnly: string): string | null {
+    for (const len of [13, 12, 8]) {
+      for (let i = 0; i + len <= digitsOnly.length; i++) {
+        const candidate = digitsOnly.slice(i, i + len);
+        if (eanChecksumValid(candidate)) return candidate;
+      }
+    }
+    return null;
+  }
+
   // ── Lecture des chiffres par IA (OCR) ──────────────────────────────────────
   // Le décodage du code-barres (les barres) s'est révélé peu fiable sur certains
   // téléphones/emballages. Les chiffres sont imprimés en clair sous les barres —
@@ -4680,21 +4714,31 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
 
       const Tesseract = await import('tesseract.js');
       const worker = await Tesseract.createWorker('eng');
-      await worker.setParameters({ tessedit_char_whitelist: '0123456789' });
+      await worker.setParameters({
+        tessedit_char_whitelist: '0123456789',
+        // Mode "texte épars" : cherche du texte à divers endroits de l'image plutôt
+        // que de la traiter comme un seul bloc — aide à isoler la ligne de chiffres
+        // imprimée plutôt que d'essayer d'interpréter tout le bloc de barres.
+        tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
+      });
       const { data: { text } } = await worker.recognize(canvas);
       await worker.terminate();
 
       const digitsOnly = text.replace(/\D/g, '');
-      const match = digitsOnly.match(/\d{8,13}/);
-      if (match) {
-        const ean = match[0];
+      const ean = findValidEanInText(digitsOnly);
+      if (ean) {
         setOcrStatus('');
         try { const s = streamRef.current as any; if (s?.isScanning) s.stop().catch(() => {}); } catch {}
         setScanning(false);
         setScannedEan(ean);
         setScanResult(articles.find((a: any) => a.ean === ean) || null);
       } else {
-        setOcrStatus(digitsOnly ? `IA : chiffres illisibles ("${digitsOnly}") — réessaie ou saisis-le à la main.` : 'IA : aucun chiffre reconnu — réessaie ou saisis-le à la main.');
+        // Aucune sous-séquence ne valide le chiffre de contrôle — l'IA a probablement
+        // aussi "lu" les barres du code. On affiche quand même ce qu'elle a détecté,
+        // tronqué, pour permettre une correction manuelle rapide.
+        setOcrStatus(digitsOnly
+          ? `IA : pas de code valide reconnu (chiffres bruts : "${digitsOnly.slice(0, 40)}${digitsOnly.length > 40 ? '…' : ''}") — recadre sur les chiffres imprimés (pas les barres) et réessaie, ou saisis-le à la main.`
+          : 'IA : aucun chiffre reconnu — réessaie ou saisis-le à la main.');
       }
     } catch (e: any) {
       setOcrStatus('Erreur IA : ' + (e?.message || String(e)));
