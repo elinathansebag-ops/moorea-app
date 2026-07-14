@@ -246,6 +246,12 @@ async function imprimerEtiquettePalette(arrivage: any, paletteIndex?: number, co
   const lotLabel = palRef ? `MRA.${String(lot).padStart(4,"0")}-${palRef}` : `MRA.${String(lot).padStart(4,"0")}`;
   const qte = colisCount != null ? colisCount : arrivage.quantite;
 
+  // Taille de police du nom de produit adaptée à sa longueur — évite que les noms longs
+  // (avec calibre/conditionnement entre parenthèses) soient coupés par des points de
+  // suspension sur l'étiquette imprimée.
+  const nomProduit = (arrivage.produit || "-").toUpperCase();
+  const produitFontSize = nomProduit.length <= 18 ? 16 : nomProduit.length <= 30 ? 13.5 : nomProduit.length <= 45 ? 11.5 : nomProduit.length <= 65 ? 9.5 : 8;
+
   // Formatage DLC (n'apparaît sur l'étiquette que si elle est renseignée sur l'arrivage)
   let dlcLabel = "";
   if (arrivage.dlc) {
@@ -294,7 +300,7 @@ body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;
 .qr-img{width:60mm;height:60mm;border:2px solid #000;background:#fff;object-fit:contain}
 .info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between}
 .lot{font-size:20px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:2px solid #000;padding-bottom:1.5mm;word-break:break-word}
-.produit{font-size:16px;font-weight:900;color:#000;line-height:1.15;margin-top:1.5mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.15;margin-top:1.5mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;word-break:break-word}
 .qty-row{display:flex;align-items:baseline;gap:4px;margin-top:1.5mm}
 .qty{font-size:28px;font-weight:900;color:#000;line-height:1}
 .unite{font-size:12px;font-weight:700;color:#000}
@@ -311,7 +317,7 @@ body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;
   <div class="info-col">
     <div>
       <div class="lot">${lotLabel}</div>
-      <div class="produit">${(arrivage.produit || "-").toUpperCase()}</div>
+      <div class="produit">${nomProduit}</div>
     </div>
     <div>
       <div class="qty-row"><span class="qty">${qte || "-"}</span><span class="unite">${(arrivage.unite || "COLIS").toUpperCase()}</span></div>
