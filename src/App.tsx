@@ -225,6 +225,21 @@ export default function App() {
     setNotifLitiges(alertes);
   }, [arrivages]);
 
+  // ─── ALERTE DÉCLARATION IFCO ───
+  // Suit la dernière entrée de l'historique IFCO (ifco_histo, écrit par IFCOModule à chaque
+  // téléchargement/envoi/validation) pour alerter sur l'accueil si aucune déclaration n'a été
+  // faite depuis 7 jours (ou si aucune n'a jamais été faite).
+  const [ifcoHisto, setIfcoHisto] = useState<any[]>([]);
+  useEffect(() => {
+    const u = onValue(ref(db, "ifco_histo"), snap => {
+      const d = snap.val();
+      setIfcoHisto(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+    });
+    return () => u();
+  }, []);
+  const joursDepuisIfco = ifcoHisto.length && ifcoHisto[0].ts ? Math.floor((Date.now() - ifcoHisto[0].ts) / (1000 * 60 * 60 * 24)) : null;
+  const alerteIfco = joursDepuisIfco === null || joursDepuisIfco >= 7;
+
   // ─── LOAD STOCK OVERRIDES ───
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1675,6 +1690,20 @@ _PDF joint_`;
             </div>
             <button onClick={() => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision("refus"); }}
               style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Voir</button>
+          </div>
+        )}
+
+        {alerteIfco && (
+          <div style={{ background: darkMode ? "#2d2410" : "#fffbeb", borderBottom: "3px solid #d97706", padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 20 }}>📦</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#d97706" }}>
+                {joursDepuisIfco === null ? "Aucune déclaration IFCO enregistrée" : `Aucune déclaration IFCO depuis ${joursDepuisIfco} jour${joursDepuisIfco > 1 ? "s" : ""}`}
+              </p>
+              <p style={{ margin: 0, fontSize: 11, color: darkMode ? "#fbbf24" : "#9ca3af" }}>Pense à faire ta déclaration des bacs</p>
+            </div>
+            <button onClick={() => { setShowAccueil(false); setShowIFCO(true); }}
+              style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#d97706", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Voir</button>
           </div>
         )}
 

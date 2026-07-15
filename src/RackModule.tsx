@@ -700,14 +700,27 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   };
 
   const nbOccupees = Object.keys(positions).length;
+  const bays = getBays(cfg);
+  // Une case n'existe que si elle tombe dans la grille TELLE QU'ELLE EST CONFIGURÉE
+  // AUJOURD'HUI (rows/bays/baySlots) — si le mur a été réduit après y avoir placé une
+  // palette, l'ancienne clé Firebase reste orpheline (invisible dans la grille, qui
+  // n'itère que sur la config actuelle) mais continuait sinon à apparaître pour
+  // toujours dans l'alerte DLC. On l'exclut ici pour que l'alerte corresponde à ce qui
+  // est réellement visible/rangeable sur le mur.
+  const dansGrilleActuelle = (key: string) => {
+    const [row, bay, slot] = key.split("_").map(Number);
+    if (row < 0 || row >= cfg.rows || bay < 0 || bay >= bays.length) return false;
+    const n = cfg.baySlots?.[`${row}_${bay}`] || bays[bay]?.width || 1;
+    return slot >= 0 && slot < n;
+  };
   // Palettes dont la DLC est dépassée ou à moins de 10 jours (pas assez de temps pour les vendre) — sur le mur affiché.
   // On garde row/bay/slot pour pouvoir cliquer directement sur une alerte et ouvrir cette palette précise.
   const alertesDLC = Object.entries(positions)
+    .filter(([key]) => dansGrilleActuelle(key))
     .map(([key, p]) => ({ key, data: p, status: dlcStatus(p.dlc)! }))
     .filter(a => !!a.status?.alerte)
     .sort((a, b) => (a.status.label === "Dépassée" ? 0 : 1) - (b.status.label === "Dépassée" ? 0 : 1));
   const nbAlertesDLC = alertesDLC.length;
-  const bays = getBays(cfg);
   const nbTotal = Array.from({ length: cfg.rows }, (_, row) => row).reduce(
     (sum, row) => sum + bays.reduce((s, bay, i) => s + (cfg.baySlots?.[`${row}_${i}`] || bay.width), 0), 0
   );
@@ -919,13 +932,13 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {/* ONGLETS MURS */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {/* ONGLETS MURS — défilement horizontal plutôt que des libellés compressés/coupés sur mobile */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
           {WALL_IDS.map((id, i) => {
             const c = configs[id] || { label: WALL_DEFAULT_LABELS[i] };
             return (
               <button key={id} onClick={() => setActiveWall(id)}
-                style={{ flex: 1, padding: "12px 4px", borderRadius: 12, border: `2px solid ${activeWall === id ? "#8b5cf6" : "#e5e7eb"}`, background: activeWall === id ? "#f5f3ff" : "#fff", fontWeight: 700, fontSize: 13, color: activeWall === id ? "#6d28d9" : "#6b7280", cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                style={{ flexShrink: 0, whiteSpace: "nowrap", padding: "12px 16px", borderRadius: 12, border: `2px solid ${activeWall === id ? "#8b5cf6" : "#e5e7eb"}`, background: activeWall === id ? "#f5f3ff" : "#fff", fontWeight: 700, fontSize: 13, color: activeWall === id ? "#6d28d9" : "#6b7280", cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
                 {c.label || WALL_DEFAULT_LABELS[i]}
               </button>
             );
@@ -933,21 +946,21 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* STATS + CONFIG */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
-          <div style={{ flex: 1, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "10px 16px", display: "flex", gap: 20 }}>
-            <div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "stretch", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 220, background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "10px 16px", display: "flex", gap: "8px 16px", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 60 }}>
               <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#8b5cf6" }}>{nbOccupees}</p>
               <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Occupées</p>
             </div>
-            <div>
+            <div style={{ minWidth: 60 }}>
               <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#6b7280" }}>{nbTotal - nbOccupees}</p>
               <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Libres</p>
             </div>
-            <div>
+            <div style={{ minWidth: 60 }}>
               <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#1a2e1a" }}>{cfg.rows}×{cfg.cols}</p>
               <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>Niveaux×Places</p>
             </div>
-            <div>
+            <div style={{ minWidth: 60 }}>
               <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: nbAlertesDLC > 0 ? "#dc2626" : "#9ca3af" }}>{nbAlertesDLC}</p>
               <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>⚠️ DLC ≤10j</p>
             </div>
@@ -976,27 +989,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             )}
           </div>
         )}
-        {nbAlertesDLC > 0 && (
-          <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 16px", marginBottom: 16, marginTop: -6 }}>
-            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#dc2626" }}>
-              ⚠️ {nbAlertesDLC} palette{nbAlertesDLC > 1 ? "s" : ""} sur ce mur {nbAlertesDLC > 1 ? "ont" : "a"} une DLC dépassée ou à moins de 10 jours — clique pour l'ouvrir directement :
-            </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {alertesDLC.map(a => {
-                const [row, bay, slot] = a.key.split("_").map(Number);
-                return (
-                  <button key={a.key} onClick={() => setSelectedCell({ row, bay, slot })}
-                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${a.status.color}`, background: "#fff", color: a.status.color, fontWeight: 700, fontSize: 11.5, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
-                    <span>⚠</span>
-                    <span>{a.data.produit}</span>
-                    <span style={{ opacity: 0.75, fontWeight: 600 }}>· N{row + 1} · {a.status.label === "Dépassée" ? "Dépassée" : a.status.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* GRILLE DU RACK — structure réaliste : montants + traverses + palettes */}
         <div style={{ position: "relative" }}>
           <style>{`
@@ -1100,6 +1092,29 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         <p style={{ marginTop: 12, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
           Glisse une palette (souris ou doigt) vers une case vide pour la déplacer rapidement, ou tape/clique dessus pour monter/descendre/déplacer sur un autre mur/sortir.
         </p>
+
+        {/* ALERTES DLC — placées en bas de page (après la grille), pour laisser le rack
+            visible immédiatement à l'ouverture de l'écran, surtout sur téléphone. */}
+        {nbAlertesDLC > 0 && (
+          <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 16px", marginTop: 16 }}>
+            <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#dc2626" }}>
+              ⚠️ {nbAlertesDLC} palette{nbAlertesDLC > 1 ? "s" : ""} sur ce mur {nbAlertesDLC > 1 ? "ont" : "a"} une DLC dépassée ou à moins de 10 jours — clique pour l'ouvrir directement :
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {alertesDLC.map(a => {
+                const [row, bay, slot] = a.key.split("_").map(Number);
+                return (
+                  <button key={a.key} onClick={() => setSelectedCell({ row, bay, slot })}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${a.status.color}`, background: "#fff", color: a.status.color, fontWeight: 700, fontSize: 11.5, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                    <span>⚠</span>
+                    <span>{a.data.produit}</span>
+                    <span style={{ opacity: 0.75, fontWeight: 600 }}>· N{row + 1} · {a.status.label === "Dépassée" ? "Dépassée" : a.status.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* APERÇU FLOTTANT PENDANT LE DÉPLACEMENT TACTILE */}

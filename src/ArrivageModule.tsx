@@ -1210,25 +1210,8 @@ export function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLi
 
 export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { arrivage: any; onDelete: any; onOuvreRapport: any }) {
   const [open, setOpen] = useState(false);
-  const [perteQty, setPerteQty] = useState("");
-  const [perteRaison, setPerteRaison] = useState("");
-  const [savingPerte, setSavingPerte] = useState(false);
   const [savingReserve, setSavingReserve] = useState(false);
   const borderColor = a.statut === "validé" ? "#27ae60" : a.statut === "refusé" ? "#dc2626" : "#d97706";
-
-  const handlePerte = async () => {
-    if (!perteQty || !perteRaison) { alert("Remplis la quantité et la raison"); return; }
-    setSavingPerte(true);
-    try {
-      const { ref: fbRef, update } = await import("firebase/database");
-      const { db: dbImport } = await import("./firebase");
-      await update(fbRef(dbImport, `arrivages/${a.id}`), {
-        destruction: { quantite: parseInt(perteQty), raison: perteRaison, date: new Date().toLocaleDateString("fr-FR"), effectuee: true }
-      });
-      setPerteQty(""); setPerteRaison(""); setOpen(false);
-    } catch { alert("Erreur"); }
-    setSavingPerte(false);
-  };
 
   const handleReserve = async () => {
     setSavingReserve(true);
@@ -1270,64 +1253,6 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { a
             {a.rapport?.poids_brut && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>⚖️ Brut {a.rapport.poids_brut} kg</span>}
             {a.rapport?.poids_net && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>🥬 Net {a.rapport.poids_net} kg</span>}
             {a.rapport?.observations && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>📝 {a.rapport.observations}</span>}
-          </div>
-
-          {/* Colis manquant - alerte WhatsApp */}
-          <div style={{ marginBottom: 10, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px" }}>
-            <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#1d4ed8" }}>📦 Colis manquant</p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "#6b7280" }}>Attendus : <strong style={{ color: "#1a2e1a" }}>{a.quantite}</strong></span>
-              <input type="number" min="0" max={a.quantite} id={`colis-recus-${a.id}`}
-                placeholder="Colis reçus"
-                style={{ width: 110, padding: "6px 10px", border: "1px solid #bfdbfe", borderRadius: 8, background: "#fff", color: "#1a2e1a", fontSize: 13, outline: "none" }} />
-              <button onClick={() => {
-                const input = document.getElementById(`colis-recus-${a.id}`) as HTMLInputElement;
-                const recu = parseInt(input?.value || "0");
-                const attendu = a.quantite || 0;
-                const manquant = attendu - recu;
-                if (!recu || recu >= attendu) { alert("Saisis un nombre de colis reçus inférieur aux attendus"); return; }
-                const produit = a.produit || a.article || a.nom || `Lot #${a.lot_interne}`;
-                const now = new Date().toLocaleString("fr-FR");
-                const msg = `📦 ALERTE COLIS MANQUANT - MOOREA
-${now}
-
-Produit : ${produit}
-Fournisseur : ${a.fournisseur}
-Lot Moorea : ${a.lot_interne || "-"}
-Date arrivage : ${a.date || "-"}
-
-Attendus : ${attendu} colis
-Reçus : ${recu} colis
-❌ Manquants : ${manquant} colis
-
-Merci de régulariser.`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
-              }} style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#3b82f6", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                📲 Envoyer alerte
-              </button>
-            </div>
-          </div>
-
-          {/* Déclarer une perte */}
-          <div style={{ marginBottom: 10, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 12px" }}>
-            <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 12, color: "#dc2626" }}>🗑 Déclarer une perte</p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input type="number" min="1" max={a.quantite} value={perteQty} onChange={e => setPerteQty(e.target.value)}
-                placeholder={`Nb colis (/ ${a.quantite})`}
-                style={{ width: 120, padding: "6px 10px", border: "1px solid #fca5a5", borderRadius: 8, background: "#fff", color: "#1a2e1a", fontSize: 13, outline: "none" }} />
-              <input type="text" value={perteRaison} onChange={e => setPerteRaison(e.target.value)}
-                placeholder="Raison (ex: marchandise avariée)"
-                style={{ flex: 1, minWidth: 140, padding: "6px 10px", border: "1px solid #fca5a5", borderRadius: 8, background: "#fff", color: "#1a2e1a", fontSize: 13, outline: "none" }} />
-              <button onClick={handlePerte} disabled={savingPerte || !perteQty || !perteRaison}
-                style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: (!perteQty || !perteRaison) ? "#fca5a5" : "#dc2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                {savingPerte ? "..." : "Confirmer"}
-              </button>
-            </div>
-            {a.destruction && (
-              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#dc2626" }}>
-                ✓ {a.destruction.quantite} colis détruits le {a.destruction.date} - {a.destruction.raison}
-              </p>
-            )}
           </div>
 
           {/* Rapport de réserve */}

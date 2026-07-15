@@ -1451,7 +1451,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           let html = "";
           orderedKeys.forEach((key, idx) => {
             const g = groups.get(key)!;
-            const isOpen = idx === 0;
+            // Par principe, aucun accordéon ne s'ouvre tout seul — même la semaine la
+            // plus récente reste repliée tant qu'on ne clique pas dessus.
+            const isOpen = false;
             html += `<div class="s-week-acc" style="margin-top:${idx === 0 ? 0 : 10}px">
               <div onclick="sToggleWeekAcc('${key}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#faf8f3;border:1.5px solid #e8e0d0;border-radius:10px">
                 <span style="font-weight:700;font-size:13px;color:#1a2e1a">📅 Semaine ${g.week} · ${g.year} <span style="font-weight:500;color:#9ca3af;font-size:11px;margin-left:4px">(${g.items.length} stock${g.items.length > 1 ? "s" : ""})</span></span>
