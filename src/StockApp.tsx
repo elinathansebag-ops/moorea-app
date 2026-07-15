@@ -1375,6 +1375,26 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
 
       // Stock list
+      // Semaine ISO d'un stock — sert à regrouper l'historique en accordéons. Utilise
+      // s.date (ISO, fiable) si présent, sinon tente de parser s.dateLabel (fr-FR,
+      // "JJ/MM/AAAA ...") pour les anciens stocks qui n'ont que ce champ.
+      const parseStockDate = (s: any): Date => {
+        if (s.date) { const d = new Date(s.date); if (!isNaN(d.getTime())) return d; }
+        if (s.dateLabel) {
+          const m = String(s.dateLabel).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+        }
+        return new Date();
+      };
+      const getISOWeek = (date: Date): { week: number; year: number } => {
+        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const dayNum = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+        return { week: weekNo, year: d.getUTCFullYear() };
+      };
+
       const renderStockList = async () => {
         const list = document.getElementById("s-stock-list");
         if (!list) return;
@@ -1394,10 +1414,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             const total = team === "GMS" ? (s.gms || 0) : (s.prestige || 0);
             const pct = total ? Math.round(done / total * 100) : 0;
             const color = team === "GMS" ? "#92710a" : "#0ea5e9";
+            const teamLabel = team === "GMS" ? "🌿 GMS" : "✨ Prestige";
             const sid = s.id.replace(/'/g, "\\'");
             return `<div class="stock-item">
               <div style="flex:1">
-                <div style="font-size:13px;font-weight:700">📅 ${s.dateLabel}</div>
+                <div style="font-size:13px;font-weight:700">📅 ${s.dateLabel} <span style="font-size:10px;font-weight:700;color:${color};background:${color}18;padding:2px 7px;border-radius:20px;margin-left:6px">${teamLabel}</span></div>
                 <div style="font-size:12px;color:#6b7280;margin-top:2px">${s.filename} · ${total} articles</div>
                 <div style="margin-top:6px;height:5px;background:#e8e0d0;border-radius:3px;overflow:hidden;max-width:180px">
                   <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
@@ -1410,21 +1431,48 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
                   ? `<span style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 10px;border-radius:8px;font-weight:600">✓ Clôturé</span>
                      <button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>
                      <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}')">🔓 Rouvrir</button>`
-                  : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>`}
-                <button class="btn btn-sm btn-danger" onclick="sDeleteStock('${sid}')">🗑</button>
+                  : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>
+                     <button class="btn btn-sm btn-danger" onclick="sDeleteStock('${sid}')">🗑</button>`}
               </div>
             </div>`;
           };
-          const gmsStocks = stocks.filter(s => s.team === "GMS" || !s.team);
-          const presStocks = stocks.filter(s => s.team === "PRESTIGE");
-          let html = `<div style="font-size:12px;font-weight:700;color:#92710a;text-transform:uppercase;padding:6px 0 8px;display:flex;align-items:center;gap:6px">🌿 GMS</div>`;
-          if (gmsStocks.length) gmsStocks.forEach(s => { html += makeItem(s, "GMS"); });
-          else html += `<div style="font-size:13px;color:#6b7280;padding:10px 0">Aucun stock GMS</div>`;
-          html += `<div style="font-size:12px;font-weight:700;color:#0ea5e9;text-transform:uppercase;padding:16px 0 8px;margin-top:8px;border-top:1.5px solid #e8e0d0;display:flex;align-items:center;gap:6px">✨ Prestige</div>`;
-          if (presStocks.length) presStocks.forEach(s => { html += makeItem(s, "PRESTIGE"); });
-          else html += `<div style="font-size:13px;color:#6b7280;padding:10px 0">Aucun stock Prestige</div>`;
+          // Regroupe l'historique par semaine ISO, en accordéons (la plus récente
+          // ouverte par défaut) — un stock clôturé n'affiche plus jamais le bouton
+          // "Supprimer", pour éviter d'effacer un inventaire déjà validé.
+          const groups = new Map<string, { week: number; year: number; items: { s: any; team: string }[] }>();
+          stocks.forEach(s => {
+            const team = s.team === "PRESTIGE" ? "PRESTIGE" : "GMS";
+            const { week, year } = getISOWeek(parseStockDate(s));
+            const key = `${year}-S${String(week).padStart(2, "0")}`;
+            if (!groups.has(key)) groups.set(key, { week, year, items: [] });
+            groups.get(key)!.items.push({ s, team });
+          });
+          const orderedKeys = [...groups.keys()].sort().reverse();
+          let html = "";
+          orderedKeys.forEach((key, idx) => {
+            const g = groups.get(key)!;
+            const isOpen = idx === 0;
+            html += `<div class="s-week-acc" style="margin-top:${idx === 0 ? 0 : 10}px">
+              <div onclick="sToggleWeekAcc('${key}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#faf8f3;border:1.5px solid #e8e0d0;border-radius:10px">
+                <span style="font-weight:700;font-size:13px;color:#1a2e1a">📅 Semaine ${g.week} · ${g.year} <span style="font-weight:500;color:#9ca3af;font-size:11px;margin-left:4px">(${g.items.length} stock${g.items.length > 1 ? "s" : ""})</span></span>
+                <span id="s-week-chev-${key}" style="transition:transform .15s;display:inline-block;transform:rotate(${isOpen ? 90 : 0}deg);color:#c8a84b;font-size:16px">›</span>
+              </div>
+              <div id="s-week-body-${key}" style="display:${isOpen ? "block" : "none"};padding-top:8px">
+                ${g.items.map(({ s, team }) => makeItem(s, team)).join("")}
+              </div>
+            </div>`;
+          });
           list.innerHTML = html;
         } catch (err: any) { list.innerHTML = `<div class="empty-state">Erreur: ${err.message}</div>`; }
+      };
+
+      (window as any).sToggleWeekAcc = (key: string) => {
+        const body = document.getElementById(`s-week-body-${key}`);
+        const chev = document.getElementById(`s-week-chev-${key}`);
+        if (!body) return;
+        const open = body.style.display !== "none";
+        body.style.display = open ? "none" : "block";
+        if (chev) chev.style.transform = `rotate(${open ? 0 : 90}deg)`;
       };
 
       // Clôturer
@@ -1466,6 +1514,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       // Delete
       (window as any).sDeleteStock = async (id: string) => {
+        // Garde-fou : même si le bouton est retiré côté affichage pour les stocks
+        // clôturés, on revérifie ici pour bloquer aussi tout appel direct.
+        const snap = await getDoc(doc(db, "stocks", id));
+        if (snap.exists() && (snap.data() as any).cloture) { toast("Stock clôturé — suppression impossible"); return; }
         if (!confirm("Supprimer ce stock et ses comptages ?")) return;
         await deleteDoc(doc(db, "stocks", id));
         await deleteDoc(doc(db, "comptages", id + "_GMS"));
@@ -2322,7 +2374,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
