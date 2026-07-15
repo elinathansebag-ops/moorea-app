@@ -4121,7 +4121,7 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
     <div style={{ minHeight: '100vh', background: '#f5f3ee', fontFamily: "'Syne', sans-serif" }}>
       <PageHeader titre="📚 Catalogue Articles" couleur="#27ae60" onBack={onClose} onHome={onClose} />
 
-      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 16px 80px' }}>
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '20px 16px 80px' }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
           <span style={{ background: '#c8a84b', color: '#0a0a0a', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>GMS {gmsCount}</span>
           <span style={{ background: '#0ea5e9', color: '#fff', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>Prestige {prestigeCount}</span>

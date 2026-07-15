@@ -370,7 +370,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   return (
     <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
       <PageHeader titre={cfg?.nom || "Programme d'achat"} couleur="#c8a84b" onBack={() => setSelectedId(null)} onHome={onClose} />
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: 12 }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: 12 }}>
         {cfg && (
           <p style={{ fontSize: 12, color: "#888", margin: "0 0 10px", textAlign: "center" }}>
             Période : {new Date(cfg.dateDebut).toLocaleDateString("fr-FR")} → {new Date(cfg.dateFin).toLocaleDateString("fr-FR")}

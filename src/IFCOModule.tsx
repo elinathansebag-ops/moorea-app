@@ -332,7 +332,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
 
       <PageHeader titre="🌿 Moorea → IFCO" couleur="#27ae60" onBack={onClose} onHome={onClose} />
-      <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap", padding: "10px 16px 0" }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap", padding: "10px 16px 0" }}>
         {pendingClients.length > 0 && (
           <button onClick={() => { setPendingInputCodes({}); setShowPendingPopup(true); }} style={{ position: "relative", background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
             ⏳ En attente
@@ -345,14 +345,14 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
 
       {/* ONGLETS */}
       <div style={{ background: "#0a0a0a", borderBottom: "1px solid #222" }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", gap: 4, padding: "0 16px 8px" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", gap: 4, padding: "0 16px 8px" }}>
           {([["convert","⚡ Opérationnel"],["clients","⚙️ Réglages"]] as any[]).map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: tab===k ? 700 : 500, color: tab===k ? "#0a0a0a" : "rgba(255,255,255,.5)", background: tab===k ? "#27ae60" : "transparent", fontFamily: "inherit" }}>{l}</button>
           ))}
         </div>
       </div>
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 80px" }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "20px 16px 80px" }}>
 
         {/* ── OPÉRATIONNEL ── */}
         {tab === "convert" && (

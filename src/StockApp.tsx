@@ -640,12 +640,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .sync-dot.error{background:#ef4444}
 @keyframes stock-pulse{0%,100%{opacity:1}50%{opacity:.2}}
 #stock-root .nav-wrap{background:#0a0a0a;border-bottom:1.5px solid rgba(200,168,75,0.3);padding:0 2rem}
-#stock-root .nav{display:flex;max-width:1100px;margin:0 auto}
+#stock-root .nav{display:flex;max-width:800px;margin:0 auto}
 #stock-root .nav-btn{padding:13px 18px;background:transparent;border:none;border-bottom:2.5px solid transparent;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:500;color:rgba(255,255,255,.6);display:flex;align-items:center;gap:7px;white-space:nowrap;margin-bottom:-1.5px;transition:color .15s}
 #stock-root .nav-btn:hover{color:#fff}
 #stock-root .nav-btn.active{color:#fff;border-bottom-color:#c8a84b}
 #stock-root .nav-btn.hidden{display:none}
-#stock-root .app-inner{max-width:1100px;margin:0 auto;padding:1.5rem 1rem 4rem}
+#stock-root .app-inner{max-width:800px;margin:0 auto;padding:1.5rem 1rem 4rem}
 #stock-root .card{background:#fff;border:1.5px solid #e8e0d0;border-radius:16px;padding:1.25rem;margin-bottom:1rem}
 #stock-root .section-title{font-size:12px;font-weight:700;color:#c8a84b;letter-spacing:1px;text-transform:uppercase;margin-bottom:1.25rem;display:flex;align-items:center;gap:8px}
 #stock-root .section-title::before{content:'';display:block;width:3px;height:14px;background:#c8a84b;border-radius:2px}

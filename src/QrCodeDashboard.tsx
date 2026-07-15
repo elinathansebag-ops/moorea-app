@@ -95,7 +95,7 @@ export function QrCodeDashboard({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <PageHeader titre="📊 QR Code Leofresh" couleur="#27ae60" onBack={onClose} onHome={onClose} />
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 12px 80px" }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 12px 80px" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>Chargement des données de scan...</div>
         ) : (

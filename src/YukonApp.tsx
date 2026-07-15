@@ -261,7 +261,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 8px 100px" }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 8px 100px" }}>
 
         {/* PAGE CALCUL */}
         {page === "calcul" && (

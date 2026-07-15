@@ -835,7 +835,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <PageHeader titre="⚙️ Gestion des racks" couleur="#8b5cf6" onBack={fermerConfig} onHome={fermerConfig} />
-        <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 80px" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px" }}>
           {!configUnlocked ? (
             <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
               <div style={{ fontSize: 40, color: "#8b5cf6", marginBottom: 16 }}>🔒</div>

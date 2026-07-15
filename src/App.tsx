@@ -1745,7 +1745,7 @@ _PDF joint_`;
           </div>
         )}
 
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "12px 12px 100px" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "12px 12px 100px" }}>
 
           {/* BANDEAU RECHERCHE LOT */}
           <div style={{ background: darkMode ? "#1a1d27" : "#fff", border: `1.5px solid ${darkMode ? "#2d3148" : "#e8e0d0"}`, borderRadius: 16, padding: "14px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
@@ -1799,7 +1799,7 @@ _PDF joint_`;
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="⚠️ Litiges Moorea" couleur="#dc2626" onBack={() => { setShowLitiges(false); setShowAccueil(true); }} onHome={() => { setShowLitiges(false); setShowAccueil(true); }} />
-        <div style={{ maxWidth: 520, margin: "-24px auto 0", padding: "0 20px 60px", position: "relative" }}>
+        <div style={{ maxWidth: 800, margin: "-24px auto 0", padding: "0 20px 60px", position: "relative" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <button onClick={() => { setShowLitiges(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision(""); setSortBy("decision"); }}
               style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 20px", borderRadius: 16, cursor: "pointer", border: "1.5px solid #e8e0d0", background: "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", transition: "all 0.15s" }}>
@@ -1854,7 +1854,7 @@ _PDF joint_`;
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="🔍 Chercher un lot" couleur="#3b82f6" onBack={() => { setShowRecherche(false); setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
-        <div style={{ maxWidth: 600, margin: "0 auto", padding: "16px 20px 60px" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 20px 60px" }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: "16px", marginBottom: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
             <input
               value={searchLotQuery}

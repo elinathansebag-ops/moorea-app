@@ -343,7 +343,7 @@ export function RHApp({ onClose }: { onClose: () => void }) {
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <PageHeader titre="👥 RH · Pointeuse" couleur="#0ea5e9" onBack={onClose} onHome={onClose} />
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 12px 100px" }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 12px 100px" }}>
 
         {/* Import fichier */}
         <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, border: "1.5px solid #e8e0d0" }}>

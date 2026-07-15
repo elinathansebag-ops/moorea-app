@@ -654,7 +654,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
 
       <PageHeader titre="📦 Retours commandes" couleur="#c8a84b" onBack={onClose} onHome={onClose} />
 
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "16px 16px 80px" }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px" }}>
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
           <button style={BTN("#c8a84b", "#0a0a0a")} onClick={() => setModal("choix")}>+ Saisir un retour</button>
