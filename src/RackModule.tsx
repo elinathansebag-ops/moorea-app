@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY } from "./shared";
+import { ScannerQR } from "./ArrivageModule";
 import emailjs from "@emailjs/browser";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -225,6 +226,14 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [presetLocked, setPresetLocked] = useState(false);
   const [freeForm, setFreeForm] = useState({ produit: "", type: "produit" as "produit" | "archive" | "packaging", extraItems: [] as { nom: string; quantite?: string; unite?: string }[], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
   const [saving, setSaving] = useState(false);
+
+  // ─── MODE DE PLACEMENT : "manuel" (sélection article, comme avant) ou "scan" (on scanne le
+  // QR de la palette à ranger, puis on choisit l'emplacement) — réglage gardé par appareil. ───
+  const [modePlacement, setModePlacement] = useState<"manuel" | "scan">(() => (localStorage.getItem("rack_mode_placement") as "manuel" | "scan") || "manuel");
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanStatus, setScanStatus] = useState("");
+  const [paletteScanEnAttente, setPaletteScanEnAttente] = useState<(typeof freeForm & { arrivage_id?: string }) | null>(null);
+  useEffect(() => { localStorage.setItem("rack_mode_placement", modePlacement); }, [modePlacement]);
 
   // ─── FIREBASE: config des murs ───
   useEffect(() => {
@@ -454,10 +463,40 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setSelectedCell({ row, bay, slot });
     setIsEditing(false);
     if (!occupied) {
-      setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
-      setAddMode(favoris.length > 0 ? "modele" : "libre");
-      setPresetLocked(false);
+      if (paletteScanEnAttente) {
+        // Une palette vient d'être scannée : on pré-remplit directement avec ses infos,
+        // il ne reste qu'à confirmer (et compléter la DLC si elle manquait sur l'arrivage).
+        setFreeForm(paletteScanEnAttente);
+        setAddMode("libre");
+        setPresetLocked(false);
+      } else {
+        setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
+        setAddMode(favoris.length > 0 ? "modele" : "libre");
+        setPresetLocked(false);
+      }
     }
+  };
+
+  // ─── TRAITEMENT DU QR SCANNÉ (mode "scan") ───
+  // ScannerQR (composant partagé, déjà utilisé pour les arrivages) extrait l'id/lot depuis l'URL
+  // du QR imprimé sur l'étiquette (voir imprimerEtiquettePalette) avant d'appeler onScan — on
+  // retrouve l'arrivage correspondant (déjà chargé en mémoire) et on pré-remplit la palette en
+  // attente, prête à être déposée sur la prochaine case cliquée.
+  const handlePaletteScannee = (texteScan: string) => {
+    const id = texteScan.startsWith("EAN:") ? texteScan.slice(4) : texteScan;
+    const arrivage = arrivages.find((a: any) => a.id === id || a.lot_interne === id);
+    if (!arrivage) {
+      setScanStatus(`Aucun arrivage trouvé pour "${id}" — vérifie que la palette correspond bien à un arrivage existant.`);
+      return;
+    }
+    setPaletteScanEnAttente({
+      produit: arrivage.produit || "", type: "produit", extraItems: [],
+      fournisseur: arrivage.fournisseur || "", lot_interne: arrivage.lot_interne || "",
+      quantite: arrivage.quantite != null ? String(arrivage.quantite) : "", unite: arrivage.unite || "colis",
+      dlc: arrivage.dlc || "", color: "", origine: arrivage.origine || "", notes: "",
+      arrivage_id: arrivage.id,
+    });
+    setShowScanner(false);
   };
 
   // ─── AJOUT PALETTE (saisie libre) ───
@@ -491,6 +530,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       setSelectedCell(null);
       setPresetLocked(false);
       setIsEditing(false);
+      setPaletteScanEnAttente(null); // la palette scannée vient d'être rangée, on efface l'attente
     } catch { alert("Erreur lors de l'enregistrement"); }
     setSaving(false);
   };
@@ -705,6 +745,30 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             })}
           </div>
 
+          {/* ── MODE DE PLACEMENT D'UNE PALETTE ── */}
+          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>📦 Mode de placement d'une palette</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Choisis comment tu ranges une palette dans le rack, sur cet appareil.</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setModePlacement("manuel")} style={{
+                flex: 1, padding: "12px 10px", borderRadius: 12, border: `2px solid ${modePlacement === "manuel" ? "#8b5cf6" : "#e5e7eb"}`,
+                background: modePlacement === "manuel" ? "#f5f3ff" : "#fff", cursor: "pointer", textAlign: "left",
+              }}>
+                <div style={{ fontSize: 20, marginBottom: 4 }}>✍️</div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: modePlacement === "manuel" ? "#6d28d9" : "#1a2e1a" }}>Sélection manuelle</div>
+                <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 2 }}>Comme avant : je clique une case vide, puis je choisis/tape l'article.</div>
+              </button>
+              <button onClick={() => setModePlacement("scan")} style={{
+                flex: 1, padding: "12px 10px", borderRadius: 12, border: `2px solid ${modePlacement === "scan" ? "#8b5cf6" : "#e5e7eb"}`,
+                background: modePlacement === "scan" ? "#f5f3ff" : "#fff", cursor: "pointer", textAlign: "left",
+              }}>
+                <div style={{ fontSize: 20, marginBottom: 4 }}>📷</div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: modePlacement === "scan" ? "#6d28d9" : "#1a2e1a" }}>Scanner la palette</div>
+                <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 2 }}>Je scanne le QR de la palette à ranger, puis je clique la case où je la mets.</div>
+              </button>
+            </div>
+          </div>
+
           {/* ── ARTICLES FAVORIS (globaux, à cocher dans tout le catalogue) ── */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>⭐ Articles favoris ({favoris.length})</p>
@@ -892,6 +956,26 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             ⚙️ Configurer
           </button>
         </div>
+        {modePlacement === "scan" && (
+          <div style={{ background: paletteScanEnAttente ? "#f0fdf4" : "#f5f3ff", border: `1.5px solid ${paletteScanEnAttente ? "#86efac" : "#ddd6fe"}`, borderRadius: 12, padding: "10px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {paletteScanEnAttente ? (
+              <>
+                <span style={{ fontSize: 20 }}>✅</span>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#166534" }}>{paletteScanEnAttente.produit}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "#4b5563" }}>Palette scannée — clique une case libre pour la ranger.</p>
+                </div>
+                <button onClick={() => setPaletteScanEnAttente(null)} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Annuler</button>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: 20 }}>📷</span>
+                <p style={{ margin: 0, flex: 1, fontSize: 12.5, color: "#5b21b6", fontWeight: 600 }}>Mode scan actif — scanne le QR de la palette à ranger.</p>
+                <button onClick={() => { setScanStatus(""); setShowScanner(true); }} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Scanner une palette</button>
+              </>
+            )}
+          </div>
+        )}
         {nbAlertesDLC > 0 && (
           <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 16px", marginBottom: 16, marginTop: -6 }}>
             <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#dc2626" }}>
@@ -1024,6 +1108,17 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           <div style={{ background: "#fff", border: "2px solid #8b5cf6", borderRadius: 10, padding: "8px 6px", boxShadow: "0 10px 28px rgba(0,0,0,0.3)", textAlign: "center", transform: "scale(1.05) rotate(-2deg)" }}>
             <span style={{ fontSize: 10, fontWeight: 800, color: "#1a2e1a", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ghost.produit}</span>
           </div>
+        </div>
+      )}
+
+      {/* SCANNER : QR de la palette à ranger (mode "scan") */}
+      {showScanner && (
+        <ScannerQR onScan={handlePaletteScannee} onClose={() => setShowScanner(false)} />
+      )}
+      {scanStatus && !showScanner && (
+        <div style={{ position: "fixed", left: 16, right: 16, bottom: 16, zIndex: 3500, background: "#fef2f2", border: "1.5px solid #fca5a5", color: "#991b1b", borderRadius: 12, padding: "12px 16px", fontSize: 13, boxShadow: "0 10px 28px rgba(0,0,0,0.15)", display: "flex", gap: 10, alignItems: "center" }}>
+          <span style={{ flex: 1 }}>⚠ {scanStatus}</span>
+          <button onClick={() => setScanStatus("")} style={{ border: "none", background: "none", color: "#991b1b", fontSize: 16, cursor: "pointer" }}>✕</button>
         </div>
       )}
 
