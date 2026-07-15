@@ -3188,11 +3188,11 @@ _PDF joint_`;
               </div>
               );
 
-              // Les 7 rapports les plus récents (selon le tri en cours) restent visibles en
+              // Les 3 rapports les plus récents (selon le tri en cours) restent visibles en
               // liste — le reste de l'historique est classé en accordéons par fournisseur
               // (repliés par défaut), pour ne pas noyer l'écran sous des mois de rapports.
-              const recents = sorted.slice(0, 7);
-              const reste = sorted.slice(7);
+              const recents = sorted.slice(0, 3);
+              const reste = sorted.slice(3);
               const groupesFournisseur: Record<string, any[]> = {};
               reste.forEach(r => {
                 const f = r.fournisseur || "Sans fournisseur";
