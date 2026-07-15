@@ -45,6 +45,53 @@ export function NoteBtnArr({ n, selected, onChange }: { n: number; selected: num
   );
 }
 
+// ─── LECTURE GS1-128 (étiquette fournisseur) ───
+// Les étiquettes/cartons fournisseurs portent en général un code-barres Code128 encodé au
+// format GS1 : une suite d'"Application Identifiers" (AI) à 2 ou 4 chiffres suivis de leur
+// valeur, ex : (01)03760089086018(17)261231(10)LOT456 → GTIN, DLC (261231 = 31/12/2026),
+// numéro de lot. Les champs à longueur variable sont normalement terminés par un caractère
+// séparateur GS (\x1d) ; à défaut on s'arrête à la fin de la chaîne.
+const GS1_FIXED_LEN: Record<string, number> = {
+  "00": 18, "01": 14, "02": 14, "11": 6, "12": 6, "13": 6, "15": 6, "16": 6, "17": 6, "20": 2, "41": 14,
+};
+function gs1DateToIso(yymmdd: string): string {
+  if (!/^\d{6}$/.test(yymmdd)) return "";
+  const yy = parseInt(yymmdd.slice(0, 2), 10);
+  const mm = yymmdd.slice(2, 4);
+  let dd = yymmdd.slice(4, 6);
+  const year = 2000 + yy;
+  if (dd === "00") { // GS1 : jour "00" = dernier jour du mois
+    dd = String(new Date(year, parseInt(mm, 10), 0).getDate()).padStart(2, "0");
+  }
+  if (parseInt(mm, 10) < 1 || parseInt(mm, 10) > 12) return "";
+  return `${year}-${mm}-${dd}`;
+}
+function parseGS1(raw: string): { dlc?: string; lot?: string; gtin?: string } {
+  const s = raw.replace(/^\]C1/, ""); // certains lecteurs préfixent l'indicateur de symbologie
+  const GS = "\x1d";
+  const out: { dlc?: string; lot?: string; gtin?: string } = {};
+  let i = 0;
+  while (i < s.length) {
+    const isPoids = /^3\d/.test(s.slice(i, i + 2));
+    const ai = isPoids ? s.slice(i, i + 4) : s.slice(i, i + 2);
+    if (!/^\d+$/.test(ai) || ai.length < 2) break; // plus de code AI reconnaissable
+    i += ai.length;
+    const baseAi = isPoids ? ai.slice(0, 2) : ai;
+    const fixedLen = isPoids ? 6 : GS1_FIXED_LEN[ai];
+    let value: string;
+    if (fixedLen != null) { value = s.slice(i, i + fixedLen); i += fixedLen; }
+    else {
+      const gsIdx = s.indexOf(GS, i);
+      value = gsIdx === -1 ? s.slice(i) : s.slice(i, gsIdx);
+      i = gsIdx === -1 ? s.length : gsIdx + 1;
+    }
+    if (baseAi === "17" || baseAi === "15") { const d = gs1DateToIso(value); if (d) out.dlc = d; }
+    if (baseAi === "10") out.lot = value;
+    if (baseAi === "01" || baseAi === "02") out.gtin = value;
+  }
+  return out;
+}
+
 export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode, selected, onToggleSelect, gencodeArticles }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[] }) {
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
@@ -57,6 +104,23 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
   const [tracaFournisseur, setTracaFournisseur] = useState<string>(arrivage.lot_fournisseur || "");
   const [saving, setSaving] = useState(false);
   const [showGencodeScan, setShowGencodeScan] = useState(false);
+  const [showScanEtiquette, setShowScanEtiquette] = useState(false);
+  const [scanEtiquetteMsg, setScanEtiquetteMsg] = useState("");
+
+  // Scan de l'étiquette fournisseur (code Code128/GS1) : remplit automatiquement DLC et
+  // n° de traçabilité si le code contient les Application Identifiers correspondants —
+  // sinon on utilise le code brut comme n° de traçabilité (beaucoup d'étiquettes ne portent
+  // qu'un simple numéro de lot, sans structure GS1 complète).
+  const handleScanEtiquette = (raw: string) => {
+    const parsed = parseGS1(raw);
+    let msg = "";
+    if (parsed.dlc) { setDlc(parsed.dlc); msg += `DLC ${new Date(parsed.dlc).toLocaleDateString("fr-FR")} `; }
+    if (parsed.lot) { setTracaFournisseur(parsed.lot); msg += `Lot ${parsed.lot}`; }
+    if (!parsed.dlc && !parsed.lot) { setTracaFournisseur(raw); msg = `Code lu : ${raw}`; }
+    setScanEtiquetteMsg(msg.trim() || "Code lu");
+    setShowScanEtiquette(false);
+    setTimeout(() => setScanEtiquetteMsg(""), 3000);
+  };
 
   // Chercher le gencode correspondant à cet article
   const matchedGencode = gencodeArticles?.find((g: any) => {
@@ -170,7 +234,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
       </div>
 
       {/* DLC + Traçabilité fournisseur */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
           <input type="date"
@@ -188,7 +252,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
             style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
           />
         </div>
+        <button onClick={() => setShowScanEtiquette(true)} style={{ flexShrink: 0, background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 10, padding: "0 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+          📷 Scanner l'étiquette
+        </button>
       </div>
+      {scanEtiquetteMsg && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>✓ {scanEtiquetteMsg}</p>}
+      {showScanEtiquette && <ScannerQR onScan={handleScanEtiquette} onClose={() => setShowScanEtiquette(false)} />}
 
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr auto", gap: "0 12px", alignItems: "center", marginBottom: 8 }}>
         <div>

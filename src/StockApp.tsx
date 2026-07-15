@@ -854,9 +854,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
           <button class="btn btn-sm btn-gold" onclick="sScannerPaletteComplete()">📷 Scanner une palette complète</button>
-          <div style="flex:1;position:relative;min-width:180px">
-            <input class="search-input" id="s-srch-jump" placeholder="🔍 Chercher un produit (palette incomplète)..." oninput="sChercherEtSurligner(this.value)" autocomplete="off" style="width:100%"/>
-          </div>
+          <button class="btn btn-sm" onclick="sScannerPalette()">📷 Scanner une palette incomplète</button>
         </div>
       </div>
       <div class="card">
@@ -1615,22 +1613,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
       (window as any).sRenderTable = sRenderTable;
 
-      // Cherche un produit par nom et fait défiler jusqu'à sa ligne (surlignée
-      // temporairement) — pour le cas d'une palette incomplète : l'agent
-      // retrouve la ligne et ajuste manuellement la quantité.
-      (window as any).sChercherEtSurligner = (val: string) => {
-        const q = val.toLowerCase().trim();
-        if (!q) return;
-        const art = articles.find((a: any) => a && a.article && a.article.toLowerCase().includes(q));
-        if (!art) return;
-        const mainSrch = document.getElementById("s-srch") as HTMLInputElement | null;
-        if (mainSrch && mainSrch.value) { mainSrch.value = ""; sRenderTable(); }
-        setTimeout(() => {
-          const row = document.querySelector(`tr[data-id="${art.id}"]`) as HTMLElement | null;
-          if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.style.background = "#fef3c7"; setTimeout(() => row.style.background = "", 2000); }
-        }, 50);
-      };
-
       (window as any).sTerminerComptage = () => {
         document.getElementById("s-nav-ecarts")?.classList.remove("hidden");
         (window as any).sShowPage("ecarts");
@@ -2340,7 +2322,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sChercherEtSurligner","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
