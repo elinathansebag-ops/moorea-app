@@ -1170,7 +1170,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                   const n = cfg.baySlots?.[`${row}_${bayIdx}`] || bay.width;
                   const isCustom = n !== bay.width;
                   els.push(
-                    <div key={bayIdx} style={{ flex: bay.width, minWidth: 92 * bay.width, display: "flex", gap: 2, justifyContent: n === 1 ? "center" : undefined }}>
+                    <div key={bayIdx} style={{ flex: bay.width, minWidth: 92 * bay.width, display: "flex", gap: 2 }}>
                       {Array.from({ length: n }, (_, slot) => slot).map(slot => {
                         const key = cellKey(row, bayIdx, slot);
                         const data = positions[key];
@@ -1182,12 +1182,13 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                             data-rack-cell data-row={row} data-bay={bayIdx} data-slot={slot}
                             onPointerDown={e => onPointerDownCell(e, row, bayIdx, slot)}
                             style={{
-                              // Une section "1/section" doit occuper EXACTEMENT la largeur allouée à la baie
-                              // (92 * bay.width), pas une largeur fixe arbitraire — sinon, sur une ligne où
-                              // cette même baie est autrement découpée en plusieurs places, la largeur totale
-                              // de la baie diffère d'une ligne à l'autre et l'échelle verticale entre deux
-                              // baies (empilée ligne par ligne) se retrouve visuellement décalée/tordue.
-                              flex: n === 1 ? "0 0 auto" : 1, minWidth: Math.max(34, (92 * bay.width) / n), maxWidth: n === 1 ? 92 * bay.width : undefined, width: n === 1 ? 92 * bay.width : undefined, height: 150, cursor: data ? (data.verrouille ? "not-allowed" : "grab") : "pointer", padding: "6px 3px 0",
+                              // Chaque place utilise flex:1 pour se répartir TOUTE la largeur réellement
+                              // rendue par le conteneur de la section (qui peut être plus large que
+                              // 92 * bay.width si la ligne a de la place en trop à distribuer) — une case
+                              // "1/section" doit donc prendre toute la place, exactement comme les niveaux
+                              // du dessus qui ont plusieurs places côte à côte, plutôt que de rester une
+                              // largeur fixe centrée avec des marges vides de chaque côté.
+                              flex: 1, minWidth: Math.max(34, (92 * bay.width) / n), height: 150, cursor: data ? (data.verrouille ? "not-allowed" : "grab") : "pointer", padding: "6px 3px 0",
                               touchAction: data ? "none" : "auto",
                               background: dragOverKey === key ? "rgba(139,92,246,0.18)" : isCustom ? "rgba(139,92,246,0.06)" : "transparent",
                               border: "none",

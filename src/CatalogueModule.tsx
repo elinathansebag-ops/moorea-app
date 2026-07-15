@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue, remove } from "./firebase";
 import * as XLSX from "xlsx";
+import { PageHeader } from "./shared";
 
 export interface ArticleMoorea {
   code: string;
@@ -4118,22 +4119,14 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f3ee', fontFamily: "'Syne', sans-serif" }}>
-      <div style={{ background: '#0a0a0a', borderBottom: '3px solid #27ae60', position: 'sticky', top: 0, zIndex: 200, paddingTop: 'env(safe-area-inset-top,0px)' }}>
-        <div style={{ maxWidth: 1000, margin: '0 auto', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={onClose} style={{ background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: 8, color: '#fff', padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}>← Retour</button>
-            <span style={{ fontWeight: 800, fontSize: 15, color: '#fff' }}>📚 Catalogue <span style={{ color: '#27ae60' }}>Articles</span></span>
-          </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ background: '#c8a84b', color: '#0a0a0a', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>GMS {gmsCount}</span>
-            <span style={{ background: '#0ea5e9', color: '#fff', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>Prestige {prestigeCount}</span>
-            {unassigned > 0 && <span style={{ background: '#e0e0e0', color: '#555', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>Non assignés {unassigned}</span>}
-            <button onClick={onClose} style={{ padding: '6px 10px', borderRadius: 9, border: 'none', background: '#c8a84b', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#0a0a0a' }}>🏠</button>
-          </div>
-        </div>
-      </div>
+      <PageHeader titre="📚 Catalogue Articles" couleur="#27ae60" onBack={onClose} onHome={onClose} />
 
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '20px 16px 80px' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+          <span style={{ background: '#c8a84b', color: '#0a0a0a', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>GMS {gmsCount}</span>
+          <span style={{ background: '#0ea5e9', color: '#fff', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>Prestige {prestigeCount}</span>
+          {unassigned > 0 && <span style={{ background: '#e0e0e0', color: '#555', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>Non assignés {unassigned}</span>}
+        </div>
 
         {!imported ? (
           <div style={{ background: '#fff', border: '2px dashed #27ae60', borderRadius: 16, padding: 24, textAlign: 'center' }}>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue } from "./firebase";
 import { Html5Qrcode } from "html5-qrcode";
+import { PageHeader } from "./shared";
 
 interface Article {
   id: string;
@@ -4867,24 +4868,12 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
           .gc-linkrow-col { flex-basis: 100% !important; }
         }
       `}</style>
-      <div style={{ background:'#0a0a0a', borderBottom:'3px solid #3b82f6', position:'sticky', top:0, zIndex:200, paddingTop:'env(safe-area-inset-top,0px)' }}>
-        <div className="gc-topbar" style={{ maxWidth:1000, margin:'0 auto', minHeight:56, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'0 16px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
-            <button onClick={onClose} style={{ background:'rgba(255,255,255,.1)', border:'none', borderRadius:8, color:'#fff', padding:'6px 12px', cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit', whiteSpace:'nowrap' }}>
-              ← Retour
-            </button>
-            <span style={{ fontWeight:800, fontSize:15, color:'#fff', whiteSpace:'nowrap' }}>
-              Gencodes <span style={{ color:'#3b82f6' }}>GMS</span>
-            </span>
-          </div>
-          <div className="gc-stats" style={{ display:'flex', gap:6, alignItems:'center' }}>
-            {imported && <button onClick={syncAutoLinks} style={{ background:'rgba(255,255,255,.15)', border:'none', borderRadius:6, color:'#fff', padding:'4px 10px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap' }}>Sync auto</button>}
-            <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{linked.length} lies</span>
-            <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{unlinked.length} a lier</span>
-            <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{articles.length} total</span>
-            <button onClick={onClose} style={{ padding:'6px 10px', borderRadius:9, border:'none', background:'#3b82f6', cursor:'pointer', fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap' }}>🏠</button>
-          </div>
-        </div>
+      <PageHeader titre="Gencodes GMS" couleur="#3b82f6" onBack={onClose} onHome={onClose} />
+      <div className="gc-stats" style={{ maxWidth:1000, margin:'0 auto', display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', padding:'10px 16px 0' }}>
+        {imported && <button onClick={syncAutoLinks} style={{ background:'#e5e7eb', border:'none', borderRadius:6, color:'#374151', padding:'4px 10px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap' }}>Sync auto</button>}
+        <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{linked.length} lies</span>
+        <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{unlinked.length} a lier</span>
+        <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{articles.length} total</span>
       </div>
       <div style={{ background:'#0a0a0a', borderBottom:'1px solid #222' }}>
         <div className="gc-tabs" style={{ maxWidth:1000, margin:'0 auto', display:'flex', gap:4, padding:'0 16px 8px' }}>

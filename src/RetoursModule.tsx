@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import jsPDF from "jspdf";
 import { CLIENTS_LIST } from "./ClientsList";
+import { PageHeader } from "./shared";
 
 // ── Types ──
 interface ProduitLigne {
@@ -651,21 +652,13 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
 
-      {/* TOP BAR */}
-      <div style={{ background: "#0a0a0a", borderBottom: "3px solid #c8a84b", position: "sticky", top: 0, zIndex: 200, paddingTop: "env(safe-area-inset-top, 0px)" }}>
-        <div style={{ maxWidth: 1000, margin: "0 auto", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button onClick={onClose} style={{ background: "rgba(255,255,255,.1)", border: "none", borderRadius: 8, color: "#fff", padding: "6px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}>← Retour</button>
-            <span style={{ fontWeight: 800, fontSize: 15, color: "#fff" }}>📦 Retours commandes</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button style={BTN("#c8a84b", "#0a0a0a")} onClick={() => setModal("choix")}>+ Saisir un retour</button>
-            <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
-          </div>
-        </div>
-      </div>
+      <PageHeader titre="📦 Retours commandes" couleur="#c8a84b" onBack={onClose} onHome={onClose} />
 
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "16px 16px 80px" }}>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+          <button style={BTN("#c8a84b", "#0a0a0a")} onClick={() => setModal("choix")}>+ Saisir un retour</button>
+        </div>
 
         {/* Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>

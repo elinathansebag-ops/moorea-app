@@ -971,6 +971,17 @@ export function PalettePublique({ id }: { id: string }) {
   const [arrivage, setArrivage] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // ─── VERROU D'ACCÈS (code PIN) ───
+  // Cette page publique est ouverte en scannant le QR code imprimé sur l'étiquette de la
+  // palette — n'importe qui (client, transporteur, etc.) qui tombe sur ce QR peut potentiellement
+  // l'ouvrir. On exige donc un code à 4 chiffres avant d'afficher quoi que ce soit (même le
+  // "chargement..." ou "palette introuvable"), et le verrou se réinitialise à chaque nouvel
+  // accès (pas de mémorisation), comme pour le code de Configuration du Rack.
+  const [unlocked, setUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  const PUBLIC_PIN = "1709";
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -1004,6 +1015,29 @@ export function PalettePublique({ id }: { id: string }) {
     };
     load();
   }, [id]);
+
+  if (!unlocked) return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ textAlign: "center", background: "#fff", borderRadius: 20, padding: 32, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", maxWidth: 320, width: "100%" }}>
+        <div style={{ fontSize: 42, marginBottom: 10 }}>🔒</div>
+        <p style={{ fontWeight: 800, fontSize: 16, color: "#1a2e1a", marginBottom: 4 }}>Accès réservé au personnel</p>
+        <p style={{ fontSize: 12.5, color: "#9ca3af", marginBottom: 16 }}>Saisis le code à 4 chiffres pour consulter cette palette.</p>
+        <input type="password" inputMode="numeric" maxLength={4} value={pinInput} autoFocus
+          onChange={e => {
+            const v = e.target.value.replace(/\D/g, "");
+            setPinInput(v);
+            setPinError("");
+            if (v.length === 4) {
+              if (v === PUBLIC_PIN) setUnlocked(true);
+              else { setPinError("Code incorrect"); setPinInput(""); }
+            }
+          }}
+          placeholder="••••"
+          style={{ width: "100%", textAlign: "center", fontSize: 24, letterSpacing: 10, padding: "12px", borderRadius: 10, border: pinError ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb", boxSizing: "border-box", marginBottom: 8 }} />
+        {pinError && <p style={{ color: "#dc2626", fontSize: 12, margin: 0, fontWeight: 700 }}>{pinError}</p>}
+      </div>
+    </div>
+  );
 
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#FFE600", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
