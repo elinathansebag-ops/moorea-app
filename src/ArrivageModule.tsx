@@ -156,10 +156,6 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
   return (
     <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : (litige || hasEcartColis) ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        {selectMode && (
-          <input type="checkbox" checked={!!selected} onChange={() => onToggleSelect?.(arrivage.id)}
-            style={{ width: 18, height: 18, cursor: "pointer", marginRight: 10, marginTop: 2, flexShrink: 0 }} />
-        )}
         <div style={{ flex: 1 }}>
           <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{arrivage.produit}{arrivage.variete ? ` · ${arrivage.variete}` : ""}
             {arrivage.code_article && <span style={{ marginLeft: 6, fontSize: 10, fontFamily: "monospace", color: "#27ae60", background: "#f0fff4", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>{arrivage.code_article}</span>}
@@ -180,7 +176,6 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
             const { db: dbImport } = await import("./firebase");
             await fbUpdate(fbRef(dbImport, `arrivages/${arrivage.id}`), { date: nouvelleDate });
           }} style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
-          <button onClick={() => onDelete(arrivage.id)} style={{ background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>🗑</button>
           {matchedGencode && (
             <button onClick={() => setShowGencodeScan(true)} style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷️ Contrôler gencode</button>
           )}
@@ -1361,7 +1356,6 @@ Merci de régulariser.`;
               const { db: dbImport } = await import("./firebase");
               await fbUpdate(fbRef(dbImport, `arrivages/${a.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
             }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#d97706", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>↺ Re-pointer</button>
-            <button onClick={() => onDelete(a.id)} style={{ padding: "5px 10px", background: "#fff", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, cursor: "pointer", fontSize: 11 }}>🗑 Supprimer</button>
           </div>
         </div>
       )}
