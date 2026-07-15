@@ -30,6 +30,8 @@ export default function App() {
   const [origine, setOrigine] = useState("");
   const [lotMoorea, setLotMoorea] = useState("");
   const [lotFournisseur, setLotFournisseur] = useState("");
+  const [dlc, setDlc] = useState("");
+  const [numeroTracabilite, setNumeroTracabilite] = useState("");
   const [temperature, setTemperature] = useState("");
   const [notes, setNotes] = useState(initialNotes);
   const [conformite, setConformite] = useState(""); // "conforme" | "non_conforme"
@@ -514,7 +516,7 @@ export default function App() {
   const reset = () => {
     setFournisseur(""); setAgreeur(""); setNbColisRecu(""); setNbColisAttendu("");
     setProduit(""); setConditionnement(""); setCalibre(""); setPoids("");
-    setOrigine(""); setLotMoorea(""); setLotFournisseur(""); setTemperature("");
+    setOrigine(""); setLotMoorea(""); setLotFournisseur(""); setDlc(""); setNumeroTracabilite(""); setTemperature("");
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
     setPhotos([]); setPoidsStatut(""); setPoidsEcart("");
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
@@ -656,7 +658,7 @@ _PDF joint_`;
       const rapport = {
         numeroRapport,
         fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, calibre, poids, origine,
-        lotMoorea, lotFournisseur, temperature, notes,
+        lotMoorea, lotFournisseur, dlc, numeroTracabilite, temperature, notes,
         conformite, decision: decisionFinale, nbColisAEcarter,
         pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
         nbColisTotal: totalColis,
@@ -724,6 +726,8 @@ _PDF joint_`;
     setOrigine(r.origine || "");
     setLotMoorea(r.lotMoorea || "");
     setLotFournisseur(r.lotFournisseur || "");
+    setDlc(r.dlc || "");
+    setNumeroTracabilite(r.numeroTracabilite || "");
     setTemperature(r.temperature || "");
     setNotes(r.notes || initialNotes);
     setConformite(r.conformite || "");
@@ -764,7 +768,7 @@ _PDF joint_`;
 
       const updates = {
         fournisseur, agreeur, nbColisRecu, nbColisAttendu, produit, conditionnement, calibre, poids, origine,
-        lotMoorea, lotFournisseur, temperature, notes,
+        lotMoorea, lotFournisseur, dlc, numeroTracabilite, temperature, notes,
         conformite, decision: decisionFinale, nbColisAEcarter,
         pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
         nbColisTotal: totalColis,
@@ -905,6 +909,16 @@ _PDF joint_`;
           <div style="font-size:14px;color:#374151;font-weight:500;">${r.lotFournisseur || "-"}</div>
         </td>
       </tr>
+      ${(r.dlc || r.numeroTracabilite) ? `<tr>
+        <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">DLC</div>
+          <div style="font-size:14px;color:#374151;font-weight:600;">${r.dlc ? new Date(r.dlc).toLocaleDateString("fr-FR") : "-"}</div>
+        </td>
+        <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
+          <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">N° Traçabilité</div>
+          <div style="font-size:14px;color:#374151;font-weight:500;">${r.numeroTracabilite || "-"}</div>
+        </td>
+      </tr>` : ""}
       ${colisHTML}
       ${r.poids || r.conditionnement ? `<tr>
         <td style="padding:10px 28px;border-bottom:1px solid #f5f3ee;">
@@ -1058,6 +1072,8 @@ _PDF joint_`;
     if (r.conditionnement) infoItems.push(["Conditionnement", r.conditionnement]);
     if (r.lotMoorea) infoItems.push(["N Lot Moorea", r.lotMoorea]);
     if (r.lotFournisseur) infoItems.push(["N Lot Fournisseur", r.lotFournisseur]);
+    if (r.dlc) infoItems.push(["DLC", new Date(r.dlc).toLocaleDateString("fr-FR")]);
+    if (r.numeroTracabilite) infoItems.push(["N Tracabilite", r.numeroTracabilite]);
     if (r.temperature) infoItems.push(["Temperature", r.temperature + " C"]);
     if (r.nbColisAttendu) infoItems.push(["Colis attendus", r.nbColisAttendu]);
     if (r.nbColisRecu) infoItems.push(["Colis recus", r.nbColisRecu]);
@@ -1286,6 +1302,8 @@ _PDF joint_`;
       ["Poids", r.poids ? r.poids + " kg" : "-"],
       ["N Lot Fournisseur", r.lotFournisseur || "-"],
       ["N Lot Moorea", r.lotMoorea || "-"],
+      ["DLC", r.dlc ? new Date(r.dlc).toLocaleDateString("fr-FR") : "-"],
+      ["N Tracabilite", r.numeroTracabilite || "-"],
     ];
     for (let i = 0; i < items.length; i += 2) {
       doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
@@ -2576,6 +2594,8 @@ _PDF joint_`;
                 <F label="Conditionnement"><AutocompleteInput value={conditionnement} onChange={setConditionnement} suggestions={suggestionsConditionnements} placeholder="Ex: Barquette 500g, Filet…" /></F>
                 <F label="N° Lot Moorea"><input type="number" value={lotMoorea} onChange={e => setLotMoorea(e.target.value)} placeholder="Ex: 123456" /></F>
                 <F label="N° Lot Fournisseur"><input value={lotFournisseur} onChange={e => setLotFournisseur(e.target.value)} placeholder="N° lot fournisseur" /></F>
+                <F label="DLC"><input type="date" value={dlc} onChange={e => setDlc(e.target.value)} /></F>
+                <F label="N° de traçabilité"><input value={numeroTracabilite} onChange={e => setNumeroTracabilite(e.target.value)} placeholder="N° de traçabilité" /></F>
               </div>
             </div>
             <div style={{ marginBottom: 16, background: "#f0f8ff", border: "1.5px solid #bfdbfe", borderRadius: 20, padding: "16px 24px", display: "flex", alignItems: "center", gap: 16 }}>
@@ -3093,6 +3113,8 @@ _PDF joint_`;
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                       {r.lotMoorea && <span style={{ fontSize: 11, background: "#faf8f0", color: "#8a6f2e", border: "1px solid #e0d0a0", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>Lot Moorea: {r.lotMoorea}</span>}
                       {r.lotFournisseur && <span style={{ fontSize: 11, background: "#f5f5f5", color: "#6b7280", border: "1px solid #e5e7eb", borderRadius: 6, padding: "2px 8px" }}>Lot Fourn.: {r.lotFournisseur}</span>}
+                      {r.dlc && <span style={{ fontSize: 11, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>DLC {new Date(r.dlc).toLocaleDateString("fr-FR")}</span>}
+                      {r.numeroTracabilite && <span style={{ fontSize: 11, background: "#f5f5f5", color: "#6b7280", border: "1px solid #e5e7eb", borderRadius: 6, padding: "2px 8px" }}>Traç.: {r.numeroTracabilite}</span>}
                       {r.temperature && <span style={{ fontSize: 11, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>🌡 {r.temperature}°C</span>}
                     </div>
                     <p style={{ fontSize: 11, color: "#9ca3af" }}>{r.date} à {r.heure}</p>

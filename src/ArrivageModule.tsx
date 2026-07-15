@@ -259,9 +259,20 @@ async function imprimerEtiquettePalette(arrivage: any, paletteIndex?: number, co
     dlcLabel = isNaN(d.getTime()) ? String(arrivage.dlc) : d.toLocaleDateString("fr-FR");
   }
 
-  const w = window.open("", "_blank");
-  if (!w) { alert("Autorise les popups pour imprimer l'étiquette"); return; }
-  w.document.write(`<html><body style="background:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:Arial;font-size:20px;font-weight:900">⏳ GÉNÉRATION...</body></html>`);
+  // Impression directe, sans aucune page/aperçu à afficher : un cadre invisible (hors écran)
+  // sert juste de support technique pour déclencher le module d'impression du navigateur —
+  // seule la boîte de dialogue "Imprimer" du système apparaît, comme demandé.
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:416px;height:264px;border:0";
+  document.body.appendChild(iframe);
+
+  // Résout une fois l'impression terminée (évènement "afterprint", avec un filet de sécurité
+  // si jamais il ne se déclenche pas sur cet appareil) — permet à l'impression multi-palettes
+  // d'attendre chaque étiquette avant de passer à la suivante.
+  let fini = false;
+  let resoudre: () => void = () => {};
+  const attente = new Promise<void>(resolve => { resoudre = resolve; });
+  const nettoyer = () => { if (fini) return; fini = true; iframe.remove(); resoudre(); };
 
   // QR le plus grand possible : on demande une image source haute résolution (500x500)
   // pour qu'elle reste nette une fois affichée en grand sur l'étiquette imprimée.
@@ -305,13 +316,9 @@ body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;
 .qty{font-size:28px;font-weight:900;color:#000;line-height:1}
 .unite{font-size:12px;font-weight:700;color:#000}
 .dlc{margin-top:1.5mm;color:#000;font-size:13px;font-weight:900;border:2px solid #000;padding:1mm 2mm;display:inline-block;letter-spacing:0.5px}
-.btn-print{position:fixed;top:10px;right:10px;padding:9px 18px;background:#000;color:#fff;border:none;border-radius:8px;font-weight:900;cursor:pointer;font-size:14px;text-transform:none}
-.btn-close{position:fixed;top:10px;right:130px;padding:9px 18px;background:#666;color:#fff;border:none;border-radius:8px;font-weight:900;cursor:pointer;font-size:14px;text-transform:none}
-@media print{.btn-print,.btn-close{display:none}body{padding:0;background:#fff}}
+@media print{body{padding:0;background:#fff}}
 </style>
 </head><body>
-<button class="btn-print" onclick="window.print()">IMPRIMER</button>
-<button class="btn-close" onclick="window.close()">✕ Fermer</button>
 <div class="etiquette">
   <div class="qr-col">${qrHtml}</div>
   <div class="info-col">
@@ -326,7 +333,17 @@ body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;
   </div>
 </div>
 </body></html>`;
-  w.document.open(); w.document.write(html); w.document.close();
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.print();
+      iframe.contentWindow?.addEventListener("afterprint", nettoyer);
+    } catch { nettoyer(); }
+  };
+  iframe.srcdoc = html;
+  // Filet de sécurité : si "afterprint" ne se déclenche pas sur cet appareil, on nettoie
+  // quand même après un délai large pour ne pas bloquer indéfiniment l'impression suivante.
+  setTimeout(nettoyer, 90000);
+  return attente;
 }
 
 export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onClose: () => void }) {
@@ -1289,6 +1306,60 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     setValidatingAll(false);
   };
 
+  // Télécharge un PDF listant, pour ce jour, tous les articles ayant un n° de lot fournisseur
+  // (traçabilité) : fournisseur, article, n° de traçabilité, quantité et date.
+  const telechargerTracabilite = () => {
+    const tous = [...arrivages, ...(arrivagesArchives || [])].filter((a: any) => a.lot_fournisseur);
+    if (!tous.length) { alert("Aucun article avec un n° de lot fournisseur pour ce jour."); return; }
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const W = 210, M = 14; let y = 20;
+    doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
+    doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
+    doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+    doc.text("MOOREA", M, 14);
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    doc.text(`Traçabilité fournisseur — ${date}`, W - M, 14, { align: "right" });
+    y = 32;
+    doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    const colX = { fourn: M, art: M + 45, lot: M + 100, qte: W - M - 20 };
+    doc.text("FOURNISSEUR", colX.fourn, y);
+    doc.text("ARTICLE", colX.art, y);
+    doc.text("N° TRAÇABILITÉ", colX.lot, y);
+    doc.text("QTÉ", colX.qte, y);
+    y += 3; doc.setDrawColor(200, 168, 75); doc.line(M, y, W - M, y); y += 6;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    tous.forEach((a: any, i: number) => {
+      if (y > 280) { doc.addPage(); y = 20; }
+      if (i % 2 === 0) { doc.setFillColor(250, 248, 240); doc.rect(M, y - 4.5, W - M * 2, 6.5, "F"); }
+      doc.setTextColor(26, 46, 26);
+      doc.text(String(a.fournisseur || "-"), colX.fourn, y, { maxWidth: 43 });
+      doc.text(String(a.produit || "-"), colX.art, y, { maxWidth: 53 });
+      doc.text(String(a.lot_fournisseur || "-"), colX.lot, y, { maxWidth: 45 });
+      doc.text(`${a.quantite ?? "-"} ${(a.unite || "").toUpperCase()}`, colX.qte, y);
+      y += 6.5;
+    });
+    doc.setFillColor(10, 10, 10); doc.rect(0, 285, W, 12, "F");
+    doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(`Généré par Moorea — ${date}`, W / 2, 291, { align: "center" });
+
+    // Impression directe (module d'impression du navigateur), sans page d'aperçu ni téléchargement —
+    // même principe que les étiquettes palette : un cadre invisible hors écran déclenche print().
+    const blobUrl = URL.createObjectURL(doc.output("blob"));
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:800px;height:1000px;border:0";
+    document.body.appendChild(iframe);
+    let nettoye = false;
+    const nettoyer = () => { if (nettoye) return; nettoye = true; iframe.remove(); URL.revokeObjectURL(blobUrl); };
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.print();
+        iframe.contentWindow?.addEventListener("afterprint", nettoyer);
+      } catch { nettoyer(); }
+    };
+    iframe.src = blobUrl;
+    setTimeout(nettoyer, 90000);
+  };
+
   return (
     <div style={{ marginBottom: 16 }}>
       <div onClick={() => setOpen(!open)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none", background: open ? "#1a2e1a" : "#2d3a2d", borderRadius: open ? "14px 14px 0 0" : 14, padding: "12px 16px", boxShadow: "0 2px 10px rgba(0,0,0,0.12)", transition: "all 0.2s" }}>
@@ -1326,6 +1397,13 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
                 {validatingAll ? "⏳ Validation..." : `✅ Tout valider (${arrivages.filter((a: any) => a.statut === "en attente").length})`}
               </button>
             )}
+            {/* Bouton imprimer traçabilité fournisseur du jour */}
+            <button
+              onClick={e => { e.stopPropagation(); telechargerTracabilite(); }}
+              title="Imprimer les n° de traçabilité fournisseur du jour"
+              style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+              🖨 Traçabilité
+            </button>
             {/* Bouton scanner étiquette */}
             <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.4)", borderRadius: 10, padding: "8px 12px" }}>
               <span style={{ fontSize: 14, flexShrink: 0 }}>🔍</span>
