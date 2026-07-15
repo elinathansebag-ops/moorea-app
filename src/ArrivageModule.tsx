@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { db, ref, push, onValue, update, remove } from "./firebase";
+import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import emailjs from "@emailjs/browser";
 import jsPDF from "jspdf";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
@@ -971,31 +971,43 @@ export function PalettePublique({ id }: { id: string }) {
   const [arrivage, setArrivage] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // ─── VERROU D'ACCÈS (code PIN) ───
+  // ─── VERROU D'ACCÈS (connexion Google @moorea.fr) ───
   // Cette page publique est ouverte en scannant le QR code imprimé sur l'étiquette de la
-  // palette — n'importe qui (client, transporteur, etc.) qui tombe sur ce QR peut potentiellement
-  // l'ouvrir. On exige donc un code à 4 chiffres avant d'afficher quoi que ce soit (même le
-  // "chargement..." ou "palette introuvable"), et le verrou se réinitialise à chaque nouvel
-  // accès (pas de mémorisation), comme pour le code de Configuration du Rack.
-  const [unlocked, setUnlocked] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
-  const PUBLIC_PIN = "1709";
+  // palette — n'importe qui qui tombe sur ce QR (client, transporteur...) pourrait
+  // potentiellement l'ouvrir. On exige donc d'être connecté avec un compte Google se
+  // terminant par @moorea.fr, exactement comme pour le reste de l'application — rien ne
+  // s'affiche (même pas "chargement...") tant que ce n'est pas le cas.
+  const [authUser, setAuthUser] = useState<any>(undefined);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, u => setAuthUser(u));
+    return unsub;
+  }, []);
+  const estAutorise = !!authUser && !!authUser.email?.endsWith("@moorea.fr");
+  const loginGoogle = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const email = result.user.email || "";
+      if (!email.endsWith("@moorea.fr")) {
+        await signOut(auth);
+        alert("Accès réservé aux comptes @moorea.fr");
+      }
+    } catch (e) { console.error(e); }
+  };
 
   useEffect(() => {
+    if (!estAutorise) return; // on ne charge la donnée qu'une fois l'accès autorisé
     const load = async () => {
       try {
         const DB_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
-        const API_KEY = "AIzaSyBeIlrGq_s4Ol0sGW6Hq2oIXp4Rz_BXXX0";
 
-        // Essai 1 : lecture directe par ID via REST (pas besoin d'auth si règles publiques)
+        // Essai 1 : lecture directe par ID via REST
         const r1 = await fetch(`${DB_URL}/arrivages/${id}.json`);
         if (r1.ok) {
           const data = await r1.json();
           if (data) { setArrivage({ ...data, id }); setLoading(false); return; }
         }
 
-        // Essai 2 : si connecté, utilise le SDK normal
+        // Essai 2 : via le SDK normal (utilise la session déjà authentifiée)
         const { db: dbImport } = await import("./firebase");
         const { ref: fbRef, get } = await import("firebase/database");
         const snap = await get(fbRef(dbImport, `arrivages/${id}`));
@@ -1014,28 +1026,26 @@ export function PalettePublique({ id }: { id: string }) {
       setLoading(false);
     };
     load();
-  }, [id]);
+  }, [id, estAutorise]);
 
-  if (!unlocked) return (
-    <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ textAlign: "center", background: "#fff", borderRadius: 20, padding: 32, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", maxWidth: 320, width: "100%" }}>
+  if (authUser === undefined) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0a0a" }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #c8a84b", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if (!estAutorise) return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0a0a", padding: 24 }}>
+      <div style={{ marginBottom: 32, textAlign: "center" }}>
         <div style={{ fontSize: 42, marginBottom: 10 }}>🔒</div>
-        <p style={{ fontWeight: 800, fontSize: 16, color: "#1a2e1a", marginBottom: 4 }}>Accès réservé au personnel</p>
-        <p style={{ fontSize: 12.5, color: "#9ca3af", marginBottom: 16 }}>Saisis le code à 4 chiffres pour consulter cette palette.</p>
-        <input type="password" inputMode="numeric" maxLength={4} value={pinInput} autoFocus
-          onChange={e => {
-            const v = e.target.value.replace(/\D/g, "");
-            setPinInput(v);
-            setPinError("");
-            if (v.length === 4) {
-              if (v === PUBLIC_PIN) setUnlocked(true);
-              else { setPinError("Code incorrect"); setPinInput(""); }
-            }
-          }}
-          placeholder="••••"
-          style={{ width: "100%", textAlign: "center", fontSize: 24, letterSpacing: 10, padding: "12px", borderRadius: 10, border: pinError ? "1.5px solid #dc2626" : "1.5px solid #e5e7eb", boxSizing: "border-box", marginBottom: 8 }} />
-        {pinError && <p style={{ color: "#dc2626", fontSize: 12, margin: 0, fontWeight: 700 }}>{pinError}</p>}
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#c8a84b", fontFamily: "'Syne', sans-serif" }}>Accès réservé</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Connecte-toi avec un compte @moorea.fr pour consulter cette palette</div>
       </div>
+      <button onClick={loginGoogle} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 28px", borderRadius: 14, border: "none", background: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#1a1a1a", fontFamily: "'Syne', sans-serif", boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15 16.1 19.1 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 16.3 2 9.7 7.4 6.3 14.7z"/><path fill="#FBBC05" d="M24 46c5.9 0 10.9-2 14.6-5.4l-6.7-5.5C29.8 36.8 27 38 24 38c-6 0-11.1-4-12.9-9.6l-7 5.4C7.8 41.4 15.4 46 24 46z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-1 2.8-2.9 5.1-5.3 6.6l6.7 5.5C41 37.1 45 31.1 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
+        Se connecter avec Google
+      </button>
     </div>
   );
 
