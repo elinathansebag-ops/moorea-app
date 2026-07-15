@@ -310,7 +310,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   if (!selectedId) {
     return (
       <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
-        <PageHeader titre="Programme d'achat" couleur="#c8a84b" onBack={onClose} />
+        <PageHeader titre="Programme d'achat" couleur="#c8a84b" onBack={onClose} onHome={onClose} />
         <div style={{ maxWidth: 800, margin: "0 auto", padding: 16 }}>
           <button onClick={() => setShowNewForm(v => !v)} style={{
             width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a",

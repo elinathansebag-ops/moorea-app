@@ -228,12 +228,33 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
 
   // ─── MODE DE PLACEMENT : "manuel" (sélection article, comme avant) ou "scan" (on scanne le
-  // QR de la palette à ranger, puis on choisit l'emplacement) — réglage gardé par appareil. ───
-  const [modePlacement, setModePlacement] = useState<"manuel" | "scan">(() => (localStorage.getItem("rack_mode_placement") as "manuel" | "scan") || "manuel");
+  // QR de la palette à ranger, puis on choisit l'emplacement) — réglage PARTAGÉ (Firebase),
+  // donc changer le mode sur un appareil le change sur tous les autres. ───
+  const [modePlacement, setModePlacementState] = useState<"manuel" | "scan">("manuel");
   const [showScanner, setShowScanner] = useState(false);
   const [scanStatus, setScanStatus] = useState("");
   const [paletteScanEnAttente, setPaletteScanEnAttente] = useState<(typeof freeForm & { arrivage_id?: string }) | null>(null);
-  useEffect(() => { localStorage.setItem("rack_mode_placement", modePlacement); }, [modePlacement]);
+  useEffect(() => {
+    const u = onValue(ref(db, "rack_mode_placement"), snap => {
+      const v = snap.val();
+      if (v === "scan" || v === "manuel") setModePlacementState(v);
+    });
+    return () => u();
+  }, []);
+  const setModePlacement = async (v: "manuel" | "scan") => {
+    setModePlacementState(v); // mise à jour optimiste locale, pas d'attente du round-trip Firebase
+    try {
+      const { set } = await import("firebase/database");
+      await set(ref(db, "rack_mode_placement"), v);
+    } catch {}
+  };
+
+  // ─── VERROU CONFIGURATION (code PIN) ───
+  const [configUnlocked, setConfigUnlocked] = useState(false);
+  const [configPinInput, setConfigPinInput] = useState("");
+  const [configPinError, setConfigPinError] = useState("");
+  const CONFIG_PIN = "1709";
+  const fermerConfig = () => { setShowConfig(false); setConfigUnlocked(false); setConfigPinInput(""); setConfigPinError(""); };
 
   // ─── FIREBASE: config des murs ───
   useEffect(() => {
@@ -388,7 +409,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     const cols = Math.max(1, Number(cfgCols) || DEFAULT_COLS);
     const echelleEvery = Math.max(0, Number(cfgEchelle) || 0);
     await update(ref(db, `rack_config/${activeWall}`), { rows, cols, echelleEvery, label: cfgLabel.trim() || WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)] });
-    setShowConfig(false);
+    fermerConfig();
   };
 
   // ─── RÉGLER LE NOMBRE DE PALETTES DANS UNE SECTION (à un niveau donné) ───
@@ -469,10 +490,16 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         setFreeForm(paletteScanEnAttente);
         setAddMode("libre");
         setPresetLocked(false);
-      } else {
+      } else if (modePlacement === "manuel") {
         setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
         setAddMode(favoris.length > 0 ? "modele" : "libre");
         setPresetLocked(false);
+      } else {
+        // Mode scan actif mais aucune palette scannée pour le moment : on n'ouvre pas le
+        // menu de sélection d'article (réservé au mode manuel/liste) — on rappelle juste
+        // de scanner la palette d'abord.
+        setSelectedCell(null);
+        setScanStatus("Scanne d'abord une palette avant de choisir un emplacement.");
       }
     }
   };
@@ -742,8 +769,33 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   if (showConfig) {
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-        <PageHeader titre="⚙️ Gestion des racks" couleur="#8b5cf6" onBack={() => setShowConfig(false)} onHome={() => setShowConfig(false)} />
+        <PageHeader titre="⚙️ Gestion des racks" couleur="#8b5cf6" onBack={fermerConfig} onHome={fermerConfig} />
         <div style={{ maxWidth: 700, margin: "0 auto", padding: "16px 16px 80px" }}>
+          {!configUnlocked ? (
+            <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+              <div style={{ fontSize: 40, color: "#8b5cf6", marginBottom: 16 }}>🔒</div>
+              <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 20 }}>Entre le code pour accéder à la configuration</p>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={configPinInput}
+                onChange={e => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                  setConfigPinInput(v);
+                  setConfigPinError("");
+                  if (v.length === 4) {
+                    if (v === CONFIG_PIN) setConfigUnlocked(true);
+                    else { setConfigPinError("Code incorrect"); setConfigPinInput(""); }
+                  }
+                }}
+                placeholder="••••"
+                style={{ width: 110, padding: 10, textAlign: "center", fontSize: 22, border: "1.5px solid #e5e7eb", borderRadius: 10, fontFamily: "inherit", outline: "none", letterSpacing: 8, display: "block", margin: "0 auto" }}
+              />
+              <p style={{ fontSize: 12, color: "#dc2626", marginTop: 10, minHeight: 16 }}>{configPinError}</p>
+            </div>
+          ) : (
+          <>
 
           {/* NAVIGATION ENTRE MURS */}
           <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
@@ -895,9 +947,11 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             )}
           </div>
 
-          <button onClick={() => setShowConfig(false)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+          <button onClick={fermerConfig} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
             ← Retour au rack
           </button>
+          </>
+          )}
         </div>
       </div>
     );

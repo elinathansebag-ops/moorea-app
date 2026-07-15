@@ -1577,11 +1577,13 @@ _PDF joint_`;
   if (showEtiquettes) {
     // TEMP: EtiquettesModule.tsx manquant sur GitHub — à réintégrer dès qu'on le retrouve
     return (
-      <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Syne', sans-serif" }}>
-        <p style={{ fontSize: 40, marginBottom: 12 }}>🏷️</p>
-        <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>Module Étiquettes temporairement indisponible</p>
-        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20, textAlign: "center", maxWidth: 360 }}>Le fichier source a été perdu — il doit être retrouvé et réintégré.</p>
-        <button onClick={() => { setShowEtiquettes(false); setShowAccueil(true); }} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, cursor: "pointer" }}>← Retour à l'accueil</button>
+      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+        <PageHeader titre="🏷️ Étiquettes" onBack={() => { setShowEtiquettes(false); setShowAccueil(true); }} onHome={() => { setShowEtiquettes(false); setShowAccueil(true); }} />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, minHeight: "calc(100vh - 52px)" }}>
+          <p style={{ fontSize: 40, marginBottom: 12 }}>🏷️</p>
+          <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>Module Étiquettes temporairement indisponible</p>
+          <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", maxWidth: 360 }}>Le fichier source a été perdu — il doit être retrouvé et réintégré.</p>
+        </div>
       </div>
     );
   }
@@ -1725,7 +1727,7 @@ _PDF joint_`;
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
               <span style={{ fontSize: 20 }}>🔔</span>
               <p style={{ margin: 0, flex: 1, fontWeight: 700, fontSize: 13, color: "#dc2626" }}>
-                {alertesRetours.length} retour{alertesRetours.length > 1 ? "s" : ""} pas encore pointé{alertesRetours.length > 1 ? "s" : ""} depuis plus de 3 jours (hors dimanche)
+                {alertesRetours.length} retour{alertesRetours.length > 1 ? "s" : ""} non reçu{alertesRetours.length > 1 ? "s" : ""} depuis plus de 3 jours (hors dimanche)
               </p>
               <button onClick={() => { setShowAccueil(false); setShowRetours(true); }}
                 style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>Voir</button>
@@ -1733,7 +1735,8 @@ _PDF joint_`;
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {alertesRetours.map((r: any) => (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1.5px solid #fca5a5", borderRadius: 8, padding: "4px 6px 4px 10px" }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "#dc2626" }}>#{r.numero || r.id}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "#dc2626" }}>{r.client || r.clientConnu || "Client inconnu"}</span>
+                  <span style={{ fontSize: 11, color: "#9ca3af" }}>· {r.date}</span>
                   <button onClick={() => masquerAlerteRetour(r.id)} title="Masquer cette alerte"
                     style={{ border: "none", background: "transparent", color: "#dc2626", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: "2px 4px", lineHeight: 1 }}>✕</button>
                 </div>
@@ -2175,7 +2178,7 @@ _PDF joint_`;
 
       <PageHeader
         titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
-        onBack={vue === "form" ? () => setVue("historique" as any) : vue === "historique" ? () => { setShowAccueil(true); } : undefined}
+        onBack={vue === "form" ? () => setVue("historique" as any) : () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }}
         onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }}
       />
 

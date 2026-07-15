@@ -658,7 +658,10 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
             <button onClick={onClose} style={{ background: "rgba(255,255,255,.1)", border: "none", borderRadius: 8, color: "#fff", padding: "6px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}>← Retour</button>
             <span style={{ fontWeight: 800, fontSize: 15, color: "#fff" }}>📦 Retours commandes</span>
           </div>
-          <button style={BTN("#c8a84b", "#0a0a0a")} onClick={() => setModal("choix")}>+ Saisir un retour</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button style={BTN("#c8a84b", "#0a0a0a")} onClick={() => setModal("choix")}>+ Saisir un retour</button>
+            <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
+          </div>
         </div>
       </div>
 

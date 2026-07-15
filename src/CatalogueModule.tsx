@@ -4124,10 +4124,11 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
             <button onClick={onClose} style={{ background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: 8, color: '#fff', padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}>← Retour</button>
             <span style={{ fontWeight: 800, fontSize: 15, color: '#fff' }}>📚 Catalogue <span style={{ color: '#27ae60' }}>Articles</span></span>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <span style={{ background: '#c8a84b', color: '#0a0a0a', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>GMS {gmsCount}</span>
             <span style={{ background: '#0ea5e9', color: '#fff', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>Prestige {prestigeCount}</span>
             {unassigned > 0 && <span style={{ background: '#e0e0e0', color: '#555', fontWeight: 700, fontSize: 11, padding: '3px 8px', borderRadius: 6 }}>Non assignés {unassigned}</span>}
+            <button onClick={onClose} style={{ padding: '6px 10px', borderRadius: 9, border: 'none', background: '#c8a84b', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#0a0a0a' }}>🏠</button>
           </div>
         </div>
       </div>

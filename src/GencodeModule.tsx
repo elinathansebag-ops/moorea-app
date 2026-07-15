@@ -4871,7 +4871,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
         <div className="gc-topbar" style={{ maxWidth:1000, margin:'0 auto', minHeight:56, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'0 16px' }}>
           <div style={{ display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
             <button onClick={onClose} style={{ background:'rgba(255,255,255,.1)', border:'none', borderRadius:8, color:'#fff', padding:'6px 12px', cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit', whiteSpace:'nowrap' }}>
-              Retour
+              ← Retour
             </button>
             <span style={{ fontWeight:800, fontSize:15, color:'#fff', whiteSpace:'nowrap' }}>
               Gencodes <span style={{ color:'#3b82f6' }}>GMS</span>
@@ -4882,6 +4882,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
             <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{linked.length} lies</span>
             <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{unlinked.length} a lier</span>
             <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{articles.length} total</span>
+            <button onClick={onClose} style={{ padding:'6px 10px', borderRadius:9, border:'none', background:'#3b82f6', cursor:'pointer', fontSize:12, fontWeight:700, color:'#fff', whiteSpace:'nowrap' }}>🏠</button>
           </div>
         </div>
       </div>

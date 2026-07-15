@@ -307,7 +307,7 @@ export function RHApp({ onClose }: { onClose: () => void }) {
   if (!unlocked) {
     return (
       <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
-        <PageHeader titre="👥 RH · Pointeuse" couleur="#0ea5e9" onBack={onClose} />
+        <PageHeader titre="👥 RH · Pointeuse" couleur="#0ea5e9" onBack={onClose} onHome={onClose} />
         <div style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
           <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, marginBottom: 24 }}>Accès restreint - entrez le code</p>

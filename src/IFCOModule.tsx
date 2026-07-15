@@ -346,6 +346,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
             )}
             <span style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>👤 {userName}</span>
             <span style={{ background: "#27ae60", color: "#fff", fontWeight: 800, fontSize: 12, padding: "4px 10px", borderRadius: 6 }}>N° 639861</span>
+            <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 9, border: "none", background: "#27ae60", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#fff" }}>🏠</button>
           </div>
         </div>
       </div>

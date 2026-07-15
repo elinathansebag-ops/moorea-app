@@ -1028,7 +1028,9 @@ export function PalettePublique({ id }: { id: string }) {
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <PageHeader titre={`📦 MRA.${String(arrivage.lot_interne || "").padStart(4, "0")}`} onBack={() => { window.history.replaceState({}, "", window.location.pathname); window.location.reload(); }} />
+      <PageHeader titre={`📦 MRA.${String(arrivage.lot_interne || "").padStart(4, "0")}`}
+        onBack={() => { window.history.replaceState({}, "", window.location.pathname); window.location.reload(); }}
+        onHome={() => { window.history.replaceState({}, "", window.location.pathname); window.location.reload(); }} />
 
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "20px 16px 60px" }}>
         {/* Fiche */}
