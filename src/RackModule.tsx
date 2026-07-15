@@ -45,6 +45,7 @@ type PalettePos = {
   date_stockage?: string;
   timestamp?: number;
   catalogueArticle?: string; // article STOCK réel — sert directement au comptage auto, pas de correspondance séparée
+  verrouille?: boolean; // verrouillée depuis la Configuration : ne peut pas être déplacée, montée/descendue ni sortie du rack
 };
 
 // ─── FAVORIS (nom + couleur) — remplace l'ancien système de modèles codés en dur ───
@@ -129,7 +130,7 @@ function dlcStatus(dlc?: string): { color: string; bg: string; label: string; al
 }
 
 // ─── VISUEL PALETTE (planches de bois + infos essentielles) ───
-function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type }: { produit?: string; extraItems?: { nom: string; quantite?: string; unite?: string }[]; quantite?: string; unite?: string; dlc?: string; color?: string; type?: string }) {
+function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type, verrouille }: { produit?: string; extraItems?: { nom: string; quantite?: string; unite?: string }[]; quantite?: string; unite?: string; dlc?: string; color?: string; type?: string; verrouille?: boolean }) {
   const status = dlcStatus(dlc);
   const isExpired = status?.label === "Dépassée";
   const meta = type && type !== "produit" ? PALETTE_TYPES[type] : null;
@@ -148,6 +149,12 @@ function PaletteVisual({ produit, extraItems, quantite, unite, dlc, color, type 
           position: "absolute", top: -9, right: -9, fontSize: 16, lineHeight: 1,
           filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))",
         }}>🔴</span>
+      )}
+      {verrouille && (
+        <span style={{
+          position: "absolute", top: -9, left: -9, fontSize: 15, lineHeight: 1,
+          filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.4))",
+        }}>🔒</span>
       )}
       {meta && <span style={{ fontSize: 10 }}>{meta.icon}</span>}
       <span style={{
@@ -254,7 +261,29 @@ export function RackModule({ onClose }: { onClose: () => void }) {
   const [configPinInput, setConfigPinInput] = useState("");
   const [configPinError, setConfigPinError] = useState("");
   const CONFIG_PIN = "1709";
-  const fermerConfig = () => { setShowConfig(false); setConfigUnlocked(false); setConfigPinInput(""); setConfigPinError(""); };
+  const fermerConfig = () => { setShowConfig(false); setConfigUnlocked(false); setConfigPinInput(""); setConfigPinError(""); setSelectedLockKeys(new Set()); };
+
+  // ─── VERROUILLAGE DE PALETTES (depuis la Configuration) ───
+  // Empêche toute palette sélectionnée d'être déplacée, montée/descendue ou sortie du
+  // rack tant qu'elle n'est pas déverrouillée ici — utile pour bloquer une palette en
+  // quarantaine/litige sans risque qu'elle soit déplacée par erreur.
+  const [selectedLockKeys, setSelectedLockKeys] = useState<Set<string>>(new Set());
+  const toggleLockSelect = (key: string) => {
+    setSelectedLockKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  const verrouillerSelection = async (verrouille: boolean) => {
+    if (!selectedLockKeys.size) return;
+    const updates: Record<string, boolean> = {};
+    selectedLockKeys.forEach(key => { updates[`${key}/verrouille`] = verrouille; });
+    try {
+      await update(ref(db, `rack_positions/${activeWall}`), updates);
+      setSelectedLockKeys(new Set());
+    } catch { alert("Erreur lors du verrouillage"); }
+  };
 
   // ─── FIREBASE: config des murs ───
   useEffect(() => {
@@ -481,12 +510,20 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       return;
     }
 
+    // Palette scannée qui a déjà sa DLC (connue sur l'arrivage) : on la range directement sur
+    // la case choisie, sans repasser par le formulaire de confirmation — seul le cas où la DLC
+    // manque encore nécessite de l'ouvrir, pour pouvoir la compléter avant validation.
+    if (!occupied && paletteScanEnAttente && paletteScanEnAttente.dlc) {
+      placerPaletteScanneeAuto(row, bay, slot);
+      return;
+    }
+
     setSelectedCell({ row, bay, slot });
     setIsEditing(false);
     if (!occupied) {
       if (paletteScanEnAttente) {
-        // Une palette vient d'être scannée : on pré-remplit directement avec ses infos,
-        // il ne reste qu'à confirmer (et compléter la DLC si elle manquait sur l'arrivage).
+        // Palette scannée mais sans DLC connue : on pré-remplit et on ouvre le formulaire pour
+        // la compléter (la DLC est obligatoire avant de valider une palette de produit).
         setFreeForm(paletteScanEnAttente);
         setAddMode("libre");
         setPresetLocked(false);
@@ -524,6 +561,30 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       arrivage_id: arrivage.id,
     });
     setShowScanner(false);
+  };
+
+  // Range directement une palette scannée qui a déjà sa DLC (connue sur l'arrivage) — pas de
+  // formulaire de confirmation à valider, un clic sur la case libre suffit.
+  const placerPaletteScanneeAuto = async (row: number, bay: number, slot: number) => {
+    if (!paletteScanEnAttente) return;
+    setSaving(true);
+    try {
+      const key = cellKey(row, bay, slot);
+      const { arrivage_id, ...rest } = paletteScanEnAttente as any;
+      const cleanItems = (rest.extraItems || []).filter((it: any) => it.nom?.trim());
+      const payload: any = {
+        ...rest, extraItems: cleanItems.length ? cleanItems : undefined,
+        catalogueArticle: rest.type === "produit" ? String(rest.produit || "").trim() : undefined,
+        date_stockage: new Date().toLocaleDateString("fr-FR"),
+        timestamp: Date.now(),
+      };
+      Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
+      await update(ref(db, `rack_positions/${activeWall}`), { [key]: payload });
+      setPaletteScanEnAttente(null);
+      setScanStatus(`✅ ${rest.produit} rangé(e) automatiquement.`);
+      setTimeout(() => setScanStatus(""), 3000);
+    } catch { alert("Erreur lors de l'enregistrement"); }
+    setSaving(false);
   };
 
   // ─── AJOUT PALETTE (saisie libre) ───
@@ -580,6 +641,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     if (!selectedCell) return;
     const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
     if (!data) return;
+    if (data.verrouille) { alert("🔒 Palette verrouillée — déverrouille-la depuis la Configuration avant de la déplacer."); return; }
     const destKey = cellKey(destRow, selectedCell.bay, selectedCell.slot);
     await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: data });
     await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)}`));
@@ -591,6 +653,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     if (!selectedCell) return;
     const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
     if (!data) return;
+    if (data.verrouille) { alert("🔒 Palette verrouillée — déverrouille-la depuis la Configuration avant de la déplacer."); return; }
     setMoving({ wallId: activeWall, row: selectedCell.row, bay: selectedCell.bay, slot: selectedCell.slot, data });
     setSelectedCell(null);
   };
@@ -655,7 +718,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
     const onMove = (e: PointerEvent) => {
       const info = dragInfoRef.current;
-      if (!info || !info.data) return; // rien à déplacer (case vide ou pas de drag en cours)
+      if (!info || !info.data || info.data.verrouille) return; // rien à déplacer (case vide, palette verrouillée, ou pas de drag en cours)
       const dx = e.clientX - info.startX, dy = e.clientY - info.startY;
       if (!info.moved && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) info.moved = true;
       if (!info.moved) return;
@@ -670,6 +733,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
 
     const finishDrag = async (info: NonNullable<typeof dragInfoRef.current>, target: { row: number; bay: number; slot: number } | null) => {
       if (!info.data || !target) return;
+      if (info.data.verrouille) { alert("🔒 Palette verrouillée — déverrouille-la depuis la Configuration avant de la déplacer."); return; }
       if (target.row === info.row && target.bay === info.bay && target.slot === info.slot) return;
       const destKey = cellKey(target.row, target.bay, target.slot);
       if (positionsRef.current[destKey]) return; // occupé, on ignore le dépôt
@@ -714,6 +778,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     if (!selectedCell) return;
     const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
     if (!data) return;
+    if (data.verrouille) { alert("🔒 Palette verrouillée — déverrouille-la depuis la Configuration avant de la sortir du rack."); return; }
     if (!window.confirm(`Sortir "${data.produit}" du rack ?`)) return;
     try {
       await push(ref(db, "rack_historique"), {
@@ -947,6 +1012,44 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             )}
           </div>
 
+          {/* VERROUILLAGE DE PALETTES */}
+          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>🔒 Verrouiller des palettes</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>
+              Empêche de déplacer, monter/descendre ou sortir du rack une ou plusieurs palettes de <b>{cfg.label}</b>, tant qu'elles ne sont pas déverrouillées ici.
+            </p>
+            {Object.keys(positions).length === 0 ? (
+              <p style={{ fontSize: 12, color: "#9ca3af" }}>Aucune palette sur ce mur.</p>
+            ) : (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 280, overflowY: "auto", marginBottom: 10 }}>
+                  {Object.entries(positions).sort(([a], [b]) => a.localeCompare(b)).map(([key, p]) => {
+                    const [row, bay, slot] = key.split("_").map(Number);
+                    const checked = selectedLockKeys.has(key);
+                    return (
+                      <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, background: checked ? "#f5f3ff" : "#f9fafb", cursor: "pointer" }}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleLockSelect(key)} />
+                        <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: "#1a2e1a" }}>{p.produit}</span>
+                        <span style={{ fontSize: 11, color: "#9ca3af" }}>Niveau {row + 1} · Sect. {bay + 1} · Place {slot + 1}</span>
+                        {p.verrouille && <span style={{ fontSize: 13 }}>🔒</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => verrouillerSelection(true)} disabled={!selectedLockKeys.size}
+                    style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none", background: selectedLockKeys.size ? "#8b5cf6" : "#e5e7eb", color: "#fff", fontWeight: 700, fontSize: 13, cursor: selectedLockKeys.size ? "pointer" : "not-allowed" }}>
+                    🔒 Verrouiller ({selectedLockKeys.size})
+                  </button>
+                  <button onClick={() => verrouillerSelection(false)} disabled={!selectedLockKeys.size}
+                    style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: selectedLockKeys.size ? "pointer" : "not-allowed" }}>
+                    🔓 Déverrouiller ({selectedLockKeys.size})
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           <button onClick={fermerConfig} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
             ← Retour au rack
           </button>
@@ -1079,7 +1182,12 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                             data-rack-cell data-row={row} data-bay={bayIdx} data-slot={slot}
                             onPointerDown={e => onPointerDownCell(e, row, bayIdx, slot)}
                             style={{
-                              flex: n === 1 ? "0 0 auto" : 1, minWidth: Math.max(34, (92 * bay.width) / n), maxWidth: n === 1 ? 190 : undefined, width: n === 1 ? 190 : undefined, height: 150, cursor: data ? "grab" : "pointer", padding: "6px 3px 0",
+                              // Une section "1/section" doit occuper EXACTEMENT la largeur allouée à la baie
+                              // (92 * bay.width), pas une largeur fixe arbitraire — sinon, sur une ligne où
+                              // cette même baie est autrement découpée en plusieurs places, la largeur totale
+                              // de la baie diffère d'une ligne à l'autre et l'échelle verticale entre deux
+                              // baies (empilée ligne par ligne) se retrouve visuellement décalée/tordue.
+                              flex: n === 1 ? "0 0 auto" : 1, minWidth: Math.max(34, (92 * bay.width) / n), maxWidth: n === 1 ? 92 * bay.width : undefined, width: n === 1 ? 92 * bay.width : undefined, height: 150, cursor: data ? (data.verrouille ? "not-allowed" : "grab") : "pointer", padding: "6px 3px 0",
                               touchAction: data ? "none" : "auto",
                               background: dragOverKey === key ? "rgba(139,92,246,0.18)" : isCustom ? "rgba(139,92,246,0.06)" : "transparent",
                               border: "none",
@@ -1089,8 +1197,8 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                               display: "flex", alignItems: "flex-end", justifyContent: "center",
                               position: "relative", WebkitTapHighlightColor: "transparent",
                             }}>
-                            {data ? <PaletteVisual produit={data.produit} extraItems={data.extraItems} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} type={data.type} /> : (
-                              <div style={{ width: n === 1 ? 88 : Math.max(24, 54 * bay.width / n), height: 26, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 6 }} />
+                            {data ? <PaletteVisual produit={data.produit} extraItems={data.extraItems} quantite={data.quantite} unite={data.unite} dlc={data.dlc} color={data.color} type={data.type} verrouille={data.verrouille} /> : (
+                              <div style={{ width: Math.max(24, 54 * bay.width / n), height: 26, border: "1.5px dashed #b8bfc9", borderRadius: 3, marginBottom: 6 }} />
                             )}
                             {isCustom && isFirst && <span style={{ position: "absolute", top: 4, left: 6, fontSize: 9, fontWeight: 800, color: "#8b5cf6", background: "#fff", borderRadius: 4, padding: "0 3px" }}>{n}/section</span>}
                             {isMovingSource && <div style={{ position: "absolute", inset: 0, background: "rgba(245,158,11,0.35)", borderRadius: 4 }} />}
@@ -1362,6 +1470,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 </h2>
                 <p style={{ margin: "3px 0 0", fontSize: 13, color: "#6b7280" }}>{selectedData.fournisseur || "-"}{selectedData.origine ? ` · 🌍 ${selectedData.origine}` : ""}</p>
                 {selectedData.catalogueArticle && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#15803d", fontWeight: 700 }}>🔗 {selectedData.catalogueArticle}</p>}
+                {selectedData.verrouille && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#7c3aed", fontWeight: 700 }}>🔒 Verrouillée — déverrouille-la dans Configuration pour la déplacer/sortir</p>}
               </div>
               <button onClick={() => setSelectedCell(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
             </div>
@@ -1387,25 +1496,27 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-              <button onClick={() => quickMove(selectedCell.row + 1)} disabled={!canUp}
-                style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: canUp ? "#fff" : "#f9fafb", color: canUp ? "#374151" : "#d1d5db", fontWeight: 700, fontSize: 13, cursor: canUp ? "pointer" : "not-allowed" }}>
+              <button onClick={() => quickMove(selectedCell.row + 1)} disabled={!canUp || selectedData.verrouille}
+                style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: canUp && !selectedData.verrouille ? "#fff" : "#f9fafb", color: canUp && !selectedData.verrouille ? "#374151" : "#d1d5db", fontWeight: 700, fontSize: 13, cursor: canUp && !selectedData.verrouille ? "pointer" : "not-allowed" }}>
                 ⬆ Monter
               </button>
-              <button onClick={() => quickMove(selectedCell.row - 1)} disabled={!canDown}
-                style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: canDown ? "#fff" : "#f9fafb", color: canDown ? "#374151" : "#d1d5db", fontWeight: 700, fontSize: 13, cursor: canDown ? "pointer" : "not-allowed" }}>
+              <button onClick={() => quickMove(selectedCell.row - 1)} disabled={!canDown || selectedData.verrouille}
+                style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: canDown && !selectedData.verrouille ? "#fff" : "#f9fafb", color: canDown && !selectedData.verrouille ? "#374151" : "#d1d5db", fontWeight: 700, fontSize: 13, cursor: canDown && !selectedData.verrouille ? "pointer" : "not-allowed" }}>
                 ⬇ Descendre
               </button>
             </div>
             <button onClick={startEdit} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", color: "#1d4ed8", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
               ✏️ Modifier
             </button>
-            <button onClick={startMove} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #c8a84b", background: "#faf8f0", color: "#8a6f2e", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
+            <button onClick={startMove} disabled={selectedData.verrouille}
+              style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #c8a84b", background: selectedData.verrouille ? "#f9fafb" : "#faf8f0", color: selectedData.verrouille ? "#d1d5db" : "#8a6f2e", fontWeight: 700, fontSize: 13, cursor: selectedData.verrouille ? "not-allowed" : "pointer", marginBottom: 8 }}>
               ↔ Déplacer ailleurs (autre case ou mur)
             </button>
             <button onClick={startDuplicate} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #c4b5fd", background: "#faf5ff", color: "#7c3aed", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
               📋 Dupliquer (et modifier)
             </button>
-            <button onClick={handleRemove} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+            <button onClick={handleRemove} disabled={selectedData.verrouille}
+              style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #fca5a5", background: selectedData.verrouille ? "#f9fafb" : "#fef2f2", color: selectedData.verrouille ? "#d1d5db" : "#dc2626", fontWeight: 700, fontSize: 13, cursor: selectedData.verrouille ? "not-allowed" : "pointer" }}>
               🗑 Sortir du rack
             </button>
           </div>
