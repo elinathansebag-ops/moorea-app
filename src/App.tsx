@@ -210,21 +210,6 @@ export default function App() {
     localStorage.setItem("moorea-dark", darkMode ? "1" : "0");
   }, [darkMode]);
 
-  // ─── NOTIFICATIONS LITIGES ───
-  const [notifLitiges, setNotifLitiges] = useState<any[]>([]);
-  useEffect(() => {
-    if (!arrivages.length) return;
-    const seuilJours = 3;
-    const now = Date.now();
-    const alertes = arrivages.filter((a: any) => {
-      if (!a.litige || a.litige.statut === "clôturé") return false;
-      const ouvertLe = a.litige.createdAt || 0;
-      const jours = (now - ouvertLe) / (1000 * 60 * 60 * 24);
-      return jours >= seuilJours;
-    });
-    setNotifLitiges(alertes);
-  }, [arrivages]);
-
   // ─── ALERTE DÉCLARATION IFCO ───
   // Suit la dernière entrée de l'historique IFCO (ifco_histo, écrit par IFCOModule à chaque
   // téléchargement/envoi/validation) pour alerter sur l'accueil si aucune déclaration n'a été
@@ -1681,17 +1666,6 @@ _PDF joint_`;
           </div>
         </div>
 
-        {notifLitiges.length > 0 && (
-          <div style={{ background: darkMode ? "#2d1a1a" : "#fef2f2", borderBottom: "3px solid #dc2626", padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 20 }}>🔔</span>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#dc2626" }}>{notifLitiges.length} litige{notifLitiges.length > 1 ? "s" : ""} ouvert{notifLitiges.length > 1 ? "s" : ""} depuis plus de 3 jours</p>
-              <p style={{ margin: 0, fontSize: 11, color: darkMode ? "#f87171" : "#9ca3af" }}>{notifLitiges.slice(0, 2).map(a => a.produit).join(", ")}{notifLitiges.length > 2 ? ` +${notifLitiges.length - 2}` : ""}</p>
-            </div>
-            <button onClick={() => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision("refus"); }}
-              style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Voir</button>
-          </div>
-        )}
 
         {alerteIfco && (
           <div style={{ background: darkMode ? "#2d2410" : "#fffbeb", borderBottom: "3px solid #d97706", padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
