@@ -787,7 +787,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
   <div id="s-page-scanner" style="display:none;position:fixed;inset:0;background:#000;z-index:800;flex-direction:column">
     <div style="background:#0a0a0a;padding:14px 20px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #c8a84b;flex-shrink:0">
       <button onclick="sFermerScanner()" style="padding:7px 14px;border-radius:9px;border:none;background:#c8a84b;cursor:pointer;font-size:12px;font-weight:700;color:#0a0a0a">✕ Fermer</button>
-      <p style="margin:0;font-weight:800;font-size:15px;color:#c8a84b;text-transform:uppercase;letter-spacing:1px">📷 Scanner palette → Stock</p>
+      <p id="s-scan-title" style="margin:0;font-weight:800;font-size:15px;color:#c8a84b;text-transform:uppercase;letter-spacing:1px">📷 Scanner palette → Stock</p>
     </div>
     <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center">
       <video id="s-scan-video" style="width:100%;height:100%;object-fit:cover" playsinline muted></video>
@@ -851,6 +851,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input class="search-input" id="s-srch" placeholder="🔍 Rechercher..." style="min-width:160px"/>
           <button class="btn btn-sm btn-danger" onclick="sResetCounts()" style="opacity:.5;font-size:11px">↺ Tout réinitialiser</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+          <button class="btn btn-sm btn-gold" onclick="sScannerPaletteComplete()">📷 Scanner une palette complète</button>
+          <div style="flex:1;position:relative;min-width:180px">
+            <input class="search-input" id="s-srch-jump" placeholder="🔍 Chercher un produit (palette incomplète)..." oninput="sChercherEtSurligner(this.value)" autocomplete="off" style="width:100%"/>
+          </div>
         </div>
       </div>
       <div class="card">
@@ -1609,6 +1615,22 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
       (window as any).sRenderTable = sRenderTable;
 
+      // Cherche un produit par nom et fait défiler jusqu'à sa ligne (surlignée
+      // temporairement) — pour le cas d'une palette incomplète : l'agent
+      // retrouve la ligne et ajuste manuellement la quantité.
+      (window as any).sChercherEtSurligner = (val: string) => {
+        const q = val.toLowerCase().trim();
+        if (!q) return;
+        const art = articles.find((a: any) => a && a.article && a.article.toLowerCase().includes(q));
+        if (!art) return;
+        const mainSrch = document.getElementById("s-srch") as HTMLInputElement | null;
+        if (mainSrch && mainSrch.value) { mainSrch.value = ""; sRenderTable(); }
+        setTimeout(() => {
+          const row = document.querySelector(`tr[data-id="${art.id}"]`) as HTMLElement | null;
+          if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.style.background = "#fef3c7"; setTimeout(() => row.style.background = "", 2000); }
+        }, 50);
+      };
+
       (window as any).sTerminerComptage = () => {
         document.getElementById("s-nav-ecarts")?.classList.remove("hidden");
         (window as any).sShowPage("ecarts");
@@ -2102,6 +2124,16 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let sScanStream: MediaStream | null = null;
       let sScanRaf = 0;
       let sScanActive = false;
+      // Mode "palette complète" : le scan compte directement la quantité totale
+      // de la palette dans le comptage, au lieu d'ouvrir juste une case vide à
+      // remplir à la main. Reste actif tant que le scanner n'est pas fermé,
+      // pour pouvoir enchaîner plusieurs palettes complètes d'affilée.
+      let sScanModeComplet = false;
+
+      (window as any).sScannerPaletteComplete = () => {
+        sScanModeComplet = true;
+        (window as any).sScannerPalette();
+      };
 
       (window as any).sScannerPalette = async () => {
         const page = document.getElementById("s-page-scanner");
@@ -2109,6 +2141,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         page.style.display = "flex";
         document.getElementById("s-scan-result")!.style.display = "none";
         (document.getElementById("s-scan-error") as HTMLElement).style.display = "none";
+        const titleEl = document.getElementById("s-scan-title");
+        if (titleEl) titleEl.textContent = sScanModeComplet ? "📷 Palette complète → comptage auto" : "📷 Scanner palette → Stock";
         sScanActive = true;
         try {
           const handleRaw = (raw: string) => {
@@ -2118,6 +2152,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             try { const u = new URL(raw); lot = u.searchParams.get("id") || u.searchParams.get("lot") || ""; } catch {}
             if (!lot && /^\d{3,6}$/.test(raw)) lot = raw;
             if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
+            if (sScanModeComplet) { (window as any).sCompterPaletteComplete(lot); return; }
             (window as any).sVerifierLotDansStock(lot);
           };
           // html5-qrcode — EAN + QR, fonctionne sur iOS et Android.
@@ -2229,6 +2264,54 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         (window as any).sAfficherResultatScan({ found: true, html });
       };
 
+      // Scan "palette complète" : ajoute directement toute la quantité de la
+      // palette (lotsQty[lot]) dans la première case de comptage libre, sans
+      // saisie manuelle — pour le cas où la palette scannée est encore intacte.
+      (window as any).sCompterPaletteComplete = (lot: string) => {
+        const paletteMatch = lot.match(/^(.+?)(?:-(\d+))?$/);
+        const baseLot = paletteMatch?.[1] || lot;
+        const findArt = (list: any[]) => list.find((a: any) =>
+          (a.lots || []).includes(baseLot) || (a.lotsQty && Object.keys(a.lotsQty).includes(baseLot))
+        );
+        const art = findArt(articles);
+        if (!art) {
+          const artOther = findArt(allArticles);
+          const msg = artOther
+            ? `Lot #${lot} appartient à "${artOther.article}" (équipe ${getEquipe(artOther)}) — pas dans cette session`
+            : `Lot #${lot} introuvable dans ce stock`;
+          (window as any).sAfficherResultatScan({ found: false, msg });
+          return;
+        }
+        const qty = art.lotsQty?.[baseLot];
+        if (qty === undefined || qty === null) {
+          (window as any).sAfficherResultatScan({ found: false, msg: `Quantité inconnue pour le lot #${lot} sur "${art.article}" — saisie manuelle nécessaire` });
+          return;
+        }
+        let nextLoc = 1;
+        for (let i = 1; i <= 8; i++) { if (art[`compte${i}`] === null || art[`compte${i}`] === undefined) { nextLoc = i; break; } nextLoc = i + 1; }
+        if (nextLoc > 8) {
+          (window as any).sAfficherResultatScan({ found: false, msg: `Toutes les cases de comptage de "${art.article}" sont déjà remplies` });
+          return;
+        }
+        art[`compte${nextLoc}`] = qty;
+        if (!art._saisieTs) art._saisieTs = Date.now();
+        let t = 0; for (let i = 1; i <= 8; i++) t += art[`compte${i}`] ?? 0; art.compte = t;
+        sRenderTable();
+        updateMetricsC();
+        clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);
+        const row = document.querySelector(`tr[data-id="${art.id}"]`) as HTMLElement | null;
+        if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.style.background = "#dcfce7"; setTimeout(() => row.style.background = "", 2000); }
+        const html = `
+          <div style="font-size:32px;margin-bottom:8px">✅</div>
+          <p style="font-size:18px;font-weight:800;color:#1a2e1a;margin:0 0 2px">${art.article}</p>
+          <p style="font-size:13px;color:#6b7280;margin:0 0 12px">Lot #${baseLot} · palette complète</p>
+          <div style="background:#f0fdf4;border-radius:10px;padding:12px;border:1.5px solid #bbf7d0">
+            <p style="margin:0;font-size:13px;color:#15803d;font-weight:700">+ ${qty} colis comptés automatiquement (case ${nextLoc})</p>
+          </div>
+        `;
+        (window as any).sAfficherResultatScan({ found: true, html });
+      };
+
       (window as any).sAfficherResultatScan = ({ found, msg, html }: any) => {
         const res = document.getElementById("s-scan-result");
         const content = document.getElementById("s-scan-result-content");
@@ -2238,7 +2321,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
       (window as any).sRescanPalette = () => { document.getElementById("s-scan-result")!.style.display = "none"; sScanActive = true; (window as any).sScannerPalette(); };
       (window as any).sFermerScanner = () => {
-        sScanActive = false; cancelAnimationFrame(sScanRaf);
+        sScanActive = false; sScanModeComplet = false; cancelAnimationFrame(sScanRaf);
         // scanner.stop() lève une exception SYNCHRONE (pas juste une rejection) si le
         // scanner n'est pas en train de tourner — un simple .catch() ne suffit pas.
         try {
@@ -2257,7 +2340,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sChercherEtSurligner","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
