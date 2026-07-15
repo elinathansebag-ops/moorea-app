@@ -257,9 +257,15 @@ export default function App() {
   const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string) => {
     const now2 = new Date();
     const statut = decision === "conforme" ? "validé" : ncType;
-    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut, poids_net: ctrl.poids_net, observations: ctrl.observations, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
-    const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: arrivage.lot_fournisseur || "", date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
-    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, ...(litige ? { litige } : {}), validatedAt: Date.now() });
+    // DLC et n° de traçabilité fournisseur saisis (ou corrigés) sur la carte d'agréage rapide —
+    // on les répercute à la fois dans le rapport et à la racine de l'arrivage, car c'est cette
+    // racine (arrivage.dlc / arrivage.lot_fournisseur) qui alimente les alertes DLC du rack,
+    // l'étiquette imprimée et le PDF traçabilité fournisseur par jour.
+    const dlcFinal = ctrl.dlc || arrivage.dlc || "";
+    const lotFournisseurFinal = ctrl.lot_fournisseur || arrivage.lot_fournisseur || "";
+    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut, poids_net: ctrl.poids_net, observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
+    const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
+    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, ...(litige ? { litige } : {}), validatedAt: Date.now() });
     showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
     // Popup étiquette
     setPopupEtiquette({ ...arrivage, poids_brut: ctrl.poids_brut || arrivage.poids_brut, poids_net: ctrl.poids_net || arrivage.poids_net });

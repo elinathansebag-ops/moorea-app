@@ -53,6 +53,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
   const [colisRecus, setColisRecus] = useState<string>("");
   const [poidsBrut, setPoidsBrut] = useState<string>(arrivage.poids_brut || "");
   const [poidsNet, setPoidsNet] = useState<string>(arrivage.poids_net || arrivage.poids_colis || "");
+  const [dlc, setDlc] = useState<string>(arrivage.dlc || "");
+  const [tracaFournisseur, setTracaFournisseur] = useState<string>(arrivage.lot_fournisseur || "");
   const [saving, setSaving] = useState(false);
   const [showGencodeScan, setShowGencodeScan] = useState(false);
 
@@ -79,7 +81,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
       poidsBrut ? `Poids brut : ${poidsBrut} kg` : "",
       poidsNet ? `Poids net : ${poidsNet} kg` : "",
     ].filter(Boolean).join(" | ");
-    const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs };
+    const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaFournisseur };
     await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "");
     setSaving(false);
     if (hasLitige) onOuvreRapport(arrivage, true);
@@ -164,6 +166,27 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
             style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: "#1a2e1a" }}
           />
           <span style={{ fontSize: 11, color: "#9ca3af" }}>kg</span>
+        </div>
+      </div>
+
+      {/* DLC + Traçabilité fournisseur */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
+          <input type="date"
+            value={dlc}
+            onChange={e => setDlc(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+          />
+        </div>
+        <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🏷️ Traça four.</span>
+          <input type="text"
+            value={tracaFournisseur}
+            placeholder="N° traçabilité"
+            onChange={e => setTracaFournisseur(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+          />
         </div>
       </div>
 
