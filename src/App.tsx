@@ -225,6 +225,45 @@ export default function App() {
   const joursDepuisIfco = ifcoHisto.length && ifcoHisto[0].ts ? Math.floor((Date.now() - ifcoHisto[0].ts) / (1000 * 60 * 60 * 24)) : null;
   const alerteIfco = joursDepuisIfco === null || joursDepuisIfco >= 7;
 
+  // ─── ALERTE RETOURS NON POINTÉS ───
+  // Un retour est "pointé" quand son statut passe à "traite" (voir RetoursModule). On alerte
+  // sur l'accueil si un retour encore non pointé a plus de 3 jours OUVRÉS (dimanche exclu du
+  // décompte). Chaque alerte peut être masquée individuellement avec une croix — la liste des
+  // retours masqués est mémorisée dans localStorage pour ne pas réapparaître.
+  const [retoursAlerte, setRetoursAlerte] = useState<any[]>([]);
+  useEffect(() => {
+    const u = onValue(ref(db, "retours"), snap => {
+      const d = snap.val();
+      setRetoursAlerte(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+    });
+    return () => u();
+  }, []);
+  const [retoursAlerteMasquees, setRetoursAlerteMasquees] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("moorea-retours-alertes-masquees") || "[]")); } catch { return new Set(); }
+  });
+  const masquerAlerteRetour = (id: string) => {
+    setRetoursAlerteMasquees(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      try { localStorage.setItem("moorea-retours-alertes-masquees", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+  const joursOuvresDepuis = (ts: number) => {
+    const debut = new Date(ts); debut.setHours(0, 0, 0, 0);
+    const fin = new Date(); fin.setHours(0, 0, 0, 0);
+    let jours = 0;
+    const cur = new Date(debut);
+    while (cur < fin) {
+      cur.setDate(cur.getDate() + 1);
+      if (cur.getDay() !== 0) jours++; // 0 = dimanche, exclu du décompte
+    }
+    return jours;
+  };
+  const alertesRetours = retoursAlerte.filter((r: any) =>
+    r.statut !== "traite" && r.ts && joursOuvresDepuis(r.ts) >= 3 && !retoursAlerteMasquees.has(r.id)
+  );
+
   // ─── LOAD STOCK OVERRIDES ───
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1678,6 +1717,28 @@ _PDF joint_`;
             </div>
             <button onClick={() => { setShowAccueil(false); setShowIFCO(true); }}
               style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#d97706", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Voir</button>
+          </div>
+        )}
+
+        {alertesRetours.length > 0 && (
+          <div style={{ background: darkMode ? "#2d1a1a" : "#fef2f2", borderBottom: "3px solid #dc2626", padding: "12px 20px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 20 }}>🔔</span>
+              <p style={{ margin: 0, flex: 1, fontWeight: 700, fontSize: 13, color: "#dc2626" }}>
+                {alertesRetours.length} retour{alertesRetours.length > 1 ? "s" : ""} pas encore pointé{alertesRetours.length > 1 ? "s" : ""} depuis plus de 3 jours (hors dimanche)
+              </p>
+              <button onClick={() => { setShowAccueil(false); setShowRetours(true); }}
+                style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>Voir</button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {alertesRetours.map((r: any) => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "#fff", border: "1.5px solid #fca5a5", borderRadius: 8, padding: "4px 6px 4px 10px" }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "#dc2626" }}>#{r.numero || r.id}</span>
+                  <button onClick={() => masquerAlerteRetour(r.id)} title="Masquer cette alerte"
+                    style={{ border: "none", background: "transparent", color: "#dc2626", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: "2px 4px", lineHeight: 1 }}>✕</button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
