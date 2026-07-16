@@ -132,6 +132,10 @@ export default function App() {
   }, []);
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
+  // Popup affiché juste après la validation d'un rapport : bouton pour envoyer le rapport
+  // par mail (action explicite, plus d'envoi automatique en silence), et si le rapport est
+  // un refus, bouton pour imprimer directement l'étiquette refus (QR vers le bon de retour).
+  const [popupApresRapport, setPopupApresRapport] = useState<{ rapport: any; arrivageId: string | null } | null>(null);
   const [showStock, setShowStock] = useState(false);
   const [showPalette, setShowPalette] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
@@ -757,6 +761,7 @@ _PDF joint_`;
         photoUrls = await uploadPhotosImgBB(photos);
       }
 
+      const arrivageIdPourEtiquette = rapportArrivage?.id || null;
       const rapportFinal = { ...rapport, photoUrls, ...(rapportArrivage ? { arrivage_id: rapportArrivage.id } : {}) };
       const rapportsRef = ref(db, "rapports");
       await push(rapportsRef, rapportFinal);
@@ -770,12 +775,12 @@ _PDF joint_`;
         setVue("historique");
       }
 
-      showToast("⏳ Envoi de l'email…");
-      await envoyerEmail(rapportAvecPhotos);
-
       reset();
       window.scrollTo(0, 0);
-      showToast("✉ Rapport envoyé ✓");
+      showToast("✅ Rapport enregistré");
+      // Popup d'actions rapides post-validation — envoi par mail à la demande (plus
+      // d'envoi automatique en silence) et impression de l'étiquette refus si besoin.
+      setPopupApresRapport({ rapport: { ...rapportFinal, photos }, arrivageId: arrivageIdPourEtiquette });
     } finally {
       setSendingId(null);
     }
@@ -2041,6 +2046,52 @@ _PDF joint_`;
 
       {popupEtiquette && (
         <PopupEtiquetteMulti arrivage={popupEtiquette} onClose={() => setPopupEtiquette(null)} />
+      )}
+
+      {popupApresRapport && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 4000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 380, boxSizing: "border-box" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#1a2e1a" }}>✅ Rapport enregistré</h2>
+              <button onClick={() => setPopupApresRapport(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
+            </div>
+            <p style={{ margin: "4px 0 18px", fontSize: 13, color: "#6b7280" }}>{popupApresRapport.rapport.produit} · {popupApresRapport.rapport.fournisseur}</p>
+
+            <button
+              onClick={() => envoyerEmail(popupApresRapport.rapport)}
+              disabled={sendingId === (popupApresRapport.rapport.id || popupApresRapport.rapport.firebaseKey || "new")}
+              style={{
+                width: "100%", padding: "12px", borderRadius: 10, border: "none",
+                background: sendingId === (popupApresRapport.rapport.id || popupApresRapport.rapport.firebaseKey || "new") ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)",
+                color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10,
+              }}
+            >
+              {sendingId === (popupApresRapport.rapport.id || popupApresRapport.rapport.firebaseKey || "new") ? "⏳ Envoi en cours…" : "✉️ Envoyer le rapport par mail"}
+            </button>
+
+            {popupApresRapport.rapport.decision === "refus" && popupApresRapport.arrivageId && (
+              <button
+                onClick={() => {
+                  const a = arrivages.find((x: any) => x.id === popupApresRapport.arrivageId);
+                  imprimerEtiquetteRefus(a || {
+                    id: popupApresRapport.arrivageId,
+                    produit: popupApresRapport.rapport.produit,
+                    fournisseur: popupApresRapport.rapport.fournisseur,
+                    quantite: popupApresRapport.rapport.nbColisRecu || popupApresRapport.rapport.nbColisAttendu,
+                    unite: popupApresRapport.rapport.conditionnement,
+                  });
+                }}
+                style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10 }}
+              >
+                🏷️ Imprimer étiquette refus
+              </button>
+            )}
+
+            <button onClick={() => setPopupApresRapport(null)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+              Fermer
+            </button>
+          </div>
+        </div>
       )}
 
       {toast && (
