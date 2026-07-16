@@ -1029,6 +1029,16 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let currentTeam = "";
       let currentImportId = "";
       let currentSessionId = "";
+      // Vrai si le stock en cours a déjà un "debutComptage" enregistré (permet de ne
+      // l'écrire qu'une seule fois, au tout premier article compté du stock).
+      let debutComptageConnu = false;
+      const formatDuree = (ms: number): string => {
+        const totalMin = Math.max(0, Math.round(ms / 60000));
+        const h = Math.floor(totalMin / 60);
+        const m = totalMin % 60;
+        if (h > 0) return `${h}h${m > 0 ? String(m).padStart(2, "0") : "00"}`;
+        return `${m}min`;
+      };
       let ecartFilter = "tous";
       let cfFilter = "tous";
       let cfgUnlocked = false;
@@ -1165,6 +1175,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         });
         setSyncStatus("ok", "Synchronisé");
         currentImportId = importId;
+        debutComptageConnu = false; // nouveau stock : jamais compté, donc pas encore de debutComptage
         return importId;
       };
 
@@ -1368,6 +1379,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             const data = snap.data() as any;
             allArticles = data.articles.map((a: any) => ({ ...a, lots: a.lots || [], lot: a.lot || "", lotsQty: a.lotsQty || {}, equipe: a.equipe || getEquipe(a), compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
             currentImportId = stockId;
+            debutComptageConnu = !!data.debutComptage;
             setSyncStatus("ok", "Synchronisé");
             (window as any).sStartSession(team);
           }
@@ -1429,6 +1441,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
                 ${s.cloture ? "" : `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>`}
                 ${s.cloture
                   ? `<span style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 10px;border-radius:8px;font-weight:600">✓ Clôturé</span>
+                     ${s.dureeComptageMs ? `<span style="font-size:11px;background:#faf8f3;border:1px solid #e8e0d0;color:#8a6f2e;padding:4px 10px;border-radius:8px;font-weight:600">⏱ ${formatDuree(s.dureeComptageMs)}</span>` : ""}
                      <button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>
                      <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}')">🔓 Rouvrir</button>`
                   : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>
@@ -1482,8 +1495,14 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (!confirm("Clôturer ce stock ?")) return;
         try {
           const snap = await getDoc(doc(db, "stocks", sid));
-          if (snap.exists()) await setDoc(doc(db, "stocks", sid), { ...snap.data(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") });
-          toast("Stock clôturé"); renderStockList();
+          let dureeMsg = "";
+          if (snap.exists()) {
+            const sdata = snap.data() as any;
+            const upd: any = { ...sdata, cloture: true, clotureDate: new Date().toLocaleString("fr-FR") };
+            if (sdata.debutComptage) { upd.dureeComptageMs = Date.now() - sdata.debutComptage; dureeMsg = ` (durée : ${formatDuree(upd.dureeComptageMs)})`; }
+            await setDoc(doc(db, "stocks", sid), upd);
+          }
+          toast("Stock clôturé" + dureeMsg); renderStockList();
         } catch { toast("Erreur"); }
       };
 
@@ -1534,6 +1553,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (loc <= 8) a["compte" + loc] = v; else a.detruire = v;
         if (loc <= 8 && a._autoRackSlots?.[loc - 1]) a._autoRackSlots[loc - 1] = false; // touché manuellement → cette case n'est plus "auto"
         if (!a._saisieTs && v !== null) a._saisieTs = Date.now();
+        // Premier article compté du stock : on enregistre l'horodatage de début pour
+        // pouvoir chronométrer la durée totale du comptage jusqu'à la clôture.
+        if (!debutComptageConnu && v !== null && currentImportId) {
+          debutComptageConnu = true;
+          setDoc(doc(db, "stocks", currentImportId), { debutComptage: Date.now() }, { merge: true }).catch(() => {});
+        }
         const hasCount = a.compte1 !== null && a.compte1 !== undefined;
         if (hasCount) { let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0; a.compte = t; } else a.compte = null;
         updateMetricsC();
@@ -1676,8 +1701,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           try {
             const snap = await getDoc(doc(db, "stocks", currentImportId));
             if (snap.exists() && !(snap.data() as any).cloture) {
-              await setDoc(doc(db, "stocks", currentImportId), { ...snap.data(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") }, { merge: true });
-              toast("🔒 Stock clôturé automatiquement (réouvrable depuis la liste des stocks)");
+              const sdata = snap.data() as any;
+              const upd: any = { ...sdata, cloture: true, clotureDate: new Date().toLocaleString("fr-FR") };
+              let dureeMsg = "";
+              if (sdata.debutComptage) { upd.dureeComptageMs = Date.now() - sdata.debutComptage; dureeMsg = ` — durée du comptage : ${formatDuree(upd.dureeComptageMs)}`; }
+              await setDoc(doc(db, "stocks", currentImportId), upd, { merge: true });
+              toast("🔒 Stock clôturé automatiquement (réouvrable depuis la liste des stocks)" + dureeMsg);
             }
           } catch {}
         }
@@ -1951,7 +1980,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
               attachments: [{ filename, content: base64 }],
             }),
           });
-          if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || "Erreur envoi"); }
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || err.message || (typeof err === "object" ? JSON.stringify(err) : String(err)) || `Erreur envoi (HTTP ${resp.status})`);
+          }
           toast("✉️ PDF envoyé à Jordan");
         } catch (err: any) {
           toast("Erreur envoi : " + (err?.message || String(err)));
@@ -1962,10 +1994,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       (window as any)._doCloturerStock = async () => {
         if (!currentImportId) { toast("Aucun stock chargé"); return; }
-        if (!confirm("Clôturer ce stock ? Il sera archivé et ne pourra plus être modifié.")) return;
+        if (!confirm("Clôturer ce stock ? Il reste réouvrable ensuite depuis la liste des stocks.")) return;
         try {
-          await setDoc(doc(db, "stocks", currentImportId), { cloture: true, clotureDatee: new Date().toISOString() }, { merge: true });
-          toast("🔒 Stock clôturé !");
+          const snap = await getDoc(doc(db, "stocks", currentImportId));
+          const sdata = snap.exists() ? (snap.data() as any) : {};
+          const upd: any = { cloture: true, clotureDate: new Date().toLocaleString("fr-FR") };
+          let dureeMsg = "";
+          if (sdata.debutComptage) { upd.dureeComptageMs = Date.now() - sdata.debutComptage; dureeMsg = ` — durée du comptage : ${formatDuree(upd.dureeComptageMs)}`; }
+          await setDoc(doc(db, "stocks", currentImportId), upd, { merge: true });
+          toast("🔒 Stock clôturé !" + dureeMsg);
           setTimeout(() => (window as any).sShowPage("stocks"), 1500);
         } catch { toast("Erreur clôture"); }
       };
