@@ -1975,7 +1975,7 @@ _PDF joint_`;
                       <span className="pill" style={{ background: rapport.decision === "stock" ? "#f0fdf4" : rapport.decision === "reserve" ? "#fffbeb" : "#fef2f2", color: rapport.decision === "stock" ? "#15803d" : rapport.decision === "reserve" ? "#d97706" : "#dc2626", border: `1px solid ${rapport.decision === "stock" ? "#bbf7d0" : rapport.decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }}>
                         {rapport.decision === "stock" ? "✅ En stock" : rapport.decision === "reserve" ? "⚠️ Réserve" : "❌ Refusé"}
                       </span>
-                      <button onClick={() => downloadPDF(rapport)} style={{ marginLeft: "auto", padding: "5px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📄 PDF</button>
+                      <button onClick={() => downloadPDF(rapport)} style={{ marginLeft: "auto", padding: "5px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
                     </div>
                   </div>
                 )}
@@ -2188,44 +2188,27 @@ _PDF joint_`;
           forcément choisir son imprimante), le PDF s'affiche dans une fenêtre sur la page
           elle-même, et l'impression se lance automatiquement dès que l'aperçu est prêt. */}
       {pdfApercu && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", flexShrink: 0 }}>
-            <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 14 }}>📄 Aperçu du bon de reprise</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => {
-                  // Ouvre le PDF dans un nouvel onglet plutôt que de scripter l'impression de
-                  // l'iframe : sur iPad/Safari, un PDF affiché dans un iframe est rendu par le
-                  // visualiseur natif, qui n'expose pas contentWindow.print() de façon fiable —
-                  // le bouton ne faisait alors rien. Un nouvel onglet, lui, ouvre systématiquement
-                  // le vrai visualiseur PDF de l'appareil, avec ses propres boutons imprimer/partager.
-                  try { if (!window.open(pdfApercu!, "_blank")) pdfApercuIframeRef.current?.contentWindow?.print(); }
-                  catch { try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {} }
-                }}
-                style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
-              >
-                🖨 Imprimer
-              </button>
-              <button
-                onClick={() => setPdfApercu(null)}
-                style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
-              >
-                ✕ Fermer
-              </button>
-            </div>
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "#f5f3ee", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", borderBottom: "3px solid #c8a84b", flexShrink: 0 }}>
+            <button
+              onClick={() => setPdfApercu(null)}
+              style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}
+            >
+              ← Retour
+            </button>
+            <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 13 }}>📄 Rapport</span>
+            <button
+              onClick={() => { try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {} }}
+              style={{ padding: "6px 14px", borderRadius: 9, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+            >
+              🖨️ Imprimer
+            </button>
           </div>
           <iframe
             ref={pdfApercuIframeRef}
             src={pdfApercu}
-            title="Aperçu bon de reprise"
+            title="Aperçu rapport"
             style={{ flex: 1, border: "none", background: "#fff" }}
-            onLoad={() => {
-              // Lance l'impression automatiquement dès que l'aperçu est chargé — l'utilisateur
-              // n'a qu'à choisir l'imprimante dans la boîte de dialogue du système qui s'ouvre.
-              // Le bouton "Imprimer" reste dispo au cas où ce déclenchement auto échoue
-              // (certains navigateurs/iOS bloquent l'appel s'il n'est pas jugé assez "direct").
-              try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {}
-            }}
           />
         </div>
       )}
@@ -2546,7 +2529,7 @@ _PDF joint_`;
                         <div style={{ background: "#faf8f3", border: "1px solid #e8e0d0", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", gap: 10, alignItems: "center" }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#8a6f2e" }}>📋 {rapport.numeroRapport}</span>
                           {rapport.score && <span style={{ fontSize: 12, color: NOTE_COLORS[Math.round(parseFloat(rapport.score))], fontWeight: 700 }}>Score {rapport.score}/5</span>}
-                          <button onClick={() => downloadPDF(rapport)} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>📄 PDF</button>
+                          <button onClick={() => downloadPDF(rapport)} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
                         </div>
                       )}
                     </div>
@@ -3265,7 +3248,7 @@ _PDF joint_`;
                 {r.observations && <p style={{ fontSize: 13, color: "#6b7280", fontStyle: "italic", borderTop: "1px solid #f0fdf4", paddingTop: 8, marginTop: 8 }}>"{r.observations}"</p>}
                 <div className="action-row" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f0f0f0" }}>
                   <button onClick={() => downloadPDF(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
-                    📤 Envoyer PDF
+                    🖨️ Imprimer
                   </button>
                   <button onClick={() => partagerWhatsApp(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #25d366, #128c7e)", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     WhatsApp

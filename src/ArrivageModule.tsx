@@ -1618,29 +1618,21 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
         </div>
       )}
       {pdfApercuTraca && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", flexShrink: 0 }}>
-            <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 14 }}>📄 Traçabilité fournisseur — {date}</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => {
-                  // Voir commentaire équivalent dans App.tsx : un nouvel onglet ouvre le vrai
-                  // visualiseur PDF natif de l'appareil (fiable sur iPad), contrairement à
-                  // contentWindow.print() sur un PDF affiché dans un iframe.
-                  try { if (!window.open(pdfApercuTraca!, "_blank")) pdfApercuTracaIframeRef.current?.contentWindow?.print(); }
-                  catch { try { pdfApercuTracaIframeRef.current?.contentWindow?.print(); } catch {} }
-                }}
-                style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
-              >
-                🖨 Imprimer
-              </button>
-              <button
-                onClick={fermerApercuTraca}
-                style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
-              >
-                ✕ Fermer
-              </button>
-            </div>
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "#f5f3ee", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", borderBottom: "3px solid #c8a84b", flexShrink: 0 }}>
+            <button
+              onClick={fermerApercuTraca}
+              style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}
+            >
+              ← Retour
+            </button>
+            <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 13 }}>📄 Traçabilité — {date}</span>
+            <button
+              onClick={() => { try { pdfApercuTracaIframeRef.current?.contentWindow?.print(); } catch {} }}
+              style={{ padding: "6px 14px", borderRadius: 9, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+            >
+              🖨️ Imprimer
+            </button>
           </div>
           <iframe ref={pdfApercuTracaIframeRef} src={pdfApercuTraca} style={{ flex: 1, border: "none", background: "#fff" }} />
         </div>
