@@ -311,7 +311,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     return (
       <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
         <PageHeader titre="Programme d'achat" couleur="#c8a84b" onBack={onClose} onHome={onClose} />
-        <div style={{ maxWidth: 800, margin: "0 auto", padding: 16 }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: 16, boxSizing: "border-box" }}>
           <button onClick={() => setShowNewForm(v => !v)} style={{
             width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a",
             fontWeight: 700, fontSize: 14, cursor: "pointer", marginBottom: 8,
@@ -370,7 +370,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   return (
     <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
       <PageHeader titre={cfg?.nom || "Programme d'achat"} couleur="#c8a84b" onBack={() => setSelectedId(null)} onHome={onClose} />
-      <div style={{ maxWidth: 800, margin: "0 auto", padding: 12 }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: 12, boxSizing: "border-box" }}>
         {cfg && (
           <p style={{ fontSize: 12, color: "#888", margin: "0 0 10px", textAlign: "center" }}>
             Période : {new Date(cfg.dateDebut).toLocaleDateString("fr-FR")} → {new Date(cfg.dateFin).toLocaleDateString("fr-FR")}

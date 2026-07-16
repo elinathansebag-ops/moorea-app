@@ -101,26 +101,65 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
   const [poidsBrut, setPoidsBrut] = useState<string>(arrivage.poids_brut || "");
   const [poidsNet, setPoidsNet] = useState<string>(arrivage.poids_net || arrivage.poids_colis || "");
   const [dlc, setDlc] = useState<string>(arrivage.dlc || "");
-  const [tracaFournisseur, setTracaFournisseur] = useState<string>(arrivage.lot_fournisseur || "");
+  // Un article peut arriver avec plusieurs n° de traçabilité fournisseur (mélange de lots
+  // dans une même palette) — on garde donc une LISTE plutôt qu'un simple texte. On reprend
+  // l'existant si déjà enregistré en liste (lot_fournisseur_liste), sinon on repart de l'ancien
+  // champ texte unique (lot_fournisseur) pour rester compatible avec les arrivages existants.
+  const [tracaList, setTracaList] = useState<string[]>(() => {
+    if (Array.isArray(arrivage.lot_fournisseur_liste) && arrivage.lot_fournisseur_liste.length) return arrivage.lot_fournisseur_liste;
+    return [arrivage.lot_fournisseur || ""];
+  });
   const [saving, setSaving] = useState(false);
   const [showGencodeScan, setShowGencodeScan] = useState(false);
   const [showScanEtiquette, setShowScanEtiquette] = useState(false);
   const [scanEtiquetteMsg, setScanEtiquetteMsg] = useState("");
 
+  const ajouterTraca = () => setTracaList(prev => [...prev, ""]);
+  const modifierTraca = (idx: number, val: string) => setTracaList(prev => prev.map((t, i) => i === idx ? val : t));
+  const retirerTraca = (idx: number) => setTracaList(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
+
   // Scan de l'étiquette fournisseur (code Code128/GS1) : remplit automatiquement DLC et
   // n° de traçabilité si le code contient les Application Identifiers correspondants —
   // sinon on utilise le code brut comme n° de traçabilité (beaucoup d'étiquettes ne portent
-  // qu'un simple numéro de lot, sans structure GS1 complète).
+  // qu'un simple numéro de lot, sans structure GS1 complète). Le lot scanné vient remplir la
+  // première case vide, ou s'ajoute en plus si toutes les cases sont déjà remplies — un article
+  // peut avoir plusieurs n° de traçabilité (mélange de lots).
   const handleScanEtiquette = (raw: string) => {
     const parsed = parseGS1(raw);
     let msg = "";
     if (parsed.dlc) { setDlc(parsed.dlc); msg += `DLC ${new Date(parsed.dlc).toLocaleDateString("fr-FR")} `; }
-    if (parsed.lot) { setTracaFournisseur(parsed.lot); msg += `Lot ${parsed.lot}`; }
-    if (!parsed.dlc && !parsed.lot) { setTracaFournisseur(raw); msg = `Code lu : ${raw}`; }
+    const lotScanne = parsed.lot || (!parsed.dlc ? raw : "");
+    if (lotScanne) {
+      setTracaList(prev => {
+        const idx = prev.findIndex(t => !t.trim());
+        if (idx !== -1) { const next = [...prev]; next[idx] = lotScanne; return next; }
+        if (prev.includes(lotScanne)) return prev;
+        return [...prev, lotScanne];
+      });
+      msg += `Lot ${lotScanne}`;
+    }
     setScanEtiquetteMsg(msg.trim() || "Code lu");
     setShowScanEtiquette(false);
     setTimeout(() => setScanEtiquetteMsg(""), 3000);
   };
+
+  // Enregistrement automatique de la DLC et des n° de traçabilité dans la cellule Firebase de
+  // l'arrivage MÊME SI l'article n'est pas encore validé — ces infos ne doivent pas être perdues
+  // si l'agréeur les saisit avant de valider (ou ne valide que plus tard). On débounce pour ne
+  // pas écrire à chaque frappe.
+  const dejaMonte = useRef(false);
+  useEffect(() => {
+    if (!dejaMonte.current) { dejaMonte.current = true; return; }
+    const t = setTimeout(() => {
+      const propre = tracaList.map(x => x.trim()).filter(Boolean);
+      update(ref(db, `arrivages/${arrivage.id}`), {
+        dlc,
+        lot_fournisseur: propre.join(", "),
+        lot_fournisseur_liste: propre,
+      }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [dlc, tracaList, arrivage.id]);
 
   // Chercher le gencode correspondant à cet article
   const matchedGencode = gencodeArticles?.find((g: any) => {
@@ -145,7 +184,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
       poidsBrut ? `Poids brut : ${poidsBrut} kg` : "",
       poidsNet ? `Poids net : ${poidsNet} kg` : "",
     ].filter(Boolean).join(" | ");
-    const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaFournisseur };
+    const tracaPropre = tracaList.map(t => t.trim()).filter(Boolean);
+    const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaPropre.join(", "), lot_fournisseur_liste: tracaPropre };
     await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "");
     setSaving(false);
     if (hasLitige) onOuvreRapport(arrivage, true);
@@ -229,7 +269,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
       </div>
 
       {/* DLC + Traçabilité fournisseur */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
           <input type="date"
@@ -238,17 +278,29 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
             style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
           />
         </div>
-        <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🏷️ Traça four.</span>
-          <input type="text"
-            value={tracaFournisseur}
-            placeholder="N° traçabilité"
-            onChange={e => setTracaFournisseur(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
-          />
-        </div>
         <button onClick={() => setShowScanEtiquette(true)} style={{ flexShrink: 0, background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 10, padding: "0 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
           📷 Scanner l'étiquette
+        </button>
+      </div>
+      <div style={{ marginBottom: 4, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
+          {tracaList.map((t, idx) => (
+            <div key={idx} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+              <input type="text"
+                value={t}
+                placeholder="N° traçabilité"
+                onChange={e => modifierTraca(idx, e.target.value)}
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+              />
+              {tracaList.length > 1 && (
+                <button onClick={() => retirerTraca(idx)} title="Retirer ce n°" style={{ flexShrink: 0, background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, fontWeight: 700, padding: "0 4px" }}>✕</button>
+              )}
+            </div>
+          ))}
+        </div>
+        <button onClick={ajouterTraca} style={{ marginTop: 6, background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+          + Ajouter un n° de traçabilité
         </button>
       </div>
       {scanEtiquetteMsg && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>✓ {scanEtiquetteMsg}</p>}
@@ -1339,6 +1391,13 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
   const scanInputId = `scan-date-${date.replace(/\//g, "-")}`;
+  // Aperçu PDF traçabilité intégré à la page (au lieu d'un iframe hors-écran qui déclenche
+  // print() tout seul) — cette dernière méthode donne une page blanche sur iPad/Safari iOS,
+  // qui bloque le chargement d'un blob: dans un iframe invisible. En affichant l'iframe et en
+  // déclenchant l'impression via un vrai clic utilisateur, ça marche de façon fiable partout
+  // (même principe déjà utilisé et validé pour l'aperçu du bon de reprise).
+  const [pdfApercuTraca, setPdfApercuTraca] = useState<string | null>(null);
+  const pdfApercuTracaIframeRef = useRef<HTMLIFrameElement>(null);
   const totalArticles = arrivages.length + (arrivagesArchives?.length || 0);
   const nbTraites = arrivagesArchives?.length || 0;
   const allFournisseurs: Record<string, boolean> = {};
@@ -1399,22 +1458,14 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text(`Généré par Moorea — ${date}`, W / 2, 291, { align: "center" });
 
-    // Impression directe (module d'impression du navigateur), sans page d'aperçu ni téléchargement —
-    // même principe que les étiquettes palette : un cadre invisible hors écran déclenche print().
-    const blobUrl = URL.createObjectURL(doc.output("blob"));
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:800px;height:1000px;border:0";
-    document.body.appendChild(iframe);
-    let nettoye = false;
-    const nettoyer = () => { if (nettoye) return; nettoye = true; iframe.remove(); URL.revokeObjectURL(blobUrl); };
-    iframe.onload = () => {
-      try {
-        iframe.contentWindow?.print();
-        iframe.contentWindow?.addEventListener("afterprint", nettoyer);
-      } catch { nettoyer(); }
-    };
-    iframe.src = blobUrl;
-    setTimeout(nettoyer, 90000);
+    // Aperçu visible intégré à la page + impression via un vrai clic (voir commentaire plus haut
+    // sur pdfApercuTraca) — fiable sur iPad/Safari, contrairement à l'ancien iframe hors-écran.
+    setPdfApercuTraca(URL.createObjectURL(doc.output("blob")));
+  };
+
+  const fermerApercuTraca = () => {
+    if (pdfApercuTraca) URL.revokeObjectURL(pdfApercuTraca);
+    setPdfApercuTraca(null);
   };
 
   return (
@@ -1480,6 +1531,28 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect}
               gencodeArticles={gencodeArticles} />
           ))}
+        </div>
+      )}
+      {pdfApercuTraca && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", flexShrink: 0 }}>
+            <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 14 }}>📄 Traçabilité fournisseur — {date}</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => { try { pdfApercuTracaIframeRef.current?.contentWindow?.print(); } catch {} }}
+                style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+              >
+                🖨 Imprimer
+              </button>
+              <button
+                onClick={fermerApercuTraca}
+                style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+              >
+                ✕ Fermer
+              </button>
+            </div>
+          </div>
+          <iframe ref={pdfApercuTracaIframeRef} src={pdfApercuTraca} style={{ flex: 1, border: "none", background: "#fff" }} />
         </div>
       )}
     </div>

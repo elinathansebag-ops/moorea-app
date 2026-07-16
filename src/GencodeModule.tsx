@@ -4869,14 +4869,14 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
         }
       `}</style>
       <PageHeader titre="Gencodes GMS" couleur="#3b82f6" onBack={onClose} onHome={onClose} />
-      <div className="gc-stats" style={{ maxWidth:800, margin:'0 auto', display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', padding:'10px 16px 0' }}>
+      <div className="gc-stats" style={{ maxWidth:800, margin:'0 auto', boxSizing:'border-box', display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', padding:'10px 16px 0' }}>
         {imported && <button onClick={syncAutoLinks} style={{ background:'#e5e7eb', border:'none', borderRadius:6, color:'#374151', padding:'4px 10px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap' }}>Sync auto</button>}
         <span style={{ background:'#27ae60', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{linked.length} lies</span>
         <span style={{ background:'#f59e0b', color:'#0a0a0a', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{unlinked.length} a lier</span>
         <span style={{ background:'#3b82f6', color:'#fff', fontWeight:700, fontSize:11, padding:'3px 8px', borderRadius:6, whiteSpace:'nowrap' }}>{articles.length} total</span>
       </div>
       <div style={{ background:'#0a0a0a', borderBottom:'1px solid #222' }}>
-        <div className="gc-tabs" style={{ maxWidth:800, margin:'0 auto', display:'flex', gap:4, padding:'0 16px 8px' }}>
+        <div className="gc-tabs" style={{ maxWidth:800, margin:'0 auto', boxSizing:'border-box', display:'flex', gap:4, padding:'0 16px 8px' }}>
           <button onClick={() => setPage('liste')} style={{ padding:'8px 20px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13, fontWeight:page==='liste'?700:500, color:page==='liste'?'#0a0a0a':'rgba(255,255,255,.5)', background:page==='liste'?'#3b82f6':'transparent', fontFamily:'inherit', whiteSpace:'nowrap' }}>
             Gencodes lies ({linked.length})
           </button>
@@ -4888,7 +4888,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
           </button>
         </div>
       </div>
-      <div style={{ maxWidth:800, margin:'0 auto', padding:'16px 16px 80px' }}>
+      <div style={{ maxWidth:800, margin:'0 auto', boxSizing:'border-box', padding:'16px 16px 80px' }}>
         {status && <div style={{ padding:'8px 14px', borderRadius:8, marginBottom:10, background:'#eafaf1', color:'#1e8449', fontSize:12, fontWeight:600 }}>{status}</div>}
         {!imported && (
           <div style={{ background:'#fff', border:'2px dashed #3b82f6', borderRadius:16, padding:24, textAlign:'center', marginBottom:16 }}>

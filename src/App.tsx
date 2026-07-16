@@ -299,9 +299,10 @@ export default function App() {
     // l'étiquette imprimée et le PDF traçabilité fournisseur par jour.
     const dlcFinal = ctrl.dlc || arrivage.dlc || "";
     const lotFournisseurFinal = ctrl.lot_fournisseur || arrivage.lot_fournisseur || "";
-    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut, poids_net: ctrl.poids_net, observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
+    const lotFournisseurListeFinal = ctrl.lot_fournisseur_liste || arrivage.lot_fournisseur_liste || [];
+    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut, poids_net: ctrl.poids_net, observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
-    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, ...(litige ? { litige } : {}), validatedAt: Date.now() });
+    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, ...(litige ? { litige } : {}), validatedAt: Date.now() });
     showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
     // Popup étiquette
     setPopupEtiquette({ ...arrivage, poids_brut: ctrl.poids_brut || arrivage.poids_brut, poids_net: ctrl.poids_net || arrivage.poids_net });
@@ -1745,7 +1746,7 @@ _PDF joint_`;
           </div>
         )}
 
-        <div style={{ maxWidth: 800, margin: "0 auto", padding: "12px 12px 100px" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "12px 12px 100px", boxSizing: "border-box" }}>
 
           {/* BANDEAU RECHERCHE LOT */}
           <div style={{ background: darkMode ? "#1a1d27" : "#fff", border: `1.5px solid ${darkMode ? "#2d3148" : "#e8e0d0"}`, borderRadius: 16, padding: "14px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
@@ -1799,7 +1800,7 @@ _PDF joint_`;
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="⚠️ Litiges Moorea" couleur="#dc2626" onBack={() => { setShowLitiges(false); setShowAccueil(true); }} onHome={() => { setShowLitiges(false); setShowAccueil(true); }} />
-        <div style={{ maxWidth: 800, margin: "-24px auto 0", padding: "0 20px 60px", position: "relative" }}>
+        <div style={{ maxWidth: 800, margin: "-24px auto 0", padding: "0 20px 60px", position: "relative", boxSizing: "border-box" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <button onClick={() => { setShowLitiges(false); setVue("historique"); setPageMode("arrivages"); setFilterDecision(""); setSortBy("decision"); }}
               style={{ display: "flex", alignItems: "center", gap: 16, padding: "20px 20px", borderRadius: 16, cursor: "pointer", border: "1.5px solid #e8e0d0", background: "#fff", textAlign: "left", width: "100%", fontFamily: "'Syne', sans-serif", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", transition: "all 0.15s" }}>
@@ -1854,7 +1855,7 @@ _PDF joint_`;
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="🔍 Chercher un lot" couleur="#3b82f6" onBack={() => { setShowRecherche(false); setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
-        <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 20px 60px" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 20px 60px", boxSizing: "border-box" }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: "16px", marginBottom: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
             <input
               value={searchLotQuery}
