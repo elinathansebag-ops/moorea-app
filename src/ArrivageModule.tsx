@@ -485,6 +485,90 @@ body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;
   return attente;
 }
 
+// ─── ÉTIQUETTE REFUS — imprimée quand un arrivage est refusé, avec un QR qui renvoie
+// directement (une fois scanné par un employé Moorea déjà connecté) vers le rapport lié pour
+// faire signer le bon de retour au fournisseur/transporteur qui vient récupérer la marchandise.
+export async function imprimerEtiquetteRefus(arrivage: any) {
+  const url = `${window.location.origin}${window.location.pathname}?refus=${arrivage.id}`;
+  const nomProduit = (arrivage.produit || "-").toUpperCase();
+  const produitFontSize = nomProduit.length <= 18 ? 15 : nomProduit.length <= 30 ? 13 : nomProduit.length <= 45 ? 11 : 9;
+  const fournisseur = (arrivage.fournisseur || "-").toUpperCase();
+
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:416px;height:264px;border:0";
+  document.body.appendChild(iframe);
+
+  let fini = false;
+  let resoudre: () => void = () => {};
+  const attente = new Promise<void>(resolve => { resoudre = resolve; });
+  const nettoyer = () => { if (fini) return; fini = true; iframe.remove(); resoudre(); };
+
+  const qrSvgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=3`;
+  let qrDataUrl = "";
+  try {
+    qrDataUrl = await new Promise<string>((resolve) => {
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 500; canvas.height = 500;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, 500, 500);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => resolve("");
+      img.src = qrSvgUrl;
+      setTimeout(() => resolve(""), 5000);
+    });
+  } catch { qrDataUrl = ""; }
+
+  const qrHtml = qrDataUrl
+    ? `<img src="${qrDataUrl}" class="qr-img" />`
+    : `<img src="${qrSvgUrl}" class="qr-img" onerror="this.style.display='none'" />`;
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Refus ${arrivage.lot_interne || arrivage.id}</title>
+<style>
+@page{size:110mm 70mm;margin:0}
+*{margin:0;padding:0;box-sizing:border-box;text-transform:uppercase}
+body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.etiquette{width:110mm;height:70mm;background:#fff;border:3px solid #000;padding:4mm;display:flex;gap:4mm;overflow:hidden}
+.qr-col{display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.qr-img{width:56mm;height:56mm;border:2px solid #000;background:#fff;object-fit:contain}
+.info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between}
+.refus{font-size:20px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:3px solid #000;padding-bottom:1.5mm}
+.fourn{font-size:12px;font-weight:700;color:#000;margin-top:1.5mm;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.15;margin-top:1.5mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;word-break:break-word}
+.qty-row{display:flex;align-items:baseline;gap:4px;margin-top:1.5mm}
+.qty{font-size:26px;font-weight:900;color:#000;line-height:1}
+.unite{font-size:12px;font-weight:700;color:#000}
+.scan{margin-top:1.5mm;font-size:9px;font-weight:700;color:#000}
+@media print{body{padding:0;background:#fff}}
+</style>
+</head><body>
+<div class="etiquette">
+  <div class="qr-col">${qrHtml}</div>
+  <div class="info-col">
+    <div>
+      <div class="refus">❌ REFUS</div>
+      <div class="fourn">${fournisseur}</div>
+      <div class="produit">${nomProduit}</div>
+    </div>
+    <div>
+      <div class="qty-row"><span class="qty">${arrivage.quantite ?? "-"}</span><span class="unite">${(arrivage.unite || "COLIS").toUpperCase()}</span></div>
+      <div class="scan">Scanner pour signer le bon de retour</div>
+    </div>
+  </div>
+</div>
+</body></html>`;
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.print();
+      iframe.contentWindow?.addEventListener("afterprint", nettoyer);
+    } catch { nettoyer(); }
+  };
+  iframe.srcdoc = html;
+  setTimeout(nettoyer, 90000);
+  return attente;
+}
+
 export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onClose: () => void }) {
   const totalColis = arrivage.quantite || 0;
   const [nbPalettes, setNbPalettes] = useState(1);

@@ -6,7 +6,7 @@ import IFCOModule from "./IFCOModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
 import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F } from "./shared";
-import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr } from "./ArrivageModule";
+import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, imprimerEtiquetteRefus } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
 import { RHApp } from "./RHApp";
 // import { EtiquettesModule } from "./EtiquettesModule"; // TEMP: fichier manquant sur GitHub — désactivé pour débloquer le build
@@ -17,6 +17,7 @@ import { ProgrammeAchatModule } from "./ProgrammeAchatModule";
 
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
+  const [qrRefusArrivageId, setQrRefusArrivageId] = useState<string | null>(null);
   const [vue, setVue] = useState("__none__");
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
   const [fournisseur, setFournisseur] = useState("");
@@ -271,7 +272,31 @@ export default function App() {
     const id = params.get("id");
     if (id) { setShowPalette(id); setShowAccueil(false); }
     else if (lot) { setShowPalette(lot); setShowAccueil(false); }
+    // Étiquette refus scannée : "refus" contient l'id de l'ARRIVAGE (pas du rapport), pour
+    // pouvoir retrouver dynamiquement le rapport lié même s'il a été créé après l'impression
+    // de l'étiquette. Réservé au personnel déjà connecté (@moorea.fr) — pas de page publique.
+    const refus = params.get("refus");
+    if (refus) setQrRefusArrivageId(refus);
   }, []);
+  // Une fois connecté et les données chargées, ouvre directement la signature du bon de retour
+  // si un rapport est déjà lié à cet arrivage, sinon ouvre l'écran Stock Refus pour en créer un.
+  useEffect(() => {
+    if (!qrRefusArrivageId || !user?.email?.endsWith("@moorea.fr")) return;
+    if (!arrivages.length && !rapports.length) return; // attend que les données Firebase arrivent
+    const arrivageLie = arrivages.find((a: any) => a.id === qrRefusArrivageId);
+    const rapportLie = rapports.find((r: any) => r.arrivage_id === qrRefusArrivageId);
+    setShowAccueil(false);
+    setPageMode("arrivages");
+    if (rapportLie) {
+      setVue("historique");
+      genererBonRetour(rapportLie);
+    } else if (arrivageLie) {
+      setVue("stock_refus" as any);
+      showToast("Aucun rapport lié pour l'instant — fais d'abord \"Faire un rapport\".", "error");
+    }
+    window.history.replaceState({}, "", window.location.pathname);
+    setQrRefusArrivageId(null);
+  }, [qrRefusArrivageId, user, arrivages, rapports]);
   useEffect(() => {
     if (!showStock) return;
     const loadOv = async () => {
@@ -2500,6 +2525,10 @@ _PDF joint_`;
                     <div style={{ borderTop: "1px solid #f0f0f0", padding: "10px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => ouvrirRapportDepuisArrivage(a)} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
                         📋 {rapport ? "Nouveau rapport" : "Faire un rapport"}
+                      </button>
+                      <button onClick={() => imprimerEtiquetteRefus(a)} title="Imprimer une étiquette refus avec QR pour faire signer le bon de retour"
+                        style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#f9fafb", color: "#374151", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+                        🏷️ Étiquette refus
                       </button>
                       <button onClick={async () => {
                         if (!window.confirm(`Confirmer que le fournisseur ${a.fournisseur} a récupéré le lot ${a.lot_interne || a.produit} ?`)) return;
