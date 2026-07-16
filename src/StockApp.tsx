@@ -850,7 +850,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         <div class="progress-bg"><div class="progress-bar" id="s-prog" style="width:0%"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input class="search-input" id="s-srch" placeholder="🔍 Rechercher..." style="min-width:160px"/>
-          <button class="btn btn-sm btn-danger" onclick="sResetCounts()" style="opacity:.5;font-size:11px">↺ Tout réinitialiser</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
           <button class="btn btn-sm btn-gold" onclick="sScannerPaletteComplete()">📷 Scanner une palette complète</button>
