@@ -1623,7 +1623,13 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
             <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 14 }}>📄 Traçabilité fournisseur — {date}</span>
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => { try { pdfApercuTracaIframeRef.current?.contentWindow?.print(); } catch {} }}
+                onClick={() => {
+                  // Voir commentaire équivalent dans App.tsx : un nouvel onglet ouvre le vrai
+                  // visualiseur PDF natif de l'appareil (fiable sur iPad), contrairement à
+                  // contentWindow.print() sur un PDF affiché dans un iframe.
+                  try { if (!window.open(pdfApercuTraca!, "_blank")) pdfApercuTracaIframeRef.current?.contentWindow?.print(); }
+                  catch { try { pdfApercuTracaIframeRef.current?.contentWindow?.print(); } catch {} }
+                }}
                 style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
               >
                 🖨 Imprimer

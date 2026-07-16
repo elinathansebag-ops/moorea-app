@@ -17,26 +17,23 @@ import { ProgrammeAchatModule } from "./ProgrammeAchatModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
 // passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
-// il lui faut une image déjà chargée (data URI/canvas). Sans ce préchargement, l'ajout de
-// la photo échouait silencieusement (catch vide) et la section "Photos" du rapport PDF
-// restait vide. Même principe que le chargement du QR code sur les étiquettes.
+// il lui faut une image déjà chargée (data URI). Sans ce préchargement, l'ajout de la photo
+// échouait silencieusement et la section "Photos" du rapport PDF restait vide.
+// On passe par /api/fetch-image (proxy côté serveur) plutôt que de charger l'image
+// directement dans un <canvas> : imgBB n'envoie pas d'en-têtes CORS permissifs, donc un
+// canvas chargé avec l'image distante est "tainted" et toDataURL() échoue silencieusement
+// (SecurityError attrapé par le catch) — en repassant par notre propre domaine, l'image
+// devient same-origin et se convertit sans problème.
 async function chargerImageEnDataUrl(url: string): Promise<string> {
   try {
+    const resp = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
+    if (!resp.ok) return "";
+    const blob = await resp.blob();
     return await new Promise<string>((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = img.naturalWidth || 800;
-          canvas.height = img.naturalHeight || 600;
-          canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/jpeg", 0.85));
-        } catch { resolve(""); }
-      };
-      img.onerror = () => resolve("");
-      img.src = url;
-      setTimeout(() => resolve(""), 8000);
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
     });
   } catch { return ""; }
 }
@@ -2196,7 +2193,15 @@ _PDF joint_`;
             <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 14 }}>📄 Aperçu du bon de reprise</span>
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => { try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {} }}
+                onClick={() => {
+                  // Ouvre le PDF dans un nouvel onglet plutôt que de scripter l'impression de
+                  // l'iframe : sur iPad/Safari, un PDF affiché dans un iframe est rendu par le
+                  // visualiseur natif, qui n'expose pas contentWindow.print() de façon fiable —
+                  // le bouton ne faisait alors rien. Un nouvel onglet, lui, ouvre systématiquement
+                  // le vrai visualiseur PDF de l'appareil, avec ses propres boutons imprimer/partager.
+                  try { if (!window.open(pdfApercu!, "_blank")) pdfApercuIframeRef.current?.contentWindow?.print(); }
+                  catch { try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {} }
+                }}
                 style={{ padding: "8px 18px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
               >
                 🖨 Imprimer
