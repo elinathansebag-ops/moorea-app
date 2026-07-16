@@ -15,6 +15,32 @@ import { YukonApp } from "./YukonApp";
 import { RackModule } from "./RackModule";
 import { ProgrammeAchatModule } from "./ProgrammeAchatModule";
 
+// ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
+// passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
+// il lui faut une image déjà chargée (data URI/canvas). Sans ce préchargement, l'ajout de
+// la photo échouait silencieusement (catch vide) et la section "Photos" du rapport PDF
+// restait vide. Même principe que le chargement du QR code sur les étiquettes.
+async function chargerImageEnDataUrl(url: string): Promise<string> {
+  try {
+    return await new Promise<string>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth || 800;
+          canvas.height = img.naturalHeight || 600;
+          canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        } catch { resolve(""); }
+      };
+      img.onerror = () => resolve("");
+      img.src = url;
+      setTimeout(() => resolve(""), 8000);
+    });
+  } catch { return ""; }
+}
+
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
   const [qrRefusArrivageId, setQrRefusArrivageId] = useState<string | null>(null);
@@ -1261,13 +1287,17 @@ _PDF joint_`;
       const imgW=(CW-8)/3;
       const imgH=imgW*0.75;
       const totalRows2 = Math.ceil(allPhotos.length / 3);
+      // Précharge chaque photo en data URL avant de l'ajouter — voir chargerImageEnDataUrl.
       for (let rowI = 0; rowI < totalRows2; rowI++) {
         checkY(imgH + 4);
         for (let col = 0; col < 3; col++) {
           const i = rowI * 3 + col;
           if (i >= allPhotos.length) break;
           const px = M + col * (imgW + 4);
-          try { doc.addImage(allPhotos[i].url, "JPEG", px, y, imgW, imgH, "photo"+i, "MEDIUM"); } catch {}
+          const dataUrl = await chargerImageEnDataUrl(allPhotos[i].url);
+          if (dataUrl) {
+            try { doc.addImage(dataUrl, "JPEG", px, y, imgW, imgH, "photo"+i, "MEDIUM"); } catch {}
+          }
         }
         y += imgH + 4;
       }
@@ -1401,15 +1431,11 @@ _PDF joint_`;
     doc.setTextColor(150, 150, 150); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
     doc.text(`Moorea - Agreage Rungis - ${r.date || "-"}${r.numeroRapport ? " - " + r.numeroRapport : ""}`, W / 2, 291, { align: "center" });
 
-    const pdfBase64 = doc.output("datauristring").split(",")[1];
-    const byteChars = atob(pdfBase64);
-    const byteArr = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([byteArr], { type: "application/pdf" });
     // Aperçu intégré au site (au lieu d'ouvrir un nouvel onglet où on ne peut pas
     // forcément choisir son imprimante) — voir la modale d'aperçu plus bas, qui
-    // déclenche aussi l'impression automatiquement à l'ouverture.
-    setPdfApercu(URL.createObjectURL(blob));
+    // déclenche aussi l'impression automatiquement à l'ouverture. On utilise directement
+    // la data URI de jsPDF, sans passer par un blob: (page blanche fiable sur iPad/Safari).
+    setPdfApercu(doc.output("datauristring"));
 
     try {
       if (r.firebaseKey) {
@@ -1439,14 +1465,11 @@ _PDF joint_`;
   const downloadPDF = async (r: any) => {
     try {
       const pdfDataUri = await generatePDFBase64(r);
-      const pdfBase64 = pdfDataUri.split(",")[1];
-      const byteChars = atob(pdfBase64);
-      const byteArr = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([byteArr], { type: "application/pdf" });
-      // Aperçu intégré au site + impression automatique (même modale que le bon de
-      // reprise) au lieu d'ouvrir un nouvel onglet.
-      setPdfApercu(URL.createObjectURL(blob));
+      // Aperçu intégré au site (au lieu d'ouvrir un nouvel onglet) — on utilise directement
+      // la data URI renvoyée par jsPDF, SANS repasser par un blob: (URL.createObjectURL) : ce
+      // dernier donne une page blanche dans l'iframe sur iPad/Safari iOS de façon fiable,
+      // alors qu'une data URI s'affiche correctement.
+      setPdfApercu(pdfDataUri);
     } catch (e: any) {
       console.error("Erreur génération PDF rapport:", e);
       showToast("Erreur génération PDF : " + (e?.message || String(e)), "error");
@@ -2179,7 +2202,7 @@ _PDF joint_`;
                 🖨 Imprimer
               </button>
               <button
-                onClick={() => { URL.revokeObjectURL(pdfApercu); setPdfApercu(null); }}
+                onClick={() => setPdfApercu(null)}
                 style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.2)", background: "transparent", color: "#fff", fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
               >
                 ✕ Fermer
