@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update, push } from "./firebase";
 import { PageHeader } from "./shared";
 import { Html5Qrcode } from "html5-qrcode";
+import jsPDF from "jspdf";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ─── COMPOSANT STOCK APP EMBARQUÉE ───
@@ -885,8 +886,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         <div class="section-title" style="margin:0" id="s-ecarts-title">Écarts</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-sm" onclick="sShowPage('comptage')">← Modifier</button>
-          <button class="btn btn-sm btn-gold" onclick="sExportCSV()">⬇ CSV</button>
           <button class="btn btn-sm" onclick="sExportPDF()">📄 PDF</button>
+          <button class="btn btn-sm btn-gold" id="s-btn-envoyer-jordan" onclick="sEnvoyerPDFJordan()">✉️ Envoyer à Jordan</button>
         </div>
       </div>
       <div class="stat-grid" id="s-metrics-e"></div>
@@ -1666,8 +1667,20 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
       (window as any).sRenderTable = sRenderTable;
 
-      (window as any).sTerminerComptage = () => {
+      (window as any).sTerminerComptage = async () => {
         document.getElementById("s-nav-ecarts")?.classList.remove("hidden");
+        // Clôture automatiquement le stock dès qu'on passe aux écarts, pour éviter
+        // qu'il reste "ouvert" par oubli — reste réouvrable à tout moment depuis
+        // la liste des stocks (bouton "🔓 Rouvrir"), donc rien n'est bloqué définitivement.
+        if (currentImportId) {
+          try {
+            const snap = await getDoc(doc(db, "stocks", currentImportId));
+            if (snap.exists() && !(snap.data() as any).cloture) {
+              await setDoc(doc(db, "stocks", currentImportId), { ...snap.data(), cloture: true, clotureDate: new Date().toLocaleString("fr-FR") }, { merge: true });
+              toast("🔒 Stock clôturé automatiquement (réouvrable depuis la liste des stocks)");
+            }
+          } catch {}
+        }
         (window as any).sShowPage("ecarts");
       };
 
@@ -1870,6 +1883,81 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const nc = sorted.filter(a => !counted(a)).length;
         const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>🌿 Moorea · Inventaire ${currentTeam}</h1><p>${now} · ${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
         openPdfWindow(html, `Moorea · Inventaire ${currentTeam}`);
+      };
+
+      // Envoie le PDF de l'inventaire par email à Jordan (contrôle du matin) — génère un
+      // vrai PDF binaire via jsPDF (contrairement à _doPrintPDF qui ne fait que de l'impression
+      // navigateur) pour pouvoir le joindre à l'email via /api/send-email.
+      (window as any).sEnvoyerPDFJordan = async () => {
+        const btn = document.getElementById("s-btn-envoyer-jordan") as HTMLButtonElement | null;
+        if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent || ""; btn.textContent = "⏳ Envoi..."; }
+        try {
+          const now = new Date().toLocaleString("fr-FR");
+          const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
+          const manq = sorted.filter(a => counted(a) && ecart(a) < 0).length;
+          const exc = sorted.filter(a => counted(a) && ecart(a) > 0).length;
+          const nc = sorted.filter(a => !counted(a)).length;
+
+          const doc2 = new jsPDF({ unit: "mm", format: "a4" });
+          const W = 210, M = 14, CW = W - M * 2;
+          doc2.setFillColor(10, 10, 10); doc2.rect(0, 0, W, 22, "F");
+          doc2.setFillColor(200, 168, 75); doc2.rect(0, 22, W, 2, "F");
+          doc2.setTextColor(200, 168, 75); doc2.setFont("helvetica", "bold"); doc2.setFontSize(14);
+          doc2.text("MOOREA", M, 14);
+          doc2.setTextColor(255, 255, 255); doc2.setFontSize(10);
+          doc2.text(`Inventaire Stock - ${currentTeam}`, M + 32, 14);
+          doc2.setTextColor(150, 150, 150); doc2.setFontSize(8);
+          doc2.text(now, W - M, 14, { align: "right" });
+
+          let y = 30;
+          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
+          doc2.text(`${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
+          y += 8;
+
+          const colArticle = M + 2, colStock = M + 130, colCompte = M + 155, colEcart = M + CW - 6;
+          doc2.setFillColor(250, 248, 240); doc2.rect(M, y, CW, 7, "F");
+          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8);
+          doc2.text("ARTICLE", colArticle, y + 5);
+          doc2.text("STOCK", colStock, y + 5, { align: "center" });
+          doc2.text("COMPTÉ", colCompte, y + 5, { align: "center" });
+          doc2.text("ÉCART", colEcart, y + 5, { align: "right" });
+          y += 10;
+
+          doc2.setFont("helvetica", "normal");
+          sorted.forEach(a => {
+            if (y > 280) { doc2.addPage(); y = 16; }
+            const e = counted(a) ? ecart(a) : null;
+            doc2.setTextColor(30, 30, 30); doc2.setFontSize(8);
+            doc2.text(String(a.article).substring(0, 60), colArticle, y + 4);
+            doc2.text(String(a.nb_colis), colStock, y + 4, { align: "center" });
+            doc2.text(counted(a) ? String(a.compte) : "-", colCompte, y + 4, { align: "center" });
+            const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
+            doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
+            doc2.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y + 4, { align: "right" });
+            y += 6;
+          });
+
+          const pdfDataUri = doc2.output("datauristring");
+          const base64 = pdfDataUri.split(",")[1];
+          const filename = `inventaire_${currentTeam.toLowerCase()}_${TODAY}.pdf`;
+
+          const resp = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: ["jordan.jouanest@moorea.fr"],
+              subject: `📦 Inventaire Stock ${currentTeam} - ${TODAY}`,
+              html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${currentTeam}</b> du ${now}.</p><p>${sorted.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p>`,
+              attachments: [{ filename, content: base64 }],
+            }),
+          });
+          if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || "Erreur envoi"); }
+          toast("✉️ PDF envoyé à Jordan");
+        } catch (err: any) {
+          toast("Erreur envoi : " + (err?.message || String(err)));
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || "✉️ Envoyer à Jordan"; }
+        }
       };
 
       (window as any)._doCloturerStock = async () => {

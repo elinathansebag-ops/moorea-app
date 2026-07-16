@@ -15,11 +15,11 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { subject, html, cc = [], attachments = [] } = req.body;
+    const { subject, html, cc = [], attachments = [], to } = req.body;
 
     const payload = {
       from: 'Moorea Agréage <agreage@moorea.fr>',
-      to: ['qualite@moorea.fr', 'commercial@moorea.fr'],
+      to: Array.isArray(to) && to.length > 0 ? to : ['qualite@moorea.fr', 'commercial@moorea.fr'],
       subject,
       html,
     };
