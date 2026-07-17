@@ -1543,12 +1543,12 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     doc.text(`Généré par Moorea — ${date}`, W / 2, 291, { align: "center" });
 
     // Aperçu visible intégré à la page + impression via un vrai clic (voir commentaire plus haut
-    // sur pdfApercuTraca) — fiable sur iPad/Safari, contrairement à l'ancien iframe hors-écran.
-    setPdfApercuTraca(URL.createObjectURL(doc.output("blob")));
+    // sur pdfApercuTraca) — on utilise la data URI de jsPDF directement (pas de blob: + createObjectURL),
+    // car un blob: chargé dans un <iframe src> affiche une page blanche sur iPad/Safari.
+    setPdfApercuTraca(doc.output("datauristring"));
   };
 
   const fermerApercuTraca = () => {
-    if (pdfApercuTraca) URL.revokeObjectURL(pdfApercuTraca);
     setPdfApercuTraca(null);
   };
 
