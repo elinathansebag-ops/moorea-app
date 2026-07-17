@@ -1521,22 +1521,37 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     doc.text(`Traçabilité fournisseur — ${date}`, W - M, 14, { align: "right" });
     y = 32;
     doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    const colX = { fourn: M, art: M + 45, lot: M + 100, qte: W - M - 20 };
+    // Colonnes élargies (notamment "N° traçabilité", souvent une liste de plusieurs lots
+    // séparés par des virgules) pour limiter les retours à la ligne.
+    const colX = { fourn: M, art: M + 44, lot: M + 96, qte: W - M - 20 };
+    const colW = { fourn: 41, art: 49, lot: 63 };
     doc.text("FOURNISSEUR", colX.fourn, y);
     doc.text("ARTICLE", colX.art, y);
     doc.text("N° TRAÇABILITÉ", colX.lot, y);
     doc.text("QTÉ", colX.qte, y);
-    y += 3; doc.setDrawColor(200, 168, 75); doc.line(M, y, W - M, y); y += 6;
+    y += 3; doc.setDrawColor(200, 168, 75); doc.line(M, y, W - M, y); y += 7;
     doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    // Hauteur de ligne fixe utilisée pour empiler manuellement chaque cellule ligne par ligne —
+    // la hauteur de chaque rangée du tableau s'adapte ensuite au nombre de lignes réellement
+    // nécessaires (avant, une hauteur fixe provoquait un chevauchement du texte quand un article
+    // ou un n° de traçabilité était trop long et passait sur plusieurs lignes).
+    const lineH = 4.3;
     tous.forEach((a: any, i: number) => {
-      if (y > 280) { doc.addPage(); y = 20; }
-      if (i % 2 === 0) { doc.setFillColor(250, 248, 240); doc.rect(M, y - 4.5, W - M * 2, 6.5, "F"); }
-      doc.setTextColor(26, 46, 26);
-      doc.text(String(a.fournisseur || "-"), colX.fourn, y, { maxWidth: 43 });
-      doc.text(String(a.produit || "-"), colX.art, y, { maxWidth: 53 });
-      doc.text(String(a.lot_fournisseur || "-"), colX.lot, y, { maxWidth: 45 });
+      const fournLines = doc.splitTextToSize(String(a.fournisseur || "-"), colW.fourn) as string[];
+      const artLines = doc.splitTextToSize(String(a.produit || "-"), colW.art) as string[];
+      const lotLines = doc.splitTextToSize(String(a.lot_fournisseur || "-"), colW.lot) as string[];
+      const nbLignes = Math.max(fournLines.length, artLines.length, lotLines.length, 1);
+      const rowH = nbLignes * lineH + 2.2;
+
+      if (y - 4.5 + rowH > 282) { doc.addPage(); y = 20; }
+
+      if (i % 2 === 0) { doc.setFillColor(250, 248, 240); doc.rect(M, y - 4.5, W - M * 2, rowH, "F"); }
+      doc.setTextColor(26, 46, 26); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      fournLines.forEach((l, li) => doc.text(l, colX.fourn, y + li * lineH));
+      artLines.forEach((l, li) => doc.text(l, colX.art, y + li * lineH));
+      lotLines.forEach((l, li) => doc.text(l, colX.lot, y + li * lineH));
       doc.text(`${a.quantite ?? "-"} ${(a.unite || "").toUpperCase()}`, colX.qte, y);
-      y += 6.5;
+      y += rowH;
     });
     doc.setFillColor(10, 10, 10); doc.rect(0, 285, W, 12, "F");
     doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
