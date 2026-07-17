@@ -70,7 +70,7 @@ export default function App() {
   const [etiquette, setEtiquette] = useState(initialEtiquette);
   const [observations, setObservations] = useState("");
   const [controles, setControles] = useState<Record<string, string>>({
-    temperature: "C", fraicheur: "C", sanitaire: "C", maturite: "C", coloration: "C"
+    temperature: "C", fraicheur: "C", maturite: "C", coloration: "C"
   });
   const [sendingId, setSendingId] = useState<string | null>(null);
 
@@ -595,14 +595,11 @@ export default function App() {
   };
 
   const scoreGlobal = (n: Record<string, number>) => {
-    const { qualite = 0, couleur = 0, emballage = 0 } = n;
-    if (!qualite && !couleur && !emballage) return null;
-    const filled = (qualite > 0 ? 1 : 0) + (couleur > 0 ? 1 : 0) + (emballage > 0 ? 1 : 0);
-    if (filled === 0) return null;
-    if (qualite > 0 && couleur > 0 && emballage > 0) {
-      return (qualite * 0.4 + couleur * 0.4 + emballage * 0.2).toFixed(1);
-    }
-    const vals = [qualite, couleur, emballage].filter(v => v > 0);
+    // Moyenne simple de tous les critères renseignés (Qualité visuelle, Couleur, État
+    // emballage, Sanitaire, État général...) — générique pour s'adapter automatiquement
+    // si des critères sont ajoutés ou retirés dans CRITERES (shared.tsx).
+    const vals = Object.values(n).filter((v) => typeof v === "number" && v > 0);
+    if (vals.length === 0) return null;
     return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
   };
 
@@ -613,7 +610,7 @@ export default function App() {
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
     setPhotos([]); setPoidsStatut(""); setPoidsEcart("");
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
-    setControles({ temperature: "C", fraicheur: "C", sanitaire: "C", maturite: "C", coloration: "C" });
+    setControles({ temperature: "C", fraicheur: "C", maturite: "C", coloration: "C" });
   };
 
 
@@ -813,7 +810,7 @@ _PDF joint_`;
     setEtiquetteAbsente(r.etiquetteAbsente || false);
     setEtiquette(r.etiquette || initialEtiquette);
     setObservations(r.observations || "");
-    setControles(r.controles || { temperature: "", fraicheur: "", sanitaire: "", maturite: "", coloration: "" });
+    setControles(r.controles || { temperature: "", fraicheur: "", maturite: "", coloration: "" });
     setPhotos(r.photoUrls?.length > 0 ? r.photoUrls.map((url: string) => ({ name: "photo", url })) : []);
     setEditRapport(r);
     setVue("form");
@@ -1171,27 +1168,31 @@ _PDF joint_`;
     y += 4;
 
     section("EVALUATION QUALITE");
+    checkY(40); // jusqu'à 2 rangées de criteres (5 criteres sur 3 colonnes) + score juste après
     const noteLabels: Record<number,string> = {1:"Insuffisant",2:"Passable",3:"Correct",4:"Bon",5:"Excellent"};
     const noteColors2: Record<number,[number,number,number]> = {1:[239,68,68],2:[249,115,22],3:[234,179,8],4:[34,197,94],5:[21,128,61]};
-    const criteresLabels: Record<string,string> = { qualite: "Qualite visuelle", couleur: "Couleur", emballage: "Etat emballage" };
+    const criteresLabels: Record<string,string> = { qualite: "Qualite visuelle", couleur: "Couleur", emballage: "Etat emballage", sanitaire: "Sanitaire", etat_general: "Etat general" };
     const cols3 = 3; const cw3 = CW / cols3;
-    let hasCritere = false;
+    let hasCritere = false; let maxRow = 0;
     Object.entries(criteresLabels).forEach(([key, label], idx) => {
       const val = r.notes?.[key];
       if (val > 0) {
         hasCritere = true;
         const col = idx % cols3;
+        const row = Math.floor(idx / cols3);
+        maxRow = Math.max(maxRow, row);
         const ix = M + col * cw3;
+        const iy = y + row * 16;
         const nc = noteColors2[val];
         doc.setFillColor(...nc);
-        doc.roundedRect(ix, y-1, cw3-2, 12, 2, 2, "F");
+        doc.roundedRect(ix, iy-1, cw3-2, 12, 2, 2, "F");
         doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
-        doc.text(label, ix+3, y+4);
+        doc.text(label, ix+3, iy+4);
         doc.setFontSize(9);
-        doc.text(`${val}/5 - ${noteLabels[val]}`, ix+3, y+9);
+        doc.text(`${val}/5 - ${noteLabels[val]}`, ix+3, iy+9);
       }
     });
-    if (hasCritere) y += 16;
+    if (hasCritere) y += 16 * (maxRow + 1);
     if (r.score) {
       const scoreNum = parseFloat(r.score);
       const scoreColor2: [number,number,number] = scoreNum >= 4 ? [22,163,74] : scoreNum >= 3 ? [217,119,6] : [220,38,38];
@@ -1249,7 +1250,6 @@ _PDF joint_`;
       const controleItems = [
         { id: "temperature", label: "Temperature" },
         { id: "fraicheur", label: "Fraicheur" },
-        { id: "sanitaire", label: "Sanitaire" },
         { id: "maturite", label: "Maturite" },
         { id: "coloration", label: "Coloration" },
       ];
@@ -2768,7 +2768,6 @@ _PDF joint_`;
                     {[
                       { id: "temperature", label: "Température" },
                       { id: "fraicheur", label: "Fraîcheur" },
-                      { id: "sanitaire", label: "Sanitaire" },
                       { id: "maturite", label: "Maturité" },
                       { id: "coloration", label: "Coloration" },
                     ].map((item, idx) => (

@@ -13,6 +13,8 @@ export const CRITERES = [
   { id: "qualite", label: "Qualité visuelle", icon: "👁", desc: "Aspect général", accent: "#22c55e" },
   { id: "couleur", label: "Couleur", icon: "🎨", desc: "Teinte, homogénéité", accent: "#f59e0b" },
   { id: "emballage", label: "État emballage", icon: "📦", desc: "Intégrité, propreté", accent: "#3b82f6" },
+  { id: "sanitaire", label: "Sanitaire", icon: "🧼", desc: "Hygiène, propreté", accent: "#0ea5e9" },
+  { id: "etat_general", label: "État général", icon: "🌿", desc: "Aspect global", accent: "#8b5cf6" },
 ];
 
 export const ETIQUETTE_ITEMS = [
@@ -25,7 +27,7 @@ export const ETIQUETTE_ITEMS = [
 
 export const NOTE_LABELS: Record<number, string> = { 1: "Insuffisant", 2: "Passable", 3: "Correct", 4: "Bon", 5: "Excellent" };
 export const NOTE_COLORS: Record<number, string> = { 1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#22c55e", 5: "#15803d" };
-export const initialNotes = { qualite: 0, couleur: 0, emballage: 0 };
+export const initialNotes = { qualite: 0, couleur: 0, emballage: 0, sanitaire: 0, etat_general: 0 };
 export const initialEtiquette = { nom_produit: true, poids_etiq: true, origine: true, ggn: true, num_lot: true };
 
 export const styles = `
