@@ -12,6 +12,18 @@
     <link rel="icon" href="/Agreage.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <title>App Moorea</title>
+    <!--
+      Reset minimal et volontairement très ciblé (uniquement html/body margin+padding à 0) :
+      certaines pages (Retours commandes, Gencodes, Catalogue, Rotation Racks, IFCO, Programme
+      d'achat...) sont des modules autonomes qui font un retour direct dans App.tsx avant le
+      conteneur principal (celui qui injecte le reset CSS complet de shared.tsx) — elles ne
+      bénéficient donc jamais de ce reset. Résultat : la marge par défaut du body (8px
+      navigateur) laissait apparaître un contour blanc tout autour de ces pages. On ne remet
+      QUE html/body ici (pas box-sizing, pas les autres règles de shared.tsx) pour éviter de
+      reproduire la régression déjà rencontrée avec un reset global plus large (qui avait
+      cassé des onglets/boutons ailleurs).
+    -->
+    <style>html, body { margin: 0; padding: 0; }</style>
   </head>
   <body>
     <div id="root"></div>
