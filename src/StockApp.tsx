@@ -1512,7 +1512,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         try {
           await setDoc(doc(db, "stocks", sid), { cloture: false, clotureDate: null }, { merge: true });
           toast("🔓 Stock rouvert !");
-          (window as any).sShowPage("stocks");
+          (window as any).sShowPage("home");
         } catch { toast("Erreur"); }
       };
 
@@ -2003,7 +2003,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           if (sdata.debutComptage) { upd.dureeComptageMs = Date.now() - sdata.debutComptage; dureeMsg = ` — durée du comptage : ${formatDuree(upd.dureeComptageMs)}`; }
           await setDoc(doc(db, "stocks", currentImportId), upd, { merge: true });
           toast("🔒 Stock clôturé !" + dureeMsg);
-          setTimeout(() => (window as any).sShowPage("stocks"), 1500);
+          setTimeout(() => (window as any).sShowPage("home"), 1500);
         } catch { toast("Erreur clôture"); }
       };
 
