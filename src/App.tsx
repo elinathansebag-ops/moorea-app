@@ -2701,7 +2701,6 @@ _PDF joint_`;
                 <F label="N° Lot Moorea"><input type="number" value={lotMoorea} onChange={e => setLotMoorea(e.target.value)} placeholder="Ex: 123456" /></F>
                 <F label="N° Lot Fournisseur"><input value={lotFournisseur} onChange={e => setLotFournisseur(e.target.value)} placeholder="N° lot fournisseur" /></F>
                 <F label="DLC"><input type="date" value={dlc} onChange={e => setDlc(e.target.value)} /></F>
-                <F label="N° de traçabilité"><input value={numeroTracabilite} onChange={e => setNumeroTracabilite(e.target.value)} placeholder="N° de traçabilité" /></F>
               </div>
             </div>
             <div style={{ marginBottom: 16, background: "#f0f8ff", border: "1.5px solid #bfdbfe", borderRadius: 20, padding: "16px 24px", display: "flex", alignItems: "center", gap: 16 }}>
