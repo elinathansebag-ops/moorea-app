@@ -1559,7 +1559,7 @@ _PDF joint_`;
   if (!user || !user.email?.endsWith("@moorea.fr")) return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0a0a", padding: 24 }}>
       <div style={{ marginBottom: 32, textAlign: "center" }}>
-        <img src="/Agreage.svg" alt="App Moorea" style={{ width: 96, height: 96, marginBottom: 12 }} />
+        <img src="/Agreage_1.svg" alt="App Moorea" style={{ width: 96, height: 96, marginBottom: 12 }} />
         <div style={{ fontSize: 22, fontWeight: 800, color: "#c8a84b", fontFamily: "'Syne', sans-serif", letterSpacing: 2 }}>App Moorea</div>
         <div style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Hub · Agréage Rungis</div>
       </div>
