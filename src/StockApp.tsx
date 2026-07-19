@@ -923,8 +923,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       </div>
       <div id="s-config-content" style="display:none">
         <p style="font-size:13px;color:#6b7280;margin-bottom:1.25rem">Liste des articles et leur équipe.</p>
-        <div style="margin-bottom:1rem">
+        <div style="margin-bottom:1rem;display:flex;gap:8px;flex-wrap:wrap">
           <button onclick="sSyncGMSPermanent()" style="background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Sync GMS permanent dans le catalogue</button>
+          <button onclick="sTesterEmail()" id="s-btn-test-email" style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✉️ Tester l'envoi d'email</button>
         </div>
         <div class="card">
           <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
@@ -1717,6 +1718,35 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (!confirm("Réinitialiser tous les comptages ?")) return;
         articles.forEach(a => { a.compte = null; for (let i = 1; i <= 8; i++) a["compte" + i] = null; a.detruire = null; });
         updateMetricsC(); sRenderTable(); saveComptages();
+      };
+
+      // Bouton de test : envoie un email de test à elinathan.sebag@moorea.fr via /api/send-email,
+      // pour vérifier rapidement (depuis la Configuration) que l'envoi d'emails fonctionne
+      // (utile après un changement de clé API Resend par exemple).
+      (window as any).sTesterEmail = async () => {
+        const btn = document.getElementById("s-btn-test-email") as HTMLButtonElement | null;
+        if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent || ""; btn.textContent = "⏳ Envoi..."; }
+        try {
+          const now = new Date().toLocaleString("fr-FR");
+          const resp = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: ["elinathan.sebag@moorea.fr"],
+              subject: "✅ Test d'envoi d'email — Moorea",
+              html: `<p>Ceci est un email de test envoyé depuis la Configuration de l'app Moorea.</p><p>Envoyé le ${now}.</p><p>Si tu reçois ce message, l'envoi d'email fonctionne correctement.</p>`,
+            }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || err.message || (typeof err === "object" ? JSON.stringify(err) : String(err)) || `Erreur envoi (HTTP ${resp.status})`);
+          }
+          toast("✅ Email de test envoyé à elinathan.sebag@moorea.fr");
+        } catch (err: any) {
+          toast("Erreur envoi : " + (err?.message || String(err)));
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || "✉️ Tester l'envoi d'email"; }
+        }
       };
 
       (window as any).sSyncGMSPermanent = async () => {
