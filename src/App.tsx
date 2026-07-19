@@ -85,6 +85,9 @@ export default function App() {
   const [horsListe, setHorsListe] = useState({ produit: "", fournisseur: "", lot_interne: "", lot_fournisseur: "", origine: "", quantite: "", unite: "colis", type: "refusé", raison: "", pct: "" });
   const [rapportArrivage, setRapportArrivage] = useState<any | null>(null);
   const [filtersArr, setFiltersArr] = useState({ q: "", statut: "tous" });
+  // Accordéons "semaine" ouverts sur l'écran Arrivages (regroupement par semaine ISO, comme
+  // dans le module Stock) — fermés par défaut, y compris la semaine la plus récente.
+  const [openWeeksArr, setOpenWeeksArr] = useState<Set<string>>(new Set());
   const [histSearchArr, setHistSearchArr] = useState("");
   const [searchDate, setSearchDate] = useState("");
   const [searchText, setSearchText] = useState("");
@@ -2386,16 +2389,61 @@ _PDF joint_`;
                 } catch { showToast("Erreur analyse étiquette", "error"); }
               };
 
+              // Regroupe les jours par semaine ISO, en accordéons (fermés par défaut, même la
+              // semaine la plus récente), comme dans le module Stock — chaque jour ouvre ensuite
+              // son propre accordéon avec les fournisseurs (DateBlock/FournisseurBlock, inchangés).
+              const parseDateFr = (d: string): Date => {
+                const p = d.split("/");
+                return p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : new Date(0);
+              };
+              const getISOWeek = (date: Date): { week: number; year: number } => {
+                const dt = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+                const dayNum = dt.getUTCDay() || 7;
+                dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+                const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+                const weekNo = Math.ceil((((dt.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+                return { week: weekNo, year: dt.getUTCFullYear() };
+              };
+              const sortedDates = Object.entries(byDate).sort((a, b) => parseDateFr(b[0]).getTime() - parseDateFr(a[0]).getTime());
+              const weekGroups = new Map<string, { week: number; year: number; dates: [string, any[]][] }>();
+              sortedDates.forEach(([date, arr]) => {
+                const { week, year } = getISOWeek(parseDateFr(date));
+                const key = `${year}-S${String(week).padStart(2, "0")}`;
+                if (!weekGroups.has(key)) weekGroups.set(key, { week, year, dates: [] });
+                weekGroups.get(key)!.dates.push([date, arr]);
+              });
+              const orderedWeekKeys = [...weekGroups.keys()].sort().reverse();
+              const toggleWeekArr = (key: string) => setOpenWeeksArr(prev => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key); else next.add(key);
+                return next;
+              });
+
               return (
                 <>
-                  {Object.entries(byDate).sort((a,b) => {
-                    const toTs = (d: string) => { const p = d.split("/"); return p.length === 3 ? new Date(+p[2], +p[1]-1, +p[0]).getTime() : 0; };
-                    return toTs(b[0]) - toTs(a[0]);
-                  }).map(([date, arr]) => {
-                    const enAttente = arr.filter((a: any) => a.statut === "en attente");
-                    const traites = arr.filter((a: any) => a.statut !== "en attente");
+                  {orderedWeekKeys.map(key => {
+                    const g = weekGroups.get(key)!;
+                    const isOpen = openWeeksArr.has(key);
+                    const nbArrivages = g.dates.reduce((sum, [, arr]) => sum + arr.length, 0);
                     return (
-                      <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onScan={handleScanForDate} gencodeArticles={gencodeArticles} />
+                      <div key={key} style={{ marginBottom: 10 }}>
+                        <div onClick={() => toggleWeekArr(key)} style={{ cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#faf8f3", border: "1.5px solid #e8e0d0", borderRadius: 10, marginBottom: isOpen ? 8 : 0 }}>
+                          <span style={{ fontWeight: 700, fontSize: 13, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>
+                            📅 Semaine {g.week} · {g.year}
+                            <span style={{ fontWeight: 500, color: "#9ca3af", fontSize: 11, marginLeft: 6 }}>
+                              ({g.dates.length} jour{g.dates.length > 1 ? "s" : ""} · {nbArrivages} arrivage{nbArrivages > 1 ? "s" : ""})
+                            </span>
+                          </span>
+                          <span style={{ transition: "transform .15s", display: "inline-block", transform: `rotate(${isOpen ? 90 : 0}deg)`, color: "#c8a84b", fontSize: 16 }}>›</span>
+                        </div>
+                        {isOpen && g.dates.map(([date, arr]) => {
+                          const enAttente = arr.filter((a: any) => a.statut === "en attente");
+                          const traites = arr.filter((a: any) => a.statut !== "en attente");
+                          return (
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onScan={handleScanForDate} gencodeArticles={gencodeArticles} />
+                          );
+                        })}
+                      </div>
                     );
                   })}
                 </>
