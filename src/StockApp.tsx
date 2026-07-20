@@ -1569,20 +1569,38 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const s = stockSnap.data() as any;
 
-          // Convertit HTML en PDF avec html2pdf
-          const { html2pdf } = await import("html2pdf.js");
+          // Convertit HTML en PDF avec html2canvas + jsPDF
           const element = document.createElement("div");
           element.innerHTML = result.html;
-          const canvas = await html2canvas(element);
+          element.style.padding = "14px";
+          element.style.width = "210mm";
+          element.style.height = "auto";
+          document.body.appendChild(element);
+
+          const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+          document.body.removeChild(element);
+
           const imgData = canvas.toDataURL("image/png");
-          const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-          const pageWidth = doc.internal.pageSize.getWidth();
-          const pageHeight = doc.internal.pageSize.getHeight();
+          const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
           const ratio = canvas.width / canvas.height;
-          const width = pageWidth;
+          const width = pageWidth - 10;
           const height = width / ratio;
-          doc.addImage(imgData, "PNG", 0, 0, width, height);
-          const pdfBlob = doc.output("blob");
+
+          let yPos = 5;
+          pdf.addImage(imgData, "PNG", 5, yPos, width, height);
+
+          // Pagination si besoin
+          let totalHeight = height + yPos;
+          while (totalHeight > pageHeight) {
+            pdf.addPage();
+            yPos = totalHeight - pageHeight + 5;
+            pdf.addImage(imgData, "PNG", 5, -yPos, width, height);
+            totalHeight -= pageHeight;
+          }
+
+          const pdfBlob = pdf.output("blob");
           const base64 = await new Promise<string>((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve((reader.result as string).split(",")[1]);
