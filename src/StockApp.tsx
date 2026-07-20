@@ -2250,10 +2250,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           doc2.text("ÉCART", colEcart, y, { align: "center" });
           y += 5;
 
-          // Lignes du tableau - espacement correct
-          doc2.setFont("helvetica", "normal"); doc2.setFontSize(8);
+          // Lignes du tableau - espacement augmenté
+          doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
           sorted.forEach((a, idx) => {
-            if (y > 275) { doc2.addPage(); y = 10; }
+            if (y > 265) { doc2.addPage(); y = 10; }
 
             const e = ecartFn(a);
             const c = getCompte(a);
@@ -2262,20 +2262,20 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
               ? Object.entries(a.lotsQty).map(([l,q]:any) => `L${l}:${q}`).join(" ")
               : (a.lots && a.lots.length > 0 ? a.lots.join("/") : "");
 
-            // Ligne alternée
+            // Ligne alternée - plus haute
             if (idx % 2 === 0) {
               doc2.setFillColor(250, 250, 250);
-              doc2.rect(M, y - 2.5, CW, 4, "F");
+              doc2.rect(M, y - 3, CW, 6.5, "F");
             }
 
             // Article + lots si présents
             doc2.setTextColor(30, 30, 30);
-            const artText = String(a.article).substring(0, 60);
+            const artText = String(a.article).substring(0, 55);
             doc2.text(artText, colArticle + 1, y);
             if (lotsStr) {
-              doc2.setFontSize(7); doc2.setTextColor(120, 120, 120);
-              doc2.text(`(${lotsStr.substring(0, 35)})`, colArticle + 1, y + 3);
-              doc2.setFontSize(8);
+              doc2.setFontSize(7.5); doc2.setTextColor(120, 120, 120);
+              doc2.text(`(${lotsStr.substring(0, 35)})`, colArticle + 1, y + 3.5);
+              doc2.setFontSize(9);
             }
 
             // Stock
@@ -2300,7 +2300,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             doc2.text(ecartText, colEcart, y, { align: "center" });
             doc2.setFont("helvetica", "normal");
 
-            y += lotsStr ? 5 : 4;
+            y += lotsStr ? 6.5 : 6;
           });
 
           // Footer simple
