@@ -1569,33 +1569,16 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const s = stockSnap.data() as any;
 
-          // Convertit le HTML en PDF en le rendant en canvas puis en PDF
+          // Utilise jsPDF.html() pour convertir le HTML en PDF
+          const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
           const container = document.createElement("div");
           container.innerHTML = result.html;
-          container.style.position = "absolute";
-          container.style.left = "-9999px";
-          container.style.width = "210mm";
-          document.body.appendChild(container);
 
-          const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-          document.body.removeChild(container);
-
-          const imgData = canvas.toDataURL("image/png");
-          const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-          const imgWidth = 210;
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
-          let heightLeft = imgHeight;
-          let position = 0;
-
-          pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-          heightLeft -= 297;
-
-          while (heightLeft >= 0) {
-            position = heightLeft - imgHeight;
-            pdf.addPage();
-            pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-            heightLeft -= 297;
-          }
+          await (pdf as any).html(container, {
+            margin: 0,
+            windowWidth: 800,
+            windowHeight: 1000,
+          });
 
           const dataUri = pdf.output("datauristring");
           const base64 = dataUri.split(",")[1];
