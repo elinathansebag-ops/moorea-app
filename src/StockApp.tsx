@@ -2218,92 +2218,94 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const nc = sorted.filter((a: any) => !isCounted(a)).length;
 
           const doc2 = new jsPDF({ unit: "mm", format: "a4", compress: true });
-          const W = 210, M = 10, CW = W - M * 2;
+          const W = 210, M = 8, CW = W - M * 2;
 
-          // Header noir + doré
-          doc2.setFillColor(10, 10, 10); doc2.rect(0, 0, W, 26, "F");
-          doc2.setFillColor(200, 168, 75); doc2.rect(0, 26, W, 2.5, "F");
-          doc2.setTextColor(200, 168, 75); doc2.setFont("helvetica", "bold"); doc2.setFontSize(18);
-          doc2.text("MOOREA", M, 16);
-          doc2.setTextColor(255, 255, 255); doc2.setFontSize(10); doc2.setFont("helvetica", "normal");
-          doc2.text(`Inventaire Stock ${team}`, M, 21);
-          doc2.setTextColor(150, 150, 150); doc2.setFontSize(7);
-          doc2.text(now, W - M, 21, { align: "right" });
+          // Header simple et clair (sans couleur foncée pour impression)
+          doc2.setTextColor(10, 10, 10); doc2.setFont("helvetica", "bold"); doc2.setFontSize(14);
+          doc2.text("MOOREA - INVENTAIRE STOCK", M, 12);
+          doc2.setTextColor(100, 100, 100); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
+          doc2.text(`${team} | ${s.dateLabel} | ${now}`, M, 18);
 
-          let y = 32;
-          // Info générale
-          doc2.setTextColor(60, 60, 60); doc2.setFont("helvetica", "bold"); doc2.setFontSize(9);
-          doc2.text(`Date: ${s.dateLabel}`, M, y); y += 5;
-          doc2.text(`Total: ${arts.length} articles | Manquants: ${manq} | Excédents: ${exc} | Non comptés: ${nc}`, M, y);
-          y += 8;
+          let y = 25;
+          // Résumé
+          doc2.setTextColor(60, 60, 60); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
+          doc2.text(`${arts.length} articles | Manquants: ${manq} | Excédents: ${exc} | Non comptés: ${nc}`, M, y);
+          y += 6;
 
-          // En-têtes du tableau - design simple et clair
-          const colArticle = M, colStock = M + 105, colCompte = M + 138, colDetruire = M + 168, colEcart = M + CW - 8;
-          doc2.setFillColor(200, 168, 75); doc2.rect(M, y, CW, 6, "F");
-          doc2.setTextColor(10, 10, 10); doc2.setFont("helvetica", "bold"); doc2.setFontSize(9);
-          doc2.text("ARTICLE", colArticle + 2, y + 4);
-          doc2.text("STOCK", colStock, y + 4, { align: "center" });
-          doc2.text("COMPTÉ", colCompte, y + 4, { align: "center" });
-          doc2.text("DÉTRUIRE", colDetruire, y + 4, { align: "center" });
-          doc2.text("ÉCART", colEcart, y + 4, { align: "right" });
-          y += 7;
+          // Ligne séparatrice
+          doc2.setDrawColor(200, 168, 75);
+          doc2.setLineWidth(0.5);
+          doc2.line(M, y, W - M, y);
+          y += 4;
 
-          // Lignes du tableau
+          // En-têtes du tableau - bien espacés
+          const colArticle = M, colStock = M + 120, colCompte = M + 145, colDetruire = M + 170, colEcart = W - M - 15;
+          doc2.setFillColor(240, 240, 240);
+          doc2.rect(M, y - 3.5, CW, 5.5, "F");
+          doc2.setTextColor(40, 40, 40); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8.5);
+          doc2.text("ARTICLE", colArticle + 1, y);
+          doc2.text("STOCK", colStock, y, { align: "center" });
+          doc2.text("COMPTÉ", colCompte, y, { align: "center" });
+          doc2.text("DÉTRUIRE", colDetruire, y, { align: "center" });
+          doc2.text("ÉCART", colEcart, y, { align: "center" });
+          y += 5;
+
+          // Lignes du tableau - espacement correct
           doc2.setFont("helvetica", "normal"); doc2.setFontSize(8);
           sorted.forEach((a, idx) => {
-            if (y > 270) { doc2.addPage(); y = 10; }
+            if (y > 275) { doc2.addPage(); y = 10; }
 
             const e = ecartFn(a);
             const c = getCompte(a);
             const cd = getDetruire(a);
             const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0
-              ? Object.entries(a.lotsQty).map(([l,q]:any) => `L${l}(${q})`).join(" ")
-              : (a.lots?.join("/") || "");
+              ? Object.entries(a.lotsQty).map(([l,q]:any) => `L${l}:${q}`).join(" ")
+              : (a.lots && a.lots.length > 0 ? a.lots.join("/") : "");
 
-            // Alternance couleurs
+            // Ligne alternée
             if (idx % 2 === 0) {
-              doc2.setFillColor(248, 248, 248);
-              doc2.rect(M, y - 0.5, CW, 5.5, "F");
-            } else {
-              doc2.setFillColor(255, 255, 255);
-              doc2.rect(M, y - 0.5, CW, 5.5, "F");
+              doc2.setFillColor(250, 250, 250);
+              doc2.rect(M, y - 2.5, CW, 4, "F");
             }
 
-            // Article + lots
-            doc2.setTextColor(30, 30, 30); doc2.setFont("helvetica", "normal");
-            doc2.text(String(a.article).substring(0, 50), colArticle + 2, y + 2);
+            // Article + lots si présents
+            doc2.setTextColor(30, 30, 30);
+            const artText = String(a.article).substring(0, 60);
+            doc2.text(artText, colArticle + 1, y);
             if (lotsStr) {
-              doc2.setFontSize(6.5); doc2.setTextColor(100, 100, 100);
-              doc2.text(lotsStr.substring(0, 40), colArticle + 2, y + 3.8);
+              doc2.setFontSize(7); doc2.setTextColor(120, 120, 120);
+              doc2.text(`(${lotsStr.substring(0, 35)})`, colArticle + 1, y + 3);
               doc2.setFontSize(8);
             }
 
             // Stock
-            doc2.setTextColor(60, 60, 60); doc2.setFont("helvetica", "normal");
-            doc2.text(String(a.nb_colis), colStock, y + 2, { align: "center" });
+            doc2.setTextColor(60, 60, 60);
+            doc2.text(String(a.nb_colis), colStock, y, { align: "center" });
 
             // Compté
-            doc2.text(c !== null ? String(c) : "−", colCompte, y + 2, { align: "center" });
+            doc2.text(c !== null ? String(c) : "-", colCompte, y, { align: "center" });
 
             // Détruire
             if (cd) {
               doc2.setTextColor(220, 38, 38); doc2.setFont("helvetica", "bold");
-              doc2.text(String(cd), colDetruire, y + 2, { align: "center" });
+              doc2.text(String(cd), colDetruire, y, { align: "center" });
+              doc2.setFont("helvetica", "normal");
             }
 
-            // Écart avec couleur
+            // Écart
             const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
             doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
             doc2.setFont("helvetica", "bold");
-            const ecartText = e !== null ? (e > 0 ? "+" + e : String(e)) : "−";
-            doc2.text(ecartText, colEcart, y + 2, { align: "right" });
+            const ecartText = e !== null ? (e > 0 ? "+" + e : String(e)) : "-";
+            doc2.text(ecartText, colEcart, y, { align: "center" });
+            doc2.setFont("helvetica", "normal");
 
-            y += lotsStr ? 5.5 : 5;
+            y += lotsStr ? 5 : 4;
           });
 
-          // Footer
+          // Footer simple
           doc2.setTextColor(150, 150, 150); doc2.setFontSize(7); doc2.setFont("helvetica", "normal");
-          doc2.text("Moorea Qualité • Système d'inventaire", M, 285);
+          doc2.text("Moorea Qualité", M, 288);
 
           return doc2.output("datauristring");
         } catch {
