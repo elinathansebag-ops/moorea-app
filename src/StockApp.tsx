@@ -1563,13 +1563,31 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const btn = document.querySelector(`button[onclick*="sEnvoyerStockJordan('${sid.replace(/'/g, "\\'")}']`) as HTMLButtonElement | null;
           if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
 
-          const pdfDataUri = await generateStockPDF(sid, team);
-          if (!pdfDataUri) { toast("Stock introuvable"); return; }
+          const result = await generateStockPDF(sid, team);
+          if (!result) { toast("Stock introuvable"); return; }
 
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const s = stockSnap.data() as any;
-          const base64 = pdfDataUri.split(",")[1];
-          const filename = `inventaire_${team.toLowerCase()}_${s.dateLabel || TODAY}.pdf`;
+
+          // Convertit HTML en PDF avec html2pdf
+          const { html2pdf } = await import("html2pdf.js");
+          const element = document.createElement("div");
+          element.innerHTML = result.html;
+          const canvas = await html2canvas(element);
+          const imgData = canvas.toDataURL("image/png");
+          const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const pageHeight = doc.internal.pageSize.getHeight();
+          const ratio = canvas.width / canvas.height;
+          const width = pageWidth;
+          const height = width / ratio;
+          doc.addImage(imgData, "PNG", 0, 0, width, height);
+          const pdfBlob = doc.output("blob");
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string).split(",")[1]);
+            reader.readAsDataURL(pdfBlob);
+          });
 
           // Récupère les stats pour l'email
           const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
@@ -1607,7 +1625,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
                 <p style="margin-top:32px;color:#999;font-size:11px;border-top:1px solid #ddd;padding-top:16px">Moorea Qualité • Système d'inventaire</p>
               </div>`,
-              attachments: [{ filename, content: base64 }],
+              attachments: [{ filename: result.filename, content: base64 }],
             }),
           });
 
@@ -2195,8 +2213,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         return jokes.length > 0 ? " (" + jokes[Math.floor(Math.random() * jokes.length)] + ")" : "";
       };
 
-      // Génère un PDF jsPDF pour un stock (réutilisé par sPrintPDF et sEnvoyerStockJordan)
-      const generateStockPDF = async (sid: string, team: string): Promise<string | null> => {
+      // Génère un HTML pour PDF (réutilisé par sPrintPDF et sEnvoyerStockJordan)
+      const generateStockPDF = async (sid: string, team: string): Promise<{ html: string; filename: string } | null> => {
         try {
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
@@ -2217,103 +2235,19 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
           const nc = sorted.filter((a: any) => !isCounted(a)).length;
 
-          const doc2 = new jsPDF({ unit: "mm", format: "a4", compress: true });
-          const W = 210, M = 8, CW = W - M * 2;
+          const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}.nb{text-align:center}.ec{text-align:center;font-weight:700}.lots{font-size:9px;color:#888;margin-top:2px}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0}}`;
 
-          // Header simple et clair (sans couleur foncée pour impression)
-          doc2.setTextColor(10, 10, 10); doc2.setFont("helvetica", "bold"); doc2.setFontSize(14);
-          doc2.text("MOOREA - INVENTAIRE STOCK", M, 12);
-          doc2.setTextColor(100, 100, 100); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
-          doc2.text(`${team} | ${s.dateLabel} | ${now}`, M, 18);
-
-          let y = 25;
-          // Résumé compact
-          doc2.setTextColor(100, 100, 100); doc2.setFont("helvetica", "normal"); doc2.setFontSize(8.5);
-          doc2.text(`${s.dateLabel} · ${arts.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
-          y += 6;
-
-          // Ligne séparatrice
-          doc2.setDrawColor(200, 168, 75);
-          doc2.setLineWidth(0.7);
-          doc2.line(M, y, W - M, y);
-          y += 5;
-
-          // En-têtes du tableau
-          const colArticle = M, colStock = M + 130, colCompte = M + 160, colDetruire = M + 185, colEcart = W - M - 12;
-          doc2.setTextColor(40, 40, 40); doc2.setFont("helvetica", "bold"); doc2.setFontSize(9);
-          doc2.text("ARTICLE", colArticle, y);
-          doc2.text("STOCK", colStock, y, { align: "center" });
-          doc2.text("COMPTÉ", colCompte, y, { align: "center" });
-          doc2.text("DÉTRUIRE", colDetruire, y, { align: "center" });
-          doc2.text("ÉCART", colEcart, y, { align: "right" });
-          y += 5;
-
-          // Ligne sous en-têtes
-          doc2.setDrawColor(200, 168, 75);
-          doc2.setLineWidth(0.5);
-          doc2.line(M, y, W - M, y);
-          y += 4;
-
-          // Lignes du tableau - BIEN AÉRÉES
-          doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
-          sorted.forEach((a, idx) => {
-            if (y > 260) { doc2.addPage(); y = 10; }
-
-            const e = ecartFn(a);
-            const c = getCompte(a);
-            const cd = getDetruire(a);
-            const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0
-              ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q} col.`).join(" | ")
-              : (a.lots && a.lots.length > 0 ? a.lots.join(" | ") : "");
-
-            // Article en gras
-            doc2.setTextColor(30, 30, 30); doc2.setFont("helvetica", "bold");
-            const artText = String(a.article).substring(0, 65);
-            doc2.text(artText, colArticle, y);
-
-            // Stock
-            doc2.setTextColor(60, 60, 60); doc2.setFont("helvetica", "normal");
-            doc2.text(String(a.nb_colis), colStock, y, { align: "center" });
-
-            // Compté
-            doc2.text(c !== null ? String(c) : "-", colCompte, y, { align: "center" });
-
-            // Détruire
-            if (cd) {
-              doc2.setTextColor(220, 38, 38); doc2.setFont("helvetica", "bold");
-              doc2.text(String(cd), colDetruire, y, { align: "center" });
-            }
-
-            // Écart
-            const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
-            doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
-            doc2.setFont("helvetica", "bold");
-            const ecartText = e !== null ? (e > 0 ? "+" + e : String(e)) : "-";
-            doc2.text(ecartText, colEcart, y, { align: "right" });
-
-            y += 5;
-
-            // Lots EN DESSOUS si présents
-            if (lotsStr) {
-              doc2.setFontSize(7); doc2.setTextColor(120, 120, 120); doc2.setFont("helvetica", "normal");
-              doc2.text(lotsStr, colArticle, y);
-              y += 3.5;
-            }
-
-            // Trait fin gris entre les articles
-            doc2.setDrawColor(220, 220, 220);
-            doc2.setLineWidth(0.3);
-            doc2.line(M, y + 1, W - M, y + 1);
-
-            // Espace entre les articles
-            y += 3.5;
+          const rows = sorted.map((a: any) => {
+            const e = ecartFn(a); const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
+            const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q}`).join(" | ") : (a.lots?.join(" | ") || "");
+            const c = getCompte(a); const cd = getDetruire(a);
+            return `<tr><td>${a.article}${lotsStr ? `<div class="lots">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${c !== null ? c : "-"}</td><td class="nb" style="color:#dc2626">${cd || ""}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "-"}</td></tr>`;
           });
 
-          // Footer simple
-          doc2.setTextColor(150, 150, 150); doc2.setFontSize(7); doc2.setFont("helvetica", "normal");
-          doc2.text("Moorea Qualité", M, 288);
+          const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>Moorea · Inventaire ${team}</h1><p>${s.dateLabel} · ${arts.length} articles · Imprimé le ${now} · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="nb" style="color:#dc2626">Détruire</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
+          const filename = `inventaire_${team.toLowerCase()}_${s.dateLabel || TODAY}.pdf`;
 
-          return doc2.output("datauristring");
+          return { html, filename };
         } catch {
           return null;
         }
@@ -2322,11 +2256,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       // PDF depuis stock existant
       (window as any).sPrintPDF = async (sid: string, team: string) => {
         try {
-          const pdfDataUri = await generateStockPDF(sid, team);
-          if (!pdfDataUri) { toast("Stock introuvable"); return; }
-          const blob = await (await fetch(pdfDataUri)).blob();
-          const blobUrl = URL.createObjectURL(blob);
-          window.open(blobUrl, "_blank");
+          const result = await generateStockPDF(sid, team);
+          if (!result) { toast("Stock introuvable"); return; }
+          openPdfWindow(result.html, `Moorea · Inventaire ${team}`);
         } catch { toast("Erreur PDF"); }
       };
 
