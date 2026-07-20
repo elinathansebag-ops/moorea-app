@@ -1564,62 +1564,92 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const btn = document.querySelector(`button[onclick*="sEnvoyerStockJordan('${sid.replace(/'/g, "\\'")}']`) as HTMLButtonElement | null;
           if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
 
-          const result = await generateStockPDF(sid, team);
-          if (!result) { toast("Stock introuvable"); return; }
-
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const s = stockSnap.data() as any;
 
-          // Récupère les stats pour le mail
+          // Récupère les données
           const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
           const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
           const arts = (s.articles || []).filter((a: any) => a.equipe === team);
+
           const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
-          const ecartFn = (a: any) => { const c = comptData[a.article]; if (!c) return null; return (typeof c === "object" ? c.c : c) - a.nb_colis; };
-          const manq = arts.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
-          const exc = arts.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
-          const nc = arts.filter((a: any) => !isCounted(a)).length;
+          const getCompte = (a: any) => { const d = comptData[a.article]; if (!d) return null; return typeof d === "object" ? d.c : d; };
+          const getDetruire = (a: any) => { const d = comptData[a.article]; if (!d || typeof d !== "object") return null; return d.cd; };
+          const ecartFn = (a: any) => { const c = getCompte(a); return c !== null ? c - a.nb_colis : null; };
 
-          // Rend le VRAI HTML (même que sPrintPDF) dans un container caché, puis convertit en image
-          const container = document.createElement("div");
-          container.innerHTML = result.html;
-          container.style.position = "fixed";
-          container.style.top = "0";
-          container.style.left = "-9999px";
-          container.style.width = "794px"; // largeur A4 à 96dpi
-          container.style.background = "#ffffff";
-          document.body.appendChild(container);
+          const sorted = [...arts].sort((a: any, b: any) => a.article.localeCompare(b.article, "fr"));
+          const now = new Date().toLocaleString("fr-FR");
+          const manq = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
+          const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
+          const nc = sorted.filter((a: any) => !isCounted(a)).length;
 
-          await new Promise(resolve => setTimeout(resolve, 150));
-
-          const canvas = await html2canvas(container, {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: "#ffffff",
-            windowWidth: 794,
-          });
-          document.body.removeChild(container);
-
-          const imgData = canvas.toDataURL("image/jpeg", 0.95);
+          // Dessine le PDF directement en jsPDF (fiable, pas de conversion HTML)
           const pdfDoc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-          const pageWidth = 210, pageHeight = 297;
-          const imgWidth = pageWidth;
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          const W = 210, M = 14, CW = W - M * 2;
 
-          let heightLeft = imgHeight;
-          let position = 0;
-          pdfDoc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
-          heightLeft -= pageHeight;
+          pdfDoc.setFillColor(10, 10, 10); pdfDoc.rect(0, 0, W, 26, "F");
+          pdfDoc.setFillColor(200, 168, 75); pdfDoc.rect(0, 26, W, 2, "F");
+          pdfDoc.setTextColor(200, 168, 75); pdfDoc.setFont("helvetica", "bold"); pdfDoc.setFontSize(16);
+          pdfDoc.text("MOOREA", M, 15);
+          pdfDoc.setTextColor(255, 255, 255); pdfDoc.setFontSize(10);
+          pdfDoc.text(`Inventaire ${team}`, M + 40, 15);
+          pdfDoc.setTextColor(150, 150, 150); pdfDoc.setFontSize(8);
+          pdfDoc.text(now, W - M, 15, { align: "right" });
 
-          while (heightLeft > 0) {
-            position = heightLeft - imgHeight;
-            pdfDoc.addPage();
-            pdfDoc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
-            heightLeft -= pageHeight;
-          }
+          let y = 32;
+          pdfDoc.setTextColor(100, 100, 100); pdfDoc.setFont("helvetica", "normal"); pdfDoc.setFontSize(9);
+          pdfDoc.text(`${s.dateLabel} · ${arts.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
+          y += 7;
+
+          const colArticle = M, colStock = M + 120, colCompte = M + 150, colDetruire = M + 175, colEcart = W - M - 10;
+          pdfDoc.setFillColor(200, 168, 75); pdfDoc.rect(M, y, CW, 6, "F");
+          pdfDoc.setTextColor(10, 10, 10); pdfDoc.setFont("helvetica", "bold"); pdfDoc.setFontSize(9);
+          pdfDoc.text("ARTICLE", colArticle + 1, y + 4);
+          pdfDoc.text("STOCK", colStock, y + 4, { align: "center" });
+          pdfDoc.text("COMPTÉ", colCompte, y + 4, { align: "center" });
+          pdfDoc.text("DÉTRUIRE", colDetruire, y + 4, { align: "center" });
+          pdfDoc.text("ÉCART", colEcart, y + 4, { align: "right" });
+          y += 8;
+
+          pdfDoc.setFont("helvetica", "normal"); pdfDoc.setFontSize(9);
+          sorted.forEach((a) => {
+            if (y > 270) { pdfDoc.addPage(); y = 12; }
+
+            const e = ecartFn(a); const c = getCompte(a); const cd = getDetruire(a);
+            const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0
+              ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q} col.`).join(" | ")
+              : (a.lots && a.lots.length > 0 ? a.lots.join(" | ") : "");
+
+            pdfDoc.setTextColor(30, 30, 30); pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.text(String(a.article).substring(0, 65), colArticle, y);
+
+            pdfDoc.setTextColor(60, 60, 60); pdfDoc.setFont("helvetica", "normal");
+            pdfDoc.text(String(a.nb_colis), colStock, y, { align: "center" });
+            pdfDoc.text(c !== null ? String(c) : "-", colCompte, y, { align: "center" });
+
+            if (cd) { pdfDoc.setTextColor(220, 38, 38); pdfDoc.setFont("helvetica", "bold"); pdfDoc.text(String(cd), colDetruire, y, { align: "center" }); }
+
+            const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
+            pdfDoc.setTextColor(ecColor[0], ecColor[1], ecColor[2]); pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y, { align: "right" });
+
+            y += 5;
+
+            if (lotsStr) {
+              pdfDoc.setFontSize(7); pdfDoc.setTextColor(120, 120, 120); pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.text(lotsStr, colArticle, y);
+              pdfDoc.setFontSize(9);
+              y += 3.5;
+            }
+
+            pdfDoc.setDrawColor(220, 220, 220); pdfDoc.setLineWidth(0.3);
+            pdfDoc.line(M, y + 1, W - M, y + 1);
+            y += 3.5;
+          });
 
           const dataUri = pdfDoc.output("datauristring");
           const base64 = dataUri.split(",")[1];
+          const filename = `inventaire_${team.toLowerCase()}_${s.dateLabel || TODAY}.pdf`;
 
           const joke = getFunnyJoke(manq, exc, nc, arts.length);
 
@@ -1647,7 +1677,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
                 <p style="margin-top:32px;color:#999;font-size:11px;border-top:1px solid #ddd;padding-top:16px">Moorea Qualité • Système d'inventaire</p>
               </div>`,
-              attachments: [{ filename: result.filename, content: base64 }],
+              attachments: [{ filename, content: base64 }],
             }),
           });
 
