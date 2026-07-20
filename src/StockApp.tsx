@@ -726,8 +726,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .tbl-wrap{overflow-x:auto}
 #stock-pdf-overlay{display:none;position:fixed;inset:0;background:#f5f3ee;z-index:700;flex-direction:column}
 #stock-pdf-frame{flex:1;width:100%;border:none;background:#fff;display:block}
-#stock-toast{position:fixed;bottom:24px;right:24px;background:#0a0a0a;color:#c8a84b;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9999;border:1px solid rgba(200,168,75,0.3)}
-#stock-toast.show{opacity:1}
+#stock-toast{position:fixed;bottom:24px;right:24px;padding:16px 20px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;transform:translateY(20px);transition:all .3s ease;pointer-events:auto;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.3);max-width:320px;word-wrap:break-word;backdrop-filter:blur(10px)}
+#stock-toast.show{opacity:1;transform:translateY(0)}
+#stock-toast.success{background:linear-gradient(135deg,#15803d 0%,#22c55e 100%);color:#fff;border:1px solid #86efac}
+#stock-toast.error{background:linear-gradient(135deg,#dc2626 0%,#ef4444 100%);color:#fff;border:1px solid #fca5a5}
+#stock-toast.info{background:linear-gradient(135deg,#0a0a0a 0%,#1a1a1a 100%);color:#c8a84b;border:1px solid rgba(200,168,75,0.5)}
+#stock-toast.warning{background:linear-gradient(135deg,#b45309 0%,#f97316 100%);color:#fff;border:1px solid #fdba74}
 #stock-calc-fab{position:fixed;bottom:24px;right:24px;width:50px;height:50px;background:#c8a84b;border:none;border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 16px rgba(200,168,75,.4);z-index:400}
 #stock-calc-fab.visible{display:flex}
 #stock-calc-modal{display:none;position:fixed;bottom:86px;right:24px;background:#fff;border:1.5px solid #e8e0d0;border-radius:18px;padding:1.25rem;width:236px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:500}
@@ -1104,12 +1108,31 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
       setSyncStatus("ok", "Synchronisé");
 
-      // Toast
-      const toast = (msg: string) => {
+      // Toast amélioré avec types (success, error, info, warning)
+      const toast = (msg: string, type: "success" | "error" | "info" | "warning" = "info") => {
         const t = document.getElementById("stock-toast");
         if (!t) return;
-        t.textContent = msg; t.classList.add("show");
-        setTimeout(() => t.classList.remove("show"), 2500);
+
+        // Détermine l'icône et le type automatiquement si possible
+        let finalType = type;
+        let finalMsg = msg;
+
+        if (msg.includes("✅") || msg.includes("✓") || msg.includes("Terminé") || msg.includes("clôturé") || msg.includes("envoyé") || msg.includes("Dimitrie")) {
+          finalType = "success";
+        } else if (msg.includes("❌") || msg.includes("Erreur") || msg.includes("erreur")) {
+          finalType = "error";
+        } else if (msg.includes("⚠") || msg.includes("Attention")) {
+          finalType = "warning";
+        }
+
+        // Nettoie les anciens styles
+        t.classList.remove("success", "error", "info", "warning");
+        t.classList.add(finalType, "show");
+        t.textContent = finalMsg;
+
+        // Auto-hide après 3s (4s pour les erreurs)
+        const duration = finalType === "error" ? 4000 : 3000;
+        setTimeout(() => t.classList.remove("show"), duration);
       };
 
       const counted = (a: any) => a.compte !== null && a.compte !== undefined;
@@ -1517,76 +1540,29 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (chev) chev.style.transform = `rotate(${open ? 0 : 90}deg)`;
       };
 
-      // Envoie le PDF d'un stock spécifique à Jordan (utilise la même logique que sPrintPDF)
+      // Envoie le PDF d'un stock spécifique à Jordan (réutilise generateStockPDF)
       (window as any).sEnvoyerStockJordan = async (sid: string, team: string) => {
         try {
           const btn = document.querySelector(`button[onclick*="sEnvoyerStockJordan('${sid.replace(/'/g, "\\'")}']`) as HTMLButtonElement | null;
           if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
 
+          const pdfDataUri = await generateStockPDF(sid, team);
+          if (!pdfDataUri) { toast("Stock introuvable"); return; }
+
           const stockSnap = await getDoc(doc(db, "stocks", sid));
-          const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
-          if (!stockSnap.exists()) { toast("Stock introuvable"); return; }
-
           const s = stockSnap.data() as any;
-          const arts = (s.articles || []).filter((a: any) => a.equipe === team);
-          const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
-
-          const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
-          const getCompte = (a: any) => { const d = comptData[a.article]; if (!d) return null; return typeof d === "object" ? d.c : d; };
-          const getDetruire = (a: any) => { const d = comptData[a.article]; if (!d || typeof d !== "object") return null; return d.cd; };
-          const ecartFn = (a: any) => { const c = getCompte(a); return c !== null ? c - a.nb_colis : null; };
-
-          const sorted = [...arts].sort((a: any, b: any) => a.article.localeCompare(b.article, "fr"));
-          const now = new Date().toLocaleString("fr-FR");
-          const manq = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
-          const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
-          const nc = sorted.filter((a: any) => !isCounted(a)).length;
-
-          const doc2 = new jsPDF({ unit: "mm", format: "a4" });
-          const W = 210, M = 14, CW = W - M * 2;
-          doc2.setFillColor(10, 10, 10); doc2.rect(0, 0, W, 22, "F");
-          doc2.setFillColor(200, 168, 75); doc2.rect(0, 22, W, 2, "F");
-          doc2.setTextColor(200, 168, 75); doc2.setFont("helvetica", "bold"); doc2.setFontSize(14);
-          doc2.text("MOOREA", M, 14);
-          doc2.setTextColor(255, 255, 255); doc2.setFontSize(10);
-          doc2.text(`Inventaire ${team}`, M + 32, 14);
-          doc2.setTextColor(150, 150, 150); doc2.setFontSize(8);
-          doc2.text(now, W - M, 14, { align: "right" });
-
-          let y = 30;
-          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
-          doc2.text(`${s.dateLabel} · ${arts.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
-          y += 8;
-
-          const colArticle = M + 2, colStock = M + 110, colCompte = M + 135, colDetruire = M + 160, colEcart = M + CW - 6;
-          doc2.setFillColor(250, 248, 240); doc2.rect(M, y, CW, 7, "F");
-          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8);
-          doc2.text("ARTICLE", colArticle, y + 5);
-          doc2.text("STOCK", colStock, y + 5, { align: "center" });
-          doc2.text("COMPTÉ", colCompte, y + 5, { align: "center" });
-          doc2.text("DÉTRUIRE", colDetruire, y + 5, { align: "center" });
-          doc2.text("ÉCART", colEcart, y + 5, { align: "right" });
-          y += 10;
-
-          doc2.setFont("helvetica", "normal");
-          sorted.forEach(a => {
-            if (y > 280) { doc2.addPage(); y = 16; }
-            const e = ecartFn(a); const c = getCompte(a); const cd = getDetruire(a);
-            doc2.setTextColor(30, 30, 30); doc2.setFontSize(8);
-            doc2.text(String(a.article).substring(0, 50), colArticle, y + 4);
-            doc2.text(String(a.nb_colis), colStock, y + 4, { align: "center" });
-            doc2.text(c !== null ? String(c) : "-", colCompte, y + 4, { align: "center" });
-            doc2.setTextColor(220, 38, 38);
-            doc2.text(cd || "", colDetruire, y + 4, { align: "center" });
-            const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
-            doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
-            doc2.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y + 4, { align: "right" });
-            y += 6;
-          });
-
-          const pdfDataUri = doc2.output("datauristring");
           const base64 = pdfDataUri.split(",")[1];
           const filename = `inventaire_${team.toLowerCase()}_${s.dateLabel || TODAY}.pdf`;
+
+          // Récupère les stats pour l'email
+          const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
+          const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
+          const arts = (s.articles || []).filter((a: any) => a.equipe === team);
+          const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
+          const ecartFn = (a: any) => { const c = comptData[a.article]; if (!c) return null; return (typeof c === "object" ? c.c : c) - a.nb_colis; };
+          const manq = arts.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
+          const exc = arts.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
+          const nc = arts.filter((a: any) => !isCounted(a)).length;
 
           const resp = await fetch("/api/send-email", {
             method: "POST",
@@ -2164,33 +2140,86 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         } catch { toast("Erreur clôture"); }
       };
 
-      // PDF depuis stock existant
-      (window as any).sPrintPDF = async (sid: string, team: string) => {
+      // Génère un PDF jsPDF pour un stock (réutilisé par sPrintPDF et sEnvoyerStockJordan)
+      const generateStockPDF = async (sid: string, team: string): Promise<string | null> => {
         try {
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
-          if (!stockSnap.exists()) { toast("Stock introuvable"); return; }
+          if (!stockSnap.exists()) return null;
+
           const s = stockSnap.data() as any;
           const arts = (s.articles || []).filter((a: any) => a.equipe === team);
           const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
+
           const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
           const getCompte = (a: any) => { const d = comptData[a.article]; if (!d) return null; return typeof d === "object" ? d.c : d; };
           const getDetruire = (a: any) => { const d = comptData[a.article]; if (!d || typeof d !== "object") return null; return d.cd; };
           const ecartFn = (a: any) => { const c = getCompte(a); return c !== null ? c - a.nb_colis : null; };
+
           const sorted = [...arts].sort((a: any, b: any) => a.article.localeCompare(b.article, "fr"));
           const now = new Date().toLocaleString("fr-FR");
           const manq = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
           const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
           const nc = sorted.filter((a: any) => !isCounted(a)).length;
-          const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}.nb{text-align:center}.ec{text-align:center;font-weight:700}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0}}`;
-          const rows = sorted.map((a: any) => {
-            const e = ecartFn(a); const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
+
+          const doc2 = new jsPDF({ unit: "mm", format: "a4" });
+          const W = 210, M = 14, CW = W - M * 2;
+          doc2.setFillColor(10, 10, 10); doc2.rect(0, 0, W, 22, "F");
+          doc2.setFillColor(200, 168, 75); doc2.rect(0, 22, W, 2, "F");
+          doc2.setTextColor(200, 168, 75); doc2.setFont("helvetica", "bold"); doc2.setFontSize(14);
+          doc2.text("MOOREA", M, 14);
+          doc2.setTextColor(255, 255, 255); doc2.setFontSize(10);
+          doc2.text(`Inventaire ${team}`, M + 32, 14);
+          doc2.setTextColor(150, 150, 150); doc2.setFontSize(8);
+          doc2.text(now, W - M, 14, { align: "right" });
+
+          let y = 30;
+          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
+          doc2.text(`${s.dateLabel} · ${arts.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
+          y += 8;
+
+          const colArticle = M + 2, colStock = M + 110, colCompte = M + 135, colDetruire = M + 160, colEcart = M + CW - 6;
+          doc2.setFillColor(250, 248, 240); doc2.rect(M, y, CW, 7, "F");
+          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8);
+          doc2.text("ARTICLE", colArticle, y + 5);
+          doc2.text("STOCK", colStock, y + 5, { align: "center" });
+          doc2.text("COMPTÉ", colCompte, y + 5, { align: "center" });
+          doc2.text("DÉTRUIRE", colDetruire, y + 5, { align: "center" });
+          doc2.text("ÉCART", colEcart, y + 5, { align: "right" });
+          y += 10;
+
+          doc2.setFont("helvetica", "normal");
+          sorted.forEach(a => {
+            if (y > 270) { doc2.addPage(); y = 16; }
+            const e = ecartFn(a); const c = getCompte(a); const cd = getDetruire(a);
             const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q} col.`).join(" | ") : (a.lots?.join(" | ") || "");
-            const c = getCompte(a); const cd = getDetruire(a);
-            return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${c !== null ? c : "-"}</td><td class="nb" style="color:#dc2626">${cd || ""}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "-"}</td></tr>`;
+            doc2.setTextColor(30, 30, 30); doc2.setFontSize(7.5);
+            doc2.text(String(a.article).substring(0, 50), colArticle, y + 2);
+            if (lotsStr) doc2.text(`(${lotsStr.substring(0, 35)})`, colArticle, y + 5, { maxWidth: 100 });
+            doc2.text(String(a.nb_colis), colStock, y + (lotsStr ? 3.5 : 2), { align: "center" });
+            doc2.text(c !== null ? String(c) : "-", colCompte, y + (lotsStr ? 3.5 : 2), { align: "center" });
+            doc2.setTextColor(220, 38, 38);
+            doc2.text(cd || "", colDetruire, y + (lotsStr ? 3.5 : 2), { align: "center" });
+            const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
+            doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
+            doc2.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y + (lotsStr ? 3.5 : 2), { align: "right" });
+            y += lotsStr ? 8.5 : 5;
           });
-          const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>🌿 Moorea · Inventaire ${team}</h1><p>${s.dateLabel} · ${arts.length} articles · Imprimé le ${now} · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="nb" style="color:#dc2626">Détruire</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
-          openPdfWindow(html, `Moorea · Inventaire ${team}`);
+
+          return doc2.output("datauristring");
+        } catch {
+          return null;
+        }
+      };
+
+      // PDF depuis stock existant
+      (window as any).sPrintPDF = async (sid: string, team: string) => {
+        try {
+          const pdfDataUri = await generateStockPDF(sid, team);
+          if (!pdfDataUri) { toast("Stock introuvable"); return; }
+          const blob = await (await fetch(pdfDataUri)).blob();
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, "_blank");
         } catch { toast("Erreur PDF"); }
       };
 
