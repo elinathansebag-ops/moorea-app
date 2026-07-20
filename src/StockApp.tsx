@@ -2109,7 +2109,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       (window as any)._doPrintPDF = () => {
         const now = new Date().toLocaleString("fr-FR");
         const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
-        const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}.nb{text-align:center}.ec{text-align:center;font-weight:700}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0}}`;
+        const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}tr{break-inside:avoid;page-break-inside:avoid}.nb{text-align:center}.ec{text-align:center;font-weight:700}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0}}`;
         const rows = sorted.map(a => {
           const e = counted(a) ? ecart(a) : null;
           const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q}`).join(" | ") : (a.lots?.join(" | ") || "");
@@ -2257,7 +2257,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
           const nc = sorted.filter((a: any) => !isCounted(a)).length;
 
-          const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:24px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}.nb{text-align:center}.ec{text-align:center;font-weight:700}.lots{font-size:9px;color:#888;margin-top:2px}@page{size:A4 portrait;margin:20mm}@media print{body{padding:0}}`;
+          const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:24px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}tr{break-inside:avoid;page-break-inside:avoid}.nb{text-align:center}.ec{text-align:center;font-weight:700}.lots{font-size:9px;color:#888;margin-top:2px}@page{size:A4 portrait;margin:20mm}@media print{body{padding:0}}`;
 
           const rows = sorted.map((a: any) => {
             const e = ecartFn(a); const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
