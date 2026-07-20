@@ -2227,59 +2227,52 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           doc2.text(`${team} | ${s.dateLabel} | ${now}`, M, 18);
 
           let y = 25;
-          // Résumé
-          doc2.setTextColor(60, 60, 60); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
-          doc2.text(`${arts.length} articles | Manquants: ${manq} | Excédents: ${exc} | Non comptés: ${nc}`, M, y);
+          // Résumé compact
+          doc2.setTextColor(100, 100, 100); doc2.setFont("helvetica", "normal"); doc2.setFontSize(8.5);
+          doc2.text(`${s.dateLabel} · ${arts.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
           y += 6;
 
           // Ligne séparatrice
+          doc2.setDrawColor(200, 168, 75);
+          doc2.setLineWidth(0.7);
+          doc2.line(M, y, W - M, y);
+          y += 5;
+
+          // En-têtes du tableau
+          const colArticle = M, colStock = M + 130, colCompte = M + 160, colDetruire = M + 185, colEcart = W - M - 12;
+          doc2.setTextColor(40, 40, 40); doc2.setFont("helvetica", "bold"); doc2.setFontSize(9);
+          doc2.text("ARTICLE", colArticle, y);
+          doc2.text("STOCK", colStock, y, { align: "center" });
+          doc2.text("COMPTÉ", colCompte, y, { align: "center" });
+          doc2.text("DÉTRUIRE", colDetruire, y, { align: "center" });
+          doc2.text("ÉCART", colEcart, y, { align: "right" });
+          y += 5;
+
+          // Ligne sous en-têtes
           doc2.setDrawColor(200, 168, 75);
           doc2.setLineWidth(0.5);
           doc2.line(M, y, W - M, y);
           y += 4;
 
-          // En-têtes du tableau - bien espacés
-          const colArticle = M, colStock = M + 120, colCompte = M + 145, colDetruire = M + 170, colEcart = W - M - 15;
-          doc2.setFillColor(240, 240, 240);
-          doc2.rect(M, y - 3.5, CW, 5.5, "F");
-          doc2.setTextColor(40, 40, 40); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8.5);
-          doc2.text("ARTICLE", colArticle + 1, y);
-          doc2.text("STOCK", colStock, y, { align: "center" });
-          doc2.text("COMPTÉ", colCompte, y, { align: "center" });
-          doc2.text("DÉTRUIRE", colDetruire, y, { align: "center" });
-          doc2.text("ÉCART", colEcart, y, { align: "center" });
-          y += 5;
-
-          // Lignes du tableau - espacement augmenté
+          // Lignes du tableau - BIEN AÉRÉES
           doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
           sorted.forEach((a, idx) => {
-            if (y > 265) { doc2.addPage(); y = 10; }
+            if (y > 260) { doc2.addPage(); y = 10; }
 
             const e = ecartFn(a);
             const c = getCompte(a);
             const cd = getDetruire(a);
             const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0
-              ? Object.entries(a.lotsQty).map(([l,q]:any) => `L${l}:${q}`).join(" ")
-              : (a.lots && a.lots.length > 0 ? a.lots.join("/") : "");
+              ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q} col.`).join(" | ")
+              : (a.lots && a.lots.length > 0 ? a.lots.join(" | ") : "");
 
-            // Ligne alternée - plus haute
-            if (idx % 2 === 0) {
-              doc2.setFillColor(250, 250, 250);
-              doc2.rect(M, y - 3, CW, 6.5, "F");
-            }
-
-            // Article + lots si présents
-            doc2.setTextColor(30, 30, 30);
-            const artText = String(a.article).substring(0, 55);
-            doc2.text(artText, colArticle + 1, y);
-            if (lotsStr) {
-              doc2.setFontSize(7.5); doc2.setTextColor(120, 120, 120);
-              doc2.text(`(${lotsStr.substring(0, 35)})`, colArticle + 1, y + 3.5);
-              doc2.setFontSize(9);
-            }
+            // Article en gras
+            doc2.setTextColor(30, 30, 30); doc2.setFont("helvetica", "bold");
+            const artText = String(a.article).substring(0, 65);
+            doc2.text(artText, colArticle, y);
 
             // Stock
-            doc2.setTextColor(60, 60, 60);
+            doc2.setTextColor(60, 60, 60); doc2.setFont("helvetica", "normal");
             doc2.text(String(a.nb_colis), colStock, y, { align: "center" });
 
             // Compté
@@ -2289,7 +2282,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             if (cd) {
               doc2.setTextColor(220, 38, 38); doc2.setFont("helvetica", "bold");
               doc2.text(String(cd), colDetruire, y, { align: "center" });
-              doc2.setFont("helvetica", "normal");
             }
 
             // Écart
@@ -2297,10 +2289,19 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
             doc2.setFont("helvetica", "bold");
             const ecartText = e !== null ? (e > 0 ? "+" + e : String(e)) : "-";
-            doc2.text(ecartText, colEcart, y, { align: "center" });
-            doc2.setFont("helvetica", "normal");
+            doc2.text(ecartText, colEcart, y, { align: "right" });
 
-            y += lotsStr ? 6.5 : 6;
+            y += 5;
+
+            // Lots EN DESSOUS si présents
+            if (lotsStr) {
+              doc2.setFontSize(7); doc2.setTextColor(120, 120, 120); doc2.setFont("helvetica", "normal");
+              doc2.text(lotsStr, colArticle, y);
+              y += 3.5;
+            }
+
+            // Espace entre les articles
+            y += 2.5;
           });
 
           // Footer simple
