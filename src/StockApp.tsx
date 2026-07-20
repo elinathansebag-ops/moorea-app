@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update, push } from "./firebase";
+import { collection, getDocs, getDoc, setDoc, doc, query, where } from "firebase/firestore";
 import { PageHeader } from "./shared";
 import { Html5Qrcode } from "html5-qrcode";
 import jsPDF from "jspdf";
