@@ -1517,7 +1517,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (chev) chev.style.transform = `rotate(${open ? 0 : 90}deg)`;
       };
 
-      // Envoie le PDF d'un stock spécifique à Jordan
+      // Envoie le PDF d'un stock spécifique à Jordan (utilise la même logique que sPrintPDF)
       (window as any).sEnvoyerStockJordan = async (sid: string, team: string) => {
         try {
           const btn = document.querySelector(`button[onclick*="sEnvoyerStockJordan('${sid.replace(/'/g, "\\'")}']`) as HTMLButtonElement | null;
@@ -1527,69 +1527,57 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
           if (!stockSnap.exists()) { toast("Stock introuvable"); return; }
 
-          const stock = stockSnap.data() as any;
-          const compt = comptSnap.exists() ? comptSnap.data() as any : null;
+          const s = stockSnap.data() as any;
+          const arts = (s.articles || []).filter((a: any) => a.equipe === team);
+          const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
 
-          // Charge les articles depuis le document stock
-          const articles: any[] = (stock.articles || []).map((a: any) => ({
-            ...a,
-            compte: compt?.data ? compt.data[a.article] || null : null
-          }));
+          const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
+          const getCompte = (a: any) => { const d = comptData[a.article]; if (!d) return null; return typeof d === "object" ? d.c : d; };
+          const getDetruire = (a: any) => { const d = comptData[a.article]; if (!d || typeof d !== "object") return null; return d.cd; };
+          const ecartFn = (a: any) => { const c = getCompte(a); return c !== null ? c - a.nb_colis : null; };
 
+          const sorted = [...arts].sort((a: any, b: any) => a.article.localeCompare(b.article, "fr"));
           const now = new Date().toLocaleString("fr-FR");
-          const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
-          const manq = sorted.filter(a => a.compte !== null && a.compte < (a.nb_colis || 0)).length;
-          const exc = sorted.filter(a => a.compte !== null && a.compte > (a.nb_colis || 0)).length;
-          const nc = sorted.filter(a => a.compte === null).length;
+          const manq = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
+          const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
+          const nc = sorted.filter((a: any) => !isCounted(a)).length;
 
           const doc2 = new jsPDF({ unit: "mm", format: "a4" });
           const W = 210, M = 14, CW = W - M * 2;
-          doc2.setFillColor(10, 10, 10);
-          doc2.rect(0, 0, W, 22, "F");
-          doc2.setFillColor(200, 168, 75);
-          doc2.rect(0, 22, W, 2, "F");
-          doc2.setTextColor(200, 168, 75);
-          doc2.setFont("helvetica", "bold");
-          doc2.setFontSize(14);
+          doc2.setFillColor(10, 10, 10); doc2.rect(0, 0, W, 22, "F");
+          doc2.setFillColor(200, 168, 75); doc2.rect(0, 22, W, 2, "F");
+          doc2.setTextColor(200, 168, 75); doc2.setFont("helvetica", "bold"); doc2.setFontSize(14);
           doc2.text("MOOREA", M, 14);
-          doc2.setTextColor(255, 255, 255);
-          doc2.setFontSize(10);
-          doc2.text(`Inventaire Stock - ${team}`, M + 32, 14);
-          doc2.setTextColor(150, 150, 150);
-          doc2.setFontSize(8);
+          doc2.setTextColor(255, 255, 255); doc2.setFontSize(10);
+          doc2.text(`Inventaire ${team}`, M + 32, 14);
+          doc2.setTextColor(150, 150, 150); doc2.setFontSize(8);
           doc2.text(now, W - M, 14, { align: "right" });
 
           let y = 30;
-          doc2.setTextColor(80, 80, 80);
-          doc2.setFont("helvetica", "normal");
-          doc2.setFontSize(9);
-          doc2.text(`${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
+          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
+          doc2.text(`${s.dateLabel} · ${arts.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
           y += 8;
 
-          const colArticle = M + 2, colStock = M + 130, colCompte = M + 155, colEcart = M + CW - 6;
-          doc2.setFillColor(250, 248, 240);
-          doc2.rect(M, y, CW, 7, "F");
-          doc2.setTextColor(80, 80, 80);
-          doc2.setFont("helvetica", "bold");
-          doc2.setFontSize(8);
+          const colArticle = M + 2, colStock = M + 110, colCompte = M + 135, colDetruire = M + 160, colEcart = M + CW - 6;
+          doc2.setFillColor(250, 248, 240); doc2.rect(M, y, CW, 7, "F");
+          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8);
           doc2.text("ARTICLE", colArticle, y + 5);
           doc2.text("STOCK", colStock, y + 5, { align: "center" });
           doc2.text("COMPTÉ", colCompte, y + 5, { align: "center" });
+          doc2.text("DÉTRUIRE", colDetruire, y + 5, { align: "center" });
           doc2.text("ÉCART", colEcart, y + 5, { align: "right" });
           y += 10;
 
           doc2.setFont("helvetica", "normal");
           sorted.forEach(a => {
-            if (y > 280) {
-              doc2.addPage();
-              y = 16;
-            }
-            const e = a.compte !== null ? a.compte - (a.nb_colis || 0) : null;
-            doc2.setTextColor(30, 30, 30);
-            doc2.setFontSize(8);
-            doc2.text(String(a.article).substring(0, 60), colArticle, y + 4);
+            if (y > 280) { doc2.addPage(); y = 16; }
+            const e = ecartFn(a); const c = getCompte(a); const cd = getDetruire(a);
+            doc2.setTextColor(30, 30, 30); doc2.setFontSize(8);
+            doc2.text(String(a.article).substring(0, 50), colArticle, y + 4);
             doc2.text(String(a.nb_colis), colStock, y + 4, { align: "center" });
-            doc2.text(a.compte !== null ? String(a.compte) : "-", colCompte, y + 4, { align: "center" });
+            doc2.text(c !== null ? String(c) : "-", colCompte, y + 4, { align: "center" });
+            doc2.setTextColor(220, 38, 38);
+            doc2.text(cd || "", colDetruire, y + 4, { align: "center" });
             const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
             doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
             doc2.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y + 4, { align: "right" });
@@ -1598,15 +1586,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
           const pdfDataUri = doc2.output("datauristring");
           const base64 = pdfDataUri.split(",")[1];
-          const filename = `inventaire_${team.toLowerCase()}_${stock.dateLabel || TODAY}.pdf`;
+          const filename = `inventaire_${team.toLowerCase()}_${s.dateLabel || TODAY}.pdf`;
 
           const resp = await fetch("/api/send-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: ["jordan.jouanest@moorea.fr"],
-              subject: `📦 Inventaire Stock ${team} - ${stock.dateLabel || TODAY}`,
-              html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${team}</b> du ${now}.</p><p>${sorted.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p>`,
+              subject: `📦 Inventaire ${team} - ${s.dateLabel || TODAY}`,
+              html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${team}</b> du ${s.dateLabel}.</p><p>${arts.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p>`,
               attachments: [{ filename, content: base64 }],
             }),
           });
@@ -1617,6 +1605,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           }
 
           toast("✉️ PDF envoyé à Jordan");
+          // Message de motivation pour Dimitrie
+          setTimeout(() => getDmitriMotivation(100), 500);
         } catch (err: any) {
           toast("Erreur envoi : " + (err?.message || String(err)));
         } finally {
