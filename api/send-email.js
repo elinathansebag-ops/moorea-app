@@ -1,3 +1,5 @@
+import nodemailer from 'nodemailer';
+
 export const config = { runtime: 'nodejs' };
 
 export default async function handler(req, res) {
@@ -11,44 +13,36 @@ export default async function handler(req, res) {
   try {
     const { subject, html, cc = [], attachments = [], to } = req.body;
 
-    // Construire le payload pour SendGrid
-    const payload = {
-      personalizations: [{
-        to: (Array.isArray(to) && to.length > 0 ? to : ['qualite@moorea.fr', 'commercial@moorea.fr']).map(email => ({ email })),
-        cc: cc.length > 0 ? cc.map(email => ({ email })) : undefined,
-      }],
-      from: { email: 'agreage@moorea.fr', name: 'Moorea Agréage' },
-      subject,
-      content: [{ type: 'text/html', value: html }],
-    };
-
-    // Ajouter les attachments si présents
-    if (attachments.length > 0) {
-      payload.attachments = attachments.map(a => ({
-        filename: a.filename,
-        content: a.content, // base64
-        type: 'application/pdf',
-      }));
-    }
-
-    // Nettoyer les undefined
-    if (!payload.personalizations[0].cc) delete payload.personalizations[0].cc;
-
-    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer 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',
-        'Content-Type': 'application/json',
+    // Configuration Gmail via nodemailer
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: 'agreage@moorea.fr',
+        pass: 'ymxz ktzv lele vucp', // App Password de Google
       },
-      body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      const errorData = await response.text();
-      return res.status(response.status).json({ error: errorData || 'SendGrid error' });
-    }
+    // Préparer les attachments
+    const attachmentsFormatted = attachments.length > 0
+      ? attachments.map(a => ({
+          filename: a.filename,
+          content: Buffer.from(a.content, 'base64'),
+          contentType: 'application/pdf',
+        }))
+      : [];
 
-    return res.status(202).json({ success: true, message: 'Email queued for sending' });
+    // Envoyer l'email
+    const mailOptions = {
+      from: 'Moorea Agréage <agreage@moorea.fr>',
+      to: (Array.isArray(to) && to.length > 0 ? to : ['qualite@moorea.fr', 'commercial@moorea.fr']).join(','),
+      cc: cc.length > 0 ? cc.join(',') : undefined,
+      subject,
+      html,
+      attachments: attachmentsFormatted,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
