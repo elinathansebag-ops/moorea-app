@@ -1444,6 +1444,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
                   ? `<span style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 10px;border-radius:8px;font-weight:600">✓ Clôturé</span>
                      ${s.dureeComptageMs ? `<span style="font-size:11px;background:#faf8f3;border:1px solid #e8e0d0;color:#8a6f2e;padding:4px 10px;border-radius:8px;font-weight:600">⏱ ${formatDuree(s.dureeComptageMs)}</span>` : ""}
                      <button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>
+                     <button class="btn btn-sm" style="border-color:#c8a84b;color:#8a6f2e" onclick="sEnvoyerStockJordan('${sid}','${team}')">📧 Envoyer</button>
                      <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}')">🔓 Rouvrir</button>`
                   : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>
                      <button class="btn btn-sm btn-danger" onclick="sDeleteStock('${sid}')">🗑</button>`}
@@ -1469,12 +1470,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             // plus récente reste repliée tant qu'on ne clique pas dessus.
             const isOpen = false;
             html += `<div class="s-week-acc" style="margin-top:${idx === 0 ? 0 : 10}px">
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#faf8f3;border:1.5px solid #e8e0d0;border-radius:10px;gap:8px">
-                <div onclick="sToggleWeekAcc('${key}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;flex:1">
-                  <span style="font-weight:700;font-size:13px;color:#1a2e1a">📅 Semaine ${g.week} · ${g.year} <span style="font-weight:500;color:#9ca3af;font-size:11px;margin-left:4px">(${g.items.length} stock${g.items.length > 1 ? "s" : ""})</span></span>
-                  <span id="s-week-chev-${key}" style="transition:transform .15s;display:inline-block;transform:rotate(${isOpen ? 90 : 0}deg);color:#c8a84b;font-size:16px">›</span>
-                </div>
-                <button onclick="sEnvoyerPDFWeek('${key}')" style="background:#c8a84b;color:#0a0a0a;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit">📧 Envoyer</button>
+              <div onclick="sToggleWeekAcc('${key}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#faf8f3;border:1.5px solid #e8e0d0;border-radius:10px">
+                <span style="font-weight:700;font-size:13px;color:#1a2e1a">📅 Semaine ${g.week} · ${g.year} <span style="font-weight:500;color:#9ca3af;font-size:11px;margin-left:4px">(${g.items.length} stock${g.items.length > 1 ? "s" : ""})</span></span>
+                <span id="s-week-chev-${key}" style="transition:transform .15s;display:inline-block;transform:rotate(${isOpen ? 90 : 0}deg);color:#c8a84b;font-size:16px">›</span>
               </div>
               <div id="s-week-body-${key}" style="display:${isOpen ? "block" : "none"};padding-top:8px">
                 ${g.items.map(({ s, team }) => makeItem(s, team)).join("")}
@@ -1494,124 +1492,99 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (chev) chev.style.transform = `rotate(${open ? 0 : 90}deg)`;
       };
 
-      // Envoie les PDFs de tous les stocks clôturés d'une semaine à Jordan
-      (window as any).sEnvoyerPDFWeek = async (weekKey: string) => {
+      // Envoie le PDF d'un stock spécifique à Jordan
+      (window as any).sEnvoyerStockJordan = async (sid: string, team: string) => {
         try {
-          toast("⏳ Génération et envoi...");
+          const btn = document.querySelector(`button[onclick*="sEnvoyerStockJordan('${sid.replace(/'/g, "\\'")}']`) as HTMLButtonElement | null;
+          if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
 
-          // Récupère les stocks de la semaine sélectionnée
-          const stocksSnap = await getDocs(query(collection(db, "stocks"), where("displayInStock", "==", true)));
-          const allStocks = stocksSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          const stockSnap = await getDoc(doc(db, "stocks", sid));
+          const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
+          if (!stockSnap.exists()) { toast("Stock introuvable"); return; }
 
-          // Filtre : stocks clôturés de cette semaine
-          const weekStocks = allStocks.filter(s => {
-            if (!s.cloture) return false;
-            const { week, year } = getISOWeek(parseStockDate(s));
-            const key = `${year}-S${String(week).padStart(2, "0")}`;
-            return key === weekKey;
+          const stock = stockSnap.data() as any;
+          const compt = comptSnap.exists() ? comptSnap.data() as any : null;
+
+          // Charge les articles avec les comptages
+          const articles: any[] = [];
+          const snap = await getDocs(query(collection(db, "articles"), where("stockId", "==", sid)));
+          snap.forEach(d => {
+            const a = d.data();
+            const c = compt?.data ? compt.data[a.article] : null;
+            articles.push({ ...a, compte: c || null });
           });
 
-          if (weekStocks.length === 0) {
-            toast("Aucun stock clôturé pour cette semaine");
-            return;
-          }
+          const now = new Date().toLocaleString("fr-FR");
+          const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
+          const manq = sorted.filter(a => a.compte !== null && a.compte < (a.nb_colis || 0)).length;
+          const exc = sorted.filter(a => a.compte !== null && a.compte > (a.nb_colis || 0)).length;
+          const nc = sorted.filter(a => a.compte === null).length;
 
-          // Génère un PDF consolidé avec tous les stocks de la semaine
-          const doc = new jsPDF({ unit: "mm", format: "a4" });
+          const doc2 = new jsPDF({ unit: "mm", format: "a4" });
           const W = 210, M = 14, CW = W - M * 2;
-
-          // Header
-          doc.setFillColor(10, 10, 10);
-          doc.rect(0, 0, W, 22, "F");
-          doc.setFillColor(200, 168, 75);
-          doc.rect(0, 22, W, 2, "F");
-          doc.setTextColor(200, 168, 75);
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(14);
-          doc.text("MOOREA", M, 14);
-          doc.setTextColor(255, 255, 255);
-          doc.setFontSize(10);
-
-          const [weekNum, yearNum] = weekKey.match(/S(\d+)/) && weekKey.match(/(\d{4})-/)
-            ? [parseInt(weekKey.match(/S(\d+)/)![1]), parseInt(weekKey.match(/(\d{4})-/)![1])]
-            : [0, new Date().getFullYear()];
-
-          doc.text(`Inventaires Stocks - Semaine ${weekNum} ${yearNum}`, M + 32, 14);
-          doc.setTextColor(150, 150, 150);
-          doc.setFontSize(8);
-          doc.text(new Date().toLocaleString("fr-FR"), W - M, 14, { align: "right" });
+          doc2.setFillColor(10, 10, 10);
+          doc2.rect(0, 0, W, 22, "F");
+          doc2.setFillColor(200, 168, 75);
+          doc2.rect(0, 22, W, 2, "F");
+          doc2.setTextColor(200, 168, 75);
+          doc2.setFont("helvetica", "bold");
+          doc2.setFontSize(14);
+          doc2.text("MOOREA", M, 14);
+          doc2.setTextColor(255, 255, 255);
+          doc2.setFontSize(10);
+          doc2.text(`Inventaire Stock - ${team}`, M + 32, 14);
+          doc2.setTextColor(150, 150, 150);
+          doc2.setFontSize(8);
+          doc2.text(now, W - M, 14, { align: "right" });
 
           let y = 30;
+          doc2.setTextColor(80, 80, 80);
+          doc2.setFont("helvetica", "normal");
+          doc2.setFontSize(9);
+          doc2.text(`${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
+          y += 8;
 
-          // Parcourt chaque stock et ajoute un tableau
-          weekStocks.forEach((stock, stockIdx) => {
-            if (y > 250) {
-              doc.addPage();
-              y = 20;
+          const colArticle = M + 2, colStock = M + 130, colCompte = M + 155, colEcart = M + CW - 6;
+          doc2.setFillColor(250, 248, 240);
+          doc2.rect(M, y, CW, 7, "F");
+          doc2.setTextColor(80, 80, 80);
+          doc2.setFont("helvetica", "bold");
+          doc2.setFontSize(8);
+          doc2.text("ARTICLE", colArticle, y + 5);
+          doc2.text("STOCK", colStock, y + 5, { align: "center" });
+          doc2.text("COMPTÉ", colCompte, y + 5, { align: "center" });
+          doc2.text("ÉCART", colEcart, y + 5, { align: "right" });
+          y += 10;
+
+          doc2.setFont("helvetica", "normal");
+          sorted.forEach(a => {
+            if (y > 280) {
+              doc2.addPage();
+              y = 16;
             }
-
-            const team = stock.team === "PRESTIGE" ? "PRESTIGE" : "GMS";
-            const stockDate = parseStockDate(stock);
-
-            // Titre du stock
-            doc.setTextColor(80, 80, 80);
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(10);
-            doc.text(`${team} - ${stockDate}`, M, y);
+            const e = a.compte !== null ? a.compte - (a.nb_colis || 0) : null;
+            doc2.setTextColor(30, 30, 30);
+            doc2.setFontSize(8);
+            doc2.text(String(a.article).substring(0, 60), colArticle, y + 4);
+            doc2.text(String(a.nb_colis), colStock, y + 4, { align: "center" });
+            doc2.text(a.compte !== null ? String(a.compte) : "-", colCompte, y + 4, { align: "center" });
+            const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
+            doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
+            doc2.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y + 4, { align: "right" });
             y += 6;
-
-            // Récupère les comptages
-            const comptages = allArticles.filter(a => a.stockId === stock.id);
-            const sorted = comptages.sort((a, b) => a.article.localeCompare(b.article, "fr"));
-
-            // Tableau
-            const colArticle = M + 2, colStock = M + 130, colCompte = M + 155, colEcart = M + CW - 6;
-            doc.setFillColor(250, 248, 240);
-            doc.rect(M, y, CW, 5, "F");
-            doc.setTextColor(80, 80, 80);
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(7);
-            doc.text("ARTICLE", colArticle, y + 3.5);
-            doc.text("STOCK", colStock, y + 3.5, { align: "center" });
-            doc.text("COMPTÉ", colCompte, y + 3.5, { align: "center" });
-            doc.text("ÉCART", colEcart, y + 3.5, { align: "right" });
-            y += 6;
-
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(7);
-
-            sorted.slice(0, 15).forEach(a => {
-              if (y > 280) {
-                doc.addPage();
-                y = 16;
-              }
-              const e = a.compte !== null && a.compte !== undefined ? a.compte - (a.nb_colis || 0) : null;
-              doc.setTextColor(30, 30, 30);
-              doc.text(String(a.article).substring(0, 60), colArticle, y + 2);
-              doc.text(String(a.nb_colis || 0), colStock, y + 2, { align: "center" });
-              doc.text(a.compte !== null && a.compte !== undefined ? String(a.compte) : "-", colCompte, y + 2, { align: "center" });
-
-              const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
-              doc.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
-              doc.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y + 2, { align: "right" });
-              y += 4;
-            });
-
-            y += 4;
           });
 
-          const pdfDataUri = doc.output("datauristring");
+          const pdfDataUri = doc2.output("datauristring");
           const base64 = pdfDataUri.split(",")[1];
-          const filename = `inventaires_semaine_${weekNum}_${yearNum}.pdf`;
+          const filename = `inventaire_${team.toLowerCase()}_${stock.dateLabel || TODAY}.pdf`;
 
-          // Envoie l'email
           const resp = await fetch("/api/send-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: ["jordan.jouanest@moorea.fr"],
-              subject: `📦 Inventaires Stocks - Semaine ${weekNum} ${yearNum}`,
-              html: `<p>Bonjour,</p><p>Voici les inventaires consolidés pour la semaine ${weekNum} ${yearNum}.</p><p>${weekStocks.length} stock${weekStocks.length > 1 ? "s" : ""} clôturé${weekStocks.length > 1 ? "s" : ""}.</p>`,
+              subject: `📦 Inventaire Stock ${team} - ${stock.dateLabel || TODAY}`,
+              html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${team}</b> du ${now}.</p><p>${sorted.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p>`,
               attachments: [{ filename, content: base64 }],
             }),
           });
@@ -1621,9 +1594,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             throw new Error(err.error || err.message || (typeof err === "object" ? JSON.stringify(err) : String(err)) || `Erreur envoi (HTTP ${resp.status})`);
           }
 
-          toast(`✉️ PDFs (${weekStocks.length}) envoyés à Jordan`);
+          toast("✉️ PDF envoyé à Jordan");
         } catch (err: any) {
           toast("Erreur envoi : " + (err?.message || String(err)));
+        } finally {
+          const btn = document.querySelector(`button[onclick*="sEnvoyerStockJordan('${sid.replace(/'/g, "\\'")}']`) as HTMLButtonElement | null;
+          if (btn) { btn.disabled = false; btn.textContent = "📧 Envoyer"; }
         }
       };
 
