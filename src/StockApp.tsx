@@ -1569,53 +1569,95 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const s = stockSnap.data() as any;
 
-          // Convertit HTML en PDF avec html2canvas + jsPDF
-          const element = document.createElement("div");
-          element.innerHTML = result.html;
-          element.style.padding = "14px";
-          element.style.width = "210mm";
-          element.style.height = "auto";
-          document.body.appendChild(element);
+          // Génère le PDF directement depuis les données (pas HTML)
+          const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
+          const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
+          const arts = (s.articles || []).filter((a: any) => a.equipe === team);
 
-          const canvas = await html2canvas(element, { scale: 2, useCORS: true });
-          document.body.removeChild(element);
+          const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
+          const getCompte = (a: any) => { const d = comptData[a.article]; if (!d) return null; return typeof d === "object" ? d.c : d; };
+          const getDetruire = (a: any) => { const d = comptData[a.article]; if (!d || typeof d !== "object") return null; return d.cd; };
+          const ecartFn = (a: any) => { const c = getCompte(a); return c !== null ? c - a.nb_colis : null; };
 
-          const imgData = canvas.toDataURL("image/png");
-          const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-          const pageWidth = pdf.internal.pageSize.getWidth();
-          const pageHeight = pdf.internal.pageSize.getHeight();
-          const ratio = canvas.width / canvas.height;
-          const width = pageWidth - 10;
-          const height = width / ratio;
+          const sorted = [...arts].sort((a: any, b: any) => a.article.localeCompare(b.article, "fr"));
+          const now = new Date().toLocaleString("fr-FR");
+          const manq = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
+          const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
+          const nc = sorted.filter((a: any) => !isCounted(a)).length;
 
-          let yPos = 5;
-          pdf.addImage(imgData, "PNG", 5, yPos, width, height);
+          const pdfDoc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+          const W = 210, M = 14, CW = W - M * 2;
 
-          // Pagination si besoin
-          let totalHeight = height + yPos;
-          while (totalHeight > pageHeight) {
-            pdf.addPage();
-            yPos = totalHeight - pageHeight + 5;
-            pdf.addImage(imgData, "PNG", 5, -yPos, width, height);
-            totalHeight -= pageHeight;
-          }
+          // Header
+          pdfDoc.setFillColor(10, 10, 10); pdfDoc.rect(0, 0, W, 26, "F");
+          pdfDoc.setFillColor(200, 168, 75); pdfDoc.rect(0, 26, W, 2, "F");
+          pdfDoc.setTextColor(200, 168, 75); pdfDoc.setFont("helvetica", "bold"); pdfDoc.setFontSize(16);
+          pdfDoc.text("MOOREA", M, 15);
+          pdfDoc.setTextColor(255, 255, 255); pdfDoc.setFontSize(10);
+          pdfDoc.text(`Inventaire ${team}`, M + 40, 15);
+          pdfDoc.setTextColor(150, 150, 150); pdfDoc.setFontSize(8);
+          pdfDoc.text(now, W - M, 15, { align: "right" });
 
-          const pdfBlob = pdf.output("blob");
+          let y = 32;
+          pdfDoc.setTextColor(100, 100, 100); pdfDoc.setFont("helvetica", "normal"); pdfDoc.setFontSize(9);
+          pdfDoc.text(`${s.dateLabel} · ${arts.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
+          y += 7;
+
+          // Headers tableau
+          const colArticle = M, colStock = M + 120, colCompte = M + 150, colDetruire = M + 175, colEcart = W - M - 10;
+          pdfDoc.setFillColor(200, 168, 75); pdfDoc.rect(M, y, CW, 6, "F");
+          pdfDoc.setTextColor(10, 10, 10); pdfDoc.setFont("helvetica", "bold"); pdfDoc.setFontSize(9);
+          pdfDoc.text("ARTICLE", colArticle + 1, y + 4);
+          pdfDoc.text("STOCK", colStock, y + 4, { align: "center" });
+          pdfDoc.text("COMPTÉ", colCompte, y + 4, { align: "center" });
+          pdfDoc.text("DÉTRUIRE", colDetruire, y + 4, { align: "center" });
+          pdfDoc.text("ÉCART", colEcart, y + 4, { align: "right" });
+          y += 8;
+
+          // Lignes
+          pdfDoc.setFont("helvetica", "normal"); pdfDoc.setFontSize(9);
+          sorted.forEach((a, idx) => {
+            if (y > 270) { pdfDoc.addPage(); y = 12; }
+
+            const e = ecartFn(a); const c = getCompte(a); const cd = getDetruire(a);
+            const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0
+              ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l}·${q}`).join(" ")
+              : (a.lots && a.lots.length > 0 ? a.lots.join("/") : "");
+
+            if (idx % 2 === 0) { pdfDoc.setFillColor(250, 250, 250); pdfDoc.rect(M, y - 2, CW, 5.5, "F"); }
+
+            pdfDoc.setTextColor(30, 30, 30); pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.text(String(a.article).substring(0, 60), colArticle + 1, y);
+
+            pdfDoc.setTextColor(60, 60, 60); pdfDoc.setFont("helvetica", "normal");
+            pdfDoc.text(String(a.nb_colis), colStock, y, { align: "center" });
+            pdfDoc.text(c !== null ? String(c) : "-", colCompte, y, { align: "center" });
+
+            if (cd) { pdfDoc.setTextColor(220, 38, 38); pdfDoc.setFont("helvetica", "bold"); pdfDoc.text(String(cd), colDetruire, y, { align: "center" }); }
+
+            const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
+            pdfDoc.setTextColor(ecColor[0], ecColor[1], ecColor[2]); pdfDoc.setFont("helvetica", "bold");
+            pdfDoc.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y, { align: "right" });
+
+            y += 5;
+
+            if (lotsStr) {
+              pdfDoc.setFontSize(7); pdfDoc.setTextColor(120, 120, 120); pdfDoc.setFont("helvetica", "normal");
+              pdfDoc.text(lotsStr, colArticle + 1, y);
+              y += 3;
+            }
+
+            pdfDoc.setDrawColor(220, 220, 220); pdfDoc.setLineWidth(0.3);
+            pdfDoc.line(M, y + 1, W - M, y + 1);
+            y += 2.5;
+          });
+
+          const pdfBlob = pdfDoc.output("blob");
           const base64 = await new Promise<string>((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve((reader.result as string).split(",")[1]);
             reader.readAsDataURL(pdfBlob);
           });
-
-          // Récupère les stats pour l'email
-          const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
-          const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
-          const arts = (s.articles || []).filter((a: any) => a.equipe === team);
-          const isCounted = (a: any) => { const d = comptData[a.article]; return d !== undefined && d !== null; };
-          const ecartFn = (a: any) => { const c = comptData[a.article]; if (!c) return null; return (typeof c === "object" ? c.c : c) - a.nb_colis; };
-          const manq = arts.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
-          const exc = arts.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
-          const nc = arts.filter((a: any) => !isCounted(a)).length;
 
           const joke = getFunnyJoke(manq, exc, nc, arts.length);
 
