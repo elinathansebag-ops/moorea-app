@@ -25,6 +25,11 @@ import { ProgrammeAchatModule } from "./ProgrammeAchatModule";
 // (SecurityError attrapé par le catch) — en repassant par notre propre domaine, l'image
 // devient same-origin et se convertit sans problème.
 async function chargerImageEnDataUrl(url: string): Promise<string> {
+  // API désactivée pour l'instant — retourne une chaîne vide
+  // Les photos n'apparaîtront pas dans les PDF jusqu'à la réactivation
+  return "";
+
+  /* Code original (commenté)
   try {
     const resp = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
     if (!resp.ok) return "";

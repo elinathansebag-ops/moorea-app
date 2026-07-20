@@ -1724,6 +1724,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       // pour vérifier rapidement (depuis la Configuration) que l'envoi d'emails fonctionne
       // (utile après un changement de clé API Resend par exemple).
       (window as any).sTesterEmail = async () => {
+        // API emails désactivée pour l'instant
+        toast("⏸️ Les emails sont désactivés pour l'instant. Réactivation après déploiement du site.");
+        return;
+
+        /* Code original (commenté)
         const btn = document.getElementById("s-btn-test-email") as HTMLButtonElement | null;
         if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent || ""; btn.textContent = "⏳ Envoi..."; }
         try {
