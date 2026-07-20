@@ -1721,6 +1721,27 @@ _PDF joint_`;
       { icon: "📊", label: "QR Code", color: "#27ae60", stat: "Scans réseau", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowQrCode(true); } },
       { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
       { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowYukon(true); } },
+      { icon: "✉️", label: "Test Email", color: "#c8a84b", stat: "Vérifier Resend", action: async () => {
+        try {
+          const resp = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: ["elinathan.sebag@moorea.fr"],
+              subject: "✅ Test d'envoi d'email — Moorea Leofresh",
+              html: `<p>Ceci est un email de test envoyé depuis Leofresh de l'app Moorea.</p><p>Envoyé le ${new Date().toLocaleString("fr-FR")}.</p><p>Si tu reçois ce message, l'envoi d'email fonctionne correctement.</p>`,
+            }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast("❌ Erreur : " + (err.error || `HTTP ${resp.status}`));
+          } else {
+            showToast("✅ Email de test envoyé à elinathan.sebag@moorea.fr");
+          }
+        } catch (err: any) {
+          showToast("❌ Erreur : " + (err?.message || String(err)));
+        }
+      } },
     ];
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
