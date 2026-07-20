@@ -1724,9 +1724,29 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       // pour vérifier rapidement (depuis la Configuration) que l'envoi d'emails fonctionne
       // (utile après un changement de clé API Resend par exemple).
       (window as any).sTesterEmail = async () => {
-        // API emails désactivée pour l'instant
-        toast("⏸️ Les emails sont désactivés pour l'instant. Réactivation après déploiement du site.");
-        return;
+        const btn = document.getElementById("s-btn-test-email") as HTMLButtonElement | null;
+        if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent || ""; btn.textContent = "⏳ Envoi..."; }
+        try {
+          const now = new Date().toLocaleString("fr-FR");
+          const resp = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: ["elinathan.sebag@moorea.fr"],
+              subject: "✅ Test d'envoi d'email — Moorea",
+              html: `<p>Ceci est un email de test envoyé depuis la Configuration de l'app Moorea.</p><p>Envoyé le ${now}.</p><p>Si tu reçois ce message, l'envoi d'email fonctionne correctement.</p>`,
+            }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || err.message || (typeof err === "object" ? JSON.stringify(err) : String(err)) || `Erreur envoi (HTTP ${resp.status})`);
+          }
+          toast("✅ Email de test envoyé à elinathan.sebag@moorea.fr");
+        } catch (err: any) {
+          toast("Erreur envoi : " + (err?.message || String(err)));
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || "✉️ Tester l'envoi d'email"; }
+        }
       };
 
       (window as any).sSyncGMSPermanent = async () => {
