@@ -3,10 +3,10 @@
   "outputDirectory": "dist",
   "functions": {
     "api/**/*.ts": {
-      "runtime": "nodejs18.x"
+      "runtime": "nodejs20.x"
     },
     "api/**/*.js": {
-      "runtime": "edge"
+      "runtime": "nodejs20.x"
     }
   }
 }
