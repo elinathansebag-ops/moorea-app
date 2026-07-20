@@ -1530,14 +1530,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const stock = stockSnap.data() as any;
           const compt = comptSnap.exists() ? comptSnap.data() as any : null;
 
-          // Charge les articles avec les comptages
-          const articles: any[] = [];
-          const snap = await getDocs(query(collection(db, "articles"), where("stockId", "==", sid)));
-          snap.forEach(d => {
-            const a = d.data();
-            const c = compt?.data ? compt.data[a.article] : null;
-            articles.push({ ...a, compte: c || null });
-          });
+          // Charge les articles depuis le document stock
+          const articles: any[] = (stock.articles || []).map((a: any) => ({
+            ...a,
+            compte: compt?.data ? compt.data[a.article] || null : null
+          }));
 
           const now = new Date().toLocaleString("fr-FR");
           const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
