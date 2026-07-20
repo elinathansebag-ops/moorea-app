@@ -1470,11 +1470,22 @@ _PDF joint_`;
   const downloadPDF = async (r: any) => {
     try {
       const pdfDataUri = await generatePDFBase64(r);
-      // Aperçu intégré au site (au lieu d'ouvrir un nouvel onglet) — on utilise directement
-      // la data URI renvoyée par jsPDF, SANS repasser par un blob: (URL.createObjectURL) : ce
-      // dernier donne une page blanche dans l'iframe sur iPad/Safari iOS de façon fiable,
-      // alors qu'une data URI s'affiche correctement.
-      setPdfApercu(pdfDataUri);
+      // Sur iPad/Safari iOS, un blob: URL donne une page blanche dans l'iframe de façon fiable
+      // (bug connu), donc on garde la data URI directe dans ce cas précis.
+      // Sur desktop (Chrome/Firefox), c'est l'inverse avec les rapports contenant des photos :
+      // la data URI devient énorme une fois toutes les photos encodées en base64, et les
+      // navigateurs desktop rendent alors une page blanche dans l'iframe. On repasse donc par
+      // un blob: URL (bien plus léger à charger) sur tout ce qui n'est pas iOS.
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      let uri = pdfDataUri;
+      if (!isIOS) {
+        try {
+          const resp = await fetch(pdfDataUri);
+          const blob = await resp.blob();
+          uri = URL.createObjectURL(blob);
+        } catch { /* si la conversion échoue, on garde la data URI */ }
+      }
+      setPdfApercu(uri);
     } catch (e: any) {
       console.error("Erreur génération PDF rapport:", e);
       showToast("Erreur génération PDF : " + (e?.message || String(e)), "error");
@@ -2245,7 +2256,10 @@ _PDF joint_`;
         <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "#f5f3ee", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", borderBottom: "3px solid #c8a84b", flexShrink: 0 }}>
             <button
-              onClick={() => setPdfApercu(null)}
+              onClick={() => {
+                if (pdfApercu?.startsWith("blob:")) { try { URL.revokeObjectURL(pdfApercu); } catch {} }
+                setPdfApercu(null);
+              }}
               style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}
             >
               ← Retour
