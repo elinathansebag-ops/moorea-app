@@ -1540,6 +1540,67 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (chev) chev.style.transform = `rotate(${open ? 0 : 90}deg)`;
       };
 
+      // Blagues selon le jour de la semaine
+      const getDayJoke = (): string => {
+        const days = new Date();
+        const dayOfWeek = days.getDay();
+        const dayNames = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+        const currentDay = dayNames[dayOfWeek];
+
+        const dayJokes: { [key: string]: string[] } = {
+          "Lundi": [
+            "🌅 Lundi matin... c'est l'inventaire qui commence la journée! Bienvenue au truc pas cool du jour!",
+            "😴 Lundi = jour où le comptage fait 2x plus de bruit qu'on voudrait",
+            "📦 Lundi c'est comme le premier jour d'école... avec des colis à la place des devoirs",
+          ],
+          "Mardi": [
+            "📅 Mardi c'est comme le faux départ... on pense que c'est la semaine qui commence 😅",
+            "🎢 Mardi = montagne russe d'inventaire (spoiler: on redescend le vendredi)",
+            "☕ Mardi matin c'est 'pourquoi on n'a pas terminé hier?' edition",
+          ],
+          "Mercredi": [
+            "⏳ Mercredi = mi-chemin entre le début et la fin. Un peu comme ce stock!",
+            "🤝 Mercredi c'est le jour où les colis demandent poliment où ils vont",
+            "🎪 Mercredi = quasi-jeudi mais pas tout à fait (comme ce comptage quasi-bon)",
+          ],
+          "Jeudi": [
+            "🚀 Jeudi... on sent la fin de semaine arriver (mais les colis, eux, ils s'en fichent)",
+            "🎉 Jeudi c'est le jour où on se dit 'encore 1 jour'... de comptage",
+            "⚡ Jeudi = énergie de vendredi mais avec un jour de stock de retard",
+          ],
+          "Vendredi": [
+            "🎊 VENDREDI! Le jour où on espère vraiment que le stock est bon... spoiler: presque! 😄",
+            "🍺 Vendredi c'est le jour où les colis célèbrent aussi le weekend (en cachette)",
+            "🎯 Vendredi = dernier contrôle avant le repos... pas de pression hein! 😅",
+          ],
+          "Samedi": [
+            "😎 Samedi le stock? C'est brave... ou c'est du dévouement! 🙌",
+            "🌞 Samedi = même les colis sont en vacances (mais l'inventaire, lui, travaille!)",
+            "🏖️ Samedi = pas de rush client... juste du comptage zen ☕",
+          ],
+          "Dimanche": [
+            "😪 Dimanche... c'est dimanche... pourquoi on compte?? 🤔",
+            "🙏 Dimanche = jour de repos... sauf pour les stocks de Moorea! (Salut Dimitrie!)",
+            "🌙 Dimanche soir = la vraie question: on recompte le lundi matin?",
+          ],
+        };
+
+        const jokes = dayJokes[currentDay] || [];
+        return jokes.length > 0 ? jokes[Math.floor(Math.random() * jokes.length)] : "";
+      };
+
+      // Messages amusants selon les écarts détectés
+      const getStockJoke = (manq: number, exc: number, nc: number): string => {
+        if (manq > 5 && exc > 5) return "🎭 Ah ben c'est du délire ce matin! Pleins de manquants ET d'excédents!";
+        if (manq > 5) return "🔴 Beaucoup de manquants... tu fais le contrôle du stock ou tu joues à cache-cache avec les colis?";
+        if (exc > 5) return "🟠 Excédents partout... quelqu'un a oublié de compter correctement?";
+        if (nc > arts.length * 0.3) return "⚫ Beaucoup de non-comptés... il faut finir de compter! 😅";
+        if (manq === 0 && exc === 0 && nc === 0) return "✅ Parfait! Zéro erreur, zéro problème. Champion!";
+        if (manq === 1 && exc === 0) return "🎯 Juste 1 manquant... c'est presque parfait!";
+        if (exc === 1 && manq === 0) return "🎁 Bonus surprise de +1 colis! Accidental surplus!";
+        return "📊 Stock prêt pour contrôle!";
+      };
+
       // Envoie le PDF d'un stock spécifique à Jordan (réutilise generateStockPDF)
       (window as any).sEnvoyerStockJordan = async (sid: string, team: string) => {
         try {
@@ -1564,13 +1625,29 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const exc = arts.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
           const nc = arts.filter((a: any) => !isCounted(a)).length;
 
+          const dayJoke = getDayJoke();
+          const stockJoke = getStockJoke(manq, exc, nc);
+
           const resp = await fetch("/api/send-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: ["jordan.jouanest@moorea.fr"],
               subject: `📦 Inventaire ${team} - ${s.dateLabel || TODAY}`,
-              html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${team}</b> du ${s.dateLabel}.</p><p>${arts.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p>`,
+              html: `<div style="font-family:Arial,sans-serif;color:#333;line-height:1.6">
+                <p>Bonjour Jordan,</p>
+                <p>Voici l'inventaire du stock <b>${team}</b> du <b>${s.dateLabel}</b>.</p>
+                <div style="background:#f5f3ee;border-left:4px solid #c8a84b;padding:12px;margin:16px 0;border-radius:6px">
+                  <p style="margin:0;font-size:14px"><b>📊 Résumé :</b> ${arts.length} articles</p>
+                  <p style="margin:6px 0;color:#dc2626"><b>🔴 Manquants :</b> ${manq}</p>
+                  <p style="margin:6px 0;color:#b45309"><b>🟠 Excédents :</b> ${exc}</p>
+                  <p style="margin:6px 0;color:#666"><b>⚫ Non comptés :</b> ${nc}</p>
+                </div>
+                <p style="font-size:14px;font-style:italic;color:#8a6f2e;margin:16px 0;padding:10px;background:#fffbf0;border-radius:6px">${dayJoke}</p>
+                <p style="font-size:14px;font-weight:600;color:#b45309;margin:12px 0">${stockJoke}</p>
+                <p>Le PDF détaillé est en pièce jointe.</p>
+                <p style="margin-top:24px;color:#999;font-size:12px">Moorea Qualité • Système d'inventaire</p>
+              </div>`,
               attachments: [{ filename, content: base64 }],
             }),
           });
@@ -2140,6 +2217,25 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         } catch { toast("Erreur clôture"); }
       };
 
+      // Petit dictionnaire de blagues sur les écarts
+      const ecartJokes: { [key: number]: string[] } = {
+        "-1": ["Oups! 1 colis fugueur", "Mystère: -1 colis! 🕵️"],
+        "-2": ["Deux colis en vacances?", "The missing two 🤔"],
+        "-3": ["-3? Vraiment?? 😅", "Trois fantômes!"],
+        "1": ["Bonus surprise! +1 🎁", "Surstock accidentel"],
+        "2": ["Doublon détecté +2", "Quelqu'un a oublié de compter?"],
+        "3": ["+3 c'est du délire!", "Triplet surprise!"],
+        "4": ["Quartet mystérieux", "Erreur de comptage x4"],
+        "5": ["+5 c'est trop! 😂", "Penta-erreur detectée"],
+      };
+
+      const getEcartJoke = (ecart: number): string => {
+        if (ecart === 0) return "";
+        const key = Math.abs(ecart).toString();
+        const jokes = ecartJokes[key] || [];
+        return jokes.length > 0 ? " (" + jokes[Math.floor(Math.random() * jokes.length)] + ")" : "";
+      };
+
       // Génère un PDF jsPDF pour un stock (réutilisé par sPrintPDF et sEnvoyerStockJordan)
       const generateStockPDF = async (sid: string, team: string): Promise<string | null> => {
         try {
@@ -2162,49 +2258,74 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const exc = sorted.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
           const nc = sorted.filter((a: any) => !isCounted(a)).length;
 
-          const doc2 = new jsPDF({ unit: "mm", format: "a4" });
-          const W = 210, M = 14, CW = W - M * 2;
-          doc2.setFillColor(10, 10, 10); doc2.rect(0, 0, W, 22, "F");
-          doc2.setFillColor(200, 168, 75); doc2.rect(0, 22, W, 2, "F");
-          doc2.setTextColor(200, 168, 75); doc2.setFont("helvetica", "bold"); doc2.setFontSize(14);
-          doc2.text("MOOREA", M, 14);
-          doc2.setTextColor(255, 255, 255); doc2.setFontSize(10);
-          doc2.text(`Inventaire ${team}`, M + 32, 14);
+          const doc2 = new jsPDF({ unit: "mm", format: "a4", compress: true });
+          const W = 210, M = 12, CW = W - M * 2;
+
+          // Header stylisé
+          doc2.setFillColor(10, 10, 10); doc2.rect(0, 0, W, 24, "F");
+          doc2.setFillColor(200, 168, 75); doc2.rect(0, 24, W, 2, "F");
+          doc2.setTextColor(200, 168, 75); doc2.setFont("helvetica", "bold"); doc2.setFontSize(16);
+          doc2.text("🌿 MOOREA", M, 15);
+          doc2.setTextColor(255, 255, 255); doc2.setFontSize(11); doc2.setFont("helvetica", "normal");
+          doc2.text(`Inventaire Stock · ${team}`, M + 40, 15);
           doc2.setTextColor(150, 150, 150); doc2.setFontSize(8);
-          doc2.text(now, W - M, 14, { align: "right" });
+          doc2.text(now, W - M, 15, { align: "right" });
 
           let y = 30;
-          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
-          doc2.text(`${s.dateLabel} · ${arts.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
-          y += 8;
+          // Résumé avec meilleur contraste
+          doc2.setFillColor(245, 245, 245); doc2.rect(M, y, CW, 12, "F");
+          doc2.setTextColor(40, 40, 40); doc2.setFont("helvetica", "bold"); doc2.setFontSize(10);
+          doc2.text(`📅 ${s.dateLabel} · 📦 ${arts.length} articles`, M + 4, y + 4);
+          doc2.setTextColor(200, 50, 50); doc2.text(`🔴 Manquants: ${manq}`, M + 4, y + 9);
+          doc2.setTextColor(180, 100, 30); doc2.text(`🟠 Excédents: ${exc}`, M + 68, y + 9);
+          doc2.setTextColor(100, 100, 100); doc2.text(`⚫ Non comptés: ${nc}`, M + 130, y + 9);
+          y += 16;
 
-          const colArticle = M + 2, colStock = M + 110, colCompte = M + 135, colDetruire = M + 160, colEcart = M + CW - 6;
-          doc2.setFillColor(250, 248, 240); doc2.rect(M, y, CW, 7, "F");
-          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8);
+          // En-têtes du tableau
+          const colArticle = M + 2, colStock = M + 95, colCompte = M + 125, colDetruire = M + 155, colEcart = M + CW - 8;
+          doc2.setFillColor(200, 168, 75); doc2.rect(M, y, CW, 7, "F");
+          doc2.setTextColor(10, 10, 10); doc2.setFont("helvetica", "bold"); doc2.setFontSize(9);
           doc2.text("ARTICLE", colArticle, y + 5);
           doc2.text("STOCK", colStock, y + 5, { align: "center" });
           doc2.text("COMPTÉ", colCompte, y + 5, { align: "center" });
           doc2.text("DÉTRUIRE", colDetruire, y + 5, { align: "center" });
           doc2.text("ÉCART", colEcart, y + 5, { align: "right" });
-          y += 10;
+          y += 9;
 
+          // Contenu du tableau
           doc2.setFont("helvetica", "normal");
-          sorted.forEach(a => {
-            if (y > 270) { doc2.addPage(); y = 16; }
+          sorted.forEach((a, idx) => {
+            if (y > 265) { doc2.addPage(); y = 12; }
             const e = ecartFn(a); const c = getCompte(a); const cd = getDetruire(a);
-            const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q} col.`).join(" | ") : (a.lots?.join(" | ") || "");
-            doc2.setTextColor(30, 30, 30); doc2.setFontSize(7.5);
-            doc2.text(String(a.article).substring(0, 50), colArticle, y + 2);
-            if (lotsStr) doc2.text(`(${lotsStr.substring(0, 35)})`, colArticle, y + 5, { maxWidth: 100 });
-            doc2.text(String(a.nb_colis), colStock, y + (lotsStr ? 3.5 : 2), { align: "center" });
-            doc2.text(c !== null ? String(c) : "-", colCompte, y + (lotsStr ? 3.5 : 2), { align: "center" });
+            const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l}·${q}col`).join(" ") : (a.lots?.join(" ") || "");
+
+            // Alternance de couleurs pour meilleure lisibilité
+            if (idx % 2 === 0) { doc2.setFillColor(250, 250, 250); doc2.rect(M, y - 1, CW, 6.5, "F"); }
+
+            doc2.setTextColor(30, 30, 30); doc2.setFontSize(8);
+            doc2.text(String(a.article).substring(0, 45), colArticle, y + 1);
+            if (lotsStr) doc2.text(`(${lotsStr.substring(0, 28)})`, colArticle, y + 4, { maxWidth: 90, fontSize: 7 });
+
+            doc2.text(String(a.nb_colis), colStock, y + (lotsStr ? 2.5 : 1), { align: "center" });
+            doc2.text(c !== null ? String(c) : "−", colCompte, y + (lotsStr ? 2.5 : 1), { align: "center" });
+
             doc2.setTextColor(220, 38, 38);
-            doc2.text(cd || "", colDetruire, y + (lotsStr ? 3.5 : 2), { align: "center" });
+            doc2.text(cd || "", colDetruire, y + (lotsStr ? 2.5 : 1), { align: "center" });
+
+            // Écart avec blague
             const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
-            doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
-            doc2.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y + (lotsStr ? 3.5 : 2), { align: "right" });
-            y += lotsStr ? 8.5 : 5;
+            doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8);
+            const ecartText = e !== null ? (e > 0 ? "+" + e : String(e)) : "−";
+            const joke = e !== null && e !== 0 ? getEcartJoke(e) : "";
+            doc2.text(ecartText + joke, colEcart, y + (lotsStr ? 2.5 : 1), { align: "right", maxWidth: 35 });
+
+            y += lotsStr ? 7 : 5;
           });
+
+          // Footer
+          y = 275;
+          doc2.setTextColor(150, 150, 150); doc2.setFontSize(7); doc2.setFont("helvetica", "italic");
+          doc2.text("Moorea Qualité • Inventaire généré le " + now, M, y);
 
           return doc2.output("datauristring");
         } catch {
