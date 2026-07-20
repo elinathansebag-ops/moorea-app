@@ -1,10 +1,4 @@
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
-};
+export const config = { runtime: 'nodejs20.x' };
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -17,33 +11,44 @@ export default async function handler(req, res) {
   try {
     const { subject, html, cc = [], attachments = [], to } = req.body;
 
+    // Construire le payload pour SendGrid
     const payload = {
-      from: 'Moorea Agréage <agreage@moorea.fr>',
-      to: Array.isArray(to) && to.length > 0 ? to : ['qualite@moorea.fr', 'commercial@moorea.fr'],
+      personalizations: [{
+        to: (Array.isArray(to) && to.length > 0 ? to : ['qualite@moorea.fr', 'commercial@moorea.fr']).map(email => ({ email })),
+        cc: cc.length > 0 ? cc.map(email => ({ email })) : undefined,
+      }],
+      from: { email: 'agreage@moorea.fr', name: 'Moorea Agréage' },
       subject,
-      html,
+      content: [{ type: 'text/html', value: html }],
     };
 
-    if (cc.length > 0) payload.cc = cc;
-
+    // Ajouter les attachments si présents
     if (attachments.length > 0) {
       payload.attachments = attachments.map(a => ({
         filename: a.filename,
         content: a.content, // base64
+        type: 'application/pdf',
       }));
     }
 
-    const response = await fetch('https://api.resend.com/emails', {
+    // Nettoyer les undefined
+    if (!payload.personalizations[0].cc) delete payload.personalizations[0].cc;
+
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer re_GxzJabYQ_JcFzAg5NArgDnL6nEcR3KdS1',
+        'Authorization': 'Bearer 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',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
-    return res.status(response.status).json(data);
+    if (!response.ok) {
+      const errorData = await response.text();
+      return res.status(response.status).json({ error: errorData || 'SendGrid error' });
+    }
+
+    return res.status(202).json({ success: true, message: 'Email queued for sending' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
