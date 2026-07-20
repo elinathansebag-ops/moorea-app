@@ -2300,8 +2300,13 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
               y += 3.5;
             }
 
+            // Trait fin gris entre les articles
+            doc2.setDrawColor(220, 220, 220);
+            doc2.setLineWidth(0.3);
+            doc2.line(M, y + 1, W - M, y + 1);
+
             // Espace entre les articles
-            y += 2.5;
+            y += 3.5;
           });
 
           // Footer simple
