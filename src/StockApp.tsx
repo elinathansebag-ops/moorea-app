@@ -4,6 +4,7 @@ import { collection, getDocs, getDoc, setDoc, doc, query, where } from "firebase
 import { PageHeader } from "./shared";
 import { Html5Qrcode } from "html5-qrcode";
 import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ─── COMPOSANT STOCK APP EMBARQUÉE ───
@@ -1569,21 +1570,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const s = stockSnap.data() as any;
 
-          // Utilise jsPDF.html() pour convertir le HTML en PDF
-          const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-          const container = document.createElement("div");
-          container.innerHTML = result.html;
-
-          await (pdf as any).html(container, {
-            margin: 0,
-            windowWidth: 800,
-            windowHeight: 1000,
-          });
-
-          const dataUri = pdf.output("datauristring");
-          const base64 = dataUri.split(",")[1];
-
-          // Récupère les stats pour l'email
+          // Récupère les stats pour le mail
           const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
           const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
           const arts = (s.articles || []).filter((a: any) => a.equipe === team);
@@ -1592,6 +1579,47 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const manq = arts.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
           const exc = arts.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
           const nc = arts.filter((a: any) => !isCounted(a)).length;
+
+          // Rend le VRAI HTML (même que sPrintPDF) dans un container caché, puis convertit en image
+          const container = document.createElement("div");
+          container.innerHTML = result.html;
+          container.style.position = "fixed";
+          container.style.top = "0";
+          container.style.left = "-9999px";
+          container.style.width = "794px"; // largeur A4 à 96dpi
+          container.style.background = "#ffffff";
+          document.body.appendChild(container);
+
+          await new Promise(resolve => setTimeout(resolve, 150));
+
+          const canvas = await html2canvas(container, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            windowWidth: 794,
+          });
+          document.body.removeChild(container);
+
+          const imgData = canvas.toDataURL("image/jpeg", 0.95);
+          const pdfDoc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+          const pageWidth = 210, pageHeight = 297;
+          const imgWidth = pageWidth;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+          let heightLeft = imgHeight;
+          let position = 0;
+          pdfDoc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+
+          while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            pdfDoc.addPage();
+            pdfDoc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+          }
+
+          const dataUri = pdfDoc.output("datauristring");
+          const base64 = dataUri.split(",")[1];
 
           const joke = getFunnyJoke(manq, exc, nc, arts.length);
 
