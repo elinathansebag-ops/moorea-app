@@ -1408,6 +1408,28 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         return { week: weekNo, year: d.getUTCFullYear() };
       };
 
+      let lastDmitriPct = 0;
+      const getDmitriMotivation = (pct: number): void => {
+        const messages: { [key: number]: string[] } = {
+          25: ["🍺 25% - Dimitrie, c'est parti ! Une bière t'attends à la fin!", "🤘 25% - Vi! Le quart, c'est du sérieux!", "💪 25% - Dimitrie au travail, comme toujours!"],
+          50: ["🔥 50% - DIMITRIE POWER! La moitié c'est du gâteau!", "🚀 50% - Tu es une machine! Encore un peu!", "⚡ 50% - Slava! Non pardon, DIMITRIE! Continue!"],
+          75: ["🎯 75% - Dimitrie le champion! Presque là!", "🏆 75% - T'es trop fort, tu vas finir avant midi!", "💯 75% - C'est du délire, tu crushes!"],
+          100: ["🎉 DIMITRIE LEGEND! Stock terminé! 🍻", "🔔 TERMINÉ! Dimitrie, tu es une LÉGENDE!", "🏅 BOOM! Stock fini! Dimitrie le roi du comptage!"]
+        };
+
+        const threshold = pct >= 100 ? 100 : pct >= 75 ? 75 : pct >= 50 ? 50 : pct >= 25 ? 25 : 0;
+
+        // N'affiche que si on passe un seuil (pas à chaque rafraîchissement)
+        if (threshold > 0 && threshold !== lastDmitriPct && (threshold === 25 || threshold === 50 || threshold === 75 || threshold === 100)) {
+          lastDmitriPct = threshold;
+          const msgs = messages[threshold] || [];
+          if (msgs.length > 0) {
+            const msg = msgs[Math.floor(Math.random() * msgs.length)];
+            toast(msg);
+          }
+        }
+      };
+
       const renderStockList = async () => {
         const list = document.getElementById("s-stock-list");
         if (!list) return;
@@ -1429,6 +1451,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             const color = team === "GMS" ? "#92710a" : "#0ea5e9";
             const teamLabel = team === "GMS" ? "🌿 GMS" : "✨ Prestige";
             const sid = s.id.replace(/'/g, "\\'");
+            // Appel asynchrone pour éviter de bloquer le rendu
+            if (pct > 0) setTimeout(() => getDmitriMotivation(pct), 50);
             return `<div class="stock-item">
               <div style="flex:1">
                 <div style="font-size:13px;font-weight:700">📅 ${s.dateLabel} <span style="font-size:10px;font-weight:700;color:${color};background:${color}18;padding:2px 7px;border-radius:20px;margin-left:6px">${teamLabel}</span></div>
@@ -1615,7 +1639,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             if (sdata.debutComptage) { upd.dureeComptageMs = Date.now() - sdata.debutComptage; dureeMsg = ` (durée : ${formatDuree(upd.dureeComptageMs)})`; }
             await setDoc(doc(db, "stocks", sid), upd);
           }
-          toast("Stock clôturé" + dureeMsg); renderStockList();
+          toast("Stock clôturé" + dureeMsg);
+          // Message de motivation pour Dimitrie
+          setTimeout(() => getDmitriMotivation(100), 500);
+          renderStockList();
         } catch { toast("Erreur"); }
       };
 
