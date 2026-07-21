@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import emailjs from "@emailjs/browser";
-import jsPDF from "jspdf";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { PageHeader, NoteSelector, ScoreCircle, F, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, DESTINATAIRES, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, CRITERES } from "./shared";
 
@@ -1601,61 +1600,46 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     setValidatingAll(false);
   };
 
-  // Télécharge un PDF listant, pour ce jour, tous les articles ayant un n° de lot fournisseur
-  // (traçabilité) : fournisseur, article, n° de traçabilité, quantité et date.
+  // Aperçu de traçabilité fournisseur : au lieu de générer un PDF (qui s'affichait dans le
+  // lecteur PDF natif du navigateur — moche, avec sa barre d'outils/miniatures), on construit
+  // directement une page HTML stylée façon Moorea, affichée dans l'iframe. L'impression se fait
+  // toujours via iframe.contentWindow.print() (déclenchée par un vrai clic, fiable sur iPad).
   const telechargerTracabilite = () => {
     const tous = [...arrivages, ...(arrivagesArchives || [])].filter((a: any) => a.lot_fournisseur);
     if (!tous.length) { alert("Aucun article avec un n° de lot fournisseur pour ce jour."); return; }
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const W = 210, M = 14; let y = 20;
-    doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
-    doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
-    doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-    doc.text("MOOREA", M, 14);
-    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
-    doc.text(`Traçabilité fournisseur — ${date}`, W - M, 14, { align: "right" });
-    y = 32;
-    doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    // Colonnes élargies (notamment "N° traçabilité", souvent une liste de plusieurs lots
-    // séparés par des virgules) pour limiter les retours à la ligne.
-    const colX = { fourn: M, art: M + 44, lot: M + 96, qte: W - M - 20 };
-    const colW = { fourn: 41, art: 49, lot: 63 };
-    doc.text("FOURNISSEUR", colX.fourn, y);
-    doc.text("ARTICLE", colX.art, y);
-    doc.text("N° TRAÇABILITÉ", colX.lot, y);
-    doc.text("QTÉ", colX.qte, y);
-    y += 3; doc.setDrawColor(200, 168, 75); doc.line(M, y, W - M, y); y += 7;
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-    // Hauteur de ligne fixe utilisée pour empiler manuellement chaque cellule ligne par ligne —
-    // la hauteur de chaque rangée du tableau s'adapte ensuite au nombre de lignes réellement
-    // nécessaires (avant, une hauteur fixe provoquait un chevauchement du texte quand un article
-    // ou un n° de traçabilité était trop long et passait sur plusieurs lignes).
-    const lineH = 4.3;
-    tous.forEach((a: any, i: number) => {
-      const fournLines = doc.splitTextToSize(String(a.fournisseur || "-"), colW.fourn) as string[];
-      const artLines = doc.splitTextToSize(String(a.produit || "-"), colW.art) as string[];
-      const lotLines = doc.splitTextToSize(String(a.lot_fournisseur || "-"), colW.lot) as string[];
-      const nbLignes = Math.max(fournLines.length, artLines.length, lotLines.length, 1);
-      const rowH = nbLignes * lineH + 2.2;
 
-      if (y - 4.5 + rowH > 282) { doc.addPage(); y = 20; }
+    const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const rows = tous.map((a: any, i: number) => `
+      <tr style="background:${i % 2 === 0 ? "#faf8f3" : "#fff"}">
+        <td>${esc(a.fournisseur || "-")}</td>
+        <td>${esc(a.produit || "-")}</td>
+        <td>${esc(a.lot_fournisseur || "-")}</td>
+        <td style="white-space:nowrap">${esc(a.quantite ?? "-")} ${esc((a.unite || "").toUpperCase())}</td>
+      </tr>`).join("");
 
-      if (i % 2 === 0) { doc.setFillColor(250, 248, 240); doc.rect(M, y - 4.5, W - M * 2, rowH, "F"); }
-      doc.setTextColor(26, 46, 26); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-      fournLines.forEach((l, li) => doc.text(l, colX.fourn, y + li * lineH));
-      artLines.forEach((l, li) => doc.text(l, colX.art, y + li * lineH));
-      lotLines.forEach((l, li) => doc.text(l, colX.lot, y + li * lineH));
-      doc.text(`${a.quantite ?? "-"} ${(a.unite || "").toUpperCase()}`, colX.qte, y);
-      y += rowH;
-    });
-    doc.setFillColor(10, 10, 10); doc.rect(0, 285, W, 12, "F");
-    doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text(`Généré par Moorea — ${date}`, W / 2, 291, { align: "center" });
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Traçabilité — ${esc(date)}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',Arial,sans-serif;background:#fff;color:#1a2e1a}
+  .header{background:#0a0a0a;padding:18px 26px;display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid #c8a84b}
+  .header h1{color:#c8a84b;font-size:20px;letter-spacing:1.5px;font-family:'Syne',Arial,sans-serif}
+  .header span{color:rgba(255,255,255,0.75);font-size:12.5px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;padding:10px 26px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:#8a6f2e;border-bottom:2px solid #c8a84b;background:#fffbf0}
+  td{padding:9px 26px;font-size:13px;border-bottom:1px solid #f0ece0;vertical-align:top}
+  .footer{padding:14px 26px;font-size:11px;color:#9ca3af;text-align:center}
+  @media print{ @page{margin:10mm} .header{-webkit-print-color-adjust:exact;print-color-adjust:exact} th{-webkit-print-color-adjust:exact;print-color-adjust:exact} }
+</style></head>
+<body>
+  <div class="header"><h1>MOOREA</h1><span>Traçabilité fournisseur — ${esc(date)}</span></div>
+  <table>
+    <thead><tr><th>Fournisseur</th><th>Article</th><th>N° traçabilité</th><th>Qté</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p class="footer">${tous.length} article${tous.length > 1 ? "s" : ""} · Généré par Moorea</p>
+</body></html>`;
 
-    // Aperçu visible intégré à la page + impression via un vrai clic (voir commentaire plus haut
-    // sur pdfApercuTraca) — on utilise la data URI de jsPDF directement (pas de blob: + createObjectURL),
-    // car un blob: chargé dans un <iframe src> affiche une page blanche sur iPad/Safari.
-    setPdfApercuTraca(doc.output("datauristring"));
+    setPdfApercuTraca(html);
   };
 
   const fermerApercuTraca = () => {
@@ -1745,7 +1729,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               🖨️ Imprimer
             </button>
           </div>
-          <iframe ref={pdfApercuTracaIframeRef} src={pdfApercuTraca} style={{ flex: 1, border: "none", background: "#fff" }} />
+          <iframe ref={pdfApercuTracaIframeRef} srcDoc={pdfApercuTraca || ""} style={{ flex: 1, border: "none", background: "#fff" }} />
         </div>
       )}
     </div>
