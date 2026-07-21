@@ -81,6 +81,12 @@ export default function App() {
   const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "" });
   const [previewArr, setPreviewArr] = useState<any[] | null>(null);
   const [importingArr, setImportingArr] = useState(false);
+  // ─── DÉTECTION DE DOUBLONS (ex: après un import relancé par erreur) ───
+  // Regroupe les arrivages par produit+fournisseur+date normalisés ; affiche une liste à
+  // valider avant toute suppression — rien n'est jamais effacé automatiquement.
+  const [doublonsGroupes, setDoublonsGroupes] = useState<{ cle: string; items: any[] }[] | null>(null);
+  const [doublonsASupprimer, setDoublonsASupprimer] = useState<Set<string>>(new Set());
+  const [suppressionDoublonsEnCours, setSuppressionDoublonsEnCours] = useState(false);
   const [horsListeMode, setHorsListeMode] = useState(false);
   const [horsListe, setHorsListe] = useState({ produit: "", fournisseur: "", lot_interne: "", lot_fournisseur: "", origine: "", quantite: "", unite: "colis", type: "refusé", raison: "", pct: "" });
   const [rapportArrivage, setRapportArrivage] = useState<any | null>(null);
@@ -223,6 +229,7 @@ export default function App() {
   }, []);
 
   // ─── FIREBASE: arrivages ───
+  const [arrivagesCharges, setArrivagesCharges] = useState(false);
   useEffect(() => {
     const unsub = onValue(ref(db, "arrivages"), snap => {
       const data = snap.val();
@@ -231,6 +238,11 @@ export default function App() {
         list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         setArrivages(list);
       } else setArrivages([]);
+      // Sert à bloquer un import tant que la liste des arrivages existants n'a pas encore
+      // été reçue une première fois — sinon la détection de doublons compare contre une
+      // liste vide et laisse tout passer comme "nouveau" (c'est ce qui a causé le gros
+      // doublon lors d'un import relancé trop vite après l'ouverture de l'app).
+      setArrivagesCharges(true);
     });
     return () => unsub();
   }, []);
@@ -539,6 +551,10 @@ export default function App() {
 
   const confirmImportArr = async () => {
     if (!previewArr) return;
+    if (!arrivagesCharges) {
+      showToast("⏳ Chargement des arrivages existants en cours, réessaie dans 1-2 secondes", "error");
+      return;
+    }
     setImportingArr(true);
 
     const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
@@ -566,6 +582,54 @@ export default function App() {
       showToast(`${nouveaux.length} arrivages importés ✓`);
     }
     setPageMode("arrivages");
+  };
+
+  // Détecte les arrivages en double (même produit + fournisseur + date, en ignorant
+  // majuscules/espaces) — n'affiche qu'un aperçu à valider, ne supprime rien tout seul.
+  const detecterDoublonsArr = () => {
+    const groupes: Record<string, any[]> = {};
+    arrivages.forEach((a: any) => {
+      const cle = `${(a.produit || "").toLowerCase().trim()}|${(a.fournisseur || "").toLowerCase().trim()}|${a.date || ""}`;
+      if (!groupes[cle]) groupes[cle] = [];
+      groupes[cle].push(a);
+    });
+    const suspects = Object.entries(groupes)
+      .filter(([, items]) => items.length > 1)
+      .map(([cle, items]) => ({ cle, items: items.sort((x, y) => (x.timestamp || 0) - (y.timestamp || 0)) }));
+
+    if (suspects.length === 0) {
+      showToast("✅ Aucun doublon détecté");
+      return;
+    }
+    // Présélection : on garde le plus ancien de chaque groupe, on coche les autres pour suppression.
+    const preselection = new Set<string>();
+    suspects.forEach(g => { g.items.slice(1).forEach((it: any) => preselection.add(it.id)); });
+    setDoublonsGroupes(suspects);
+    setDoublonsASupprimer(preselection);
+  };
+
+  const toggleDoublonASupprimer = (id: string) => {
+    setDoublonsASupprimer(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const confirmerSuppressionDoublons = async () => {
+    if (doublonsASupprimer.size === 0) { setDoublonsGroupes(null); return; }
+    setSuppressionDoublonsEnCours(true);
+    try {
+      for (const id of doublonsASupprimer) {
+        await remove(ref(db, `arrivages/${id}`));
+      }
+      showToast(`🧹 ${doublonsASupprimer.size} doublon${doublonsASupprimer.size > 1 ? "s" : ""} supprimé${doublonsASupprimer.size > 1 ? "s" : ""}`);
+    } catch {
+      showToast("Erreur lors de la suppression", "error");
+    }
+    setSuppressionDoublonsEnCours(false);
+    setDoublonsGroupes(null);
+    setDoublonsASupprimer(new Set());
   };
 
   const submitHorsListe = async () => {
@@ -2322,6 +2386,36 @@ _PDF joint_`;
       <div className="content-wrap">
         {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
+            {doublonsGroupes && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 3500, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                <div style={{ background: "#fff", borderRadius: 20, padding: 20, width: "100%", maxWidth: 560, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.3)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>🧹 Doublons détectés</p>
+                    <button onClick={() => setDoublonsGroupes(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
+                  </div>
+                  <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "#6b7280" }}>
+                    Même produit + fournisseur + date trouvés plusieurs fois. Les cases cochées seront supprimées (le plus ancien de chaque groupe est décoché par défaut, pour être conservé). Vérifie avant de confirmer — rien n'est supprimé tant que tu ne cliques pas sur le bouton en bas.
+                  </p>
+                  {doublonsGroupes.map(g => (
+                    <div key={g.cle} style={{ border: "1.5px solid #fcd34d", background: "#fffbeb", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
+                      <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 13, color: "#92400e" }}>
+                        {g.items[0].produit} · {g.items[0].fournisseur} · {g.items[0].date} ({g.items.length} exemplaires)
+                      </p>
+                      {g.items.map((it: any, idx: number) => (
+                        <label key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12.5, color: "#374151", cursor: "pointer" }}>
+                          <input type="checkbox" checked={doublonsASupprimer.has(it.id)} onChange={() => toggleDoublonASupprimer(it.id)} />
+                          <span>{idx === 0 ? "🕐 Le plus ancien — " : ""}{it.quantite} {it.unite} · statut : {it.statut || "-"} {it.lot_interne ? `· lot ${it.lot_interne}` : ""}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                  <button onClick={confirmerSuppressionDoublons} disabled={suppressionDoublonsEnCours || doublonsASupprimer.size === 0}
+                    style={{ width: "100%", marginTop: 6, padding: "12px", background: suppressionDoublonsEnCours || doublonsASupprimer.size === 0 ? "#ccc" : "#dc2626", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: doublonsASupprimer.size === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>
+                    {suppressionDoublonsEnCours ? "Suppression..." : doublonsASupprimer.size === 0 ? "Rien de sélectionné" : `Supprimer les ${doublonsASupprimer.size} sélectionné${doublonsASupprimer.size > 1 ? "s" : ""} →`}
+                  </button>
+                </div>
+              </div>
+            )}
             {previewArr && (() => {
               const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
               const clesExistantes = new Set(existants.map((a: any) => `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`));
@@ -2361,6 +2455,9 @@ _PDF joint_`;
                 📊 Import
                 <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
               </label>
+              <button onClick={detecterDoublonsArr} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1a2e1a", whiteSpace: "nowrap" }}>
+                🧹 Doublons
+              </button>
               <button onClick={() => {
                 const today = new Date().toLocaleDateString("fr-FR");
                 const byFourn: Record<string, any[]> = {};
