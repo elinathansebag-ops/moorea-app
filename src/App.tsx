@@ -70,7 +70,7 @@ export default function App() {
   const [etiquette, setEtiquette] = useState(initialEtiquette);
   const [observations, setObservations] = useState("");
   const [controles, setControles] = useState<Record<string, string>>({
-    temperature: "C", fraicheur: "C", maturite: "C", coloration: "C"
+    temperature: "C", fraicheur: "C", maturite: "C", coloration: "C", sanitaire: "C"
   });
   const [sendingId, setSendingId] = useState<string | null>(null);
 
@@ -780,7 +780,7 @@ export default function App() {
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
     setPhotos([]); setPoidsStatut(""); setPoidsEcart("");
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
-    setControles({ temperature: "C", fraicheur: "C", maturite: "C", coloration: "C" });
+    setControles({ temperature: "C", fraicheur: "C", maturite: "C", coloration: "C", sanitaire: "C" });
   };
 
 
@@ -980,7 +980,7 @@ _PDF joint_`;
     setEtiquetteAbsente(r.etiquetteAbsente || false);
     setEtiquette(r.etiquette || initialEtiquette);
     setObservations(r.observations || "");
-    setControles(r.controles || { temperature: "", fraicheur: "", maturite: "", coloration: "" });
+    setControles(r.controles || { temperature: "", fraicheur: "", maturite: "", coloration: "", sanitaire: "" });
     setPhotos(r.photoUrls?.length > 0 ? r.photoUrls.map((url: string) => ({ name: "photo", url })) : []);
     setEditRapport(r);
     setVue("form");
@@ -1422,6 +1422,7 @@ _PDF joint_`;
         { id: "fraicheur", label: "Fraicheur" },
         { id: "maturite", label: "Maturite" },
         { id: "coloration", label: "Coloration" },
+        { id: "sanitaire", label: "Sanitaire" },
       ];
       const colW2 = CW / 3;
       doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
@@ -3236,6 +3237,7 @@ _PDF joint_`;
                       { id: "fraicheur", label: "Fraîcheur" },
                       { id: "maturite", label: "Maturité" },
                       { id: "coloration", label: "Coloration" },
+                      { id: "sanitaire", label: "Sanitaire" },
                     ].map((item, idx) => (
                       <tr key={item.id} style={{ background: idx % 2 === 0 ? "#faf8f5" : "#fff", borderBottom: "1px solid #f0ede6" }}>
                         <td style={{ padding: "12px 14px", fontWeight: 500, color: "#374151" }}>{item.label}</td>
