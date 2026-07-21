@@ -1932,7 +1932,6 @@ _PDF joint_`;
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
       { icon: "📦", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
       { icon: "🛒", label: "Programme d'achat", color: "#ea580c", badge: null, stat: "Grosses périodes", action: () => { setShowAccueil(false); setShowProgrammeAchat(true); } },
-      { icon: "⚙️", label: "Admin", color: "#6b7280", badge: null, stat: "Activité & réglages", action: () => { setShowAccueil(false); setShowAdmin(true); } },
     ];
 
     const leofreshBtns = [
@@ -1990,6 +1989,10 @@ _PDF joint_`;
               <button onClick={() => setShowLeofresh(!showLeofresh)}
                 style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.2)"}`, background: showLeofresh ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
                 🍋 Leofresh
+              </button>
+              <button onClick={() => setShowAdmin(true)}
+                style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
+                ⚙️ Admin
               </button>
               <button onClick={() => setDarkMode(!darkMode)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {darkMode ? "☀️" : "🌙"}
