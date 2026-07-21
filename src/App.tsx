@@ -2403,7 +2403,8 @@ _PDF joint_`;
                       </p>
                       {g.items.map((it: any, idx: number) => (
                         <label key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12.5, color: "#374151", cursor: "pointer" }}>
-                          <input type="checkbox" checked={doublonsASupprimer.has(it.id)} onChange={() => toggleDoublonASupprimer(it.id)} />
+                          <input type="checkbox" checked={doublonsASupprimer.has(it.id)} onChange={() => toggleDoublonASupprimer(it.id)}
+                            style={{ width: 18, height: 18, minWidth: 18, padding: 0, cursor: "pointer", accentColor: "#dc2626", flexShrink: 0 }} />
                           <span>{idx === 0 ? "🕐 Le plus ancien — " : ""}{it.quantite} {it.unite} · statut : {it.statut || "-"} {it.lot_interne ? `· lot ${it.lot_interne}` : ""}</span>
                         </label>
                       ))}
