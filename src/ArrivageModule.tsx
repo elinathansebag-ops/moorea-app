@@ -222,6 +222,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   // discrète, désactivée par défaut, pour ne pas concurrencer le comportement normal.
   const [sansEtiquette, setSansEtiquette] = useState(false);
 
+  // Un arrivage reporté à une date future n'a pas encore de palette physique sur le quai —
+  // on ne peut donc ni valider ni imprimer l'étiquette tant que le jour J n'est pas arrivé.
+  const dateArrivageIso = frToIso(arrivage.date);
+  const aujourdhuiIso = frToIso(new Date().toLocaleDateString("fr-FR"));
+  const paletteAbsente = !!dateArrivageIso && dateArrivageIso > aujourdhuiIso;
+
   const handleValider = async () => {
     setSaving(true);
     const hasLitige = litige || hasEcartColis;
@@ -384,9 +390,21 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           {sansEtiquette ? "✓ Sans étiquette à la validation (cas rare)" : "Valider sans étiquette (cas rare)"}
         </button>
       </div>
-      <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-        {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
-      </button>
+      {paletteAbsente ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 10, background: "#fffbeb", border: "1.5px solid #fcd34d" }}>
+          <span style={{ fontSize: 12.5, color: "#92400e", fontWeight: 600, flex: 1 }}>
+            📅 Reporté au {arrivage.date} — la palette n'est pas encore arrivée, validation possible ce jour-là.
+          </span>
+          <button onClick={() => { setDateReportIso(frToIso(arrivage.date)); setShowReport(true); }}
+            style={{ flexShrink: 0, background: "#fff", border: "1px solid #fcd34d", color: "#92400e", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
+            Changer la date
+          </button>
+        </div>
+      ) : (
+        <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
+          {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
+        </button>
+      )}
       {showReport && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }} onClick={() => setShowReport(false)}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: 300, maxWidth: "90vw", boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}>
