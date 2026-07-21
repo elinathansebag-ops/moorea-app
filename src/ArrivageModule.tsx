@@ -374,7 +374,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
         </button>
       </div>
       <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-        {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider →"}
+        {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
       </button>
     </div>
   );
