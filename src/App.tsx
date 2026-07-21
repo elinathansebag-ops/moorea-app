@@ -123,6 +123,40 @@ export default function App() {
   const [showRetours, setShowRetours] = useState(false);
   const [showRack, setShowRack] = useState(false);
   const [showProgrammeAchat, setShowProgrammeAchat] = useState(false);
+  // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
+  const ADMIN_PIN = "2468";
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [adminPinInput, setAdminPinInput] = useState("");
+  const [adminPinError, setAdminPinError] = useState("");
+  const [adminTab, setAdminTab] = useState<"activite" | "reglages">("activite");
+  const [activityLog, setActivityLog] = useState<any[]>([]);
+  const [rackModePlacementAdmin, setRackModePlacementAdmin] = useState<"manuel" | "scan">("manuel");
+  useEffect(() => {
+    const unsub = onValue(ref(db, "activity_log"), snap => {
+      const data = snap.val();
+      if (!data) { setActivityLog([]); return; }
+      const list = Object.entries(data).map(([id, v]: [string, any]) => ({ ...v, id }));
+      list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      setActivityLog(list.slice(0, 300)); // dernière activité seulement, pas besoin de tout charger
+    });
+    return () => unsub();
+  }, []);
+  useEffect(() => {
+    const unsub = onValue(ref(db, "rack_mode_placement"), snap => {
+      const v = snap.val();
+      if (v === "scan" || v === "manuel") setRackModePlacementAdmin(v);
+    });
+    return () => unsub();
+  }, []);
+  // Petit journal d'activité partagé — appelé depuis les actions clés (validation, import,
+  // suppression de doublons, etc.) pour pouvoir répondre à "qui a fait quoi" après coup.
+  const logActivite = (action: string, details: string) => {
+    push(ref(db, "activity_log"), {
+      user: user?.displayName || user?.email || "Inconnu",
+      action, details, timestamp: Date.now(),
+    }).catch(() => {});
+  };
   const [catalogueArticles, setCatalogueArticles] = useState<{code:string,libelle:string,equipe:string}[]>([]);
   // Helper: trouver le code article depuis le libellé
   const getCodeArticle = (libelle: string): string => {
@@ -364,7 +398,7 @@ export default function App() {
   }, [showStock]);
 
   // ─── HANDLERS ARRIVAGES ───
-  const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string, palettes?: number[] | null) => {
+  const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string, palettes?: number[] | null, sansEtiquette?: boolean) => {
     const now2 = new Date();
     const statut = decision === "conforme" ? "validé" : ncType;
     // DLC et n° de traçabilité fournisseur saisis (ou corrigés) sur la carte d'agréage rapide —
@@ -378,11 +412,13 @@ export default function App() {
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
     await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, ...(litige ? { litige } : {}), validatedAt: Date.now() });
     showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
+    logActivite(decision === "conforme" ? "Validation arrivage" : "Litige créé", `${arrivage.produit || "-"} · ${arrivage.fournisseur || "-"} · lot ${arrivage.lot_interne || "-"}`);
     // Chaque article validé doit repartir avec son étiquette — impression automatique dès la
     // validation, sans popup à remplir. Si l'agréeur a réparti sur plusieurs palettes (champ
     // "🎫 Palettes" de la carte d'agréage), on imprime une étiquette par palette avec le bon
-    // nombre de colis ; sinon une seule étiquette avec la quantité totale.
-    if (decision === "conforme") {
+    // nombre de colis ; sinon une seule étiquette avec la quantité totale. Exception rare (~5%) :
+    // "sansEtiquette" coché sur la carte saute complètement cette impression automatique.
+    if (decision === "conforme" && !sansEtiquette) {
       try {
         const arrivageMaj = { ...arrivage, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal };
         if (palettes && palettes.length > 1) {
@@ -605,6 +641,7 @@ export default function App() {
     } else {
       showToast(`${nouveaux.length} arrivages importés ✓`);
     }
+    logActivite("Import arrivages", `${nouveaux.length} ajoutés, ${doublons} doublon${doublons > 1 ? "s" : ""} ignoré${doublons > 1 ? "s" : ""}`);
     setPageMode("arrivages");
   };
 
@@ -654,6 +691,7 @@ export default function App() {
         await remove(ref(db, `arrivages/${id}`));
       }
       showToast(`🧹 ${doublonsASupprimer.size} doublon${doublonsASupprimer.size > 1 ? "s" : ""} supprimé${doublonsASupprimer.size > 1 ? "s" : ""}`);
+      logActivite("Suppression doublons", `${doublonsASupprimer.size} arrivage${doublonsASupprimer.size > 1 ? "s" : ""} supprimé${doublonsASupprimer.size > 1 ? "s" : ""}`);
     } catch {
       showToast("Erreur lors de la suppression", "error");
     }
@@ -1776,6 +1814,91 @@ _PDF joint_`;
     return <ProgrammeAchatModule onClose={() => { setShowProgrammeAchat(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
+  if (showAdmin) {
+    const fermerAdmin = () => { setShowAdmin(false); setAdminUnlocked(false); setAdminPinInput(""); setShowAccueil(true); };
+    const majModePlacementRack = async (v: "manuel" | "scan") => {
+      try {
+        const { set } = await import("firebase/database");
+        await set(ref(db, "rack_mode_placement"), v);
+      } catch {}
+    };
+    return (
+      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+        <PageHeader titre="⚙️ Admin" couleur="#6b7280" onBack={fermerAdmin} onHome={fermerAdmin} />
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px", boxSizing: "border-box" }}>
+          {!adminUnlocked ? (
+            <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+              <div style={{ fontSize: 40, color: "#6b7280", marginBottom: 16 }}>🔒</div>
+              <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 20 }}>Entre le code pour accéder à l'admin</p>
+              <input
+                type="password" inputMode="numeric" maxLength={4} value={adminPinInput}
+                onChange={e => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                  setAdminPinInput(v); setAdminPinError("");
+                  if (v.length === 4) {
+                    if (v === ADMIN_PIN) setAdminUnlocked(true);
+                    else { setAdminPinError("Code incorrect"); setAdminPinInput(""); }
+                  }
+                }}
+                placeholder="••••"
+                style={{ width: 110, padding: 10, textAlign: "center", fontSize: 22, border: "1.5px solid #e5e7eb", borderRadius: 10, fontFamily: "inherit", outline: "none", letterSpacing: 8, display: "block", margin: "0 auto" }}
+              />
+              <p style={{ fontSize: 12, color: "#dc2626", marginTop: 10, minHeight: 16 }}>{adminPinError}</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                <button onClick={() => setAdminTab("activite")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${adminTab === "activite" ? "#6b7280" : "#e5e7eb"}`, background: adminTab === "activite" ? "#f3f4f6" : "#fff", fontWeight: 700, fontSize: 13, color: adminTab === "activite" ? "#374151" : "#9ca3af", cursor: "pointer" }}>📜 Activité</button>
+                <button onClick={() => setAdminTab("reglages")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${adminTab === "reglages" ? "#6b7280" : "#e5e7eb"}`, background: adminTab === "reglages" ? "#f3f4f6" : "#fff", fontWeight: 700, fontSize: 13, color: adminTab === "reglages" ? "#374151" : "#9ca3af", cursor: "pointer" }}>⚙️ Réglages</button>
+              </div>
+
+              {adminTab === "activite" && (
+                <div>
+                  <p style={{ fontSize: 11.5, color: "#9ca3af", marginBottom: 12 }}>
+                    Dernières actions enregistrées (validations, imports, suppressions de doublons...). Utile pour comprendre "qui a fait quoi" après coup.
+                  </p>
+                  {activityLog.length === 0 ? (
+                    <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 13, padding: "2rem 0" }}>Aucune activité enregistrée pour l'instant — elle s'accumule au fur et à mesure des actions futures.</p>
+                  ) : activityLog.map(entry => (
+                    <div key={entry.id} style={{ background: "#fff", border: "1px solid #e8e0d0", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3, gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 700, fontSize: 12.5, color: "#1a2e1a" }}>{entry.action}</span>
+                        <span style={{ fontSize: 11, color: "#9ca3af", whiteSpace: "nowrap" }}>{new Date(entry.timestamp).toLocaleString("fr-FR")}</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>{entry.details}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: 11, color: "#c8a84b", fontWeight: 600 }}>👤 {entry.user}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {adminTab === "reglages" && (
+                <div>
+                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+                    <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>📦 Mode de placement rack (mur "Stockage")</p>
+                    <p style={{ margin: "0 0 10px", fontSize: 11, color: "#9ca3af" }}>Réglage partagé, valable pour tous les appareils. Sur les autres murs, le scan reste obligatoire quoi qu'il arrive.</p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => majModePlacementRack("manuel")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${rackModePlacementAdmin === "manuel" ? "#8b5cf6" : "#e5e7eb"}`, background: rackModePlacementAdmin === "manuel" ? "#f5f3ff" : "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12, color: rackModePlacementAdmin === "manuel" ? "#6d28d9" : "#6b7280" }}>✍️ Manuel</button>
+                      <button onClick={() => majModePlacementRack("scan")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${rackModePlacementAdmin === "scan" ? "#8b5cf6" : "#e5e7eb"}`, background: rackModePlacementAdmin === "scan" ? "#f5f3ff" : "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12, color: rackModePlacementAdmin === "scan" ? "#6d28d9" : "#6b7280" }}>📷 Scan</button>
+                    </div>
+                  </div>
+                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
+                    <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🖨️ Imprimante étiquettes</p>
+                    <p style={{ margin: 0, fontSize: 11.5, color: "#9ca3af" }}>Configurée directement dans le script du PC (print-relay.js, nom de l'imprimante et format papier) — pas encore pilotable depuis ce panneau.</p>
+                  </div>
+                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20 }}>
+                    <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🗄️ Autres réglages du module Rack</p>
+                    <button onClick={() => { setShowAdmin(false); setShowRack(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Ouvrir la configuration du Rack →</button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (showAccueil) {
     const getHello = () => {
       const h = new Date().getHours();
@@ -1809,6 +1932,7 @@ _PDF joint_`;
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
       { icon: "📦", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
       { icon: "🛒", label: "Programme d'achat", color: "#ea580c", badge: null, stat: "Grosses périodes", action: () => { setShowAccueil(false); setShowProgrammeAchat(true); } },
+      { icon: "⚙️", label: "Admin", color: "#6b7280", badge: null, stat: "Activité & réglages", action: () => { setShowAccueil(false); setShowAdmin(true); } },
     ];
 
     const leofreshBtns = [

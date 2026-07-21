@@ -200,6 +200,10 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
     setRepartitionPalettes(prev => prev.map((q, i) => i === idx ? v : q));
   };
 
+  // Cas rare (~5%) : valider sans déclencher l'impression automatique de l'étiquette — option
+  // discrète, désactivée par défaut, pour ne pas concurrencer le comportement normal.
+  const [sansEtiquette, setSansEtiquette] = useState(false);
+
   const handleValider = async () => {
     setSaving(true);
     const hasLitige = litige || hasEcartColis;
@@ -210,7 +214,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
     ].filter(Boolean).join(" | ");
     const tracaPropre = tracaList.map(t => t.trim()).filter(Boolean);
     const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaPropre.join(", "), lot_fournisseur_liste: tracaPropre };
-    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "", nbPalettes > 1 ? repartitionPalettes : null);
+    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquette);
     setSaving(false);
     if (hasLitige) onOuvreRapport(arrivage, true);
   };
@@ -363,8 +367,14 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
           </div>
         )}
       </div>
+      <div style={{ textAlign: "right", marginBottom: 4 }}>
+        <button onClick={() => setSansEtiquette(v => !v)}
+          style={{ background: "none", border: "none", padding: 0, color: sansEtiquette ? "#d97706" : "#9ca3af", fontSize: 10.5, textDecoration: "underline", cursor: "pointer", fontWeight: sansEtiquette ? 700 : 400 }}>
+          {sansEtiquette ? "✓ Sans étiquette à la validation (cas rare)" : "Valider sans étiquette (cas rare)"}
+        </button>
+      </div>
       <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-        {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : "✅ Valider →"}
+        {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider →"}
       </button>
     </div>
   );
