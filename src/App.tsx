@@ -293,6 +293,45 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // ─── ÉTAT DU RELAIS D'IMPRESSION (PC) ───
+  // Le PC envoie un signal de vie ("printRelayStatus/lastSeen") toutes les 15s tant que
+  // print-relay.js tourne. On considère qu'il est hors ligne si ce signal date de plus de
+  // 40s — le recalcul se fait via un minuteur, pas seulement à la réception d'un nouveau
+  // signal, sinon on ne détecterait jamais qu'il s'est arrêté d'émettre.
+  const [printRelayLastSeen, setPrintRelayLastSeen] = useState<number | null>(null);
+  const [printRelayOnline, setPrintRelayOnline] = useState<boolean | null>(null);
+  useEffect(() => {
+    const unsub = onValue(ref(db, "printRelayStatus"), snap => {
+      const data = snap.val();
+      setPrintRelayLastSeen(data?.lastSeen || null);
+    });
+    return () => unsub();
+  }, []);
+  useEffect(() => {
+    const recalc = () => setPrintRelayOnline(printRelayLastSeen ? Date.now() - printRelayLastSeen < 40000 : false);
+    recalc();
+    const t = setInterval(recalc, 10000);
+    return () => clearInterval(t);
+  }, [printRelayLastSeen]);
+
+  // Étiquettes bloquées : en erreur, ou "en attente"/"en cours d'impression" depuis plus de
+  // 2 minutes (signe que le PC ne les a jamais traitées, ex : hors ligne au moment de l'envoi).
+  const [etiquettesBloquees, setEtiquettesBloquees] = useState<{ key: string; job: any }[]>([]);
+  useEffect(() => {
+    const unsub = onValue(ref(db, "printQueue"), snap => {
+      const data = snap.val() || {};
+      const maintenant = Date.now();
+      const bloquees = Object.entries(data)
+        .filter(([, job]: [string, any]) => job.status === "error" || ((job.status === "pending" || job.status === "printing") && maintenant - (job.createdAt || 0) > 120000))
+        .map(([key, job]: [string, any]) => ({ key, job }));
+      setEtiquettesBloquees(bloquees);
+    });
+    return () => unsub();
+  }, []);
+  const relancerEtiquette = (key: string) => {
+    update(ref(db, `printQueue/${key}`), { status: "pending", error: null, createdAt: Date.now() }).catch(() => {});
+  };
+
   // ─── DARK MODE ───
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
@@ -2704,6 +2743,27 @@ _PDF joint_`;
                 </div>
               );
             })()}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: printRelayOnline ? "#f0fdf4" : "#fef2f2", color: printRelayOnline ? "#15803d" : "#dc2626", border: `1px solid ${printRelayOnline ? "#bbf7d0" : "#fca5a5"}` }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block" }} />
+                🖨️ Imprimante PC : {printRelayOnline === null ? "..." : printRelayOnline ? "en ligne" : "hors ligne"}
+              </span>
+            </div>
+            {etiquettesBloquees.length > 0 && (
+              <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 14 }}>
+                <p style={{ margin: "0 0 8px", fontSize: 12.5, fontWeight: 700, color: "#991b1b" }}>
+                  ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""} — jamais imprimée{etiquettesBloquees.length > 1 ? "s" : ""} ou en erreur
+                </p>
+                {etiquettesBloquees.map(({ key, job }) => (
+                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #fecaca" }}>
+                    <span style={{ flex: 1, fontSize: 12, color: "#7f1d1d" }}>{job.lotLabel || job.produit || "Étiquette"} {job.error ? `— ${job.error}` : ""}</span>
+                    <button onClick={() => relancerEtiquette(key)} style={{ flexShrink: 0, background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
+                      🔁 Relancer
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
                 📊 Import

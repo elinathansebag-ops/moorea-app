@@ -11,7 +11,7 @@
 // Voir README.md dans ce dossier pour l'installation complète.
 
 const { initializeApp } = require("firebase/app");
-const { getDatabase, ref, query, orderByChild, equalTo, onChildAdded, update } = require("firebase/database");
+const { getDatabase, ref, query, orderByChild, equalTo, onChildAdded, update, set } = require("firebase/database");
 const QRCode = require("qrcode");
 const puppeteer = require("puppeteer");
 const { execFile } = require("child_process");
@@ -230,6 +230,18 @@ onChildAdded(pendingQuery, (snap) => {
   fileLocale.push({ job, key });
   traiterFileLocale();
 });
+
+// ─── SIGNAL DE VIE ────────────────────────────────────────────────────────
+// Écrit régulièrement un "je suis en ligne" dans Firebase pour que l'app
+// affiche un voyant 🟢/🔴 côté iPad. Si ce script s'arrête ou perd le réseau,
+// le signal cesse d'être rafraîchi et l'app détecte que le relais est hors
+// ligne (voir printRelayStatus/lastSeen — la fraîcheur est jugée côté app).
+const statusRef = ref(db, "printRelayStatus");
+function envoyerSignalDeVie() {
+  set(statusRef, { online: true, lastSeen: Date.now() }).catch(() => {});
+}
+envoyerSignalDeVie();
+setInterval(envoyerSignalDeVie, 15000);
 
 // Garde le process vivant
 process.stdin.resume();
