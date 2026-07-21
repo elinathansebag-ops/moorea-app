@@ -87,6 +87,10 @@ export default function App() {
   const [doublonsGroupes, setDoublonsGroupes] = useState<{ cle: string; items: any[] }[] | null>(null);
   const [doublonsASupprimer, setDoublonsASupprimer] = useState<Set<string>>(new Set());
   const [suppressionDoublonsEnCours, setSuppressionDoublonsEnCours] = useState(false);
+  // Report de date d'un arrivage : si la nouvelle date choisie contient déjà un arrivage
+  // qui semble être le même (même clé que cleDoublonArrivage), on prévient l'utilisateur
+  // au lieu de créer silencieusement un doublon.
+  const [conflitReport, setConflitReport] = useState<{ arrivage: any; nouvelleDateFr: string; existant: any } | null>(null);
   const [horsListeMode, setHorsListeMode] = useState(false);
   const [horsListe, setHorsListe] = useState({ produit: "", fournisseur: "", lot_interne: "", lot_fournisseur: "", origine: "", quantite: "", unite: "colis", type: "refusé", raison: "", pct: "" });
   const [rapportArrivage, setRapportArrivage] = useState<any | null>(null);
@@ -614,6 +618,35 @@ export default function App() {
     const produitNorm = (a.produit || "").toLowerCase().trim();
     const fournNorm = (a.fournisseur || "").toLowerCase().trim();
     return lot ? `lot:${lot}|${produitNorm}|${fournNorm}` : `${produitNorm}|${fournNorm}|${a.date || ""}`;
+  };
+
+  // Report de date d'un arrivage : si un arrivage avec la même clé (lot/produit/fournisseur)
+  // existe déjà à la date choisie, on demande à l'utilisateur quoi faire au lieu de créer
+  // silencieusement un doublon.
+  const handleReporterDate = (arrivage: any, nouvelleDateFr: string) => {
+    const cle = cleDoublonArrivage(arrivage);
+    const existant = arrivages.find(
+      a => a.id !== arrivage.id && a.date === nouvelleDateFr && cleDoublonArrivage(a) === cle
+    );
+    if (existant) {
+      setConflitReport({ arrivage, nouvelleDateFr, existant });
+    } else {
+      update(ref(db, `arrivages/${arrivage.id}`), { date: nouvelleDateFr }).catch(() => {});
+      logActivite("Report de date", `${arrivage.produit || ""} (${arrivage.fournisseur || ""}) reporté au ${nouvelleDateFr}`);
+    }
+  };
+
+  // Résout le conflit détecté par handleReporterDate.
+  const resoudreConflitReport = async (choix: "garder2" | "supprimerExistant" | "annuler") => {
+    if (!conflitReport) return;
+    const { arrivage, nouvelleDateFr, existant } = conflitReport;
+    if (choix === "annuler") { setConflitReport(null); return; }
+    if (choix === "supprimerExistant") {
+      await remove(ref(db, `arrivages/${existant.id}`)).catch(() => {});
+    }
+    await update(ref(db, `arrivages/${arrivage.id}`), { date: nouvelleDateFr }).catch(() => {});
+    logActivite("Report de date", `${arrivage.produit || ""} (${arrivage.fournisseur || ""}) reporté au ${nouvelleDateFr}${choix === "supprimerExistant" ? " (ancien arrivage supprimé)" : " (les deux conservés)"}`);
+    setConflitReport(null);
   };
 
   const confirmImportArr = async () => {
@@ -2592,6 +2625,31 @@ _PDF joint_`;
                 </div>
               </div>
             )}
+            {conflitReport && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 3600, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 420, boxShadow: "0 24px 60px rgba(0,0,0,0.3)", padding: 20 }}>
+                  <p style={{ margin: "0 0 6px", fontWeight: 800, fontSize: 16, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>⚠️ Un arrivage existe déjà à cette date</p>
+                  <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "#6b7280" }}>
+                    {conflitReport.arrivage.produit} · {conflitReport.arrivage.fournisseur} : un arrivage qui semble être le même ({conflitReport.existant.quantite} {conflitReport.existant.unite}
+                    {conflitReport.existant.lot_interne ? `, lot ${conflitReport.existant.lot_interne}` : ""}) est déjà présent le {conflitReport.nouvelleDateFr}. Que veux-tu faire ?
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <button onClick={() => resoudreConflitReport("garder2")}
+                      style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #27ae60", background: "#fff", color: "#27ae60", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      Garder les deux
+                    </button>
+                    <button onClick={() => resoudreConflitReport("supprimerExistant")}
+                      style={{ padding: "11px", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      Supprimer l'arrivage déjà présent
+                    </button>
+                    <button onClick={() => resoudreConflitReport("annuler")}
+                      style={{ padding: "11px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      Annuler le report
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {previewArr && (() => {
               const clesExistantes = new Set(arrivages.map(cleDoublonArrivage));
               const nouveaux = previewArr.filter(a => !clesExistantes.has(cleDoublonArrivage(a)));
@@ -2788,7 +2846,7 @@ _PDF joint_`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onScan={handleScanForDate} gencodeArticles={gencodeArticles} />
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} />
                           );
                         })}
                       </div>

@@ -387,11 +387,24 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
         {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
       </button>
+      {showReport && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }} onClick={() => setShowReport(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: 300, maxWidth: "90vw", boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}>
+            <p style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 800, color: "#1a2e1a" }}>📅 Reporter à une autre date</p>
+            <input type="date" value={dateReportIso} onChange={e => setDateReportIso(e.target.value)}
+              style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 14, fontWeight: 700, color: "#1a2e1a", marginBottom: 14 }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setShowReport(false)} style={{ flex: 1, padding: "9px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Annuler</button>
+              <button onClick={confirmerReport} disabled={!dateReportIso} style={{ flex: 1, padding: "9px", borderRadius: 9, border: "none", background: dateReportIso ? "#27ae60" : "#ccc", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: dateReportIso ? "pointer" : "default" }}>Confirmer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, selectMode, selectedArrivages, onToggleSelect, gencodeArticles }: any) {
+export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles }: any) {
   const [open, setOpen] = useState(false);
   const nbTraites = traites.length;
   const allDone = produits.length === 0 && nbTraites > 0;
@@ -411,7 +424,7 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
       </div>
       {open && (
         <div style={{ padding: "12px 14px" }}>
-          {produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} />)}
+          {produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} />)}
           {nbTraites > 0 && (
             <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>📁 Traités · {nbTraites}</p>
@@ -1585,7 +1598,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
   );
 }
 
-export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles }: any) {
+export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -1729,6 +1742,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               traites={byFournisseurTraites[f] || []}
               onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport}
               onImprimerMulti={onImprimerMulti}
+              onReporterDate={onReporterDate}
               selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect}
               gencodeArticles={gencodeArticles} />
           ))}
