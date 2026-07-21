@@ -199,7 +199,7 @@ function EchelleDivider({ height }: { height: number }) {
   );
 }
 
-export function RackModule({ onClose }: { onClose: () => void }) {
+export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; autoOpenConfig?: boolean }) {
   const [activeWall, setActiveWall] = useState(WALL_IDS[0]);
   const [configs, setConfigs] = useState<Record<string, WallConfig>>({});
   const [positions, setPositions] = useState<Record<string, PalettePos>>({});
@@ -432,6 +432,13 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     setCfgRows(cfg.rows); setCfgCols(cfg.cols); setCfgLabel(cfg.label); setCfgEchelle(cfg.echelleEvery ?? DEFAULT_ECHELLE);
     setShowConfig(true);
   };
+
+  // Ouvre directement la config quand on arrive depuis le panneau Admin (le bouton "Configurer"
+  // a été retiré de la page principale du Rack — la config passe maintenant par l'Admin).
+  useEffect(() => {
+    if (autoOpenConfig) openConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenConfig]);
 
   // Changer de mur depuis la page de configuration (sans revenir en arrière)
   const switchConfigWall = (id: string) => {
@@ -1134,9 +1141,6 @@ export function RackModule({ onClose }: { onClose: () => void }) {
               <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase" }}>⚠️ DLC ≤10j</p>
             </div>
           </div>
-          <button onClick={openConfig} style={{ padding: "10px 16px", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
-            ⚙️ Configurer
-          </button>
         </div>
         {modeEffectif === "scan" && (
           <div style={{ background: paletteScanEnAttente ? "#f0fdf4" : "#f5f3ff", border: `1.5px solid ${paletteScanEnAttente ? "#86efac" : "#ddd6fe"}`, borderRadius: 12, padding: "10px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>

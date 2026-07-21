@@ -122,6 +122,7 @@ export default function App() {
   const [showCatalogue, setShowCatalogue] = useState(false);
   const [showRetours, setShowRetours] = useState(false);
   const [showRack, setShowRack] = useState(false);
+  const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showProgrammeAchat, setShowProgrammeAchat] = useState(false);
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
   const ADMIN_PIN = "2468";
@@ -1807,7 +1808,7 @@ _PDF joint_`;
   }
 
   if (showRack) {
-    return <RackModule onClose={() => { setShowRack(false); setShowAccueil(true); }} />;
+    return <RackModule autoOpenConfig={rackAutoConfig} onClose={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />;
   }
 
   if (showProgrammeAchat) {
@@ -1888,7 +1889,7 @@ _PDF joint_`;
                   </div>
                   <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20 }}>
                     <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🗄️ Autres réglages du module Rack</p>
-                    <button onClick={() => { setShowAdmin(false); setShowRack(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Ouvrir la configuration du Rack →</button>
+                    <button onClick={() => { setShowAdmin(false); setRackAutoConfig(true); setShowRack(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Ouvrir la configuration du Rack →</button>
                   </div>
                 </div>
               )}
