@@ -229,6 +229,10 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const paletteAbsente = !!dateArrivageIso && dateArrivageIso > aujourdhuiIso;
 
   const handleValider = async () => {
+    // Filet supplémentaire contre le double-tap : sur tablette, deux taps très rapprochés
+    // peuvent partir avant que React n'ait eu le temps de désactiver le bouton (disabled={saving}
+    // ne suffit pas toujours) — ce qui déclenchait parfois une double impression d'étiquette.
+    if (saving) return;
     setSaving(true);
     const hasLitige = litige || hasEcartColis;
     const obs = [
@@ -518,197 +522,6 @@ export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any) {
   });
 }
 
-async function imprimerEtiquettePalette(arrivage: any, paletteIndex?: number, colisCount?: number) {
-  const lot = arrivage.lot_interne || arrivage.id;
-  const palRef = paletteIndex != null ? `${paletteIndex}` : null;
-  const url = `${window.location.origin}${window.location.pathname}?id=${arrivage.id}`;
-  const lotLabel = palRef ? `MRA.${String(lot).padStart(4,"0")}-${palRef}` : `MRA.${String(lot).padStart(4,"0")}`;
-  const qte = colisCount != null ? colisCount : arrivage.quantite;
-
-  // Taille de police du nom de produit adaptée à sa longueur — évite que les noms longs
-  // (avec calibre/conditionnement entre parenthèses) soient coupés par des points de
-  // suspension sur l'étiquette imprimée.
-  const nomProduit = (arrivage.produit || "-").toUpperCase();
-  const produitFontSize = nomProduit.length <= 18 ? 16 : nomProduit.length <= 30 ? 13.5 : nomProduit.length <= 45 ? 11.5 : nomProduit.length <= 65 ? 9.5 : 8;
-
-  // Formatage DLC (n'apparaît sur l'étiquette que si elle est renseignée sur l'arrivage)
-  let dlcLabel = "";
-  if (arrivage.dlc) {
-    const d = new Date(arrivage.dlc);
-    dlcLabel = isNaN(d.getTime()) ? String(arrivage.dlc) : d.toLocaleDateString("fr-FR");
-  }
-
-  // Impression directe, sans aucune page/aperçu à afficher : un cadre invisible (hors écran)
-  // sert juste de support technique pour déclencher le module d'impression du navigateur —
-  // seule la boîte de dialogue "Imprimer" du système apparaît, comme demandé.
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:416px;height:264px;border:0";
-  document.body.appendChild(iframe);
-
-  // Résout une fois l'impression terminée (évènement "afterprint", avec un filet de sécurité
-  // si jamais il ne se déclenche pas sur cet appareil) — permet à l'impression multi-palettes
-  // d'attendre chaque étiquette avant de passer à la suivante.
-  let fini = false;
-  let resoudre: () => void = () => {};
-  const attente = new Promise<void>(resolve => { resoudre = resolve; });
-  const nettoyer = () => { if (fini) return; fini = true; iframe.remove(); resoudre(); };
-
-  // QR le plus grand possible : on demande une image source haute résolution (500x500)
-  // pour qu'elle reste nette une fois affichée en grand sur l'étiquette imprimée.
-  // Fond blanc / trait noir uniquement — pas de couleur, pensé pour impression thermique.
-  const qrSvgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=3`;
-  let qrDataUrl = "";
-  try {
-    qrDataUrl = await new Promise<string>((resolve) => {
-      const img = new Image(); img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = 500; canvas.height = 500;
-        canvas.getContext("2d")!.drawImage(img, 0, 0, 500, 500);
-        resolve(canvas.toDataURL("image/png"));
-      };
-      img.onerror = () => resolve("");
-      img.src = qrSvgUrl;
-      setTimeout(() => resolve(""), 5000);
-    });
-  } catch { qrDataUrl = ""; }
-
-  const qrHtml = qrDataUrl
-    ? `<img src="${qrDataUrl}" class="qr-img" />`
-    : `<img src="${qrSvgUrl}" class="qr-img" onerror="this.style.display='none'" />`;
-
-  // Étiquette au format 110mm x 70mm — QR agrandi au maximum, infos réduites à
-  // l'essentiel (produit, quantité, DLC si renseignée, lot Moorea).
-  // Tout en majuscules, aucun fond de couleur (noir sur blanc) — pensé pour impression thermique.
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${lotLabel}</title>
-<style>
-@page{size:110mm 70mm;margin:0}
-*{margin:0;padding:0;box-sizing:border-box;text-transform:uppercase}
-body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
-.etiquette{width:110mm;height:70mm;background:#fff;border:3px solid #000;padding:4mm;display:flex;gap:4mm;overflow:hidden}
-.qr-col{display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.qr-img{width:60mm;height:60mm;border:2px solid #000;background:#fff;object-fit:contain}
-.info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between}
-.lot{font-size:20px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:2px solid #000;padding-bottom:1.5mm;word-break:break-word}
-.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.15;margin-top:1.5mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;word-break:break-word}
-.qty-row{display:flex;align-items:baseline;gap:4px;margin-top:1.5mm}
-.qty{font-size:28px;font-weight:900;color:#000;line-height:1}
-.unite{font-size:12px;font-weight:700;color:#000}
-.dlc{margin-top:1.5mm;color:#000;font-size:13px;font-weight:900;border:2px solid #000;padding:1mm 2mm;display:inline-block;letter-spacing:0.5px}
-@media print{body{padding:0;background:#fff}}
-</style>
-</head><body>
-<div class="etiquette">
-  <div class="qr-col">${qrHtml}</div>
-  <div class="info-col">
-    <div>
-      <div class="lot">${lotLabel}</div>
-      <div class="produit">${nomProduit}</div>
-    </div>
-    <div>
-      <div class="qty-row"><span class="qty">${qte || "-"}</span><span class="unite">${(arrivage.unite || "COLIS").toUpperCase()}</span></div>
-      ${dlcLabel ? `<div class="dlc">DLC ${dlcLabel}</div>` : ""}
-    </div>
-  </div>
-</div>
-</body></html>`;
-  iframe.onload = () => {
-    try {
-      iframe.contentWindow?.print();
-      iframe.contentWindow?.addEventListener("afterprint", nettoyer);
-    } catch { nettoyer(); }
-  };
-  iframe.srcdoc = html;
-  // Filet de sécurité : si "afterprint" ne se déclenche pas sur cet appareil, on nettoie
-  // quand même après un délai large pour ne pas bloquer indéfiniment l'impression suivante.
-  setTimeout(nettoyer, 90000);
-  return attente;
-}
-
-// ─── ÉTIQUETTE REFUS — imprimée quand un arrivage est refusé, avec un QR qui renvoie
-// directement (une fois scanné par un employé Moorea déjà connecté) vers le rapport lié pour
-// faire signer le bon de retour au fournisseur/transporteur qui vient récupérer la marchandise.
-export async function imprimerEtiquetteRefus(arrivage: any) {
-  const url = `${window.location.origin}${window.location.pathname}?refus=${arrivage.id}`;
-  const nomProduit = (arrivage.produit || "-").toUpperCase();
-  const produitFontSize = nomProduit.length <= 18 ? 15 : nomProduit.length <= 30 ? 13 : nomProduit.length <= 45 ? 11 : 9;
-  const fournisseur = (arrivage.fournisseur || "-").toUpperCase();
-
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:416px;height:264px;border:0";
-  document.body.appendChild(iframe);
-
-  let fini = false;
-  let resoudre: () => void = () => {};
-  const attente = new Promise<void>(resolve => { resoudre = resolve; });
-  const nettoyer = () => { if (fini) return; fini = true; iframe.remove(); resoudre(); };
-
-  const qrSvgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(url)}&bgcolor=FFFFFF&color=000000&margin=3`;
-  let qrDataUrl = "";
-  try {
-    qrDataUrl = await new Promise<string>((resolve) => {
-      const img = new Image(); img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = 500; canvas.height = 500;
-        canvas.getContext("2d")!.drawImage(img, 0, 0, 500, 500);
-        resolve(canvas.toDataURL("image/png"));
-      };
-      img.onerror = () => resolve("");
-      img.src = qrSvgUrl;
-      setTimeout(() => resolve(""), 5000);
-    });
-  } catch { qrDataUrl = ""; }
-
-  const qrHtml = qrDataUrl
-    ? `<img src="${qrDataUrl}" class="qr-img" />`
-    : `<img src="${qrSvgUrl}" class="qr-img" onerror="this.style.display='none'" />`;
-
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Refus ${arrivage.lot_interne || arrivage.id}</title>
-<style>
-@page{size:110mm 70mm;margin:0}
-*{margin:0;padding:0;box-sizing:border-box;text-transform:uppercase}
-body{font-family:'Arial Black',Arial,sans-serif;background:#f2f2f2;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
-.etiquette{width:110mm;height:70mm;background:#fff;border:3px solid #000;padding:4mm;display:flex;gap:4mm;overflow:hidden}
-.qr-col{display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.qr-img{width:56mm;height:56mm;border:2px solid #000;background:#fff;object-fit:contain}
-.info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between}
-.refus{font-size:20px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:3px solid #000;padding-bottom:1.5mm}
-.fourn{font-size:12px;font-weight:700;color:#000;margin-top:1.5mm;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
-.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.15;margin-top:1.5mm;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;word-break:break-word}
-.qty-row{display:flex;align-items:baseline;gap:4px;margin-top:1.5mm}
-.qty{font-size:26px;font-weight:900;color:#000;line-height:1}
-.unite{font-size:12px;font-weight:700;color:#000}
-.scan{margin-top:1.5mm;font-size:9px;font-weight:700;color:#000}
-@media print{body{padding:0;background:#fff}}
-</style>
-</head><body>
-<div class="etiquette">
-  <div class="qr-col">${qrHtml}</div>
-  <div class="info-col">
-    <div>
-      <div class="refus">❌ REFUS</div>
-      <div class="fourn">${fournisseur}</div>
-      <div class="produit">${nomProduit}</div>
-    </div>
-    <div>
-      <div class="qty-row"><span class="qty">${arrivage.quantite ?? "-"}</span><span class="unite">${(arrivage.unite || "COLIS").toUpperCase()}</span></div>
-      <div class="scan">Scanner pour signer le bon de retour</div>
-    </div>
-  </div>
-</div>
-</body></html>`;
-  iframe.onload = () => {
-    try {
-      iframe.contentWindow?.print();
-      iframe.contentWindow?.addEventListener("afterprint", nettoyer);
-    } catch { nettoyer(); }
-  };
-  iframe.srcdoc = html;
-  setTimeout(nettoyer, 90000);
-  return attente;
-}
-
 export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onClose: () => void }) {
   const totalColis = arrivage.quantite || 0;
   const [nbPalettes, setNbPalettes] = useState(1);
@@ -733,6 +546,7 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
   // Envoie chaque étiquette dans la file d'impression à distance (relais PC) — utile
   // depuis l'iPad quand l'imprimante Brother n'apparaît pas dans AirPrint.
   const handleEnvoyerPC = async () => {
+    if (sendingPC) return;
     setSendingPC(true);
     try {
       for (let i = 0; i < nbPalettes; i++) {

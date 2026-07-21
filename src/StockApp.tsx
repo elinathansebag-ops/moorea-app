@@ -1157,7 +1157,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             if (!_byArticle) _byArticle = {};
             Object.entries(ov).forEach(([art, eq]) => { _byArticle[art.toLowerCase().trim()] = eq; });
           }
-        } catch {}
+        } catch {
+          // Ne pas laisser cette erreur passer inaperçue : sans ces réglages GMS/Prestige,
+          // certains articles pourraient être classés dans la mauvaise équipe silencieusement.
+          toast("⚠️ Impossible de charger les réglages GMS/Prestige — vérifie ta connexion");
+        }
       };
       await loadOverrides();
 
@@ -1237,7 +1241,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             });
             if (n > 0) toast(n + " comptages récupérés");
           }
-        } catch {}
+        } catch {
+          // Important : sans ça, un échec de chargement (réseau coupé, permissions...) donnait
+          // l'impression que le comptage repartait de zéro, alors que les données existent bien.
+          toast("⚠️ Erreur de chargement des comptages précédents — ne recompte pas avant d'avoir vérifié ta connexion");
+        }
       };
 
       // ── Ordre optimisé ──

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { db, ref, push, onValue, update, remove } from "./firebase";
+import { db, ref, push, onValue, update, remove, auth } from "./firebase";
 import { PageHeader, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY } from "./shared";
 import { ScannerQR } from "./ArrivageModule";
 import emailjs from "@emailjs/browser";
@@ -200,6 +200,16 @@ function EchelleDivider({ height }: { height: number }) {
 }
 
 export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; autoOpenConfig?: boolean }) {
+  // Journal d'activité admin — jusqu'ici seules les actions d'App.tsx (arrivages, imports,
+  // doublons) étaient tracées ; les suppressions/déplacements de palettes en rack ne
+  // laissaient aucune trace. On écrit directement dans le même chemin Firebase.
+  const logActiviteRack = (action: string, details: string) => {
+    push(ref(db, "activity_log"), {
+      user: auth.currentUser?.displayName || auth.currentUser?.email || "Inconnu",
+      action, details, timestamp: Date.now(),
+    }).catch(() => {});
+  };
+
   const [activeWall, setActiveWall] = useState(WALL_IDS[0]);
   const [configs, setConfigs] = useState<Record<string, WallConfig>>({});
   const [positions, setPositions] = useState<Record<string, PalettePos>>({});
@@ -559,7 +569,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
 
   // ─── TRAITEMENT DU QR SCANNÉ (mode "scan") ───
   // ScannerQR (composant partagé, déjà utilisé pour les arrivages) extrait l'id/lot depuis l'URL
-  // du QR imprimé sur l'étiquette (voir imprimerEtiquettePalette) avant d'appeler onScan — on
+  // du QR imprimé sur l'étiquette (voir envoyerEtiquettePourImpressionPC) avant d'appeler onScan — on
   // retrouve l'arrivage correspondant (déjà chargé en mémoire) et on pré-remplit la palette en
   // attente, prête à être déposée sur la prochaine case cliquée.
   const handlePaletteScannee = (texteScan: string) => {
@@ -631,6 +641,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       };
       Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
       await update(ref(db, `rack_positions/${activeWall}`), { [key]: payload });
+      logActiviteRack(existing ? "Modif. palette (rack)" : "Placement palette (rack)", `${payload.produit || ""} · ${cfg.label} · ${key}`);
       setSelectedCell(null);
       setPresetLocked(false);
       setIsEditing(false);
@@ -664,6 +675,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
     const destKey = cellKey(destRow, selectedCell.bay, selectedCell.slot);
     await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: data });
     await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)}`));
+    logActiviteRack("Déplacement palette (rack)", `${data.produit || ""} · ${cfg.label} · vers ${destKey}`);
     setSelectedCell(null);
   };
 
@@ -714,6 +726,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
     const destKey = cellKey(row, bay, slot);
     await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: moving.data });
     await remove(ref(db, `rack_positions/${moving.wallId}/${cellKey(moving.row, moving.bay, moving.slot)}`));
+    logActiviteRack("Déplacement palette (rack)", `${moving.data.produit || ""} · ${moving.wallId} → ${activeWall}/${destKey}`);
     setMoving(null);
   };
 
@@ -759,6 +772,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       const wall = activeWallRef.current;
       await update(ref(db, `rack_positions/${wall}`), { [destKey]: info.data });
       await remove(ref(db, `rack_positions/${wall}/${cellKey(info.row, info.bay, info.slot)}`));
+      logActiviteRack("Déplacement palette (rack, glisser-déposer)", `${info.data.produit || ""} · ${wall} → ${destKey}`);
     };
 
     const onUp = (e: PointerEvent) => {
@@ -806,6 +820,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
         sortieLe: new Date().toLocaleDateString("fr-FR"), action: "sortie",
       });
       await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)}`));
+      logActiviteRack("Sortie palette (rack)", `${data.produit || ""} · ${cfg.label}`);
       setSelectedCell(null);
     } catch { alert("Erreur"); }
   };

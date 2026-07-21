@@ -91,6 +91,28 @@ export default function App() {
   // qui semble être le même (même clé que cleDoublonArrivage), on prévient l'utilisateur
   // au lieu de créer silencieusement un doublon.
   const [conflitReport, setConflitReport] = useState<{ arrivage: any; nouvelleDateFr: string; existant: any } | null>(null);
+  // Formulaire de destruction de marchandise — remplace l'ancien window.prompt (texte libre,
+  // sans validation, difficile à relire ensuite) par un vrai petit formulaire.
+  const [destructionArrivage, setDestructionArrivage] = useState<any | null>(null);
+  const [destructionQte, setDestructionQte] = useState("");
+  const [destructionRaison, setDestructionRaison] = useState("");
+  const ouvrirDestruction = (a: any) => {
+    setDestructionArrivage(a);
+    setDestructionQte(String(a.quantite || ""));
+    setDestructionRaison("");
+  };
+  const confirmerDestruction = async () => {
+    if (!destructionArrivage) return;
+    const qte = parseFloat(destructionQte);
+    if (!destructionQte || isNaN(qte) || qte <= 0) { showToast("Quantité invalide"); return; }
+    if (!destructionRaison.trim()) { showToast("La raison est obligatoire"); return; }
+    await update(ref(db, `arrivages/${destructionArrivage.id}`), {
+      destruction: { quantite: destructionQte, raison: destructionRaison.trim(), date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName || user?.email || "-", effectuee: true }
+    });
+    logActivite("Destruction marchandise", `${destructionArrivage.produit || ""} (${destructionArrivage.fournisseur || ""}) · ${destructionQte} ${destructionArrivage.unite || ""} · ${destructionRaison.trim()}`);
+    showToast("🗑 Destruction enregistrée");
+    setDestructionArrivage(null);
+  };
   const [horsListeMode, setHorsListeMode] = useState(false);
   const [horsListe, setHorsListe] = useState({ produit: "", fournisseur: "", lot_interne: "", lot_fournisseur: "", origine: "", quantite: "", unite: "colis", type: "refusé", raison: "", pct: "" });
   const [rapportArrivage, setRapportArrivage] = useState<any | null>(null);
@@ -3016,6 +3038,28 @@ _PDF joint_`;
           </div>
         )}
 
+        {destructionArrivage && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 3700, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setDestructionArrivage(null)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 380, boxShadow: "0 24px 60px rgba(0,0,0,0.3)", padding: 20 }}>
+              <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 15, color: "#dc2626", fontFamily: "'Syne', sans-serif" }}>🗑 Destruction de marchandise</p>
+              <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "#6b7280" }}>{destructionArrivage.produit} · {destructionArrivage.fournisseur}</p>
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.4px" }}>Quantité à détruire (sur {destructionArrivage.quantite} {destructionArrivage.unite})</label>
+              <input type="number" min="0" step="0.1" value={destructionQte} onChange={e => setDestructionQte(e.target.value)}
+                style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 14, fontWeight: 700, color: "#1a2e1a", margin: "5px 0 12px" }} />
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.4px" }}>Raison</label>
+              <textarea value={destructionRaison} onChange={e => setDestructionRaison(e.target.value)} rows={3} placeholder="Ex : pourriture constatée, invendable..."
+                style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 13.5, color: "#1a2e1a", margin: "5px 0 16px", resize: "vertical", fontFamily: "inherit" }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setDestructionArrivage(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Annuler</button>
+                <button onClick={confirmerDestruction} disabled={!destructionQte || !destructionRaison.trim()}
+                  style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: destructionQte && destructionRaison.trim() ? "#dc2626" : "#ccc", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: destructionQte && destructionRaison.trim() ? "pointer" : "default" }}>
+                  Confirmer la destruction
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {horsListeMode && (
           <div style={{ position:"fixed", inset:0, zIndex:200, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
             <div style={{ background:"#fff", borderRadius:20, width:"100%", maxWidth:480, boxShadow:"0 8px 40px rgba(0,0,0,0.18)", overflow:"hidden", maxHeight:"90vh", overflowY:"auto" }}>
@@ -3131,16 +3175,7 @@ _PDF joint_`;
                       }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
                         ✅ Fournisseur a récupéré
                       </button>
-                      <button onClick={async () => {
-                        const qte = window.prompt(`Quantité à détruire (sur ${a.quantite} ${a.unite}) :`);
-                        if (!qte) return;
-                        const raison = window.prompt("Raison de la destruction :");
-                        if (!raison) return;
-                        await update(ref(db, `arrivages/${a.id}`), {
-                          destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName || user?.email || "-", effectuee: true }
-                        });
-                        showToast("🗑 Destruction enregistrée");
-                      }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+                      <button onClick={() => ouvrirDestruction(a)} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
                         🗑 Détruire
                       </button>
                     </div>
