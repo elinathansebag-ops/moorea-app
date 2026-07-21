@@ -54,45 +54,45 @@ console.log("══════════════════════�
 // (étiquettes pré-découpées Brother — mesurées 18cm x 11cm)
 async function genererHtmlEtiquette(job) {
   const qrDataUrl = await QRCode.toDataURL(job.url || "", {
-    width: 600,
-    margin: 1,
+    width: 500,
+    margin: 0,
     color: { dark: "#000000", light: "#FFFFFF" },
   });
 
   const produit = job.produit || "";
   const produitFontSize =
-    produit.length <= 18 ? 28 :
-    produit.length <= 30 ? 22 :
-    produit.length <= 45 ? 18 :
-    produit.length <= 65 ? 15 : 12;
+    produit.length <= 18 ? 34 :
+    produit.length <= 30 ? 27 :
+    produit.length <= 45 ? 21 :
+    produit.length <= 65 ? 17 : 14;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
 <style>
 @page{size:180mm 110mm;margin:0}
 *{margin:0;padding:0;box-sizing:border-box;text-transform:uppercase}
 body{font-family:'Arial Black',Arial,sans-serif;background:#fff}
-.etiquette{width:180mm;height:110mm;background:#fff;border:3px solid #000;padding:6mm;display:flex;gap:6mm;overflow:hidden}
+.etiquette{width:180mm;height:110mm;background:#fff;padding:4mm 6mm;display:flex;gap:5mm;overflow:hidden}
 .qr-col{display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.qr-img{width:95mm;height:95mm;border:2px solid #000;background:#fff;object-fit:contain}
-.info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between}
-.lot{font-size:36px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:3px solid #000;padding-bottom:3mm;word-break:break-word}
-.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.2;margin-top:3mm;overflow:hidden}
-.qty-row{display:flex;align-items:baseline;gap:8px;margin-top:3mm}
-.qty{font-size:52px;font-weight:900;color:#000;line-height:1}
-.unite{font-size:20px;font-weight:700;color:#000}
-.dlc{margin-top:3mm;color:#000;font-size:22px;font-weight:900;border:3px solid #000;padding:2mm 4mm;display:inline-block;letter-spacing:0.5px}
+.qr-img{width:88mm;height:88mm;background:#fff;object-fit:contain}
+.info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:3mm}
+.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.15;overflow:hidden}
+.qty-row{display:flex;align-items:baseline;gap:10px}
+.qty{font-size:58px;font-weight:900;color:#000;line-height:1}
+.unite{font-size:22px;font-weight:700;color:#000}
+.meta{display:flex;flex-direction:column;gap:2mm;border-top:2px solid #000;padding-top:3mm}
+.meta-row{display:flex;gap:6px;font-size:19px;font-weight:900;color:#000;line-height:1.2}
+.meta-label{font-weight:700}
 </style>
 <body>
 <div class="etiquette">
   <div class="qr-col"><img src="${qrDataUrl}" class="qr-img" /></div>
   <div class="info-col">
-    <div>
-      <div class="lot">${job.lotLabel || ""}</div>
-      <div class="produit">${produit}</div>
-    </div>
-    <div>
-      <div class="qty-row"><span class="qty">${job.qte || "-"}</span><span class="unite">${job.unite || ""}</span></div>
-      ${job.dlcLabel ? `<div class="dlc">DLC ${job.dlcLabel}</div>` : ""}
+    <div class="produit">${produit}</div>
+    <div class="qty-row"><span class="qty">${job.qte || "-"}</span><span class="unite">${job.unite || ""}</span></div>
+    <div class="meta">
+      ${job.lotFournisseur ? `<div class="meta-row"><span class="meta-label">LOT :</span> ${job.lotFournisseur}</div>` : ""}
+      ${job.dateArriveeLabel ? `<div class="meta-row"><span class="meta-label">ARRIVÉE :</span> ${job.dateArriveeLabel}</div>` : ""}
+      ${job.dlcLabel ? `<div class="meta-row"><span class="meta-label">DLC :</span> ${job.dlcLabel}</div>` : ""}
     </div>
   </div>
 </div>

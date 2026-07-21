@@ -397,13 +397,21 @@ export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteInd
     dlcLabel = isNaN(d.getTime()) ? String(arrivage.dlc) : d.toLocaleDateString("fr-FR");
   }
 
+  let dateArriveeLabel = "";
+  if (arrivage.date) {
+    const d = new Date(arrivage.date);
+    dateArriveeLabel = isNaN(d.getTime()) ? String(arrivage.date) : d.toLocaleDateString("fr-FR");
+  }
+
   await push(ref(db, "printQueue"), {
     type: "etiquette_palette",
     lotLabel,
     produit: (arrivage.produit || "-").toUpperCase(),
     qte: qte || 0,
     unite: (arrivage.unite || "COLIS").toUpperCase(),
+    lotFournisseur: (arrivage.lot_fournisseur || "").toUpperCase(),
     dlcLabel,
+    dateArriveeLabel,
     url,
     status: "pending",
     createdAt: Date.now(),
