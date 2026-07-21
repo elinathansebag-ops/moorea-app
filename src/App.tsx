@@ -130,6 +130,13 @@ export default function App() {
     const found = catalogueArticles.find(a => a.libelle.toLowerCase() === libelle.toLowerCase());
     return found?.code || "";
   };
+  // Équipe (GMS/PRESTIGE) d'un article du catalogue — sert à repérer un import mélangé
+  // (ex: un fichier Prestige qui contient en fait des articles GMS, signe d'un mauvais fichier).
+  const getEquipeArticle = (libelle: string): string => {
+    if (!libelle || !catalogueArticles.length) return "";
+    const found = catalogueArticles.find(a => a.libelle.toLowerCase() === libelle.toLowerCase());
+    return (found?.equipe || "").toUpperCase();
+  };
 
   // Charger les articles du catalogue depuis Firebase
   useEffect(() => {
@@ -2448,6 +2455,16 @@ _PDF joint_`;
               const clesExistantes = new Set(arrivages.map(cleDoublonArrivage));
               const nouveaux = previewArr.filter(a => !clesExistantes.has(cleDoublonArrivage(a)));
               const doublons = previewArr.length - nouveaux.length;
+              // Repère un mélange GMS/Prestige dans le fichier importé — si les deux équipes
+              // apparaissent dans le même import, c'est probablement le mauvais fichier qui a
+              // été sélectionné (chaque import est normalement 100% GMS ou 100% Prestige).
+              const equipesTrouvees: Record<string, number> = {};
+              nouveaux.forEach(a => {
+                const eq = getEquipeArticle(a.produit);
+                if (eq) equipesTrouvees[eq] = (equipesTrouvees[eq] || 0) + 1;
+              });
+              const equipesDistinctes = Object.keys(equipesTrouvees);
+              const melangeDetecte = equipesDistinctes.length > 1;
               return (
                 <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "16px", marginBottom: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
@@ -2461,6 +2478,16 @@ _PDF joint_`;
                     </div>
                     <button onClick={() => setPreviewArr(null)} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8, cursor: "pointer", background: "transparent", border: "1px solid #fca5a5", color: "#dc2626" }}>Annuler</button>
                   </div>
+                  {melangeDetecte && (
+                    <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+                      <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: "#dc2626" }}>
+                        ⚠️ Mélange détecté : {equipesDistinctes.map(eq => `${equipesTrouvees[eq]} ${eq}`).join(" + ")} dans ce fichier.
+                      </p>
+                      <p style={{ margin: "3px 0 0", fontSize: 11.5, color: "#991b1b" }}>
+                        Un import contient normalement une seule équipe (GMS ou Prestige) — vérifie que c'est le bon fichier avant de continuer.
+                      </p>
+                    </div>
+                  )}
                   {nouveaux.slice(0, 5).map((a, i) => (
                     <div key={i} style={{ background: "#f0fdf4", borderRadius: 8, padding: "6px 12px", marginBottom: 4, fontSize: 13, borderLeft: "3px solid #27ae60" }}>
                       <strong>{a.produit}</strong> · {a.fournisseur} · {a.quantite} {a.unite}
