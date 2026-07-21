@@ -549,6 +549,16 @@ export default function App() {
     e.target.value = "";
   };
 
+  // Clé de dédoublonnage partagée entre l'import et le nettoyage manuel : lot interne +
+  // produit + fournisseur si le lot est connu (le lot seul ne suffit pas, plusieurs produits
+  // partagent souvent le même lot), sinon produit + fournisseur + date.
+  const cleDoublonArrivage = (a: any) => {
+    const lot = String(a.lot_interne || "").trim();
+    const produitNorm = (a.produit || "").toLowerCase().trim();
+    const fournNorm = (a.fournisseur || "").toLowerCase().trim();
+    return lot ? `lot:${lot}|${produitNorm}|${fournNorm}` : `${produitNorm}|${fournNorm}|${a.date || ""}`;
+  };
+
   const confirmImportArr = async () => {
     if (!previewArr) return;
     if (!arrivagesCharges) {
@@ -557,15 +567,9 @@ export default function App() {
     }
     setImportingArr(true);
 
-    const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
-    const clesExistantes = new Set(
-      existants.map((a: any) => `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`)
-    );
+    const clesExistantes = new Set(arrivages.map(cleDoublonArrivage));
 
-    const nouveaux = previewArr.filter(a => {
-      const cle = `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`;
-      return !clesExistantes.has(cle);
-    });
+    const nouveaux = previewArr.filter(a => !clesExistantes.has(cleDoublonArrivage(a)));
     const doublons = previewArr.length - nouveaux.length;
 
     if (nouveaux.length === 0) {
@@ -584,14 +588,18 @@ export default function App() {
     setPageMode("arrivages");
   };
 
-  // Détecte les arrivages en double — priorité au numéro de lot interne (lot_interne), qui est
-  // l'identifiant fiable d'un arrivage. S'il manque sur d'anciennes entrées, on retombe sur
-  // produit + fournisseur + date. N'affiche qu'un aperçu à valider, ne supprime rien tout seul.
+  // Détecte les arrivages en double — clé = numéro de lot interne + produit + fournisseur
+  // (le lot seul ne suffit pas : plusieurs produits différents partagent souvent le même
+  // lot_interne dans un import, donc les grouper par lot seul créait plein de faux doublons).
+  // S'il manque un lot_interne sur d'anciennes entrées, on retombe sur produit + fournisseur +
+  // date. N'affiche qu'un aperçu à valider, ne supprime rien tout seul.
   const detecterDoublonsArr = () => {
     const groupes: Record<string, any[]> = {};
     arrivages.forEach((a: any) => {
       const lot = String(a.lot_interne || "").trim();
-      const cle = lot ? `lot:${lot}` : `${(a.produit || "").toLowerCase().trim()}|${(a.fournisseur || "").toLowerCase().trim()}|${a.date || ""}`;
+      const produitNorm = (a.produit || "").toLowerCase().trim();
+      const fournNorm = (a.fournisseur || "").toLowerCase().trim();
+      const cle = lot ? `lot:${lot}|${produitNorm}|${fournNorm}` : `${produitNorm}|${fournNorm}|${a.date || ""}`;
       if (!groupes[cle]) groupes[cle] = [];
       groupes[cle].push(a);
     });
@@ -2437,9 +2445,8 @@ _PDF joint_`;
               </div>
             )}
             {previewArr && (() => {
-              const existants = arrivages.filter((a: any) => previewArr.some(p => p.date === a.date));
-              const clesExistantes = new Set(existants.map((a: any) => `${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`));
-              const nouveaux = previewArr.filter(a => !clesExistantes.has(`${(a.produit||"").toLowerCase().trim()}|${(a.fournisseur||"").toLowerCase().trim()}|${a.date}`));
+              const clesExistantes = new Set(arrivages.map(cleDoublonArrivage));
+              const nouveaux = previewArr.filter(a => !clesExistantes.has(cleDoublonArrivage(a)));
               const doublons = previewArr.length - nouveaux.length;
               return (
                 <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "16px", marginBottom: 16 }}>
