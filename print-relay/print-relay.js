@@ -59,6 +59,8 @@ async function genererHtmlEtiquette(job) {
     color: { dark: "#000000", light: "#FFFFFF" },
   });
 
+  if (job.type === "etiquette_refus") return genererHtmlEtiquetteRefus(job, qrDataUrl);
+
   const produit = job.produit || "";
   const produitFontSize =
     produit.length <= 18 ? 34 :
@@ -95,6 +97,53 @@ body{font-family:'Arial Black',Arial,sans-serif;background:#fff}
       ${job.dlcLabel ? `<div class="meta-row"><span class="meta-label">DLC :</span> ${job.dlcLabel}</div>` : ""}
     </div>
   </div>
+</div>
+</body></html>`;
+}
+
+// ─── ÉTIQUETTE REFUS — gros "REFUS" en haut, QR vers le bon de retour à signer, puis
+// fournisseur / lot Moorea / article / colis, et un bandeau Moorea en bas pour que ce
+// soit clair pour le transporteur/fournisseur que c'est Moorea qui a refusé la palette.
+function genererHtmlEtiquetteRefus(job, qrDataUrl) {
+  const produit = job.produit || "";
+  const produitFontSize =
+    produit.length <= 18 ? 26 :
+    produit.length <= 30 ? 21 :
+    produit.length <= 45 ? 17 : 13;
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<style>
+@page{size:180mm 110mm;margin:0}
+*{margin:0;padding:0;box-sizing:border-box;text-transform:uppercase}
+body{font-family:'Arial Black',Arial,sans-serif;background:#fff}
+.etiquette{width:180mm;height:110mm;background:#fff;display:flex;flex-direction:column;overflow:hidden}
+.refus-bandeau{background:#000;color:#fff;text-align:center;font-size:40px;font-weight:900;letter-spacing:4px;padding:4mm 0}
+.corps{flex:1;display:flex;gap:5mm;padding:4mm 6mm;overflow:hidden}
+.qr-col{display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.qr-img{width:62mm;height:62mm;background:#fff;object-fit:contain}
+.info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2mm}
+.fourn{font-size:22px;font-weight:900;color:#000;line-height:1.15}
+.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.15;overflow:hidden}
+.meta-row{display:flex;gap:6px;font-size:17px;font-weight:900;color:#000;line-height:1.2}
+.meta-label{font-weight:700}
+.qty-row{display:flex;align-items:baseline;gap:10px;margin-top:1mm}
+.qty{font-size:36px;font-weight:900;color:#000;line-height:1}
+.unite{font-size:16px;font-weight:700;color:#000}
+.moorea-bandeau{background:#0a0a0a;color:#c8a84b;text-align:center;font-size:20px;font-weight:900;letter-spacing:3px;padding:3mm 0}
+</style>
+<body>
+<div class="etiquette">
+  <div class="refus-bandeau">❌ REFUS</div>
+  <div class="corps">
+    <div class="qr-col"><img src="${qrDataUrl}" class="qr-img" /></div>
+    <div class="info-col">
+      <div class="fourn">${job.fournisseur || ""}</div>
+      <div class="produit">${produit}</div>
+      <div class="meta-row"><span class="meta-label">LOT :</span> ${job.lotLabel || ""}</div>
+      <div class="qty-row"><span class="qty">${job.qte || "-"}</span><span class="unite">${job.unite || ""}</span></div>
+    </div>
+  </div>
+  <div class="moorea-bandeau">MOOREA</div>
 </div>
 </body></html>`;
 }

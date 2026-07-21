@@ -418,6 +418,28 @@ export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteInd
   });
 }
 
+// ─── ÉTIQUETTE REFUS — envoyée au relais PC (au lieu du print navigateur, invisible en
+// AirPrint depuis l'iPad). Gros "REFUS" au centre, QR vers le bon de retour à signer,
+// fournisseur, n° de lot Moorea, article, nombre de colis, et bandeau Moorea en bas pour
+// que le transporteur/fournisseur comprenne clairement que c'est Moorea qui refuse.
+export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any) {
+  const lot = arrivage.lot_interne || arrivage.id;
+  const lotLabel = `MRA.${String(lot).padStart(4, "0")}`;
+  const url = `${window.location.origin}${window.location.pathname}?refus=${arrivage.id}`;
+
+  await push(ref(db, "printQueue"), {
+    type: "etiquette_refus",
+    lotLabel,
+    fournisseur: (arrivage.fournisseur || "-").toUpperCase(),
+    produit: (arrivage.produit || "-").toUpperCase(),
+    qte: arrivage.quantite || 0,
+    unite: (arrivage.unite || "COLIS").toUpperCase(),
+    url,
+    status: "pending",
+    createdAt: Date.now(),
+  });
+}
+
 async function imprimerEtiquettePalette(arrivage: any, paletteIndex?: number, colisCount?: number) {
   const lot = arrivage.lot_interne || arrivage.id;
   const palRef = paletteIndex != null ? `${paletteIndex}` : null;

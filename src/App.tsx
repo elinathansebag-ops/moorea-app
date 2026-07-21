@@ -6,7 +6,7 @@ import IFCOModule from "./IFCOModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
 import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F } from "./shared";
-import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, imprimerEtiquetteRefus } from "./ArrivageModule";
+import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, envoyerEtiquetteRefusPourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
 import { RHApp } from "./RHApp";
 // import { EtiquettesModule } from "./EtiquettesModule"; // TEMP: fichier manquant sur GitHub — désactivé pour débloquer le build
@@ -2107,15 +2107,25 @@ _PDF joint_`;
 
             {popupApresRapport.rapport.decision === "refus" && popupApresRapport.arrivageId && (
               <button
-                onClick={() => {
+                onClick={async (e) => {
+                  const btn = e.currentTarget;
+                  const label = btn.textContent;
+                  btn.textContent = "⏳ Envoi...";
+                  btn.disabled = true;
                   const a = arrivages.find((x: any) => x.id === popupApresRapport.arrivageId);
-                  imprimerEtiquetteRefus(a || {
-                    id: popupApresRapport.arrivageId,
-                    produit: popupApresRapport.rapport.produit,
-                    fournisseur: popupApresRapport.rapport.fournisseur,
-                    quantite: popupApresRapport.rapport.nbColisRecu || popupApresRapport.rapport.nbColisAttendu,
-                    unite: popupApresRapport.rapport.conditionnement,
-                  });
+                  try {
+                    await envoyerEtiquetteRefusPourImpressionPC(a || {
+                      id: popupApresRapport.arrivageId,
+                      produit: popupApresRapport.rapport.produit,
+                      fournisseur: popupApresRapport.rapport.fournisseur,
+                      quantite: popupApresRapport.rapport.nbColisRecu || popupApresRapport.rapport.nbColisAttendu,
+                      unite: popupApresRapport.rapport.conditionnement,
+                    });
+                    btn.textContent = "✅ Envoyé !";
+                  } catch {
+                    btn.textContent = "❌ Erreur";
+                  }
+                  setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2000);
                 }}
                 style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10 }}
               >
@@ -2672,7 +2682,19 @@ _PDF joint_`;
                       <button onClick={() => ouvrirRapportDepuisArrivage(a)} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#c8a84b", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
                         📋 {rapport ? "Nouveau rapport" : "Faire un rapport"}
                       </button>
-                      <button onClick={() => imprimerEtiquetteRefus(a)} title="Imprimer une étiquette refus avec QR pour faire signer le bon de retour"
+                      <button onClick={async (e) => {
+                        const btn = e.currentTarget;
+                        const label = btn.textContent;
+                        btn.textContent = "⏳ Envoi...";
+                        btn.disabled = true;
+                        try {
+                          await envoyerEtiquetteRefusPourImpressionPC(a);
+                          btn.textContent = "✅ Envoyé !";
+                        } catch {
+                          btn.textContent = "❌ Erreur";
+                        }
+                        setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2000);
+                      }} title="Imprimer une étiquette refus avec QR pour faire signer le bon de retour"
                         style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#f9fafb", color: "#374151", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
                         🏷️ Étiquette refus
                       </button>
