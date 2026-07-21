@@ -248,6 +248,15 @@ export function RackModule({ onClose }: { onClose: () => void }) {
     });
     return () => u();
   }, []);
+
+  // ─── Partout SAUF le mur "Stockage" (mur4), le scan est la seule façon normale de ranger
+  // une palette — la sélection manuelle n'y est qu'une exception discrète (cas rares : palette
+  // sans étiquette lisible, etc.), pas un mode au même niveau que le scan. Sur "Stockage", le
+  // réglage manuel/scan choisi dans la config s'applique normalement. ───
+  const isStockage = activeWall === "mur4";
+  const [manuelExceptionnel, setManuelExceptionnel] = useState(false);
+  useEffect(() => { setManuelExceptionnel(false); }, [activeWall]);
+  const modeEffectif: "manuel" | "scan" = isStockage ? modePlacement : (manuelExceptionnel ? "manuel" : "scan");
   const setModePlacement = async (v: "manuel" | "scan") => {
     setModePlacementState(v); // mise à jour optimiste locale, pas d'attente du round-trip Firebase
     try {
@@ -527,7 +536,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
         setFreeForm(paletteScanEnAttente);
         setAddMode("libre");
         setPresetLocked(false);
-      } else if (modePlacement === "manuel") {
+      } else if (modeEffectif === "manuel") {
         setFreeForm({ produit: "", type: "produit", extraItems: [], fournisseur: "", lot_interne: "", quantite: "", unite: "colis", dlc: "", color: "", origine: "", notes: "" });
         setAddMode(favoris.length > 0 ? "modele" : "libre");
         setPresetLocked(false);
@@ -619,6 +628,9 @@ export function RackModule({ onClose }: { onClose: () => void }) {
       setPresetLocked(false);
       setIsEditing(false);
       setPaletteScanEnAttente(null); // la palette scannée vient d'être rangée, on efface l'attente
+      // Le placement manuel exceptionnel (hors "Stockage") ne vaut que pour cette palette —
+      // on revient automatiquement au scan pour la suivante.
+      if (!isStockage) setManuelExceptionnel(false);
     } catch { alert("Erreur lors de l'enregistrement"); }
     setSaving(false);
   };
@@ -878,7 +890,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
           {/* ── MODE DE PLACEMENT D'UNE PALETTE ── */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a", margin: "0 0 4px" }}>📦 Mode de placement d'une palette</p>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Choisis comment tu ranges une palette dans le rack, sur cet appareil.</p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Ce réglage s'applique uniquement au mur "Stockage". Sur tous les autres murs, le scan est obligatoire (la sélection manuelle n'y reste possible qu'au cas par cas, via un lien discret).</p>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setModePlacement("manuel")} style={{
                 flex: 1, padding: "12px 10px", borderRadius: 12, border: `2px solid ${modePlacement === "manuel" ? "#8b5cf6" : "#e5e7eb"}`,
@@ -1126,7 +1138,7 @@ export function RackModule({ onClose }: { onClose: () => void }) {
             ⚙️ Configurer
           </button>
         </div>
-        {modePlacement === "scan" && (
+        {modeEffectif === "scan" && (
           <div style={{ background: paletteScanEnAttente ? "#f0fdf4" : "#f5f3ff", border: `1.5px solid ${paletteScanEnAttente ? "#86efac" : "#ddd6fe"}`, borderRadius: 12, padding: "10px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             {paletteScanEnAttente ? (
               <>
@@ -1144,6 +1156,21 @@ export function RackModule({ onClose }: { onClose: () => void }) {
                 <button onClick={() => { setScanStatus(""); setShowScanner(true); }} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Scanner une palette</button>
               </>
             )}
+          </div>
+        )}
+        {!isStockage && modeEffectif === "scan" && !paletteScanEnAttente && (
+          <div style={{ textAlign: "right", marginTop: -10, marginBottom: 14 }}>
+            <button onClick={() => setManuelExceptionnel(true)}
+              style={{ background: "none", border: "none", padding: 0, color: "#9ca3af", fontSize: 10.5, textDecoration: "underline", cursor: "pointer" }}>
+              Placer une palette sans scanner (exceptionnel)
+            </button>
+          </div>
+        )}
+        {!isStockage && manuelExceptionnel && (
+          <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 12, padding: "8px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 16 }}>✍️</span>
+            <p style={{ margin: 0, flex: 1, fontSize: 11.5, color: "#92400e" }}>Placement manuel exceptionnel activé pour cette palette — clique une case vide. Retour au scan automatique juste après.</p>
+            <button onClick={() => setManuelExceptionnel(false)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fff", color: "#92400e", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>Annuler</button>
           </div>
         )}
         {/* GRILLE DU RACK — structure réaliste : montants + traverses + palettes */}
