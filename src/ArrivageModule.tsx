@@ -605,7 +605,6 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
   const totalColis = arrivage.quantite || 0;
   const [nbPalettes, setNbPalettes] = useState(1);
   const [repartition, setRepartition] = useState<number[]>([totalColis]);
-  const [printing, setPrinting] = useState(false);
   const [sendingPC, setSendingPC] = useState(false);
 
   const updateNb = (n: number) => {
@@ -622,16 +621,6 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
 
   const totalSaisi = repartition.reduce((a, b) => a + b, 0);
   const ecart = totalSaisi - totalColis;
-
-  const handleImprimer = async () => {
-    setPrinting(true);
-    for (let i = 0; i < nbPalettes; i++) {
-      await imprimerEtiquettePalette(arrivage, i + 1, repartition[i]);
-      if (i < nbPalettes - 1) await new Promise(r => setTimeout(r, 800));
-    }
-    setPrinting(false);
-    onClose();
-  };
 
   // Envoie chaque étiquette dans la file d'impression à distance (relais PC) — utile
   // depuis l'iPad quand l'imprimante Brother n'apparaît pas dans AirPrint.
@@ -688,16 +677,10 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
           </p>
           <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{totalSaisi} / {totalColis}</p>
         </div>
-        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-          <button onClick={handleImprimer} disabled={printing}
-            style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: printing?"#e8e0d0":"#c8a84b", color: "#0a0a0a", cursor: printing?"not-allowed":"pointer", fontSize: 14, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
-            {printing?`⏳ Impression...`:`🖨 Imprimer ${nbPalettes} étiquette${nbPalettes>1?"s":""}`}
-          </button>
-        </div>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={handleEnvoyerPC} disabled={sendingPC}
-            style={{ flex: 2, padding: "14px", borderRadius: 14, border: "1.5px solid #3b82f6", background: sendingPC?"#e8e0d0":"#eff6ff", color: "#3b82f6", cursor: sendingPC?"not-allowed":"pointer", fontSize: 13, fontWeight: 800 }}>
-            {sendingPC?`⏳ Envoi...`:`📡 Envoyer à l'imprimante PC`}
+            style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: sendingPC?"#e8e0d0":"#c8a84b", color: "#0a0a0a", cursor: sendingPC?"not-allowed":"pointer", fontSize: 14, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
+            {sendingPC?`⏳ Impression...`:`🖨 Imprimer ${nbPalettes} étiquette${nbPalettes>1?"s":""}`}
           </button>
           <button onClick={onClose}
             style={{ flex: 1, padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
@@ -1511,6 +1494,20 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { a
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
             <button onClick={() => imprimerEtiquettePalette(a)}
               style={{ padding: "5px 10px", background: "#fffbf0", border: "1px solid #c8a84b", color: "#8a6f2e", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 QR Étiquette</button>
+            <button onClick={async (e) => {
+              const btn = e.currentTarget;
+              const label = btn.textContent;
+              btn.textContent = "⏳ Envoi...";
+              btn.disabled = true;
+              try {
+                await envoyerEtiquettePourImpressionPC(a);
+                btn.textContent = "✅ Envoyé !";
+              } catch {
+                btn.textContent = "❌ Erreur";
+              }
+              setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2000);
+            }}
+              style={{ padding: "5px 10px", background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>📡 Envoyer PC</button>
             <button onClick={async () => {
               const { ref: fbRef, update: fbUpdate } = await import("firebase/database");
               const { db: dbImport } = await import("./firebase");
