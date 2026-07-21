@@ -91,7 +91,7 @@ function parseGS1(raw: string): { dlc?: string; lot?: string; gtin?: string } {
   return out;
 }
 
-export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, selectMode, selected, onToggleSelect, gencodeArticles }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[] }) {
+export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onReporterDate, selectMode, selected, onToggleSelect, gencodeArticles }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; onReporterDate?: (arrivage: any, nouvelleDateFr: string) => void; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[] }) {
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
   const [poidsOk, setPoidsOk] = useState(true);
@@ -112,6 +112,24 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
   const [showGencodeScan, setShowGencodeScan] = useState(false);
   const [showScanEtiquette, setShowScanEtiquette] = useState(false);
   const [scanEtiquetteMsg, setScanEtiquetteMsg] = useState("");
+
+  // ─── Report de date — un vrai sélecteur de date (input type=date) au lieu du window.prompt
+  // texte libre, source d'erreurs de saisie et de format ("calendrier buggé").
+  const frToIso = (fr: string) => {
+    const [dd, mm, yyyy] = (fr || "").split("/");
+    return dd && mm && yyyy ? `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}` : "";
+  };
+  const isoToFr = (iso: string) => {
+    const [yyyy, mm, dd] = iso.split("-");
+    return `${dd}/${mm}/${yyyy}`;
+  };
+  const [showReport, setShowReport] = useState(false);
+  const [dateReportIso, setDateReportIso] = useState(frToIso(arrivage.date));
+  const confirmerReport = () => {
+    if (!dateReportIso) return;
+    setShowReport(false);
+    onReporterDate?.(arrivage, isoToFr(dateReportIso));
+  };
 
   const ajouterTraca = () => setTracaList(prev => [...prev, ""]);
   const modifierTraca = (idx: number, val: string) => setTracaList(prev => prev.map((t, i) => i === idx ? val : t));
@@ -232,15 +250,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
           {arrivage.origine && <PillArr>🌍 {arrivage.origine}</PillArr>}
         </div>
         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-          <button onClick={async () => {
-            const nouvelleDate = window.prompt("Nouvelle date de livraison (JJ/MM/AAAA) :", arrivage.date || "");
-            if (!nouvelleDate) return;
-            const [dd, mm, yyyy] = nouvelleDate.split("/");
-            if (!dd || !mm || !yyyy || isNaN(new Date(`${yyyy}-${mm}-${dd}`).getTime())) { alert("Format invalide - utilise JJ/MM/AAAA"); return; }
-            const { ref: fbRef, update: fbUpdate } = await import("firebase/database");
-            const { db: dbImport } = await import("./firebase");
-            await fbUpdate(fbRef(dbImport, `arrivages/${arrivage.id}`), { date: nouvelleDate });
-          }} style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
+          <button onClick={() => { setDateReportIso(frToIso(arrivage.date)); setShowReport(true); }} title="Reporter à une autre date"
+            style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
           {matchedGencode && (
             <button onClick={() => setShowGencodeScan(true)} style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷️ Contrôler gencode</button>
           )}
@@ -1623,6 +1634,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
       <tr style="background:${i % 2 === 0 ? "#faf8f3" : "#fff"}">
         <td>${esc(a.fournisseur || "-")}</td>
         <td>${esc(a.produit || "-")}</td>
+        <td style="white-space:nowrap">${esc(a.lot_interne || "-")}</td>
         <td>${esc(a.lot_fournisseur || "-")}</td>
         <td style="white-space:nowrap">${esc(a.quantite ?? "-")} ${esc((a.unite || "").toUpperCase())}</td>
       </tr>`).join("");
@@ -1643,7 +1655,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
 <body>
   <div class="header"><h1>MOOREA</h1><span>Traçabilité fournisseur — ${esc(date)}</span></div>
   <table>
-    <thead><tr><th>Fournisseur</th><th>Article</th><th>N° traçabilité</th><th>Qté</th></tr></thead>
+    <thead><tr><th>Fournisseur</th><th>Article</th><th>Lot Moorea</th><th>N° traçabilité</th><th>Qté</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <p class="footer">${tous.length} article${tous.length > 1 ? "s" : ""} · Généré par Moorea</p>
