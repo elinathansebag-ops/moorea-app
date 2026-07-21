@@ -176,6 +176,31 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
   const ecartColis = colisRecusNum - colisAttendu;
   const hasEcartColis = colisRecus !== "" && ecartColis !== 0;
 
+  // ─── Palettes pour l'étiquette imprimée automatiquement à la validation ───
+  // Par défaut : 1 palette avec la totalité des colis. Si l'agréeur répartit sur plusieurs
+  // palettes, une étiquette distincte sera imprimée pour chacune (bon nombre de colis chacune).
+  const [nbPalettes, setNbPalettesState] = useState(1);
+  const [repartitionPalettes, setRepartitionPalettes] = useState<number[]>([colisAttendu]);
+  const dejaAjusteManuel = useRef(false);
+  useEffect(() => {
+    // Tant que l'agréeur n'a pas touché à la répartition, on la garde calée sur le nombre de
+    // colis reçus (utile si le champ "Colis" est modifié après avoir choisi le nb de palettes).
+    if (!dejaAjusteManuel.current && nbPalettes === 1) setRepartitionPalettes([colisRecusNum]);
+  }, [colisRecusNum, nbPalettes]);
+
+  const updateNbPalettes = (n: number) => {
+    setNbPalettesState(n);
+    dejaAjusteManuel.current = false;
+    const base = Math.floor(colisRecusNum / n);
+    const reste = colisRecusNum % n;
+    setRepartitionPalettes(Array.from({ length: n }, (_, i) => base + (i === 0 ? reste : 0)));
+  };
+  const setQtePalette = (idx: number, val: string) => {
+    dejaAjusteManuel.current = true;
+    const v = Math.max(0, parseInt(val) || 0);
+    setRepartitionPalettes(prev => prev.map((q, i) => i === idx ? v : q));
+  };
+
   const handleValider = async () => {
     setSaving(true);
     const hasLitige = litige || hasEcartColis;
@@ -186,7 +211,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
     ].filter(Boolean).join(" | ");
     const tracaPropre = tracaList.map(t => t.trim()).filter(Boolean);
     const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaPropre.join(", "), lot_fournisseur_liste: tracaPropre };
-    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "");
+    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "", nbPalettes > 1 ? repartitionPalettes : null);
     setSaving(false);
     if (hasLitige) onOuvreRapport(arrivage, true);
   };
@@ -337,6 +362,34 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
         </div>
       </div>
       {(litige || hasEcartColis) && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
+
+      {/* Palettes — détermine combien d'étiquettes seront imprimées automatiquement à la validation */}
+      <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
+        <div style={{ display: "flex", gap: 5, marginBottom: nbPalettes > 1 ? 8 : 0 }}>
+          {[1,2,3,4,5,6].map(n => (
+            <button key={n} onClick={() => updateNbPalettes(n)}
+              style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: `1.5px solid ${nbPalettes===n?"#c8a84b":"#e5e7eb"}`, background: nbPalettes===n?"#fffbf0":"#fff", cursor: "pointer", fontSize: 12, fontWeight: 800, color: nbPalettes===n?"#8a6f2e":"#9ca3af" }}>
+              {n}
+            </button>
+          ))}
+        </div>
+        {nbPalettes > 1 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {repartitionPalettes.map((q, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "#9ca3af", width: 20, flexShrink: 0 }}>P{i+1}</span>
+                <input type="number" min="0" value={q} onChange={e => setQtePalette(i, e.target.value)}
+                  style={{ flex: 1, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>colis</span>
+              </div>
+            ))}
+            {repartitionPalettes.reduce((a,b)=>a+b,0) !== colisRecusNum && (
+              <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#d97706" }}>⚠️ Total réparti ({repartitionPalettes.reduce((a,b)=>a+b,0)}) ≠ colis reçus ({colisRecusNum})</p>
+            )}
+          </div>
+        )}
+      </div>
       <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
         {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : "✅ Valider →"}
       </button>
@@ -1522,20 +1575,6 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-            <button onClick={async (e) => {
-              const btn = e.currentTarget;
-              const label = btn.textContent;
-              btn.textContent = "⏳ Envoi...";
-              btn.disabled = true;
-              try {
-                await envoyerEtiquettePourImpressionPC(a);
-                btn.textContent = "✅ Envoyé !";
-              } catch {
-                btn.textContent = "❌ Erreur";
-              }
-              setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2000);
-            }}
-              style={{ padding: "5px 10px", background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 Imprimer étiquette</button>
             {onImprimerMulti && (
               <button onClick={() => onImprimerMulti(a)} title="Choisir le nombre de palettes et imprimer une étiquette par palette"
                 style={{ padding: "5px 10px", background: "#f5f3ff", border: "1px solid #8b5cf6", color: "#7c3aed", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 Étiquettes (palettes)</button>

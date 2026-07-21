@@ -6,7 +6,7 @@ import IFCOModule from "./IFCOModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
 import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F } from "./shared";
-import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, envoyerEtiquetteRefusPourImpressionPC } from "./ArrivageModule";
+import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
 import { RHApp } from "./RHApp";
 // import { EtiquettesModule } from "./EtiquettesModule"; // TEMP: fichier manquant sur GitHub — désactivé pour débloquer le build
@@ -364,7 +364,7 @@ export default function App() {
   }, [showStock]);
 
   // ─── HANDLERS ARRIVAGES ───
-  const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string) => {
+  const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string, palettes?: number[] | null) => {
     const now2 = new Date();
     const statut = decision === "conforme" ? "validé" : ncType;
     // DLC et n° de traçabilité fournisseur saisis (ou corrigés) sur la carte d'agréage rapide —
@@ -378,9 +378,22 @@ export default function App() {
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
     await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, ...(litige ? { litige } : {}), validatedAt: Date.now() });
     showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
-    // Le popup étiquette (choix du nombre de palettes) ne s'ouvre plus automatiquement ici —
-    // il reste accessible via le bouton "🏷 Étiquettes (palettes)" sur la ligne de l'arrivage
-    // traité, comme pour les arrivages pas encore validés (pas de popup imposé).
+    // Chaque article validé doit repartir avec son étiquette — impression automatique dès la
+    // validation, sans popup à remplir. Si l'agréeur a réparti sur plusieurs palettes (champ
+    // "🎫 Palettes" de la carte d'agréage), on imprime une étiquette par palette avec le bon
+    // nombre de colis ; sinon une seule étiquette avec la quantité totale.
+    if (decision === "conforme") {
+      try {
+        const arrivageMaj = { ...arrivage, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal };
+        if (palettes && palettes.length > 1) {
+          for (let i = 0; i < palettes.length; i++) {
+            await envoyerEtiquettePourImpressionPC(arrivageMaj, i + 1, palettes[i]);
+          }
+        } else {
+          await envoyerEtiquettePourImpressionPC(arrivageMaj);
+        }
+      } catch {}
+    }
   };
 
   const submitArrivage = async () => {
