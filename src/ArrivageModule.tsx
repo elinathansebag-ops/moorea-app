@@ -1500,8 +1500,6 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-            <button onClick={() => imprimerEtiquettePalette(a)}
-              style={{ padding: "5px 10px", background: "#fffbf0", border: "1px solid #c8a84b", color: "#8a6f2e", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 QR Étiquette</button>
             <button onClick={async (e) => {
               const btn = e.currentTarget;
               const label = btn.textContent;
@@ -1515,7 +1513,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
               }
               setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2000);
             }}
-              style={{ padding: "5px 10px", background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>📡 Envoyer PC</button>
+              style={{ padding: "5px 10px", background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 Imprimer étiquette</button>
             {onImprimerMulti && (
               <button onClick={() => onImprimerMulti(a)} title="Choisir le nombre de palettes et imprimer une étiquette par palette"
                 style={{ padding: "5px 10px", background: "#f5f3ff", border: "1px solid #8b5cf6", color: "#7c3aed", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 Étiquettes (palettes)</button>
