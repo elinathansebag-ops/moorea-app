@@ -584,12 +584,14 @@ export default function App() {
     setPageMode("arrivages");
   };
 
-  // Détecte les arrivages en double (même produit + fournisseur + date, en ignorant
-  // majuscules/espaces) — n'affiche qu'un aperçu à valider, ne supprime rien tout seul.
+  // Détecte les arrivages en double — priorité au numéro de lot interne (lot_interne), qui est
+  // l'identifiant fiable d'un arrivage. S'il manque sur d'anciennes entrées, on retombe sur
+  // produit + fournisseur + date. N'affiche qu'un aperçu à valider, ne supprime rien tout seul.
   const detecterDoublonsArr = () => {
     const groupes: Record<string, any[]> = {};
     arrivages.forEach((a: any) => {
-      const cle = `${(a.produit || "").toLowerCase().trim()}|${(a.fournisseur || "").toLowerCase().trim()}|${a.date || ""}`;
+      const lot = String(a.lot_interne || "").trim();
+      const cle = lot ? `lot:${lot}` : `${(a.produit || "").toLowerCase().trim()}|${(a.fournisseur || "").toLowerCase().trim()}|${a.date || ""}`;
       if (!groupes[cle]) groupes[cle] = [];
       groupes[cle].push(a);
     });
@@ -2388,32 +2390,49 @@ _PDF joint_`;
           <div className="fade-up">
             {doublonsGroupes && (
               <div style={{ position: "fixed", inset: 0, zIndex: 3500, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-                <div style={{ background: "#fff", borderRadius: 20, padding: 20, width: "100%", maxWidth: 560, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.3)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                    <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>🧹 Doublons détectés</p>
-                    <button onClick={() => setDoublonsGroupes(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
-                  </div>
-                  <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "#6b7280" }}>
-                    Même produit + fournisseur + date trouvés plusieurs fois. Les cases cochées seront supprimées (le plus ancien de chaque groupe est décoché par défaut, pour être conservé). Vérifie avant de confirmer — rien n'est supprimé tant que tu ne cliques pas sur le bouton en bas.
-                  </p>
-                  {doublonsGroupes.map(g => (
-                    <div key={g.cle} style={{ border: "1.5px solid #fcd34d", background: "#fffbeb", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
-                      <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 13, color: "#92400e" }}>
-                        {g.items[0].produit} · {g.items[0].fournisseur} · {g.items[0].date} ({g.items.length} exemplaires)
-                      </p>
-                      {g.items.map((it: any, idx: number) => (
-                        <label key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12.5, color: "#374151", cursor: "pointer" }}>
-                          <input type="checkbox" checked={doublonsASupprimer.has(it.id)} onChange={() => toggleDoublonASupprimer(it.id)}
-                            style={{ width: 18, height: 18, minWidth: 18, padding: 0, cursor: "pointer", accentColor: "#dc2626", flexShrink: 0 }} />
-                          <span>{idx === 0 ? "🕐 Le plus ancien — " : ""}{it.quantite} {it.unite} · statut : {it.statut || "-"} {it.lot_interne ? `· lot ${it.lot_interne}` : ""}</span>
-                        </label>
-                      ))}
+                <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 560, maxHeight: "88vh", boxShadow: "0 24px 60px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <div style={{ padding: "20px 20px 10px", flexShrink: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>🧹 Doublons détectés</p>
+                      <button onClick={() => setDoublonsGroupes(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
                     </div>
-                  ))}
-                  <button onClick={confirmerSuppressionDoublons} disabled={suppressionDoublonsEnCours || doublonsASupprimer.size === 0}
-                    style={{ width: "100%", marginTop: 6, padding: "12px", background: suppressionDoublonsEnCours || doublonsASupprimer.size === 0 ? "#ccc" : "#dc2626", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: doublonsASupprimer.size === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>
-                    {suppressionDoublonsEnCours ? "Suppression..." : doublonsASupprimer.size === 0 ? "Rien de sélectionné" : `Supprimer les ${doublonsASupprimer.size} sélectionné${doublonsASupprimer.size > 1 ? "s" : ""} →`}
-                  </button>
+                    <p style={{ margin: 0, fontSize: 12.5, color: "#6b7280" }}>
+                      Même produit + fournisseur + date trouvés plusieurs fois. Touche une ligne pour la cocher (rouge = sera supprimée). Le plus ancien de chaque groupe est décoché par défaut, pour être conservé. Rien n'est supprimé tant que tu n'appuies pas sur le bouton en bas.
+                    </p>
+                  </div>
+                  <div style={{ overflowY: "auto", padding: "0 20px", flex: 1 }}>
+                    {doublonsGroupes.map(g => (
+                      <div key={g.cle} style={{ border: "1.5px solid #fcd34d", background: "#fffbeb", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
+                        <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 13, color: "#92400e" }}>
+                          {g.items[0].produit} · {g.items[0].fournisseur} · {g.items[0].date} ({g.items.length} exemplaires)
+                        </p>
+                        {g.items.map((it: any, idx: number) => {
+                          const coche = doublonsASupprimer.has(it.id);
+                          return (
+                            <div key={it.id} onClick={() => toggleDoublonASupprimer(it.id)}
+                              style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginTop: idx > 0 ? 4 : 0, borderRadius: 8, cursor: "pointer", background: coche ? "#fee2e2" : "#fff", border: `1.5px solid ${coche ? "#dc2626" : "#e5e7eb"}` }}>
+                              <div style={{
+                                width: 20, height: 20, minWidth: 20, borderRadius: 6, flexShrink: 0,
+                                border: `2px solid ${coche ? "#dc2626" : "#d1d5db"}`, background: coche ? "#dc2626" : "#fff",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                              }}>
+                                {coche && <span style={{ color: "#fff", fontSize: 13, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                              </div>
+                              <span style={{ fontSize: 12.5, color: coche ? "#991b1b" : "#374151", fontWeight: coche ? 700 : 400 }}>
+                                {idx === 0 ? "🕐 Le plus ancien — " : ""}{it.quantite} {it.unite} · statut : {it.statut || "-"} {it.lot_interne ? `· lot ${it.lot_interne}` : ""}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ padding: "12px 20px 20px", flexShrink: 0, borderTop: "1px solid #f0f0f0" }}>
+                    <button onClick={confirmerSuppressionDoublons} disabled={suppressionDoublonsEnCours || doublonsASupprimer.size === 0}
+                      style={{ width: "100%", padding: "13px", background: suppressionDoublonsEnCours || doublonsASupprimer.size === 0 ? "#ccc" : "#dc2626", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: doublonsASupprimer.size === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>
+                      {suppressionDoublonsEnCours ? "Suppression..." : doublonsASupprimer.size === 0 ? "Rien de sélectionné" : `Supprimer les ${doublonsASupprimer.size} sélectionné${doublonsASupprimer.size > 1 ? "s" : ""} →`}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
