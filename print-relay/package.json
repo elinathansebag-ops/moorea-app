@@ -1,0 +1,15 @@
+{
+  "name": "moorea-print-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Relais d'impression Moorea — écoute Firebase et imprime les étiquettes envoyées depuis l'iPad",
+  "main": "print-relay.js",
+  "scripts": {
+    "start": "node print-relay.js"
+  },
+  "dependencies": {
+    "firebase": "^10.7.0",
+    "puppeteer": "^22.0.0",
+    "qrcode": "^1.5.3"
+  }
+}

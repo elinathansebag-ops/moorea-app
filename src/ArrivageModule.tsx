@@ -378,6 +378,38 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
 }
 
 // ─── QR CODE ÉTIQUETTE PALETTE ───
+// ─── FILE D'IMPRESSION À DISTANCE (relais PC) ───
+// Depuis l'iPad, AirPrint ne voit pas l'imprimante à étiquettes Brother sur le réseau.
+// Cette fonction pousse un "job" dans Firebase (Realtime Database, chemin "printQueue")
+// avec exactement les mêmes infos que l'étiquette normale — un petit programme tournant
+// en permanence sur le PC Windows (déjà connecté à l'imprimante) écoute cette file et
+// imprime automatiquement dès qu'une entrée apparaît, sans aucune action côté PC.
+export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteIndex?: number, colisCount?: number) {
+  const lot = arrivage.lot_interne || arrivage.id;
+  const palRef = paletteIndex != null ? `${paletteIndex}` : null;
+  const url = `${window.location.origin}${window.location.pathname}?id=${arrivage.id}`;
+  const lotLabel = palRef ? `MRA.${String(lot).padStart(4,"0")}-${palRef}` : `MRA.${String(lot).padStart(4,"0")}`;
+  const qte = colisCount != null ? colisCount : arrivage.quantite;
+
+  let dlcLabel = "";
+  if (arrivage.dlc) {
+    const d = new Date(arrivage.dlc);
+    dlcLabel = isNaN(d.getTime()) ? String(arrivage.dlc) : d.toLocaleDateString("fr-FR");
+  }
+
+  await push(ref(db, "printQueue"), {
+    type: "etiquette_palette",
+    lotLabel,
+    produit: (arrivage.produit || "-").toUpperCase(),
+    qte: qte || 0,
+    unite: (arrivage.unite || "COLIS").toUpperCase(),
+    dlcLabel,
+    url,
+    status: "pending",
+    createdAt: Date.now(),
+  });
+}
+
 async function imprimerEtiquettePalette(arrivage: any, paletteIndex?: number, colisCount?: number) {
   const lot = arrivage.lot_interne || arrivage.id;
   const palRef = paletteIndex != null ? `${paletteIndex}` : null;
@@ -574,6 +606,7 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
   const [nbPalettes, setNbPalettes] = useState(1);
   const [repartition, setRepartition] = useState<number[]>([totalColis]);
   const [printing, setPrinting] = useState(false);
+  const [sendingPC, setSendingPC] = useState(false);
 
   const updateNb = (n: number) => {
     setNbPalettes(n);
@@ -598,6 +631,20 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
     }
     setPrinting(false);
     onClose();
+  };
+
+  // Envoie chaque étiquette dans la file d'impression à distance (relais PC) — utile
+  // depuis l'iPad quand l'imprimante Brother n'apparaît pas dans AirPrint.
+  const handleEnvoyerPC = async () => {
+    setSendingPC(true);
+    try {
+      for (let i = 0; i < nbPalettes; i++) {
+        await envoyerEtiquettePourImpressionPC(arrivage, i + 1, repartition[i]);
+      }
+      onClose();
+    } catch {
+      setSendingPC(false);
+    }
   };
 
   return (
@@ -641,10 +688,16 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
           </p>
           <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{totalSaisi} / {totalColis}</p>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
           <button onClick={handleImprimer} disabled={printing}
             style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: printing?"#e8e0d0":"#c8a84b", color: "#0a0a0a", cursor: printing?"not-allowed":"pointer", fontSize: 14, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
             {printing?`⏳ Impression...`:`🖨 Imprimer ${nbPalettes} étiquette${nbPalettes>1?"s":""}`}
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={handleEnvoyerPC} disabled={sendingPC}
+            style={{ flex: 2, padding: "14px", borderRadius: 14, border: "1.5px solid #3b82f6", background: sendingPC?"#e8e0d0":"#eff6ff", color: "#3b82f6", cursor: sendingPC?"not-allowed":"pointer", fontSize: 13, fontWeight: 800 }}>
+            {sendingPC?`⏳ Envoi...`:`📡 Envoyer à l'imprimante PC`}
           </button>
           <button onClick={onClose}
             style={{ flex: 1, padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
