@@ -220,18 +220,15 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
 
   return (
     <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : (litige || hasEcartColis) ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <div style={{ flex: 1 }}>
-          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{arrivage.produit}{arrivage.variete ? ` · ${arrivage.variete}` : ""}
-            {arrivage.code_article && <span style={{ marginLeft: 6, fontSize: 10, fontFamily: "monospace", color: "#27ae60", background: "#f0fff4", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>{arrivage.code_article}</span>}
-          </p>
-          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-            <PillArr>📦 {arrivage.quantite} {arrivage.unite}</PillArr>
-            {arrivage.lot_interne && <PillArr>🔖 {arrivage.lot_interne}</PillArr>}
-            {arrivage.origine && <PillArr>🌍 {arrivage.origine}</PillArr>}
-          </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{arrivage.produit}{arrivage.variete ? ` · ${arrivage.variete}` : ""}</p>
+          {arrivage.code_article && <span style={{ fontSize: 10, fontFamily: "monospace", color: "#27ae60", background: "#f0fff4", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>{arrivage.code_article}</span>}
+          <PillArr>📦 {arrivage.quantite} {arrivage.unite}</PillArr>
+          {arrivage.lot_interne && <PillArr>🔖 {arrivage.lot_interne}</PillArr>}
+          {arrivage.origine && <PillArr>🌍 {arrivage.origine}</PillArr>}
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
           <button onClick={async () => {
             const nouvelleDate = window.prompt("Nouvelle date de livraison (JJ/MM/AAAA) :", arrivage.date || "");
             if (!nouvelleDate) return;
@@ -248,9 +245,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
       </div>
       {showGencodeScan && matchedGencode && <GencodeChecker onClose={() => setShowGencodeScan(false)} expectedEan={matchedGencode.ean} expectedArticle={matchedGencode} />}
 
-      {/* Colis reçus + Poids */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-        {/* Colis reçus */}
+      {/* Colis reçus + DLC + Scan étiquette, tout sur une ligne */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 8, background: hasEcartColis ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Colis</span>
           <button onClick={() => setColisRecus("")}
@@ -269,32 +265,6 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
             </span>
           )}
         </div>
-        {/* Poids brut */}
-        <div style={{ flex: 1, minWidth: 120, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>⚖️ Brut</span>
-          <input type="number" min="0" step="0.1" inputMode="decimal"
-            value={poidsBrut}
-            placeholder={arrivage.poids_brut || "kg"}
-            onChange={e => setPoidsBrut(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: "#1a2e1a" }}
-          />
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>kg</span>
-        </div>
-        {/* Poids net */}
-        <div style={{ flex: 1, minWidth: 120, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🥬 Net</span>
-          <input type="number" min="0" step="0.1" inputMode="decimal"
-            value={poidsNet}
-            placeholder={arrivage.poids_net || "kg"}
-            onChange={e => setPoidsNet(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: "#1a2e1a" }}
-          />
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>kg</span>
-        </div>
-      </div>
-
-      {/* DLC + Traçabilité fournisseur */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
           <input type="date"
@@ -307,7 +277,9 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
           📷 Scanner l'étiquette
         </button>
       </div>
-      <div style={{ marginBottom: 4, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+
+      {/* Traçabilité fournisseur — champ + bouton ajouter sur la même ligne */}
+      <div style={{ marginBottom: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
         <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
           {tracaList.map((t, idx) => (
@@ -318,17 +290,19 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
                 onChange={e => modifierTraca(idx, e.target.value)}
                 style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
               />
+              {idx === tracaList.length - 1 && (
+                <button onClick={ajouterTraca} title="Ajouter un n° de traçabilité" style={{ flexShrink: 0, background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                  + Ajouter
+                </button>
+              )}
               {tracaList.length > 1 && (
                 <button onClick={() => retirerTraca(idx)} title="Retirer ce n°" style={{ flexShrink: 0, background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, fontWeight: 700, padding: "0 4px" }}>✕</button>
               )}
             </div>
           ))}
         </div>
-        <button onClick={ajouterTraca} style={{ marginTop: 6, background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
-          + Ajouter un n° de traçabilité
-        </button>
       </div>
-      {scanEtiquetteMsg && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>✓ {scanEtiquetteMsg}</p>}
+      {scanEtiquetteMsg && <p style={{ margin: "0 0 6px", fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>✓ {scanEtiquetteMsg}</p>}
       {showScanEtiquette && <ScannerQR onScan={handleScanEtiquette} onClose={() => setShowScanEtiquette(false)} />}
 
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr auto", gap: "0 12px", alignItems: "center", marginBottom: 8 }}>

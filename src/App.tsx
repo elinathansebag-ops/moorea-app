@@ -2635,14 +2635,24 @@ _PDF joint_`;
                     const g = weekGroups.get(key)!;
                     const isOpen = openWeeksArr.has(key);
                     const nbArrivages = g.dates.reduce((sum, [, arr]) => sum + arr.length, 0);
+                    const nbEnAttenteSemaine = g.dates.reduce((sum, [, arr]) => sum + arr.filter((a: any) => a.statut === "en attente").length, 0);
                     return (
                       <div key={key} style={{ marginBottom: 10 }}>
-                        <div onClick={() => toggleWeekArr(key)} style={{ cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#faf8f3", border: "1.5px solid #e8e0d0", borderRadius: 10, marginBottom: isOpen ? 8 : 0 }}>
-                          <span style={{ fontWeight: 700, fontSize: 13, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>
+                        <div onClick={() => toggleWeekArr(key)} style={{ cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#faf8f3", border: `1.5px solid ${nbEnAttenteSemaine > 0 ? "#fcd34d" : "#e8e0d0"}`, borderRadius: 10, marginBottom: isOpen ? 8 : 0 }}>
+                          <span style={{ fontWeight: 700, fontSize: 13, color: "#1a2e1a", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                             📅 Semaine {g.week} · {g.year}
-                            <span style={{ fontWeight: 500, color: "#9ca3af", fontSize: 11, marginLeft: 6 }}>
+                            <span style={{ fontWeight: 500, color: "#9ca3af", fontSize: 11 }}>
                               ({g.dates.length} jour{g.dates.length > 1 ? "s" : ""} · {nbArrivages} arrivage{nbArrivages > 1 ? "s" : ""})
                             </span>
+                            {nbEnAttenteSemaine > 0 ? (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#d97706", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 20, padding: "2px 9px" }}>
+                                ⏳ {nbEnAttenteSemaine} en attente
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 20, padding: "2px 9px" }}>
+                                ✅ Tout validé
+                              </span>
+                            )}
                           </span>
                           <span style={{ transition: "transform .15s", display: "inline-block", transform: `rotate(${isOpen ? 90 : 0}deg)`, color: "#c8a84b", fontSize: 16 }}>›</span>
                         </div>
