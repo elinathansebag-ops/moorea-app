@@ -1434,18 +1434,25 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
 
       let lastDmitriPct = 0;
+      // Petites phrases en ukrainien (avec traduction FR entre parenthèses) pour divertir
+      // Dimitrie pendant le comptage — un palier tous les 15%.
       const getDmitriMotivation = (pct: number): void => {
         const messages: { [key: number]: string[] } = {
-          25: ["🍺 25% - Dimitrie, c'est parti ! Une bière t'attends à la fin!", "🤘 25% - Vi! Le quart, c'est du sérieux!", "💪 25% - Dimitrie au travail, comme toujours!"],
-          50: ["🔥 50% - DIMITRIE POWER! La moitié c'est du gâteau!", "🚀 50% - Tu es une machine! Encore un peu!", "⚡ 50% - Slava! Non pardon, DIMITRIE! Continue!"],
-          75: ["🎯 75% - Dimitrie le champion! Presque là!", "🏆 75% - T'es trop fort, tu vas finir avant midi!", "💯 75% - C'est du délire, tu crushes!"],
-          100: ["🎉 DIMITRIE LEGEND! Stock terminé! 🍻", "🔔 TERMINÉ! Dimitrie, tu es une LÉGENDE!", "🏅 BOOM! Stock fini! Dimitrie le roi du comptage!"]
+          15: ["🍺 15% - Гарний початок, Дмитрію! (Beau début, Dimitrie !)", "💪 15% - Тримайся, ти зможеш! (Accroche-toi, tu vas y arriver !)"],
+          30: ["🤘 30% - Вже майже третина! (On est déjà presque à un tiers !)", "🔥 30% - Дмитрію, не зупиняйся! (Dimitrie, ne t'arrête pas !)"],
+          45: ["⚡ 45% - Половина вже близько! (La moitié approche !)", "🚀 45% - Ти справжня машина! (Tu es une vraie machine !)"],
+          60: ["🎯 60% - Більше половини зроблено! (Plus de la moitié faite !)", "💯 60% - Так тримати, Дмитрію! (Continue comme ça, Dimitrie !)"],
+          75: ["🏆 75% - Ти чемпіон, Дмитрію! (Tu es un champion, Dimitrie !)", "🎉 75% - Майже готово! (C'est presque fini !)"],
+          90: ["🔔 90% - Ще трошки! (Encore un tout petit peu !)", "😅 90% - Останній ривок! (Le dernier effort !)"],
+          100: ["🏅 100% - ВІТАЮ, ДМИТРІЮ! Сток завершено! (Félicitations Dimitrie ! Stock terminé !)", "🎊 100% - Ти легенда, Дмитрію! (Tu es une légende, Dimitrie !)"],
         };
 
-        const threshold = pct >= 100 ? 100 : pct >= 75 ? 75 : pct >= 50 ? 50 : pct >= 25 ? 25 : 0;
+        const paliers = [15, 30, 45, 60, 75, 90, 100];
+        let threshold = 0;
+        for (const p of paliers) if (pct >= p) threshold = p;
 
-        // N'affiche que si on passe un seuil (pas à chaque rafraîchissement)
-        if (threshold > 0 && threshold !== lastDmitriPct && (threshold === 25 || threshold === 50 || threshold === 75 || threshold === 100)) {
+        // N'affiche que si on passe un nouveau palier (pas à chaque rafraîchissement)
+        if (threshold > 0 && threshold !== lastDmitriPct) {
           lastDmitriPct = threshold;
           const msgs = messages[threshold] || [];
           if (msgs.length > 0) {
@@ -1801,6 +1808,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const pl = document.getElementById("s-prog-label");
         if (pg) pg.style.width = pct + "%";
         if (pl) pl.textContent = pct + "% · " + done + "/" + tot;
+        // Popup de motivation pour Dimitrie, déclenché en direct pendant le comptage
+        // (avant, ça ne se déclenchait jamais ici — seulement en visitant la liste des stocks).
+        if (pct > 0) getDmitriMotivation(pct);
       };
 
       const sRenderTable = () => {
@@ -2179,13 +2189,17 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const base64 = pdfDataUri.split(",")[1];
           const filename = `inventaire_${currentTeam.toLowerCase()}_${TODAY}.pdf`;
 
+          // La blague sur le stock manquait ici — elle n'était insérée que dans
+          // sEnvoyerStockJordan, une autre fonction jamais reliée au bouton réel.
+          const joke = getFunnyJoke(manq, exc, nc, sorted.length);
+
           const resp = await fetch("/api/send-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: ["jordan.jouanest@moorea.fr"],
               subject: `📦 Inventaire Stock ${currentTeam} - ${TODAY}`,
-              html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${currentTeam}</b> du ${now}.</p><p>${sorted.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p>`,
+              html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${currentTeam}</b> du ${now}.</p><p>${sorted.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p><p style="font-size:14px;font-style:italic;color:#8a6f2e;border-radius:6px;padding:12px;background:#fffbf0;margin:16px 0">"${joke}"</p>`,
               attachments: [{ filename, content: base64 }],
             }),
           });
