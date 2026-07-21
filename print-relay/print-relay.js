@@ -24,8 +24,11 @@ const os = require("os");
 // de Windows (Paramètres > Bluetooth et appareils > Imprimantes et scanners).
 const PRINTER_NAME = process.env.MOOREA_PRINTER_NAME || "Brother TD-4650TNWB"; // ← à adapter
 
-// Chemin vers SumatraPDF.exe (utilisé pour l'impression silencieuse du PDF).
-const SUMATRA_PATH = process.env.MOOREA_SUMATRA_PATH || "C:\\SumatraPDF\\SumatraPDF.exe";
+// Chemin vers Adobe Acrobat Reader (utilisé pour l'impression silencieuse du PDF —
+// plus fiable que SumatraPDF avec le pilote Brother/Seagull de cette imprimante).
+// Adapter ce chemin si Adobe Reader est installé ailleurs sur ce PC.
+const ACROBAT_PATH = process.env.MOOREA_ACROBAT_PATH || "C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe";
+const ACROBAT_PATH_32BIT = "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe";
 
 // ─── CONFIGURATION FIREBASE (identique à celle de l'app, aucune clé secrète) ──
 const firebaseConfig = {
@@ -114,12 +117,24 @@ async function imprimerJob(job) {
   });
   await browser.close();
 
+  // Copie de secours pour test manuel — pas supprimée, toujours au même endroit.
+  const debugFile = path.join(os.tmpdir(), "moorea-derniere-etiquette.pdf");
+  fs.copyFile(tmpFile, debugFile, () => {
+    console.log(`   (copie de test enregistrée ici : ${debugFile})`);
+  });
+
+  const acrobatExe = fs.existsSync(ACROBAT_PATH) ? ACROBAT_PATH : ACROBAT_PATH_32BIT;
+
   await new Promise((resolve, reject) => {
+    // /t = imprime silencieusement sur l'imprimante donnée avec les réglages
+    // par défaut du pilote (donc le format papier "Etiquette Moorea" déjà
+    // configuré comme format par défaut), puis Acrobat se ferme tout seul.
     execFile(
-      SUMATRA_PATH,
-      ["-print-to", PRINTER_NAME, "-silent", "-print-settings", "noscale", tmpFile],
+      acrobatExe,
+      ["/t", tmpFile, PRINTER_NAME],
       (err) => {
-        fs.unlink(tmpFile, () => {});
+        // Acrobat garde parfois le fichier ouvert un court instant après impression.
+        setTimeout(() => fs.unlink(tmpFile, () => {}), 5000);
         if (err) reject(err);
         else resolve();
       }
