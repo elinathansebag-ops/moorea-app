@@ -47,36 +47,37 @@ console.log("  RELAIS D'IMPRESSION MOOREA — en écoute...");
 console.log("  Imprimante :", PRINTER_NAME);
 console.log("═══════════════════════════════════════════════");
 
-// ─── GÉNÉRATION DE L'ÉTIQUETTE (même design que dans l'app) ─────────────
+// ─── GÉNÉRATION DE L'ÉTIQUETTE — format paysage 180mm x 110mm ───────────
+// (étiquettes pré-découpées Brother — mesurées 18cm x 11cm)
 async function genererHtmlEtiquette(job) {
   const qrDataUrl = await QRCode.toDataURL(job.url || "", {
-    width: 500,
-    margin: 2,
+    width: 600,
+    margin: 1,
     color: { dark: "#000000", light: "#FFFFFF" },
   });
 
   const produit = job.produit || "";
   const produitFontSize =
-    produit.length <= 18 ? 16 :
-    produit.length <= 30 ? 13.5 :
-    produit.length <= 45 ? 11.5 :
-    produit.length <= 65 ? 9.5 : 8;
+    produit.length <= 18 ? 28 :
+    produit.length <= 30 ? 22 :
+    produit.length <= 45 ? 18 :
+    produit.length <= 65 ? 15 : 12;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
 <style>
-@page{size:110mm 70mm;margin:0}
+@page{size:180mm 110mm;margin:0}
 *{margin:0;padding:0;box-sizing:border-box;text-transform:uppercase}
 body{font-family:'Arial Black',Arial,sans-serif;background:#fff}
-.etiquette{width:110mm;height:70mm;background:#fff;border:3px solid #000;padding:4mm;display:flex;gap:4mm;overflow:hidden}
+.etiquette{width:180mm;height:110mm;background:#fff;border:3px solid #000;padding:6mm;display:flex;gap:6mm;overflow:hidden}
 .qr-col{display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.qr-img{width:60mm;height:60mm;border:2px solid #000;background:#fff;object-fit:contain}
+.qr-img{width:95mm;height:95mm;border:2px solid #000;background:#fff;object-fit:contain}
 .info-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between}
-.lot{font-size:20px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:2px solid #000;padding-bottom:1.5mm;word-break:break-word}
-.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.15;margin-top:1.5mm;overflow:hidden}
-.qty-row{display:flex;align-items:baseline;gap:4px;margin-top:1.5mm}
-.qty{font-size:28px;font-weight:900;color:#000;line-height:1}
-.unite{font-size:12px;font-weight:700;color:#000}
-.dlc{margin-top:1.5mm;color:#000;font-size:13px;font-weight:900;border:2px solid #000;padding:1mm 2mm;display:inline-block;letter-spacing:0.5px}
+.lot{font-size:36px;font-weight:900;color:#000;letter-spacing:0.5px;border-bottom:3px solid #000;padding-bottom:3mm;word-break:break-word}
+.produit{font-size:${produitFontSize}px;font-weight:900;color:#000;line-height:1.2;margin-top:3mm;overflow:hidden}
+.qty-row{display:flex;align-items:baseline;gap:8px;margin-top:3mm}
+.qty{font-size:52px;font-weight:900;color:#000;line-height:1}
+.unite{font-size:20px;font-weight:700;color:#000}
+.dlc{margin-top:3mm;color:#000;font-size:22px;font-weight:900;border:3px solid #000;padding:2mm 4mm;display:inline-block;letter-spacing:0.5px}
 </style>
 <body>
 <div class="etiquette">
@@ -106,8 +107,8 @@ async function imprimerJob(job) {
   const tmpFile = path.join(os.tmpdir(), `etiquette_${Date.now()}.pdf`);
   await page.pdf({
     path: tmpFile,
-    width: "110mm",
-    height: "70mm",
+    width: "180mm",
+    height: "110mm",
     printBackground: true,
     margin: { top: 0, bottom: 0, left: 0, right: 0 },
   });
