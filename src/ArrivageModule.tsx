@@ -344,7 +344,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, sel
   );
 }
 
-export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect, gencodeArticles }: any) {
+export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, selectMode, selectedArrivages, onToggleSelect, gencodeArticles }: any) {
   const [open, setOpen] = useState(false);
   const nbTraites = traites.length;
   const allDone = produits.length === 0 && nbTraites > 0;
@@ -368,7 +368,7 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
           {nbTraites > 0 && (
             <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>📁 Traités · {nbTraites}</p>
-              {traites.map((a: any) => <ArrivageTraiteRow key={a.id} arrivage={a} onDelete={onDelete} onOuvreRapport={onOuvreRapport} />)}
+              {traites.map((a: any) => <ArrivageTraiteRow key={a.id} arrivage={a} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onImprimerMulti={onImprimerMulti} />)}
             </div>
           )}
         </div>
@@ -1434,7 +1434,7 @@ export function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLi
   );
 }
 
-export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { arrivage: any; onDelete: any; onOuvreRapport: any }) {
+export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImprimerMulti }: { arrivage: any; onDelete: any; onOuvreRapport: any; onImprimerMulti?: (a: any) => void }) {
   const [open, setOpen] = useState(false);
   const [savingReserve, setSavingReserve] = useState(false);
   const borderColor = a.statut === "validé" ? "#27ae60" : a.statut === "refusé" ? "#dc2626" : "#d97706";
@@ -1516,6 +1516,10 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { a
               setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2000);
             }}
               style={{ padding: "5px 10px", background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>📡 Envoyer PC</button>
+            {onImprimerMulti && (
+              <button onClick={() => onImprimerMulti(a)} title="Choisir le nombre de palettes et imprimer une étiquette par palette"
+                style={{ padding: "5px 10px", background: "#f5f3ff", border: "1px solid #8b5cf6", color: "#7c3aed", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 Étiquettes (palettes)</button>
+            )}
             <button onClick={async () => {
               const { ref: fbRef, update: fbUpdate } = await import("firebase/database");
               const { db: dbImport } = await import("./firebase");
@@ -1528,7 +1532,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport }: { a
   );
 }
 
-export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles }: any) {
+export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -1685,6 +1689,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               produits={byFournisseur[f] || []}
               traites={byFournisseurTraites[f] || []}
               onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport}
+              onImprimerMulti={onImprimerMulti}
               selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect}
               gencodeArticles={gencodeArticles} />
           ))}

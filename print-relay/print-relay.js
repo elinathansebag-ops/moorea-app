@@ -146,11 +146,19 @@ async function imprimerJob(job) {
 // Ne traite que les jobs "pending" — évite de réimprimer au redémarrage du script.
 const pendingQuery = query(queueRef, orderByChild("status"), equalTo("pending"));
 
-onChildAdded(pendingQuery, async (snap) => {
-  const job = snap.val();
-  const key = snap.key;
-  console.log(`🖨️  Nouvelle étiquette : ${job.lotLabel} (${job.produit})`);
+// Les étiquettes sont mises bout à bout dans cette file, et traitées UNE PAR UNE
+// (Adobe Reader ne gère bien qu'une impression à la fois — en envoyer plusieurs
+// en même temps faisait qu'une seule sortait sur plusieurs palettes).
+const fileLocale = [];
+let enTrainDImprimer = false;
 
+async function traiterFileLocale() {
+  if (enTrainDImprimer) return;
+  const prochain = fileLocale.shift();
+  if (!prochain) return;
+  enTrainDImprimer = true;
+
+  const { job, key } = prochain;
   try {
     await update(ref(db, `printQueue/${key}`), { status: "printing" });
     await imprimerJob(job);
@@ -160,6 +168,18 @@ onChildAdded(pendingQuery, async (snap) => {
     console.error(`❌ Erreur impression ${job.lotLabel} :`, err.message);
     await update(ref(db, `printQueue/${key}`), { status: "error", error: err.message });
   }
+
+  enTrainDImprimer = false;
+  // Petite pause pour laisser Adobe se refermer complètement avant la suivante.
+  setTimeout(traiterFileLocale, 1500);
+}
+
+onChildAdded(pendingQuery, (snap) => {
+  const job = snap.val();
+  const key = snap.key;
+  console.log(`🖨️  Nouvelle étiquette : ${job.lotLabel} (${job.produit})`);
+  fileLocale.push({ job, key });
+  traiterFileLocale();
 });
 
 // Garde le process vivant

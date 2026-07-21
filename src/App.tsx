@@ -359,8 +359,9 @@ export default function App() {
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
     await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, ...(litige ? { litige } : {}), validatedAt: Date.now() });
     showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
-    // Popup étiquette
-    setPopupEtiquette({ ...arrivage, poids_brut: ctrl.poids_brut || arrivage.poids_brut, poids_net: ctrl.poids_net || arrivage.poids_net });
+    // Le popup étiquette (choix du nombre de palettes) ne s'ouvre plus automatiquement ici —
+    // il reste accessible via le bouton "🏷 Étiquettes (palettes)" sur la ligne de l'arrivage
+    // traité, comme pour les arrivages pas encore validés (pas de popup imposé).
   };
 
   const submitArrivage = async () => {
@@ -2475,7 +2476,7 @@ _PDF joint_`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onScan={handleScanForDate} gencodeArticles={gencodeArticles} />
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onScan={handleScanForDate} gencodeArticles={gencodeArticles} />
                           );
                         })}
                       </div>
