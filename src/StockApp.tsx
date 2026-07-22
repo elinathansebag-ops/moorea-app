@@ -2148,58 +2148,67 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const btn = document.getElementById("s-btn-envoyer-jordan") as HTMLButtonElement | null;
         if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent || ""; btn.textContent = "⏳ Envoi..."; }
         try {
-          const now = new Date().toLocaleString("fr-FR");
+          if (!currentImportId || !currentTeam) { toast("Aucun stock chargé"); return; }
+          // On force une sauvegarde avant de générer le PDF, pour être sûr que ce qui est envoyé
+          // à Jordan reflète bien les tout derniers comptages saisis (generateStockPDF relit
+          // depuis Firestore, pas depuis la mémoire de l'écran).
+          await saveComptages();
+
+          // Avant, ce bouton dessinait son propre PDF "à la main" avec jsPDF (tableau simplifié,
+          // sans les lots, sans le style Moorea) — complètement différent de ce qu'on voit avec
+          // le bouton "📄 PDF" ou l'aperçu à l'écran. Les deux doivent être identiques : on
+          // réutilise donc exactement la même génération HTML (generateStockPDF), convertie en
+          // image puis en PDF, comme le fait déjà sEnvoyerStockJordan pour la liste des stocks.
+          const result = await generateStockPDF(currentImportId, currentTeam);
+          if (!result) { toast("Stock introuvable"); return; }
+
           const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
           const manq = sorted.filter(a => counted(a) && ecart(a) < 0).length;
           const exc = sorted.filter(a => counted(a) && ecart(a) > 0).length;
           const nc = sorted.filter(a => !counted(a)).length;
 
-          const doc2 = new jsPDF({ unit: "mm", format: "a4" });
-          const W = 210, M = 14, CW = W - M * 2;
-          doc2.setFillColor(10, 10, 10); doc2.rect(0, 0, W, 22, "F");
-          doc2.setFillColor(200, 168, 75); doc2.rect(0, 22, W, 2, "F");
-          doc2.setTextColor(200, 168, 75); doc2.setFont("helvetica", "bold"); doc2.setFontSize(14);
-          doc2.text("MOOREA", M, 14);
-          doc2.setTextColor(255, 255, 255); doc2.setFontSize(10);
-          doc2.text(`Inventaire Stock - ${currentTeam}`, M + 32, 14);
-          doc2.setTextColor(150, 150, 150); doc2.setFontSize(8);
-          doc2.text(now, W - M, 14, { align: "right" });
+          const container = document.createElement("div");
+          container.innerHTML = result.html;
+          container.style.position = "fixed";
+          container.style.top = "0";
+          container.style.left = "-9999px";
+          container.style.width = "794px"; // largeur A4 à 96dpi
+          container.style.background = "#ffffff";
+          document.body.appendChild(container);
 
-          let y = 30;
-          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "normal"); doc2.setFontSize(9);
-          doc2.text(`${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}`, M, y);
-          y += 8;
+          await new Promise(resolve => setTimeout(resolve, 150));
 
-          const colArticle = M + 2, colStock = M + 130, colCompte = M + 155, colEcart = M + CW - 6;
-          doc2.setFillColor(250, 248, 240); doc2.rect(M, y, CW, 7, "F");
-          doc2.setTextColor(80, 80, 80); doc2.setFont("helvetica", "bold"); doc2.setFontSize(8);
-          doc2.text("ARTICLE", colArticle, y + 5);
-          doc2.text("STOCK", colStock, y + 5, { align: "center" });
-          doc2.text("COMPTÉ", colCompte, y + 5, { align: "center" });
-          doc2.text("ÉCART", colEcart, y + 5, { align: "right" });
-          y += 10;
-
-          doc2.setFont("helvetica", "normal");
-          sorted.forEach(a => {
-            if (y > 280) { doc2.addPage(); y = 16; }
-            const e = counted(a) ? ecart(a) : null;
-            doc2.setTextColor(30, 30, 30); doc2.setFontSize(8);
-            doc2.text(String(a.article).substring(0, 60), colArticle, y + 4);
-            doc2.text(String(a.nb_colis), colStock, y + 4, { align: "center" });
-            doc2.text(counted(a) ? String(a.compte) : "-", colCompte, y + 4, { align: "center" });
-            const ecColor = e === null ? [150, 150, 150] : e < 0 ? [220, 38, 38] : e > 0 ? [180, 83, 9] : [21, 128, 61];
-            doc2.setTextColor(ecColor[0], ecColor[1], ecColor[2]);
-            doc2.text(e !== null ? (e > 0 ? "+" + e : String(e)) : "-", colEcart, y + 4, { align: "right" });
-            y += 6;
+          const canvas = await html2canvas(container, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            windowWidth: 794,
           });
+          document.body.removeChild(container);
+
+          const imgData = canvas.toDataURL("image/jpeg", 0.95);
+          const doc2 = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+          const pageWidth = 210, pageHeight = 297;
+          const imgWidth = pageWidth;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+          let heightLeft = imgHeight;
+          let position = 0;
+          doc2.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+
+          while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            doc2.addPage();
+            doc2.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+          }
 
           const pdfDataUri = doc2.output("datauristring");
           const base64 = pdfDataUri.split(",")[1];
-          const filename = `inventaire_${currentTeam.toLowerCase()}_${TODAY}.pdf`;
 
-          // La blague sur le stock manquait ici — elle n'était insérée que dans
-          // sEnvoyerStockJordan, une autre fonction jamais reliée au bouton réel.
           const joke = getFunnyJoke(manq, exc, nc, sorted.length);
+          const now = new Date().toLocaleString("fr-FR");
 
           const resp = await fetch("/api/send-email", {
             method: "POST",
@@ -2208,7 +2217,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
               to: ["jordan.jouanest@moorea.fr"],
               subject: `📦 Inventaire Stock ${currentTeam} - ${TODAY}`,
               html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${currentTeam}</b> du ${now}.</p><p>${sorted.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p><p style="font-size:14px;font-style:italic;color:#8a6f2e;border-radius:6px;padding:12px;background:#fffbf0;margin:16px 0">"${joke}"</p>`,
-              attachments: [{ filename, content: base64 }],
+              attachments: [{ filename: result.filename, content: base64 }],
             }),
           });
           if (!resp.ok) {
