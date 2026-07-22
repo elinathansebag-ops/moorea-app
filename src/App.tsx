@@ -353,6 +353,13 @@ export default function App() {
   const relancerEtiquette = (key: string) => {
     update(ref(db, `printQueue/${key}`), { status: "pending", error: null, createdAt: Date.now() }).catch(() => {});
   };
+  const ignorerEtiquette = (key: string) => {
+    update(ref(db, `printQueue/${key}`), { status: "ignored" }).catch(() => {});
+  };
+  const [voirToutesBloquees, setVoirToutesBloquees] = useState(false);
+  const ignorerToutesBloquees = () => {
+    etiquettesBloquees.forEach(({ key }) => ignorerEtiquette(key));
+  };
 
   // ─── DARK MODE ───
   useEffect(() => {
@@ -2773,17 +2780,30 @@ _PDF joint_`;
             </div>
             {etiquettesBloquees.length > 0 && (
               <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 14 }}>
-                <p style={{ margin: "0 0 8px", fontSize: 12.5, fontWeight: 700, color: "#991b1b" }}>
-                  ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""} — jamais imprimée{etiquettesBloquees.length > 1 ? "s" : ""} ou en erreur
-                </p>
-                {etiquettesBloquees.map(({ key, job }) => (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                  <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: "#991b1b" }}>
+                    ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""} — jamais imprimée{etiquettesBloquees.length > 1 ? "s" : ""} ou en erreur
+                  </p>
+                  <button onClick={ignorerToutesBloquees} style={{ background: "none", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: 8, padding: "4px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+                    Tout ignorer
+                  </button>
+                </div>
+                {(voirToutesBloquees ? etiquettesBloquees : etiquettesBloquees.slice(0, 5)).map(({ key, job }) => (
                   <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #fecaca" }}>
                     <span style={{ flex: 1, fontSize: 12, color: "#7f1d1d" }}>{job.lotLabel || job.produit || "Étiquette"} {job.error ? `— ${job.error}` : ""}</span>
                     <button onClick={() => relancerEtiquette(key)} style={{ flexShrink: 0, background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
                       🔁 Relancer
                     </button>
+                    <button onClick={() => ignorerEtiquette(key)} style={{ flexShrink: 0, background: "none", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: 8, padding: "5px 8px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
+                      Ignorer
+                    </button>
                   </div>
                 ))}
+                {etiquettesBloquees.length > 5 && (
+                  <button onClick={() => setVoirToutesBloquees(v => !v)} style={{ marginTop: 8, background: "none", border: "none", color: "#991b1b", cursor: "pointer", fontSize: 11.5, fontWeight: 700, textDecoration: "underline", padding: 0 }}>
+                    {voirToutesBloquees ? "Voir moins" : `Voir les ${etiquettesBloquees.length - 5} autres`}
+                  </button>
+                )}
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
