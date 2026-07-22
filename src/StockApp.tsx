@@ -733,6 +733,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-toast.error{background:linear-gradient(135deg,#dc2626 0%,#ef4444 100%);color:#fff;border:1px solid #fca5a5}
 #stock-toast.info{background:linear-gradient(135deg,#0a0a0a 0%,#1a1a1a 100%);color:#c8a84b;border:1px solid rgba(200,168,75,0.5)}
 #stock-toast.warning{background:linear-gradient(135deg,#b45309 0%,#f97316 100%);color:#fff;border:1px solid #fdba74}
+/* Html5Qrcode injecte sa propre balise <video> (et un <canvas>) DANS #s-scan-video —
+   ce conteneur doit rester un simple <div>, pas une balise <video>, sinon le flux ne
+   s'affiche jamais (écran noir malgré la caméra bien démarrée). */
+#s-scan-video video, #s-scan-video canvas{width:100%!important;height:100%!important;object-fit:cover}
 #stock-calc-fab{position:fixed;bottom:24px;right:24px;width:50px;height:50px;background:#c8a84b;border:none;border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 16px rgba(200,168,75,.4);z-index:400}
 #stock-calc-fab.visible{display:flex}
 #stock-calc-modal{display:none;position:fixed;bottom:86px;right:24px;background:#fff;border:1.5px solid #e8e0d0;border-radius:18px;padding:1.25rem;width:236px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:500}
@@ -797,7 +801,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       <p id="s-scan-title" style="margin:0;font-weight:800;font-size:15px;color:#c8a84b;text-transform:uppercase;letter-spacing:1px">📷 Scanner palette → Stock</p>
     </div>
     <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center">
-      <video id="s-scan-video" style="width:100%;height:100%;object-fit:cover" playsinline muted></video>
+      <div id="s-scan-video" style="width:100%;height:100%"></div>
       <canvas id="s-scan-canvas" style="display:none"></canvas>
       <!-- Viseur -->
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
@@ -980,8 +984,17 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 </div>
 
 <div id="stock-toast"></div>
+
+<!-- Popup de motivation Dmitrie (paliers de comptage) — remplace l'ancien petit toast en bas,
+     qui passait souvent inaperçu ; une vraie popup avec un bouton pour la fermer se voit mieux. -->
+<div id="s-dmitri-popup" style="display:none;position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,0.55);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:20px;padding:28px 24px;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+    <p id="s-dmitri-popup-msg" style="margin:0 0 20px;font-size:16px;font-weight:700;color:#1a2e1a;line-height:1.5"></p>
+    <button onclick="sFermerPopupDmitri()" style="padding:10px 24px;border-radius:12px;border:none;background:#c8a84b;color:#0a0a0a;font-weight:800;font-size:13px;cursor:pointer">Passer →</button>
+  </div>
+</div>
 <button id="stock-scan-fab" onclick="sScannerPalette()" style="display:none;position:fixed;bottom:90px;right:20px;width:52px;height:52px;border-radius:50%;background:#0a0a0a;border:2.5px solid #c8a84b;cursor:pointer;font-size:22px;z-index:299;box-shadow:0 4px 16px rgba(0,0,0,0.3)">📷</button>
-<button id="stock-calc-fab" onclick="document.getElementById('stock-calc-modal').classList.toggle('open')" style="display:none">🧮</button>
+<button id="stock-calc-fab" onclick="sToggleCalc()" style="display:none">🧮</button>
 <div id="stock-calc-modal">
   <div class="calc-screen"><div class="expr" id="s-calc-expr"></div><div class="result" id="s-calc-result">0</div></div>
   <div class="calc-grid">
@@ -1134,6 +1147,20 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         // Auto-hide après 3s (4s pour les erreurs)
         const duration = finalType === "error" ? 4000 : 3000;
         setTimeout(() => t.classList.remove("show"), duration);
+      };
+
+      // Popup de motivation Dmitrie — une vraie fenêtre modale avec un bouton "Passer",
+      // plutôt qu'un toast discret en bas de l'écran qui passait souvent inaperçu.
+      (window as any).sAfficherPopupDmitri = (msg: string) => {
+        const popup = document.getElementById("s-dmitri-popup");
+        const msgEl = document.getElementById("s-dmitri-popup-msg");
+        if (!popup || !msgEl) return;
+        msgEl.textContent = msg;
+        popup.style.display = "flex";
+      };
+      (window as any).sFermerPopupDmitri = () => {
+        const popup = document.getElementById("s-dmitri-popup");
+        if (popup) popup.style.display = "none";
       };
 
       const counted = (a: any) => a.compte !== null && a.compte !== undefined;
@@ -1465,7 +1492,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const msgs = messages[threshold] || [];
           if (msgs.length > 0) {
             const msg = msgs[Math.floor(Math.random() * msgs.length)];
-            toast(msg);
+            // Une vraie popup avec un bouton "Passer" plutôt qu'un petit toast en bas — trop
+            // discret, passait souvent inaperçu pendant le comptage.
+            (window as any).sAfficherPopupDmitri(msg);
           }
         }
       };
@@ -2426,6 +2455,17 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           toast(art1 + " + " + art2 + ' fusionnés en "' + nom + '"');
         } catch { toast("Erreur"); }
         (window as any).sAnnulerFusion();
+      };
+
+      // Calculatrice — bouton ouverture/fermeture. Utilise directement style.display plutôt
+      // que classList.toggle("open") : plus facile à déboguer, et évite tout souci si une
+      // règle CSS venait à entrer en conflit avec la classe.
+      (window as any).sToggleCalc = () => {
+        const modal = document.getElementById("stock-calc-modal");
+        if (!modal) { toast("⚠️ Calculatrice introuvable (recharge la page)"); return; }
+        const estOuverte = modal.style.display === "block" || modal.classList.contains("open");
+        modal.classList.remove("open");
+        modal.style.display = estOuverte ? "none" : "block";
       };
 
       // Calculatrice
