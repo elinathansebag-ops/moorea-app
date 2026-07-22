@@ -1520,8 +1520,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             const color = team === "GMS" ? "#92710a" : "#0ea5e9";
             const teamLabel = team === "GMS" ? "🌿 GMS" : "✨ Prestige";
             const sid = s.id.replace(/'/g, "\\'");
-            // Appel asynchrone pour éviter de bloquer le rendu
-            if (pct > 0) setTimeout(() => getDmitriMotivation(pct), 50);
             return `<div class="stock-item">
               <div style="flex:1">
                 <div style="font-size:13px;font-weight:700">📅 ${s.dateLabel} <span style="font-size:10px;font-weight:700;color:${color};background:${color}18;padding:2px 7px;border-radius:20px;margin-left:6px">${teamLabel}</span></div>
@@ -1702,8 +1700,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           }
 
           toast("✉️ PDF envoyé à Jordan");
-          // Message de motivation pour Dimitrie
-          setTimeout(() => getDmitriMotivation(100), 500);
         } catch (err: any) {
           toast("Erreur envoi : " + (err?.message || String(err)));
         } finally {
@@ -1725,8 +1721,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             await setDoc(doc(db, "stocks", sid), upd);
           }
           toast("Stock clôturé" + dureeMsg);
-          // Message de motivation pour Dimitrie
-          setTimeout(() => getDmitriMotivation(100), 500);
           renderStockList();
         } catch { toast("Erreur"); }
       };
