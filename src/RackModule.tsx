@@ -251,6 +251,10 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
   const [showScanner, setShowScanner] = useState(false);
   const [scanStatus, setScanStatus] = useState("");
   const [paletteScanEnAttente, setPaletteScanEnAttente] = useState<(typeof freeForm & { arrivage_id?: string }) | null>(null);
+  // Case cliquée AVANT de scanner (flux inverse : "je choisis d'abord la case, je scanne ensuite" —
+  // en plus du flux existant "je scanne d'abord, puis je clique la case"). Voir handleCellClick /
+  // handlePaletteScannee.
+  const [caseAvantScan, setCaseAvantScan] = useState<{ row: number; bay: number; slot: number } | null>(null);
   useEffect(() => {
     const u = onValue(ref(db, "rack_mode_placement"), snap => {
       const v = snap.val();
@@ -558,11 +562,13 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
         setAddMode(favoris.length > 0 ? "modele" : "libre");
         setPresetLocked(false);
       } else {
-        // Mode scan actif mais aucune palette scannée pour le moment : on n'ouvre pas le
-        // menu de sélection d'article (réservé au mode manuel/liste) — on rappelle juste
-        // de scanner la palette d'abord.
+        // Mode scan actif mais aucune palette scannée pour le moment : flux inverse — on
+        // retient la case cliquée et on ouvre directement le scanner ; la prochaine palette
+        // scannée sera rangée ici automatiquement (voir handlePaletteScannee).
         setSelectedCell(null);
-        setScanStatus("Scanne d'abord une palette avant de choisir un emplacement.");
+        setCaseAvantScan({ row, bay, slot });
+        setScanStatus("Case sélectionnée — scanne la palette à ranger ici.");
+        setShowScanner(true);
       }
     }
   };
@@ -579,24 +585,48 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       setScanStatus(`Aucun arrivage trouvé pour "${id}" — vérifie que la palette correspond bien à un arrivage existant.`);
       return;
     }
-    setPaletteScanEnAttente({
-      produit: arrivage.produit || "", type: "produit", extraItems: [],
+    const palette = {
+      produit: arrivage.produit || "", type: "produit" as const, extraItems: [],
       fournisseur: arrivage.fournisseur || "", lot_interne: arrivage.lot_interne || "",
       quantite: arrivage.quantite != null ? String(arrivage.quantite) : "", unite: arrivage.unite || "colis",
       dlc: arrivage.dlc || "", color: "", origine: arrivage.origine || "", notes: "",
       arrivage_id: arrivage.id,
-    });
+    };
     setShowScanner(false);
+
+    // Flux "case cliquée d'abord" : on range directement sur la case déjà choisie, sans repasser
+    // par l'attente d'un clic (sauf si la DLC manque encore, auquel cas il faut ouvrir le
+    // formulaire pour la compléter avant validation).
+    if (caseAvantScan) {
+      const cell = caseAvantScan;
+      setCaseAvantScan(null);
+      const key = cellKey(cell.row, cell.bay, cell.slot);
+      if (positions[key]) {
+        setScanStatus("Cette case a été occupée entre-temps — choisis-en une autre.");
+        return;
+      }
+      if (palette.dlc) {
+        placerPaletteScanneeSur(cell.row, cell.bay, cell.slot, palette);
+      } else {
+        setSelectedCell(cell);
+        setFreeForm(palette);
+        setAddMode("libre");
+        setPresetLocked(false);
+        setIsEditing(false);
+      }
+      return;
+    }
+
+    setPaletteScanEnAttente(palette);
   };
 
   // Range directement une palette scannée qui a déjà sa DLC (connue sur l'arrivage) — pas de
   // formulaire de confirmation à valider, un clic sur la case libre suffit.
-  const placerPaletteScanneeAuto = async (row: number, bay: number, slot: number) => {
-    if (!paletteScanEnAttente) return;
+  const placerPaletteScanneeSur = async (row: number, bay: number, slot: number, palette: typeof freeForm & { arrivage_id?: string }) => {
     setSaving(true);
     try {
       const key = cellKey(row, bay, slot);
-      const { arrivage_id, ...rest } = paletteScanEnAttente as any;
+      const { arrivage_id, ...rest } = palette as any;
       const cleanItems = (rest.extraItems || []).filter((it: any) => it.nom?.trim());
       const payload: any = {
         ...rest, extraItems: cleanItems.length ? cleanItems : undefined,
@@ -606,11 +636,16 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       };
       Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
       await update(ref(db, `rack_positions/${activeWall}`), { [key]: payload });
+      logActiviteRack("Placement palette (rack)", `${payload.produit || ""} · ${cfg.label} · ${key}`);
       setPaletteScanEnAttente(null);
       setScanStatus(`✅ ${rest.produit} rangé(e) automatiquement.`);
       setTimeout(() => setScanStatus(""), 3000);
     } catch { alert("Erreur lors de l'enregistrement"); }
     setSaving(false);
+  };
+  const placerPaletteScanneeAuto = (row: number, bay: number, slot: number) => {
+    if (!paletteScanEnAttente) return;
+    placerPaletteScanneeSur(row, bay, slot, paletteScanEnAttente);
   };
 
   // ─── AJOUT PALETTE (saisie libre) ───
@@ -1337,7 +1372,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
 
       {/* SCANNER : QR de la palette à ranger (mode "scan") */}
       {showScanner && (
-        <ScannerQR onScan={handlePaletteScannee} onClose={() => setShowScanner(false)} />
+        <ScannerQR onScan={handlePaletteScannee} onClose={() => { setShowScanner(false); setCaseAvantScan(null); }} />
       )}
       {scanStatus && !showScanner && (
         <div style={{ position: "fixed", left: 16, right: 16, bottom: 16, zIndex: 3500, background: "#fef2f2", border: "1.5px solid #fca5a5", color: "#991b1b", borderRadius: 12, padding: "12px 16px", fontSize: 13, boxShadow: "0 10px 28px rgba(0,0,0,0.15)", display: "flex", gap: 10, alignItems: "center" }}>

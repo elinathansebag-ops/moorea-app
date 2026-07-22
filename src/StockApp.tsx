@@ -984,15 +984,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 </div>
 
 <div id="stock-toast"></div>
-
-<!-- Popup de motivation Dmitrie (paliers de comptage) — remplace l'ancien petit toast en bas,
-     qui passait souvent inaperçu ; une vraie popup avec un bouton pour la fermer se voit mieux. -->
-<div id="s-dmitri-popup" style="display:none;position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,0.55);align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:20px;padding:28px 24px;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-    <p id="s-dmitri-popup-msg" style="margin:0 0 20px;font-size:16px;font-weight:700;color:#1a2e1a;line-height:1.5"></p>
-    <button onclick="sFermerPopupDmitri()" style="padding:10px 24px;border-radius:12px;border:none;background:#c8a84b;color:#0a0a0a;font-weight:800;font-size:13px;cursor:pointer">Passer →</button>
-  </div>
-</div>
 <button id="stock-scan-fab" onclick="sScannerPalette()" style="display:none;position:fixed;bottom:90px;right:20px;width:52px;height:52px;border-radius:50%;background:#0a0a0a;border:2.5px solid #c8a84b;cursor:pointer;font-size:22px;z-index:299;box-shadow:0 4px 16px rgba(0,0,0,0.3)">📷</button>
 <button id="stock-calc-fab" onclick="sToggleCalc()" style="display:none">🧮</button>
 <div id="stock-calc-modal">
@@ -1147,20 +1138,6 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         // Auto-hide après 3s (4s pour les erreurs)
         const duration = finalType === "error" ? 4000 : 3000;
         setTimeout(() => t.classList.remove("show"), duration);
-      };
-
-      // Popup de motivation Dmitrie — une vraie fenêtre modale avec un bouton "Passer",
-      // plutôt qu'un toast discret en bas de l'écran qui passait souvent inaperçu.
-      (window as any).sAfficherPopupDmitri = (msg: string) => {
-        const popup = document.getElementById("s-dmitri-popup");
-        const msgEl = document.getElementById("s-dmitri-popup-msg");
-        if (!popup || !msgEl) return;
-        msgEl.textContent = msg;
-        popup.style.display = "flex";
-      };
-      (window as any).sFermerPopupDmitri = () => {
-        const popup = document.getElementById("s-dmitri-popup");
-        if (popup) popup.style.display = "none";
       };
 
       const counted = (a: any) => a.compte !== null && a.compte !== undefined;

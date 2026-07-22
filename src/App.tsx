@@ -351,14 +351,17 @@ export default function App() {
     return () => unsub();
   }, []);
   const relancerEtiquette = (key: string) => {
-    update(ref(db, `printQueue/${key}`), { status: "pending", error: null, createdAt: Date.now() }).catch(() => {});
+    update(ref(db, `printQueue/${key}`), { status: "pending", error: null, createdAt: Date.now() })
+      .catch((err: any) => showToast("❌ Relance impossible : " + (err?.message || "erreur inconnue"), "error"));
   };
   const ignorerEtiquette = (key: string) => {
-    update(ref(db, `printQueue/${key}`), { status: "ignored" }).catch(() => {});
+    update(ref(db, `printQueue/${key}`), { status: "ignored" })
+      .catch((err: any) => showToast("❌ Impossible d'ignorer : " + (err?.message || "erreur inconnue"), "error"));
   };
-  const [voirToutesBloquees, setVoirToutesBloquees] = useState(false);
+  const [showEtiquettesBloqueesModal, setShowEtiquettesBloqueesModal] = useState(false);
   const ignorerToutesBloquees = () => {
     etiquettesBloquees.forEach(({ key }) => ignorerEtiquette(key));
+    setShowEtiquettesBloqueesModal(false);
   };
 
   // ─── DARK MODE ───
@@ -2906,38 +2909,47 @@ _PDF joint_`;
                 </div>
               );
             })()}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: printRelayOnline ? "#f0fdf4" : "#fef2f2", color: printRelayOnline ? "#15803d" : "#dc2626", border: `1px solid ${printRelayOnline ? "#bbf7d0" : "#fca5a5"}` }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block" }} />
                 🖨️ Imprimante PC : {printRelayOnline === null ? "..." : printRelayOnline ? "en ligne" : "hors ligne"}
               </span>
+              {etiquettesBloquees.length > 0 && (
+                <button onClick={() => setShowEtiquettesBloqueesModal(true)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", cursor: "pointer" }}>
+                  ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""}
+                </button>
+              )}
             </div>
-            {etiquettesBloquees.length > 0 && (
-              <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-                  <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: "#991b1b" }}>
-                    ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""} — jamais imprimée{etiquettesBloquees.length > 1 ? "s" : ""} ou en erreur
-                  </p>
-                  <button onClick={ignorerToutesBloquees} style={{ background: "none", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: 8, padding: "4px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
-                    Tout ignorer
-                  </button>
-                </div>
-                {(voirToutesBloquees ? etiquettesBloquees : etiquettesBloquees.slice(0, 5)).map(({ key, job }) => (
-                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #fecaca" }}>
-                    <span style={{ flex: 1, fontSize: 12, color: "#7f1d1d" }}>{job.lotLabel || job.produit || "Étiquette"} {job.error ? `— ${job.error}` : ""}</span>
-                    <button onClick={() => relancerEtiquette(key)} style={{ flexShrink: 0, background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
-                      🔁 Relancer
-                    </button>
-                    <button onClick={() => ignorerEtiquette(key)} style={{ flexShrink: 0, background: "none", border: "1px solid #fca5a5", color: "#991b1b", borderRadius: 8, padding: "5px 8px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
-                      Ignorer
+            {showEtiquettesBloqueesModal && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 3700, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setShowEtiquettesBloqueesModal(false)}>
+                <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 480, maxHeight: "85vh", boxShadow: "0 24px 60px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <div style={{ padding: "16px 20px 10px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#991b1b", fontFamily: "'Syne', sans-serif" }}>
+                      ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""}
+                    </p>
+                    <button onClick={() => setShowEtiquettesBloqueesModal(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
+                  </div>
+                  <div style={{ overflowY: "auto", padding: "0 20px", flex: 1 }}>
+                    {etiquettesBloquees.map(({ key, job }) => (
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderTop: "1px solid #f0f0f0" }}>
+                        <span style={{ flex: 1, fontSize: 12.5, color: "#374151" }}>{job.lotLabel || job.produit || "Étiquette"} {job.error ? <span style={{ color: "#991b1b" }}>— {job.error}</span> : ""}</span>
+                        <button onClick={() => relancerEtiquette(key)} style={{ flexShrink: 0, background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
+                          🔁 Relancer
+                        </button>
+                        <button onClick={() => ignorerEtiquette(key)} style={{ flexShrink: 0, background: "none", border: "1px solid #e5e7eb", color: "#6b7280", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
+                          Ignorer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ padding: "12px 20px 20px", flexShrink: 0, borderTop: "1px solid #f0f0f0" }}>
+                    <button onClick={ignorerToutesBloquees}
+                      style={{ width: "100%", padding: "12px", background: "#fee2e2", color: "#991b1b", border: "1.5px solid #fca5a5", borderRadius: 12, fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                      Tout ignorer →
                     </button>
                   </div>
-                ))}
-                {etiquettesBloquees.length > 5 && (
-                  <button onClick={() => setVoirToutesBloquees(v => !v)} style={{ marginTop: 8, background: "none", border: "none", color: "#991b1b", cursor: "pointer", fontSize: 11.5, fontWeight: 700, textDecoration: "underline", padding: 0 }}>
-                    {voirToutesBloquees ? "Voir moins" : `Voir les ${etiquettesBloquees.length - 5} autres`}
-                  </button>
-                )}
+                </div>
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
