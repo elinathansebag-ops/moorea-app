@@ -1643,6 +1643,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: ["jordan.jouanest@moorea.fr"],
+              cc: ["commercial@moorea.fr"],
               subject: `📦 Inventaire ${team} - ${s.dateLabel}`,
               html: `<div style="font-family:Arial,sans-serif;color:#333;line-height:1.8;max-width:600px">
                 <p>Bonjour Jordan,</p>
@@ -2215,6 +2216,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: ["jordan.jouanest@moorea.fr"],
+              cc: ["commercial@moorea.fr"],
               subject: `📦 Inventaire Stock ${currentTeam} - ${TODAY}`,
               html: `<p>Bonjour,</p><p>Voici l'inventaire du stock <b>${currentTeam}</b> du ${now}.</p><p>${sorted.length} articles · Manquants : ${manq} · Excédents : ${exc} · Non comptés : ${nc}</p><p style="font-size:14px;font-style:italic;color:#8a6f2e;border-radius:6px;padding:12px;background:#fffbf0;margin:16px 0">"${joke}"</p>`,
               attachments: [{ filename: result.filename, content: base64 }],
