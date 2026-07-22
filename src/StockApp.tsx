@@ -1645,6 +1645,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              sender: "entrepot",
               to: ["jordan.jouanest@moorea.fr"],
               cc: ["commercial@moorea.fr"],
               subject: `📦 Inventaire ${team} - ${s.dateLabel}`,
@@ -2214,6 +2215,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              sender: "entrepot",
               to: ["jordan.jouanest@moorea.fr"],
               cc: ["commercial@moorea.fr"],
               subject: `📦 Inventaire Stock ${currentTeam} - ${TODAY}`,

@@ -1351,7 +1351,21 @@ export function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLi
 export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImprimerMulti }: { arrivage: any; onDelete: any; onOuvreRapport: any; onImprimerMulti?: (a: any) => void }) {
   const [open, setOpen] = useState(false);
   const [savingReserve, setSavingReserve] = useState(false);
+  const [sendingRefus, setSendingRefus] = useState(false);
   const borderColor = a.statut === "validé" ? "#27ae60" : a.statut === "refusé" ? "#dc2626" : "#d97706";
+
+  // Un arrivage refusé doit toujours ré-imprimer l'étiquette REFUS (grand "REFUS", QR vers le
+  // bon de retour) et jamais l'étiquette classique de palette — auparavant le bouton
+  // "🏷 Étiquettes (palettes)" ouvrait le popup multi-palettes standard même sur un refus déjà
+  // traité (avec rapport), ce qui régénérait l'étiquette d'arrivage classique par erreur.
+  const handleReimprimerRefus = async () => {
+    if (sendingRefus) return;
+    setSendingRefus(true);
+    try {
+      await envoyerEtiquetteRefusPourImpressionPC(a);
+    } catch { alert("Erreur lors de l'envoi de l'étiquette refus"); }
+    setSendingRefus(false);
+  };
 
   const handleReserve = async () => {
     setSavingReserve(true);
@@ -1414,7 +1428,12 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-            {onImprimerMulti && (
+            {a.statut === "refusé" ? (
+              <button onClick={handleReimprimerRefus} disabled={sendingRefus} title="Réimprimer l'étiquette REFUS (avec QR vers le bon de retour)"
+                style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+                {sendingRefus ? "⏳..." : "🏷 Étiquette refus"}
+              </button>
+            ) : onImprimerMulti && (
               <button onClick={() => onImprimerMulti(a)} title="Choisir le nombre de palettes et imprimer une étiquette par palette"
                 style={{ padding: "5px 10px", background: "#f5f3ff", border: "1px solid #8b5cf6", color: "#7c3aed", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 Étiquettes (palettes)</button>
             )}
