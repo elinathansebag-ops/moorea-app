@@ -688,6 +688,52 @@ export default function App() {
     return lot ? `lot:${lot}|${produitNorm}|${fournNorm}` : `${produitNorm}|${fournNorm}|${a.date || ""}`;
   };
 
+  // Nom "racine" d'un article, calibre retiré — sert à repérer qu'un ré-import concerne le
+  // même article que ce qui a déjà été enregistré, même si le calibre ou la quantité a changé
+  // entre-temps (ex: "LIME BRESIL CAL. 42" et "LIME BRESIL CAL. 48" partagent la même racine).
+  const produitRacine = (produit: string) => (produit || "")
+    .toUpperCase()
+    .replace(/CAL\.?\s*\d+/gi, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Clé "même article, même lot, même fournisseur" (racine du produit, sans le calibre) — sert
+  // à détecter une modification de calibre/quantité sur un arrivage déjà présent, plutôt qu'un
+  // simple doublon exact ou un arrivage totalement différent. Nécessite un lot connu : sans
+  // lot, le risque de faux rapprochement entre deux articles différents est trop grand.
+  const cleArticleModifiable = (a: any) => {
+    const lot = String(a.lot_interne || "").trim();
+    if (!lot) return null;
+    const fournNorm = (a.fournisseur || "").toLowerCase().trim();
+    const racine = produitRacine(a.produit).toLowerCase();
+    if (!racine) return null;
+    return `lot:${lot}|${fournNorm}|${racine}`;
+  };
+
+  // Classe les lignes d'un import en 3 groupes : doublons exacts (rien ne change, à ignorer),
+  // modifications (même article/lot/fournisseur déjà présent mais calibre et/ou quantité
+  // différents — à mettre à jour et rouvrir si déjà validé), et nouveaux (à ajouter).
+  const classifierImportArr = (lignes: any[], existants: any[]) => {
+    const clesExactes = new Set(existants.map(cleDoublonArrivage));
+    const parArticle = new Map<string, any>();
+    existants.forEach(a => { const c = cleArticleModifiable(a); if (c && !parArticle.has(c)) parArticle.set(c, a); });
+
+    const nouveaux: any[] = [];
+    const modifs: { ancien: any; nouveau: any }[] = [];
+    const doublonsExacts: any[] = [];
+
+    lignes.forEach(a => {
+      if (clesExactes.has(cleDoublonArrivage(a))) { doublonsExacts.push(a); return; }
+      const c = cleArticleModifiable(a);
+      const existant = c ? parArticle.get(c) : null;
+      if (existant) modifs.push({ ancien: existant, nouveau: a });
+      else nouveaux.push(a);
+    });
+
+    return { nouveaux, modifs, doublonsExacts };
+  };
+
   // Report de date d'un arrivage : si un arrivage avec la même clé (lot/produit/fournisseur)
   // existe déjà à la date choisie, on demande à l'utilisateur quoi faire au lieu de créer
   // silencieusement un doublon.
@@ -725,25 +771,43 @@ export default function App() {
     }
     setImportingArr(true);
 
-    const clesExistantes = new Set(arrivages.map(cleDoublonArrivage));
+    const { nouveaux, modifs, doublonsExacts } = classifierImportArr(previewArr, arrivages);
+    const doublons = doublonsExacts.length;
 
-    const nouveaux = previewArr.filter(a => !clesExistantes.has(cleDoublonArrivage(a)));
-    const doublons = previewArr.length - nouveaux.length;
-
-    if (nouveaux.length === 0) {
+    if (nouveaux.length === 0 && modifs.length === 0) {
       showToast(`Tous les ${previewArr.length} arrivages existent déjà pour cette date`, "error");
       setPreviewArr(null); setImportingArr(false); return;
     }
 
     for (const a of nouveaux) { const ca = getCodeArticle(a.produit); await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now(), ...(ca ? {code_article: ca} : {}) }); }
+
+    // Modification de calibre/quantité sur un arrivage déjà présent : on met à jour ses infos
+    // et, s'il était déjà validé/refusé, on le rouvre en "en attente" pour qu'il soit revérifié
+    // avec les bonnes données — plutôt que de créer un doublon ou d'ignorer silencieusement le
+    // changement, comme c'était le cas avant.
+    for (const { ancien, nouveau } of modifs) {
+      const ca = getCodeArticle(nouveau.produit);
+      const etaitTraite = ancien.statut && ancien.statut !== "en attente";
+      await update(ref(db, `arrivages/${ancien.id}`), {
+        produit: nouveau.produit,
+        quantite: nouveau.quantite,
+        unite: nouveau.unite,
+        poids_brut: nouveau.poids_brut,
+        poids_net: nouveau.poids_net,
+        ...(ca ? { code_article: ca } : {}),
+        ...(etaitTraite ? { statut: "en attente" } : {}),
+      });
+      logActivite("Modification import", `${nouveau.produit} (${nouveau.fournisseur}) mis à jour depuis "${ancien.produit}"${etaitTraite ? " — rouvert en attente" : ""}`);
+    }
+
     setPreviewArr(null); setImportingArr(false);
 
-    if (doublons > 0) {
-      showToast(`✅ ${nouveaux.length} nouveaux ajoutés · ${doublons} doublon${doublons > 1 ? "s" : ""} ignoré${doublons > 1 ? "s" : ""}`);
-    } else {
-      showToast(`${nouveaux.length} arrivages importés ✓`);
-    }
-    logActivite("Import arrivages", `${nouveaux.length} ajoutés, ${doublons} doublon${doublons > 1 ? "s" : ""} ignoré${doublons > 1 ? "s" : ""}`);
+    const parts: string[] = [];
+    if (nouveaux.length > 0) parts.push(`${nouveaux.length} nouveaux ajoutés`);
+    if (modifs.length > 0) parts.push(`${modifs.length} mis à jour et rouvert${modifs.length > 1 ? "s" : ""}`);
+    if (doublons > 0) parts.push(`${doublons} doublon${doublons > 1 ? "s" : ""} ignoré${doublons > 1 ? "s" : ""}`);
+    showToast(`✅ ${parts.join(" · ")}`);
+    logActivite("Import arrivages", parts.join(", "));
     setPageMode("arrivages");
   };
 
@@ -2720,9 +2784,8 @@ _PDF joint_`;
               </div>
             )}
             {previewArr && (() => {
-              const clesExistantes = new Set(arrivages.map(cleDoublonArrivage));
-              const nouveaux = previewArr.filter(a => !clesExistantes.has(cleDoublonArrivage(a)));
-              const doublons = previewArr.length - nouveaux.length;
+              const { nouveaux, modifs, doublonsExacts } = classifierImportArr(previewArr, arrivages);
+              const doublons = doublonsExacts.length;
               // Repère un mélange GMS/Prestige dans le fichier importé — si les deux équipes
               // apparaissent dans le même import, c'est probablement le mauvais fichier qui a
               // été sélectionné (chaque import est normalement 100% GMS ou 100% Prestige).
@@ -2738,9 +2801,11 @@ _PDF joint_`;
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                     <div>
                       <p style={{ margin: 0, fontWeight: 700, color: "#1a6b3a", fontFamily: "'Syne', sans-serif" }}>✅ {previewArr.length} arrivages détectés</p>
-                      {doublons > 0 && (
+                      {(doublons > 0 || modifs.length > 0) && (
                         <p style={{ margin: "3px 0 0", fontSize: 12, color: "#d97706" }}>
-                          ⚠️ {doublons} déjà présent{doublons > 1 ? "s" : ""} · <span style={{ color: "#16a34a", fontWeight: 700 }}>{nouveaux.length} nouveaux</span> seront ajoutés
+                          {doublons > 0 && <>⚠️ {doublons} déjà présent{doublons > 1 ? "s" : ""} (inchangé{doublons > 1 ? "s" : ""}) · </>}
+                          {modifs.length > 0 && <><span style={{ color: "#b45309", fontWeight: 700 }}>{modifs.length} modifié{modifs.length > 1 ? "s" : ""}</span> (calibre/quantité — seront rouverts) · </>}
+                          <span style={{ color: "#16a34a", fontWeight: 700 }}>{nouveaux.length} nouveaux</span> seront ajoutés
                         </p>
                       )}
                     </div>
@@ -2756,18 +2821,29 @@ _PDF joint_`;
                       </p>
                     </div>
                   )}
+                  {modifs.length > 0 && (
+                    <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+                      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#92400e" }}>🔁 Calibre/quantité modifiés — seront mis à jour {modifs.some(m => m.ancien.statut !== "en attente") ? "et rouverts en attente" : ""} :</p>
+                      {modifs.slice(0, 5).map((m, i) => (
+                        <p key={i} style={{ margin: "0 0 3px", fontSize: 12.5, color: "#92400e" }}>
+                          <strong>{m.ancien.produit}</strong> ({m.ancien.quantite} {m.ancien.unite}) → <strong>{m.nouveau.produit}</strong> ({m.nouveau.quantite} {m.nouveau.unite}){m.ancien.statut && m.ancien.statut !== "en attente" ? ` · était "${m.ancien.statut}"` : ""}
+                        </p>
+                      ))}
+                      {modifs.length > 5 && <p style={{ margin: 0, fontSize: 11.5, color: "#92400e" }}>...et {modifs.length - 5} autres</p>}
+                    </div>
+                  )}
                   {nouveaux.slice(0, 5).map((a, i) => (
                     <div key={i} style={{ background: "#f0fdf4", borderRadius: 8, padding: "6px 12px", marginBottom: 4, fontSize: 13, borderLeft: "3px solid #27ae60" }}>
                       <strong>{a.produit}</strong> · {a.fournisseur} · {a.quantite} {a.unite}
                     </div>
                   ))}
                   {nouveaux.length > 5 && <p style={{ fontSize: 12, color: "#6b7280" }}>...et {nouveaux.length - 5} autres nouveaux</p>}
-                  {doublons > 0 && nouveaux.length === 0 && (
+                  {doublons > 0 && nouveaux.length === 0 && modifs.length === 0 && (
                     <p style={{ fontSize: 13, color: "#d97706", textAlign: "center", padding: "8px 0" }}>Tous les arrivages de cette date sont déjà présents.</p>
                   )}
-                  <button onClick={confirmImportArr} disabled={importingArr || nouveaux.length === 0}
-                    style={{ width: "100%", marginTop: 10, padding: "11px", background: importingArr || nouveaux.length === 0 ? "#ccc" : "#27ae60", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: nouveaux.length === 0 ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>
-                    {importingArr ? "Import..." : nouveaux.length === 0 ? "Aucun nouvel arrivage" : `Ajouter ${nouveaux.length} nouvel${nouveaux.length > 1 ? "s" : ""} arrivage${nouveaux.length > 1 ? "s" : ""} →`}
+                  <button onClick={confirmImportArr} disabled={importingArr || (nouveaux.length === 0 && modifs.length === 0)}
+                    style={{ width: "100%", marginTop: 10, padding: "11px", background: importingArr || (nouveaux.length === 0 && modifs.length === 0) ? "#ccc" : "#27ae60", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: (nouveaux.length === 0 && modifs.length === 0) ? "not-allowed" : "pointer", fontFamily: "'Syne', sans-serif" }}>
+                    {importingArr ? "Import..." : (nouveaux.length === 0 && modifs.length === 0) ? "Rien à importer" : [nouveaux.length > 0 ? `Ajouter ${nouveaux.length}` : "", modifs.length > 0 ? `Mettre à jour ${modifs.length}` : ""].filter(Boolean).join(" · ") + " →"}
                   </button>
                 </div>
               );
