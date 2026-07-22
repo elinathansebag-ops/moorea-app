@@ -178,10 +178,26 @@ async function imprimerJob(job) {
     // /t = imprime silencieusement sur l'imprimante donnée avec les réglages
     // par défaut du pilote (donc le format papier "Etiquette Moorea" déjà
     // configuré comme format par défaut), puis Acrobat se ferme tout seul.
+    // Filet de sécurité : si Acrobat ne répond jamais (bloqué par une instance
+    // précédente encore ouverte, boîte de dialogue invisible, etc.), le callback
+    // de execFile ne se déclenche jamais et bloquait la file entière indéfiniment
+    // sans erreur visible. On force donc un timeout : passé ce délai, on considère
+    // que ça a échoué, on tue le processus, et on peut passer à l'étiquette suivante.
+    let reglee = false;
+    const timeoutId = setTimeout(() => {
+      if (reglee) return;
+      reglee = true;
+      tuerAcrobat();
+      reject(new Error("Acrobat n'a pas répondu à temps (impression probablement bloquée par une instance précédente)"));
+    }, 25000);
+
     execFile(
       acrobatExe,
       ["/t", tmpFile, PRINTER_NAME],
       (err) => {
+        if (reglee) return;
+        reglee = true;
+        clearTimeout(timeoutId);
         // Acrobat garde parfois le fichier ouvert un court instant après impression.
         setTimeout(() => fs.unlink(tmpFile, () => {}), 5000);
         if (err) reject(err);
@@ -189,6 +205,25 @@ async function imprimerJob(job) {
       }
     );
   });
+
+  // Acrobat garde parfois une instance ouverte en arrière-plan après une impression "/t" —
+  // si la suivante arrive avant qu'elle ne se referme d'elle-même, la commande est transmise à
+  // cette instance déjà occupée et échoue silencieusement (le processus lancé se ferme tout de
+  // suite, exit code 0, donc AUCUNE erreur ne remonte, alors que rien n'a été imprimé). On force
+  // donc la fermeture de toute instance Acrobat restante après chaque étiquette, pour repartir
+  // sur une base propre à chaque impression. On laisse d'abord un peu de marge pour que
+  // l'impression ait le temps de partir dans le spouleur Windows avant de couper le processus.
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  await new Promise(resolve => {
+    execFile("taskkill", ["/F", "/IM", "Acrobat.exe"], () => {
+      execFile("taskkill", ["/F", "/IM", "AcroRd32.exe"], () => resolve());
+    });
+  });
+}
+
+function tuerAcrobat() {
+  execFile("taskkill", ["/F", "/IM", "Acrobat.exe"], () => {});
+  execFile("taskkill", ["/F", "/IM", "AcroRd32.exe"], () => {});
 }
 
 // ─── ÉCOUTE LA FILE D'ATTENTE ────────────────────────────────────────────
@@ -219,8 +254,9 @@ async function traiterFileLocale() {
   }
 
   enTrainDImprimer = false;
-  // Petite pause pour laisser Adobe se refermer complètement avant la suivante.
-  setTimeout(traiterFileLocale, 1500);
+  // Pause pour laisser Windows/Acrobat se stabiliser complètement avant la suivante
+  // (allongée : le taskkill forcé après chaque impression a besoin d'un peu de marge).
+  setTimeout(traiterFileLocale, 2500);
 }
 
 onChildAdded(pendingQuery, (snap) => {
