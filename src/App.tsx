@@ -2036,7 +2036,13 @@ _PDF joint_`;
       try {
         const { set } = await import("firebase/database");
         await set(ref(db, "rack_mode_placement"), v);
-      } catch {}
+        setRackModePlacementAdmin(v); // reflète le changement tout de suite dans l'UI, sans attendre l'aller-retour Firebase
+        showToast(`✅ Mode "${v === "manuel" ? "Manuel" : "Scan"}" enregistré`);
+      } catch (err: any) {
+        // Avant, une erreur ici (droits Firebase, session expirée, réseau...) était avalée
+        // silencieusement — le bouton semblait cliqué mais rien n'était réellement enregistré.
+        showToast("❌ Le réglage n'a pas pu être enregistré : " + (err?.message || "erreur inconnue"), "error");
+      }
     };
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
