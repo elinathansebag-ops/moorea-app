@@ -1492,9 +1492,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const msgs = messages[threshold] || [];
           if (msgs.length > 0) {
             const msg = msgs[Math.floor(Math.random() * msgs.length)];
-            // Une vraie popup avec un bouton "Passer" plutôt qu'un petit toast en bas — trop
-            // discret, passait souvent inaperçu pendant le comptage.
-            (window as any).sAfficherPopupDmitri(msg);
+            // Bandeau en bas (toast), pas de popup à fermer manuellement — se ferme tout seul.
+            toast(msg);
           }
         }
       };
