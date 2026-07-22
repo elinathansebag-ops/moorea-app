@@ -667,7 +667,10 @@ export default function App() {
               curDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toLocaleDateString("fr-FR") : curDate;
             }catch{}}}
             const nb=parseInt(String(row[4]||"0"));
-            if(/^0[0-9]$/.test(c0)&&c1&&c2&&nb>0) arr.push({fournisseur:curFourn,produit:c2,lot_interne:curLot.length>=8?curLot.slice(4,8):curLot,lot_fournisseur:"",quantite:nb,unite:"colis",poids_brut:String(row[6]||"").replace(",","."),poids_net:String(row[8]||"").replace(",","."),origine:"",variete:"",date:curDate,timestamp:Date.now()});
+            // Le SL (numéro de ligne dans le lot) va de 01 à 99 — l'ancien /^0[0-9]$/ ne
+            // matchait que 00 à 09, donc toute 10e ligne (ou plus) d'un même lot était
+            // silencieusement ignorée (ex: lot KENTON LTD à 10 articles, la ligne "10" sautée).
+            if(/^\d{2}$/.test(c0)&&c1&&c2&&nb>0) arr.push({fournisseur:curFourn,produit:c2,lot_interne:curLot.length>=8?curLot.slice(4,8):curLot,lot_fournisseur:"",quantite:nb,unite:"colis",poids_brut:String(row[6]||"").replace(",","."),poids_net:String(row[8]||"").replace(",","."),origine:"",variete:"",date:curDate,timestamp:Date.now()});
           });
           if(!arr.length){showToast("Aucun arrivage détecté","error");setImportingArr(false);return;}
           setPreviewArr(arr); setImportingArr(false);
