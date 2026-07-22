@@ -688,9 +688,9 @@ export default function App() {
     return lot ? `lot:${lot}|${produitNorm}|${fournNorm}` : `${produitNorm}|${fournNorm}|${a.date || ""}`;
   };
 
-  // Nom "racine" d'un article, calibre retiré — sert à repérer qu'un ré-import concerne le
-  // même article que ce qui a déjà été enregistré, même si le calibre ou la quantité a changé
-  // entre-temps (ex: "LIME BRESIL CAL. 42" et "LIME BRESIL CAL. 48" partagent la même racine).
+  // Nom "racine" d'un article, calibre retiré — sert de repli pour repérer qu'un ré-import
+  // concerne le même article que ce qui a déjà été enregistré même si le calibre a été corrigé
+  // (ex: "LIME BRESIL CAL. 42" et "LIME BRESIL CAL. 48" partagent la même racine "LIME BRESIL").
   const produitRacine = (produit: string) => (produit || "")
     .toUpperCase()
     .replace(/CAL\.?\s*\d+/gi, "")
@@ -698,37 +698,85 @@ export default function App() {
     .replace(/\s+/g, " ")
     .trim();
 
-  // Clé "même article, même lot, même fournisseur" (racine du produit, sans le calibre) — sert
-  // à détecter une modification de calibre/quantité sur un arrivage déjà présent, plutôt qu'un
-  // simple doublon exact ou un arrivage totalement différent. Nécessite un lot connu : sans
-  // lot, le risque de faux rapprochement entre deux articles différents est trop grand.
-  const cleArticleModifiable = (a: any) => {
-    const lot = String(a.lot_interne || "").trim();
-    if (!lot) return null;
+  // Clé "même ligne d'arrivage" qui NE dépend PAS du numéro de lot interne — volontairement,
+  // car Geslot peut renuméroter/regrouper les lots d'un import à l'autre (un même article
+  // reçu peut passer d'un lot dédié à un lot partagé entre plusieurs articles) sans que ça
+  // change l'article, le fournisseur ou la date réels. Le lot est alors traité comme un champ
+  // qui peut lui-même être mis à jour, plutôt que comme identifiant.
+  const cleLigneSansLot = (a: any) => {
+    const produitNorm = (a.produit || "").toLowerCase().trim();
     const fournNorm = (a.fournisseur || "").toLowerCase().trim();
-    const racine = produitRacine(a.produit).toLowerCase();
-    if (!racine) return null;
-    return `lot:${lot}|${fournNorm}|${racine}`;
+    return `${produitNorm}|${fournNorm}|${a.date || ""}`;
   };
 
   // Classe les lignes d'un import en 3 groupes : doublons exacts (rien ne change, à ignorer),
-  // modifications (même article/lot/fournisseur déjà présent mais calibre et/ou quantité
+  // modifications (même article/fournisseur/date déjà présent mais lot, calibre et/ou quantité
   // différents — à mettre à jour et rouvrir si déjà validé), et nouveaux (à ajouter).
   const classifierImportArr = (lignes: any[], existants: any[]) => {
-    const clesExactes = new Set(existants.map(cleDoublonArrivage));
-    const parArticle = new Map<string, any>();
-    existants.forEach(a => { const c = cleArticleModifiable(a); if (c && !parArticle.has(c)) parArticle.set(c, a); });
-
-    const nouveaux: any[] = [];
-    const modifs: { ancien: any; nouveau: any }[] = [];
     const doublonsExacts: any[] = [];
+    const modifs: { ancien: any; nouveau: any }[] = [];
+    const nouveaux: any[] = [];
+
+    // 1) Correspondance directe : même article (texte exact, calibre inclus) + fournisseur +
+    // date, indépendamment du lot — c'est le cas le plus courant (quantité corrigée, lot
+    // renuméroté par Geslot, etc.).
+    const parLigne = new Map<string, any>();
+    existants.forEach(a => { const c = cleLigneSansLot(a); if (!parLigne.has(c)) parLigne.set(c, a); });
+    const dejaMatches = new Set<string>(); // id des existants déjà rapprochés, pour le repli racine plus bas
+    const restantes: any[] = [];
 
     lignes.forEach(a => {
-      if (clesExactes.has(cleDoublonArrivage(a))) { doublonsExacts.push(a); return; }
-      const c = cleArticleModifiable(a);
-      const existant = c ? parArticle.get(c) : null;
-      if (existant) modifs.push({ ancien: existant, nouveau: a });
-      else nouveaux.push(a);
+      const c = cleLigneSansLot(a);
+      const existant = parLigne.get(c);
+      if (existant) {
+        dejaMatches.add(existant.id);
+        const identique = String(existant.quantite) === String(a.quantite)
+          && String(existant.lot_interne || "") === String(a.lot_interne || "")
+          && String(existant.poids_brut || "") === String(a.poids_brut || "")
+          && String(existant.poids_net || "") === String(a.poids_net || "");
+        if (identique) doublonsExacts.push(a);
+        else modifs.push({ ancien: existant, nouveau: a });
+      } else {
+        restantes.push(a);
+      }
+    });
+
+    // 2) Repli "racine" (calibre ignoré) pour le cas d'une correction de calibre sur un article
+    // donné — seulement appliqué quand la correspondance est certaine (un seul candidat existant
+    // ET une seule ligne importée partagent cette racine+fournisseur+date), pour ne jamais risquer
+    // de rapprocher par erreur deux calibres différents reçus le même jour (ex: CAL.48 et CAL.54
+    // d'un même fournisseur ne doivent jamais être confondus entre eux).
+    const racineExistants = new Map<string, any[]>();
+    existants.forEach(a => {
+      if (dejaMatches.has(a.id)) return;
+      const racine = produitRacine(a.produit).toLowerCase();
+      const fournNorm = (a.fournisseur || "").toLowerCase().trim();
+      if (!racine) return;
+      const cle = `${racine}|${fournNorm}|${a.date || ""}`;
+      if (!racineExistants.has(cle)) racineExistants.set(cle, []);
+      racineExistants.get(cle)!.push(a);
+    });
+    const racineLignes = new Map<string, any[]>();
+    restantes.forEach(a => {
+      const racine = produitRacine(a.produit).toLowerCase();
+      const fournNorm = (a.fournisseur || "").toLowerCase().trim();
+      if (!racine) return;
+      const cle = `${racine}|${fournNorm}|${a.date || ""}`;
+      if (!racineLignes.has(cle)) racineLignes.set(cle, []);
+      racineLignes.get(cle)!.push(a);
+    });
+
+    restantes.forEach(a => {
+      const racine = produitRacine(a.produit).toLowerCase();
+      const fournNorm = (a.fournisseur || "").toLowerCase().trim();
+      const cle = `${racine}|${fournNorm}|${a.date || ""}`;
+      const candidatsExistants = racineExistants.get(cle) || [];
+      const candidatsLignes = racineLignes.get(cle) || [];
+      if (candidatsExistants.length === 1 && candidatsLignes.length === 1) {
+        modifs.push({ ancien: candidatsExistants[0], nouveau: a });
+      } else {
+        nouveaux.push(a);
+      }
     });
 
     return { nouveaux, modifs, doublonsExacts };
@@ -794,6 +842,7 @@ export default function App() {
         unite: nouveau.unite,
         poids_brut: nouveau.poids_brut,
         poids_net: nouveau.poids_net,
+        lot_interne: nouveau.lot_interne,
         ...(ca ? { code_article: ca } : {}),
         ...(etaitTraite ? { statut: "en attente" } : {}),
       });
@@ -2823,10 +2872,10 @@ _PDF joint_`;
                   )}
                   {modifs.length > 0 && (
                     <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
-                      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#92400e" }}>🔁 Calibre/quantité modifiés — seront mis à jour {modifs.some(m => m.ancien.statut !== "en attente") ? "et rouverts en attente" : ""} :</p>
+                      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#92400e" }}>🔁 Lot/calibre/quantité modifiés — seront mis à jour {modifs.some(m => m.ancien.statut !== "en attente") ? "et rouverts en attente" : ""} :</p>
                       {modifs.slice(0, 5).map((m, i) => (
                         <p key={i} style={{ margin: "0 0 3px", fontSize: 12.5, color: "#92400e" }}>
-                          <strong>{m.ancien.produit}</strong> ({m.ancien.quantite} {m.ancien.unite}) → <strong>{m.nouveau.produit}</strong> ({m.nouveau.quantite} {m.nouveau.unite}){m.ancien.statut && m.ancien.statut !== "en attente" ? ` · était "${m.ancien.statut}"` : ""}
+                          <strong>{m.ancien.produit}</strong> ({m.ancien.quantite} {m.ancien.unite}{m.ancien.lot_interne ? `, lot ${m.ancien.lot_interne}` : ""}) → <strong>{m.nouveau.produit}</strong> ({m.nouveau.quantite} {m.nouveau.unite}{m.nouveau.lot_interne ? `, lot ${m.nouveau.lot_interne}` : ""}){m.ancien.statut && m.ancien.statut !== "en attente" ? ` · était "${m.ancien.statut}"` : ""}
                         </p>
                       ))}
                       {modifs.length > 5 && <p style={{ margin: 0, fontSize: 11.5, color: "#92400e" }}>...et {modifs.length - 5} autres</p>}
