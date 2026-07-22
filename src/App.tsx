@@ -151,7 +151,7 @@ export default function App() {
   const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showProgrammeAchat, setShowProgrammeAchat] = useState(false);
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
-  const ADMIN_PIN = "2468";
+  const ADMIN_PIN = "1709";
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPinInput, setAdminPinInput] = useState("");
