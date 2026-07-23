@@ -41,6 +41,11 @@ async function chargerImageEnDataUrl(url: string): Promise<string> {
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
   const [qrRefusArrivageId, setQrRefusArrivageId] = useState<string | null>(null);
+  // Actions lancées depuis la page "palette scannée" (PalettePublique) — plutôt que de
+  // dupliquer les formulaires de rapport/refus/destruction sur cette page publique, on
+  // redirige vers l'appli principale avec ?action=...&aid=<arrivage>, et ce state permet
+  // de déclencher le bon écran une fois les données Firebase chargées (voir plus bas).
+  const [qrAction, setQrAction] = useState<{ action: string; aid: string } | null>(null);
   const [vue, setVue] = useState("__none__");
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
   const [fournisseur, setFournisseur] = useState("");
@@ -436,6 +441,9 @@ export default function App() {
     // de l'étiquette. Réservé au personnel déjà connecté (@moorea.fr) — pas de page publique.
     const refus = params.get("refus");
     if (refus) setQrRefusArrivageId(refus);
+    const action = params.get("action");
+    const aid = params.get("aid");
+    if (action && aid) setQrAction({ action, aid });
   }, []);
   // Une fois connecté et les données chargées, ouvre directement la signature du bon de retour
   // si un rapport est déjà lié à cet arrivage, sinon ouvre l'écran Stock Refus pour en créer un.
@@ -456,6 +464,24 @@ export default function App() {
     window.history.replaceState({}, "", window.location.pathname);
     setQrRefusArrivageId(null);
   }, [qrRefusArrivageId, user, arrivages, rapports]);
+  // Idem pour les actions "rapport"/"refuser"/"détruire" déclenchées depuis la palette scannée
+  // (PalettePublique) — on réutilise exactement les mêmes fonctions que les boutons habituels
+  // de l'écran Arrivages, une fois l'arrivage retrouvé en mémoire.
+  useEffect(() => {
+    if (!qrAction || !user?.email?.endsWith("@moorea.fr")) return;
+    if (!arrivages.length) return;
+    const arrivageLie = arrivages.find((a: any) => a.id === qrAction.aid);
+    if (arrivageLie) {
+      setPageMode("arrivages");
+      if (qrAction.action === "rapport") ouvrirRapportDepuisArrivage(arrivageLie, false);
+      else if (qrAction.action === "refuser") ouvrirRapportDepuisArrivage(arrivageLie, true);
+      else if (qrAction.action === "detruire") ouvrirDestruction(arrivageLie);
+    } else {
+      showToast("Arrivage introuvable pour cette action", "error");
+    }
+    window.history.replaceState({}, "", window.location.pathname);
+    setQrAction(null);
+  }, [qrAction, user, arrivages]);
   useEffect(() => {
     if (!showStock) return;
     const loadOv = async () => {

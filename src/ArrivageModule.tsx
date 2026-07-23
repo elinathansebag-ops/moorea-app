@@ -1189,10 +1189,12 @@ export function PalettePublique({ id }: { id: string }) {
             {[
               { label: "Date arrivée", value: arrivage.date },
               { label: "Quantité", value: `${arrivage.quantite} ${arrivage.unite}` },
-              { label: "Poids brut", value: arrivage.poids_brut ? `${arrivage.poids_brut} kg` : "-" },
-              { label: "Poids net", value: arrivage.poids_net ? `${arrivage.poids_net} kg` : "-" },
+              { label: "Poids brut", value: (arrivage.rapport?.poids_brut || arrivage.poids_brut) ? `${arrivage.rapport?.poids_brut || arrivage.poids_brut} kg` : "-" },
+              { label: "Poids net", value: (arrivage.rapport?.poids_net || arrivage.poids_net) ? `${arrivage.rapport?.poids_net || arrivage.poids_net} kg` : "-" },
               { label: "Origine", value: arrivage.origine || "-" },
-              { label: "Lot fournisseur", value: arrivage.lot_fournisseur || "-" },
+              { label: "Lot Moorea", value: arrivage.lot_interne ? `MRA.${String(arrivage.lot_interne).padStart(4, "0")}` : "-" },
+              { label: "Traça fournisseur", value: arrivage.rapport?.lot_fournisseur || arrivage.lot_fournisseur || "-" },
+              { label: "DLC", value: arrivage.rapport?.dlc || arrivage.dlc || "-" },
             ].map(f => (
               <div key={f.label} style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px" }}>
                 <p style={{ margin: "0 0 2px", fontSize: 10, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.label}</p>
@@ -1206,6 +1208,34 @@ export function PalettePublique({ id }: { id: string }) {
               <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{arrivage.rapport.observations}</p>
             </div>
           )}
+        </div>
+
+        {/* Actions directes depuis la palette scannée — redirige vers l'appli principale
+            (authentifiée) avec l'arrivage déjà sélectionné, pour réutiliser exactement les
+            mêmes formulaires/flux que depuis Arrivages (rapport qualité, refus + litige,
+            destruction) plutôt que de les dupliquer ici. */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+          <button onClick={() => { window.location.href = `${window.location.origin}${window.location.pathname}?action=rapport&aid=${arrivage.id}`; }}
+            style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "none", background: "#1a2e1a", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+            📋 Faire un rapport qualité
+          </button>
+          <button onClick={() => { window.location.href = `${window.location.origin}${window.location.pathname}?action=refuser&aid=${arrivage.id}`; }}
+            style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+            ❌ Refuser
+          </button>
+          {!arrivage.destruction && (
+            <button onClick={() => { window.location.href = `${window.location.origin}${window.location.pathname}?action=detruire&aid=${arrivage.id}`; }}
+              style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #fde68a", background: "#fffbeb", color: "#d97706", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+              🗑 Détruire du stock
+            </button>
+          )}
+          <button onClick={() => {
+              const msg = `📦 MRA.${String(arrivage.lot_interne || "").padStart(4, "0")} — ${arrivage.produit || ""}\nFournisseur : ${arrivage.fournisseur || "-"}\nStatut : ${arrivage.statut || "en attente"}\nQuantité : ${arrivage.quantite || "-"} ${arrivage.unite || ""}\nTraça fournisseur : ${arrivage.rapport?.lot_fournisseur || arrivage.lot_fournisseur || "-"}${arrivage.litige?.raison ? `\nMotif : ${arrivage.litige.raison}` : ""}`;
+              window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+            }}
+            style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #25d366, #128c7e)", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+            📲 Prévenir les commerciaux
+          </button>
         </div>
 
         {/* Litige */}
