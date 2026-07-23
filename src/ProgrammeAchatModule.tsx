@@ -44,6 +44,10 @@ type Ligne = {
   qte?: string;
   notes?: string;
   selectionne?: boolean;
+  // Quantité à commander saisie jour par jour (clé = date "YYYY-MM-DD" du jour réel du
+  // programme), pour les articles où la demande varie trop d'un jour à l'autre pour se
+  // contenter d'un seul total sur toute la période.
+  qteParJour?: Record<string, string>;
   updatedAt?: number;
   updatedBy?: string;
 };
@@ -540,6 +544,17 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     }).catch(() => {});
   };
 
+  // Saisie de la quantité à commander pour UN jour précis (le vrai jour du programme, pas le
+  // jour N-1 affiché à titre de référence) — pour les articles où la demande varie trop d'un
+  // jour à l'autre pour se contenter d'un seul total sur toute la période.
+  const majQteJour = (type: "produit" | "client", nom: string, jourReel: string, valeur: string) => {
+    if (!selectedId) return;
+    const key = ligneKey(type, nom);
+    update(ref(db, `programme_achat_lignes/${selectedId}/${key}`), {
+      type, nom, [`qteParJour/${jourReel}`]: valeur, updatedAt: Date.now(), updatedBy: userName || "-",
+    }).catch(() => {});
+  };
+
   // ─── Listes distinctes pour l'autocomplete (recherche) — basées sur le détail jour par jour
   // (dailyRefTotal, export statique + ventes importées) plutôt que sur un 2e fichier statique
   // séparé, qui pouvait échouer à charger indépendamment (page Objectifs vide/en erreur alors
@@ -649,8 +664,19 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     const rows = dailyRefTotal.filter(r => r.a === detailArticle && (!n1Debut || !n1Fin || (r.d >= n1Debut && r.d <= n1Fin)));
     const map = new Map<string, number>();
     for (const r of rows) map.set(r.d, (map.get(r.d) || 0) + (r.colis || 0));
-    return joursProgramme.map(j => ({ jour: j, colis: map.get(j) || 0 }));
+    // jour = date N-1 (référence, sert à afficher la demande de l'an dernier) ; jourReel = la
+    // vraie date du programme (un an plus tard), c'est cette date-là qui sert de clé pour la
+    // quantité à commander saisie par l'utilisateur.
+    return joursProgramme.map(j => ({ jour: j, jourReel: decalerAnnee(j, 1), colis: map.get(j) || 0 }));
   }, [detailArticle, dailyRefTotal, joursProgramme, n1Debut, n1Fin]);
+
+  // Somme des quantités à commander saisies jour par jour pour l'article actuellement ouvert
+  // — affichée pour comparer/reporter facilement vers le total de la période.
+  const totalQteParJour = (nom: string): number => {
+    const l = lignes[ligneKey("produit", nom)];
+    if (!l?.qteParJour) return 0;
+    return Object.values(l.qteParJour).reduce((s, v) => s + (parseFloat((v || "0").replace(",", ".")) || 0), 0);
+  };
 
   const detailJourClients = useMemo(() => {
     if (!detailArticle || !detailJour || !dailyRefTotal) return [];
@@ -1133,19 +1159,36 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                                     <p style={{ fontSize: 12, color: "#888", margin: 0 }}>Aucun jour à afficher.</p>
                                   ) : (
                                     <>
-                                      <p style={{ fontSize: 11.5, fontWeight: 700, color: "#8a6d1f", margin: "0 0 8px" }}>📅 "{p.nom}" — détail jour par jour (N-1) — clique un jour pour voir les clients</p>
+                                      <p style={{ fontSize: 11.5, fontWeight: 700, color: "#8a6d1f", margin: "0 0 8px" }}>📅 "{p.nom}" — détail jour par jour (N-1 pour référence) — clique un jour pour voir les clients, saisis la quantité à commander pour le vrai jour</p>
                                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                         {detailArticleParJour.map(j => (
-                                          <button key={j.jour} onClick={() => setDetailJour(d => (d === j.jour ? null : j.jour))} style={{
-                                            padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", textAlign: "center", minWidth: 78,
-                                            background: detailJour === j.jour ? "#ea580c" : "#fff", color: detailJour === j.jour ? "#fff" : "#333",
+                                          <div key={j.jour} style={{
+                                            padding: "8px 8px", borderRadius: 8, border: "1px solid #e5e7eb", textAlign: "center", minWidth: 84,
+                                            background: detailJour === j.jour ? "#fff7ed" : "#fff",
                                           }}>
-                                            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "capitalize" }}>{formatJourCourt(j.jour)}</div>
-                                            <div style={{ fontSize: 13, fontWeight: 800, marginTop: 2 }}>{j.colis.toLocaleString("fr-FR")}</div>
-                                            <div style={{ fontSize: 9.5, opacity: 0.8 }}>colis</div>
-                                          </button>
+                                            <div onClick={() => setDetailJour(d => (d === j.jour ? null : j.jour))} style={{ cursor: "pointer" }}>
+                                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "capitalize", color: "#888" }}>{formatJourCourt(j.jourReel)}</div>
+                                              <div style={{ fontSize: 9, color: "#bbb" }}>(N-1 : {formatJourCourt(j.jour)})</div>
+                                              <div style={{ fontSize: 12.5, fontWeight: 800, marginTop: 2, color: detailJour === j.jour ? "#ea580c" : "#555" }}>{j.colis.toLocaleString("fr-FR")}</div>
+                                              <div style={{ fontSize: 9, color: "#aaa" }}>colis vendus N-1</div>
+                                            </div>
+                                            <input
+                                              defaultValue={l?.qteParJour?.[j.jourReel] || ""}
+                                              onBlur={e => majQteJour("produit", p.nom, j.jourReel, e.target.value)}
+                                              placeholder="0"
+                                              style={{ width: "100%", marginTop: 6, padding: "4px 2px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 12, textAlign: "center", boxSizing: "border-box" }}
+                                            />
+                                            <div style={{ fontSize: 8.5, color: "#aaa", marginTop: 2 }}>à commander</div>
+                                          </div>
                                         ))}
                                       </div>
+                                      <p style={{ fontSize: 11.5, color: "#555", margin: "8px 0 0" }}>
+                                        Total saisi jour par jour : <b style={{ color: "#1a2e1a" }}>{totalQteParJour(p.nom).toLocaleString("fr-FR")}</b> colis
+                                        {" "}
+                                        <button onClick={() => majLigne("produit", p.nom, String(totalQteParJour(p.nom)))} style={{
+                                          border: "none", background: "transparent", color: "#ea580c", fontWeight: 700, fontSize: 11, cursor: "pointer", textDecoration: "underline",
+                                        }}>→ reporter comme total de la période</button>
+                                      </p>
                                       {detailJour && (
                                         <div style={{ marginTop: 10, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
                                           <p style={{ fontSize: 11.5, fontWeight: 700, color: "#1a2e1a", margin: 0, padding: "8px 10px", background: "#f3f4f6" }}>
