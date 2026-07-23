@@ -82,6 +82,24 @@ function toLocalISO(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+// Liste des jours "YYYY-MM-DD" entre deux dates incluses (utilisé pour le détail jour par
+// jour d'un article dans un programme — ex : les 7 jours d'une semaine).
+function joursEntre(debut: string, fin: string): string[] {
+  const out: string[] = [];
+  const d = new Date(debut + "T00:00:00");
+  const f = new Date(fin + "T00:00:00");
+  if (isNaN(d.getTime()) || isNaN(f.getTime())) return out;
+  const cur = new Date(d);
+  let garde = 0;
+  while (cur <= f && garde < 400) { out.push(toLocalISO(cur)); cur.setDate(cur.getDate() + 1); garde++; }
+  return out;
+}
+
+function formatJourCourt(d: string): string {
+  const dt = new Date(d + "T00:00:00");
+  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "short" });
+}
+
 // ─── Semaines ISO 8601 (lundi → dimanche, semaine 1 = celle contenant le 4 janvier) ───
 function isoWeekMonday(year: number, week: number): Date {
   const jan4 = new Date(year, 0, 4);
@@ -618,6 +636,35 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     return { achat, vente };
   }, [lignes]);
 
+  // ─── Détail jour par jour d'un article dans le programme (ex : les 7 jours d'une semaine),
+  // avec drill-down client par jour — clique un article pour voir le détail par jour (N-1),
+  // puis clique un jour pour voir tous les clients qui ont pris cet article ce jour-là. ───
+  const [detailArticle, setDetailArticle] = useState<string | null>(null);
+  const [detailJour, setDetailJour] = useState<string | null>(null);
+
+  const joursProgramme = useMemo(() => (n1Debut && n1Fin ? joursEntre(n1Debut, n1Fin) : []), [n1Debut, n1Fin]);
+
+  const detailArticleParJour = useMemo(() => {
+    if (!detailArticle || !dailyRefTotal) return [];
+    const rows = dailyRefTotal.filter(r => r.a === detailArticle && (!n1Debut || !n1Fin || (r.d >= n1Debut && r.d <= n1Fin)));
+    const map = new Map<string, number>();
+    for (const r of rows) map.set(r.d, (map.get(r.d) || 0) + (r.colis || 0));
+    return joursProgramme.map(j => ({ jour: j, colis: map.get(j) || 0 }));
+  }, [detailArticle, dailyRefTotal, joursProgramme, n1Debut, n1Fin]);
+
+  const detailJourClients = useMemo(() => {
+    if (!detailArticle || !detailJour || !dailyRefTotal) return [];
+    const rows = dailyRefTotal.filter(r => r.a === detailArticle && r.d === detailJour);
+    const map = new Map<string, number>();
+    for (const r of rows) map.set(r.c, (map.get(r.c) || 0) + (r.colis || 0));
+    return Array.from(map.entries()).map(([nom, colis]) => ({ nom, colis })).sort((a, b) => b.colis - a.colis);
+  }, [detailArticle, detailJour, dailyRefTotal]);
+
+  const toggleDetailArticle = (nom: string) => {
+    setDetailJour(null);
+    setDetailArticle(a => (a === nom ? null : nom));
+  };
+
   const periodesArr = Object.entries(periodes).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
 
   const inputStyle: React.CSSProperties = {
@@ -1052,26 +1099,84 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                       <th style={{ padding: "8px 10px" }}>Produit</th>
                       <th style={{ padding: "8px 6px", textAlign: "right" }}>Colis N-1 (total)</th>
                       <th style={{ padding: "8px 10px", textAlign: "right" }}>Qté à acheter</th>
+                      <th style={{ padding: "8px 6px", width: 30 }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {produitsAffiches.map(p => {
                       const l = lignes[ligneKey("produit", p.nom)];
+                      const ouvert = detailArticle === p.nom;
                       return (
-                        <tr key={p.nom} style={{ borderTop: "1px solid #f0f0f0", background: l?.selectionne ? "#fff7ed" : "transparent" }}>
-                          <td style={{ padding: "6px 6px", textAlign: "center" }}>
-                            <input type="checkbox" checked={!!l?.selectionne} onChange={() => toggleSelection("produit", p.nom)} style={{ width: 16, height: 16, cursor: "pointer" }} />
-                          </td>
-                          <td style={{ padding: "6px 10px" }}>{p.nom}</td>
-                          <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{p.colis.toLocaleString("fr-FR")}</td>
-                          <td style={{ padding: "6px 10px", textAlign: "right" }}>
-                            <input defaultValue={l?.qte || ""} onBlur={e => majLigne("produit", p.nom, e.target.value)} style={inputStyle} placeholder="0" />
-                          </td>
-                        </tr>
+                        <>
+                          <tr key={p.nom} style={{ borderTop: "1px solid #f0f0f0", background: ouvert ? "#fff7ed" : l?.selectionne ? "#fffbeb" : "transparent" }}>
+                            <td style={{ padding: "6px 6px", textAlign: "center" }}>
+                              <input type="checkbox" checked={!!l?.selectionne} onChange={() => toggleSelection("produit", p.nom)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                            </td>
+                            <td style={{ padding: "6px 10px" }}>{p.nom}</td>
+                            <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{p.colis.toLocaleString("fr-FR")}</td>
+                            <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                              <input defaultValue={l?.qte || ""} onBlur={e => majLigne("produit", p.nom, e.target.value)} style={inputStyle} placeholder="0" />
+                            </td>
+                            <td style={{ padding: "6px 6px", textAlign: "center" }}>
+                              <button onClick={() => toggleDetailArticle(p.nom)} title="Voir le détail jour par jour" style={{
+                                border: "none", background: "transparent", cursor: "pointer", fontSize: 14, color: ouvert ? "#ea580c" : "#aaa", padding: 2,
+                              }}>{ouvert ? "▾" : "📅"}</button>
+                            </td>
+                          </tr>
+                          {ouvert && (
+                            <tr>
+                              <td colSpan={5} style={{ padding: 0, background: "#fffaf3" }}>
+                                <div style={{ padding: "10px 14px" }}>
+                                  {!cfg?.dateDebut ? (
+                                    <p style={{ fontSize: 12, color: "#888", margin: 0 }}>Détail jour par jour indisponible sans période définie.</p>
+                                  ) : detailArticleParJour.length === 0 ? (
+                                    <p style={{ fontSize: 12, color: "#888", margin: 0 }}>Aucun jour à afficher.</p>
+                                  ) : (
+                                    <>
+                                      <p style={{ fontSize: 11.5, fontWeight: 700, color: "#8a6d1f", margin: "0 0 8px" }}>📅 "{p.nom}" — détail jour par jour (N-1) — clique un jour pour voir les clients</p>
+                                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                        {detailArticleParJour.map(j => (
+                                          <button key={j.jour} onClick={() => setDetailJour(d => (d === j.jour ? null : j.jour))} style={{
+                                            padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", textAlign: "center", minWidth: 78,
+                                            background: detailJour === j.jour ? "#ea580c" : "#fff", color: detailJour === j.jour ? "#fff" : "#333",
+                                          }}>
+                                            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "capitalize" }}>{formatJourCourt(j.jour)}</div>
+                                            <div style={{ fontSize: 13, fontWeight: 800, marginTop: 2 }}>{j.colis.toLocaleString("fr-FR")}</div>
+                                            <div style={{ fontSize: 9.5, opacity: 0.8 }}>colis</div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                      {detailJour && (
+                                        <div style={{ marginTop: 10, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+                                          <p style={{ fontSize: 11.5, fontWeight: 700, color: "#1a2e1a", margin: 0, padding: "8px 10px", background: "#f3f4f6" }}>
+                                            👥 Clients ayant pris "{p.nom}" le {formatDate(detailJour)}
+                                          </p>
+                                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                                            <tbody>
+                                              {detailJourClients.map((c, i) => (
+                                                <tr key={i} style={{ borderTop: "1px solid #f0f0f0" }}>
+                                                  <td style={{ padding: "6px 10px" }}>{c.nom}</td>
+                                                  <td style={{ padding: "6px 10px", textAlign: "right", color: "#555" }}>{c.colis.toLocaleString("fr-FR")} colis</td>
+                                                </tr>
+                                              ))}
+                                              {detailJourClients.length === 0 && (
+                                                <tr><td style={{ padding: 12, textAlign: "center", color: "#888" }}>Aucun client trouvé ce jour-là.</td></tr>
+                                              )}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
                       );
                     })}
                     {produitsAffiches.length === 0 && dailyRefTotal && (
-                      <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "#888" }}>{filtreObjectifs === "selectionnes" ? "Aucun article sélectionné pour l'instant." : "Aucun produit trouvé."}</td></tr>
+                      <tr><td colSpan={5} style={{ padding: 16, textAlign: "center", color: "#888" }}>{filtreObjectifs === "selectionnes" ? "Aucun article sélectionné pour l'instant." : "Aucun produit trouvé."}</td></tr>
                     )}
                   </tbody>
                 </table>
