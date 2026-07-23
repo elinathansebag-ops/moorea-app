@@ -1252,12 +1252,20 @@ export function PalettePublique({ id }: { id: string }) {
     </div>
   );
 
+  // Retour à l'accueil de l'appli — avant, cette page était une impasse totale (fallait
+  // fermer et rouvrir l'appli complètement pour s'en sortir) car elle n'avait aucun bouton
+  // retour, contrairement à la fiche palette normale (PageHeader avec onBack/onHome).
+  const retourAccueil = () => { window.history.replaceState({}, "", window.location.pathname); window.location.reload(); };
+
   if (!arrivage) return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ textAlign: "center", background: "#fff", borderRadius: 20, padding: 32, boxShadow: "0 4px 20px rgba(0,0,0,0.08)" }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🔎</div>
         <p style={{ fontWeight: 800, fontSize: 18, color: "#374151", marginBottom: 8 }}>Palette introuvable</p>
-        <p style={{ fontSize: 14, color: "#9ca3af" }}>ID : {id}</p>
+        <p style={{ fontSize: 14, color: "#9ca3af", marginBottom: 20 }}>ID : {id}</p>
+        <button onClick={retourAccueil} style={{ padding: "11px 22px", borderRadius: 12, border: "none", background: "#1a2e1a", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+          ← Retour à l'accueil
+        </button>
       </div>
     </div>
   );
