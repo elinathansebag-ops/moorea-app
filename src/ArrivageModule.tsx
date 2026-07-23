@@ -504,9 +504,14 @@ export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteInd
 // AirPrint depuis l'iPad). Gros "REFUS" au centre, QR vers le bon de retour à signer,
 // fournisseur, n° de lot Moorea, article, nombre de colis, et bandeau Moorea en bas pour
 // que le transporteur/fournisseur comprenne clairement que c'est Moorea qui refuse.
-export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any) {
+// paletteIndex/colisCount : mêmes paramètres que envoyerEtiquettePourImpressionPC — permet
+// d'imprimer une étiquette refus par palette (avec son propre nombre de colis) plutôt qu'une
+// seule étiquette globale, quand le refus concerne plusieurs palettes.
+export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any, paletteIndex?: number, colisCount?: number) {
   const lot = arrivage.lot_interne || arrivage.id;
-  const lotLabel = `MRA.${String(lot).padStart(4, "0")}`;
+  const palRef = paletteIndex != null ? `${paletteIndex}` : null;
+  const lotLabel = palRef ? `MRA.${String(lot).padStart(4, "0")}-${palRef}` : `MRA.${String(lot).padStart(4, "0")}`;
+  const qte = colisCount != null ? colisCount : arrivage.quantite;
   const url = `${window.location.origin}${window.location.pathname}?refus=${arrivage.id}`;
 
   await push(ref(db, "printQueue"), {
@@ -514,7 +519,7 @@ export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any) {
     lotLabel,
     fournisseur: (arrivage.fournisseur || "-").toUpperCase(),
     produit: (arrivage.produit || "-").toUpperCase(),
-    qte: arrivage.quantite || 0,
+    qte: qte || 0,
     unite: (arrivage.unite || "COLIS").toUpperCase(),
     url,
     status: "pending",
@@ -603,6 +608,99 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
           <button onClick={handleEnvoyerPC} disabled={sendingPC}
             style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: sendingPC?"#e8e0d0":"#c8a84b", color: "#0a0a0a", cursor: sendingPC?"not-allowed":"pointer", fontSize: 14, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
             {sendingPC?`⏳ Impression...`:`🖨 Imprimer ${nbPalettes} étiquette${nbPalettes>1?"s":""}`}
+          </button>
+          <button onClick={onClose}
+            style={{ flex: 1, padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
+            Annuler
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Même principe que PopupEtiquetteMulti (nombre de palettes + répartition des colis), mais pour
+// l'étiquette REFUS — un refus peut porter sur plusieurs palettes, il faut alors une étiquette
+// refus par palette avec son propre nombre de colis, plutôt qu'une seule étiquette globale.
+export function PopupEtiquetteRefusMulti({ arrivage, onClose }: { arrivage: any; onClose: () => void }) {
+  const totalColis = arrivage.quantite || 0;
+  const [nbPalettes, setNbPalettes] = useState(1);
+  const [repartition, setRepartition] = useState<number[]>([totalColis]);
+  const [sendingPC, setSendingPC] = useState(false);
+
+  const updateNb = (n: number) => {
+    setNbPalettes(n);
+    const base = Math.floor(totalColis / n);
+    const reste = totalColis % n;
+    setRepartition(Array.from({ length: n }, (_, i) => base + (i === 0 ? reste : 0)));
+  };
+
+  const setQte = (idx: number, val: string) => {
+    const v = Math.max(0, parseInt(val) || 0);
+    setRepartition(prev => prev.map((q, i) => i === idx ? v : q));
+  };
+
+  const totalSaisi = repartition.reduce((a, b) => a + b, 0);
+  const ecart = totalSaisi - totalColis;
+
+  const handleEnvoyerPC = async () => {
+    if (sendingPC) return;
+    setSendingPC(true);
+    try {
+      for (let i = 0; i < nbPalettes; i++) {
+        await envoyerEtiquetteRefusPourImpressionPC(arrivage, i + 1, repartition[i]);
+      }
+      onClose();
+    } catch {
+      setSendingPC(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 24, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 24px 60px rgba(0,0,0,0.3)", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>❌</div>
+          <p style={{ margin: "0 0 2px", fontWeight: 800, fontSize: 16, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{arrivage.produit}</p>
+          <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>Lot #{arrivage.lot_interne} · {totalColis} colis au total · REFUS</p>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>Nombre de palettes</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[1,2,3,4,5,6].map(n => (
+              <button key={n} onClick={() => updateNb(n)}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `2px solid ${nbPalettes===n?"#dc2626":"#e8e0d0"}`, background: nbPalettes===n?"#fef2f2":"#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, color: nbPalettes===n?"#dc2626":"#9ca3af" }}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>Colis par palette</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {repartition.map((q, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, background: "#f9fafb", borderRadius: 10, padding: "10px 14px" }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: "#dc2626", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>P{i+1}</div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: "0 0 2px", fontSize: 11, color: "#9ca3af" }}>MRA.{String(arrivage.lot_interne||"").padStart(4,"0")}-{i+1}</p>
+                  <input type="number" min="0" value={q} onChange={e => setQte(i, e.target.value)}
+                    style={{ width: "100%", padding: "6px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box" as const }} />
+                </div>
+                <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>colis</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ background: ecart!==0?"#fef2f2":"#f0fdf4", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: ecart!==0?"#dc2626":"#16a34a" }}>
+            {ecart===0?"✓ Total correct":ecart>0?`▲ +${ecart} en trop`:`▼ ${Math.abs(ecart)} manquants`}
+          </p>
+          <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{totalSaisi} / {totalColis}</p>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={handleEnvoyerPC} disabled={sendingPC}
+            style={{ flex: 2, padding: "14px", borderRadius: 14, border: "none", background: sendingPC?"#e8e0d0":"#dc2626", color: "#fff", cursor: sendingPC?"not-allowed":"pointer", fontSize: 14, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>
+            {sendingPC?`⏳ Impression...`:`🏷 Imprimer ${nbPalettes} étiquette${nbPalettes>1?"s":""} refus`}
           </button>
           <button onClick={onClose}
             style={{ flex: 1, padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>
@@ -1384,21 +1482,8 @@ export function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLi
 export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImprimerMulti }: { arrivage: any; onDelete: any; onOuvreRapport: any; onImprimerMulti?: (a: any) => void }) {
   const [open, setOpen] = useState(false);
   const [savingReserve, setSavingReserve] = useState(false);
-  const [sendingRefus, setSendingRefus] = useState(false);
+  const [showRefusMulti, setShowRefusMulti] = useState(false);
   const borderColor = a.statut === "validé" ? "#27ae60" : a.statut === "refusé" ? "#dc2626" : "#d97706";
-
-  // Un arrivage refusé doit toujours ré-imprimer l'étiquette REFUS (grand "REFUS", QR vers le
-  // bon de retour) et jamais l'étiquette classique de palette — auparavant le bouton
-  // "🏷 Étiquettes (palettes)" ouvrait le popup multi-palettes standard même sur un refus déjà
-  // traité (avec rapport), ce qui régénérait l'étiquette d'arrivage classique par erreur.
-  const handleReimprimerRefus = async () => {
-    if (sendingRefus) return;
-    setSendingRefus(true);
-    try {
-      await envoyerEtiquetteRefusPourImpressionPC(a);
-    } catch { alert("Erreur lors de l'envoi de l'étiquette refus"); }
-    setSendingRefus(false);
-  };
 
   const handleReserve = async () => {
     setSavingReserve(true);
@@ -1462,9 +1547,9 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
           {/* Actions */}
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
             {a.statut === "refusé" ? (
-              <button onClick={handleReimprimerRefus} disabled={sendingRefus} title="Réimprimer l'étiquette REFUS (avec QR vers le bon de retour)"
+              <button onClick={() => setShowRefusMulti(true)} title="Choisir le nombre de palettes et réimprimer une étiquette REFUS par palette"
                 style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
-                {sendingRefus ? "⏳..." : "🏷 Étiquette refus"}
+                🏷 Étiquette(s) refus
               </button>
             ) : onImprimerMulti && (
               <button onClick={() => onImprimerMulti(a)} title="Choisir le nombre de palettes et imprimer une étiquette par palette"
@@ -1477,6 +1562,9 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
             }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#d97706", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>↺ Re-pointer</button>
           </div>
         </div>
+      )}
+      {showRefusMulti && (
+        <PopupEtiquetteRefusMulti arrivage={a} onClose={() => setShowRefusMulti(false)} />
       )}
     </div>
   );
