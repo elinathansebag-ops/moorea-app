@@ -884,7 +884,10 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
     if (/^\d{8,13}$/.test(raw)) { onScan('EAN:' + raw); return; }
     try {
       const url = new URL(raw);
-      const lot = url.searchParams.get("id") || url.searchParams.get("lot");
+      // Les étiquettes refus encodent l'id de l'arrivage dans le paramètre "refus" (pas "id"
+      // ni "lot") — sans ça, scanner une étiquette refus renvoyait l'URL complète telle quelle,
+      // qui ne correspond à aucun arrivage ("Aucun arrivage trouvé pour https://...?refus=...").
+      const lot = url.searchParams.get("id") || url.searchParams.get("lot") || url.searchParams.get("refus");
       if (lot) { onScan(lot); return; }
     } catch {}
     if (/^\d{3,6}$/.test(raw)) { onScan(raw); return; }
