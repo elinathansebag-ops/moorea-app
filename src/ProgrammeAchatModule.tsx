@@ -401,6 +401,22 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     } catch { alert("Erreur"); }
   };
 
+  const [suppTousEnCours, setSuppTousEnCours] = useState(false);
+  // Supprime TOUS les anciens programmes d'un coup (au lieu d'un par un) — pratique pour
+  // repartir de zéro sans devoir cliquer la corbeille sur chaque ligne.
+  const supprimerTousLesProgrammes = async () => {
+    const nb = periodesArr.length;
+    if (nb === 0) return;
+    if (!window.confirm(`Supprimer les ${nb} programme(s) existant(s) et tous leurs plans d'achat ? Cette action est irréversible.`)) return;
+    setSuppTousEnCours(true);
+    try {
+      await remove(ref(db, "programme_achat_periodes"));
+      await remove(ref(db, "programme_achat_lignes"));
+      setSelectedId(null);
+    } catch { alert("Erreur lors de la suppression."); }
+    setSuppTousEnCours(false);
+  };
+
   const majLigne = (type: "produit" | "client", nom: string, valeur: string) => {
     if (!selectedId) return;
     const key = ligneKey(type, nom);
@@ -433,6 +449,14 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     if (!dailyRefTotal) return [];
     return Array.from(new Set(dailyRefTotal.map(l => l.a))).sort((a, b) => a.localeCompare(b));
   }, [dailyRefTotal]);
+
+  // Listes filtrées pour les menus déroulants "Tape un client" / "Tape un produit" — pas de
+  // coupure (pas de slice), toute la liste correspondante est affichée dans un menu défilant,
+  // pour qu'on puisse la parcourir même sans connaître le nom exact.
+  const cq2 = clientSaisi.trim().toLowerCase();
+  const listeClientsFiltree = useMemo(() => (cq2 ? listeClients.filter(c => c.toLowerCase().includes(cq2)) : listeClients), [listeClients, cq2]);
+  const pq2 = produitSaisi.trim().toLowerCase();
+  const listeProduitsFiltree = useMemo(() => (pq2 ? listeProduits.filter(p => p.toLowerCase().includes(pq2)) : listeProduits), [listeProduits, pq2]);
 
   // ─── Agrégation par produit (tous clients confondus) — pour l'onglet Objectifs ───
   const parProduit = useMemo(() => {
@@ -701,7 +725,14 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
               )}
 
               {/* Programmes déjà créés */}
-              <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", margin: "22px 0 8px" }}>📋 Mes programmes</p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "22px 0 8px" }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", margin: 0 }}>📋 Mes programmes</p>
+                {periodesArr.length > 0 && (
+                  <button onClick={supprimerTousLesProgrammes} disabled={suppTousEnCours} style={{
+                    border: "none", background: "transparent", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 4,
+                  }}>{suppTousEnCours ? "Suppression…" : `🗑 Tout supprimer (${periodesArr.length})`}</button>
+                )}
+              </div>
               <button onClick={() => genererSemaines(2026)} disabled={generatingSemaines} style={{
                 width: "100%", padding: "10px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fff", color: "#8a6d1f",
                 fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 12,
@@ -765,11 +796,36 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
             )}
 
             <div style={{ background: "#fff", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 700, color: "#555" }}>👥 Tape un client</label>
-              <input list="pa-liste-clients" value={clientSaisi} onChange={e => setClientSaisi(e.target.value)} placeholder="Ex : SOUDRY, RUNGIS..." style={{ ...searchBoxStyle, marginTop: 4 }} />
-              <datalist id="pa-liste-clients">
-                {listeClients.map(c => <option key={c} value={c} />)}
-              </datalist>
+              <label style={{ fontSize: 12.5, fontWeight: 700, color: "#555" }}>👥 Choisis un client</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  value={clientSaisi}
+                  onChange={e => { setClientSaisi(e.target.value); setShowClientDrop(true); }}
+                  onFocus={() => setShowClientDrop(true)}
+                  onBlur={() => setTimeout(() => setShowClientDrop(false), 150)}
+                  placeholder="Clique ou tape pour chercher dans la liste des clients…"
+                  style={{ ...searchBoxStyle, marginTop: 4 }}
+                />
+                {showClientDrop && (
+                  <div style={{
+                    position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: "#fff",
+                    border: "1px solid #d1d5db", borderRadius: 8, marginTop: 2, maxHeight: 260, overflowY: "auto",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                  }}>
+                    {listeClientsFiltree.map(c => (
+                      <div key={c} onMouseDown={() => { setClientSaisi(c); setShowClientDrop(false); }}
+                        style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f3f4f6" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+                        {c}
+                      </div>
+                    ))}
+                    {listeClientsFiltree.length === 0 && (
+                      <div style={{ padding: "10px 12px", fontSize: 12.5, color: "#888" }}>Aucun client ne correspond.</div>
+                    )}
+                  </div>
+                )}
+              </div>
               {clientSaisi.trim() && dailyRef && (
                 <div style={tableWrapStyle}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
@@ -800,11 +856,36 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
             </div>
 
             <div style={{ background: "#fff", borderRadius: 10, padding: 12 }}>
-              <label style={{ fontSize: 12.5, fontWeight: 700, color: "#555" }}>📦 Tape un produit</label>
-              <input list="pa-liste-produits" value={produitSaisi} onChange={e => setProduitSaisi(e.target.value)} placeholder="Ex : HARICOT VERT KENYA..." style={{ ...searchBoxStyle, marginTop: 4 }} />
-              <datalist id="pa-liste-produits">
-                {listeProduits.map(p => <option key={p} value={p} />)}
-              </datalist>
+              <label style={{ fontSize: 12.5, fontWeight: 700, color: "#555" }}>📦 Choisis un produit</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  value={produitSaisi}
+                  onChange={e => { setProduitSaisi(e.target.value); setShowProduitDrop(true); }}
+                  onFocus={() => setShowProduitDrop(true)}
+                  onBlur={() => setTimeout(() => setShowProduitDrop(false), 150)}
+                  placeholder="Clique ou tape pour chercher dans la liste des produits…"
+                  style={{ ...searchBoxStyle, marginTop: 4 }}
+                />
+                {showProduitDrop && (
+                  <div style={{
+                    position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: "#fff",
+                    border: "1px solid #d1d5db", borderRadius: 8, marginTop: 2, maxHeight: 260, overflowY: "auto",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                  }}>
+                    {listeProduitsFiltree.map(p => (
+                      <div key={p} onMouseDown={() => { setProduitSaisi(p); setShowProduitDrop(false); }}
+                        style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #f3f4f6" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#f9fafb")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "#fff")}>
+                        {p}
+                      </div>
+                    ))}
+                    {listeProduitsFiltree.length === 0 && (
+                      <div style={{ padding: "10px 12px", fontSize: 12.5, color: "#888" }}>Aucun produit ne correspond.</div>
+                    )}
+                  </div>
+                )}
+              </div>
               {produitSaisi.trim() && dailyRef && (
                 <div style={tableWrapStyle}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
