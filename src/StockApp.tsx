@@ -2819,6 +2819,16 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       // Load histo on session start
       loadHistoArticles();
       (window as any).sShowPage("home");
+    }).catch(e => {
+      // Sans ce .catch, un échec n'importe où dans tout ce bloc (chargement du script xlsx
+      // depuis le CDN qui échoue, ou n'importe quelle exception plus bas) empêchait TOUTES les
+      // fonctions définies dedans de s'attacher à window — y compris la calculatrice, le scan,
+      // etc. — sans aucun message visible (juste une erreur silencieuse dans la console). Le
+      // symptôme observé ("le bouton calculatrice n'ouvre rien") venait de là : la page se
+      // charge normalement (le HTML est affiché), mais aucune des fonctions sXxx n'existe tant
+      // que ce chargement initial (notamment le script xlsx externe) n'a pas réussi.
+      console.error("Erreur d'initialisation du module Stock:", e);
+      alert("Le module Stock n'a pas pu se charger complètement (problème réseau probable) — recharge la page. Si ça persiste : " + (e?.message || e));
     });
 
     return () => {
