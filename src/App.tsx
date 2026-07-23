@@ -124,7 +124,21 @@ export default function App() {
   const [filtersArr, setFiltersArr] = useState({ q: "", statut: "tous" });
   // Accordéons "semaine" ouverts sur l'écran Arrivages (regroupement par semaine ISO, comme
   // dans le module Stock) — fermés par défaut, y compris la semaine la plus récente.
-  const [openWeeksArr, setOpenWeeksArr] = useState<Set<string>>(new Set());
+  // Accordéon "semaine" ouvert par défaut sur Arrivages : avant, TOUTES les semaines étaient
+  // fermées au chargement (même la plus récente), donc les arrivages du jour restaient cachés
+  // derrière un clic supplémentaire même si le DateBlock du jour s'ouvre lui-même automatiquement.
+  // On pré-calcule ici la clé de la semaine ISO en cours (même format que getISOWeek plus bas,
+  // "année-Ssemaine") pour l'ouvrir dès l'arrivée sur la page.
+  const [openWeeksArr, setOpenWeeksArr] = useState<Set<string>>(() => {
+    const now = new Date();
+    const dt = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    const dayNum = dt.getUTCDay() || 7;
+    dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((dt.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    const key = `${dt.getUTCFullYear()}-S${String(weekNo).padStart(2, "0")}`;
+    return new Set([key]);
+  });
   const [histSearchArr, setHistSearchArr] = useState("");
   const [searchDate, setSearchDate] = useState("");
   const [searchText, setSearchText] = useState("");
