@@ -3883,47 +3883,68 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               });
 
               if (showStats) {
-                const total = filtered.length;
-                const nbRefus = filtered.filter(r => r.decision === "refus").length;
-                const nbReserve = filtered.filter(r => r.decision === "reserve").length;
-                const nbStock = filtered.filter(r => r.decision === "stock").length;
+                // Les rapports qualité ne sont créés que pour une partie des arrivages (souvent
+                // seulement réserve/refus) — des stats basées dessus ne reflètent donc pas le
+                // volume réel reçu. On calcule ici directement sur TOUS les arrivages (chaque
+                // ligne reçue, quel que soit son statut), avec les mêmes filtres actifs
+                // (recherche, fournisseur, produit, dates, et le toggle Conformes/Réserves/Refus
+                // ci-dessus, mappé sur le statut de l'arrivage plutôt que la décision du rapport).
+                const decisionVersStatut: Record<string, string> = { stock: "validé", reserve: "sous réserve", refus: "refusé" };
+                const statutFiltre = filterDecision ? decisionVersStatut[filterDecision] : "";
+                const arrFiltres = arrivages.filter((a: any) => {
+                  const matchText = !searchText ||
+                    a.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
+                    a.fournisseur?.toLowerCase().includes(searchText.toLowerCase());
+                  const matchDecision = !statutFiltre || (a.statut || "en attente") === statutFiltre;
+                  const matchFournisseur = !filterFournisseur || a.fournisseur === filterFournisseur;
+                  const matchProduit = !filterProduit || a.produit === filterProduit;
+                  const aDate = parseDate(a.date);
+                  const matchDebut = !filterDateDebut || (aDate && aDate >= new Date(filterDateDebut));
+                  const matchFin = !filterDateFin || (aDate && aDate <= new Date(filterDateFin));
+                  return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin;
+                });
+
+                const total = arrFiltres.length;
+                const nbValide = arrFiltres.filter((a: any) => a.statut === "validé").length;
+                const nbRefus = arrFiltres.filter((a: any) => a.statut === "refusé").length;
+                const nbReserve = arrFiltres.filter((a: any) => a.statut === "sous réserve").length;
+                const nbAttente = arrFiltres.filter((a: any) => !a.statut || a.statut === "en attente").length;
                 const tauxRefus = total > 0 ? Math.round((nbRefus / total) * 100) : 0;
                 const tauxReserve = total > 0 ? Math.round((nbReserve / total) * 100) : 0;
 
-                // Page stats complète : une ligne par fournisseur ET une ligne par produit
-                // (pas seulement un "top 5 des refus" comme avant) — note qualité moyenne
-                // incluse quand elle est disponible sur le rapport.
-                const statsFourn: Record<string, { total: number; refus: number; reserve: number; scores: number[] }> = {};
-                filtered.forEach(r => {
-                  if (!r.fournisseur) return;
-                  if (!statsFourn[r.fournisseur]) statsFourn[r.fournisseur] = { total: 0, refus: 0, reserve: 0, scores: [] };
-                  statsFourn[r.fournisseur].total++;
-                  if (r.decision === "refus") statsFourn[r.fournisseur].refus++;
-                  if (r.decision === "reserve") statsFourn[r.fournisseur].reserve++;
-                  if (r.score) statsFourn[r.fournisseur].scores.push(parseFloat(r.score));
+                // Une ligne par fournisseur ET une ligne par produit, triées par nombre de
+                // refus décroissant — pour répondre directement à "quel fournisseur a le plus
+                // de refus" sans avoir à trier la colonne soi-même.
+                const statsFourn: Record<string, { total: number; refus: number; reserve: number; valide: number }> = {};
+                arrFiltres.forEach((a: any) => {
+                  if (!a.fournisseur) return;
+                  if (!statsFourn[a.fournisseur]) statsFourn[a.fournisseur] = { total: 0, refus: 0, reserve: 0, valide: 0 };
+                  statsFourn[a.fournisseur].total++;
+                  if (a.statut === "refusé") statsFourn[a.fournisseur].refus++;
+                  if (a.statut === "sous réserve") statsFourn[a.fournisseur].reserve++;
+                  if (a.statut === "validé") statsFourn[a.fournisseur].valide++;
                 });
-                const tousFourn = Object.entries(statsFourn).sort((a, b) => b[1].total - a[1].total);
+                const tousFourn = Object.entries(statsFourn).sort((a, b) => b[1].refus - a[1].refus || b[1].total - a[1].total);
 
-                const statsProd: Record<string, { total: number; refus: number; reserve: number; scores: number[] }> = {};
-                filtered.forEach(r => {
-                  if (!r.produit) return;
-                  if (!statsProd[r.produit]) statsProd[r.produit] = { total: 0, refus: 0, reserve: 0, scores: [] };
-                  statsProd[r.produit].total++;
-                  if (r.decision === "refus") statsProd[r.produit].refus++;
-                  if (r.decision === "reserve") statsProd[r.produit].reserve++;
-                  if (r.score) statsProd[r.produit].scores.push(parseFloat(r.score));
+                const statsProd: Record<string, { total: number; refus: number; reserve: number; valide: number }> = {};
+                arrFiltres.forEach((a: any) => {
+                  if (!a.produit) return;
+                  if (!statsProd[a.produit]) statsProd[a.produit] = { total: 0, refus: 0, reserve: 0, valide: 0 };
+                  statsProd[a.produit].total++;
+                  if (a.statut === "refusé") statsProd[a.produit].refus++;
+                  if (a.statut === "sous réserve") statsProd[a.produit].reserve++;
+                  if (a.statut === "validé") statsProd[a.produit].valide++;
                 });
-                const tousProd = Object.entries(statsProd).sort((a, b) => b[1].total - a[1].total);
-                const avgScore = (scores: number[]) => scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : null;
+                const tousProd = Object.entries(statsProd).sort((a, b) => b[1].refus - a[1].refus || b[1].total - a[1].total);
 
                 return (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
                       {[
-                        { label: "Total rapports", value: total, color: "#1a2e1a", bg: "#f0fdf4" },
+                        { label: "Total arrivages", value: total, color: "#1a2e1a", bg: "#f0fdf4" },
                         { label: "Taux de refus", value: `${tauxRefus}%`, color: "#dc2626", bg: "#fef2f2" },
                         { label: "Taux de réserve", value: `${tauxReserve}%`, color: "#d97706", bg: "#fffbeb" },
-                        { label: "Bons signés", value: filtered.filter(r => r.bonRepriseSigné).length, color: "#0ea5e9", bg: "#f5f3ff" },
+                        { label: "Validés", value: nbValide, color: "#0ea5e9", bg: "#f5f3ff" },
                       ].map(s => (
                         <div key={s.label} style={{ background: s.bg, borderRadius: 14, padding: "16px", textAlign: "center" }}>
                           <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: "'Syne', sans-serif" }}>{s.value}</div>
@@ -3934,9 +3955,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
                       <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>Répartition</p>
                       {[
-                        { label: "✅ Entrée stock", count: nbStock, color: "#22c55e" },
+                        { label: "✅ Validé", count: nbValide, color: "#22c55e" },
                         { label: "⚠️ Réserve", count: nbReserve, color: "#f59e0b" },
                         { label: "❌ Refus", count: nbRefus, color: "#ef4444" },
+                        { label: "⏳ En attente", count: nbAttente, color: "#9ca3af" },
                       ].map(s => (
                         <div key={s.label} style={{ marginBottom: 10 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -3951,20 +3973,19 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </div>
                     {tousFourn.length > 0 && (
                       <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
-                        <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>🏭 Par fournisseur ({tousFourn.length})</p>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>🏭 Par fournisseur ({tousFourn.length}) — triés par nb de refus</p>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
-                          <span>Fournisseur</span><span>Total</span><span>Refus</span><span>Taux</span><span>Note moy.</span>
+                          <span>Fournisseur</span><span>Reçu</span><span>Réserve</span><span>Refus</span><span>Taux refus</span>
                         </div>
                         {tousFourn.map(([nom, s]) => {
                           const taux = s.total > 0 ? Math.round((s.refus / s.total) * 100) : 0;
-                          const moy = avgScore(s.scores);
                           return (
                             <div key={nom} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
                               <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{nom}</span>
                               <span style={{ fontSize: 12, color: "#6b7280", textAlign: "right" }}>{s.total}</span>
+                              <span style={{ fontSize: 12, color: s.reserve > 0 ? "#d97706" : "#9ca3af", fontWeight: 700, textAlign: "right" }}>{s.reserve}</span>
                               <span style={{ fontSize: 12, color: s.refus > 0 ? "#dc2626" : "#9ca3af", fontWeight: 700, textAlign: "right" }}>{s.refus}</span>
                               <span style={{ fontSize: 12, color: taux > 20 ? "#dc2626" : taux > 0 ? "#d97706" : "#16a34a", fontWeight: 700, textAlign: "right" }}>{taux}%</span>
-                              <span style={{ fontSize: 12, color: "#374151", fontWeight: 700, textAlign: "right" }}>{moy ? `${moy}/5` : "-"}</span>
                             </div>
                           );
                         })}
@@ -3972,20 +3993,19 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     )}
                     {tousProd.length > 0 && (
                       <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
-                        <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>🥦 Par produit ({tousProd.length})</p>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>🥦 Par produit ({tousProd.length}) — triés par nb de refus</p>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
-                          <span>Produit</span><span>Total</span><span>Refus</span><span>Taux</span><span>Note moy.</span>
+                          <span>Produit</span><span>Reçu</span><span>Réserve</span><span>Refus</span><span>Taux refus</span>
                         </div>
                         {tousProd.map(([nom, s]) => {
                           const taux = s.total > 0 ? Math.round((s.refus / s.total) * 100) : 0;
-                          const moy = avgScore(s.scores);
                           return (
                             <div key={nom} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
                               <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{nom}</span>
                               <span style={{ fontSize: 12, color: "#6b7280", textAlign: "right" }}>{s.total}</span>
+                              <span style={{ fontSize: 12, color: s.reserve > 0 ? "#d97706" : "#9ca3af", fontWeight: 700, textAlign: "right" }}>{s.reserve}</span>
                               <span style={{ fontSize: 12, color: s.refus > 0 ? "#dc2626" : "#9ca3af", fontWeight: 700, textAlign: "right" }}>{s.refus}</span>
                               <span style={{ fontSize: 12, color: taux > 20 ? "#dc2626" : taux > 0 ? "#d97706" : "#16a34a", fontWeight: 700, textAlign: "right" }}>{taux}%</span>
-                              <span style={{ fontSize: 12, color: "#374151", fontWeight: 700, textAlign: "right" }}>{moy ? `${moy}/5` : "-"}</span>
                             </div>
                           );
                         })}
