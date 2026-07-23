@@ -769,15 +769,33 @@ export default function App() {
     // 1) Correspondance directe : même article (texte exact, calibre inclus) + fournisseur +
     // date, indépendamment du lot — c'est le cas le plus courant (quantité corrigée, lot
     // renuméroté par Geslot, etc.).
-    const parLigne = new Map<string, any>();
-    existants.forEach(a => { const c = cleLigneSansLot(a); if (!parLigne.has(c)) parLigne.set(c, a); });
+    // IMPORTANT : un même fournisseur peut livrer DEUX FOIS le même article le même jour, sous
+    // deux lots différents (ex: POIS GOURMAND KENYA 150G reçu une première fois le matin, puis
+    // une deuxième livraison l'après-midi) — cette clé (sans le lot) est alors identique pour
+    // les deux lignes. On garde donc TOUS les existants partageant une même clé (pas juste le
+    // premier), et chaque ligne importée "consomme" un candidat distinct au fur et à mesure
+    // (via splice) : sans ça, la 2e livraison venait silencieusement écraser/fusionner la 1ère
+    // au lieu de créer un arrivage séparé, qui disparaissait purement et simplement de la liste.
+    const parLigne = new Map<string, any[]>();
+    existants.forEach(a => { const c = cleLigneSansLot(a); if (!parLigne.has(c)) parLigne.set(c, []); parLigne.get(c)!.push(a); });
     const dejaMatches = new Set<string>(); // id des existants déjà rapprochés, pour le repli racine plus bas
     const restantes: any[] = [];
 
     lignes.forEach(a => {
       const c = cleLigneSansLot(a);
-      const existant = parLigne.get(c);
-      if (existant) {
+      const candidats = parLigne.get(c);
+      if (candidats && candidats.length) {
+        // Préfère un candidat dont quantité/poids correspondent exactement (vraiment la même
+        // livraison déjà importée), sinon prend le premier candidat pas encore consommé —
+        // jamais deux fois le même existant pour deux lignes importées différentes.
+        let idx = candidats.findIndex(ex =>
+          String(ex.quantite) === String(a.quantite)
+          && String(ex.poids_brut || "") === String(a.poids_brut || "")
+          && String(ex.poids_net || "") === String(a.poids_net || "")
+        );
+        if (idx === -1) idx = 0;
+        const existant = candidats[idx];
+        candidats.splice(idx, 1);
         dejaMatches.add(existant.id);
         const identique = String(existant.quantite) === String(a.quantite)
           && String(existant.lot_interne || "") === String(a.lot_interne || "")
