@@ -14,6 +14,7 @@ import { QrCodeDashboard } from "./QrCodeDashboard";
 import { YukonApp } from "./YukonApp";
 import { RackModule } from "./RackModule";
 import { ProgrammeAchatModule } from "./ProgrammeAchatModule";
+import { VentesStatsModule } from "./VentesStatsModule";
 import { DashboardModule } from "./DashboardModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
@@ -170,6 +171,7 @@ export default function App() {
   const [showRack, setShowRack] = useState(false);
   const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showProgrammeAchat, setShowProgrammeAchat] = useState(false);
+  const [showVentesStats, setShowVentesStats] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
   const ADMIN_PIN = "1709";
@@ -2105,6 +2107,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <ProgrammeAchatModule onClose={() => { setShowProgrammeAchat(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
+  if (showVentesStats) {
+    return <VentesStatsModule onClose={() => { setShowVentesStats(false); setShowAccueil(true); }} />;
+  }
+
   if (showAdmin) {
     const fermerAdmin = () => { setShowAdmin(false); setAdminUnlocked(false); setAdminPinInput(""); setShowAccueil(true); };
     const majModePlacementRack = async (v: "manuel" | "scan") => {
@@ -2229,6 +2235,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
       { icon: "📦", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
       { icon: "🛒", label: "Programme d'achat", color: "#ea580c", badge: null, stat: "Grosses périodes", action: () => { setShowAccueil(false); setShowProgrammeAchat(true); } },
+      { icon: "📈", label: "Statistiques de vente", color: "#ea580c", badge: null, stat: "Par produit / client / période", action: () => { setShowAccueil(false); setShowVentesStats(true); } },
     ];
 
     const leofreshBtns = [
