@@ -109,6 +109,12 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   const [reference, setReference] = useState<RefLigne[] | null>(null);
   const [refError, setRefError] = useState(false);
   const [dailyRef, setDailyRef] = useState<RefJour[] | null>(null);
+  // Ventes importées depuis l'appli (bouton "Importer stat") — en plus du gros export
+  // statique 2025 (public/data/), stockées dans Firebase pour être disponibles tout de suite,
+  // sans dépendre d'un nouveau déploiement à chaque fois qu'un nouvel export arrive.
+  const [ventesImportees, setVentesImportees] = useState<Record<string, RefJour & { mtAchat?: number }>>({});
+  const [importingVentes, setImportingVentes] = useState(false);
+  const [importStatus, setImportStatus] = useState("");
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState(false);
   const [periodes, setPeriodes] = useState<Record<string, Periode>>({});
@@ -161,6 +167,30 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
       .catch(() => { setDailyError(true); setDailyLoading(false); });
   }, [dailyRetry]);
 
+  // ─── Ventes importées depuis l'appli (bouton "Importer stat") — persistées dans Firebase,
+  // disponibles tout de suite pour tout le monde sans passer par un nouveau déploiement. ───
+  useEffect(() => {
+    const u = onValue(ref(db, "ventes_jour_importees"), snap => setVentesImportees(snap.val() || {}));
+    return () => u();
+  }, []);
+
+  // Fusion export statique 2025 + ventes importées depuis l'appli — c'est cette liste complète
+  // qui sert de base à toutes les stats, pas seulement le fichier statique.
+  const dailyRefTotal = useMemo(() => {
+    if (!dailyRef) return null;
+    const importees = Object.values(ventesImportees);
+    return importees.length ? [...dailyRef, ...importees] : dailyRef;
+  }, [dailyRef, ventesImportees]);
+
+  // Période réellement couverte par les données chargées (du plus vieux au plus récent jour
+  // connu) — affichée en haut de la page pour qu'on sache jusqu'à quand les stats sont à jour.
+  const periodeCouverte = useMemo(() => {
+    if (!dailyRefTotal || dailyRefTotal.length === 0) return null;
+    let min = dailyRefTotal[0].d, max = dailyRefTotal[0].d;
+    for (const r of dailyRefTotal) { if (r.d < min) min = r.d; if (r.d > max) max = r.d; }
+    return { min, max };
+  }, [dailyRefTotal]);
+
   // Raccourcis de période pour les stats de vente réelles.
   const appliquerRaccourciStats = (type: "aujourdhui" | "hier" | "7j" | "semaine" | "mois" | "tout") => {
     const now = new Date();
@@ -172,55 +202,110 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     if (type === "mois") { const d = new Date(now.getFullYear(), now.getMonth(), 1); setStatsDebut(toLocalISO(d)); setStatsFin(toLocalISO(now)); return; }
   };
 
-  // Taux moyen achat/vente par produit sur l'année de référence — le détail jour par jour n'a
-  // que le montant vente, donc le coût d'achat sur une période précise est estimé à partir de
-  // ce taux annuel moyen.
-  const ratioAchatParProduit = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!reference) return map;
-    const totaux = new Map<string, { vente: number; achat: number }>();
-    for (const l of reference) {
-      const e = totaux.get(l.a) || { vente: 0, achat: 0 };
-      e.vente += l.mtVente || 0; e.achat += l.mtAchat || 0;
-      totaux.set(l.a, e);
+  // Charge SheetJS à la demande (uniquement au moment d'un import, pas au chargement de la
+  // page) — même logique que pour l'import des arrivages/stocks ailleurs dans l'appli.
+  const XLSX_URL = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+  const chargerXLSX = (): Promise<void> => new Promise((res, rej) => {
+    if ((window as any).XLSX) { res(); return; }
+    if (document.querySelector(`script[src="${XLSX_URL}"]`)) { res(); return; }
+    const s = document.createElement("script");
+    s.src = XLSX_URL; s.onload = () => res(); s.onerror = rej;
+    document.head.appendChild(s);
+  });
+
+  // Import d'un nouvel export de ventes depuis le site interne — mêmes colonnes que les
+  // fichiers de référence (produit/article, client, date, colis, montant vente, montant
+  // achat), détectées par en-tête plutôt que par position de colonne (plus tolérant aux
+  // petites variations d'un export à l'autre).
+  const importerFichierVentes = async (file: File) => {
+    setImportingVentes(true);
+    setImportStatus("⏳ Lecture du fichier...");
+    try {
+      await chargerXLSX();
+      const buf = await file.arrayBuffer();
+      const XLSX = (window as any).XLSX;
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      const hdrs = (json[0] || []).map((h: any) => String(h || "").toLowerCase().trim());
+      const findCol = (kws: string[]) => { for (const kw of kws) { const i = hdrs.findIndex((h: string) => h.includes(kw)); if (i >= 0) return i; } return -1; };
+      const colProduit = findCol(["produit", "article", "libelle"]);
+      const colClient = findCol(["client"]);
+      const colDate = findCol(["date"]);
+      const colColis = findCol(["colis", "qte", "quantit"]);
+      const colVente = findCol(["vente"]);
+      const colAchat = findCol(["achat"]);
+      if (colProduit < 0 || colClient < 0 || colDate < 0 || colColis < 0) {
+        setImportStatus("❌ Colonnes non reconnues (produit/client/date/colis) — vérifie l'en-tête du fichier.");
+        setImportingVentes(false);
+        return;
+      }
+      const parseDateCell = (v: any): string => {
+        if (v instanceof Date) return toLocalISO(v);
+        if (typeof v === "number") { const d = XLSX.SSF.parse_date_code(v); return d ? `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}` : "";
+        }
+        const s = String(v || "").trim();
+        const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        return "";
+      };
+      const rows = json.slice(1);
+      const batch: Record<string, any> = {};
+      let n = 0;
+      for (const r of rows) {
+        const produit = String(r[colProduit] || "").trim();
+        const client = String(r[colClient] || "").trim();
+        const d = parseDateCell(r[colDate]);
+        const colis = parseFloat(String(r[colColis] || "0").replace(",", "."));
+        if (!produit || !client || !d) continue;
+        const ligne: any = { a: produit, c: client, d, colis: isNaN(colis) ? 0 : colis };
+        if (colVente >= 0) { const v = parseFloat(String(r[colVente] || "0").replace(",", ".")); if (!isNaN(v)) ligne.mtVente = v; }
+        if (colAchat >= 0) { const v = parseFloat(String(r[colAchat] || "0").replace(",", ".")); if (!isNaN(v)) ligne.mtAchat = v; }
+        const key = push(ref(db, "ventes_jour_importees")).key;
+        if (key) { batch[key] = ligne; n++; }
+      }
+      if (n === 0) { setImportStatus("⚠️ Aucune ligne valide trouvée dans le fichier."); setImportingVentes(false); return; }
+      setImportStatus(`⏳ Enregistrement de ${n} lignes...`);
+      await update(ref(db, "ventes_jour_importees"), batch);
+      setImportStatus(`✅ ${n} lignes de vente importées !`);
+    } catch (e: any) {
+      setImportStatus("❌ Erreur pendant l'import : " + (e?.message || e));
     }
-    totaux.forEach((v, k) => map.set(k, v.vente > 0 ? v.achat / v.vente : 0));
-    return map;
-  }, [reference]);
+    setImportingVentes(false);
+  };
 
   const lignesStats = useMemo(() => {
-    if (!dailyRef) return [];
-    let rows = dailyRef;
+    if (!dailyRefTotal) return [];
+    let rows = dailyRefTotal;
     if (statsDebut) rows = rows.filter(r => r.d >= statsDebut);
     if (statsFin) rows = rows.filter(r => r.d <= statsFin);
     return rows;
-  }, [dailyRef, statsDebut, statsFin]);
+  }, [dailyRefTotal, statsDebut, statsFin]);
 
   const totauxStats = useMemo(() => {
-    let colis = 0, vente = 0, achat = 0;
+    let colis = 0, vente = 0;
     for (const r of lignesStats) {
       colis += r.colis || 0;
       vente += r.mtVente || 0;
-      achat += (r.mtVente || 0) * (ratioAchatParProduit.get(r.a) || 0);
     }
-    return { colis, vente, achat, marge: vente - achat };
-  }, [lignesStats, ratioAchatParProduit]);
+    return { colis, vente };
+  }, [lignesStats]);
 
   const agregatStats = useMemo(() => {
-    const map = new Map<string, { nom: string; colis: number; vente: number; achat: number; autres: Set<string> }>();
+    const map = new Map<string, { nom: string; colis: number; vente: number; autres: Set<string> }>();
     for (const r of lignesStats) {
       const key = statsVue === "produit" ? r.a : r.c;
-      const e = map.get(key) || { nom: key, colis: 0, vente: 0, achat: 0, autres: new Set<string>() };
+      const e = map.get(key) || { nom: key, colis: 0, vente: 0, autres: new Set<string>() };
       e.colis += r.colis || 0;
       e.vente += r.mtVente || 0;
-      e.achat += (r.mtVente || 0) * (ratioAchatParProduit.get(r.a) || 0);
       e.autres.add(statsVue === "produit" ? r.c : r.a);
       map.set(key, e);
     }
     return Array.from(map.values())
-      .map(e => ({ nom: e.nom, colis: e.colis, vente: e.vente, achat: e.achat, marge: e.vente - e.achat, nbAutres: e.autres.size }))
+      .map(e => ({ nom: e.nom, colis: e.colis, vente: e.vente, nbAutres: e.autres.size }))
       .sort((a, b) => b.vente - a.vente);
-  }, [lignesStats, statsVue, ratioAchatParProduit]);
+  }, [lignesStats, statsVue]);
 
   const qStats = statsSearch.trim().toLowerCase();
   const filtresStats = useMemo(() => (qStats ? agregatStats.filter(a => a.nom.toLowerCase().includes(qStats)) : agregatStats), [agregatStats, qStats]);
@@ -468,12 +553,10 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
               </div>
 
               {/* Résumé */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 12 }}>
                 {[
                   { label: "Colis vendus", value: fmtColis(totauxStats.colis), color: "#1a2e1a", bg: "#f0fdf4" },
                   { label: "Vendu", value: fmtEur(totauxStats.vente), color: "#0ea5e9", bg: "#eff6ff" },
-                  { label: "Acheté (estimé)", value: fmtEur(totauxStats.achat), color: "#d97706", bg: "#fffbeb" },
-                  { label: "Marge (estimée)", value: fmtEur(totauxStats.marge), color: totauxStats.marge >= 0 ? "#16a34a" : "#dc2626", bg: totauxStats.marge >= 0 ? "#f0fdf4" : "#fef2f2" },
                 ].map(s => (
                   <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: "12px 8px", textAlign: "center" }}>
                     <div style={{ fontSize: 17, fontWeight: 800, color: s.color, fontFamily: "'Syne', sans-serif" }}>{s.value}</div>
@@ -481,9 +564,6 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                   </div>
                 ))}
               </div>
-              <p style={{ fontSize: 11, color: "#aaa", margin: "-2px 0 12px", textAlign: "center" }}>
-                💡 Montant acheté = estimation (taux moyen achat/vente par produit sur l'année de référence).
-              </p>
 
               {/* Créer un programme sur cette période */}
               <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -537,9 +617,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                       <th style={{ padding: "8px 10px" }}>{statsVue === "produit" ? "Produit" : "Client"}</th>
                       <th style={{ padding: "8px 6px", textAlign: "right" }}>{statsVue === "produit" ? "Clients" : "Produits"}</th>
                       <th style={{ padding: "8px 6px", textAlign: "right" }}>Colis</th>
-                      <th style={{ padding: "8px 6px", textAlign: "right" }}>Vendu</th>
-                      <th style={{ padding: "8px 6px", textAlign: "right" }}>Acheté (est.)</th>
-                      <th style={{ padding: "8px 10px", textAlign: "right" }}>Marge (est.)</th>
+                      <th style={{ padding: "8px 10px", textAlign: "right" }}>Vendu</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -549,13 +627,11 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                         <td style={{ padding: "6px 10px", fontWeight: 600, color: "#1a2e1a" }}>{a.nom}</td>
                         <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{a.nbAutres}</td>
                         <td style={{ padding: "6px", textAlign: "right", color: "#555" }}>{fmtColis(a.colis)}</td>
-                        <td style={{ padding: "6px", textAlign: "right", color: "#0ea5e9", fontWeight: 700 }}>{fmtEur(a.vente)}</td>
-                        <td style={{ padding: "6px", textAlign: "right", color: "#d97706" }}>{fmtEur(a.achat)}</td>
-                        <td style={{ padding: "6px 10px", textAlign: "right", fontWeight: 700, color: a.marge >= 0 ? "#16a34a" : "#dc2626" }}>{fmtEur(a.marge)}</td>
+                        <td style={{ padding: "6px 10px", textAlign: "right", color: "#0ea5e9", fontWeight: 700 }}>{fmtEur(a.vente)}</td>
                       </tr>
                     ))}
                     {filtresStats.length === 0 && (
-                      <tr><td colSpan={6} style={{ padding: 20, textAlign: "center", color: "#888" }}>Aucune vente trouvée sur cette période.</td></tr>
+                      <tr><td colSpan={4} style={{ padding: 20, textAlign: "center", color: "#888" }}>Aucune vente trouvée sur cette période.</td></tr>
                     )}
                   </tbody>
                 </table>
