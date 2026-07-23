@@ -2080,7 +2080,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showDashboard) {
-    return <DashboardModule arrivages={arrivages} printRelayOnline={printRelayOnline} etiquettesBloquees={etiquettesBloquees} onClose={() => { setShowDashboard(false); setShowAccueil(true); }} />;
+    return <DashboardModule arrivages={arrivages} onClose={() => { setShowDashboard(false); setShowAccueil(true); }} />;
   }
 
   if (showProgrammeAchat) {

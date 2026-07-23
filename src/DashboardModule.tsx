@@ -2,24 +2,18 @@ import { useState, useEffect } from "react";
 import { db, ref, onValue } from "./firebase";
 
 // ─── TABLEAU DE BORD — écran de suivi en direct ───
-// Pensé pour être affiché en continu sur un écran fixe au bureau (pas un usage tactile courant) :
-// gros textes, contraste fort, pas d'action requise, tout se met à jour tout seul via les mêmes
-// écouteurs Firebase (onValue) qu'ailleurs dans l'appli — pas de polling, pas de rafraîchissement
-// manuel nécessaire.
+// Pensé pour être affiché en continu sur une TV que personne ne touche : pas de défilement
+// possible nulle part (ni la page, ni un panneau), gros textes, tout se met à jour tout seul via
+// les mêmes écouteurs Firebase (onValue) qu'ailleurs dans l'appli.
 //
-// Reçoit en props les données déjà chargées par App.tsx (arrivages, statut imprimante,
-// étiquettes bloquées) pour éviter de dupliquer des écouteurs déjà ouverts ; s'abonne lui-même
-// en plus aux retours (RTDB, même base que le reste de l'appli) et aux stocks en cours
-// (Firestore, projet moorea-stock, comme StockApp.tsx).
+// Reçoit en props les arrivages déjà chargés par App.tsx pour éviter de dupliquer un écouteur
+// déjà ouvert ; s'abonne lui-même en plus aux retours (RTDB, même base que le reste de l'appli)
+// et aux stocks en cours (Firestore, projet moorea-stock, comme StockApp.tsx).
 export function DashboardModule({
   arrivages,
-  printRelayOnline,
-  etiquettesBloquees,
   onClose,
 }: {
   arrivages: any[];
-  printRelayOnline: boolean | null;
-  etiquettesBloquees: { key: string; job: any }[];
   onClose: () => void;
 }) {
   const [horloge, setHorloge] = useState(new Date());
@@ -75,9 +69,7 @@ export function DashboardModule({
   }, []);
 
   // Un comptage n'est considéré "lancé" que si un document comptages/{id}_{équipe} existe déjà
-  // (au moins un article coché) — avant, on affichait une ligne à 0% dès qu'un stock non clôturé
-  // avait un total GMS/Prestige > 0, même si personne n'avait encore commencé à compter. On ne
-  // liste donc ici que les comptages réellement démarrés, le reste est simplement omis.
+  // (au moins un article coché) — sinon on ne l'affiche pas du tout.
   const comptagesEnCours = stocksNonClotures.flatMap((s: any) => {
     const equipes: ("GMS" | "Prestige")[] = ["GMS", "Prestige"];
     return equipes
@@ -90,11 +82,10 @@ export function DashboardModule({
       .filter(x => x.lance);
   });
 
-  // ─── ARRIVAGES : "tout ce qu'on attend aujourd'hui, et dans quel état" ───
-  // Union de deux ensembles, dédupliquée par id : les arrivages datés d'aujourd'hui (quel que
-  // soit leur statut, pour voir ce qui a été validé/refusé/mis en réserve dans la journée) ET
-  // tout ce qui est encore "en attente" peu importe sa date (un arrivage non traité reste
-  // pertinent tant qu'il n'est pas résolu, même s'il était prévu la veille).
+  // ─── ARRIVAGES : "tout ce qu'on attend aujourd'hui, et dans quel état", groupé par fournisseur ───
+  // Union dédupliquée de deux ensembles : les arrivages datés d'aujourd'hui (quel que soit leur
+  // statut, pour voir ce qui a été validé/refusé/mis en réserve) ET tout ce qui est encore
+  // "en attente" peu importe sa date (reste pertinent tant que non résolu).
   const todayFr = horloge.toLocaleDateString("fr-FR");
   const parId = new Map<string, any>();
   arrivages.forEach((a: any) => {
@@ -109,8 +100,6 @@ export function DashboardModule({
     return { label: "En attente", couleur: "#d97706", icone: "⏳", ordre: 0 };
   };
 
-  const arrivagesTries = [...arrivagesPertinents].sort((a, b) => statutInfo(a.statut).ordre - statutInfo(b.statut).ordre);
-
   const compteurs = {
     enAttente: arrivagesPertinents.filter((a: any) => a.statut === "en attente").length,
     valide: arrivagesPertinents.filter((a: any) => a.statut === "validé").length,
@@ -118,18 +107,31 @@ export function DashboardModule({
     reserve: arrivagesPertinents.filter((a: any) => a.statut === "sous réserve").length,
   };
 
+  // Groupe par fournisseur, chaque groupe trié pour montrer d'abord ce qui est encore en attente.
+  const parFournisseur = new Map<string, any[]>();
+  arrivagesPertinents.forEach((a: any) => {
+    const nom = a.fournisseur || "Fournisseur inconnu";
+    if (!parFournisseur.has(nom)) parFournisseur.set(nom, []);
+    parFournisseur.get(nom)!.push(a);
+  });
+  const fournisseurGroupes = [...parFournisseur.entries()]
+    .map(([nom, articles]) => ({ nom, articles: [...articles].sort((a, b) => statutInfo(a.statut).ordre - statutInfo(b.statut).ordre) }))
+    .sort((a, b) => {
+      const enAttenteA = a.articles.filter(x => x.statut === "en attente").length;
+      const enAttenteB = b.articles.filter(x => x.statut === "en attente").length;
+      return enAttenteB - enAttenteA;
+    });
+
   const retoursNonTraites = retoursAttente.filter((r: any) => r.statut !== "traite");
   const retoursTraitesAuj = [...retoursAttente, ...retoursEntrepot].filter((r: any) => r.statut === "traite" && r.date === todayFr);
 
-  // ─── COMPOSANTS PARTAGÉS (mêmes proportions/couleurs partout, pour une page plus harmonieuse) ───
-  const Panneau = ({ titre, icone, couleur, children }: { titre: string; icone: string; couleur: string; children: any }) => (
-    <div style={{ background: "#13151d", borderRadius: 18, padding: "20px 22px", border: "1px solid #ffffff12", display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <p style={{ margin: "0 0 16px", fontSize: 14.5, fontWeight: 800, color: couleur, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 9, letterSpacing: 0.4, textTransform: "uppercase" }}>
-        <span style={{ fontSize: 18 }}>{icone}</span> {titre}
-      </p>
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>{children}</div>
-    </div>
-  );
+  // ─── COMPOSANTS PARTAGÉS ───
+  // Écran destiné à une TV que personne ne touche : pas de défilement possible. Chaque liste est
+  // plafonnée à un nombre qui tient toujours à l'écran, avec une mention "+N autres" explicite
+  // plutôt que de couper silencieusement.
+  const PlusAutres = ({ n, couleur }: { n: number; couleur: string }) => n > 0 ? (
+    <p style={{ margin: "6px 0 0", fontSize: 11.5, color: couleur, fontWeight: 700 }}>+ {n} autre{n > 1 ? "s" : ""}</p>
+  ) : null;
 
   const StatTile = ({ label, n, couleur }: { label: string; n: number; couleur: string }) => (
     <div style={{ background: "#0a0a0c", borderRadius: 12, padding: "12px 8px", textAlign: "center", border: `1px solid ${couleur}30` }}>
@@ -142,8 +144,19 @@ export function DashboardModule({
     <p style={{ fontSize: 13, color: "#4b5563", fontStyle: "italic", margin: "6px 0 0" }}>{texte}</p>
   );
 
+  const TitrePanneau = ({ titre, icone, couleur }: { titre: string; icone: string; couleur: string }) => (
+    <p style={{ margin: "0 0 14px", fontSize: 14.5, fontWeight: 800, color: couleur, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 9, letterSpacing: 0.4, textTransform: "uppercase" }}>
+      <span style={{ fontSize: 18 }}>{icone}</span> {titre}
+    </p>
+  );
+
+  const NB_FOURNISSEURS_MAX = 8;
+  const NB_ARTICLES_PAR_BULLE = 4;
+  const NB_RETOURS_MAX = 5;
+  const NB_STOCK_MAX = 4;
+
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0a", padding: "24px 28px", fontFamily: "'DM Sans', Arial, sans-serif", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ minHeight: "100vh", background: "#0a0a0a", padding: "24px 28px", fontFamily: "'DM Sans', Arial, sans-serif", display: "flex", flexDirection: "column", gap: 18 }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
 
       {/* En-tête */}
@@ -162,102 +175,87 @@ export function DashboardModule({
         </div>
       </div>
 
-      {/* Grille des panneaux */}
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", gap: 18, minHeight: 0 }}>
-
-        {/* Arrivages du jour */}
-        <Panneau titre="Arrivages du jour" icone="📋" couleur="#c8a84b">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
-            <StatTile label="En attente" n={compteurs.enAttente} couleur="#d97706" />
-            <StatTile label="Autorisés" n={compteurs.valide} couleur="#16a34a" />
-            <StatTile label="Refusés" n={compteurs.refuse} couleur="#dc2626" />
-            <StatTile label="Réserve" n={compteurs.reserve} couleur="#f59e0b" />
-          </div>
-          {arrivagesTries.length === 0 ? (
-            <VideEtat texte="Aucun arrivage attendu ou en attente pour l'instant" />
-          ) : arrivagesTries.slice(0, 8).map((a: any) => {
-            const info = statutInfo(a.statut);
-            return (
-              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #ffffff0d" }}>
-                <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 800, color: info.couleur, background: `${info.couleur}1a`, border: `1px solid ${info.couleur}44`, borderRadius: 20, padding: "3px 9px", whiteSpace: "nowrap" }}>
-                  {info.icone} {info.label}
-                </span>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: "#e2e0ec", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {a.fournisseur || "-"} · {a.produit || ""}
-                </span>
-                <span style={{ flexShrink: 0, fontSize: 12.5, color: "#7a7a88" }}>{a.quantite ?? "-"} {a.unite || ""}</span>
+      {/* Fournisseurs attendus */}
+      <div style={{ flex: 3, minHeight: 0, background: "#13151d", borderRadius: 18, padding: "20px 22px", border: "1px solid #ffffff12", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <TitrePanneau titre="Fournisseurs attendus" icone="📋" couleur="#c8a84b" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16, flexShrink: 0 }}>
+          <StatTile label="En attente" n={compteurs.enAttente} couleur="#d97706" />
+          <StatTile label="Autorisés" n={compteurs.valide} couleur="#16a34a" />
+          <StatTile label="Refusés" n={compteurs.refuse} couleur="#dc2626" />
+          <StatTile label="Réserve" n={compteurs.reserve} couleur="#f59e0b" />
+        </div>
+        {fournisseurGroupes.length === 0 ? (
+          <VideEtat texte="Aucun arrivage attendu ou en attente pour l'instant" />
+        ) : (
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexWrap: "wrap", gap: 12, alignContent: "flex-start" }}>
+            {fournisseurGroupes.slice(0, NB_FOURNISSEURS_MAX).map(groupe => (
+              <div key={groupe.nom} style={{ flex: "1 1 260px", maxWidth: 300, background: "#0a0a0c", borderRadius: 14, padding: "12px 14px", border: "1px solid #ffffff14" }}>
+                <p style={{ margin: "0 0 8px", fontWeight: 800, fontSize: 13.5, color: "#c8a84b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{groupe.nom}</p>
+                {groupe.articles.slice(0, NB_ARTICLES_PAR_BULLE).map((a: any) => {
+                  const info = statutInfo(a.statut);
+                  return (
+                    <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, color: info.couleur, background: `${info.couleur}1a`, border: `1px solid ${info.couleur}44`, borderRadius: 20, padding: "2px 7px", whiteSpace: "nowrap" }}>
+                        {info.icone}
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#e2e0ec", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.produit || "-"}</span>
+                      <span style={{ flexShrink: 0, fontSize: 11, color: "#7a7a88" }}>{a.quantite ?? "-"}</span>
+                    </div>
+                  );
+                })}
+                <PlusAutres n={Math.max(0, groupe.articles.length - NB_ARTICLES_PAR_BULLE)} couleur="#7a7a88" />
               </div>
-            );
-          })}
-        </Panneau>
-
-        {/* Retours en cours */}
-        <Panneau titre="Retours clients" icone="🚚" couleur="#dc2626">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 16 }}>
-            <StatTile label="En cours" n={retoursNonTraites.length} couleur="#dc2626" />
-            <StatTile label="Traités aujourd'hui" n={retoursTraitesAuj.length} couleur="#16a34a" />
+            ))}
           </div>
+        )}
+        <PlusAutres n={Math.max(0, fournisseurGroupes.length - NB_FOURNISSEURS_MAX)} couleur="#c8a84b" />
+      </div>
+
+      {/* Retours & Stock — petites bulles en bas */}
+      <div style={{ flex: 2, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+        <div style={{ background: "#13151d", borderRadius: 18, padding: "18px 20px", border: "1px solid #ffffff12", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <TitrePanneau titre="Retours clients" icone="🚚" couleur="#dc2626" />
           {retoursNonTraites.length === 0 ? (
             <VideEtat texte="Aucun retour en attente" />
-          ) : retoursNonTraites.slice(0, 8).map((r: any) => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #ffffff0d" }}>
-              <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 800, color: "#dc2626", background: "#dc26261a", border: "1px solid #dc262644", borderRadius: 20, padding: "3px 9px" }}>
-                {r.statut === "nouveau" ? "Nouveau" : "En attente"}
-              </span>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: "#e2e0ec", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {r.client || r.clientConnu || "-"} · BL {r.bl || "-"}
-              </span>
-            </div>
-          ))}
-        </Panneau>
-
-        {/* Stock en cours */}
-        <Panneau titre="Stock en cours de comptage" icone="📦" couleur="#0891b2">
-          {comptagesEnCours.length === 0 ? (
-            <VideEtat texte="Aucun comptage lancé pour le moment" />
-          ) : comptagesEnCours.map(({ stock, team, done, total, pct }) => {
-            const couleurEquipe = team === "GMS" ? "#c8a84b" : "#0ea5e9";
-            return (
-              <div key={stock.id + "_" + team} style={{ marginBottom: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
-                  <span style={{ fontSize: 13.5, color: "#e2e0ec" }}>{stock.filename || "Stock"} · {team === "GMS" ? "🌿 GMS" : "✨ Prestige"}</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: couleurEquipe, fontFamily: "'Syne', sans-serif" }}>{pct}%</span>
-                </div>
-                <div style={{ height: 7, background: "#ffffff14", borderRadius: 4, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${pct}%`, background: couleurEquipe, borderRadius: 4, transition: "width .4s" }} />
-                </div>
-                <p style={{ margin: "4px 0 0", fontSize: 11, color: "#7a7a88" }}>{done}/{total} articles comptés</p>
-              </div>
-            );
-          })}
-        </Panneau>
-
-        {/* Imprimante + alertes */}
-        <Panneau titre="Imprimante & alertes" icone="🖨️" couleur={printRelayOnline ? "#16a34a" : "#dc2626"}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, background: "#0a0a0c", borderRadius: 12, padding: "13px 14px", border: `1px solid ${printRelayOnline ? "#16a34a44" : "#dc262644"}` }}>
-            <span style={{ width: 11, height: 11, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block", flexShrink: 0, animation: printRelayOnline ? "none" : "pulse 1.2s infinite" }} />
-            <span style={{ fontSize: 15, fontWeight: 800, color: printRelayOnline ? "#16a34a" : "#dc2626", fontFamily: "'Syne', sans-serif" }}>
-              {printRelayOnline === null ? "Vérification..." : printRelayOnline ? "Relais d'impression en ligne" : "Relais d'impression hors ligne"}
-            </span>
-          </div>
-          {etiquettesBloquees.length === 0 ? (
-            <VideEtat texte="Aucune étiquette bloquée" />
           ) : (
-            <>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "#dc2626", margin: "0 0 8px" }}>
-                ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""}
-              </p>
-              {etiquettesBloquees.slice(0, 6).map(({ key, job }) => (
-                <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #ffffff0d" }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: "#e2e0ec", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {job.lotLabel || job.produit || "Étiquette"}
+            <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexWrap: "wrap", gap: 8, alignContent: "flex-start" }}>
+              {retoursNonTraites.slice(0, NB_RETOURS_MAX).map((r: any) => (
+                <div key={r.id} style={{ background: "#0a0a0c", borderRadius: 12, padding: "8px 12px", border: "1px solid #dc262633", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: "#dc2626", background: "#dc26261a", border: "1px solid #dc262644", borderRadius: 20, padding: "2px 7px", whiteSpace: "nowrap" }}>
+                    {r.statut === "nouveau" ? "Nouveau" : "En attente"}
                   </span>
-                  <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 800, color: "#dc2626", background: "#dc26261a", border: "1px solid #dc262644", borderRadius: 20, padding: "3px 9px" }}>Bloquée</span>
+                  <span style={{ fontSize: 12, color: "#e2e0ec", whiteSpace: "nowrap" }}>{r.client || r.clientConnu || "-"} · BL {r.bl || "-"}</span>
                 </div>
               ))}
-            </>
+            </div>
           )}
-        </Panneau>
+          <PlusAutres n={Math.max(0, retoursNonTraites.length - NB_RETOURS_MAX)} couleur="#dc2626" />
+        </div>
+
+        <div style={{ background: "#13151d", borderRadius: 18, padding: "18px 20px", border: "1px solid #ffffff12", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <TitrePanneau titre="Stock en cours de comptage" icone="📦" couleur="#0891b2" />
+          {comptagesEnCours.length === 0 ? (
+            <VideEtat texte="Aucun comptage lancé pour le moment" />
+          ) : (
+            <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexWrap: "wrap", gap: 8, alignContent: "flex-start" }}>
+              {comptagesEnCours.slice(0, NB_STOCK_MAX).map(({ stock, team, done, total, pct }) => {
+                const couleurEquipe = team === "GMS" ? "#c8a84b" : "#0ea5e9";
+                return (
+                  <div key={stock.id + "_" + team} style={{ background: "#0a0a0c", borderRadius: 12, padding: "8px 12px", border: `1px solid ${couleurEquipe}33`, minWidth: 180 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: "#e2e0ec", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stock.filename || "Stock"} · {team === "GMS" ? "GMS" : "Prestige"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: couleurEquipe, fontFamily: "'Syne', sans-serif" }}>{pct}%</span>
+                    </div>
+                    <div style={{ height: 5, background: "#ffffff14", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: couleurEquipe, borderRadius: 3 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <PlusAutres n={Math.max(0, comptagesEnCours.length - NB_STOCK_MAX)} couleur="#0891b2" />
+        </div>
       </div>
     </div>
   );
