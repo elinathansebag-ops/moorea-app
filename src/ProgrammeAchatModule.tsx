@@ -423,61 +423,205 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   };
   const tableWrapStyle: React.CSSProperties = { background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 10 };
 
-  // ─── ÉCRAN 1 : liste des périodes ───
+  // ─── ÉCRAN 1 (page principale) : stats de vente réelles par période, d'où on lance la
+  // création d'un programme — soit "par article" (combien acheter de chaque produit), soit
+  // "par client" (combien prévoir de vendre à chaque client) — sur la période regardée
+  // (souvent une semaine). La liste des programmes déjà créés reste en dessous, accessible.
   if (!selectedId) {
     return (
       <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
         <PageHeader titre="Programme d'achat" couleur="#c8a84b" onBack={onClose} onHome={onClose} />
-        <div style={{ maxWidth: 800, margin: "0 auto", padding: 16, boxSizing: "border-box" }}>
-          <button onClick={() => setShowNewForm(v => !v)} style={{
-            width: "100%", padding: "12px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a",
-            fontWeight: 700, fontSize: 14, cursor: "pointer", marginBottom: 8,
-          }}>+ Nouvelle période</button>
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: 16, boxSizing: "border-box" }}>
 
-          <button onClick={() => genererSemaines(2026)} disabled={generatingSemaines} style={{
-            width: "100%", padding: "10px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fff", color: "#8a6d1f",
-            fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 12,
-          }}>{generatingSemaines ? "Génération en cours..." : "📅 Générer les périodes par semaine 2026 (repère 2025)"}</button>
-
-          {showNewForm && (
-            <div style={{ background: "#fff", borderRadius: 12, padding: 14, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Nom de la période</label>
-              <input value={newNom} onChange={e => setNewNom(e.target.value)} placeholder="Ex : Noël 2026" style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", margin: "4px 0 10px", boxSizing: "border-box" }} />
-              <div style={{ display: "flex", gap: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Date de début</label>
-                  <input type="date" value={newDebut} onChange={e => setNewDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Date de fin</label>
-                  <input type="date" value={newFin} onChange={e => setNewFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
-                </div>
-              </div>
-              <p style={{ fontSize: 11.5, color: "#aaa", margin: "8px 0 0" }}>La comparaison N-1 se basera automatiquement sur les mêmes dates, un an plus tôt.</p>
-              <button onClick={creerPeriode} disabled={saving} style={{ marginTop: 12, width: "100%", padding: 10, borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-                {saving ? "Création..." : "Créer la période"}
-              </button>
-            </div>
+          {dailyLoading && <p style={{ textAlign: "center", color: "#888", padding: 20 }}>Chargement des ventes réelles…</p>}
+          {dailyError && (
+            <p style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <span>Impossible de charger les ventes réelles.</span>
+              <button onClick={() => setDailyRetry(n => n + 1)} style={{ border: "none", background: "#dc2626", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Réessayer</button>
+            </p>
           )}
 
-          {periodesArr.length === 0 && !showNewForm && (
-            <p style={{ textAlign: "center", color: "#888", marginTop: 40, fontSize: 14 }}>Aucune période créée. Commence par en ajouter une (ex : Noël 2026).</p>
-          )}
-
-          {periodesArr.map(([id, p]) => (
-            <div key={id} onClick={() => setSelectedId(id)} style={{
-              background: "#fff", borderRadius: 10, padding: "12px 14px", marginBottom: 8, cursor: "pointer",
-              display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            }}>
-              <div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 14.5, color: "#1a2e1a" }}>{p.nom}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#888" }}>
-                  {p.dateDebut ? new Date(p.dateDebut).toLocaleDateString("fr-FR") : "?"} → {p.dateFin ? new Date(p.dateFin).toLocaleDateString("fr-FR") : "?"}
-                </p>
+          {!dailyLoading && !dailyError && (
+            <>
+              {/* Sélection de période */}
+              <div style={{ background: "#fff", borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                  <div style={{ flex: 1, minWidth: 130 }}>
+                    <label style={{ fontSize: 11.5, fontWeight: 700, color: "#555", display: "block", marginBottom: 4 }}>DU</label>
+                    <input type="date" value={statsDebut} onChange={e => setStatsDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box" }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 130 }}>
+                    <label style={{ fontSize: 11.5, fontWeight: 700, color: "#555", display: "block", marginBottom: 4 }}>AU</label>
+                    <input type="date" value={statsFin} onChange={e => setStatsFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box" }} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {([
+                    ["Aujourd'hui", "aujourdhui"], ["Hier", "hier"], ["7 derniers jours", "7j"],
+                    ["Cette semaine", "semaine"], ["Ce mois-ci", "mois"], ["Tout l'historique", "tout"],
+                  ] as const).map(([label, type]) => (
+                    <button key={label} onClick={() => appliquerRaccourciStats(type)} style={{ padding: "6px 12px", borderRadius: 20, border: "1px solid #e5e7eb", background: "#fff", color: "#555", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <button onClick={e => { e.stopPropagation(); supprimerPeriode(id); }} style={{ border: "none", background: "transparent", color: "#dc2626", fontSize: 18, cursor: "pointer", padding: 4 }}>🗑</button>
-            </div>
-          ))}
+
+              {/* Résumé */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 8 }}>
+                {[
+                  { label: "Colis vendus", value: fmtColis(totauxStats.colis), color: "#1a2e1a", bg: "#f0fdf4" },
+                  { label: "Vendu", value: fmtEur(totauxStats.vente), color: "#0ea5e9", bg: "#eff6ff" },
+                  { label: "Acheté (estimé)", value: fmtEur(totauxStats.achat), color: "#d97706", bg: "#fffbeb" },
+                  { label: "Marge (estimée)", value: fmtEur(totauxStats.marge), color: totauxStats.marge >= 0 ? "#16a34a" : "#dc2626", bg: totauxStats.marge >= 0 ? "#f0fdf4" : "#fef2f2" },
+                ].map(s => (
+                  <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: "12px 8px", textAlign: "center" }}>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: s.color, fontFamily: "'Syne', sans-serif" }}>{s.value}</div>
+                    <div style={{ fontSize: 10.5, color: "#6b7280", marginTop: 2 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 11, color: "#aaa", margin: "-2px 0 12px", textAlign: "center" }}>
+                💡 Montant acheté = estimation (taux moyen achat/vente par produit sur l'année de référence).
+              </p>
+
+              {/* Créer un programme sur cette période */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                <button onClick={() => ouvrirNouveauProgramme("produit")} style={{
+                  flex: 1, padding: "12px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a",
+                  fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+                }}>📦 Créer un programme par article</button>
+                <button onClick={() => ouvrirNouveauProgramme("client")} style={{
+                  flex: 1, padding: "12px", borderRadius: 10, border: "none", background: "#c8a84b", color: "#0a0a0a",
+                  fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+                }}>👥 Créer un programme par client</button>
+              </div>
+
+              {showNewForm && (
+                <div style={{ background: "#fff", borderRadius: 12, padding: 14, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Nom du programme</label>
+                  <input value={newNom} onChange={e => setNewNom(e.target.value)} placeholder="Ex : Semaine 30 2026 — par article" style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", margin: "4px 0 10px", boxSizing: "border-box" }} />
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Date de début</label>
+                      <input type="date" value={newDebut} onChange={e => setNewDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Date de fin</label>
+                      <input type="date" value={newFin} onChange={e => setNewFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 11.5, color: "#aaa", margin: "8px 0 0" }}>
+                    Programme {typeProgrammeChoisi === "produit" ? "par article" : "par client"} — la comparaison N-1 se basera automatiquement sur les mêmes dates, un an plus tôt.
+                  </p>
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button onClick={() => setShowNewForm(false)} style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#555", fontWeight: 600, cursor: "pointer" }}>Annuler</button>
+                    <button onClick={creerPeriode} disabled={saving} style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                      {saving ? "Création..." : "Créer le programme"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tableau des stats de la période, croisable produit ↔ client */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <button onClick={() => { setStatsVue("produit"); setStatsDetailNom(null); }} style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: statsVue === "produit" ? "#ea580c" : "#fff", color: statsVue === "produit" ? "#fff" : "#555" }}>📦 Par produit</button>
+                <button onClick={() => { setStatsVue("client"); setStatsDetailNom(null); }} style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: statsVue === "client" ? "#ea580c" : "#fff", color: statsVue === "client" ? "#fff" : "#555" }}>👥 Par client</button>
+              </div>
+              <input value={statsSearch} onChange={e => setStatsSearch(e.target.value)} placeholder={statsVue === "produit" ? "Rechercher un produit…" : "Rechercher un client…"} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box", fontSize: 13.5, marginBottom: 4 }} />
+
+              <div style={{ background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 10 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
+                      <th style={{ padding: "8px 10px" }}>{statsVue === "produit" ? "Produit" : "Client"}</th>
+                      <th style={{ padding: "8px 6px", textAlign: "right" }}>{statsVue === "produit" ? "Clients" : "Produits"}</th>
+                      <th style={{ padding: "8px 6px", textAlign: "right" }}>Colis</th>
+                      <th style={{ padding: "8px 6px", textAlign: "right" }}>Vendu</th>
+                      <th style={{ padding: "8px 6px", textAlign: "right" }}>Acheté (est.)</th>
+                      <th style={{ padding: "8px 10px", textAlign: "right" }}>Marge (est.)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtresStats.slice(0, 300).map(a => (
+                      <tr key={a.nom} onClick={() => setStatsDetailNom(a.nom === statsDetailNom ? null : a.nom)}
+                        style={{ borderTop: "1px solid #f0f0f0", cursor: "pointer", background: statsDetailNom === a.nom ? "#fff7ed" : "transparent" }}>
+                        <td style={{ padding: "6px 10px", fontWeight: 600, color: "#1a2e1a" }}>{a.nom}</td>
+                        <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{a.nbAutres}</td>
+                        <td style={{ padding: "6px", textAlign: "right", color: "#555" }}>{fmtColis(a.colis)}</td>
+                        <td style={{ padding: "6px", textAlign: "right", color: "#0ea5e9", fontWeight: 700 }}>{fmtEur(a.vente)}</td>
+                        <td style={{ padding: "6px", textAlign: "right", color: "#d97706" }}>{fmtEur(a.achat)}</td>
+                        <td style={{ padding: "6px 10px", textAlign: "right", fontWeight: 700, color: a.marge >= 0 ? "#16a34a" : "#dc2626" }}>{fmtEur(a.marge)}</td>
+                      </tr>
+                    ))}
+                    {filtresStats.length === 0 && (
+                      <tr><td colSpan={6} style={{ padding: 20, textAlign: "center", color: "#888" }}>Aucune vente trouvée sur cette période.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+                {filtresStats.length > 300 && (
+                  <p style={{ fontSize: 11, color: "#aaa", textAlign: "center", padding: "8px 0" }}>Affiche les 300 premiers ({filtresStats.length} au total) — affine la recherche pour voir le reste.</p>
+                )}
+              </div>
+
+              {statsDetailNom && (
+                <div style={{ marginTop: 14 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", margin: "0 0 8px" }}>
+                    {statsVue === "produit" ? `👥 Clients pour "${statsDetailNom}"` : `📦 Produits pris par "${statsDetailNom}"`}
+                  </p>
+                  <div style={{ background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
+                          <th style={{ padding: "8px 10px" }}>{statsVue === "produit" ? "Client" : "Produit"}</th>
+                          <th style={{ padding: "8px 6px", textAlign: "right" }}>Colis</th>
+                          <th style={{ padding: "8px 10px", textAlign: "right" }}>Vendu</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailStats.map((d, i) => (
+                          <tr key={i} style={{ borderTop: "1px solid #f0f0f0" }}>
+                            <td style={{ padding: "6px 10px" }}>{d.nom}</td>
+                            <td style={{ padding: "6px", textAlign: "right", color: "#555" }}>{fmtColis(d.colis)}</td>
+                            <td style={{ padding: "6px 10px", textAlign: "right", color: "#0ea5e9", fontWeight: 700 }}>{fmtEur(d.vente)}</td>
+                          </tr>
+                        ))}
+                        {detailStats.length === 0 && (
+                          <tr><td colSpan={3} style={{ padding: 16, textAlign: "center", color: "#888" }}>Aucun détail trouvé.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Programmes déjà créés */}
+              <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", margin: "22px 0 8px" }}>📋 Mes programmes</p>
+              <button onClick={() => genererSemaines(2026)} disabled={generatingSemaines} style={{
+                width: "100%", padding: "10px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fff", color: "#8a6d1f",
+                fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 12,
+              }}>{generatingSemaines ? "Génération en cours..." : "📅 Générer les périodes par semaine 2026 (repère 2025)"}</button>
+
+              {periodesArr.length === 0 && (
+                <p style={{ textAlign: "center", color: "#888", marginTop: 20, fontSize: 14 }}>Aucun programme créé pour l'instant.</p>
+              )}
+
+              {periodesArr.map(([id, p]) => (
+                <div key={id} onClick={() => setSelectedId(id)} style={{
+                  background: "#fff", borderRadius: 10, padding: "12px 14px", marginBottom: 8, cursor: "pointer",
+                  display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 14.5, color: "#1a2e1a" }}>{p.nom}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#888" }}>
+                      {p.dateDebut ? new Date(p.dateDebut).toLocaleDateString("fr-FR") : "?"} → {p.dateFin ? new Date(p.dateFin).toLocaleDateString("fr-FR") : "?"}
+                    </p>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); supprimerPeriode(id); }} style={{ border: "none", background: "transparent", color: "#dc2626", fontSize: 18, cursor: "pointer", padding: 4 }}>🗑</button>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
     );
