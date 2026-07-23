@@ -520,6 +520,12 @@ export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any, palet
     dlcLabel = isNaN(d.getTime()) ? String(arrivage.dlc) : d.toLocaleDateString("fr-FR");
   }
 
+  let dateArriveeLabel = "";
+  if (arrivage.date) {
+    const d = new Date(arrivage.date);
+    dateArriveeLabel = isNaN(d.getTime()) ? String(arrivage.date) : d.toLocaleDateString("fr-FR");
+  }
+
   await push(ref(db, "printQueue"), {
     type: "etiquette_refus",
     lotLabel,
@@ -527,10 +533,11 @@ export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any, palet
     produit: (arrivage.produit || "-").toUpperCase(),
     qte: qte || 0,
     unite: (arrivage.unite || "COLIS").toUpperCase(),
-    // Lot fournisseur et DLC ajoutés pour que l'étiquette refus porte les mêmes infos de
-    // traçabilité que l'étiquette normale (numéro de lot Moorea = lotLabel, + lot fournisseur).
+    // Lot fournisseur, date d'arrivée et DLC ajoutés pour que l'étiquette refus porte les mêmes
+    // infos de traçabilité que l'étiquette normale.
     lotFournisseur: (arrivage.rapport?.lot_fournisseur || arrivage.lot_fournisseur || "").toUpperCase(),
     dlcLabel,
+    dateArriveeLabel,
     url,
     status: "pending",
     createdAt: Date.now(),
