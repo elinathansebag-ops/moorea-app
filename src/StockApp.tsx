@@ -1516,6 +1516,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const comptSnap = await getDocs(collection(db, "comptages"));
           const comptages: any = {};
           comptSnap.forEach(d => { comptages[d.id] = d.data(); });
+          // Un comptage est "en cours" dès qu'au moins une équipe (GMS ou Prestige) a déjà coché
+          // au moins un article — dans ce cas on cache le bouton Supprimer (même logique de
+          // protection que pour un stock déjà clôturé) pour éviter d'effacer par erreur un
+          // inventaire dans lequel quelqu'un est en train de compter.
+          const comptageEnCours = (s: any): boolean => {
+            const doneGMS = comptages[s.id + "_GMS"]?.data ? Object.keys(comptages[s.id + "_GMS"].data).length : 0;
+            const donePrestige = comptages[s.id + "_PRESTIGE"]?.data ? Object.keys(comptages[s.id + "_PRESTIGE"].data).length : 0;
+            return doneGMS > 0 || donePrestige > 0;
+          };
           const makeItem = (s: any, team: string) => {
             const c = comptages[s.id + "_" + team];
             const done = c && c.data ? Object.keys(c.data).length : 0;
@@ -1542,7 +1551,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
                      <button class="btn btn-sm" style="border-color:#c8a84b;color:#8a6f2e" onclick="sEnvoyerStockJordan('${sid}','${team}')">📧 Envoyer</button>
                      <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}')">🔓 Rouvrir</button>`
                   : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>
-                     <button class="btn btn-sm btn-danger" onclick="sDeleteStock('${sid}')">🗑</button>`}
+                     ${comptageEnCours(s) ? "" : `<button class="btn btn-sm btn-danger" onclick="sDeleteStock('${sid}')">🗑</button>`}`}
               </div>
             </div>`;
           };
@@ -1558,12 +1567,14 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             groups.get(key)!.items.push({ s, team });
           });
           const orderedKeys = [...groups.keys()].sort().reverse();
+          // Semaine ISO actuelle — son accordéon s'ouvre tout seul au chargement de la page,
+          // comme pour l'accordéon des arrivages du jour.
+          const { week: semaineActuelle, year: anneeActuelle } = getISOWeek(new Date());
+          const cleSemaineActuelle = `${anneeActuelle}-S${String(semaineActuelle).padStart(2, "0")}`;
           let html = "";
           orderedKeys.forEach((key, idx) => {
             const g = groups.get(key)!;
-            // Par principe, aucun accordéon ne s'ouvre tout seul — même la semaine la
-            // plus récente reste repliée tant qu'on ne clique pas dessus.
-            const isOpen = false;
+            const isOpen = key === cleSemaineActuelle;
             html += `<div class="s-week-acc" style="margin-top:${idx === 0 ? 0 : 10}px">
               <div onclick="sToggleWeekAcc('${key}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#faf8f3;border:1.5px solid #e8e0d0;border-radius:10px">
                 <span style="font-weight:700;font-size:13px;color:#1a2e1a">📅 Semaine ${g.week} · ${g.year} <span style="font-weight:500;color:#9ca3af;font-size:11px;margin-left:4px">(${g.items.length} stock${g.items.length > 1 ? "s" : ""})</span></span>
