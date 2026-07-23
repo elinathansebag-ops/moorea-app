@@ -1038,15 +1038,19 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 </div>
     `;
 
-    // Load SheetJS then init Firebase + JS logic
     const loadScript = (src: string): Promise<void> => new Promise((res, rej) => {
       if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
       const s = document.createElement("script");
       s.src = src; s.onload = () => res(); s.onerror = rej;
       document.head.appendChild(s);
     });
+    // SheetJS (~1 Mo) n'est nécessaire que pour importer un fichier Excel — avant, toute la
+    // page Stock (calculatrice, scan, comptage...) attendait ce téléchargement CDN à CHAQUE
+    // ouverture, même quand on ne fait qu'aller regarder le comptage en cours. Chargé maintenant
+    // à la demande, uniquement au moment où un fichier est réellement importé (voir parseExcel).
+    const XLSX_URL = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
 
-    loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js").then(async () => {
+    (async () => {
       const { initializeApp, getApps } = await import("firebase/app");
       const { getFirestore, doc, setDoc, deleteDoc, getDoc, getDocs, collection } = await import("firebase/firestore");
 
@@ -1339,6 +1343,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       const parseExcel = (file: File) => new Promise<void>(resolve => {
         const reader = new FileReader();
         reader.onload = async (e: any) => {
+          if (!(window as any).XLSX) {
+            const statusEl = document.getElementById("s-upload-status");
+            if (statusEl) statusEl.textContent = "⏳ Chargement du lecteur Excel...";
+            await loadScript(XLSX_URL);
+          }
           const XLSX = (window as any).XLSX;
           const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
           const ws = wb.Sheets[wb.SheetNames[0]];
@@ -2830,16 +2839,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       // Load histo on session start
       loadHistoArticles();
       (window as any).sShowPage("home");
-    }).catch(e => {
-      // Sans ce .catch, un échec n'importe où dans tout ce bloc (chargement du script xlsx
-      // depuis le CDN qui échoue, ou n'importe quelle exception plus bas) empêchait TOUTES les
+    })().catch(e => {
+      // Sans ce .catch, une exception n'importe où dans tout ce bloc empêchait TOUTES les
       // fonctions définies dedans de s'attacher à window — y compris la calculatrice, le scan,
-      // etc. — sans aucun message visible (juste une erreur silencieuse dans la console). Le
-      // symptôme observé ("le bouton calculatrice n'ouvre rien") venait de là : la page se
-      // charge normalement (le HTML est affiché), mais aucune des fonctions sXxx n'existe tant
-      // que ce chargement initial (notamment le script xlsx externe) n'a pas réussi.
+      // etc. — sans aucun message visible (juste une erreur silencieuse dans la console).
       console.error("Erreur d'initialisation du module Stock:", e);
-      alert("Le module Stock n'a pas pu se charger complètement (problème réseau probable) — recharge la page. Si ça persiste : " + (e?.message || e));
+      alert("Le module Stock n'a pas pu se charger complètement — recharge la page. Si ça persiste : " + (e?.message || e));
     });
 
     return () => {
