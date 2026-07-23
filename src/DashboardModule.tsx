@@ -44,9 +44,15 @@ export function DashboardModule({
   }, []);
 
   // ─── STOCKS EN COURS (Firestore, projet moorea-stock — même config que StockApp.tsx) ───
+  // Le pourcentage d'avancement affiché ici reprend EXACTEMENT le même calcul que dans la page
+  // de comptage (StockApp.renderStockList) : done = nombre d'articles comptés dans le document
+  // "comptages/{stockId}_{équipe}", total = s.gms ou s.prestige selon l'équipe — plutôt que de
+  // le recalculer différemment, on va juste le chercher au même endroit.
   const [stocksEnCours, setStocksEnCours] = useState<any[]>([]);
+  const [comptages, setComptages] = useState<Record<string, any>>({});
   useEffect(() => {
-    let unsub: (() => void) | undefined;
+    let unsub1: (() => void) | undefined;
+    let unsub2: (() => void) | undefined;
     (async () => {
       try {
         const { initializeApp, getApps } = await import("firebase/app");
@@ -56,13 +62,25 @@ export function DashboardModule({
         const app = existing ?? initializeApp(cfg, "moorea-stock");
         const fsdb = getFirestore(app);
         const q = query(collection(fsdb, "stocks"), where("cloture", "==", false));
-        unsub = onSnapshot(q, snap => {
+        unsub1 = onSnapshot(q, snap => {
           setStocksEnCours(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+        unsub2 = onSnapshot(collection(fsdb, "comptages"), snap => {
+          const c: Record<string, any> = {};
+          snap.forEach(d => { c[d.id] = d.data(); });
+          setComptages(c);
         });
       } catch { /* si Firestore indisponible, la section reste vide plutôt que de planter le tableau de bord */ }
     })();
-    return () => { if (unsub) unsub(); };
+    return () => { if (unsub1) unsub1(); if (unsub2) unsub2(); };
   }, []);
+
+  const pctEquipe = (s: any, team: "GMS" | "Prestige") => {
+    const c = comptages[s.id + "_" + team];
+    const done = c && c.data ? Object.keys(c.data).length : 0;
+    const total = team === "GMS" ? (s.gms || 0) : (s.prestige || 0);
+    return { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
+  };
 
   // ─── ARRIVAGES DU JOUR ───
   const todayFr = horloge.toLocaleDateString("fr-FR");
@@ -161,13 +179,27 @@ export function DashboardModule({
         <Panneau titre="Stock en cours de comptage" icone="📦" couleur="#0891b2">
           {stocksEnCours.length === 0 ? (
             <p style={{ fontSize: 13, color: "#4b5563", fontStyle: "italic" }}>Aucun comptage en cours</p>
-          ) : stocksEnCours.map((s: any) => {
-            const depuis = s.debutComptage ? Math.max(0, Date.now() - s.debutComptage) : null;
-            const h = depuis ? Math.floor(depuis / 3600000) : null;
-            const m = depuis ? Math.floor((depuis % 3600000) / 60000) : null;
-            return (
-              <Ligne key={s.id} label={`${s.filename || s.equipe || "Stock"}`} valeur={depuis != null ? `${h}h${String(m).padStart(2, "0")} en cours` : "En cours"} couleur="#0891b2" />
-            );
+          ) : stocksEnCours.flatMap((s: any) => {
+            const equipes: ("GMS" | "Prestige")[] = [
+              ...(s.gms > 0 ? ["GMS" as const] : []),
+              ...(s.prestige > 0 ? ["Prestige" as const] : []),
+            ];
+            return equipes.map(team => {
+              const { done, total, pct } = pctEquipe(s, team);
+              const couleurEquipe = team === "GMS" ? "#c8a84b" : "#0ea5e9";
+              return (
+                <div key={s.id + "_" + team} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                    <span style={{ fontSize: 13.5, color: "#c8c6d6" }}>{s.filename || "Stock"} · {team === "GMS" ? "🌿 GMS" : "✨ Prestige"}</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: couleurEquipe, fontFamily: "'Syne', sans-serif" }}>{pct}%</span>
+                  </div>
+                  <div style={{ height: 7, background: "#ffffff14", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct}%`, background: couleurEquipe, borderRadius: 4, transition: "width .4s" }} />
+                  </div>
+                  <p style={{ margin: "3px 0 0", fontSize: 11, color: "#6b7280" }}>{done}/{total} articles</p>
+                </div>
+              );
+            });
           })}
         </Panneau>
 
