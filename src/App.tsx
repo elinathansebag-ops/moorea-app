@@ -14,6 +14,7 @@ import { QrCodeDashboard } from "./QrCodeDashboard";
 import { YukonApp } from "./YukonApp";
 import { RackModule } from "./RackModule";
 import { ProgrammeAchatModule } from "./ProgrammeAchatModule";
+import { DashboardModule } from "./DashboardModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
 // passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
@@ -169,6 +170,7 @@ export default function App() {
   const [showRack, setShowRack] = useState(false);
   const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showProgrammeAchat, setShowProgrammeAchat] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
   const ADMIN_PIN = "1709";
   const [showAdmin, setShowAdmin] = useState(false);
@@ -1039,6 +1041,11 @@ export default function App() {
       ? `Score qualité : ${r.score}/5${r.observations ? " - " + r.observations : ""}`
       : r.observations || "";
 
+    // Un lien wa.me ne permet pas de joindre un fichier — le message affirmait à tort "PDF
+    // joint" alors qu'aucun PDF n'est réellement attaché à l'envoi WhatsApp. Le PDF part par
+    // email (bouton "✉️ Envoyer le rapport par mail"), pas par WhatsApp — on ne déclenche donc
+    // plus de téléchargement de PDF ici, et le message le dit clairement pour éviter toute
+    // confusion côté destinataire.
     const msg = `🍃 RAPPORT AGRÉAGE MOOREA
 Rapport n° ${r.numeroRapport || "-"}
 ${r.date} · ${r.heure}${r.agreeur ? " · " + r.agreeur : ""}
@@ -1050,10 +1057,9 @@ ${colisLine}
 ${reserveLine}
 ${scoreLine}
 
-_PDF joint_`;
+_📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
-    setTimeout(() => downloadPDF(r), 800);
   };
 
   const decisionLabel = (d: string) => d === "stock" ? "ENTREE EN STOCK" : d === "reserve" ? "RESERVE" : "REFUS";
@@ -2073,6 +2079,10 @@ _PDF joint_`;
     return <RackModule autoOpenConfig={rackAutoConfig} onClose={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />;
   }
 
+  if (showDashboard) {
+    return <DashboardModule arrivages={arrivages} printRelayOnline={printRelayOnline} etiquettesBloquees={etiquettesBloquees} onClose={() => { setShowDashboard(false); setShowAccueil(true); }} />;
+  }
+
   if (showProgrammeAchat) {
     return <ProgrammeAchatModule onClose={() => { setShowProgrammeAchat(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
@@ -2201,6 +2211,7 @@ _PDF joint_`;
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
       { icon: "📦", label: "IFCO", color: "#6366f1", badge: null, stat: "Bacs & réconciliation", action: () => { setShowAccueil(false); setShowIFCO(true); } },
       { icon: "🛒", label: "Programme d'achat", color: "#ea580c", badge: null, stat: "Grosses périodes", action: () => { setShowAccueil(false); setShowProgrammeAchat(true); } },
+      { icon: "📺", label: "Tableau de bord", color: "#c8a84b", badge: null, stat: "Suivi en direct (écran bureau)", action: () => { setShowAccueil(false); setShowDashboard(true); } },
     ];
 
     const leofreshBtns = [
