@@ -106,6 +106,78 @@ function nbSemainesISO(year: number): number {
   return isoWeekNumber(new Date(year, 11, 28));
 }
 
+const MOIS_FR = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+const JOURS_FR = ["Lu", "Ma", "Me", "Je", "Ve", "Sa", "Di"];
+
+// Sélecteur de période façon "réservation de vol" : un calendrier où on clique une 1ère date
+// (début), puis une 2e (fin) — la période entre les deux se surligne automatiquement. Seuls
+// les jours où des données ont vraiment été importées (joursValides) sont cliquables ; les
+// autres jours sont grisés, pour ne jamais proposer une date sans données.
+function RangeCalendar({ debut, fin, onChange, joursValides }: {
+  debut: string; fin: string; onChange: (d: string, f: string) => void; joursValides?: Set<string> | null;
+}) {
+  const initRef = debut || fin || toLocalISO(new Date());
+  const initDate = new Date(initRef + "T00:00:00");
+  const [viewY, setViewY] = useState(initDate.getFullYear());
+  const [viewM, setViewM] = useState(initDate.getMonth());
+
+  const cells = useMemo(() => {
+    const first = new Date(viewY, viewM, 1);
+    const offset = (first.getDay() + 6) % 7; // lundi = 0
+    const nbJours = new Date(viewY, viewM + 1, 0).getDate();
+    const arr: (string | null)[] = [];
+    for (let i = 0; i < offset; i++) arr.push(null);
+    for (let d = 1; d <= nbJours; d++) arr.push(toLocalISO(new Date(viewY, viewM, d)));
+    return arr;
+  }, [viewY, viewM]);
+
+  const estValide = (ds: string) => !joursValides || joursValides.has(ds);
+
+  const clickJour = (ds: string) => {
+    if (!estValide(ds)) return;
+    if (!debut || (debut && fin)) { onChange(ds, ""); return; }
+    if (ds < debut) onChange(ds, debut);
+    else onChange(debut, ds);
+  };
+
+  const prevMois = () => { if (viewM === 0) { setViewY(viewY - 1); setViewM(11); } else setViewM(viewM - 1); };
+  const nextMois = () => { if (viewM === 11) { setViewY(viewY + 1); setViewM(0); } else setViewM(viewM + 1); };
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 10, padding: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.14)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <button type="button" onClick={prevMois} style={{ border: "none", background: "transparent", fontSize: 17, cursor: "pointer", padding: "2px 8px", color: "#555" }}>‹</button>
+        <span style={{ fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{MOIS_FR[viewM]} {viewY}</span>
+        <button type="button" onClick={nextMois} style={{ border: "none", background: "transparent", fontSize: 17, cursor: "pointer", padding: "2px 8px", color: "#555" }}>›</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 2 }}>
+        {JOURS_FR.map(j => <div key={j} style={{ textAlign: "center", fontSize: 10.5, fontWeight: 700, color: "#999" }}>{j}</div>)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+        {cells.map((ds, i) => {
+          if (!ds) return <div key={i} />;
+          const valide = estValide(ds);
+          const isDebut = ds === debut;
+          const isFin = ds === fin;
+          const dansRange = !!debut && !!fin && ds > debut && ds < fin;
+          const jour = parseInt(ds.slice(8), 10);
+          return (
+            <button key={ds} type="button" disabled={!valide} onClick={() => clickJour(ds)} title={valide ? "" : "Aucune donnée importée ce jour-là"} style={{
+              padding: "6px 0", border: "none", borderRadius: (isDebut || isFin) ? 6 : 0,
+              background: (isDebut || isFin) ? "#c8a84b" : dansRange ? "#faf3e0" : "transparent",
+              color: !valide ? "#ddd" : (isDebut || isFin) ? "#0a0a0a" : "#333",
+              fontWeight: (isDebut || isFin) ? 800 : 500, fontSize: 12.5, cursor: valide ? "pointer" : "not-allowed",
+            }}>{jour}</button>
+          );
+        })}
+      </div>
+      {joursValides && (
+        <p style={{ fontSize: 10.5, color: "#aaa", margin: "6px 0 0", textAlign: "center" }}>Seuls les jours avec des ventes importées sont sélectionnables.</p>
+      )}
+    </div>
+  );
+}
+
 export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [dailyRef, setDailyRef] = useState<RefJour[] | null>(null);
   // Ventes importées depuis l'appli (bouton "Importer stat") — en plus du gros export
@@ -182,6 +254,19 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     for (const r of dailyRefTotal) { if (r.d < min) min = r.d; if (r.d > max) max = r.d; }
     return { min, max };
   }, [dailyRefTotal]);
+
+  // Ensemble des jours pour lesquels on a réellement des ventes (export statique + import) —
+  // sert à ne proposer, dans les calendriers de sélection de période, QUE des jours où des
+  // données existent vraiment (plutôt que toute une plage min→max qui peut contenir des trous).
+  const joursAvecDonnees = useMemo(() => {
+    if (!dailyRefTotal) return null;
+    return new Set(dailyRefTotal.map(r => r.d));
+  }, [dailyRefTotal]);
+
+  const [showStatsCal, setShowStatsCal] = useState(false);
+  const [showNewCal, setShowNewCal] = useState(false);
+  const onChangeStatsPeriode = (d: string, f: string) => { setStatsDebut(d); setStatsFin(f); if (f) setShowStatsCal(false); };
+  const onChangeNewPeriode = (d: string, f: string) => { setNewDebut(d); setNewFin(f); if (f) setShowNewCal(false); };
 
   // Raccourcis de période pour les stats de vente réelles.
   const appliquerRaccourciStats = (type: "aujourdhui" | "hier" | "7j" | "semaine" | "mois" | "tout") => {
@@ -583,15 +668,18 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
 
               {/* Sélection de période */}
               <div style={{ background: "#fff", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                  <div style={{ flex: 1, minWidth: 130 }}>
-                    <label style={{ fontSize: 11.5, fontWeight: 700, color: "#555", display: "block", marginBottom: 4 }}>DU</label>
-                    <input type="date" value={statsDebut} min={periodeCouverte?.min} max={periodeCouverte?.max} onChange={e => setStatsDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box" }} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 130 }}>
-                    <label style={{ fontSize: 11.5, fontWeight: 700, color: "#555", display: "block", marginBottom: 4 }}>AU</label>
-                    <input type="date" value={statsFin} min={periodeCouverte?.min} max={periodeCouverte?.max} onChange={e => setStatsFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box" }} />
-                  </div>
+                <div style={{ position: "relative", marginBottom: 10 }}>
+                  <button type="button" onClick={() => setShowStatsCal(o => !o)} style={{
+                    width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fafafa",
+                    color: statsDebut ? "#1a2e1a" : "#888", fontSize: 13, fontWeight: 600, textAlign: "left", cursor: "pointer",
+                  }}>
+                    📅 {statsDebut ? new Date(statsDebut).toLocaleDateString("fr-FR") : "Du..."} → {statsFin ? new Date(statsFin).toLocaleDateString("fr-FR") : "Au..."}
+                  </button>
+                  {showStatsCal && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 30, marginTop: 4 }}>
+                      <RangeCalendar debut={statsDebut} fin={statsFin} onChange={onChangeStatsPeriode} joursValides={joursAvecDonnees} />
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {([
@@ -634,15 +722,19 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                 <div style={{ background: "#fff", borderRadius: 12, padding: 14, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
                   <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Nom du programme</label>
                   <input value={newNom} onChange={e => setNewNom(e.target.value)} placeholder="Ex : Semaine 30 2026 — par article" style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", margin: "4px 0 10px", boxSizing: "border-box" }} />
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Date de début</label>
-                      <input type="date" value={newDebut} min={periodeCouverte?.min} max={periodeCouverte?.max} onChange={e => setNewDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Date de fin</label>
-                      <input type="date" value={newFin} min={periodeCouverte?.min} max={periodeCouverte?.max} onChange={e => setNewFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
-                    </div>
+                  <div style={{ position: "relative" }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Période</label>
+                    <button type="button" onClick={() => setShowNewCal(o => !o)} style={{
+                      width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fafafa", marginTop: 4,
+                      color: newDebut ? "#1a2e1a" : "#888", fontSize: 13, fontWeight: 600, textAlign: "left", cursor: "pointer", boxSizing: "border-box",
+                    }}>
+                      📅 {newDebut ? new Date(newDebut).toLocaleDateString("fr-FR") : "Du..."} → {newFin ? new Date(newFin).toLocaleDateString("fr-FR") : "Au..."}
+                    </button>
+                    {showNewCal && (
+                      <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 30, marginTop: 4 }}>
+                        <RangeCalendar debut={newDebut} fin={newFin} onChange={onChangeNewPeriode} joursValides={joursAvecDonnees} />
+                      </div>
+                    )}
                   </div>
                   <p style={{ fontSize: 11.5, color: "#aaa", margin: "8px 0 0" }}>
                     Programme {typeProgrammeChoisi === "produit" ? "par article" : "par client"} — la comparaison N-1 se basera automatiquement sur les mêmes dates, un an plus tôt.
