@@ -6,6 +6,24 @@ import { Html5Qrcode } from "html5-qrcode";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
+// ─── LIMITE DE CASES DE COMPTAGE PAR ARTICLE ───
+// Avant, la limite était figée en dur à 8 (compte1..compte8) à une vingtaine d'endroits dans ce
+// fichier. Repassée à 60 (largement suffisant même pour un article dispersé sur beaucoup
+// d'emplacements) et centralisée ici — augmenter cette seule constante suffit si jamais 60 ne
+// suffit plus un jour. Les deux fonctions ci-dessous remplacent les longues énumérations
+// "compte1: null, compte2: null, ..." répétées partout.
+const NB_MAX_CELLULES = 60;
+function cellulesVides(): Record<string, null> {
+  const o: Record<string, null> = {};
+  for (let i = 1; i <= NB_MAX_CELLULES; i++) o["compte" + i] = null;
+  return o;
+}
+function cellulesDe(a: any): Record<string, any> {
+  const o: Record<string, any> = {};
+  for (let i = 1; i <= NB_MAX_CELLULES; i++) o["compte" + i] = a["compte" + i];
+  return o;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ─── COMPOSANT STOCK APP EMBARQUÉE ───
 // ── Liste de tous les articles GMS + Prestige ──────────────────────────────
@@ -737,6 +755,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
    ce conteneur doit rester un simple <div>, pas une balise <video>, sinon le flux ne
    s'affiche jamais (écran noir malgré la caméra bien démarrée). */
 #s-scan-video video, #s-scan-video canvas{width:100%!important;height:100%!important;object-fit:cover}
+#s-scan-video{transform-origin:center center}
 #stock-calc-fab{position:fixed;bottom:24px;right:24px;width:50px;height:50px;background:#c8a84b;border:none;border-radius:50%;cursor:pointer;display:none;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 16px rgba(200,168,75,.4);z-index:400}
 #stock-calc-fab.visible{display:flex}
 #stock-calc-modal{display:none;position:fixed;bottom:86px;right:24px;background:#fff;border:1.5px solid #e8e0d0;border-radius:18px;padding:1.25rem;width:236px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:500}
@@ -800,9 +819,18 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       <button onclick="sFermerScanner()" style="padding:7px 14px;border-radius:9px;border:none;background:#c8a84b;cursor:pointer;font-size:12px;font-weight:700;color:#0a0a0a">✕ Fermer</button>
       <p id="s-scan-title" style="margin:0;font-weight:800;font-size:15px;color:#c8a84b;text-transform:uppercase;letter-spacing:1px">📷 Scanner palette → Stock</p>
     </div>
-    <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center">
+    <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
       <div id="s-scan-video" style="width:100%;height:100%"></div>
       <canvas id="s-scan-canvas" style="display:none"></canvas>
+      <!-- Zoom numérique — html5-qrcode n'expose pas de zoom natif ; on zoome visuellement
+           #s-scan-video (transform:scale), le conteneur parent ayant overflow:hidden pour ne
+           jamais déborder. Le décodage lit le flux vidéo réel, non affecté par ce zoom visuel. -->
+      <div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.55);border-radius:20px;padding:8px 16px;z-index:2">
+        <span style="color:#fff;font-size:13px">🔍</span>
+        <input type="range" min="1" max="3" step="0.1" value="1" style="width:140px"
+          oninput="document.getElementById('s-scan-video').style.transform='scale('+this.value+')';this.nextElementSibling.textContent=parseFloat(this.value).toFixed(1)+'x'">
+        <span style="color:#fff;font-size:12px;min-width:28px;text-align:right">1.0x</span>
+      </div>
       <!-- Viseur -->
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
         <div style="width:240px;height:240px;position:relative">
@@ -1221,7 +1249,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         articles.forEach((a, idx) => {
           if (counted(a)) {
             const locs: any = {};
-            for (let i = 1; i <= 8; i++) { const v = a["compte" + i]; if (v !== null && v !== undefined && v !== 0) locs["c" + i] = v; }
+            for (let i = 1; i <= NB_MAX_CELLULES; i++) { const v = a["compte" + i]; if (v !== null && v !== undefined && v !== 0) locs["c" + i] = v; }
             data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: a._saisieTs || Date.now(), _idx: idx };
           }
         });
@@ -1238,7 +1266,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             articles.forEach(a => {
               const d = data[a.article];
               if (d) {
-                for (let i = 1; i <= 8; i++) a["compte" + i] = d["c" + i] ?? null;
+                for (let i = 1; i <= NB_MAX_CELLULES; i++) a["compte" + i] = d["c" + i] ?? null;
                 a.detruire = d.cd ?? null;
                 a.compte = d.c; n++;
               }
@@ -1340,7 +1368,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             grouped[art].nb_colis += qty;
             if (lot) { if (!grouped[art].lots.includes(lot)) grouped[art].lots.push(lot); grouped[art].lotsQty[lot] = (grouped[art].lotsQty[lot] || 0) + qty; }
           });
-          allArticles = Object.values(grouped).map((a: any, i: number) => ({ id: i + 1, equipe: "PRESTIGE", famille: a.famille, code: "", article: a.article, nb_colis: a.nb_colis, lots: a.lots, lot: a.lots.join(" "), lotsQty: a.lotsQty, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
+          allArticles = Object.values(grouped).map((a: any, i: number) => ({ id: i + 1, equipe: "PRESTIGE", famille: a.famille, code: "", article: a.article, nb_colis: a.nb_colis, lots: a.lots, lot: a.lots.join(" "), lotsQty: a.lotsQty, compte: null, ...cellulesVides(), detruire: null }));
           const statusEl = document.getElementById("s-upload-status");
           if (statusEl) statusEl.textContent = "⏳ Enregistrement...";
           await saveStock(file.name, allArticles);
@@ -1370,7 +1398,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         currentTeam = team;
         document.getElementById("s-modal-team")?.classList.remove("open");
         currentSessionId = "CPT-" + team + "-" + TODAY + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
-        articles = allArticles.filter(a => getEquipe(a) === team).map(a => ({ ...a, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
+        articles = allArticles.filter(a => getEquipe(a) === team).map(a => ({ ...a, compte: null, ...cellulesVides(), detruire: null }));
         ecartFilter = "tous";
         const ct = document.getElementById("s-comptage-title");
         const et = document.getElementById("s-ecarts-title");
@@ -1387,11 +1415,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             if (a.compte1 === null || a.compte1 === undefined) {
               const palettes = rackPalettesMap[a.article?.toLowerCase().trim()];
               if (palettes && palettes.length) {
-                const slots = palettes.slice(0, 8); // max 8 emplacements disponibles
+                const slots = palettes.slice(0, NB_MAX_CELLULES); // reprend la même limite que les cases de comptage manuelles
                 a._autoRackSlots = slots.map(() => true);
                 a._autoRackLocs = slots.map(s => s.loc);
                 slots.forEach((s, i) => { a["compte" + (i + 1)] = s.qty; });
-                let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0;
+                let t = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += a["compte" + i] ?? 0;
                 a.compte = t;
               }
             }
@@ -1415,7 +1443,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const snap = await getDoc(doc(db, "stocks", stockId));
           if (snap.exists()) {
             const data = snap.data() as any;
-            allArticles = data.articles.map((a: any) => ({ ...a, lots: a.lots || [], lot: a.lot || "", lotsQty: a.lotsQty || {}, equipe: a.equipe || getEquipe(a), compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
+            allArticles = data.articles.map((a: any) => ({ ...a, lots: a.lots || [], lot: a.lot || "", lotsQty: a.lotsQty || {}, equipe: a.equipe || getEquipe(a), compte: null, ...cellulesVides(), detruire: null }));
             currentImportId = stockId;
             debutComptageConnu = !!data.debutComptage;
             setSyncStatus("ok", "Synchronisé");
@@ -1746,8 +1774,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       (window as any).sSetCount = (id: number, loc: number, val: string) => {
         const a = articles.find(x => x.id === id); if (!a) return;
         const v = val === "" ? null : Math.max(0, parseFloat(val) || 0);
-        if (loc <= 8) a["compte" + loc] = v; else a.detruire = v;
-        if (loc <= 8 && a._autoRackSlots?.[loc - 1]) a._autoRackSlots[loc - 1] = false; // touché manuellement → cette case n'est plus "auto"
+        if (loc <= NB_MAX_CELLULES) a["compte" + loc] = v; else a.detruire = v;
+        if (loc <= NB_MAX_CELLULES && a._autoRackSlots?.[loc - 1]) a._autoRackSlots[loc - 1] = false; // touché manuellement → cette case n'est plus "auto"
         if (!a._saisieTs && v !== null) a._saisieTs = Date.now();
         // Premier article compté du stock : on enregistre l'horodatage de début pour
         // pouvoir chronométrer la durée totale du comptage jusqu'à la clôture.
@@ -1756,11 +1784,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           setDoc(doc(db, "stocks", currentImportId), { debutComptage: Date.now() }, { merge: true }).catch(() => {});
         }
         const hasCount = a.compte1 !== null && a.compte1 !== undefined;
-        if (hasCount) { let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0; a.compte = t; } else a.compte = null;
+        if (hasCount) { let t = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += a["compte" + i] ?? 0; a.compte = t; } else a.compte = null;
         updateMetricsC();
         const row = document.querySelector(`tr[data-id="${id}"]`);
         if (row) {
-          if (loc <= 8) {
+          if (loc <= NB_MAX_CELLULES) {
             const inputEl = row.querySelector(`.qty-in[data-loc="${loc}"]`) as HTMLElement | null;
             if (inputEl) { inputEl.removeAttribute("style"); inputEl.removeAttribute("title"); }
             const stillAuto = a._autoRackSlots?.some((x: boolean) => x);
@@ -1770,7 +1798,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const totCell = row.querySelector(".s-tot-cell");
           const ecartCell = row.querySelector(".s-ecart-cell");
           if (totCell) {
-            let t = 0; for (let i = 1; i <= 8; i++) t += a["compte" + i] ?? 0;
+            let t = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += a["compte" + i] ?? 0;
             const hasCnt = a.compte1 !== null && a.compte1 !== undefined;
             (totCell as any).textContent = hasCnt ? t : "-";
             if (ecartCell) {
@@ -1786,10 +1814,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       (window as any).sAddNextLoc = (id: number) => {
         const a = articles.find(x => x.id === id); if (!a) return;
         let nextLoc = 1;
-        for (let i = 1; i <= 8; i++) {
+        for (let i = 1; i <= NB_MAX_CELLULES; i++) {
           if (a["compte" + i] !== null && a["compte" + i] !== undefined) nextLoc = i + 1;
         }
-        if (nextLoc <= 8) (window as any).sAddLoc(id, nextLoc);
+        if (nextLoc <= NB_MAX_CELLULES) (window as any).sAddLoc(id, nextLoc);
       };
 
 
@@ -1837,18 +1865,21 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         rows.forEach(a => {
           const q1 = a.compte1 !== null && a.compte1 !== undefined ? a.compte1 : "";
           const qd = a.detruire !== null && a.detruire !== undefined ? a.detruire : "";
-          let tot = 0; for (let i = 1; i <= 8; i++) tot += parseFloat(a["compte" + i] ?? 0) || 0;
+          let tot = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) tot += parseFloat(a["compte" + i] ?? 0) || 0;
           const showTot = q1 !== "";
           const other = currentTeam === "GMS" ? "Prestige" : "GMS";
           const moveBtn = `<button onclick="sMoveToOther(${a.id})" style="padding:2px 7px;border:1px solid #e8e0d0;border-radius:6px;background:transparent;color:#6b7280;cursor:pointer;font-size:11px">${other} →</button>`;
-          const locs = [a.compte1, a.compte2, a.compte3, a.compte4, a.compte5, a.compte6, a.compte7, a.compte8];
+          const locs: any[] = []; for (let i = 1; i <= NB_MAX_CELLULES; i++) locs.push(a["compte" + i]);
           const autoStyle = "border:2px solid #8b5cf6 !important;background:#f5f3ff !important;color:#6d28d9 !important;font-weight:800 !important";
           const locTitle = (i: number) => a._autoRackLocs?.[i] ? ` title="📦 ${a._autoRackLocs[i]}"` : ` title="📦 Vu en rack N2/N3"`;
           let inp = `<input class="qty-in" data-loc="1" type="number" min="0" inputmode="decimal" value="${q1}"${a._autoRackSlots?.[0] ? ` style="${autoStyle}"${locTitle(0)}` : ""} oninput="sSetCount(${a.id},1,this.value)" onchange="sSetCount(${a.id},1,this.value)">`;
           let lastFilled = 1;
           locs.forEach((v: any, i: number) => { if (i > 0 && v !== null && v !== undefined) { inp += `<input class="qty-in" data-loc="${i + 1}" type="number" min="0" inputmode="decimal" value="${v > 0 ? v : ""}"${a._autoRackSlots?.[i] ? ` style="${autoStyle}"${locTitle(i)}` : ""} oninput="sSetCount(${a.id},${i + 1},this.value)" onchange="sSetCount(${a.id},${i + 1},this.value)">`; lastFilled = i + 1; } });
-          if (lastFilled < 8) inp += `<button class="add-loc-btn" data-id="${a.id}" onclick="sAddNextLoc(${a.id})">+</button>`;
-          const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="" value="${qd}" oninput="sSetCount(${a.id},9,this.value)" onchange="sSetCount(${a.id},9,this.value)">`;
+          if (lastFilled < NB_MAX_CELLULES) inp += `<button class="add-loc-btn" data-id="${a.id}" onclick="sAddNextLoc(${a.id})">+</button>`;
+          // 999 sert de sentinelle pour "case destruction" (garantie > NB_MAX_CELLULES, donc jamais
+          // confondue avec une vraie case de comptage par sSetCount) — avant le passage à la limite
+          // dynamique, 9 suffisait car le max de cases était figé à 8.
+          const destroy = `<input class="qty-in-destroy" type="number" min="0" placeholder="" value="${qd}" oninput="sSetCount(${a.id},999,this.value)" onchange="sSetCount(${a.id},999,this.value)">`;
           const ecartVal = showTot ? (tot - a.nb_colis) : null;
           const ecartColor = ecartVal === null ? "#6b7280" : ecartVal < 0 ? "#dc2626" : ecartVal > 0 ? "#b45309" : "#15803d";
           const ecartStr = ecartVal === null ? "-" : (ecartVal > 0 ? "+" : "") + ecartVal;
@@ -1914,7 +1945,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       (window as any).sResetCounts = () => {
         if (!confirm("Réinitialiser tous les comptages ?")) return;
-        articles.forEach(a => { a.compte = null; for (let i = 1; i <= 8; i++) a["compte" + i] = null; a.detruire = null; });
+        articles.forEach(a => { a.compte = null; for (let i = 1; i <= NB_MAX_CELLULES; i++) a["compte" + i] = null; a.detruire = null; });
         updateMetricsC(); sRenderTable(); saveComptages();
       };
 
@@ -2003,11 +2034,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return;
         await saveComptages();
         const savedCounts: any = {};
-        articles.forEach(a => { if (counted(a)) savedCounts[a.article] = { compte: a.compte, compte1: a.compte1, compte2: a.compte2, compte3: a.compte3, compte4: a.compte4, compte5: a.compte5, compte6: a.compte6, compte7: a.compte7, compte8: a.compte8, detruire: a.detruire }; });
+        articles.forEach(a => { if (counted(a)) savedCounts[a.article] = { compte: a.compte, ...cellulesDe(a), detruire: a.detruire }; });
         const savedTeam = currentTeam; const savedSession = currentSessionId;
         await parseExcel(file);
         currentSessionId = savedSession; currentTeam = savedTeam;
-        articles = allArticles.filter(a => getEquipe(a) === savedTeam).map(a => ({ ...a, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null }));
+        articles = allArticles.filter(a => getEquipe(a) === savedTeam).map(a => ({ ...a, compte: null, ...cellulesVides(), detruire: null }));
         let restored = 0;
         articles.forEach(a => { const s = savedCounts[a.article]; if (s) { Object.assign(a, s); restored++; } });
         updateMetricsC(); sRenderTable(); await saveComptages();
@@ -2023,7 +2054,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const comment = (document.getElementById("s-add-art-comment") as HTMLInputElement).value.trim();
         if (!val) { toast("Entrez le nom de l'article"); return; }
         const stockRef = allArticles.find(x => x.article === val);
-        const newArt = { id: Date.now(), equipe: currentTeam, famille: "AUTRE", code: "", article: val, nb_colis: stockRef?.nb_colis || 0, lots: stockRef?.lots || [], lotsQty: stockRef?.lotsQty || {}, lot: stockRef?.lot || "", comment, compte: qty, compte1: qty, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null, _extra: true };
+        const newArt = { id: Date.now(), equipe: currentTeam, famille: "AUTRE", code: "", article: val, nb_colis: stockRef?.nb_colis || 0, lots: stockRef?.lots || [], lotsQty: stockRef?.lotsQty || {}, lot: stockRef?.lot || "", comment, compte: qty, ...cellulesVides(), compte1: qty, detruire: null, _extra: true };
         articles.push(newArt);
         inp.value = "";
         (document.getElementById("s-add-art-qty") as HTMLInputElement).value = "";
@@ -2544,7 +2575,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       (window as any).sRecupererArticle = (enc: string) => {
         const a = JSON.parse(decodeURIComponent(enc));
         const stockRef = allArticles.find(x => x.article === a.article);
-        const newArt = { ...a, id: Date.now(), equipe: currentTeam, nb_colis: stockRef?.nb_colis ?? a.nb_colis, lots: stockRef?.lots ?? a.lots ?? [], lotsQty: stockRef?.lotsQty ?? a.lotsQty ?? {}, compte: null, compte1: null, compte2: null, compte3: null, compte4: null, compte5: null, compte6: null, compte7: null, compte8: null, detruire: null };
+        const newArt = { ...a, id: Date.now(), equipe: currentTeam, nb_colis: stockRef?.nb_colis ?? a.nb_colis, lots: stockRef?.lots ?? a.lots ?? [], lotsQty: stockRef?.lotsQty ?? a.lotsQty ?? {}, compte: null, ...cellulesVides(), detruire: null };
         articles.push(newArt);
         if (!_byArticle) _byArticle = {};
         _byArticle[a.article.toLowerCase().trim()] = currentTeam;
@@ -2676,11 +2707,11 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         const art = artSession || artAll;
         if (paletteIdx !== null && enSession) {
           let nextLoc = 1;
-          for (let i = 1; i <= 8; i++) {
+          for (let i = 1; i <= NB_MAX_CELLULES; i++) {
             if (art[`compte${i}`] === null || art[`compte${i}`] === undefined) { nextLoc = i; break; }
             nextLoc = i + 1;
           }
-          if (nextLoc <= 8 && (art[`compte${nextLoc}`] === null || art[`compte${nextLoc}`] === undefined)) {
+          if (nextLoc <= NB_MAX_CELLULES && (art[`compte${nextLoc}`] === null || art[`compte${nextLoc}`] === undefined)) {
             setTimeout(() => (window as any).sAddLoc(art.id, nextLoc), 300);
           }
         }
@@ -2740,14 +2771,14 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           return;
         }
         let nextLoc = 1;
-        for (let i = 1; i <= 8; i++) { if (art[`compte${i}`] === null || art[`compte${i}`] === undefined) { nextLoc = i; break; } nextLoc = i + 1; }
-        if (nextLoc > 8) {
+        for (let i = 1; i <= NB_MAX_CELLULES; i++) { if (art[`compte${i}`] === null || art[`compte${i}`] === undefined) { nextLoc = i; break; } nextLoc = i + 1; }
+        if (nextLoc > NB_MAX_CELLULES) {
           (window as any).sAfficherResultatScan({ found: false, msg: `Toutes les cases de comptage de "${art.article}" sont déjà remplies` });
           return;
         }
         art[`compte${nextLoc}`] = qty;
         if (!art._saisieTs) art._saisieTs = Date.now();
-        let t = 0; for (let i = 1; i <= 8; i++) t += art[`compte${i}`] ?? 0; art.compte = t;
+        let t = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += art[`compte${i}`] ?? 0; art.compte = t;
         sRenderTable();
         updateMetricsC();
         clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);

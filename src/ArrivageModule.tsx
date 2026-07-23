@@ -514,6 +514,12 @@ export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any, palet
   const qte = colisCount != null ? colisCount : arrivage.quantite;
   const url = `${window.location.origin}${window.location.pathname}?refus=${arrivage.id}`;
 
+  let dlcLabel = "";
+  if (arrivage.dlc) {
+    const d = new Date(arrivage.dlc);
+    dlcLabel = isNaN(d.getTime()) ? String(arrivage.dlc) : d.toLocaleDateString("fr-FR");
+  }
+
   await push(ref(db, "printQueue"), {
     type: "etiquette_refus",
     lotLabel,
@@ -521,6 +527,10 @@ export async function envoyerEtiquetteRefusPourImpressionPC(arrivage: any, palet
     produit: (arrivage.produit || "-").toUpperCase(),
     qte: qte || 0,
     unite: (arrivage.unite || "COLIS").toUpperCase(),
+    // Lot fournisseur et DLC ajoutés pour que l'étiquette refus porte les mêmes infos de
+    // traçabilité que l'étiquette normale (numéro de lot Moorea = lotLabel, + lot fournisseur).
+    lotFournisseur: (arrivage.rapport?.lot_fournisseur || arrivage.lot_fournisseur || "").toUpperCase(),
+    dlcLabel,
     url,
     status: "pending",
     createdAt: Date.now(),
@@ -977,6 +987,12 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
   const [manualCode, setManualCode] = useState("");
   const [retryCount, setRetryCount] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
+  // Zoom numérique (CSS) sur le flux caméra — html5-qrcode injecte lui-même son <video> dans
+  // #qr-scanner-container sans exposer de contrôle de zoom natif ; on zoome donc visuellement
+  // le conteneur (transform:scale), le conteneur parent ayant overflow:hidden pour ne jamais
+  // déborder de l'écran. Le décodage se fait toujours sur le flux vidéo réel, non affecté par
+  // ce zoom purement visuel — donc le scan continue de fonctionner normalement, zoomé ou non.
+  const [zoom, setZoom] = useState(1);
 
   const handleRaw = (raw: string) => {
     if (/^\d{8,13}$/.test(raw)) { onScan('EAN:' + raw); return; }
@@ -1123,8 +1139,15 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000", zIndex: 999, display: "flex", flexDirection: "column" }}>
       <PageHeader titre="📷 Scanner" onBack={onClose} onHome={onClose} />
-      <div style={{ flex: 1, position: "relative" }}>
-        <div id="qr-scanner-container" style={{ width: "100%", height: "100%" }} />
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        <div id="qr-scanner-container" style={{ width: "100%", height: "100%", transform: `scale(${zoom})`, transformOrigin: "center center" }} />
+        {scanning && !error && (
+          <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 10, background: "rgba(0,0,0,0.55)", borderRadius: 20, padding: "8px 16px", zIndex: 2 }}>
+            <span style={{ color: "#fff", fontSize: 13 }}>🔍</span>
+            <input type="range" min="1" max="3" step="0.1" value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} style={{ width: 140 }} />
+            <span style={{ color: "#fff", fontSize: 12, minWidth: 28, textAlign: "right" }}>{zoom.toFixed(1)}x</span>
+          </div>
+        )}
         {error && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <div style={{ background: "#fff", borderRadius: 12, padding: 20, textAlign: "center" }}>
@@ -1162,9 +1185,75 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
 }
 
 // ─── FICHE PALETTE PUBLIQUE (sans auth) ───
+// ─── SIGNATURE TACTILE — pour signer un retour (refus) directement depuis la palette scannée,
+// sans papier. Dessin au doigt/souris sur un <canvas>, exporté en image (dataURL) et enregistré
+// sur l'arrivage dans Firebase (arrivages/{id}/retourSignature). Simple, léger, pas de librairie.
+function SignaturePad({ onValider, onAnnuler }: { onValider: (dataUrl: string) => void; onAnnuler: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dessineRef = useRef(false);
+  const [aDessine, setADessine] = useState(false);
+
+  const pos = (e: any) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
+  };
+  const debuter = (e: any) => {
+    e.preventDefault();
+    dessineRef.current = true;
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const { x, y } = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+  const dessiner = (e: any) => {
+    if (!dessineRef.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const { x, y } = pos(e);
+    ctx.lineTo(x, y);
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#1a2e1a";
+    ctx.stroke();
+    setADessine(true);
+  };
+  const terminer = () => { dessineRef.current = false; };
+  const effacer = () => {
+    const canvas = canvasRef.current!;
+    canvas.getContext("2d")!.clearRect(0, 0, canvas.width, canvas.height);
+    setADessine(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 20, padding: 20, width: "100%", maxWidth: 480 }}>
+        <p style={{ margin: "0 0 12px", fontWeight: 800, fontSize: 16, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>✍️ Signature du retour</p>
+        <canvas ref={canvasRef} width={440} height={220}
+          onMouseDown={debuter} onMouseMove={dessiner} onMouseUp={terminer} onMouseLeave={terminer}
+          onTouchStart={debuter} onTouchMove={dessiner} onTouchEnd={terminer}
+          style={{ width: "100%", height: 200, background: "#f9fafb", borderRadius: 12, border: "1.5px dashed #d1d5db", touchAction: "none" }} />
+        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+          <button onClick={onAnnuler} style={{ flex: 1, padding: "11px 14px", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Annuler</button>
+          <button onClick={effacer} style={{ flex: 1, padding: "11px 14px", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Effacer</button>
+          <button onClick={() => aDessine && onValider(canvasRef.current!.toDataURL("image/png"))}
+            disabled={!aDessine}
+            style={{ flex: 1, padding: "11px 14px", borderRadius: 12, border: "none", background: aDessine ? "#1a2e1a" : "#d1d5db", color: "#fff", cursor: aDessine ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700 }}>
+            Valider
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PalettePublique({ id }: { id: string }) {
   const [arrivage, setArrivage] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showSignature, setShowSignature] = useState(false);
+  const [savingSignature, setSavingSignature] = useState(false);
 
   // ─── VERROU D'ACCÈS (connexion Google @moorea.fr) ───
   // Cette page publique est ouverte en scannant le QR code imprimé sur l'étiquette de la
@@ -1272,6 +1361,21 @@ export function PalettePublique({ id }: { id: string }) {
 
   const borderColor = arrivage.statut === "validé" ? "#27ae60" : arrivage.statut === "refusé" ? "#dc2626" : "#d97706";
 
+  const validerSignature = async (dataUrl: string) => {
+    setSavingSignature(true);
+    try {
+      const { db: dbImport, ref: fbRef, update: fbUpdate } = await import("./firebase");
+      await fbUpdate(fbRef(dbImport, `arrivages/${arrivage.id}`), {
+        retourSignature: dataUrl,
+        retourSigneLe: new Date().toISOString(),
+        retourSignePar: authUser?.email || "",
+      });
+      setArrivage((a: any) => ({ ...a, retourSignature: dataUrl, retourSigneLe: new Date().toISOString(), retourSignePar: authUser?.email || "" }));
+    } catch (e) { console.error(e); alert("Erreur d'enregistrement de la signature"); }
+    setSavingSignature(false);
+    setShowSignature(false);
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -1321,14 +1425,21 @@ export function PalettePublique({ id }: { id: string }) {
             mêmes formulaires/flux que depuis Arrivages (rapport qualité, refus + litige,
             destruction) plutôt que de les dupliquer ici. */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          <button onClick={() => { window.location.href = `${window.location.origin}${window.location.pathname}?action=rapport&aid=${arrivage.id}`; }}
-            style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "none", background: "#1a2e1a", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
-            📋 Faire un rapport qualité
-          </button>
-          <button onClick={() => { window.location.href = `${window.location.origin}${window.location.pathname}?action=refuser&aid=${arrivage.id}`; }}
-            style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
-            ❌ Refuser
-          </button>
+          {/* Rapport qualité et Refuser n'ont plus de sens une fois l'arrivage déjà refusé —
+              on les cache pour éviter de créer un second rapport ou un refus en double sur
+              une palette déjà traitée. */}
+          {arrivage.statut !== "refusé" && (
+            <button onClick={() => { window.location.href = `${window.location.origin}${window.location.pathname}?action=rapport&aid=${arrivage.id}`; }}
+              style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "none", background: "#1a2e1a", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+              📋 Faire un rapport qualité
+            </button>
+          )}
+          {arrivage.statut !== "refusé" && (
+            <button onClick={() => { window.location.href = `${window.location.origin}${window.location.pathname}?action=refuser&aid=${arrivage.id}`; }}
+              style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
+              ❌ Refuser
+            </button>
+          )}
           {!arrivage.destruction && (
             <button onClick={() => { window.location.href = `${window.location.origin}${window.location.pathname}?action=detruire&aid=${arrivage.id}`; }}
               style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #fde68a", background: "#fffbeb", color: "#d97706", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
@@ -1343,6 +1454,23 @@ export function PalettePublique({ id }: { id: string }) {
             📲 Prévenir les commerciaux
           </button>
         </div>
+
+        {/* Signature du retour — uniquement pertinent une fois la palette refusée (le
+            transporteur/fournisseur signe pour accuser réception du refus). */}
+        {arrivage.statut === "refusé" && (
+          arrivage.retourSignature ? (
+            <div style={{ background: "#f0fdf4", borderRadius: 16, padding: 16, marginBottom: 14, border: "1.5px solid #bbf7d0" }}>
+              <p style={{ margin: "0 0 8px", fontWeight: 700, color: "#16a34a" }}>✅ Retour signé{arrivage.retourSigneLe ? ` le ${new Date(arrivage.retourSigneLe).toLocaleString("fr-FR")}` : ""}</p>
+              <img src={arrivage.retourSignature} alt="Signature" style={{ maxWidth: 220, background: "#fff", borderRadius: 8, border: "1px solid #d1d5db" }} />
+            </div>
+          ) : (
+            <button onClick={() => setShowSignature(true)} disabled={savingSignature}
+              style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: "none", background: "#1a2e1a", color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, fontFamily: "'Syne', sans-serif", marginBottom: 14 }}>
+              ✍️ Signer le retour
+            </button>
+          )
+        )}
+        {showSignature && <SignaturePad onValider={validerSignature} onAnnuler={() => setShowSignature(false)} />}
 
         {/* Litige */}
         {arrivage.litige && (

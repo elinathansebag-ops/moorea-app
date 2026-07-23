@@ -582,6 +582,11 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
     const id = texteScan.startsWith("EAN:") ? texteScan.slice(4) : texteScan;
     const arrivage = arrivages.find((a: any) => a.id === id || a.lot_interne === id);
     if (!arrivage) {
+      // Le message d'erreur n'est affiché que quand le scanner est fermé (voir plus bas dans le
+      // rendu) — sans ce setShowScanner(false), la caméra restait ouverte indéfiniment et
+      // l'utilisateur ne voyait jamais le message, donnant l'impression d'une page bloquée.
+      setShowScanner(false);
+      setCaseAvantScan(null);
       setScanStatus(`Aucun arrivage trouvé pour "${id}" — vérifie que la palette correspond bien à un arrivage existant.`);
       return;
     }

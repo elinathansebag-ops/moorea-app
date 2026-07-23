@@ -4575,6 +4575,9 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
   const [scanning, setScanning] = useState(false);
   const [manualEan, setManualEan] = useState('');
   const [scanDebug, setScanDebug] = useState('');
+  // Zoom numérique (CSS scale) sur le conteneur caméra — html5-qrcode n'expose pas de zoom
+  // natif, donc on zoome visuellement le conteneur (overflow:hidden l'empêche de déborder).
+  const [scanZoom, setScanZoom] = useState(1);
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrStatus, setOcrStatus] = useState('');
   const scanDebugLastUpdate = useRef(0);
@@ -4911,7 +4914,16 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                       petit fait redescendre l'image en basse résolution avant même la tentative
                       de lecture, ce qui peut empêcher le décodage d'un code-barres pourtant net
                       et bien cadré. Agrandi au maximum disponible pour donner plus de détail. */}
-                  <div id="gencode-scan-container" style={{ position:'relative', borderRadius:12, overflow:'hidden', width:'100%', maxWidth:520, margin:'0 auto', height:380 }} />
+                  <div style={{ position:'relative', borderRadius:12, overflow:'hidden', width:'100%', maxWidth:520, margin:'0 auto', height:380 }}>
+                    <div id="gencode-scan-container" style={{ width:'100%', height:'100%', transform:`scale(${scanZoom})`, transformOrigin:'center center' }} />
+                    {scanning && (
+                      <div style={{ position:'absolute', bottom:10, left:'50%', transform:'translateX(-50%)', display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,0.55)', borderRadius:20, padding:'6px 14px', zIndex:2 }}>
+                        <span style={{ color:'#fff', fontSize:12 }}>🔍</span>
+                        <input type="range" min="1" max="3" step="0.1" value={scanZoom} onChange={e => setScanZoom(parseFloat(e.target.value))} style={{ width:120 }} />
+                        <span style={{ color:'#fff', fontSize:11, minWidth:26, textAlign:'right' }}>{scanZoom.toFixed(1)}x</span>
+                      </div>
+                    )}
+                  </div>
                   <button onClick={async () => {
                     // Si un scan est déjà en cours, ce bouton sert à l'annuler (utile si la
                     // détection reste bloquée) plutôt que de tenter d'en démarrer un 2e par-dessus.
