@@ -18,8 +18,15 @@ import { PageHeader } from "./shared";
 //                                       clients qui l'ont pris par jour.
 // ═══════════════════════════════════════════════════════════════════════════
 
-type RefLigne = { a: string; c: string; g: string | null; f: string | null; colis: number };
+type RefLigne = { a: string; c: string; g: string | null; f: string | null; colis: number; mtVente?: number; mtAchat?: number };
 type RefJour = { a: string; c: string; d: string; colis: number; mtVente?: number };
+
+function fmtEur(n: number): string {
+  return n.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " €";
+}
+function fmtColis(n: number): string {
+  return n.toLocaleString("fr-FR", { maximumFractionDigits: 0 });
+}
 
 // Prix de vente unitaire (par colis) déduit du montant vente et de la quantité de la ligne.
 function prixUnitaire(r: RefJour): string {
@@ -121,6 +128,17 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   const [dailyRetry, setDailyRetry] = useState(0);
   const [generatingSemaines, setGeneratingSemaines] = useState(false);
 
+  // ─── Stats de vente réelles (page d'accueil du module) ───
+  // C'est la page principale : on regarde d'abord ce qui s'est VRAIMENT vendu sur une période
+  // (souvent une semaine), par article ou par client, avant de créer un programme d'achat
+  // dessus — plutôt que de partir direct sur une liste de périodes vides.
+  const [statsDebut, setStatsDebut] = useState("");
+  const [statsFin, setStatsFin] = useState("");
+  const [statsVue, setStatsVue] = useState<"produit" | "client">("produit");
+  const [statsSearch, setStatsSearch] = useState("");
+  const [statsDetailNom, setStatsDetailNom] = useState<string | null>(null);
+  const [typeProgrammeChoisi, setTypeProgrammeChoisi] = useState<"produit" | "client">("produit");
+
   // ─── Référence N-1 agrégée (statique, chargée une seule fois à l'ouverture ; relançable via refRetry) ───
   useEffect(() => {
     setRefError(false);
@@ -130,16 +148,111 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
       .catch(() => setRefError(true));
   }, [refRetry]);
 
-  // ─── Référence N-1 détaillée jour par jour (chargée une fois qu'une période est ouverte ; relançable via dailyRetry) ───
+  // ─── Détail jour par jour — chargé dès l'ouverture du module (pas seulement une fois une
+  // période sélectionnée) car la page principale (stats de vente réelles) en a besoin
+  // immédiatement, avant même qu'un programme n'existe. Relançable via dailyRetry. ───
   useEffect(() => {
-    if (!selectedId || dailyRef) return;
+    if (dailyRef) return;
     setDailyLoading(true);
     setDailyError(false);
     fetch("/data/reference_ventes_jour_2025.json", { cache: "no-store" })
       .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(data => { setDailyRef(data); setDailyLoading(false); })
       .catch(() => { setDailyError(true); setDailyLoading(false); });
-  }, [selectedId, dailyRetry]);
+  }, [dailyRetry]);
+
+  // Raccourcis de période pour les stats de vente réelles.
+  const appliquerRaccourciStats = (type: "aujourdhui" | "hier" | "7j" | "semaine" | "mois" | "tout") => {
+    const now = new Date();
+    if (type === "tout") { setStatsDebut(""); setStatsFin(""); return; }
+    if (type === "aujourdhui") { const s = toLocalISO(now); setStatsDebut(s); setStatsFin(s); return; }
+    if (type === "hier") { const h = new Date(now); h.setDate(h.getDate() - 1); const s = toLocalISO(h); setStatsDebut(s); setStatsFin(s); return; }
+    if (type === "7j") { const d = new Date(now); d.setDate(d.getDate() - 6); setStatsDebut(toLocalISO(d)); setStatsFin(toLocalISO(now)); return; }
+    if (type === "semaine") { const d = new Date(now); const jour = (d.getDay() + 6) % 7; d.setDate(d.getDate() - jour); setStatsDebut(toLocalISO(d)); setStatsFin(toLocalISO(now)); return; }
+    if (type === "mois") { const d = new Date(now.getFullYear(), now.getMonth(), 1); setStatsDebut(toLocalISO(d)); setStatsFin(toLocalISO(now)); return; }
+  };
+
+  // Taux moyen achat/vente par produit sur l'année de référence — le détail jour par jour n'a
+  // que le montant vente, donc le coût d'achat sur une période précise est estimé à partir de
+  // ce taux annuel moyen.
+  const ratioAchatParProduit = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!reference) return map;
+    const totaux = new Map<string, { vente: number; achat: number }>();
+    for (const l of reference) {
+      const e = totaux.get(l.a) || { vente: 0, achat: 0 };
+      e.vente += l.mtVente || 0; e.achat += l.mtAchat || 0;
+      totaux.set(l.a, e);
+    }
+    totaux.forEach((v, k) => map.set(k, v.vente > 0 ? v.achat / v.vente : 0));
+    return map;
+  }, [reference]);
+
+  const lignesStats = useMemo(() => {
+    if (!dailyRef) return [];
+    let rows = dailyRef;
+    if (statsDebut) rows = rows.filter(r => r.d >= statsDebut);
+    if (statsFin) rows = rows.filter(r => r.d <= statsFin);
+    return rows;
+  }, [dailyRef, statsDebut, statsFin]);
+
+  const totauxStats = useMemo(() => {
+    let colis = 0, vente = 0, achat = 0;
+    for (const r of lignesStats) {
+      colis += r.colis || 0;
+      vente += r.mtVente || 0;
+      achat += (r.mtVente || 0) * (ratioAchatParProduit.get(r.a) || 0);
+    }
+    return { colis, vente, achat, marge: vente - achat };
+  }, [lignesStats, ratioAchatParProduit]);
+
+  const agregatStats = useMemo(() => {
+    const map = new Map<string, { nom: string; colis: number; vente: number; achat: number; autres: Set<string> }>();
+    for (const r of lignesStats) {
+      const key = statsVue === "produit" ? r.a : r.c;
+      const e = map.get(key) || { nom: key, colis: 0, vente: 0, achat: 0, autres: new Set<string>() };
+      e.colis += r.colis || 0;
+      e.vente += r.mtVente || 0;
+      e.achat += (r.mtVente || 0) * (ratioAchatParProduit.get(r.a) || 0);
+      e.autres.add(statsVue === "produit" ? r.c : r.a);
+      map.set(key, e);
+    }
+    return Array.from(map.values())
+      .map(e => ({ nom: e.nom, colis: e.colis, vente: e.vente, achat: e.achat, marge: e.vente - e.achat, nbAutres: e.autres.size }))
+      .sort((a, b) => b.vente - a.vente);
+  }, [lignesStats, statsVue, ratioAchatParProduit]);
+
+  const qStats = statsSearch.trim().toLowerCase();
+  const filtresStats = useMemo(() => (qStats ? agregatStats.filter(a => a.nom.toLowerCase().includes(qStats)) : agregatStats), [agregatStats, qStats]);
+
+  const detailStats = useMemo(() => {
+    if (!statsDetailNom) return [];
+    const rows = lignesStats.filter(r => (statsVue === "produit" ? r.a : r.c) === statsDetailNom);
+    const map = new Map<string, { nom: string; colis: number; vente: number }>();
+    for (const r of rows) {
+      const key = statsVue === "produit" ? r.c : r.a;
+      const e = map.get(key) || { nom: key, colis: 0, vente: 0 };
+      e.colis += r.colis || 0; e.vente += r.mtVente || 0;
+      map.set(key, e);
+    }
+    return Array.from(map.values()).sort((a, b) => b.vente - a.vente);
+  }, [lignesStats, statsDetailNom, statsVue]);
+
+  // Ouvre le formulaire de création de programme, pré-rempli avec la période actuellement
+  // affichée dans les stats (souvent une semaine) et le type choisi (par article ou par
+  // client) — sans avoir à ressaisir des dates déjà choisies juste au-dessus.
+  const ouvrirNouveauProgramme = (type: "produit" | "client") => {
+    setTypeProgrammeChoisi(type);
+    setVueObjectifs(type);
+    const nomType = type === "produit" ? "par article" : "par client";
+    const periodeLabel = statsDebut && statsFin
+      ? `${new Date(statsDebut).toLocaleDateString("fr-FR")} → ${new Date(statsFin).toLocaleDateString("fr-FR")}`
+      : "";
+    setNewNom(periodeLabel ? `Programme ${nomType} — ${periodeLabel}` : `Programme ${nomType}`);
+    setNewDebut(statsDebut || toLocalISO(new Date()));
+    setNewFin(statsFin || toLocalISO(new Date()));
+    setShowNewForm(true);
+  };
 
   // ─── FIREBASE: liste des périodes ───
   useEffect(() => {
@@ -165,6 +278,10 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
       setSelectedId(res.key);
       setShowNewForm(false);
       setNewNom(""); setNewDebut(""); setNewFin("");
+      // Direct dans l'onglet Objectifs (type déjà choisi via ouvrirNouveauProgramme) plutôt
+      // que sur l'onglet Recherche — on vient de choisir "par article" ou "par client", le
+      // but immédiat est de saisir les quantités, pas de rechercher un historique N-1.
+      setOnglet("objectifs");
     } catch { alert("Erreur lors de la création de la période."); }
     setSaving(false);
   };
