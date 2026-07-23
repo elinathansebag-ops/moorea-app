@@ -1558,7 +1558,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
                      ${s.dureeComptageMs ? `<span style="font-size:11px;background:#faf8f3;border:1px solid #e8e0d0;color:#8a6f2e;padding:4px 10px;border-radius:8px;font-weight:600">⏱ ${formatDuree(s.dureeComptageMs)}</span>` : ""}
                      <button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>
                      <button class="btn btn-sm" style="border-color:#c8a84b;color:#8a6f2e" onclick="sEnvoyerStockJordan('${sid}','${team}')">📧 Envoyer</button>
-                     <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}')">🔓 Rouvrir</button>`
+                     <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}','${team}')">🔓 Rouvrir</button>`
                   : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>
                      ${comptageEnCours(s) ? "" : `<button class="btn btn-sm btn-danger" onclick="sDeleteStock('${sid}')">🗑</button>`}`}
               </div>
@@ -1751,12 +1751,14 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
 
       // Rouvrir un stock clôturé
-      (window as any).sReouvrir = async (sid: string) => {
+      (window as any).sReouvrir = async (sid: string, team: string) => {
         if (!confirm("Rouvrir ce stock pour le modifier ?")) return;
         try {
           await setDoc(doc(db, "stocks", sid), { cloture: false, clotureDate: null }, { merge: true });
           toast("🔓 Stock rouvert !");
-          (window as any).sShowPage("home");
+          // Va directement sur la page de comptage de ce stock/équipe au lieu de rester sur la
+          // liste des stocks — avant il fallait rouvrir puis chercher/cliquer "Compter" soi-même.
+          await (window as any).sRecompterDepuis(sid, team);
         } catch { toast("Erreur"); }
       };
 
