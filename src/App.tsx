@@ -3798,7 +3798,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 value={searchText}
                 onChange={e => setSearchText(e.target.value)}
                 placeholder="🔍 Rechercher produit, fournisseur…"
-                style={{ flex: 2 }}
+                style={{ flex: "2 1 220px", minWidth: 180, padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#374151", background: "#fff", outline: "none" }}
               />
               <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: "10px 10px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#374151", background: "#fff", cursor: "pointer" }}>
                 <option value="date_desc">📅 Plus récent</option>
