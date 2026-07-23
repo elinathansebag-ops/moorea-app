@@ -3755,10 +3755,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
         {vue === "historique" && (
           <div className="fade-up">
-            <button onClick={() => { setScannerMode("rapport"); setShowScanner(true); }}
-              style={{ width: "100%", marginBottom: 12, padding: "11px", borderRadius: 12, border: "1.5px solid #c8a84b", background: "#faf8f0", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              📷 Scanner une palette → Créer un rapport
-            </button>
             {(() => {
               const types = [
                 { id: "stock", label: "Conformes", color: "#16a34a", bg: "#f0fdf4", border: "#86efac" },
