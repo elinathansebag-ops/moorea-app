@@ -43,6 +43,7 @@ type Ligne = {
   nom: string;
   qte?: string;
   notes?: string;
+  selectionne?: boolean;
   updatedAt?: number;
   updatedBy?: string;
 };
@@ -106,8 +107,6 @@ function nbSemainesISO(year: number): number {
 }
 
 export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
-  const [reference, setReference] = useState<RefLigne[] | null>(null);
-  const [refError, setRefError] = useState(false);
   const [dailyRef, setDailyRef] = useState<RefJour[] | null>(null);
   // Ventes importées depuis l'appli (bouton "Importer stat") — en plus du gros export
   // statique 2025 (public/data/), stockées dans Firebase pour être disponibles tout de suite,
@@ -123,14 +122,16 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   const [onglet, setOnglet] = useState<"recherche" | "objectifs">("recherche");
   const [vueObjectifs, setVueObjectifs] = useState<"produit" | "client">("produit");
   const [searchObjectifs, setSearchObjectifs] = useState("");
+  const [filtreObjectifs, setFiltreObjectifs] = useState<"tous" | "selectionnes">("tous");
   const [clientSaisi, setClientSaisi] = useState("");
   const [produitSaisi, setProduitSaisi] = useState("");
+  const [showClientDrop, setShowClientDrop] = useState(false);
+  const [showProduitDrop, setShowProduitDrop] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newNom, setNewNom] = useState("");
   const [newDebut, setNewDebut] = useState("");
   const [newFin, setNewFin] = useState("");
   const [saving, setSaving] = useState(false);
-  const [refRetry, setRefRetry] = useState(0);
   const [dailyRetry, setDailyRetry] = useState(0);
   const [generatingSemaines, setGeneratingSemaines] = useState(false);
 
@@ -144,15 +145,6 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
   const [statsSearch, setStatsSearch] = useState("");
   const [statsDetailNom, setStatsDetailNom] = useState<string | null>(null);
   const [typeProgrammeChoisi, setTypeProgrammeChoisi] = useState<"produit" | "client">("produit");
-
-  // ─── Référence N-1 agrégée (statique, chargée une seule fois à l'ouverture ; relançable via refRetry) ───
-  useEffect(() => {
-    setRefError(false);
-    fetch("/data/reference_ventes_2025.json", { cache: "no-store" })
-      .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(data => setReference(data))
-      .catch(() => setRefError(true));
-  }, [refRetry]);
 
   // ─── Détail jour par jour — chargé dès l'ouverture du module (pas seulement une fois une
   // période sélectionnée) car la page principale (stats de vente réelles) en a besoin
@@ -417,49 +409,68 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
     }).catch(() => {});
   };
 
-  // ─── Listes distinctes pour l'autocomplete (recherche) ───
+  // Coche/décoche un produit ou client pour l'inclure dans le programme — pour ne pas être
+  // obligé de saisir une quantité sur les ~1000+ lignes du catalogue quand on ne veut en
+  // choisir que quelques-unes. Une ligne cochée peut ensuite être filtrée via "Sélectionnés".
+  const toggleSelection = (type: "produit" | "client", nom: string) => {
+    if (!selectedId) return;
+    const key = ligneKey(type, nom);
+    const dejaSelectionne = !!lignes[key]?.selectionne;
+    update(ref(db, `programme_achat_lignes/${selectedId}/${key}`), {
+      type, nom, selectionne: !dejaSelectionne, updatedAt: Date.now(), updatedBy: userName || "-",
+    }).catch(() => {});
+  };
+
+  // ─── Listes distinctes pour l'autocomplete (recherche) — basées sur le détail jour par jour
+  // (dailyRefTotal, export statique + ventes importées) plutôt que sur un 2e fichier statique
+  // séparé, qui pouvait échouer à charger indépendamment (page Objectifs vide/en erreur alors
+  // que le reste du module fonctionnait). ───
   const listeClients = useMemo(() => {
-    if (!reference) return [];
-    return Array.from(new Set(reference.map(l => l.c))).sort((a, b) => a.localeCompare(b));
-  }, [reference]);
+    if (!dailyRefTotal) return [];
+    return Array.from(new Set(dailyRefTotal.map(l => l.c))).sort((a, b) => a.localeCompare(b));
+  }, [dailyRefTotal]);
   const listeProduits = useMemo(() => {
-    if (!reference) return [];
-    return Array.from(new Set(reference.map(l => l.a))).sort((a, b) => a.localeCompare(b));
-  }, [reference]);
+    if (!dailyRefTotal) return [];
+    return Array.from(new Set(dailyRefTotal.map(l => l.a))).sort((a, b) => a.localeCompare(b));
+  }, [dailyRefTotal]);
 
   // ─── Agrégation par produit (tous clients confondus) — pour l'onglet Objectifs ───
   const parProduit = useMemo(() => {
-    if (!reference) return [];
+    if (!dailyRefTotal) return [];
     const map = new Map<string, { nom: string; colis: number }>();
-    for (const l of reference) {
+    for (const l of dailyRefTotal) {
       const e = map.get(l.a) || { nom: l.a, colis: 0 };
       e.colis += l.colis;
       map.set(l.a, e);
     }
     return Array.from(map.values()).sort((a, b) => b.colis - a.colis);
-  }, [reference]);
+  }, [dailyRefTotal]);
 
   // ─── Agrégation par client (tous produits confondus) — pour l'onglet Objectifs ───
   const parClient = useMemo(() => {
-    if (!reference) return [];
+    if (!dailyRefTotal) return [];
     const map = new Map<string, { nom: string; colis: number; nbArticles: Set<string> }>();
-    for (const l of reference) {
+    for (const l of dailyRefTotal) {
       const e = map.get(l.c) || { nom: l.c, colis: 0, nbArticles: new Set<string>() };
       e.colis += l.colis; e.nbArticles.add(l.a);
       map.set(l.c, e);
     }
     return Array.from(map.values()).map(e => ({ nom: e.nom, colis: e.colis, nbArticles: e.nbArticles.size })).sort((a, b) => b.colis - a.colis);
-  }, [reference]);
+  }, [dailyRefTotal]);
 
   const qObj = searchObjectifs.trim().toLowerCase();
   const produitsAffiches = useMemo(() => {
-    const base = qObj ? parProduit.filter(p => p.nom.toLowerCase().includes(qObj)) : parProduit;
+    let base = qObj ? parProduit.filter(p => p.nom.toLowerCase().includes(qObj)) : parProduit;
+    if (filtreObjectifs === "selectionnes") base = base.filter(p => lignes[ligneKey("produit", p.nom)]?.selectionne);
     return base.slice(0, qObj ? 300 : 150);
-  }, [parProduit, qObj]);
+  }, [parProduit, qObj, filtreObjectifs, lignes]);
   const clientsAffiches = useMemo(() => {
-    const base = qObj ? parClient.filter(c => c.nom.toLowerCase().includes(qObj)) : parClient;
+    let base = qObj ? parClient.filter(c => c.nom.toLowerCase().includes(qObj)) : parClient;
+    if (filtreObjectifs === "selectionnes") base = base.filter(c => lignes[ligneKey("client", c.nom)]?.selectionne);
     return base.slice(0, qObj ? 300 : 150);
-  }, [parClient, qObj]);
+  }, [parClient, qObj, filtreObjectifs, lignes]);
+
+  const nbSelectionnes = useMemo(() => Object.values(lignes).filter(l => l.selectionne).length, [lignes]);
 
   const cfg = selectedId ? periodes[selectedId] : null;
 
@@ -528,16 +539,34 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
 
           {!dailyLoading && !dailyError && (
             <>
+              {/* Période couverte par les données chargées + import d'un nouvel export */}
+              <div style={{ background: "#fff", borderRadius: 10, padding: 12, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <p style={{ margin: 0, fontSize: 12.5, color: "#555" }}>
+                  {periodeCouverte
+                    ? <>📅 Données disponibles du <b style={{ color: "#1a2e1a" }}>{new Date(periodeCouverte.min).toLocaleDateString("fr-FR")}</b> au <b style={{ color: "#1a2e1a" }}>{new Date(periodeCouverte.max).toLocaleDateString("fr-FR")}</b></>
+                    : "Aucune donnée de vente chargée."}
+                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {importStatus && <span style={{ fontSize: 11.5, color: "#555" }}>{importStatus}</span>}
+                  <input type="file" id="pa-import-file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) importerFichierVentes(f); e.target.value = ""; }} />
+                  <button onClick={() => document.getElementById("pa-import-file")?.click()} disabled={importingVentes} style={{
+                    padding: "8px 14px", borderRadius: 8, border: "none", background: "#c8a84b", color: "#0a0a0a",
+                    fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap",
+                  }}>{importingVentes ? "⏳ Import…" : "📥 Importer stat"}</button>
+                </div>
+              </div>
+
               {/* Sélection de période */}
               <div style={{ background: "#fff", borderRadius: 10, padding: 12, marginBottom: 12 }}>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                   <div style={{ flex: 1, minWidth: 130 }}>
                     <label style={{ fontSize: 11.5, fontWeight: 700, color: "#555", display: "block", marginBottom: 4 }}>DU</label>
-                    <input type="date" value={statsDebut} onChange={e => setStatsDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box" }} />
+                    <input type="date" value={statsDebut} min={periodeCouverte?.min} max={periodeCouverte?.max} onChange={e => setStatsDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box" }} />
                   </div>
                   <div style={{ flex: 1, minWidth: 130 }}>
                     <label style={{ fontSize: 11.5, fontWeight: 700, color: "#555", display: "block", marginBottom: 4 }}>AU</label>
-                    <input type="date" value={statsFin} onChange={e => setStatsFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box" }} />
+                    <input type="date" value={statsFin} min={periodeCouverte?.min} max={periodeCouverte?.max} onChange={e => setStatsFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box" }} />
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -584,11 +613,11 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                   <div style={{ display: "flex", gap: 10 }}>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Date de début</label>
-                      <input type="date" value={newDebut} onChange={e => setNewDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
+                      <input type="date" value={newDebut} min={periodeCouverte?.min} max={periodeCouverte?.max} onChange={e => setNewDebut(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 12, fontWeight: 700, color: "#555" }}>Date de fin</label>
-                      <input type="date" value={newFin} onChange={e => setNewFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
+                      <input type="date" value={newFin} min={periodeCouverte?.min} max={periodeCouverte?.max} onChange={e => setNewFin(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #d1d5db", marginTop: 4, boxSizing: "border-box" }} />
                     </div>
                   </div>
                   <p style={{ fontSize: 11.5, color: "#aaa", margin: "8px 0 0" }}>
@@ -714,13 +743,6 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
             {" · "}Référence N-1 : {n1Debut && new Date(n1Debut).toLocaleDateString("fr-FR")} → {n1Fin && new Date(n1Fin).toLocaleDateString("fr-FR")}
           </p>
         )}
-        {refError && (
-          <p style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <span>Impossible de charger les statistiques de référence.</span>
-            <button onClick={() => setRefRetry(n => n + 1)} style={{ border: "none", background: "#dc2626", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Réessayer</button>
-          </p>
-        )}
-
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
           <button onClick={() => setOnglet("recherche")} style={{
             flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13,
@@ -829,6 +851,20 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
 
             <input value={searchObjectifs} onChange={e => setSearchObjectifs(e.target.value)} placeholder={vueObjectifs === "produit" ? "Rechercher un produit…" : "Rechercher un client…"} style={{ ...searchBoxStyle, marginBottom: 10 }} />
 
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <button onClick={() => setFiltreObjectifs("tous")} style={{
+                flex: 1, padding: "7px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", fontWeight: 700, fontSize: 12,
+                background: filtreObjectifs === "tous" ? "#ea580c" : "#fff", color: filtreObjectifs === "tous" ? "#fff" : "#555",
+              }}>Tout le catalogue</button>
+              <button onClick={() => setFiltreObjectifs("selectionnes")} style={{
+                flex: 1, padding: "7px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", fontWeight: 700, fontSize: 12,
+                background: filtreObjectifs === "selectionnes" ? "#ea580c" : "#fff", color: filtreObjectifs === "selectionnes" ? "#fff" : "#555",
+              }}>✅ Sélectionnés ({nbSelectionnes})</button>
+            </div>
+            <p style={{ fontSize: 11, color: "#aaa", margin: "-4px 0 10px" }}>
+              Coche les {vueObjectifs === "produit" ? "articles" : "clients"} à inclure dans ce programme — pas besoin de saisir une quantité sur tout le catalogue.
+            </p>
+
             <div style={{ background: "#fff", borderRadius: 10, padding: "8px 10px", marginBottom: 10, fontSize: 12.5, color: "#555", display: "flex", gap: 16 }}>
               <span>Total à acheter (produits) : <b style={{ color: "#1a2e1a" }}>{totaux.achat.toLocaleString("fr-FR")}</b> colis</span>
               <span>Total prévu vente (clients) : <b style={{ color: "#1a2e1a" }}>{totaux.vente.toLocaleString("fr-FR")}</b> colis</span>
@@ -839,6 +875,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead>
                     <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
+                      <th style={{ padding: "8px 6px", width: 28 }}></th>
                       <th style={{ padding: "8px 10px" }}>Produit</th>
                       <th style={{ padding: "8px 6px", textAlign: "right" }}>Colis N-1 (total)</th>
                       <th style={{ padding: "8px 10px", textAlign: "right" }}>Qté à acheter</th>
@@ -848,7 +885,10 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                     {produitsAffiches.map(p => {
                       const l = lignes[ligneKey("produit", p.nom)];
                       return (
-                        <tr key={p.nom} style={{ borderTop: "1px solid #f0f0f0" }}>
+                        <tr key={p.nom} style={{ borderTop: "1px solid #f0f0f0", background: l?.selectionne ? "#fff7ed" : "transparent" }}>
+                          <td style={{ padding: "6px 6px", textAlign: "center" }}>
+                            <input type="checkbox" checked={!!l?.selectionne} onChange={() => toggleSelection("produit", p.nom)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                          </td>
                           <td style={{ padding: "6px 10px" }}>{p.nom}</td>
                           <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{p.colis.toLocaleString("fr-FR")}</td>
                           <td style={{ padding: "6px 10px", textAlign: "right" }}>
@@ -857,8 +897,8 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                         </tr>
                       );
                     })}
-                    {produitsAffiches.length === 0 && reference && (
-                      <tr><td colSpan={3} style={{ padding: 16, textAlign: "center", color: "#888" }}>Aucun produit trouvé.</td></tr>
+                    {produitsAffiches.length === 0 && dailyRefTotal && (
+                      <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "#888" }}>{filtreObjectifs === "selectionnes" ? "Aucun article sélectionné pour l'instant." : "Aucun produit trouvé."}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -866,6 +906,7 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead>
                     <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
+                      <th style={{ padding: "8px 6px", width: 28 }}></th>
                       <th style={{ padding: "8px 10px" }}>Client</th>
                       <th style={{ padding: "8px 6px", textAlign: "right" }}>Articles N-1</th>
                       <th style={{ padding: "8px 6px", textAlign: "right" }}>Colis N-1 (total)</th>
@@ -876,7 +917,10 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                     {clientsAffiches.map(c => {
                       const l = lignes[ligneKey("client", c.nom)];
                       return (
-                        <tr key={c.nom} style={{ borderTop: "1px solid #f0f0f0" }}>
+                        <tr key={c.nom} style={{ borderTop: "1px solid #f0f0f0", background: l?.selectionne ? "#fff7ed" : "transparent" }}>
+                          <td style={{ padding: "6px 6px", textAlign: "center" }}>
+                            <input type="checkbox" checked={!!l?.selectionne} onChange={() => toggleSelection("client", c.nom)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                          </td>
                           <td style={{ padding: "6px 10px" }}>{c.nom}</td>
                           <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{c.nbArticles}</td>
                           <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{c.colis.toLocaleString("fr-FR")}</td>
@@ -886,8 +930,8 @@ export function ProgrammeAchatModule({ onClose, userName }: { onClose: () => voi
                         </tr>
                       );
                     })}
-                    {clientsAffiches.length === 0 && reference && (
-                      <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "#888" }}>Aucun résultat.</td></tr>
+                    {clientsAffiches.length === 0 && dailyRefTotal && (
+                      <tr><td colSpan={5} style={{ padding: 16, textAlign: "center", color: "#888" }}>{filtreObjectifs === "selectionnes" ? "Aucun client sélectionné pour l'instant." : "Aucun résultat."}</td></tr>
                     )}
                   </tbody>
                 </table>
