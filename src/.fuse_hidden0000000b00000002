@@ -706,7 +706,7 @@ export default function App() {
 
           if (!arr.length) {
             showToast("Aucun arrivage détecté - vérifie la console", "error");
-
+            console.log("Lines parsed:", lines.slice(0, 50));
             setImportingArr(false); return;
           }
           setPreviewArr(arr); setImportingArr(false);

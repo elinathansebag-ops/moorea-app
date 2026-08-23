@@ -1075,7 +1075,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                   setStatus({ msg: `✅ Client "${nom}" ajouté avec le code ${code}`, type: "success" });
                   setNewName("");
                   setNewCode("");
-
+                  console.log("Client ajouté :", nom, code);
                 }} style={{ background: "#27ae60", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all .2s" }}>Ajouter client</button>
               </div>
               <p style={{ margin: "12px 0 0", fontSize: 11, color: "#666", fontWeight: 600 }}>💡 Les doublons sont détectés automatiquement</p>

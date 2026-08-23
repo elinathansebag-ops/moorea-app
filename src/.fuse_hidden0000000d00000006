@@ -301,7 +301,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
                         setStockDate(session.date);
                         const entryId = session.date.replace(/\//g, "-");
                         await update(ref(db, `yukon/stocks_manuels/${entryId}`), { date: session.date, stocks: newStocks });
-                      } catch (e) { }
+                      } catch (e) { console.log("Erreur chargement comptages", e); }
                     }}
                       defaultValue=""
                       style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #16a34a", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
