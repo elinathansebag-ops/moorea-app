@@ -1,3 +1,6 @@
+// ✅ TEST MODIFICATION - Vérification que GitHub Desktop reçoit et publie les changements correctement 🚀
+// Cette ligne a été ajoutée pour tester le workflow de publication
+
 import { useState, useEffect, useRef } from "react";
 import jsPDF from "jspdf";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
