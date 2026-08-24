@@ -125,6 +125,9 @@ export function formaterHeureMesure(at: number) {
 }
 
 export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onReporterDate, selectMode, selected, onToggleSelect, gencodeArticles }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; onReporterDate?: (arrivage: any, nouvelleDateFr: string) => void; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[] }) {
+  // Déterminer si c'est un carton Go-Embal pour simplifier le formulaire
+  const isGoEmbal = arrivage.carton_commande_id || arrivage.fournisseur === "Go-Embal";
+
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
   const [poidsOk, setPoidsOk] = useState(true);
@@ -313,14 +316,16 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => { setDateReportIso(frToIso(arrivage.date)); setShowReport(true); }} title="Reporter à une autre date"
               style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
-            {matchedGencode && (
+            {!isGoEmbal && matchedGencode && (
               <button onClick={() => setShowGencodeScan(true)} style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷️ Contrôler gencode</button>
             )}
           </div>
-          <button onClick={() => setShowScanEtiquette(true)}
-            style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-            📷 Scanner l'étiquette
-          </button>
+          {!isGoEmbal && (
+            <button onClick={() => setShowScanEtiquette(true)}
+              style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+              📷 Scanner l'étiquette
+            </button>
+          )}
         </div>
       </div>
       {showGencodeScan && matchedGencode && <GencodeChecker onClose={() => setShowGencodeScan(false)} expectedEan={matchedGencode.ean} expectedArticle={matchedGencode} />}
@@ -345,61 +350,67 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
             </span>
           )}
         </div>
-        <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
-          <input type="date"
-            value={dlc}
-            onChange={e => setDlc(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
-          />
-        </div>
-        <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>⚖️ Poids brut (kg)</span>
-          <input type="number" inputMode="decimal" step="0.1" min="0"
-            value={poidsBrut}
-            placeholder="0"
-            onChange={e => setPoidsBrut(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
-          />
-        </div>
-        <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🥬 Poids net (kg)</span>
-          <input type="number" inputMode="decimal" step="0.1" min="0"
-            value={poidsNet}
-            placeholder="0"
-            onChange={e => setPoidsNet(e.target.value)}
-            style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
-          />
-        </div>
+        {!isGoEmbal && (
+          <>
+            <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
+              <input type="date"
+                value={dlc}
+                onChange={e => setDlc(e.target.value)}
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>⚖️ Poids brut (kg)</span>
+              <input type="number" inputMode="decimal" step="0.1" min="0"
+                value={poidsBrut}
+                placeholder="0"
+                onChange={e => setPoidsBrut(e.target.value)}
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🥬 Poids net (kg)</span>
+              <input type="number" inputMode="decimal" step="0.1" min="0"
+                value={poidsNet}
+                placeholder="0"
+                onChange={e => setPoidsNet(e.target.value)}
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Traçabilité fournisseur, températures et poids de barquettes : trois colonnes sur
           une même ligne. Elles repassent l'une sous l'autre sur écran étroit (flexWrap), et
           les listes de mesures démarrent vides pour ne pas alourdir les autres produits. */}
       <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <div style={{ flex: 1, minWidth: 210, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
-            {tracaList.map((t, idx) => (
-              <div key={idx} style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                <input type="text"
-                  value={t}
-                  placeholder="N° traçabilité"
-                  onChange={e => modifierTraca(idx, e.target.value)}
-                  style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
-                />
-                {idx === tracaList.length - 1 && (
-                  <button onClick={ajouterTraca} title="Ajouter un n° de traçabilité" style={{ flexShrink: 0, background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-                    + Ajouter
-                  </button>
-                )}
-                {tracaList.length > 1 && (
-                  <button onClick={() => retirerTraca(idx)} title="Retirer ce n°" style={{ flexShrink: 0, background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, fontWeight: 700, padding: "0 4px" }}>✕</button>
-                )}
-              </div>
-            ))}
+        {!isGoEmbal && (
+          <div style={{ flex: 1, minWidth: 210, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
+              {tracaList.map((t, idx) => (
+                <div key={idx} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                  <input type="text"
+                    value={t}
+                    placeholder="N° traçabilité"
+                    onChange={e => modifierTraca(idx, e.target.value)}
+                    style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+                  />
+                  {idx === tracaList.length - 1 && (
+                    <button onClick={ajouterTraca} title="Ajouter un n° de traçabilité" style={{ flexShrink: 0, background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                      + Ajouter
+                    </button>
+                  )}
+                  {tracaList.length > 1 && (
+                    <button onClick={() => retirerTraca(idx)} title="Retirer ce n°" style={{ flexShrink: 0, background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, fontWeight: 700, padding: "0 4px" }}>✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {[
           { cle: "temp", titre: "🌡️ Températures (°C)", liste: temperatures, setter: setTemperatures, step: "0.1", min: undefined, libelle: "une température" },
@@ -470,38 +481,42 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       {(litige || hasEcartColis) && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
 
       {/* Palettes — détermine combien d'étiquettes seront imprimées automatiquement à la validation */}
-      <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
-        <div style={{ display: "flex", gap: 5, marginBottom: nbPalettes > 1 ? 8 : 0 }}>
-          {[1,2,3,4,5,6].map(n => (
-            <button key={n} onClick={() => updateNbPalettes(n)}
-              style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: `1.5px solid ${nbPalettes===n?"#c8a84b":"#e5e7eb"}`, background: nbPalettes===n?"#fffbf0":"#fff", cursor: "pointer", fontSize: 12, fontWeight: 800, color: nbPalettes===n?"#8a6f2e":"#9ca3af" }}>
-              {n}
-            </button>
-          ))}
-        </div>
-        {nbPalettes > 1 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {repartitionPalettes.map((q, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: "#9ca3af", width: 20, flexShrink: 0 }}>P{i+1}</span>
-                <input type="number" min="0" value={q} onChange={e => setQtePalette(i, e.target.value)}
-                  style={{ flex: 1, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, textAlign: "center", outline: "none" }} />
-                <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>colis</span>
+      {!isGoEmbal && (
+        <>
+          <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
+            <div style={{ display: "flex", gap: 5, marginBottom: nbPalettes > 1 ? 8 : 0 }}>
+              {[1,2,3,4,5,6].map(n => (
+                <button key={n} onClick={() => updateNbPalettes(n)}
+                  style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: `1.5px solid ${nbPalettes===n?"#c8a84b":"#e5e7eb"}`, background: nbPalettes===n?"#fffbf0":"#fff", cursor: "pointer", fontSize: 12, fontWeight: 800, color: nbPalettes===n?"#8a6f2e":"#9ca3af" }}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            {nbPalettes > 1 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {repartitionPalettes.map((q, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, color: "#9ca3af", width: 20, flexShrink: 0 }}>P{i+1}</span>
+                    <input type="number" min="0" value={q} onChange={e => setQtePalette(i, e.target.value)}
+                      style={{ flex: 1, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                    <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>colis</span>
+                  </div>
+                ))}
+                {repartitionPalettes.reduce((a,b)=>a+b,0) !== colisRecusNum && (
+                  <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#d97706" }}>⚠️ Total réparti ({repartitionPalettes.reduce((a,b)=>a+b,0)}) ≠ colis reçus ({colisRecusNum})</p>
+                )}
               </div>
-            ))}
-            {repartitionPalettes.reduce((a,b)=>a+b,0) !== colisRecusNum && (
-              <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#d97706" }}>⚠️ Total réparti ({repartitionPalettes.reduce((a,b)=>a+b,0)}) ≠ colis reçus ({colisRecusNum})</p>
             )}
           </div>
-        )}
-      </div>
-      <div style={{ textAlign: "right", marginBottom: 4 }}>
-        <button onClick={() => setSansEtiquette(v => !v)}
-          style={{ background: "none", border: "none", padding: 0, color: sansEtiquette ? "#d97706" : "#9ca3af", fontSize: 10.5, textDecoration: "underline", cursor: "pointer", fontWeight: sansEtiquette ? 700 : 400 }}>
-          {sansEtiquette ? "✓ Sans étiquette à la validation (cas rare)" : "Valider sans étiquette (cas rare)"}
-        </button>
-      </div>
+          <div style={{ textAlign: "right", marginBottom: 4 }}>
+            <button onClick={() => setSansEtiquette(v => !v)}
+              style={{ background: "none", border: "none", padding: 0, color: sansEtiquette ? "#d97706" : "#9ca3af", fontSize: 10.5, textDecoration: "underline", cursor: "pointer", fontWeight: sansEtiquette ? 700 : 400 }}>
+              {sansEtiquette ? "✓ Sans étiquette à la validation (cas rare)" : "Valider sans étiquette (cas rare)"}
+            </button>
+          </div>
+        </>
+      )}
       {paletteAbsente ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 10, background: "#fffbeb", border: "1.5px solid #fcd34d" }}>
           <span style={{ fontSize: 12.5, color: "#92400e", fontWeight: 600, flex: 1 }}>
