@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
+import * as XLSX from "xlsx";
 
-// Types de cartons disponibles
+// Types de cartons
 const CARTONS_CATALOGUE = {
   "DEMOISELLE ÉCRU": { dims: "300×200×80mm", prixHT: 0.44, parPalette: 520 },
   "ÉCRU 500": { dims: "500×300×105mm", prixHT: 1.04, parPalette: 176 },
@@ -12,11 +13,7 @@ const CARTONS_CATALOGUE = {
   "95 NOIR": { dims: "400×300×95mm", prixHT: 0.78, parPalette: 260 },
 };
 
-type LigneCarton = {
-  type: string;
-  nbPalettes: number;
-};
-
+type LigneCarton = { type: string; nbPalettes: number };
 type CartonCommande = {
   id: string;
   lignes: LigneCarton[];
@@ -28,23 +25,52 @@ type CartonCommande = {
   dateReception?: string;
 };
 
-export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
-  const [commandes, setCommandes] = useState<CartonCommande[]>([]);
-  const [activeTab, setActiveTab] = useState<"nouvelle" | "dashboard" | "stats">("dashboard");
+type IFCODeclaration = {
+  id: string;
+  user: string;
+  date: string;
+  lignes: number;
+  fichier: string;
+  type: "telechargement" | "envoi";
+  ts: number;
+};
 
-  // État pour les lignes de commande
+type IFCOClient = {
+  name: string;
+  code: number;
+};
+
+export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
+  const [activeTab, setActiveTab] = useState<"cartons" | "ifco" | "nouvelle-carton">("cartons");
+  const [commandes, setCommandes] = useState<CartonCommande[]>([]);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+
+  // Cartons form
   const [lignes, setLignes] = useState<LigneCarton[]>([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
-  const [dateLivraison, setDateLivraison] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [dateLivraison, setDateLivraison] = useState(new Date().toISOString().split("T")[0]);
   const [creneau, setCreneau] = useState<"1er tour 7h-11h" | "2e tour 11h-14h">("1er tour 7h-11h");
-  const [lieuLivraison, setLieuLivraison] = useState<string>("Moorea Commerce Fruit - Bat D3");
+  const [lieuLivraison, setLieuLivraison] = useState("Moorea Commerce Fruit - Bat D3");
   const [isEnvoyantEmail, setIsEnvoyantEmail] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+  // IFCO states
+  const [ifcoHistorique, setIfcoHistorique] = useState<IFCODeclaration[]>([]);
+  const [ifcoClients, setIfcoClients] = useState<Record<string, number>>({
+    "CSF AIRE SUR LA LYS - 351": 705359,
+    "CARREFOUR LCM AIRE SUR LA LYS": 705359,
+  });
+  const [ifcoFileData, setIfcoFileData] = useState<any[]>([]);
+  const [ifcoStatus, setIfcoStatus] = useState("");
+  const [ifcoStatusType, setIfcoStatusType] = useState("");
+  const [ifcoClientSearch, setIfcoClientSearch] = useState("");
+  const [ifcoEditingClient, setIfcoEditingClient] = useState<string | null>(null);
+  const [ifcoNewClientName, setIfcoNewClientName] = useState("");
+  const [ifcoNewClientCode, setIfcoNewClientCode] = useState("");
 
+  const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
-  // Charger les commandes depuis Firebase
+  // Load carton commands
   useEffect(() => {
     const u = onValue(ref(db, "prestataires_cartons"), (snap) => {
       const data = snap.val() || {};
@@ -53,81 +79,266 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     return () => u();
   }, []);
 
-  // Afficher notification pendant 3 secondes
+  // Load IFCO historique
   useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => setNotification(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [notification]);
+    const u = onValue(ref(db, "ifco_declarations"), (snap) => {
+      const data = snap.val() || {};
+      const entries = Object.entries(data).map(([id, v]: any) => ({ id, ...v }))
+        .sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0));
+      setIfcoHistorique(entries);
+    });
+    return () => u();
+  }, []);
 
-  // Ajouter une ligne
-  const ajouterLigne = () => {
-    setLignes([...lignes, { type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
+  // Load IFCO clients
+  useEffect(() => {
+    const u = onValue(ref(db, "ifco_clients"), (snap) => {
+      const data = snap.val();
+      if (data) setIfcoClients(data);
+    });
+    return () => u();
+  }, []);
+
+  // ─── IFCO FUNCTIONS ───
+  const addIfcoHisto = async (type: "telechargement" | "envoi", lignes: number, fichier: string) => {
+    const now = new Date();
+    const declaration: Omit<IFCODeclaration, "id"> = {
+      user: userName || "Utilisateur",
+      date: now.toLocaleDateString("fr-FR") + " " + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      lignes,
+      fichier,
+      type,
+      ts: now.getTime(),
+    };
+    await push(ref(db, "ifco_declarations"), declaration);
   };
 
-  // Modifier une ligne
+  const getIfcoCode = (nom: string): number | string => {
+    if (!nom) return "";
+    const key = nom.trim().toUpperCase();
+    for (const [k, v] of Object.entries(ifcoClients)) {
+      if (key === k.toUpperCase()) return v;
+    }
+    for (const [k, v] of Object.entries(ifcoClients)) {
+      if (key.includes(k.toUpperCase()) || k.toUpperCase().includes(key)) return v;
+    }
+    return "";
+  };
+
+  const fmtDate = (val: any): string => {
+    if (!val) return "";
+    if (val instanceof Date) {
+      const d = val.toLocaleDateString("fr-FR").split("/");
+      return `${d[0]}.${d[1]}.${d[2]}`;
+    }
+    return String(val);
+  };
+
+  const getCell = (row: any[], idx: number): string => {
+    if (idx < 0) return "";
+    const v = row[idx];
+    if (v instanceof Date) return fmtDate(v);
+    return v !== undefined && v !== null ? String(v).trim() : "";
+  };
+
+  const processIfcoFile = (file: File) => {
+    setIfcoStatus("⏳ Lecture du fichier en cours...");
+    setIfcoStatusType("info");
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target?.result, { type: "array", cellDates: true });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+        if (!raw || raw.length < 2) {
+          setIfcoStatus("❌ Fichier vide ou non reconnu.");
+          setIfcoStatusType("error");
+          return;
+        }
+
+        let headerIdx = 0;
+        for (let i = 0; i < Math.min(raw.length, 10); i++) {
+          if ((raw[i] as any[]).join("|").toLowerCase().match(/vente|livraison|bl/)) {
+            headerIdx = i;
+            break;
+          }
+        }
+
+        const headers = (raw[headerIdx] as any[]).map((h) => String(h).trim().replace(/\n/g, " "));
+        const col = (n: string) => headers.findIndex((h) => h.toLowerCase().includes(n.toLowerCase()));
+
+        const idxVente = col("vente");
+        const idxs = {
+          dateLiv: col("date liv"),
+          bl: col("n° bl"),
+          nbColis: col("nb colis"),
+          nomClient: col("nom client"),
+        };
+
+        const dataRows = (raw as any[]).slice(headerIdx + 1).filter((r) => {
+          const v = r[idxVente];
+          return v !== undefined && v !== null && String(v).trim() !== "";
+        });
+
+        const allRows = dataRows.map((row) => {
+          const dateLiv = fmtDate(row[idxs.dateLiv] instanceof Date ? row[idxs.dateLiv] : new Date(row[idxs.dateLiv]));
+          const nomClient = getCell(row, idxs.nomClient);
+          return {
+            DIRECTION: "S",
+            "DATE DE LIVRAISON": dateLiv,
+            "DATE DE LIVRAISON 2": dateLiv,
+            "BON DE LIVRAISON": getCell(row, idxs.bl),
+            POOL: "",
+            MATERIEL: "BLL4314",
+            QUANTITE: getCell(row, idxs.nbColis),
+            "NUMERO PARTICIPANT": getIfcoCode(nomClient),
+            "MON NUMERO IFCO": "639861",
+            REMARQUE: "",
+            "NUMERO DE COMMANDE": "",
+            CONTENU: "",
+            "NUMERO D'IMMATRICULATION DU CAMION": "",
+            ORIGINE: "",
+            "REMARQUE SUR LIVRAISON": "",
+            _CLIENT: nomClient,
+          };
+        });
+
+        setIfcoFileData(allRows);
+        setIfcoStatus(
+          `✅ ${allRows.length} ligne${allRows.length > 1 ? "s" : ""} prête${allRows.length > 1 ? "s" : ""} — choisissez comment exporter`
+        );
+        setIfcoStatusType("success");
+      } catch (err) {
+        setIfcoStatus("❌ Erreur : " + (err as any).message);
+        setIfcoStatusType("error");
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const buildIfcoCSV = (): string => {
+    const EXPORT_COLS = [
+      "DIRECTION",
+      "DATE DE LIVRAISON",
+      "DATE DE LIVRAISON 2",
+      "BON DE LIVRAISON",
+      "POOL",
+      "MATERIEL",
+      "QUANTITE",
+      "NUMERO PARTICIPANT",
+      "MON NUMERO IFCO",
+      "REMARQUE",
+      "NUMERO DE COMMANDE",
+      "CONTENU",
+      "NUMERO D'IMMATRICULATION DU CAMION",
+      "ORIGINE",
+      "REMARQUE SUR LIVRAISON",
+    ];
+
+    const headers = EXPORT_COLS.map((c) => (c === "DATE DE LIVRAISON 2" ? "DATE DE LIVRAISON" : c));
+    const rows = [headers, ...ifcoFileData.map((r) => EXPORT_COLS.map((c) => r[c] || ""))];
+    return rows.map((r) => r.join(";")).join("\n");
+  };
+
+  const getIfcoExportName = (): string => {
+    const n = new Date();
+    const y = n.getFullYear();
+    const m = String(n.getMonth() + 1).padStart(2, "0");
+    const d = String(n.getDate()).padStart(2, "0");
+    return `639861_${y}_${m}_${d}.csv`;
+  };
+
+  const downloadIfcoCSV = (filename: string, content: string) => {
+    const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  };
+
+  const downloadIfcoExcel = async () => {
+    if (!ifcoFileData.length) return;
+    const name = getIfcoExportName();
+    downloadIfcoCSV(name, buildIfcoCSV());
+    await addIfcoHisto("telechargement", ifcoFileData.length, name);
+    setNotification({ type: "success", message: "✓ Fichier téléchargé" });
+  };
+
+  const sendToIfco = async () => {
+    if (!ifcoFileData.length) return;
+    const name = getIfcoExportName();
+    downloadIfcoCSV(name, buildIfcoCSV());
+    await addIfcoHisto("envoi", ifcoFileData.length, name);
+    setTimeout(() => window.open("https://www.ifco-online.com/myifco-core-fe/clearing/navi.datenaustausch/edi/upload", "_blank"), 800);
+    setNotification({ type: "success", message: "✓ Envoyé à IFCO" });
+  };
+
+  const saveIfcoClient = async () => {
+    const name = ifcoNewClientName.trim();
+    const code = parseInt(ifcoNewClientCode.trim());
+    if (!name) {
+      setNotification({ type: "error", message: "✗ Entrez un nom de client" });
+      return;
+    }
+    if (!code) {
+      setNotification({ type: "error", message: "✗ Entrez un code IFCO valide" });
+      return;
+    }
+
+    const newClients = { ...ifcoClients };
+    if (ifcoEditingClient && ifcoEditingClient !== name) delete newClients[ifcoEditingClient];
+    newClients[name] = code;
+
+    await update(ref(db, "ifco_clients"), newClients);
+    setIfcoNewClientName("");
+    setIfcoNewClientCode("");
+    setIfcoEditingClient(null);
+    setNotification({ type: "success", message: "✓ Client enregistré" });
+  };
+
+  const deleteIfcoClient = async (name: string) => {
+    if (!window.confirm(`Supprimer "${name}" ?`)) return;
+    const newClients = { ...ifcoClients };
+    delete newClients[name];
+    await update(ref(db, "ifco_clients"), newClients);
+  };
+
+  const editIfcoClient = (name: string) => {
+    setIfcoEditingClient(name);
+    setIfcoNewClientName(name);
+    setIfcoNewClientCode(String(ifcoClients[name]));
+  };
+
+  const cancelEditIfcoClient = () => {
+    setIfcoEditingClient(null);
+    setIfcoNewClientName("");
+    setIfcoNewClientCode("");
+  };
+
+  const renderIfcoClients = () => {
+    const q = ifcoClientSearch.toLowerCase();
+    const filtered = Object.entries(ifcoClients).filter(([k]) => !q || k.toLowerCase().includes(q));
+    return filtered;
+  };
+
+  // Carton functions
   const modifierLigne = (index: number, key: keyof LigneCarton, value: any) => {
     const newLignes = [...lignes];
     newLignes[index][key] = value;
     setLignes(newLignes);
   };
 
-  // Supprimer une ligne
   const supprimerLigne = (index: number) => {
     setLignes(lignes.filter((_, i) => i !== index));
   };
 
-  // Envoyer l'email de confirmation
-  const envoyerEmailConfirmation = async (commande: CartonCommande) => {
-    setIsEnvoyantEmail(true);
-    try {
-      const lignesHtml = commande.lignes
-        .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? 's' : ''}</li>`)
-        .join("");
-
-      const emailHtml = `
-        <p>Bonjour,</p>
-        <p>Suite à notre appel téléphonique, voici la confirmation de votre commande de cartons:</p>
-        <h2>Confirmation de Commande de Cartons</h2>
-        <p><strong>Numéro de commande:</strong> ${commande.id}</p>
-        <p><strong>Date de commande:</strong> ${commande.dateCommande}</p>
-        <p><strong>Date de livraison prévue:</strong> ${commande.dateLivraisonPrevue}</p>
-        <p><strong>Créneau de livraison:</strong> ${commande.creneau}</p>
-        <p><strong>Lieu de livraison:</strong> ${commande.lieuLivraison}</p>
-        <h3>Détails de la commande:</h3>
-        <ul>
-          ${lignesHtml}
-        </ul>
-        <p>Merci!</p>
-      `;
-
-      const response = await fetch("/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: `Confirmation de commande cartons #${commande.id}`,
-          html: emailHtml,
-          to: ["contact@go-embal.fr"],
-          sender: "elinathan",
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erreur ${response.status}`);
-      }
-
-      console.log("Email de confirmation envoyé - Commande #" + commande.id);
-      setNotification({ type: "success", message: "✓ Email envoyé à contact@go-embal.fr" });
-    } catch (error) {
-      console.error("Erreur lors de l'envoi de l'email:", error);
-      setNotification({ type: "error", message: "✗ Erreur lors de l'envoi de l'email" });
-    } finally {
-      setIsEnvoyantEmail(false);
-    }
+  const ajouterLigne = () => {
+    setLignes([...lignes, { type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
   };
 
-  // Créer une nouvelle commande
   const handleCreerCommande = async () => {
     if (lignes.length === 0 || lignes.some((l) => l.nbPalettes <= 0)) return;
 
@@ -142,220 +353,104 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
     try {
       const ref_push = await push(ref(db, "prestataires_cartons"), newCmd);
-      const commandeId = ref_push.key;
-
-      if (!commandeId) {
-        throw new Error("Impossible de récupérer l'ID de la commande");
-      }
-
-      // Créer aussi un arrivage correspondant dans le système classique
-      const totalPalettes = lignes.reduce((sum, l) => sum + l.nbPalettes, 0);
-      const totalCartons = lignes.reduce((sum, l) => {
-        const specs = CARTONS_CATALOGUE[l.type as keyof typeof CARTONS_CATALOGUE];
-        return sum + (l.nbPalettes * specs.parPalette);
-      }, 0);
-
-      // Convertir la date en format français pour cohérence
-      const dateLivraisonFr = new Date(dateLivraison).toLocaleDateString("fr-FR");
-
-      const arrivageCarton = {
-        fournisseur: "Go-Embal",
-        produit: "Cartons " + lignes.map(l => `${l.type}`).join(" + "),
-        lot_interne: commandeId,
-        lot_fournisseur: "",
-        quantite: totalCartons,
-        unite: "cartons",
-        date: dateLivraisonFr, // Date de livraison prévue = date d'arrivée (format français)
-        statut: "en attente",
-        timestamp: Date.now(),
-        carton_commande_id: commandeId, // Lien vers la commande de cartons
-        origine: lieuLivraison,
-        variete: creneau,
-      };
-
-      console.log("DEBUG: Création arrivage carton", arrivageCarton);
-      await push(ref(db, "arrivages"), arrivageCarton);
-      console.log("DEBUG: Arrivage carton créé pour commande", commandeId);
-
-      const cmdWithId: CartonCommande = { ...newCmd, id: commandeId };
-
-      // Envoyer email de confirmation
-      await envoyerEmailConfirmation(cmdWithId);
-
-      // Reset form
       setLignes([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
       setDateLivraison(new Date().toISOString().split("T")[0]);
       setCreneau("1er tour 7h-11h");
       setLieuLivraison("Moorea Commerce Fruit - Bat D3");
-      setActiveTab("dashboard");
+      setActiveTab("cartons");
+      setNotification({ type: "success", message: "✓ Commande créée" });
     } catch (error) {
-      console.error("Erreur lors de la création de la commande:", error);
-      setNotification({ type: "error", message: "✗ Erreur lors de la création de la commande" });
+      setNotification({ type: "error", message: "✗ Erreur" });
     }
   };
 
-  // Marquer comme reçu (depuis l'arrivage)
   const handleMarquerRecu = async (id: string) => {
     await update(ref(db, `prestataires_cartons/${id}`), {
       statut: "reçu" as const,
-      dateReception: new Date().toISOString().split("T")[0]
+      dateReception: new Date().toISOString().split("T")[0],
     });
   };
 
-  // Marquer comme facturé
   const handleMarquerFacture = async (id: string) => {
     await update(ref(db, `prestataires_cartons/${id}`), { statut: "facturé" });
   };
 
-  // Remettre en reçu (depuis facturé)
-  const handleRemettre = async (id: string) => {
-    if (window.confirm("Remettre cette commande en statut 'Reçu' ?")) {
-      await update(ref(db, `prestataires_cartons/${id}`), { statut: "reçu" });
-    }
-  };
-
-  // Supprimer une commande
   const handleSupprimerCommande = async (id: string) => {
-    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette commande?")) {
+    if (window.confirm("Êtes-vous sûr ?")) {
       await remove(ref(db, `prestataires_cartons/${id}`));
     }
   };
 
-  // Filtrer par période sélectionnée
-  const filterByPeriod = (cmds: CartonCommande[]) => {
-    return cmds.filter(c => {
-      const d = new Date(c.dateCommande);
-      return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
-    });
-  };
-
-  // Stats par période
-  const calculerStats = () => {
-    const commandesMonth = filterByPeriod(commandes);
-
-    return {
-      total: commandesMonth.length,
-      commandé: commandesMonth.filter(c => c.statut === "commandé").length,
-      reçu: commandesMonth.filter(c => c.statut === "reçu").length,
-      facturé: commandesMonth.filter(c => c.statut === "facturé").length,
-      palettesCommandées: commandesMonth.reduce((sum, c) => sum + c.lignes.reduce((s, l) => s + l.nbPalettes, 0), 0),
-      palettesReçues: commandesMonth.filter(c => c.statut !== "commandé").reduce((sum, c) => sum + c.lignes.reduce((s, l) => s + l.nbPalettes, 0), 0),
-    };
-  };
-
-  // Stats par référence
-  const calculerStatsByRef = () => {
-    const commandesMonth = filterByPeriod(commandes);
-
-    const stats: Record<string, { commandé: number; reçu: number; facturé: number }> = {};
-
-    Object.keys(CARTONS_CATALOGUE).forEach(type => {
-      stats[type] = { commandé: 0, reçu: 0, facturé: 0 };
-    });
-
-    commandesMonth.forEach(cmd => {
-      cmd.lignes.forEach(ligne => {
-        if (stats[ligne.type]) {
-          if (cmd.statut === "commandé") stats[ligne.type].commandé += ligne.nbPalettes;
-          if (cmd.statut === "reçu") stats[ligne.type].reçu += ligne.nbPalettes;
-          if (cmd.statut === "facturé") stats[ligne.type].facturé += ligne.nbPalettes;
-        }
-      });
-    });
-
-    return stats;
-  };
-
-  const stats = calculerStats();
-  const statsByRef = calculerStatsByRef();
-
-  const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
-
   return (
     <div style={{ background: "#f5f5f5", minHeight: "100vh", margin: 0, padding: 0 }}>
-      <PageHeader 
-        titre="📦 Prestataires - Cartons" 
-        onBack={onClose} 
-        onHome={onClose}
-      />
+      <PageHeader titre="📦 Prestataires" onBack={onClose} onHome={onClose} />
 
-      {/* Toast Notification */}
       {notification && (
-        <div style={{
-          position: "fixed",
-          top: "80px",
-          right: "20px",
-          padding: "15px 20px",
-          borderRadius: "4px",
-          background: notification.type === "success" ? "#28a745" : "#dc3545",
-          color: "white",
-          fontSize: "14px",
-          fontWeight: "bold",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-          zIndex: 1000,
-          animation: "slideIn 0.3s ease-in-out"
-        }}>
+        <div
+          style={{
+            position: "fixed",
+            top: "80px",
+            right: "20px",
+            padding: "15px 20px",
+            borderRadius: "4px",
+            background: notification.type === "success" ? "#28a745" : "#dc3545",
+            color: "white",
+            fontSize: "14px",
+            fontWeight: "bold",
+            zIndex: 1000,
+          }}
+        >
           {notification.message}
         </div>
       )}
 
-      <style>{`
-        @keyframes slideIn {
-          from { transform: translateX(400px); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-      `}</style>
-
       <div style={{ padding: "20px" }}>
         {/* Tabs */}
-        <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "2px solid #ddd" }}>
+        <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "2px solid #ddd", flexWrap: "wrap" }}>
           <button
-            onClick={() => setActiveTab("dashboard")}
+            onClick={() => setActiveTab("cartons")}
             style={{
               padding: "10px 20px",
-              background: activeTab === "dashboard" ? "#0066cc" : "white",
-              color: activeTab === "dashboard" ? "white" : "black",
+              background: activeTab === "cartons" ? "#0066cc" : "white",
+              color: activeTab === "cartons" ? "white" : "black",
               border: "none",
               cursor: "pointer",
               borderRadius: "4px 4px 0 0",
             }}
           >
-            📊 Dashboard
+            📦 Cartons
           </button>
           <button
-            onClick={() => setActiveTab("stats")}
+            onClick={() => setActiveTab("ifco")}
             style={{
               padding: "10px 20px",
-              background: activeTab === "stats" ? "#0066cc" : "white",
-              color: activeTab === "stats" ? "white" : "black",
+              background: activeTab === "ifco" ? "#17a2b8" : "white",
+              color: activeTab === "ifco" ? "white" : "black",
               border: "none",
               cursor: "pointer",
               borderRadius: "4px 4px 0 0",
             }}
           >
-            📈 Stats par Ref
-          </button>
-          <button
-            onClick={() => setActiveTab("nouvelle")}
-            style={{
-              padding: "10px 20px",
-              background: activeTab === "nouvelle" ? "#0066cc" : "white",
-              color: activeTab === "nouvelle" ? "white" : "black",
-              border: "none",
-              cursor: "pointer",
-              borderRadius: "4px 4px 0 0",
-            }}
-          >
-            ➕ Nouvelle Commande
+            🟦 IFCO
           </button>
         </div>
 
-        {/* Dashboard */}
-        {activeTab === "dashboard" && (
+        {/* CARTONS TAB */}
+        {activeTab === "cartons" && (
           <div>
-            {/* Navigation du calendrier */}
-            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px", display: "flex", gap: "15px", alignItems: "center", justifyContent: "space-between" }}>
+            {/* Navigation */}
+            <div
+              style={{
+                background: "white",
+                padding: "15px",
+                borderRadius: "8px",
+                marginBottom: "20px",
+                display: "flex",
+                gap: "15px",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
               <button
                 onClick={() => {
                   if (selectedMonth === 0) {
@@ -407,30 +502,28 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </button>
             </div>
 
-            {/* Calendrier du mois - Compact */}
-            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "30px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-              <h3 style={{ marginTop: 0, marginBottom: "12px", fontSize: "14px", fontWeight: "bold" }}>📅 Commandes du mois</h3>
+            {/* Calendar & Table */}
+            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px" }}>
+              <h3 style={{ marginTop: 0, marginBottom: "12px", fontSize: "14px", fontWeight: "bold" }}>📅 Calendrier</h3>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
-                {["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"].map(j => (
+                {["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"].map((j) => (
                   <div key={j} style={{ textAlign: "center", fontWeight: "bold", fontSize: "10px", color: "#666", padding: "4px 0" }}>
                     {j}
                   </div>
                 ))}
                 {Array.from({ length: new Date(selectedYear, selectedMonth, 0).getDay() }).map((_, i) => (
-                  <div key={`empty-${i}`} style={{ padding: "4px", background: "#f9f9f9", borderRadius: "3px", minHeight: "32px" }}></div>
+                  <div key={`empty-${i}`} style={{ padding: "4px", minHeight: "32px" }}></div>
                 ))}
                 {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, i) => {
                   const date = new Date(selectedYear, selectedMonth, i + 1);
                   const dateStr = date.toISOString().split("T")[0];
-                  const cmdsJour = commandes.filter(c => c.dateLivraisonPrevue === dateStr);
-                  const palettesJour = cmdsJour.reduce((sum, c) => sum + c.lignes.reduce((s, l) => s + l.nbPalettes, 0), 0);
-
+                  const cmds = commandes.filter((c) => c.dateLivraisonPrevue === dateStr);
                   return (
                     <div
                       key={dateStr}
                       style={{
-                        background: cmdsJour.length > 0 ? "#e8f4f8" : "#f9f9f9",
-                        border: cmdsJour.length > 0 ? "2px solid #0066cc" : "1px solid #e5e7eb",
+                        background: cmds.length > 0 ? "#e8f4f8" : "#f9f9f9",
+                        border: cmds.length > 0 ? "2px solid #0066cc" : "1px solid #e5e7eb",
                         padding: "4px 6px",
                         borderRadius: "3px",
                         minHeight: "32px",
@@ -438,223 +531,346 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                         flexDirection: "column",
                         justifyContent: "center",
                         alignItems: "center",
-                        textAlign: "center"
+                        textAlign: "center",
                       }}
                     >
-                      <div style={{ fontSize: "11px", fontWeight: "bold", color: "#0066cc", lineHeight: "1" }}>
-                        {i + 1}
-                      </div>
-                      {cmdsJour.length > 0 && (
-                        <div style={{ fontSize: "9px", color: "#28a745", fontWeight: "bold", lineHeight: "1", marginTop: "2px" }}>
-                          ✓ {palettesJour}
-                        </div>
-                      )}
+                      <div style={{ fontSize: "11px", fontWeight: "bold", color: "#0066cc" }}>{i + 1}</div>
+                      {cmds.length > 0 && <div style={{ fontSize: "9px", color: "#28a745", fontWeight: "bold", marginTop: "2px" }}>✓</div>}
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            {/* Tableau des commandes */}
-            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
-                    <th style={{ padding: "12px", textAlign: "left" }}>Références</th>
-                    <th style={{ padding: "12px", textAlign: "left" }}>Total Palettes</th>
-                    <th style={{ padding: "12px", textAlign: "left" }}>Date Commande</th>
-                    <th style={{ padding: "12px", textAlign: "left" }}>Livraison Prévue</th>
-                    <th style={{ padding: "12px", textAlign: "left" }}>Créneau</th>
-                    <th style={{ padding: "12px", textAlign: "left" }}>Statut</th>
-                    <th style={{ padding: "12px", textAlign: "left" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filterByPeriod(commandes).map((cmd) => {
-                    const totalPalettes = cmd.lignes.reduce((sum, l) => sum + l.nbPalettes, 0);
-                    return (
-                      <tr key={cmd.id} style={{ borderBottom: "1px solid #eee" }}>
-                        <td style={{ padding: "12px", fontSize: "12px" }}>
-                          {cmd.lignes.map((l, i) => (
-                            <div key={i}>{l.type}</div>
-                          ))}
-                        </td>
-                        <td style={{ padding: "12px" }}>{totalPalettes}</td>
-                        <td style={{ padding: "12px" }}>{cmd.dateCommande}</td>
-                        <td style={{ padding: "12px" }}>{cmd.dateLivraisonPrevue}</td>
-                        <td style={{ padding: "12px", fontSize: "12px" }}>{cmd.creneau}</td>
-                        <td style={{ padding: "12px" }}>
-                          <span style={{
-                            padding: "4px 8px",
-                            borderRadius: "4px",
-                            fontSize: "12px",
-                            background: cmd.statut === "commandé" ? "#e3f2fd" : cmd.statut === "reçu" ? "#e8f5e9" : "#fffde7",
-                            color: cmd.statut === "commandé" ? "#0066cc" : cmd.statut === "reçu" ? "#28a745" : "#ffc107",
-                          }}>
-                            {cmd.statut.toUpperCase()}
-                          </span>
-                        </td>
-                        <td style={{ padding: "12px" }}>
-                          <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
-                            {cmd.statut === "reçu" && (
-                              <button
-                                onClick={() => handleMarquerFacture(cmd.id)}
-                                style={{
-                                  padding: "4px 8px",
-                                  background: "#ffc107",
-                                  border: "none",
-                                  borderRadius: "3px",
-                                  cursor: "pointer",
-                                  fontSize: "11px",
-                                }}
-                              >
-                                💳 Facturé
-                              </button>
-                            )}
-                            {cmd.statut === "commandé" && (
-                              <button
-                                onClick={() => handleSupprimerCommande(cmd.id)}
-                                style={{
-                                  padding: "4px 8px",
-                                  background: "#dc3545",
-                                  border: "none",
-                                  borderRadius: "3px",
-                                  cursor: "pointer",
-                                  fontSize: "11px",
-                                }}
-                              >
-                                🗑 Supprimer
-                              </button>
-                            )}
-                            {cmd.statut === "facturé" && (
-                              <>
-                                <button
-                                  onClick={() => handleRemettre(cmd.id)}
-                                  style={{
-                                    padding: "4px 8px",
-                                    background: "#6c757d",
-                                    border: "none",
-                                    borderRadius: "3px",
-                                    cursor: "pointer",
-                                    fontSize: "11px",
-                                    color: "white",
-                                  }}
-                                >
-                                  ↩️ Remettre en Reçu
-                                </button>
-                                <button
-                                  onClick={() => handleSupprimerCommande(cmd.id)}
-                                  style={{
-                                    padding: "4px 8px",
-                                    background: "#dc3545",
-                                    border: "none",
-                                    borderRadius: "3px",
-                                    cursor: "pointer",
-                                    fontSize: "11px",
-                                  }}
-                                >
-                                  🗑 Supprimer
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Stats par Référence */}
-        {activeTab === "stats" && (
-          <div>
-            {/* Navigation du calendrier */}
-            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px", display: "flex", gap: "15px", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ marginTop: "20px" }}>
               <button
-                onClick={() => {
-                  if (selectedMonth === 0) {
-                    setSelectedMonth(11);
-                    setSelectedYear(selectedYear - 1);
-                  } else {
-                    setSelectedMonth(selectedMonth - 1);
-                  }
-                }}
+                onClick={() => setActiveTab("nouvelle-carton")}
                 style={{
-                  padding: "8px 12px",
+                  padding: "12px 20px",
                   background: "#0066cc",
                   color: "white",
                   border: "none",
                   borderRadius: "4px",
                   cursor: "pointer",
-                  fontSize: "16px",
+                  fontSize: "14px",
                   fontWeight: "bold",
                 }}
               >
-                ◀ Précédent
+                ➕ Nouvelle Commande
               </button>
+            </div>
+          </div>
+        )}
 
-              <div style={{ fontSize: "18px", fontWeight: "bold", color: "#0066cc", minWidth: "200px", textAlign: "center" }}>
-                {moisNoms[selectedMonth]} {selectedYear}
+        {/* IFCO TAB */}
+        {activeTab === "ifco" && (
+          <div>
+            {/* IFCO Header */}
+            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", marginBottom: "20px" }}>
+              <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "20px", borderBottom: "1px solid #d4edda" }}>
+                <h2 style={{ marginTop: 0, color: "#1a6b3a" }}>🟦 IFCO - Convertisseur de ventes</h2>
+                <p style={{ color: "#7f8c8d", marginBottom: 0 }}>Importez votre export de ventes pour générer le fichier IFCO</p>
               </div>
 
-              <button
-                onClick={() => {
-                  if (selectedMonth === 11) {
-                    setSelectedMonth(0);
-                    setSelectedYear(selectedYear + 1);
-                  } else {
-                    setSelectedMonth(selectedMonth + 1);
-                  }
-                }}
-                style={{
-                  padding: "8px 12px",
-                  background: "#0066cc",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontSize: "16px",
-                  fontWeight: "bold",
-                }}
-              >
-                Suivant ▶
-              </button>
+              {/* Upload Zone */}
+              <div style={{ padding: "20px" }}>
+                <label
+                  htmlFor="ifco-file"
+                  style={{
+                    display: "block",
+                    border: "2px dashed #a8d5b5",
+                    borderRadius: "12px",
+                    padding: "30px",
+                    textAlign: "center",
+                    cursor: "pointer",
+                    background: "#fafffe",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <div style={{ fontSize: "28px", marginBottom: "10px" }}>📂</div>
+                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "4px" }}>Glissez votre fichier de ventes ici</div>
+                  <div style={{ fontSize: "12px", color: "#aaa" }}>Format .xlsx exporté depuis votre logiciel</div>
+                  <input
+                    id="ifco-file"
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={(e) => e.target.files?.[0] && processIfcoFile(e.target.files[0])}
+                    style={{ display: "none" }}
+                  />
+                </label>
+
+                <div style={{ display: "flex", gap: "10px", padding: "15px 0", flexWrap: "wrap" }}>
+                  <span style={{ background: "#f4f7f5", border: "1px solid #d4edda", borderRadius: "20px", padding: "5px 14px", fontSize: "11px", fontWeight: "600", color: "#1e8449" }}>
+                    🔒 Direction: S
+                  </span>
+                  <span style={{ background: "#f4f7f5", border: "1px solid #d4edda", borderRadius: "20px", padding: "5px 14px", fontSize: "11px", fontWeight: "600", color: "#1e8449" }}>
+                    📦 Matériel: 4314
+                  </span>
+                  <span style={{ background: "#f4f7f5", border: "1px solid #d4edda", borderRadius: "20px", padding: "5px 14px", fontSize: "11px", fontWeight: "600", color: "#1e8449" }}>
+                    🪪 N° IFCO: 639861
+                  </span>
+                </div>
+
+                {ifcoStatus && (
+                  <div
+                    style={{
+                      padding: "12px",
+                      borderRadius: "8px",
+                      marginBottom: "15px",
+                      background: ifcoStatusType === "success" ? "#eafaf1" : ifcoStatusType === "error" ? "#fdedec" : "#eaf4fb",
+                      color: ifcoStatusType === "success" ? "#1e8449" : ifcoStatusType === "error" ? "#c0392b" : "#1a5276",
+                      border: `1px solid ${ifcoStatusType === "success" ? "#a9dfbf" : ifcoStatusType === "error" ? "#f5b7b1" : "#a9cce3"}`,
+                    }}
+                  >
+                    {ifcoStatus}
+                  </div>
+                )}
+
+                {ifcoFileData.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <button
+                      onClick={downloadIfcoExcel}
+                      style={{
+                        padding: "12px",
+                        background: "#17a2b8",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ⬇️ Télécharger le fichier
+                    </button>
+                    <button
+                      onClick={sendToIfco}
+                      style={{
+                        padding: "12px",
+                        background: "#28a745",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      🌐 Envoyer sur IFCO
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
-                    <th style={{ padding: "12px", textAlign: "left" }}>Type de Carton</th>
-                    <th style={{ padding: "12px", textAlign: "center" }}>Commandé (palettes)</th>
-                    <th style={{ padding: "12px", textAlign: "center" }}>Reçu (palettes)</th>
-                    <th style={{ padding: "12px", textAlign: "center" }}>Facturé (palettes)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(statsByRef).map(([type, data]) => (
-                    <tr key={type} style={{ borderBottom: "1px solid #eee" }}>
-                      <td style={{ padding: "12px", fontWeight: "bold" }}>{type}</td>
-                      <td style={{ padding: "12px", textAlign: "center", color: "#0066cc", fontWeight: "bold" }}>{data.commandé}</td>
-                      <td style={{ padding: "12px", textAlign: "center", color: "#28a745", fontWeight: "bold" }}>{data.reçu}</td>
-                      <td style={{ padding: "12px", textAlign: "center", color: "#ffc107", fontWeight: "bold" }}>{data.facturé}</td>
+            {/* IFCO Historique */}
+            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", marginBottom: "20px" }}>
+              <div style={{ padding: "15px", background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
+                <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
+                  📋 Suivi des déclarations <span style={{ background: "#27ae60", color: "white", borderRadius: "20px", padding: "2px 8px", fontSize: "11px", fontWeight: "700", marginLeft: "8px" }}>{ifcoHistorique.length}</span>
+                </h3>
+              </div>
+              <div style={{ padding: "15px" }}>
+                {ifcoHistorique.length === 0 ? (
+                  <div style={{ textAlign: "center", color: "#bbb", padding: "20px" }}>Aucune déclaration enregistrée</div>
+                ) : (
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                    <thead>
+                      <tr style={{ background: "#f0fff6", borderBottom: "1px solid #d4edda" }}>
+                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Utilisateur</th>
+                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Date & heure</th>
+                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Lignes</th>
+                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Fichier</th>
+                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ifcoHistorique.map((entry) => (
+                        <tr key={entry.id} style={{ borderBottom: "1px solid #f4f4f4" }}>
+                          <td style={{ padding: "8px 12px", fontWeight: "600" }}>{entry.user}</td>
+                          <td style={{ padding: "8px 12px" }}>{entry.date}</td>
+                          <td style={{ padding: "8px 12px" }}>{entry.lignes}</td>
+                          <td style={{ padding: "8px 12px" }}>{entry.fichier}</td>
+                          <td style={{ padding: "8px 12px" }}>
+                            <span
+                              style={{
+                                background: entry.type === "envoi" ? "#eaf4fb" : "#eafaf1",
+                                color: entry.type === "envoi" ? "#1a5276" : "#1e8449",
+                                borderRadius: "20px",
+                                padding: "3px 10px",
+                                fontSize: "11px",
+                                fontWeight: "700",
+                              }}
+                            >
+                              {entry.type === "envoi" ? "🌐 Envoyé IFCO" : "⬇️ Téléchargé"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            {/* IFCO Clients */}
+            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden" }}>
+              <div style={{ padding: "15px", background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
+                <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
+                  👥 Codes IFCO clients <span style={{ background: "#27ae60", color: "white", borderRadius: "20px", padding: "2px 8px", fontSize: "11px", fontWeight: "700", marginLeft: "8px" }}>{Object.keys(ifcoClients).length}</span>
+                </h3>
+              </div>
+              <div style={{ padding: "15px" }}>
+                <input
+                  type="text"
+                  value={ifcoClientSearch}
+                  onChange={(e) => setIfcoClientSearch(e.target.value)}
+                  placeholder="🔍 Rechercher un client..."
+                  style={{
+                    width: "100%",
+                    padding: "9px 14px",
+                    border: "1.5px solid #d4edda",
+                    borderRadius: "9px",
+                    fontSize: "13px",
+                    marginBottom: "12px",
+                    boxSizing: "border-box",
+                  }}
+                />
+
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: "15px" }}>
+                  <thead>
+                    <tr style={{ background: "#f0fff6", borderBottom: "1px solid #d4edda" }}>
+                      <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Nom client</th>
+                      <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Code IFCO</th>
+                      <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {renderIfcoClients().map(([name, code]) => (
+                      <tr key={name} style={{ borderBottom: "1px solid #f4f4f4" }}>
+                        <td style={{ padding: "8px 12px", fontWeight: "600", maxWidth: "260px", wordBreak: "break-word" }}>{name}</td>
+                        <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#1a6b3a", fontWeight: "700" }}>{code}</td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <button
+                            onClick={() => editIfcoClient(name)}
+                            style={{
+                              padding: "4px 9px",
+                              borderRadius: "6px",
+                              fontSize: "11px",
+                              fontWeight: "600",
+                              cursor: "pointer",
+                              background: "#eaf4fb",
+                              color: "#1a5276",
+                              border: "none",
+                              marginRight: "3px",
+                            }}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            onClick={() => deleteIfcoClient(name)}
+                            style={{
+                              padding: "4px 9px",
+                              borderRadius: "6px",
+                              fontSize: "11px",
+                              fontWeight: "600",
+                              cursor: "pointer",
+                              background: "#fdedec",
+                              color: "#c0392b",
+                              border: "none",
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Add Client Form */}
+                <div style={{ background: "#f0fff6", border: "1.5px solid #a8d5b5", borderRadius: "12px", padding: "14px 16px" }}>
+                  <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#1a6b3a", marginBottom: "10px", marginTop: 0 }}>
+                    {ifcoEditingClient ? "✏️ Modifier le client" : "➕ Ajouter un client"}
+                  </h4>
+                  <div style={{ marginBottom: "8px" }}>
+                    <input
+                      type="text"
+                      value={ifcoNewClientName}
+                      onChange={(e) => setIfcoNewClientName(e.target.value)}
+                      placeholder="Nom exact du client"
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        border: "1.5px solid #d4edda",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: "8px" }}>
+                    <input
+                      type="text"
+                      value={ifcoNewClientCode}
+                      onChange={(e) => setIfcoNewClientCode(e.target.value)}
+                      placeholder="Code IFCO (ex: 705335)"
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        border: "1.5px solid #d4edda",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={saveIfcoClient}
+                    style={{
+                      background: "#27ae60",
+                      color: "white",
+                      border: "none",
+                      padding: "9px 20px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      fontWeight: "700",
+                      cursor: "pointer",
+                      width: "100%",
+                    }}
+                  >
+                    💾 Enregistrer
+                  </button>
+                  {ifcoEditingClient && (
+                    <button
+                      onClick={cancelEditIfcoClient}
+                      style={{
+                        background: "#eee",
+                        color: "#555",
+                        border: "none",
+                        padding: "9px 20px",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        fontWeight: "700",
+                        cursor: "pointer",
+                        width: "100%",
+                        marginTop: "6px",
+                      }}
+                    >
+                      Annuler
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Nouvelle Commande */}
-        {activeTab === "nouvelle" && (
+        {/* NOUVELLE COMMANDE TAB */}
+        {activeTab === "nouvelle-carton" && (
           <div style={{ background: "white", padding: "20px", borderRadius: "8px", maxWidth: "700px" }}>
             <h2 style={{ marginBottom: "20px" }}>Créer une nouvelle commande</h2>
 
-            {/* Lignes de commande */}
             <div style={{ marginBottom: "20px", border: "1px solid #ddd", padding: "15px", borderRadius: "4px" }}>
               <h3 style={{ marginTop: 0 }}>Références carton</h3>
               {lignes.map((ligne, index) => (
@@ -674,7 +890,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     >
                       {Object.entries(CARTONS_CATALOGUE).map(([type, info]) => (
                         <option key={type} value={type}>
-                          {type} ({info.dims})
+                          {type}
                         </option>
                       ))}
                     </select>
@@ -708,7 +924,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                       fontSize: "12px",
                     }}
                   >
-                    ✕ Supprimer
+                    ✕
                   </button>
                 </div>
               ))}
@@ -725,17 +941,16 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   fontWeight: "bold",
                 }}
               >
-                + Ajouter une référence
+                + Ajouter
               </button>
             </div>
 
             <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Date de Livraison Prévue (recommandé: 7j à l'avance)</label>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Date de Livraison</label>
               <input
                 type="date"
                 value={dateLivraison}
                 onChange={(e) => setDateLivraison(e.target.value)}
-                min={new Date().toISOString().split("T")[0]}
                 style={{
                   width: "100%",
                   padding: "10px",
@@ -745,13 +960,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   boxSizing: "border-box",
                 }}
               />
-              <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
-                💡 Défaut: {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("fr-FR")}
-              </div>
             </div>
 
             <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Créneau de livraison</label>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Créneau</label>
               <select
                 value={creneau}
                 onChange={(e) => setCreneau(e.target.value as any)}
@@ -801,7 +1013,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 cursor: isEnvoyantEmail ? "not-allowed" : "pointer",
               }}
             >
-              {isEnvoyantEmail ? "⏳ Envoi en cours..." : "✓ Créer et envoyer la commande"}
+              ✓ Créer la commande
             </button>
           </div>
         )}
