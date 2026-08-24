@@ -15,9 +15,7 @@ const CARTONS_CATALOGUE = {
 
 // Types de palettes IFCO
 const PALETTES_IFCO = {
-  "400×300 (BLL4314)": { dims: "400×300mm", materiel: "BLL4314", prixHT: 12.5 },
-  "600×400 (BLL6414)": { dims: "600×400mm", materiel: "BLL6414", prixHT: 15.8 },
-  "800×600 (BLL8614)": { dims: "800×600mm", materiel: "BLL8614", prixHT: 18.2 },
+  "BLL4314 (640 caisses)": { dims: "400×300mm", materiel: "BLL4314", caisses: 640, prixHT: 12.5 },
 };
 
 type LigneCarton = { type: string; nbPalettes: number };
@@ -1052,7 +1050,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                           📅 {new Date(cmd.dateLivraisonPrevue).toLocaleDateString("fr-FR")}
                         </div>
                         <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "4px" }}>
-                          {cmd.lignes.map(l => `${l.quantite} × ${l.type}`).join(" + ")}
+                          {cmd.lignes[0]?.quantite || 0} palettes BLL4314 ({(cmd.lignes[0]?.quantite || 0) * 640} caisses)
                         </div>
                         {cmd.notes && <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>📝 {cmd.notes}</div>}
                       </div>
@@ -1139,6 +1137,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
           }}>
             <h2 style={{ margin: "0 0 20px", color: COLORS.gray700 }}>🟦 Nouvelle commande de palettes IFCO</h2>
 
+            {/* Info palette */}
+            <div style={{ background: `${COLORS.secondary}15`, border: `1px solid ${COLORS.secondary}30`, borderRadius: "8px", padding: "12px 14px", marginBottom: "20px" }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.secondary }}>📦 Type de palette</div>
+              <div style={{ fontSize: "16px", fontWeight: "700", color: COLORS.gray700, marginTop: "4px" }}>BLL4314 (640 caisses)</div>
+              <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "4px" }}>400×300mm</div>
+            </div>
+
             <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>
                 📅 Date de livraison
@@ -1159,71 +1164,31 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             </div>
 
             <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "10px" }}>🟦 Palettes IFCO</label>
-              {lignesIfco.map((ligne, idx) => (
-                <div key={idx} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "flex-end" }}>
-                  <select
-                    value={ligne.type}
-                    onChange={(e) => modifierLigneIfco(idx, "type", e.target.value)}
-                    style={{
-                      flex: 1,
-                      padding: "9px 12px",
-                      border: `1px solid ${COLORS.gray200}`,
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                    }}
-                  >
-                    {Object.entries(PALETTES_IFCO).map(([name, specs]) => (
-                      <option key={name} value={name}>
-                        {name} ({specs.dims})
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min="1"
-                    value={ligne.quantite}
-                    onChange={(e) => modifierLigneIfco(idx, "quantite", parseInt(e.target.value) || 1)}
-                    style={{
-                      width: "80px",
-                      padding: "9px 12px",
-                      border: `1px solid ${COLORS.gray200}`,
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                    }}
-                  />
-                  <button
-                    onClick={() => supprimerLigneIfco(idx)}
-                    style={{
-                      padding: "6px 10px",
-                      background: COLORS.dangerLight,
-                      color: COLORS.danger,
-                      border: "none",
-                      borderRadius: "6px",
-                      cursor: "pointer",
-                      fontWeight: "700",
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={ajouterLigneIfco}
-                style={{
-                  marginTop: "8px",
-                  padding: "8px 12px",
-                  background: `${COLORS.secondary}15`,
-                  color: COLORS.secondary,
-                  border: `1px solid ${COLORS.secondary}30`,
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  fontWeight: "600",
-                  fontSize: "12px",
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>
+                📊 Nombre de palettes
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={lignesIfco[0]?.quantite || 1}
+                onChange={(e) => {
+                  const qty = parseInt(e.target.value) || 1;
+                  setLignesIfco([{ type: "BLL4314 (640 caisses)", quantite: qty }]);
                 }}
-              >
-                ➕ Ajouter une ligne
-              </button>
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  border: `1px solid ${COLORS.gray200}`,
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  boxSizing: "border-box",
+                  fontWeight: "700",
+                  fontSize: "16px",
+                }}
+              />
+              <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "6px" }}>
+                Total: <strong>{(lignesIfco[0]?.quantite || 1) * 640} caisses</strong>
+              </div>
             </div>
 
             <div style={{ marginBottom: "16px" }}>
