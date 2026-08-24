@@ -565,6 +565,20 @@ export default function App() {
     const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut, poids_net: ctrl.poids_net, observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
     await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, ...(litige ? { litige } : {}), validatedAt: Date.now() });
+
+    // Si cet arrivage provient d'une commande de cartons, mettre à jour le statut de la commande
+    if (arrivage.carton_commande_id && decision === "conforme") {
+      try {
+        await update(ref(db, `prestataires_cartons/${arrivage.carton_commande_id}`), {
+          statut: "reçu" as const,
+          dateReception: now2.toISOString().split("T")[0]
+        });
+        logActivite("Carton reçu", `Commande #${arrivage.carton_commande_id} validée`);
+      } catch (error) {
+        console.error("Erreur lors de la mise à jour du statut carton:", error);
+      }
+    }
+
     showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
     logActivite(decision === "conforme" ? "Validation arrivage" : "Litige créé", `${arrivage.produit || "-"} · ${arrivage.fournisseur || "-"} · lot ${arrivage.lot_interne || "-"}`);
     // Chaque article validé doit repartir avec son étiquette — impression automatique dès la

@@ -148,6 +148,30 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         throw new Error("Impossible de récupérer l'ID de la commande");
       }
 
+      // Créer aussi un arrivage correspondant dans le système classique
+      const totalPalettes = lignes.reduce((sum, l) => sum + l.nbPalettes, 0);
+      const totalCartons = lignes.reduce((sum, l) => {
+        const specs = CARTONS_CATALOGUE[l.type as keyof typeof CARTONS_CATALOGUE];
+        return sum + (l.nbPalettes * specs.parPalette);
+      }, 0);
+
+      const arrivageCarton = {
+        fournisseur: "Go-Embal",
+        produit: "Cartons " + lignes.map(l => `${l.type}`).join(" + "),
+        lot_interne: commandeId,
+        lot_fournisseur: "",
+        quantite: totalCartons,
+        unite: "cartons",
+        date: dateLivraison, // Date de livraison prévue = date d'arrivée
+        statut: "en attente",
+        timestamp: Date.now(),
+        carton_commande_id: commandeId, // Lien vers la commande de cartons
+        origine: lieuLivraison,
+        variete: creneau,
+      };
+
+      await push(ref(db, "arrivages"), arrivageCarton);
+
       const cmdWithId: CartonCommande = { ...newCmd, id: commandeId };
 
       // Envoyer email de confirmation
