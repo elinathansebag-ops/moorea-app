@@ -38,12 +38,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [isEnvoyantEmail, setIsEnvoyantEmail] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
 
-  useEffect(() => {
-    // État pour la sélection de période
-  const today = new Date();
-  const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth());
 
   // Charger les commandes depuis Firebase
   useEffect(() => {
