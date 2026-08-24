@@ -354,45 +354,57 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {/* Dashboard */}
         {activeTab === "dashboard" && (
           <div>
-            {/* Sélecteur de période */}
-            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px", display: "flex", gap: "15px", alignItems: "center" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Mois</label>
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                  style={{
-                    padding: "8px",
-                    border: "1px solid #ddd",
-                    borderRadius: "4px",
-                    fontSize: "14px",
-                  }}
-                >
-                  {moisNoms.map((nom, idx) => (
-                    <option key={idx} value={idx}>{nom}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Année</label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                  style={{
-                    padding: "8px",
-                    border: "1px solid #ddd",
-                    borderRadius: "4px",
-                    fontSize: "14px",
-                  }}
-                >
-                  {years.map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ marginTop: "23px", fontSize: "14px", color: "#666" }}>
+            {/* Navigation du calendrier */}
+            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px", display: "flex", gap: "15px", alignItems: "center", justifyContent: "space-between" }}>
+              <button
+                onClick={() => {
+                  if (selectedMonth === 0) {
+                    setSelectedMonth(11);
+                    setSelectedYear(selectedYear - 1);
+                  } else {
+                    setSelectedMonth(selectedMonth - 1);
+                  }
+                }}
+                style={{
+                  padding: "8px 12px",
+                  background: "#0066cc",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  fontWeight: "bold",
+                }}
+              >
+                ◀ Précédent
+              </button>
+
+              <div style={{ fontSize: "18px", fontWeight: "bold", color: "#0066cc", minWidth: "200px", textAlign: "center" }}>
                 {moisNoms[selectedMonth]} {selectedYear}
               </div>
+
+              <button
+                onClick={() => {
+                  if (selectedMonth === 11) {
+                    setSelectedMonth(0);
+                    setSelectedYear(selectedYear + 1);
+                  } else {
+                    setSelectedMonth(selectedMonth + 1);
+                  }
+                }}
+                style={{
+                  padding: "8px 12px",
+                  background: "#0066cc",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  fontWeight: "bold",
+                }}
+              >
+                Suivant ▶
+              </button>
             </div>
 
             {/* Calendrier du mois - Compact */}
@@ -559,45 +571,57 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {/* Stats par Référence */}
         {activeTab === "stats" && (
           <div>
-            {/* Sélecteur de période */}
-            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px", display: "flex", gap: "15px", alignItems: "center" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Mois</label>
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                  style={{
-                    padding: "8px",
-                    border: "1px solid #ddd",
-                    borderRadius: "4px",
-                    fontSize: "14px",
-                  }}
-                >
-                  {moisNoms.map((nom, idx) => (
-                    <option key={idx} value={idx}>{nom}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Année</label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                  style={{
-                    padding: "8px",
-                    border: "1px solid #ddd",
-                    borderRadius: "4px",
-                    fontSize: "14px",
-                  }}
-                >
-                  {years.map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ marginTop: "23px", fontSize: "14px", color: "#666" }}>
+            {/* Navigation du calendrier */}
+            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px", display: "flex", gap: "15px", alignItems: "center", justifyContent: "space-between" }}>
+              <button
+                onClick={() => {
+                  if (selectedMonth === 0) {
+                    setSelectedMonth(11);
+                    setSelectedYear(selectedYear - 1);
+                  } else {
+                    setSelectedMonth(selectedMonth - 1);
+                  }
+                }}
+                style={{
+                  padding: "8px 12px",
+                  background: "#0066cc",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  fontWeight: "bold",
+                }}
+              >
+                ◀ Précédent
+              </button>
+
+              <div style={{ fontSize: "18px", fontWeight: "bold", color: "#0066cc", minWidth: "200px", textAlign: "center" }}>
                 {moisNoms[selectedMonth]} {selectedYear}
               </div>
+
+              <button
+                onClick={() => {
+                  if (selectedMonth === 11) {
+                    setSelectedMonth(0);
+                    setSelectedYear(selectedYear + 1);
+                  } else {
+                    setSelectedMonth(selectedMonth + 1);
+                  }
+                }}
+                style={{
+                  padding: "8px 12px",
+                  background: "#0066cc",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  fontWeight: "bold",
+                }}
+              >
+                Suivant ▶
+              </button>
             </div>
 
             <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
