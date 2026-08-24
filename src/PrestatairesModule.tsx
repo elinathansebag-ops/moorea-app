@@ -167,11 +167,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
   return (
     <div style={{ background: "#f5f5f5", minHeight: "100vh", padding: "20px" }}>
-      <PageHeader
-        title="Prestataires - Cartons"
-        subtitle="Gestion des commandes de cartons"
-        onClose={onClose}
-        userName={userName}
+      <PageHeader 
+        titre="📦 Prestataires - Cartons" 
+        onBack={onClose} 
+        onHome={onClose}
       />
 
       {/* Tabs */}
