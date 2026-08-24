@@ -39,6 +39,11 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [isEnvoyantEmail, setIsEnvoyantEmail] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+
+  // Initialiser EmailJS au montage
+  useEffect(() => {
+    emailjs.init("rpwOY5rxIG9zCTYU-UYeXIghV7rQIA6ss0WrNg"); // À remplacer par ta vraie clé
+  }, []);
   // État pour la sélection de période
   const today = new Date();
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
