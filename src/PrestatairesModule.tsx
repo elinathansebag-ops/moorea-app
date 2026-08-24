@@ -92,7 +92,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         .join("\n");
 
       await emailjs.send(
-        "service_moorea",
+        "service_sheyrpi",
         "template_carton_confirmation",
         {
           to_email: "contact@go-enball.fr",
