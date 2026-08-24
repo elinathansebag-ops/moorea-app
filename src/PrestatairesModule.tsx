@@ -225,7 +225,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
-                  <th style={{ padding: "12px", textAlign: "left" }}>N° Commande</th>
                   <th style={{ padding: "12px", textAlign: "left" }}>Références</th>
                   <th style={{ padding: "12px", textAlign: "left" }}>Total Palettes</th>
                   <th style={{ padding: "12px", textAlign: "left" }}>Date Commande</th>
@@ -240,7 +239,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   const totalPalettes = cmd.lignes.reduce((sum, l) => sum + l.nbPalettes, 0);
                   return (
                     <tr key={cmd.id} style={{ borderBottom: "1px solid #eee" }}>
-                      <td style={{ padding: "12px", fontWeight: "bold", color: "#0066cc" }}>#{cmd.id.slice(0, 8)}</td>
                       <td style={{ padding: "12px", fontSize: "12px" }}>
                         {cmd.lignes.map((l, i) => (
                           <div key={i}>{l.type}</div>
@@ -263,22 +261,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                       </td>
                       <td style={{ padding: "12px" }}>
                         <div style={{ display: "flex", gap: "5px" }}>
-                          {cmd.statut === "commandé" && (
-                            <button
-                              onClick={() => handleMarquerRecu(cmd.id)}
-                              style={{
-                                padding: "4px 8px",
-                                background: "#28a745",
-                                color: "white",
-                                border: "none",
-                                borderRadius: "3px",
-                                cursor: "pointer",
-                                fontSize: "11px",
-                              }}
-                            >
-                              ✓ Reçu
-                            </button>
-                          )}
                           {cmd.statut === "reçu" && (
                             <button
                               onClick={() => handleMarquerFacture(cmd.id)}
