@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     const comptes = {
       agreage: { email: 'agreage@moorea.fr', pass: 'ymxz ktzv lele vucp', label: 'Moorea Agréage' },
       entrepot: { email: 'entrepot@moorea.fr', pass: 'cara kcnl iddu atxu', label: 'Moorea Entrepôt' },
-      elinathan: { email: 'elinathan.sebag@moorea.fr', pass: 'femy ornu upgx rdgq', label: 'Elinathan Sebag' },
+      elinathan: { email: 'elinathan.sebag@moorea.fr', pass: 'xhrs ehnu bcsy rvar', label: 'Elinathan Sebag' },
     };
     const compte = comptes[sender] || comptes.agreage;
 
