@@ -85,11 +85,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         .join("");
 
       const emailHtml = `
+        <p>Bonjour,</p>
+        <p>Suite à notre appel téléphonique, voici la confirmation de votre commande de cartons:</p>
         <h2>Confirmation de Commande de Cartons</h2>
         <p><strong>Numéro de commande:</strong> ${commande.id}</p>
         <p><strong>Date de commande:</strong> ${commande.dateCommande}</p>
         <p><strong>Date de livraison prévue:</strong> ${commande.dateLivraisonPrevue}</p>
         <p><strong>Créneau de livraison:</strong> ${commande.creneau}</p>
+        <p><strong>Lieu de livraison:</strong> Andes - le Potager De Marianne - Bat D3</p>
         <h3>Détails de la commande:</h3>
         <ul>
           ${lignesHtml}
