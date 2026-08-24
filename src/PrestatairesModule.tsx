@@ -23,6 +23,7 @@ type CartonCommande = {
   dateCommande: string;
   dateLivraisonPrevue: string;
   creneau: "1er tour 7h-11h" | "2e tour 11h-14h";
+  lieuLivraison: string;
   statut: "commandé" | "reçu" | "facturé";
   dateReception?: string;
 };
@@ -35,6 +36,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [lignes, setLignes] = useState<LigneCarton[]>([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
   const [dateLivraison, setDateLivraison] = useState<string>(new Date().toISOString().split("T")[0]);
   const [creneau, setCreneau] = useState<"1er tour 7h-11h" | "2e tour 11h-14h">("1er tour 7h-11h");
+  const [lieuLivraison, setLieuLivraison] = useState<string>("Moorea Commerce Fruit - Bat D3");
   const [isEnvoyantEmail, setIsEnvoyantEmail] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -92,7 +94,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         <p><strong>Date de commande:</strong> ${commande.dateCommande}</p>
         <p><strong>Date de livraison prévue:</strong> ${commande.dateLivraisonPrevue}</p>
         <p><strong>Créneau de livraison:</strong> ${commande.creneau}</p>
-        <p><strong>Lieu de livraison:</strong> Andes - le Potager De Marianne - Bat D3</p>
+        <p><strong>Lieu de livraison:</strong> ${commande.lieuLivraison}</p>
         <h3>Détails de la commande:</h3>
         <ul>
           ${lignesHtml}
@@ -134,6 +136,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       dateCommande: new Date().toISOString().split("T")[0],
       dateLivraisonPrevue: dateLivraison,
       creneau,
+      lieuLivraison,
       statut: "commandé" as const,
     };
 
@@ -154,6 +157,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       setLignes([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
       setDateLivraison(new Date().toISOString().split("T")[0]);
       setCreneau("1er tour 7h-11h");
+      setLieuLivraison("Moorea Commerce Fruit - Bat D3");
       setActiveTab("dashboard");
     } catch (error) {
       console.error("Erreur lors de la création de la commande:", error);
@@ -676,6 +680,24 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               >
                 <option value="1er tour 7h-11h">1er tour 7h-11h</option>
                 <option value="2e tour 11h-14h">2e tour 11h-14h</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Lieu de livraison</label>
+              <select
+                value={lieuLivraison}
+                onChange={(e) => setLieuLivraison(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                }}
+              >
+                <option value="Moorea Commerce Fruit - Bat D3">Moorea Commerce Fruit - Bat D3</option>
+                <option value="Andes - le Potager De Marianne - Bat B4">Andes - le Potager De Marianne - Bat B4</option>
               </select>
             </div>
 
