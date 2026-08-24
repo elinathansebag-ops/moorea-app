@@ -30,7 +30,7 @@ type CartonCommande = {
 
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
-  const [activeTab, setActiveTab] = useState<"nouvelle" | "dashboard">("dashboard");
+  const [activeTab, setActiveTab] = useState<"nouvelle" | "dashboard" | "stats">("dashboard");
 
   // État pour les lignes de commande
   const [lignes, setLignes] = useState<LigneCarton[]>([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
@@ -163,7 +163,38 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     };
   };
 
+  // Stats par référence
+  const calculerStatsByRef = () => {
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    const commandesMonth = commandes.filter(c => {
+      const d = new Date(c.dateCommande);
+      return d >= startOfMonth && d <= endOfMonth;
+    });
+
+    const stats: Record<string, { commandé: number; reçu: number; facturé: number }> = {};
+
+    Object.keys(CARTONS_CATALOGUE).forEach(type => {
+      stats[type] = { commandé: 0, reçu: 0, facturé: 0 };
+    });
+
+    commandesMonth.forEach(cmd => {
+      cmd.lignes.forEach(ligne => {
+        if (stats[ligne.type]) {
+          if (cmd.statut === "commandé") stats[ligne.type].commandé += ligne.nbPalettes;
+          if (cmd.statut === "reçu") stats[ligne.type].reçu += ligne.nbPalettes;
+          if (cmd.statut === "facturé") stats[ligne.type].facturé += ligne.nbPalettes;
+        }
+      });
+    });
+
+    return stats;
+  };
+
   const stats = calculerStats();
+  const statsByRef = calculerStatsByRef();
 
   return (
     <div style={{ background: "#f5f5f5", minHeight: "100vh", margin: 0, padding: 0 }}>
@@ -188,6 +219,19 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             }}
           >
             📊 Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab("stats")}
+            style={{
+              padding: "10px 20px",
+              background: activeTab === "stats" ? "#0066cc" : "white",
+              color: activeTab === "stats" ? "white" : "black",
+              border: "none",
+              cursor: "pointer",
+              borderRadius: "4px 4px 0 0",
+            }}
+          >
+            📈 Stats par Ref
           </button>
           <button
             onClick={() => setActiveTab("nouvelle")}
@@ -303,6 +347,34 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Stats par Référence */}
+        {activeTab === "stats" && (
+          <div>
+            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
+                    <th style={{ padding: "12px", textAlign: "left" }}>Type de Carton</th>
+                    <th style={{ padding: "12px", textAlign: "center" }}>Commandé (palettes)</th>
+                    <th style={{ padding: "12px", textAlign: "center" }}>Reçu (palettes)</th>
+                    <th style={{ padding: "12px", textAlign: "center" }}>Facturé (palettes)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(statsByRef).map(([type, data]) => (
+                    <tr key={type} style={{ borderBottom: "1px solid #eee" }}>
+                      <td style={{ padding: "12px", fontWeight: "bold" }}>{type}</td>
+                      <td style={{ padding: "12px", textAlign: "center", color: "#0066cc", fontWeight: "bold" }}>{data.commandé}</td>
+                      <td style={{ padding: "12px", textAlign: "center", color: "#28a745", fontWeight: "bold" }}>{data.reçu}</td>
+                      <td style={{ padding: "12px", textAlign: "center", color: "#ffc107", fontWeight: "bold" }}>{data.facturé}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
