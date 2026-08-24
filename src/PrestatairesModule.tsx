@@ -395,23 +395,60 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </div>
             </div>
 
-            {/* Stats Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "15px", marginBottom: "30px" }}>
-              <div style={{ background: "white", padding: "20px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "5px" }}>COMMANDES</div>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: "#0066cc" }}>{stats.commandé}</div>
-              </div>
-              <div style={{ background: "white", padding: "20px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "5px" }}>REÇUES</div>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: "#28a745" }}>{stats.reçu}</div>
-              </div>
-              <div style={{ background: "white", padding: "20px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "5px" }}>FACTURÉES</div>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: "#ffc107" }}>{stats.facturé}</div>
-              </div>
-              <div style={{ background: "white", padding: "20px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "5px" }}>PALETTES COMMANDÉES</div>
-                <div style={{ fontSize: "28px", fontWeight: "bold" }}>{stats.palettesCommandées}</div>
+            {/* Calendrier du mois */}
+            <div style={{ background: "white", padding: "20px", borderRadius: "8px", marginBottom: "30px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+              <h3 style={{ marginTop: 0, marginBottom: "15px", fontSize: "16px", fontWeight: "bold" }}>📅 Commandes du mois</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px" }}>
+                {["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"].map(j => (
+                  <div key={j} style={{ textAlign: "center", fontWeight: "bold", fontSize: "12px", color: "#666", padding: "8px 0" }}>
+                    {j}
+                  </div>
+                ))}
+                {Array.from({ length: new Date(selectedYear, selectedMonth, 0).getDay() }).map((_, i) => (
+                  <div key={`empty-${i}`} style={{ padding: "8px", background: "#f9f9f9", borderRadius: "4px" }}></div>
+                ))}
+                {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, i) => {
+                  const date = new Date(selectedYear, selectedMonth, i + 1);
+                  const dateStr = date.toISOString().split("T")[0];
+                  const cmdsJour = commandes.filter(c => c.dateLivraisonPrevue === dateStr);
+                  const palettesJour = cmdsJour.reduce((sum, c) => sum + c.lignes.reduce((s, l) => s + l.nbPalettes, 0), 0);
+                  const colisJour = cmdsJour.reduce((sum, c) => {
+                    return sum + c.lignes.reduce((s, l) => {
+                      const specs = CARTONS_CATALOGUE[l.type as keyof typeof CARTONS_CATALOGUE];
+                      return s + (l.nbPalettes * specs.parPalette);
+                    }, 0);
+                  }, 0);
+
+                  return (
+                    <div
+                      key={dateStr}
+                      style={{
+                        background: cmdsJour.length > 0 ? "#e8f4f8" : "#f9f9f9",
+                        border: cmdsJour.length > 0 ? "2px solid #0066cc" : "1px solid #e5e7eb",
+                        padding: "8px",
+                        borderRadius: "4px",
+                        minHeight: "70px",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "flex-start"
+                      }}
+                    >
+                      <div style={{ fontSize: "13px", fontWeight: "bold", color: "#0066cc", marginBottom: "4px" }}>
+                        {i + 1}
+                      </div>
+                      {cmdsJour.length > 0 && (
+                        <>
+                          <div style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}>
+                            📦 {colisJour}
+                          </div>
+                          <div style={{ fontSize: "10px", color: "#28a745", fontWeight: "bold" }}>
+                            🎫 {palettesJour}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -678,11 +715,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             </div>
 
             <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Date de Livraison Prévue</label>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Date de Livraison Prévue (max 7j à l'avance)</label>
               <input
                 type="date"
                 value={dateLivraison}
                 onChange={(e) => setDateLivraison(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+                max={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}
                 style={{
                   width: "100%",
                   padding: "10px",
