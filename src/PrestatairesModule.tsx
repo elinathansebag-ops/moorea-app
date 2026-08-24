@@ -13,7 +13,16 @@ const CARTONS_CATALOGUE = {
   "95 NOIR": { dims: "400×300×95mm", prixHT: 0.78, parPalette: 260 },
 };
 
+// Types de palettes IFCO
+const PALETTES_IFCO = {
+  "400×300 (BLL4314)": { dims: "400×300mm", materiel: "BLL4314", prixHT: 12.5 },
+  "600×400 (BLL6414)": { dims: "600×400mm", materiel: "BLL6414", prixHT: 15.8 },
+  "800×600 (BLL8614)": { dims: "800×600mm", materiel: "BLL8614", prixHT: 18.2 },
+};
+
 type LigneCarton = { type: string; nbPalettes: number };
+type LignePaletteIFCO = { type: string; quantite: number };
+
 type CartonCommande = {
   id: string;
   lignes: LigneCarton[];
@@ -23,6 +32,16 @@ type CartonCommande = {
   lieuLivraison: string;
   statut: "commandé" | "reçu" | "facturé";
   dateReception?: string;
+};
+
+type PaletteIFCOCommande = {
+  id: string;
+  lignes: LignePaletteIFCO[];
+  dateCommande: string;
+  dateLivraisonPrevue: string;
+  statut: "commandé" | "reçu" | "retourné";
+  dateReception?: string;
+  notes?: string;
 };
 
 type IFCODeclaration = {
@@ -40,9 +59,29 @@ type IFCOClient = {
   code: number;
 };
 
+const COLORS = {
+  primary: "#27ae60",      // Green
+  primaryLight: "#eafaf1",
+  primaryBorder: "#d4edda",
+  secondary: "#3b82f6",    // Blue
+  secondaryLight: "#eff6ff",
+  tertiary: "#f59e0b",     // Amber
+  tertiaryLight: "#fffbeb",
+  danger: "#dc2626",       // Red
+  dangerLight: "#fef2f2",
+  gray100: "#f9fafb",
+  gray200: "#e5e7eb",
+  gray400: "#9ca3af",
+  gray600: "#4b5563",
+  gray700: "#1f2937",
+  success: "#10b981",
+  info: "#06b6d4",
+};
+
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
-  const [activeTab, setActiveTab] = useState<"cartons" | "ifco" | "nouvelle-carton">("cartons");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "cartons" | "palettes" | "ifco" | "nouvelle-carton" | "nouvelle-palette">("dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
+  const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
 
@@ -51,8 +90,11 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [dateLivraison, setDateLivraison] = useState(new Date().toISOString().split("T")[0]);
   const [creneau, setCreneau] = useState<"1er tour 7h-11h" | "2e tour 11h-14h">("1er tour 7h-11h");
   const [lieuLivraison, setLieuLivraison] = useState("Moorea Commerce Fruit - Bat D3");
-  const [isEnvoyantEmail, setIsEnvoyantEmail] = useState(false);
-  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  // Palettes IFCO form
+  const [lignesIfco, setLignesIfco] = useState<LignePaletteIFCO[]>([{ type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
+  const [dateLivraisonIfco, setDateLivraisonIfco] = useState(new Date().toISOString().split("T")[0]);
+  const [notesIfco, setNotesIfco] = useState("");
 
   // IFCO states
   const [ifcoHistorique, setIfcoHistorique] = useState<IFCODeclaration[]>([]);
@@ -67,6 +109,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [ifcoEditingClient, setIfcoEditingClient] = useState<string | null>(null);
   const [ifcoNewClientName, setIfcoNewClientName] = useState("");
   const [ifcoNewClientCode, setIfcoNewClientCode] = useState("");
+  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
@@ -75,6 +118,15 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     const u = onValue(ref(db, "prestataires_cartons"), (snap) => {
       const data = snap.val() || {};
       setCommandes(Object.entries(data).map(([id, cmd]: any) => ({ id, ...cmd })));
+    });
+    return () => u();
+  }, []);
+
+  // Load IFCO palettes commands
+  useEffect(() => {
+    const u = onValue(ref(db, "ifco_palettes_commandes"), (snap) => {
+      const data = snap.val() || {};
+      setPalettesCommandes(Object.entries(data).map(([id, cmd]: any) => ({ id, ...cmd })));
     });
     return () => u();
   }, []);
@@ -325,21 +377,21 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   };
 
   // Carton functions
-  const modifierLigne = (index: number, key: keyof LigneCarton, value: any) => {
+  const modifierLigneCarton = (index: number, key: keyof LigneCarton, value: any) => {
     const newLignes = [...lignes];
     newLignes[index][key] = value;
     setLignes(newLignes);
   };
 
-  const supprimerLigne = (index: number) => {
+  const supprimerLigneCarton = (index: number) => {
     setLignes(lignes.filter((_, i) => i !== index));
   };
 
-  const ajouterLigne = () => {
+  const ajouterLigneCarton = () => {
     setLignes([...lignes, { type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
   };
 
-  const handleCreerCommande = async () => {
+  const handleCreerCommandeCarton = async () => {
     if (lignes.length === 0 || lignes.some((l) => l.nbPalettes <= 0)) return;
 
     const newCmd: Omit<CartonCommande, "id"> = {
@@ -352,38 +404,85 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     };
 
     try {
-      const ref_push = await push(ref(db, "prestataires_cartons"), newCmd);
+      await push(ref(db, "prestataires_cartons"), newCmd);
       setLignes([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
       setDateLivraison(new Date().toISOString().split("T")[0]);
       setCreneau("1er tour 7h-11h");
       setLieuLivraison("Moorea Commerce Fruit - Bat D3");
       setActiveTab("cartons");
-      setNotification({ type: "success", message: "✓ Commande créée" });
+      setNotification({ type: "success", message: "✓ Commande de cartons créée" });
     } catch (error) {
       setNotification({ type: "error", message: "✗ Erreur" });
     }
   };
 
-  const handleMarquerRecu = async (id: string) => {
+  // IFCO Palettes functions
+  const modifierLigneIfco = (index: number, key: keyof LignePaletteIFCO, value: any) => {
+    const newLignes = [...lignesIfco];
+    newLignes[index][key] = value;
+    setLignesIfco(newLignes);
+  };
+
+  const supprimerLigneIfco = (index: number) => {
+    setLignesIfco(lignesIfco.filter((_, i) => i !== index));
+  };
+
+  const ajouterLigneIfco = () => {
+    setLignesIfco([...lignesIfco, { type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
+  };
+
+  const handleCreerCommandePaletteIfco = async () => {
+    if (lignesIfco.length === 0 || lignesIfco.some((l) => l.quantite <= 0)) return;
+
+    const newCmd: Omit<PaletteIFCOCommande, "id"> = {
+      lignes: lignesIfco,
+      dateCommande: new Date().toISOString().split("T")[0],
+      dateLivraisonPrevue: dateLivraisonIfco,
+      statut: "commandé" as const,
+      notes: notesIfco,
+    };
+
+    try {
+      await push(ref(db, "ifco_palettes_commandes"), newCmd);
+      setLignesIfco([{ type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
+      setDateLivraisonIfco(new Date().toISOString().split("T")[0]);
+      setNotesIfco("");
+      setActiveTab("palettes");
+      setNotification({ type: "success", message: "✓ Commande de palettes IFCO créée" });
+    } catch (error) {
+      setNotification({ type: "error", message: "✗ Erreur" });
+    }
+  };
+
+  const handleMarquerPaletteRecu = async (id: string) => {
+    await update(ref(db, `ifco_palettes_commandes/${id}`), {
+      statut: "reçu" as const,
+      dateReception: new Date().toISOString().split("T")[0],
+    });
+  };
+
+  const handleSupprimerPaletteCommande = async (id: string) => {
+    if (window.confirm("Êtes-vous sûr ?")) {
+      await remove(ref(db, `ifco_palettes_commandes/${id}`));
+    }
+  };
+
+  const handleMarquerCartonRecu = async (id: string) => {
     await update(ref(db, `prestataires_cartons/${id}`), {
       statut: "reçu" as const,
       dateReception: new Date().toISOString().split("T")[0],
     });
   };
 
-  const handleMarquerFacture = async (id: string) => {
-    await update(ref(db, `prestataires_cartons/${id}`), { statut: "facturé" });
-  };
-
-  const handleSupprimerCommande = async (id: string) => {
+  const handleSupprimerCartonCommande = async (id: string) => {
     if (window.confirm("Êtes-vous sûr ?")) {
       await remove(ref(db, `prestataires_cartons/${id}`));
     }
   };
 
   return (
-    <div style={{ background: "#f5f5f5", minHeight: "100vh", margin: 0, padding: 0 }}>
-      <PageHeader titre="📦 Prestataires" onBack={onClose} onHome={onClose} />
+    <div style={{ background: "linear-gradient(135deg, #f0f9f8 0%, #f9fbf8 100%)", minHeight: "100vh", margin: 0, padding: 0 }}>
+      <PageHeader titre="📦 Prestataires & IFCO" onBack={onClose} onHome={onClose} />
 
       {notification && (
         <div
@@ -391,128 +490,227 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             position: "fixed",
             top: "80px",
             right: "20px",
-            padding: "15px 20px",
-            borderRadius: "4px",
-            background: notification.type === "success" ? "#28a745" : "#dc3545",
+            padding: "14px 18px",
+            borderRadius: "10px",
+            background: notification.type === "success" ? COLORS.primary : COLORS.danger,
             color: "white",
             fontSize: "14px",
-            fontWeight: "bold",
+            fontWeight: "600",
             zIndex: 1000,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            animation: "slideIn 0.3s ease-out",
           }}
         >
           {notification.message}
         </div>
       )}
 
-      <div style={{ padding: "20px" }}>
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "2px solid #ddd", flexWrap: "wrap" }}>
-          <button
-            onClick={() => setActiveTab("cartons")}
-            style={{
-              padding: "10px 20px",
-              background: activeTab === "cartons" ? "#0066cc" : "white",
-              color: activeTab === "cartons" ? "white" : "black",
-              border: "none",
-              cursor: "pointer",
-              borderRadius: "4px 4px 0 0",
-            }}
-          >
-            📦 Cartons
-          </button>
-          <button
-            onClick={() => setActiveTab("ifco")}
-            style={{
-              padding: "10px 20px",
-              background: activeTab === "ifco" ? "#17a2b8" : "white",
-              color: activeTab === "ifco" ? "white" : "black",
-              border: "none",
-              cursor: "pointer",
-              borderRadius: "4px 4px 0 0",
-            }}
-          >
-            🟦 IFCO
-          </button>
-        </div>
-
-        {/* CARTONS TAB */}
-        {activeTab === "cartons" && (
-          <div>
-            {/* Navigation */}
-            <div
+      <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
+        {/* Tabs Navigation */}
+        <div style={{
+          display: "flex",
+          gap: "12px",
+          marginBottom: "24px",
+          flexWrap: "wrap",
+          borderBottom: `2px solid ${COLORS.gray200}`,
+          paddingBottom: "12px"
+        }}>
+          {[
+            { key: "dashboard", label: "📊 Dashboard", icon: "📊" },
+            { key: "cartons", label: "📦 Cartons", icon: "📦" },
+            { key: "palettes", label: "🟦 Palettes IFCO", icon: "🟦" },
+            { key: "ifco", label: "🔄 IFCO Convert", icon: "🔄" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
               style={{
-                background: "white",
-                padding: "15px",
-                borderRadius: "8px",
-                marginBottom: "20px",
-                display: "flex",
-                gap: "15px",
-                alignItems: "center",
-                justifyContent: "space-between",
+                padding: "10px 16px",
+                background: activeTab === tab.key ? COLORS.primary : "white",
+                color: activeTab === tab.key ? "white" : COLORS.gray700,
+                border: activeTab === tab.key ? `2px solid ${COLORS.primary}` : `2px solid ${COLORS.gray200}`,
+                cursor: "pointer",
+                borderRadius: "8px 8px 0 0",
+                fontSize: "14px",
+                fontWeight: activeTab === tab.key ? "700" : "600",
+                transition: "all 0.2s",
               }}
             >
-              <button
-                onClick={() => {
-                  if (selectedMonth === 0) {
-                    setSelectedMonth(11);
-                    setSelectedYear(selectedYear - 1);
-                  } else {
-                    setSelectedMonth(selectedMonth - 1);
-                  }
-                }}
-                style={{
-                  padding: "8px 12px",
-                  background: "#0066cc",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontSize: "16px",
-                  fontWeight: "bold",
-                }}
-              >
-                ◀ Précédent
-              </button>
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
 
-              <div style={{ fontSize: "18px", fontWeight: "bold", color: "#0066cc", minWidth: "200px", textAlign: "center" }}>
-                {moisNoms[selectedMonth]} {selectedYear}
+        {/* DASHBOARD TAB */}
+        {activeTab === "dashboard" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+            {/* Cartons Summary */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`,
+              borderTop: `4px solid ${COLORS.primary}`
+            }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>📦 Cartons</div>
+              <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.primary, margin: "8px 0" }}>{commandes.length}</div>
+              <div style={{ fontSize: "12px", color: COLORS.gray600 }}>
+                {commandes.filter(c => c.statut === "commandé").length} commandé{commandes.filter(c => c.statut === "commandé").length !== 1 ? "s" : ""}
               </div>
-
               <button
-                onClick={() => {
-                  if (selectedMonth === 11) {
-                    setSelectedMonth(0);
-                    setSelectedYear(selectedYear + 1);
-                  } else {
-                    setSelectedMonth(selectedMonth + 1);
-                  }
-                }}
+                onClick={() => setActiveTab("nouvelle-carton")}
                 style={{
+                  marginTop: "12px",
+                  width: "100%",
                   padding: "8px 12px",
-                  background: "#0066cc",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
+                  background: COLORS.primaryLight,
+                  color: COLORS.primary,
+                  border: `1px solid ${COLORS.primaryBorder}`,
+                  borderRadius: "6px",
                   cursor: "pointer",
-                  fontSize: "16px",
-                  fontWeight: "bold",
+                  fontWeight: "600",
+                  fontSize: "12px",
                 }}
               >
-                Suivant ▶
+                ➕ Nouvelle commande
               </button>
             </div>
 
-            {/* Calendar & Table */}
-            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px" }}>
-              <h3 style={{ marginTop: 0, marginBottom: "12px", fontSize: "14px", fontWeight: "bold" }}>📅 Calendrier</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
+            {/* Palettes IFCO Summary */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`,
+              borderTop: `4px solid ${COLORS.secondary}`
+            }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>🟦 Palettes IFCO</div>
+              <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.secondary, margin: "8px 0" }}>{palettesCommandes.length}</div>
+              <div style={{ fontSize: "12px", color: COLORS.gray600 }}>
+                {palettesCommandes.filter(c => c.statut === "commandé").length} commandé{palettesCommandes.filter(c => c.statut === "commandé").length !== 1 ? "s" : ""}
+              </div>
+              <button
+                onClick={() => setActiveTab("nouvelle-palette")}
+                style={{
+                  marginTop: "12px",
+                  width: "100%",
+                  padding: "8px 12px",
+                  background: `${COLORS.secondary}15`,
+                  color: COLORS.secondary,
+                  border: `1px solid ${COLORS.secondary}30`,
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  fontSize: "12px",
+                }}
+              >
+                ➕ Nouvelle commande
+              </button>
+            </div>
+
+            {/* IFCO Summary */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`,
+              borderTop: `4px solid ${COLORS.tertiary}`
+            }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>🔄 IFCO</div>
+              <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.tertiary, margin: "8px 0" }}>{ifcoHistorique.length}</div>
+              <div style={{ fontSize: "12px", color: COLORS.gray600 }}>déclarations</div>
+              <button
+                onClick={() => setActiveTab("ifco")}
+                style={{
+                  marginTop: "12px",
+                  width: "100%",
+                  padding: "8px 12px",
+                  background: `${COLORS.tertiary}15`,
+                  color: COLORS.tertiary,
+                  border: `1px solid ${COLORS.tertiary}30`,
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  fontSize: "12px",
+                }}
+              >
+                Voir détails
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* CARTONS TAB */}
+        {activeTab === "cartons" && (
+          <div style={{ display: "grid", gap: "20px" }}>
+            {/* Calendar */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`
+            }}>
+              <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "16px" }}>
+                <button
+                  onClick={() => {
+                    if (selectedMonth === 0) {
+                      setSelectedMonth(11);
+                      setSelectedYear(selectedYear - 1);
+                    } else {
+                      setSelectedMonth(selectedMonth - 1);
+                    }
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    background: COLORS.primary,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: "600",
+                  }}
+                >
+                  ◀ Précédent
+                </button>
+                <div style={{ fontSize: "18px", fontWeight: "700", color: COLORS.primary, minWidth: "220px", textAlign: "center" }}>
+                  {moisNoms[selectedMonth]} {selectedYear}
+                </div>
+                <button
+                  onClick={() => {
+                    if (selectedMonth === 11) {
+                      setSelectedMonth(0);
+                      setSelectedYear(selectedYear + 1);
+                    } else {
+                      setSelectedMonth(selectedMonth + 1);
+                    }
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    background: COLORS.primary,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: "600",
+                  }}
+                >
+                  Suivant ▶
+                </button>
+              </div>
+
+              {/* Calendar Grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "6px" }}>
                 {["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"].map((j) => (
-                  <div key={j} style={{ textAlign: "center", fontWeight: "bold", fontSize: "10px", color: "#666", padding: "4px 0" }}>
+                  <div key={j} style={{ textAlign: "center", fontWeight: "700", fontSize: "11px", color: COLORS.gray600, padding: "8px 0" }}>
                     {j}
                   </div>
                 ))}
                 {Array.from({ length: new Date(selectedYear, selectedMonth, 0).getDay() }).map((_, i) => (
-                  <div key={`empty-${i}`} style={{ padding: "4px", minHeight: "32px" }}></div>
+                  <div key={`empty-${i}`} style={{ padding: "6px", minHeight: "48px" }}></div>
                 ))}
                 {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, i) => {
                   const date = new Date(selectedYear, selectedMonth, i + 1);
@@ -522,41 +720,565 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     <div
                       key={dateStr}
                       style={{
-                        background: cmds.length > 0 ? "#e8f4f8" : "#f9f9f9",
-                        border: cmds.length > 0 ? "2px solid #0066cc" : "1px solid #e5e7eb",
-                        padding: "4px 6px",
-                        borderRadius: "3px",
-                        minHeight: "32px",
+                        background: cmds.length > 0 ? COLORS.primaryLight : COLORS.gray100,
+                        border: cmds.length > 0 ? `2px solid ${COLORS.primary}` : `1px solid ${COLORS.gray200}`,
+                        padding: "8px 6px",
+                        borderRadius: "8px",
+                        minHeight: "48px",
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "center",
                         alignItems: "center",
                         textAlign: "center",
+                        cursor: cmds.length > 0 ? "pointer" : "default",
                       }}
                     >
-                      <div style={{ fontSize: "11px", fontWeight: "bold", color: "#0066cc" }}>{i + 1}</div>
-                      {cmds.length > 0 && <div style={{ fontSize: "9px", color: "#28a745", fontWeight: "bold", marginTop: "2px" }}>✓</div>}
+                      <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.primary }}>{i + 1}</div>
+                      {cmds.length > 0 && <div style={{ fontSize: "10px", color: COLORS.success, fontWeight: "700", marginTop: "2px" }}>✓ {cmds.length}</div>}
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            <div style={{ marginTop: "20px" }}>
+            {/* Commandes List */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`
+            }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: "700", color: COLORS.gray700 }}>📋 Commandes de cartons</h3>
+              {commandes.length === 0 ? (
+                <div style={{ textAlign: "center", color: COLORS.gray400, padding: "32px 20px" }}>
+                  <div style={{ fontSize: "14px", fontWeight: "600" }}>Aucune commande pour le moment</div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "12px" }}>
+                  {commandes.map((cmd) => (
+                    <div key={cmd.id} style={{
+                      background: COLORS.gray100,
+                      border: `1px solid ${COLORS.gray200}`,
+                      borderLeft: `4px solid ${cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : COLORS.primary}`,
+                      borderRadius: "8px",
+                      padding: "12px 14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}>
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>
+                          📅 {new Date(cmd.dateLivraisonPrevue).toLocaleDateString("fr-FR")} · {cmd.creneau}
+                        </div>
+                        <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "4px" }}>
+                          {cmd.lignes.map(l => `${l.nbPalettes} × ${l.type}`).join(" + ")}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                        <span style={{
+                          background: cmd.statut === "commandé" ? `${COLORS.tertiary}20` : cmd.statut === "reçu" ? `${COLORS.success}20` : `${COLORS.primary}20`,
+                          color: cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : COLORS.primary,
+                          borderRadius: "6px",
+                          padding: "4px 10px",
+                          fontSize: "11px",
+                          fontWeight: "700",
+                        }}>
+                          {cmd.statut === "commandé" ? "⏱️ Commandé" : cmd.statut === "reçu" ? "✓ Reçu" : "💳 Facturé"}
+                        </span>
+                        {cmd.statut === "commandé" && (
+                          <button
+                            onClick={() => handleMarquerCartonRecu(cmd.id)}
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.success,
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            ✓ Reçu
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleSupprimerCartonCommande(cmd.id)}
+                          style={{
+                            padding: "4px 10px",
+                            background: COLORS.dangerLight,
+                            color: COLORS.danger,
+                            border: "none",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            fontSize: "11px",
+                            fontWeight: "700",
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
               <button
                 onClick={() => setActiveTab("nouvelle-carton")}
                 style={{
                   padding: "12px 20px",
-                  background: "#0066cc",
+                  background: COLORS.primary,
                   color: "white",
                   border: "none",
-                  borderRadius: "4px",
+                  borderRadius: "8px",
                   cursor: "pointer",
                   fontSize: "14px",
-                  fontWeight: "bold",
+                  fontWeight: "700",
+                  width: "100%",
                 }}
               >
-                ➕ Nouvelle Commande
+                ➕ Nouvelle commande de cartons
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* NOUVELLE CARTON FORM */}
+        {activeTab === "nouvelle-carton" && (
+          <div style={{
+            background: "white",
+            borderRadius: "12px",
+            padding: "20px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+            border: `1px solid ${COLORS.gray200}`,
+            maxWidth: "700px"
+          }}>
+            <h2 style={{ margin: "0 0 20px", color: COLORS.gray700 }}>📦 Nouvelle commande de cartons</h2>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>
+                📅 Date de livraison
+              </label>
+              <input
+                type="date"
+                value={dateLivraison}
+                onChange={(e) => setDateLivraison(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  border: `1px solid ${COLORS.gray200}`,
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>🕐 Créneau</label>
+                <select
+                  value={creneau}
+                  onChange={(e) => setCreneau(e.target.value as any)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    border: `1px solid ${COLORS.gray200}`,
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                  }}
+                >
+                  <option>1er tour 7h-11h</option>
+                  <option>2e tour 11h-14h</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>📍 Lieu</label>
+                <input
+                  type="text"
+                  value={lieuLivraison}
+                  onChange={(e) => setLieuLivraison(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    border: `1px solid ${COLORS.gray200}`,
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "10px" }}>📦 Lignes de cartons</label>
+              {lignes.map((ligne, idx) => (
+                <div key={idx} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "flex-end" }}>
+                  <select
+                    value={ligne.type}
+                    onChange={(e) => modifierLigneCarton(idx, "type", e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: "9px 12px",
+                      border: `1px solid ${COLORS.gray200}`,
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {Object.entries(CARTONS_CATALOGUE).map(([name, specs]) => (
+                      <option key={name} value={name}>
+                        {name} ({specs.dims})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    value={ligne.nbPalettes}
+                    onChange={(e) => modifierLigneCarton(idx, "nbPalettes", parseInt(e.target.value) || 1)}
+                    style={{
+                      width: "80px",
+                      padding: "9px 12px",
+                      border: `1px solid ${COLORS.gray200}`,
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                    }}
+                  />
+                  <button
+                    onClick={() => supprimerLigneCarton(idx)}
+                    style={{
+                      padding: "6px 10px",
+                      background: COLORS.dangerLight,
+                      color: COLORS.danger,
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontWeight: "700",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={ajouterLigneCarton}
+                style={{
+                  marginTop: "8px",
+                  padding: "8px 12px",
+                  background: COLORS.primaryLight,
+                  color: COLORS.primary,
+                  border: `1px solid ${COLORS.primaryBorder}`,
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  fontSize: "12px",
+                }}
+              >
+                ➕ Ajouter une ligne
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                onClick={handleCreerCommandeCarton}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: COLORS.primary,
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontWeight: "700",
+                  fontSize: "14px",
+                }}
+              >
+                ✓ Créer la commande
+              </button>
+              <button
+                onClick={() => setActiveTab("cartons")}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: COLORS.gray200,
+                  color: COLORS.gray700,
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontWeight: "700",
+                  fontSize: "14px",
+                }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PALETTES TAB */}
+        {activeTab === "palettes" && (
+          <div style={{ display: "grid", gap: "20px" }}>
+            {/* Palettes List */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              padding: "20px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`
+            }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: "700", color: COLORS.gray700 }}>🟦 Commandes de palettes IFCO</h3>
+              {palettesCommandes.length === 0 ? (
+                <div style={{ textAlign: "center", color: COLORS.gray400, padding: "32px 20px" }}>
+                  <div style={{ fontSize: "14px", fontWeight: "600" }}>Aucune commande pour le moment</div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "12px" }}>
+                  {palettesCommandes.map((cmd) => (
+                    <div key={cmd.id} style={{
+                      background: COLORS.gray100,
+                      border: `1px solid ${COLORS.gray200}`,
+                      borderLeft: `4px solid ${cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : COLORS.danger}`,
+                      borderRadius: "8px",
+                      padding: "12px 14px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}>
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>
+                          📅 {new Date(cmd.dateLivraisonPrevue).toLocaleDateString("fr-FR")}
+                        </div>
+                        <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "4px" }}>
+                          {cmd.lignes.map(l => `${l.quantite} × ${l.type}`).join(" + ")}
+                        </div>
+                        {cmd.notes && <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>📝 {cmd.notes}</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                        <span style={{
+                          background: cmd.statut === "commandé" ? `${COLORS.tertiary}20` : cmd.statut === "reçu" ? `${COLORS.success}20` : `${COLORS.danger}20`,
+                          color: cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : COLORS.danger,
+                          borderRadius: "6px",
+                          padding: "4px 10px",
+                          fontSize: "11px",
+                          fontWeight: "700",
+                        }}>
+                          {cmd.statut === "commandé" ? "⏱️ Commandé" : cmd.statut === "reçu" ? "✓ Reçu" : "↩️ Retourné"}
+                        </span>
+                        {cmd.statut === "commandé" && (
+                          <button
+                            onClick={() => handleMarquerPaletteRecu(cmd.id)}
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.success,
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            ✓ Reçu
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleSupprimerPaletteCommande(cmd.id)}
+                          style={{
+                            padding: "4px 10px",
+                            background: COLORS.dangerLight,
+                            color: COLORS.danger,
+                            border: "none",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            fontSize: "11px",
+                            fontWeight: "700",
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <button
+                onClick={() => setActiveTab("nouvelle-palette")}
+                style={{
+                  padding: "12px 20px",
+                  background: COLORS.secondary,
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  fontWeight: "700",
+                  width: "100%",
+                }}
+              >
+                ➕ Nouvelle commande de palettes IFCO
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* NOUVELLE PALETTE IFCO FORM */}
+        {activeTab === "nouvelle-palette" && (
+          <div style={{
+            background: "white",
+            borderRadius: "12px",
+            padding: "20px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+            border: `1px solid ${COLORS.gray200}`,
+            maxWidth: "700px"
+          }}>
+            <h2 style={{ margin: "0 0 20px", color: COLORS.gray700 }}>🟦 Nouvelle commande de palettes IFCO</h2>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>
+                📅 Date de livraison
+              </label>
+              <input
+                type="date"
+                value={dateLivraisonIfco}
+                onChange={(e) => setDateLivraisonIfco(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  border: `1px solid ${COLORS.gray200}`,
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "10px" }}>🟦 Palettes IFCO</label>
+              {lignesIfco.map((ligne, idx) => (
+                <div key={idx} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "flex-end" }}>
+                  <select
+                    value={ligne.type}
+                    onChange={(e) => modifierLigneIfco(idx, "type", e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: "9px 12px",
+                      border: `1px solid ${COLORS.gray200}`,
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {Object.entries(PALETTES_IFCO).map(([name, specs]) => (
+                      <option key={name} value={name}>
+                        {name} ({specs.dims})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    value={ligne.quantite}
+                    onChange={(e) => modifierLigneIfco(idx, "quantite", parseInt(e.target.value) || 1)}
+                    style={{
+                      width: "80px",
+                      padding: "9px 12px",
+                      border: `1px solid ${COLORS.gray200}`,
+                      borderRadius: "6px",
+                      fontSize: "14px",
+                    }}
+                  />
+                  <button
+                    onClick={() => supprimerLigneIfco(idx)}
+                    style={{
+                      padding: "6px 10px",
+                      background: COLORS.dangerLight,
+                      color: COLORS.danger,
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontWeight: "700",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={ajouterLigneIfco}
+                style={{
+                  marginTop: "8px",
+                  padding: "8px 12px",
+                  background: `${COLORS.secondary}15`,
+                  color: COLORS.secondary,
+                  border: `1px solid ${COLORS.secondary}30`,
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  fontSize: "12px",
+                }}
+              >
+                ➕ Ajouter une ligne
+              </button>
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>
+                📝 Notes (optionnel)
+              </label>
+              <textarea
+                value={notesIfco}
+                onChange={(e) => setNotesIfco(e.target.value)}
+                placeholder="Ajouter des notes spéciales..."
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  border: `1px solid ${COLORS.gray200}`,
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  fontFamily: "inherit",
+                  boxSizing: "border-box",
+                  minHeight: "60px",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                onClick={handleCreerCommandePaletteIfco}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: COLORS.secondary,
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontWeight: "700",
+                  fontSize: "14px",
+                }}
+              >
+                ✓ Créer la commande
+              </button>
+              <button
+                onClick={() => setActiveTab("palettes")}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: COLORS.gray200,
+                  color: COLORS.gray700,
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontWeight: "700",
+                  fontSize: "14px",
+                }}
+              >
+                Annuler
               </button>
             </div>
           </div>
@@ -564,32 +1286,44 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
         {/* IFCO TAB */}
         {activeTab === "ifco" && (
-          <div>
-            {/* IFCO Header */}
-            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", marginBottom: "20px" }}>
-              <div style={{ background: "linear-gradient(135deg, #f0fff6, #e8f8ef)", padding: "20px", borderBottom: "1px solid #d4edda" }}>
-                <h2 style={{ marginTop: 0, color: "#1a6b3a" }}>🟦 IFCO - Convertisseur de ventes</h2>
-                <p style={{ color: "#7f8c8d", marginBottom: 0 }}>Importez votre export de ventes pour générer le fichier IFCO</p>
+          <div style={{ display: "grid", gap: "20px" }}>
+            {/* Upload Zone */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`
+            }}>
+              <div style={{ background: `linear-gradient(135deg, ${COLORS.primaryLight}, ${COLORS.primaryLight}66)`, padding: "24px", borderBottom: `1px solid ${COLORS.primaryBorder}` }}>
+                <h2 style={{ margin: "0 0 8px", color: COLORS.primary, fontSize: "18px", fontWeight: "700" }}>🔄 IFCO - Convertisseur de ventes</h2>
+                <p style={{ color: COLORS.gray600, margin: 0, fontSize: "14px" }}>Importez votre export de ventes pour générer le fichier IFCO</p>
               </div>
 
-              {/* Upload Zone */}
-              <div style={{ padding: "20px" }}>
+              <div style={{ padding: "24px" }}>
                 <label
                   htmlFor="ifco-file"
                   style={{
                     display: "block",
-                    border: "2px dashed #a8d5b5",
+                    border: `2px dashed ${COLORS.primary}`,
                     borderRadius: "12px",
-                    padding: "30px",
+                    padding: "40px",
                     textAlign: "center",
                     cursor: "pointer",
-                    background: "#fafffe",
+                    background: COLORS.primaryLight,
                     transition: "all 0.2s",
                   }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor = COLORS.secondary;
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.style.borderColor = COLORS.primary;
+                  }}
                 >
-                  <div style={{ fontSize: "28px", marginBottom: "10px" }}>📂</div>
-                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "4px" }}>Glissez votre fichier de ventes ici</div>
-                  <div style={{ fontSize: "12px", color: "#aaa" }}>Format .xlsx exporté depuis votre logiciel</div>
+                  <div style={{ fontSize: "32px", marginBottom: "12px" }}>📂</div>
+                  <div style={{ fontSize: "16px", fontWeight: "700", marginBottom: "6px", color: COLORS.primary }}>Glissez votre fichier de ventes ici</div>
+                  <div style={{ fontSize: "13px", color: COLORS.gray600 }}>ou cliquez pour sélectionner (format .xlsx)</div>
                   <input
                     id="ifco-file"
                     type="file"
@@ -599,14 +1333,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   />
                 </label>
 
-                <div style={{ display: "flex", gap: "10px", padding: "15px 0", flexWrap: "wrap" }}>
-                  <span style={{ background: "#f4f7f5", border: "1px solid #d4edda", borderRadius: "20px", padding: "5px 14px", fontSize: "11px", fontWeight: "600", color: "#1e8449" }}>
+                <div style={{ display: "flex", gap: "12px", padding: "16px 0", flexWrap: "wrap" }}>
+                  <span style={{ background: COLORS.primaryLight, border: `1px solid ${COLORS.primaryBorder}`, borderRadius: "20px", padding: "6px 14px", fontSize: "12px", fontWeight: "700", color: COLORS.primary }}>
                     🔒 Direction: S
                   </span>
-                  <span style={{ background: "#f4f7f5", border: "1px solid #d4edda", borderRadius: "20px", padding: "5px 14px", fontSize: "11px", fontWeight: "600", color: "#1e8449" }}>
+                  <span style={{ background: COLORS.primaryLight, border: `1px solid ${COLORS.primaryBorder}`, borderRadius: "20px", padding: "6px 14px", fontSize: "12px", fontWeight: "700", color: COLORS.primary }}>
                     📦 Matériel: 4314
                   </span>
-                  <span style={{ background: "#f4f7f5", border: "1px solid #d4edda", borderRadius: "20px", padding: "5px 14px", fontSize: "11px", fontWeight: "600", color: "#1e8449" }}>
+                  <span style={{ background: COLORS.primaryLight, border: `1px solid ${COLORS.primaryBorder}`, borderRadius: "20px", padding: "6px 14px", fontSize: "12px", fontWeight: "700", color: COLORS.primary }}>
                     🪪 N° IFCO: 639861
                   </span>
                 </div>
@@ -614,12 +1348,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 {ifcoStatus && (
                   <div
                     style={{
-                      padding: "12px",
+                      padding: "14px 16px",
                       borderRadius: "8px",
-                      marginBottom: "15px",
-                      background: ifcoStatusType === "success" ? "#eafaf1" : ifcoStatusType === "error" ? "#fdedec" : "#eaf4fb",
-                      color: ifcoStatusType === "success" ? "#1e8449" : ifcoStatusType === "error" ? "#c0392b" : "#1a5276",
-                      border: `1px solid ${ifcoStatusType === "success" ? "#a9dfbf" : ifcoStatusType === "error" ? "#f5b7b1" : "#a9cce3"}`,
+                      marginBottom: "16px",
+                      background: ifcoStatusType === "success" ? COLORS.primaryLight : ifcoStatusType === "error" ? COLORS.dangerLight : "#eaf4fb",
+                      color: ifcoStatusType === "success" ? COLORS.primary : ifcoStatusType === "error" ? COLORS.danger : "#1a5276",
+                      border: `1px solid ${ifcoStatusType === "success" ? COLORS.primaryBorder : ifcoStatusType === "error" ? "#f5b7b1" : "#a9cce3"}`,
+                      borderRadius: "8px",
+                      fontSize: "14px",
                     }}
                   >
                     {ifcoStatus}
@@ -632,13 +1368,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                       onClick={downloadIfcoExcel}
                       style={{
                         padding: "12px",
-                        background: "#17a2b8",
+                        background: COLORS.secondary,
                         color: "white",
                         border: "none",
                         borderRadius: "8px",
                         cursor: "pointer",
                         fontSize: "14px",
-                        fontWeight: "bold",
+                        fontWeight: "700",
                       }}
                     >
                       ⬇️ Télécharger le fichier
@@ -647,13 +1383,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                       onClick={sendToIfco}
                       style={{
                         padding: "12px",
-                        background: "#28a745",
+                        background: COLORS.primary,
                         color: "white",
                         border: "none",
                         borderRadius: "8px",
                         cursor: "pointer",
                         fontSize: "14px",
-                        fontWeight: "bold",
+                        fontWeight: "700",
                       }}
                     >
                       🌐 Envoyer sur IFCO
@@ -663,64 +1399,84 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </div>
             </div>
 
-            {/* IFCO Historique */}
-            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", marginBottom: "20px" }}>
-              <div style={{ padding: "15px", background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
-                <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
-                  📋 Suivi des déclarations <span style={{ background: "#27ae60", color: "white", borderRadius: "20px", padding: "2px 8px", fontSize: "11px", fontWeight: "700", marginLeft: "8px" }}>{ifcoHistorique.length}</span>
+            {/* Historique */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`
+            }}>
+              <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
+                <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>
+                  📋 Suivi des déclarations
+                  <span style={{ background: COLORS.primary, color: "white", borderRadius: "20px", padding: "2px 10px", fontSize: "12px", fontWeight: "700", marginLeft: "10px" }}>
+                    {ifcoHistorique.length}
+                  </span>
                 </h3>
               </div>
-              <div style={{ padding: "15px" }}>
+              <div style={{ padding: "16px" }}>
                 {ifcoHistorique.length === 0 ? (
-                  <div style={{ textAlign: "center", color: "#bbb", padding: "20px" }}>Aucune déclaration enregistrée</div>
+                  <div style={{ textAlign: "center", color: COLORS.gray400, padding: "24px" }}>Aucune déclaration enregistrée</div>
                 ) : (
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                    <thead>
-                      <tr style={{ background: "#f0fff6", borderBottom: "1px solid #d4edda" }}>
-                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Utilisateur</th>
-                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Date & heure</th>
-                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Lignes</th>
-                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Fichier</th>
-                        <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ifcoHistorique.map((entry) => (
-                        <tr key={entry.id} style={{ borderBottom: "1px solid #f4f4f4" }}>
-                          <td style={{ padding: "8px 12px", fontWeight: "600" }}>{entry.user}</td>
-                          <td style={{ padding: "8px 12px" }}>{entry.date}</td>
-                          <td style={{ padding: "8px 12px" }}>{entry.lignes}</td>
-                          <td style={{ padding: "8px 12px" }}>{entry.fichier}</td>
-                          <td style={{ padding: "8px 12px" }}>
-                            <span
-                              style={{
-                                background: entry.type === "envoi" ? "#eaf4fb" : "#eafaf1",
-                                color: entry.type === "envoi" ? "#1a5276" : "#1e8449",
-                                borderRadius: "20px",
-                                padding: "3px 10px",
-                                fontSize: "11px",
-                                fontWeight: "700",
-                              }}
-                            >
-                              {entry.type === "envoi" ? "🌐 Envoyé IFCO" : "⬇️ Téléchargé"}
-                            </span>
-                          </td>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                      <thead>
+                        <tr style={{ background: COLORS.primaryLight, borderBottom: `1px solid ${COLORS.primaryBorder}` }}>
+                          <th style={{ padding: "10px 12px", textAlign: "left", color: COLORS.primary, fontWeight: "700" }}>Utilisateur</th>
+                          <th style={{ padding: "10px 12px", textAlign: "left", color: COLORS.primary, fontWeight: "700" }}>Date & heure</th>
+                          <th style={{ padding: "10px 12px", textAlign: "left", color: COLORS.primary, fontWeight: "700" }}>Lignes</th>
+                          <th style={{ padding: "10px 12px", textAlign: "left", color: COLORS.primary, fontWeight: "700" }}>Fichier</th>
+                          <th style={{ padding: "10px 12px", textAlign: "left", color: COLORS.primary, fontWeight: "700" }}>Action</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {ifcoHistorique.map((entry) => (
+                          <tr key={entry.id} style={{ borderBottom: `1px solid ${COLORS.gray200}` }}>
+                            <td style={{ padding: "10px 12px", fontWeight: "600" }}>{entry.user}</td>
+                            <td style={{ padding: "10px 12px" }}>{entry.date}</td>
+                            <td style={{ padding: "10px 12px" }}>{entry.lignes}</td>
+                            <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: "12px", color: COLORS.gray600 }}>{entry.fichier}</td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <span
+                                style={{
+                                  background: entry.type === "envoi" ? "#eaf4fb" : COLORS.primaryLight,
+                                  color: entry.type === "envoi" ? "#1a5276" : COLORS.primary,
+                                  borderRadius: "20px",
+                                  padding: "4px 12px",
+                                  fontSize: "11px",
+                                  fontWeight: "700",
+                                }}
+                              >
+                                {entry.type === "envoi" ? "🌐 Envoyé IFCO" : "⬇️ Téléchargé"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* IFCO Clients */}
-            <div style={{ background: "white", borderRadius: "8px", overflow: "hidden" }}>
-              <div style={{ padding: "15px", background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
-                <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
-                  👥 Codes IFCO clients <span style={{ background: "#27ae60", color: "white", borderRadius: "20px", padding: "2px 8px", fontSize: "11px", fontWeight: "700", marginLeft: "8px" }}>{Object.keys(ifcoClients).length}</span>
+            {/* Clients */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`
+            }}>
+              <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
+                <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>
+                  👥 Codes IFCO clients
+                  <span style={{ background: COLORS.primary, color: "white", borderRadius: "20px", padding: "2px 10px", fontSize: "12px", fontWeight: "700", marginLeft: "10px" }}>
+                    {Object.keys(ifcoClients).length}
+                  </span>
                 </h3>
               </div>
-              <div style={{ padding: "15px" }}>
+              <div style={{ padding: "16px" }}>
                 <input
                   type="text"
                   value={ifcoClientSearch}
@@ -728,296 +1484,147 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   placeholder="🔍 Rechercher un client..."
                   style={{
                     width: "100%",
-                    padding: "9px 14px",
-                    border: "1.5px solid #d4edda",
-                    borderRadius: "9px",
+                    padding: "9px 12px",
+                    border: `1px solid ${COLORS.gray200}`,
+                    borderRadius: "6px",
                     fontSize: "13px",
                     marginBottom: "12px",
                     boxSizing: "border-box",
                   }}
                 />
 
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: "15px" }}>
-                  <thead>
-                    <tr style={{ background: "#f0fff6", borderBottom: "1px solid #d4edda" }}>
-                      <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Nom client</th>
-                      <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Code IFCO</th>
-                      <th style={{ padding: "9px 12px", textAlign: "left", color: "#1a6b3a", fontWeight: "700" }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {renderIfcoClients().map(([name, code]) => (
-                      <tr key={name} style={{ borderBottom: "1px solid #f4f4f4" }}>
-                        <td style={{ padding: "8px 12px", fontWeight: "600", maxWidth: "260px", wordBreak: "break-word" }}>{name}</td>
-                        <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#1a6b3a", fontWeight: "700" }}>{code}</td>
-                        <td style={{ padding: "8px 12px" }}>
-                          <button
-                            onClick={() => editIfcoClient(name)}
-                            style={{
-                              padding: "4px 9px",
-                              borderRadius: "6px",
-                              fontSize: "11px",
-                              fontWeight: "600",
-                              cursor: "pointer",
-                              background: "#eaf4fb",
-                              color: "#1a5276",
-                              border: "none",
-                              marginRight: "3px",
-                            }}
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => deleteIfcoClient(name)}
-                            style={{
-                              padding: "4px 9px",
-                              borderRadius: "6px",
-                              fontSize: "11px",
-                              fontWeight: "600",
-                              cursor: "pointer",
-                              background: "#fdedec",
-                              color: "#c0392b",
-                              border: "none",
-                            }}
-                          >
-                            🗑️
-                          </button>
-                        </td>
+                <div style={{ overflowX: "auto", marginBottom: "16px" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ background: COLORS.primaryLight, borderBottom: `1px solid ${COLORS.primaryBorder}` }}>
+                        <th style={{ padding: "10px 12px", textAlign: "left", color: COLORS.primary, fontWeight: "700" }}>Nom client</th>
+                        <th style={{ padding: "10px 12px", textAlign: "left", color: COLORS.primary, fontWeight: "700" }}>Code IFCO</th>
+                        <th style={{ padding: "10px 12px", textAlign: "left", color: COLORS.primary, fontWeight: "700" }}>Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {renderIfcoClients().map(([name, code]) => (
+                        <tr key={name} style={{ borderBottom: `1px solid ${COLORS.gray200}` }}>
+                          <td style={{ padding: "10px 12px", fontWeight: "600" }}>{name}</td>
+                          <td style={{ padding: "10px 12px", fontFamily: "monospace", color: COLORS.primary, fontWeight: "700" }}>{code}</td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <button
+                              onClick={() => editIfcoClient(name)}
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                                fontWeight: "600",
+                                cursor: "pointer",
+                                background: "#eaf4fb",
+                                color: "#1a5276",
+                                border: "none",
+                                marginRight: "4px",
+                              }}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => deleteIfcoClient(name)}
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                                fontWeight: "600",
+                                cursor: "pointer",
+                                background: COLORS.dangerLight,
+                                color: COLORS.danger,
+                                border: "none",
+                              }}
+                            >
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-                {/* Add Client Form */}
-                <div style={{ background: "#f0fff6", border: "1.5px solid #a8d5b5", borderRadius: "12px", padding: "14px 16px" }}>
-                  <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#1a6b3a", marginBottom: "10px", marginTop: 0 }}>
+                {/* Add/Edit Client Form */}
+                <div style={{ background: COLORS.primaryLight, border: `1px solid ${COLORS.primaryBorder}`, borderRadius: "8px", padding: "14px 16px" }}>
+                  <h4 style={{ fontSize: "13px", fontWeight: "700", color: COLORS.primary, margin: "0 0 12px", marginTop: 0 }}>
                     {ifcoEditingClient ? "✏️ Modifier le client" : "➕ Ajouter un client"}
                   </h4>
-                  <div style={{ marginBottom: "8px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
                     <input
                       type="text"
                       value={ifcoNewClientName}
                       onChange={(e) => setIfcoNewClientName(e.target.value)}
-                      placeholder="Nom exact du client"
+                      placeholder="Nom du client"
                       style={{
-                        width: "100%",
                         padding: "8px 12px",
-                        border: "1.5px solid #d4edda",
-                        borderRadius: "8px",
+                        border: `1px solid ${COLORS.primaryBorder}`,
+                        borderRadius: "6px",
                         fontSize: "13px",
-                        boxSizing: "border-box",
                       }}
                     />
-                  </div>
-                  <div style={{ marginBottom: "8px" }}>
                     <input
-                      type="text"
+                      type="number"
                       value={ifcoNewClientCode}
                       onChange={(e) => setIfcoNewClientCode(e.target.value)}
-                      placeholder="Code IFCO (ex: 705335)"
+                      placeholder="Code IFCO"
                       style={{
-                        width: "100%",
                         padding: "8px 12px",
-                        border: "1.5px solid #d4edda",
-                        borderRadius: "8px",
+                        border: `1px solid ${COLORS.primaryBorder}`,
+                        borderRadius: "6px",
                         fontSize: "13px",
-                        boxSizing: "border-box",
                       }}
                     />
                   </div>
-                  <button
-                    onClick={saveIfcoClient}
-                    style={{
-                      background: "#27ae60",
-                      color: "white",
-                      border: "none",
-                      padding: "9px 20px",
-                      borderRadius: "8px",
-                      fontSize: "13px",
-                      fontWeight: "700",
-                      cursor: "pointer",
-                      width: "100%",
-                    }}
-                  >
-                    💾 Enregistrer
-                  </button>
-                  {ifcoEditingClient && (
+                  <div style={{ display: "flex", gap: "8px" }}>
                     <button
-                      onClick={cancelEditIfcoClient}
+                      onClick={saveIfcoClient}
                       style={{
-                        background: "#eee",
-                        color: "#555",
+                        flex: 1,
+                        padding: "8px",
+                        background: COLORS.primary,
+                        color: "white",
                         border: "none",
-                        padding: "9px 20px",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        fontWeight: "700",
+                        borderRadius: "6px",
                         cursor: "pointer",
-                        width: "100%",
-                        marginTop: "6px",
+                        fontWeight: "700",
+                        fontSize: "12px",
                       }}
                     >
-                      Annuler
+                      ✓ Enregistrer
                     </button>
-                  )}
+                    {ifcoEditingClient && (
+                      <button
+                        onClick={cancelEditIfcoClient}
+                        style={{
+                          padding: "8px 12px",
+                          background: "white",
+                          color: COLORS.primary,
+                          border: `1px solid ${COLORS.primaryBorder}`,
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          fontWeight: "700",
+                          fontSize: "12px",
+                        }}
+                      >
+                        Annuler
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
-
-        {/* NOUVELLE COMMANDE TAB */}
-        {activeTab === "nouvelle-carton" && (
-          <div style={{ background: "white", padding: "20px", borderRadius: "8px", maxWidth: "700px" }}>
-            <h2 style={{ marginBottom: "20px" }}>Créer une nouvelle commande</h2>
-
-            <div style={{ marginBottom: "20px", border: "1px solid #ddd", padding: "15px", borderRadius: "4px" }}>
-              <h3 style={{ marginTop: 0 }}>Références carton</h3>
-              {lignes.map((ligne, index) => (
-                <div key={index} style={{ marginBottom: "15px", padding: "10px", background: "#f9f9f9", borderRadius: "4px", display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: "10px", alignItems: "end" }}>
-                  <div>
-                    <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Type de Carton</label>
-                    <select
-                      value={ligne.type}
-                      onChange={(e) => modifierLigne(index, "type", e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        border: "1px solid #ddd",
-                        borderRadius: "4px",
-                        fontSize: "13px",
-                      }}
-                    >
-                      {Object.entries(CARTONS_CATALOGUE).map(([type, info]) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Palettes</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={ligne.nbPalettes}
-                      onChange={(e) => modifierLigne(index, "nbPalettes", parseInt(e.target.value) || 1)}
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        border: "1px solid #ddd",
-                        borderRadius: "4px",
-                        fontSize: "13px",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                  </div>
-                  <button
-                    onClick={() => supprimerLigne(index)}
-                    style={{
-                      padding: "8px 12px",
-                      background: "#dc3545",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={ajouterLigne}
-                style={{
-                  padding: "8px 16px",
-                  background: "#17a2b8",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: "bold",
-                }}
-              >
-                + Ajouter
-              </button>
-            </div>
-
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Date de Livraison</label>
-              <input
-                type="date"
-                value={dateLivraison}
-                onChange={(e) => setDateLivraison(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  border: "1px solid #ddd",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Créneau</label>
-              <select
-                value={creneau}
-                onChange={(e) => setCreneau(e.target.value as any)}
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  border: "1px solid #ddd",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                }}
-              >
-                <option value="1er tour 7h-11h">1er tour 7h-11h</option>
-                <option value="2e tour 11h-14h">2e tour 11h-14h</option>
-              </select>
-            </div>
-
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Lieu de livraison</label>
-              <select
-                value={lieuLivraison}
-                onChange={(e) => setLieuLivraison(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  border: "1px solid #ddd",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                }}
-              >
-                <option value="Moorea Commerce Fruit - Bat D3">Moorea Commerce Fruit - Bat D3</option>
-                <option value="Andes - le Potager De Marianne - Bat B4">Andes - le Potager De Marianne - Bat B4</option>
-              </select>
-            </div>
-
-            <button
-              onClick={handleCreerCommande}
-              disabled={isEnvoyantEmail}
-              style={{
-                width: "100%",
-                padding: "12px",
-                background: isEnvoyantEmail ? "#ccc" : "#0066cc",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                fontSize: "16px",
-                fontWeight: "bold",
-                cursor: isEnvoyantEmail ? "not-allowed" : "pointer",
-              }}
-            >
-              ✓ Créer la commande
-            </button>
-          </div>
-        )}
       </div>
+
+      <style>{`
+        @keyframes slideIn {
+          from { transform: translateX(400px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
