@@ -104,7 +104,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
           subject: `Confirmation de commande cartons #${commande.id}`,
           html: emailHtml,
           to: ["contact@go-embal.fr"],
-          sender: "agreage",
+          sender: "elinathan",
         })
       });
 
