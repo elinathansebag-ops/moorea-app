@@ -118,7 +118,7 @@ export default function App() {
   // Panneau plein écran listant tous les poids de barquettes et températures relevés.
   const [showHistoMesures, setShowHistoMesures] = useState(false);
   const [gencodeArticles, setGencodeArticles] = useState<any[]>([]);
-  const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "" });
+  const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "", date: "" });
   const [previewArr, setPreviewArr] = useState<any[] | null>(null);
   const [importingArr, setImportingArr] = useState(false);
   // ─── DÉTECTION DE DOUBLONS (ex: après un import relancé par erreur) ───
@@ -589,8 +589,11 @@ export default function App() {
   const submitArrivage = async () => {
     if (!formArr.fournisseur || !formArr.produit || !formArr.quantite) { showToast("⚠ Champs requis manquants", "error"); return; }
     const now2 = new Date();
-    await push(ref(db, "arrivages"), { ...formArr, statut: "en attente", date: now2.toLocaleDateString("fr-FR"), timestamp: Date.now() });
-    setFormArr({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "" });
+    const arrivalDate = formArr.date
+      ? new Date(formArr.date).toLocaleDateString("fr-FR")
+      : now2.toLocaleDateString("fr-FR");
+    await push(ref(db, "arrivages"), { ...formArr, date: arrivalDate, statut: "en attente", timestamp: Date.now() });
+    setFormArr({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "", date: "" });
     setPageMode("arrivages"); showToast("Arrivage enregistré ✓");
   };
 
@@ -3333,6 +3336,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               </F>
               <F label="Poids colis (kg)"><input type="number" step="0.1" value={formArr.poids_colis} onChange={e=>setFormArr({...formArr,poids_colis:e.target.value})} /></F>
+              <F label="Date d'arrivée"><input type="date" value={formArr.date} onChange={e=>setFormArr({...formArr,date:e.target.value})} /></F>
               <F label="DLC (si applicable)"><input type="date" value={formArr.dlc} onChange={e=>setFormArr({...formArr,dlc:e.target.value})} /></F>
             </div>
             <button className="btn-primary" onClick={submitArrivage}>✓ Enregistrer l'arrivage</button>
