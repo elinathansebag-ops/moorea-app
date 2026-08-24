@@ -135,6 +135,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     await update(ref(db, `prestataires_cartons/${id}`), { statut: "facturé" });
   };
 
+  // Remettre en reçu (depuis facturé)
+  const handleRemettre = async (id: string) => {
+    if (window.confirm("Remettre cette commande en statut 'Reçu' ?")) {
+      await update(ref(db, `prestataires_cartons/${id}`), { statut: "reçu" });
+    }
+  };
+
   // Supprimer une commande
   const handleSupprimerCommande = async (id: string) => {
     if (window.confirm("Êtes-vous sûr de vouloir supprimer cette commande?")) {
@@ -311,7 +318,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                           </span>
                         </td>
                         <td style={{ padding: "12px" }}>
-                          <div style={{ display: "flex", gap: "5px" }}>
+                          <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
                             {cmd.statut === "reçu" && (
                               <button
                                 onClick={() => handleMarquerFacture(cmd.id)}
@@ -341,6 +348,37 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                               >
                                 🗑 Supprimer
                               </button>
+                            )}
+                            {cmd.statut === "facturé" && (
+                              <>
+                                <button
+                                  onClick={() => handleRemettre(cmd.id)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    background: "#6c757d",
+                                    border: "none",
+                                    borderRadius: "3px",
+                                    cursor: "pointer",
+                                    fontSize: "11px",
+                                    color: "white",
+                                  }}
+                                >
+                                  ↩️ Remettre en Reçu
+                                </button>
+                                <button
+                                  onClick={() => handleSupprimerCommande(cmd.id)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    background: "#dc3545",
+                                    border: "none",
+                                    borderRadius: "3px",
+                                    cursor: "pointer",
+                                    fontSize: "11px",
+                                  }}
+                                >
+                                  🗑 Supprimer
+                                </button>
+                              </>
                             )}
                           </div>
                         </td>
