@@ -37,6 +37,12 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [dateLivraison, setDateLivraison] = useState<string>(new Date().toISOString().split("T")[0]);
   const [creneau, setCreneau] = useState<"1er tour 7h-11h" | "2e tour 11h-14h">("1er tour 7h-11h");
   const [isEnvoyantEmail, setIsEnvoyantEmail] = useState(false);
+  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  // État pour la sélection de période
+  const today = new Date();
+  const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth());
 
   // Charger les commandes depuis Firebase
   useEffect(() => {
@@ -46,6 +52,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     });
     return () => u();
   }, []);
+
+  // Afficher notification pendant 3 secondes
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   // Ajouter une ligne
   const ajouterLigne = () => {
@@ -86,8 +100,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         }
       );
       console.log("Email de confirmation envoyé - Commande #" + commande.id);
+      setNotification({ type: "success", message: "✓ Email envoyé à contact@go-enball.fr" });
     } catch (error) {
       console.error("Erreur lors de l'envoi de l'email:", error);
+      setNotification({ type: "error", message: "✗ Erreur lors de l'envoi de l'email" });
     } finally {
       setIsEnvoyantEmail(false);
     }
@@ -119,6 +135,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       setActiveTab("dashboard");
     } catch (error) {
       console.error("Erreur lors de la création de la commande:", error);
+      setNotification({ type: "error", message: "✗ Erreur lors de la création de la commande" });
     }
   };
 
@@ -149,16 +166,17 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     }
   };
 
+  // Filtrer par période sélectionnée
+  const filterByPeriod = (cmds: CartonCommande[]) => {
+    return cmds.filter(c => {
+      const d = new Date(c.dateCommande);
+      return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
+    });
+  };
+
   // Stats par période
   const calculerStats = () => {
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-    const commandesMonth = commandes.filter(c => {
-      const d = new Date(c.dateCommande);
-      return d >= startOfMonth && d <= endOfMonth;
-    });
+    const commandesMonth = filterByPeriod(commandes);
 
     return {
       total: commandesMonth.length,
@@ -172,14 +190,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
   // Stats par référence
   const calculerStatsByRef = () => {
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-    const commandesMonth = commandes.filter(c => {
-      const d = new Date(c.dateCommande);
-      return d >= startOfMonth && d <= endOfMonth;
-    });
+    const commandesMonth = filterByPeriod(commandes);
 
     const stats: Record<string, { commandé: number; reçu: number; facturé: number }> = {};
 
@@ -203,6 +214,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const stats = calculerStats();
   const statsByRef = calculerStatsByRef();
 
+  const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
+
   return (
     <div style={{ background: "#f5f5f5", minHeight: "100vh", margin: 0, padding: 0 }}>
       <PageHeader 
@@ -210,6 +224,33 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         onBack={onClose} 
         onHome={onClose}
       />
+
+      {/* Toast Notification */}
+      {notification && (
+        <div style={{
+          position: "fixed",
+          top: "80px",
+          right: "20px",
+          padding: "15px 20px",
+          borderRadius: "4px",
+          background: notification.type === "success" ? "#28a745" : "#dc3545",
+          color: "white",
+          fontSize: "14px",
+          fontWeight: "bold",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+          zIndex: 1000,
+          animation: "slideIn 0.3s ease-in-out"
+        }}>
+          {notification.message}
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slideIn {
+          from { transform: translateX(400px); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
 
       <div style={{ padding: "20px" }}>
         {/* Tabs */}
@@ -258,10 +299,51 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {/* Dashboard */}
         {activeTab === "dashboard" && (
           <div>
+            {/* Sélecteur de période */}
+            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px", display: "flex", gap: "15px", alignItems: "center" }}>
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Mois</label>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                  style={{
+                    padding: "8px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                  }}
+                >
+                  {moisNoms.map((nom, idx) => (
+                    <option key={idx} value={idx}>{nom}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Année</label>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  style={{
+                    padding: "8px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                  }}
+                >
+                  {years.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginTop: "23px", fontSize: "14px", color: "#666" }}>
+                {moisNoms[selectedMonth]} {selectedYear}
+              </div>
+            </div>
+
             {/* Stats Cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "15px", marginBottom: "30px" }}>
               <div style={{ background: "white", padding: "20px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "5px" }}>COMMANDES CE MOIS</div>
+                <div style={{ fontSize: "12px", color: "#666", marginBottom: "5px" }}>COMMANDES</div>
                 <div style={{ fontSize: "28px", fontWeight: "bold", color: "#0066cc" }}>{stats.commandé}</div>
               </div>
               <div style={{ background: "white", padding: "20px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
@@ -293,7 +375,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   </tr>
                 </thead>
                 <tbody>
-                  {commandes.map((cmd) => {
+                  {filterByPeriod(commandes).map((cmd) => {
                     const totalPalettes = cmd.lignes.reduce((sum, l) => sum + l.nbPalettes, 0);
                     return (
                       <tr key={cmd.id} style={{ borderBottom: "1px solid #eee" }}>
@@ -394,6 +476,47 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {/* Stats par Référence */}
         {activeTab === "stats" && (
           <div>
+            {/* Sélecteur de période */}
+            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "20px", display: "flex", gap: "15px", alignItems: "center" }}>
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Mois</label>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                  style={{
+                    padding: "8px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                  }}
+                >
+                  {moisNoms.map((nom, idx) => (
+                    <option key={idx} value={idx}>{nom}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontSize: "12px", fontWeight: "bold" }}>Année</label>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  style={{
+                    padding: "8px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    fontSize: "14px",
+                  }}
+                >
+                  {years.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginTop: "23px", fontSize: "14px", color: "#666" }}>
+                {moisNoms[selectedMonth]} {selectedYear}
+              </div>
+            </div>
+
             <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
