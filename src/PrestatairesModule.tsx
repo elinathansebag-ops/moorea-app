@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
-import emailjs from "@emailjs/browser";
 
 // Types de cartons disponibles
 const CARTONS_CATALOGUE = {
