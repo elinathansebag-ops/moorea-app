@@ -155,6 +155,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         return sum + (l.nbPalettes * specs.parPalette);
       }, 0);
 
+      // Convertir la date en format français pour cohérence
+      const dateLivraisonFr = new Date(dateLivraison).toLocaleDateString("fr-FR");
+
       const arrivageCarton = {
         fournisseur: "Go-Embal",
         produit: "Cartons " + lignes.map(l => `${l.type}`).join(" + "),
@@ -162,7 +165,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         lot_fournisseur: "",
         quantite: totalCartons,
         unite: "cartons",
-        date: dateLivraison, // Date de livraison prévue = date d'arrivée
+        date: dateLivraisonFr, // Date de livraison prévue = date d'arrivée (format français)
         statut: "en attente",
         timestamp: Date.now(),
         carton_commande_id: commandeId, // Lien vers la commande de cartons
@@ -170,7 +173,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         variete: creneau,
       };
 
+      console.log("DEBUG: Création arrivage carton", arrivageCarton);
       await push(ref(db, "arrivages"), arrivageCarton);
+      console.log("DEBUG: Arrivage carton créé pour commande", commandeId);
 
       const cmdWithId: CartonCommande = { ...newCmd, id: commandeId };
 
