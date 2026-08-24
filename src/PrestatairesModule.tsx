@@ -103,7 +103,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         body: JSON.stringify({
           subject: `Confirmation de commande cartons #${commande.id}`,
           html: emailHtml,
-          to: ["contact@go-enball.fr"],
+          to: ["contact@go-embal.fr"],
           sender: "agreage",
         })
       });
@@ -113,7 +113,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       }
 
       console.log("Email de confirmation envoyé - Commande #" + commande.id);
-      setNotification({ type: "success", message: "✓ Email envoyé à contact@go-enball.fr" });
+      setNotification({ type: "success", message: "✓ Email envoyé à contact@go-embal.fr" });
     } catch (error) {
       console.error("Erreur lors de l'envoi de l'email:", error);
       setNotification({ type: "error", message: "✗ Erreur lors de l'envoi de l'email" });
