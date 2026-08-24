@@ -95,9 +95,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         "service_sheyrpi",
         "template_carton_confirmation",
         {
-          to_email: "contact@go-enball.fr",
-          from_name: "Moorea Qualité",
-          from_email: "elinathan.sebag@moorea.fr",
           command_id: commande.id,
           command_date: commande.dateCommande,
           delivery_date: commande.dateLivraisonPrevue,
