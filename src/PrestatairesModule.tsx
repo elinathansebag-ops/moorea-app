@@ -96,6 +96,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         "template_carton_confirmation",
         {
           to_email: "contact@go-enball.fr",
+          from_name: "Moorea Qualité",
           from_email: "elinathan.sebag@moorea.fr",
           command_id: commande.id,
           command_date: commande.dateCommande,
@@ -128,7 +129,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
     try {
       const ref_push = await push(ref(db, "prestataires_cartons"), newCmd);
-      const cmdWithId: CartonCommande = { ...newCmd, id: ref_push.key! };
+      const commandeId = ref_push.key;
+
+      if (!commandeId) {
+        throw new Error("Impossible de récupérer l'ID de la commande");
+      }
+
+      const cmdWithId: CartonCommande = { ...newCmd, id: commandeId };
 
       // Envoyer email de confirmation
       await envoyerEmailConfirmation(cmdWithId);
