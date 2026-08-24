@@ -78,13 +78,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {
           to_email: "contact@go-enball.fr",
           from_email: "elinathan.sebag@moorea.fr",
+          command_id: commande.id,
           command_date: commande.dateCommande,
           delivery_date: commande.dateLivraisonPrevue,
           time_slot: commande.creneau,
           carton_details: lignesText,
         }
       );
-      console.log("Email de confirmation envoyé");
+      console.log("Email de confirmation envoyé - Commande #" + commande.id);
     } catch (error) {
       console.error("Erreur lors de l'envoi de l'email:", error);
     } finally {
@@ -224,6 +225,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f9f9f9", borderBottom: "2px solid #ddd" }}>
+                  <th style={{ padding: "12px", textAlign: "left" }}>N° Commande</th>
                   <th style={{ padding: "12px", textAlign: "left" }}>Références</th>
                   <th style={{ padding: "12px", textAlign: "left" }}>Total Palettes</th>
                   <th style={{ padding: "12px", textAlign: "left" }}>Date Commande</th>
@@ -238,6 +240,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   const totalPalettes = cmd.lignes.reduce((sum, l) => sum + l.nbPalettes, 0);
                   return (
                     <tr key={cmd.id} style={{ borderBottom: "1px solid #eee" }}>
+                      <td style={{ padding: "12px", fontWeight: "bold", color: "#0066cc" }}>#{cmd.id.slice(0, 8)}</td>
                       <td style={{ padding: "12px", fontSize: "12px" }}>
                         {cmd.lignes.map((l, i) => (
                           <div key={i}>{l.type}</div>
