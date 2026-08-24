@@ -39,11 +39,8 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
 
-  // Initialiser EmailJS au montage
   useEffect(() => {
-    emailjs.init("rpwOY5rxlG9zCTYU-"); // À remplacer par ta vraie clé
-  }, []);
-  // État pour la sélection de période
+    // État pour la sélection de période
   const today = new Date();
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth());
@@ -86,21 +83,38 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const envoyerEmailConfirmation = async (commande: CartonCommande) => {
     setIsEnvoyantEmail(true);
     try {
-      const lignesText = commande.lignes
-        .map((l) => `- ${l.type}: ${l.nbPalettes} palettes`)
-        .join("\n");
+      const lignesHtml = commande.lignes
+        .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? 's' : ''}</li>`)
+        .join("");
 
-      await emailjs.send(
-        "service_sheyrpi",
-        "template_carton_confirmation",
-        {
-          command_id: commande.id,
-          command_date: commande.dateCommande,
-          delivery_date: commande.dateLivraisonPrevue,
-          time_slot: commande.creneau,
-          carton_details: lignesText,
-        }
-      );
+      const emailHtml = `
+        <h2>Confirmation de Commande de Cartons</h2>
+        <p><strong>Numéro de commande:</strong> ${commande.id}</p>
+        <p><strong>Date de commande:</strong> ${commande.dateCommande}</p>
+        <p><strong>Date de livraison prévue:</strong> ${commande.dateLivraisonPrevue}</p>
+        <p><strong>Créneau de livraison:</strong> ${commande.creneau}</p>
+        <h3>Détails de la commande:</h3>
+        <ul>
+          ${lignesHtml}
+        </ul>
+        <p>Merci!</p>
+      `;
+
+      const response = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: `Confirmation de commande cartons #${commande.id}`,
+          html: emailHtml,
+          to: ["contact@go-enball.fr"],
+          sender: "agreage",
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur ${response.status}`);
+      }
+
       console.log("Email de confirmation envoyé - Commande #" + commande.id);
       setNotification({ type: "success", message: "✓ Email envoyé à contact@go-enball.fr" });
     } catch (error) {
