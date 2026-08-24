@@ -135,6 +135,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     await update(ref(db, `prestataires_cartons/${id}`), { statut: "facturé" });
   };
 
+  // Supprimer une commande
+  const handleSupprimerCommande = async (id: string) => {
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette commande?")) {
+      await remove(ref(db, `prestataires_cartons/${id}`));
+    }
+  };
+
   // Stats par période
   const calculerStats = () => {
     const today = new Date();
@@ -274,6 +281,21 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                               }}
                             >
                               💳 Facturé
+                            </button>
+                          )}
+                          {cmd.statut === "commandé" && (
+                            <button
+                              onClick={() => handleSupprimerCommande(cmd.id)}
+                              style={{
+                                padding: "4px 8px",
+                                background: "#dc3545",
+                                border: "none",
+                                borderRadius: "3px",
+                                cursor: "pointer",
+                                fontSize: "11px",
+                              }}
+                            >
+                              🗑 Supprimer
                             </button>
                           )}
                         </div>
