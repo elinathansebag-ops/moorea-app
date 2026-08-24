@@ -521,6 +521,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           </div>
         </>
       )}
+
       {paletteAbsente ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 10, background: "#fffbeb", border: "1.5px solid #fcd34d" }}>
           <span style={{ fontSize: 12.5, color: "#92400e", fontWeight: 600, flex: 1 }}>
