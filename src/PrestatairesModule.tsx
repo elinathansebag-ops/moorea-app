@@ -395,29 +395,23 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </div>
             </div>
 
-            {/* Calendrier du mois */}
-            <div style={{ background: "white", padding: "20px", borderRadius: "8px", marginBottom: "30px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-              <h3 style={{ marginTop: 0, marginBottom: "15px", fontSize: "16px", fontWeight: "bold" }}>📅 Commandes du mois</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px" }}>
+            {/* Calendrier du mois - Compact */}
+            <div style={{ background: "white", padding: "15px", borderRadius: "8px", marginBottom: "30px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+              <h3 style={{ marginTop: 0, marginBottom: "12px", fontSize: "14px", fontWeight: "bold" }}>📅 Commandes du mois</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px" }}>
                 {["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"].map(j => (
-                  <div key={j} style={{ textAlign: "center", fontWeight: "bold", fontSize: "12px", color: "#666", padding: "8px 0" }}>
+                  <div key={j} style={{ textAlign: "center", fontWeight: "bold", fontSize: "10px", color: "#666", padding: "4px 0" }}>
                     {j}
                   </div>
                 ))}
                 {Array.from({ length: new Date(selectedYear, selectedMonth, 0).getDay() }).map((_, i) => (
-                  <div key={`empty-${i}`} style={{ padding: "8px", background: "#f9f9f9", borderRadius: "4px" }}></div>
+                  <div key={`empty-${i}`} style={{ padding: "4px", background: "#f9f9f9", borderRadius: "3px", minHeight: "32px" }}></div>
                 ))}
                 {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, i) => {
                   const date = new Date(selectedYear, selectedMonth, i + 1);
                   const dateStr = date.toISOString().split("T")[0];
                   const cmdsJour = commandes.filter(c => c.dateLivraisonPrevue === dateStr);
                   const palettesJour = cmdsJour.reduce((sum, c) => sum + c.lignes.reduce((s, l) => s + l.nbPalettes, 0), 0);
-                  const colisJour = cmdsJour.reduce((sum, c) => {
-                    return sum + c.lignes.reduce((s, l) => {
-                      const specs = CARTONS_CATALOGUE[l.type as keyof typeof CARTONS_CATALOGUE];
-                      return s + (l.nbPalettes * specs.parPalette);
-                    }, 0);
-                  }, 0);
 
                   return (
                     <div
@@ -425,26 +419,23 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                       style={{
                         background: cmdsJour.length > 0 ? "#e8f4f8" : "#f9f9f9",
                         border: cmdsJour.length > 0 ? "2px solid #0066cc" : "1px solid #e5e7eb",
-                        padding: "8px",
-                        borderRadius: "4px",
-                        minHeight: "70px",
+                        padding: "4px 6px",
+                        borderRadius: "3px",
+                        minHeight: "32px",
                         display: "flex",
                         flexDirection: "column",
-                        justifyContent: "flex-start"
+                        justifyContent: "center",
+                        alignItems: "center",
+                        textAlign: "center"
                       }}
                     >
-                      <div style={{ fontSize: "13px", fontWeight: "bold", color: "#0066cc", marginBottom: "4px" }}>
+                      <div style={{ fontSize: "11px", fontWeight: "bold", color: "#0066cc", lineHeight: "1" }}>
                         {i + 1}
                       </div>
                       {cmdsJour.length > 0 && (
-                        <>
-                          <div style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}>
-                            📦 {colisJour}
-                          </div>
-                          <div style={{ fontSize: "10px", color: "#28a745", fontWeight: "bold" }}>
-                            🎫 {palettesJour}
-                          </div>
-                        </>
+                        <div style={{ fontSize: "9px", color: "#28a745", fontWeight: "bold", lineHeight: "1", marginTop: "2px" }}>
+                          ✓ {palettesJour}
+                        </div>
                       )}
                     </div>
                   );
@@ -715,13 +706,12 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             </div>
 
             <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Date de Livraison Prévue (max 7j à l'avance)</label>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: "bold" }}>Date de Livraison Prévue (recommandé: 7j à l'avance)</label>
               <input
                 type="date"
                 value={dateLivraison}
                 onChange={(e) => setDateLivraison(e.target.value)}
                 min={new Date().toISOString().split("T")[0]}
-                max={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}
                 style={{
                   width: "100%",
                   padding: "10px",
@@ -731,6 +721,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   boxSizing: "border-box",
                 }}
               />
+              <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+                💡 Défaut: {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("fr-FR")}
+              </div>
             </div>
 
             <div style={{ marginBottom: "20px" }}>
