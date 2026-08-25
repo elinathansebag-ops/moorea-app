@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from "react";
 import jsPDF from "jspdf";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import RetoursModule from "./RetoursModule";
-import IFCOModule from "./IFCOModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
 import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F } from "./shared";
@@ -196,7 +195,6 @@ export default function App() {
   const [showEtiquettes, setShowEtiquettes] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
   const [showLeofresh, setShowLeofresh] = useState(false);
-  const [showIFCO, setShowIFCO] = useState(false);
   const [showGencode, setShowGencode] = useState(false);
   const [showGencodeChecker, setShowGencodeChecker] = useState(false);
   const [showCatalogue, setShowCatalogue] = useState(false);
@@ -428,7 +426,7 @@ export default function App() {
   }, [darkMode]);
 
   // ─── ALERTE DÉCLARATION IFCO ───
-  // Suit la dernière entrée de l'historique IFCO (ifco_histo, écrit par IFCOModule à chaque
+  // Suit la dernière entrée de l'historique IFCO (ifco_histo, écrit par le module Prestataires à chaque
   // téléchargement/envoi/validation) pour alerter sur l'accueil si aucune déclaration n'a été
   // faite depuis 7 jours (ou si aucune n'a jamais été faite).
   const [ifcoHisto, setIfcoHisto] = useState<any[]>([]);
@@ -2224,10 +2222,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <>{fabScanner}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} /></>;
   }
 
-  if (showIFCO) {
-    return <IFCOModule onClose={() => { setShowIFCO(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
-  }
-
   if (showCatalogue) {
     return <CatalogueModule onClose={() => { setShowCatalogue(false); setShowAccueil(true); }} />;
   }
@@ -2378,7 +2372,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", badge: null, stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
       { icon: "📚", label: "Catalogue", color: "#27ae60", badge: catalogueArticles.length > 0 ? catalogueArticles.length : null, stat: "Base articles Moorea", action: () => { setShowAccueil(false); setShowCatalogue(true); } },
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
-      { icon: "📦", label: "IFCO", color: "#6366f1", badge: null, stat: "Déclarations + Stock + Reconditionnement", action: () => { setShowAccueil(false); setShowIFCO(true); } },
       { icon: "🛒", label: "Statt", color: "#ea580c", badge: null, stat: "Ventes réelles + objectifs par période", action: () => { setShowAccueil(false); setShowStatt(true); } },
       { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
     ];
@@ -2475,7 +2468,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               </p>
               <p style={{ margin: 0, fontSize: 11, color: darkMode ? "#fbbf24" : "#9ca3af" }}>Pense à faire ta déclaration des bacs</p>
             </div>
-            <button onClick={() => { setShowAccueil(false); setShowIFCO(true); }}
+            <button onClick={() => { setShowAccueil(false); setShowPrestataires(true); }}
               style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#d97706", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Voir</button>
           </div>
         )}
