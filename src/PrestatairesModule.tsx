@@ -154,7 +154,7 @@ const COLORS = {
 
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-recond" | "configuration" | "nouvelle-carton" | "nouvelle-palette"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "configuration" | "nouvelle-carton" | "nouvelle-palette"
   >("dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
@@ -207,23 +207,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [raisonAjustNlt, setRaisonAjustNlt] = useState("");
   const [raisonAjustAndes, setRaisonAjustAndes] = useState("");
   const [stockAjustements, setStockAjustements] = useState<any[]>([]);
-  const [reconConditions, setReconditions] = useState<any[]>([]);
   const [fromLoc, setFromLoc] = useState<"moorea" | "transit" | "nlt">("moorea");
   const [toLoc, setToLoc] = useState<"moorea" | "transit" | "nlt">("nlt");
   const [qteCaisses, setQteCaisses] = useState("");
-  const [produitDemande, setProduitDemande] = useState("");
-  const [qteColis, setQteColis] = useState("");
-  const [caisseVides, setCaisseVides] = useState("");
-  const [showReconForm, setShowReconForm] = useState(false);
   const [showEntreeForm, setShowEntreeForm] = useState(false);
-  const [selectedLot, setSelectedLot] = useState("");
-  const [selectedArticle, setSelectedArticle] = useState("");
-  const [lotList, setLotList] = useState<any[]>([]);
-  const [articleList, setArticleList] = useState<any[]>([]);
-  const [lotSearch, setLotSearch] = useState("");
-  const [articleSearch, setArticleSearch] = useState("");
-  const [showLotDropdown, setShowLotDropdown] = useState(false);
-  const [showArticleDropdown, setShowArticleDropdown] = useState(false);
   const [calDate, setCalDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
@@ -312,15 +299,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         setStockMovements([]);
       }
     });
-    const u6 = onValue(ref(db, "ifco_reconditionnement/demandes"), snap => {
-      const d = snap.val();
-      if (d) {
-        const recs = Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0));
-        setReconditions(recs);
-      } else {
-        setReconditions([]);
-      }
-    });
     const u7 = onValue(ref(db, "stock_carton_andes/baby_blanc"), snap => {
       setStockCartonAndes(typeof snap.val() === "number" ? snap.val() : 0);
     });
@@ -328,7 +306,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       const d = snap.val();
       setStockAjustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
+    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u8(); };
   }, []);
 
   // Pré-remplit les champs d'ajustement de stock avec la valeur actuelle quand on ouvre
@@ -340,31 +318,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       setAjustStockAndes(String(stockCartonAndes));
     }
   }, [activeTab]);
-
-  // Charger les lots (mouvements de stock) et articles Geslot quand la modal reconditionnement s'ouvre
-  useEffect(() => {
-    if (showReconForm) {
-      if (stockMovements && stockMovements.length > 0) {
-        const lots = stockMovements.map((m: any) => ({
-          id: m.id || m.ts,
-          label: `${m.caisses} caisses (${m.date})`,
-          caisses: m.caisses,
-          data: m,
-        }));
-        setLotList(lots);
-      }
-      const u = onValue(ref(db, "geslot_articles"), snap => {
-        if (snap.val()) {
-          const articles = Object.entries(snap.val()).map(([id, v]: any) => ({
-            id,
-            label: `${v.name || v.CODE_PRODUIT} (${v.CONDITIONNEMENT || 'N/A'})`,
-          }));
-          setArticleList(articles);
-        }
-      });
-      return () => u();
-    }
-  }, [showReconForm, stockMovements]);
 
   function saveIfcoClients(map: ClientMap) {
     setIfcoClients(map);
@@ -627,40 +580,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       setQteCaisses("");
       setFromLoc("moorea");
       setToLoc("nlt");
-      setTimeout(() => { setIfcoStatus(""); setIfcoStatusType(""); }, 3000);
-    } catch (err: any) {
-      setIfcoStatus(`❌ Erreur: ${err.message}`); setIfcoStatusType("error");
-    }
-  }
-
-  async function creerDemandeReconditionnement() {
-    if (!selectedLot || !selectedArticle) { setIfcoStatus("⚠️ Sélectionne un lot et un article"); setIfcoStatusType("error"); return; }
-    const qte = parseInt(qteColis);
-    const caisses = parseInt(caisseVides);
-    if (!qteColis || isNaN(qte) || qte <= 0 || !caisseVides || isNaN(caisses) || caisses <= 0) {
-      setIfcoStatus("⚠️ Remplis les quantités correctement"); setIfcoStatusType("error");
-      return;
-    }
-    try {
-      const now = new Date();
-      const demande = {
-        date: now.toLocaleDateString("fr-FR") + " " + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-        creePar: userName,
-        lotId: selectedLot,
-        articleId: selectedArticle,
-        quantiteColis: qte,
-        caisseVides: caisses,
-        statut: "en_attente",
-        ts: now.getTime(),
-      };
-      await push(ref(db, "ifco_reconditionnement/demandes"), demande);
-
-      setIfcoStatus(`✅ Demande créée: ${qte} colis`); setIfcoStatusType("success");
-      setQteColis("");
-      setCaisseVides("");
-      setSelectedLot("");
-      setSelectedArticle("");
-      setShowReconForm(false);
       setTimeout(() => { setIfcoStatus(""); setIfcoStatusType(""); }, 3000);
     } catch (err: any) {
       setIfcoStatus(`❌ Erreur: ${err.message}`); setIfcoStatusType("error");
@@ -1198,24 +1117,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 📢 Déclarer IFCO
               </button>
 
-              <button
-                onClick={() => setActiveTab("ifco-recond")}
-                style={{
-                  padding: "14px 22px",
-                  background: "white",
-                  color: COLORS.secondary,
-                  border: `2px solid ${COLORS.secondary}`,
-                  borderRadius: "10px",
-                  cursor: "pointer",
-                  fontSize: "15px",
-                  fontWeight: "700",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
-              >
-                🔄 Reconditionnement
-              </button>
             </div>
 
             {/* STOCKS — IFCO Moorea, IFCO NLT, Carton Baby Blanc (Andes) */}
@@ -2207,9 +2108,8 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             </div>
 
             {/* BOUTONS ACTIONS */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 24 }}>
               <button onClick={() => setShowPalettesForm(true)} style={{ padding: "12px", borderRadius: 10, border: "2px solid #27ae60", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#27ae60" }}>⚡ Déclarer</button>
-              <button onClick={() => setShowReconForm(true)} style={{ padding: "12px", borderRadius: 10, border: "2px solid #3b82f6", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#3b82f6" }}>🔄 Reconditionnement</button>
               <button onClick={() => setShowEntreeForm(true)} style={{ padding: "12px", borderRadius: 10, border: "2px solid #f59e0b", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>📦 Entrée IFCO</button>
             </div>
 
@@ -2247,31 +2147,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   </table>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* IFCO — RECONDITIONNEMENT */}
-        {activeTab === "ifco-recond" && (
-          <div>
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "16px", marginBottom: 24 }}>
-              <h3 style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 800, color: "#1a6b3a" }}>Demande reconditionnement</h3>
-              <input type="text" value={produitDemande} onChange={e => setProduitDemande(e.target.value)} placeholder="Produit" style={{ width: "100%", padding: "8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 11, marginBottom: 10, boxSizing: "border-box" }} />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                <input type="number" value={qteColis} onChange={e => setQteColis(e.target.value)} placeholder="Colis" style={{ padding: "8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 11 }} />
-                <input type="number" value={caisseVides} onChange={e => setCaisseVides(e.target.value)} placeholder="Caisses" style={{ padding: "8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 11 }} />
-              </div>
-              <button onClick={() => setShowReconForm(true)} style={{ width: "100%", padding: "8px", borderRadius: 8, border: "none", background: "#27ae60", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Sélectionner lot &amp; article ✓</button>
-            </div>
-
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "16px" }}>
-              <h3 style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: "#1a6b3a" }}>Demandes ({reconConditions.length})</h3>
-              {reconConditions.slice(0, 5).map((d, i) => (
-                <div key={d.id || i} style={{ borderBottom: "1px solid #eee", paddingBottom: 6, marginBottom: 6, fontSize: 10 }}>
-                  <div style={{ fontWeight: 700, color: "#1a6b3a" }}>{d.produit || d.lotId}</div>
-                  <div style={{ color: "#666", marginTop: 2 }}>{d.quantiteColis}c · {d.caisseVides}c vides</div>
-                </div>
-              ))}
             </div>
           </div>
         )}
@@ -2719,55 +2594,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               >
                 ✅ Enregistrer & Envoyer
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL RECONDITIONNEMENT — sélection lot / article */}
-      {showReconForm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 450, width: "100%", borderTop: "7px solid #3b82f6" }}>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>🔄</div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: "#1a6b3a", margin: 0 }}>Reconditionnement</p>
-              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>Demande de reconditionnement chez NLT</p>
-            </div>
-            <div style={{ marginBottom: 12, position: "relative" }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#1a6b3a", marginBottom: 6 }}>Numéro de lot</label>
-              <input type="text" value={lotSearch} onChange={e => { setLotSearch(e.target.value); setShowLotDropdown(true); }} onFocus={() => setShowLotDropdown(true)} placeholder="Chercher un lot..." style={{ width: "100%", padding: "10px", border: "1.5px solid #a8d5b5", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }} />
-              {showLotDropdown && (
-                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #a8d5b5", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 150, overflowY: "auto", zIndex: 100 }}>
-                  {lotList.filter(lot => lot.label.toLowerCase().includes(lotSearch.toLowerCase())).map(lot => (
-                    <div key={lot.id} onClick={() => { setSelectedLot(lot.id); setLotSearch(lot.label); setShowLotDropdown(false); }} style={{ padding: "8px 10px", cursor: "pointer", borderBottom: "1px solid #f0f0f0", fontSize: 12 }}>
-                      {lot.label}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {selectedLot && <div style={{ fontSize: 10, color: "#27ae60", marginTop: 4 }}>✓ Lot sélectionné</div>}
-            </div>
-            <div style={{ marginBottom: 12, position: "relative" }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#1a6b3a", marginBottom: 6 }}>Article de sortie</label>
-              <input type="text" value={articleSearch} onChange={e => { setArticleSearch(e.target.value); setShowArticleDropdown(true); }} onFocus={() => setShowArticleDropdown(true)} placeholder="Chercher un article..." style={{ width: "100%", padding: "10px", border: "1.5px solid #a8d5b5", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }} />
-              {showArticleDropdown && (
-                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #a8d5b5", borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 150, overflowY: "auto", zIndex: 100 }}>
-                  {articleList.filter(art => art.label.toLowerCase().includes(articleSearch.toLowerCase())).map(art => (
-                    <div key={art.id} onClick={() => { setSelectedArticle(art.id); setArticleSearch(art.label); setShowArticleDropdown(false); }} style={{ padding: "8px 10px", cursor: "pointer", borderBottom: "1px solid #f0f0f0", fontSize: 12 }}>
-                      {art.label}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {selectedArticle && <div style={{ fontSize: 10, color: "#27ae60", marginTop: 4 }}>✓ Article sélectionné</div>}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <input type="number" value={qteColis} onChange={e => setQteColis(e.target.value)} placeholder="Colis sortie" style={{ padding: "10px", border: "1.5px solid #a8d5b5", borderRadius: 8, fontSize: 12, outline: "none" }} />
-              <input type="number" value={caisseVides} onChange={e => setCaisseVides(e.target.value)} placeholder="Caisses" style={{ padding: "10px", border: "1.5px solid #a8d5b5", borderRadius: 8, fontSize: 12, outline: "none" }} />
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { setShowReconForm(false); setQteColis(""); setCaisseVides(""); setSelectedLot(""); setSelectedArticle(""); setLotSearch(""); setArticleSearch(""); setShowLotDropdown(false); setShowArticleDropdown(false); }} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-              <button onClick={creerDemandeReconditionnement} style={{ flex: 2, background: "#3b82f6", color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Créer</button>
             </div>
           </div>
         </div>

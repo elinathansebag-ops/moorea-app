@@ -2388,13 +2388,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const row2 = [
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", badge: null, stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
-      { icon: "📚", label: "Catalogue", color: "#27ae60", badge: catalogueArticles.length > 0 ? catalogueArticles.length : null, stat: "Base articles Moorea", action: () => { setShowAccueil(false); setShowCatalogue(true); } },
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
       { icon: "🛒", label: "Statt", color: "#ea580c", badge: null, stat: "Ventes réelles + objectifs par période", action: () => { setShowAccueil(false); setShowStatt(true); } },
       { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
     ];
 
     const leofreshBtns = [
+      { icon: "📚", label: "Catalogue", color: "#27ae60", stat: "Base articles Moorea", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowCatalogue(true); } },
       { icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowDashboard(true); } },
       { icon: "🏷️", label: "Étiquettes", color: "#f59e0b", stat: "Export bilingue", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
       { icon: "📊", label: "QR Code", color: "#27ae60", stat: "Scans réseau", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowQrCode(true); } },
