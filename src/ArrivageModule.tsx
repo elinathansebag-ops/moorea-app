@@ -133,10 +133,13 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const isRetourRecond = !!arrivage.reconditionnement_demande_id;
   const isSimple = isGoEmbal || isPaletteIFCO || isRetourRecond;
   // Un retour de reconditionnement ne revient pas forcément en caisses IFCO (ex : la passion
-  // repart dans son carton d'origine) — plutôt que de se fier uniquement au dépôt (NLT),
-  // on regarde si "IFCO" apparaît dans le nom de l'article fabriqué, qui l'indique déjà
-  // (ex : "LIME BRESIL CAL.54 IFCO (FILET 500GR X 10)").
-  const retourEnIfco = isRetourRecond && arrivage.depot === "nlt" && /ifco/i.test(String(arrivage.produit || ""));
+  // repart dans son carton d'origine) — on utilise la case cochée à la création de la demande
+  // (retour_en_ifco, la source la plus fiable), et seulement pour les demandes créées avant ce
+  // champ (retour_en_ifco absent), on retombe sur la détection dans le nom de l'article.
+  const retourEnIfco = isRetourRecond && (
+    arrivage.retour_en_ifco === true ||
+    (arrivage.retour_en_ifco == null && arrivage.depot === "nlt" && /ifco/i.test(String(arrivage.produit || "")))
+  );
 
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);

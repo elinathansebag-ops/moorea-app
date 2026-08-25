@@ -77,6 +77,11 @@ type Demande = {
   qteConditionnement?: number;
   caissesIfcoEnvoyees?: number;
   cartonsBabyBlancEnvoyes?: number;
+  // Le retour revient-il en caisses IFCO ? Pré-cochée automatiquement si "IFCO" apparaît dans le
+  // nom de l'article à fabriquer, mais modifiable — sert ensuite, dans "Pointer arrivage", à
+  // afficher ou non la case "Caisses IFCO pleines" (plus fiable qu'une simple détection du nom
+  // à ce moment-là, puisque décidée une fois pour toutes à la création de la demande).
+  retourEnIfco?: boolean;
   transporteurId?: string;
   transporteurNom?: string;
   // Le "bon" propre, généré par l'app (jsPDF) à partir des champs structurés de la demande, avec
@@ -402,9 +407,17 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // Accordéon par semaine de l'historique des reconditionnements terminés (onglet Historique) —
   // null = pas encore initialisé (la semaine la plus récente s'ouvrira automatiquement).
   const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
+  // Accordéon par transporteur du détail "palettes parties / revenues" (onglet Historique,
+  // pour l'attribution des coûts de transport) — fermé par défaut pour chacun.
+  const [transporteursOuverts, setTransporteursOuverts] = useState<Set<string>>(new Set());
 
   // Modale "prêt" (validation entrepôt étape 1)
   const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
+  // Aperçu PDF (bon de prépa ou scan Geslot) dans une modale avec iframe, plutôt qu'un lien
+  // <a target="_blank"> vers une data:URI — Chrome bloque/redirige la navigation top-level
+  // vers un data: URL (d'où le renvoi vers une page Google constaté par l'utilisateur), alors
+  // qu'un iframe src="data:..." affiché dans la page fonctionne normalement.
+  const [pdfApercu, setPdfApercu] = useState<{ titre: string; base64: string } | null>(null);
   const [pretGrandes, setPretGrandes] = useState("");
   const [pretDemi, setPretDemi] = useState("");
 
@@ -426,6 +439,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // Cas rare : palette IFCO incomplète ou plusieurs palettes — révèle un champ quantité
   // manuel à la place du bouton "1 palette" par défaut.
   const [emballageIfcoManuel, setEmballageIfcoManuel] = useState(false);
+  // Coché automatiquement dès que "IFCO" apparaît dans le nom de l'article à fabriquer (voir
+  // l'effet ci-dessous), mais reste modifiable à la main si jamais le nom ne suffit pas.
+  const [retourIfco, setRetourIfco] = useState(false);
   const [transporteurId, setTransporteurId] = useState("");
   const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
   const [editDemandeId, setEditDemandeId] = useState<string | null>(null);
@@ -542,6 +558,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     dernierEmballageAuto.current = suggestion;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depot]);
+
+  // Coche automatiquement "retour en IFCO" dès que "IFCO" apparaît dans le nom de l'article à
+  // fabriquer choisi dans le catalogue — reste ensuite modifiable à la main (voir la case dans
+  // le formulaire) si jamais le nom de l'article ne suffit pas à trancher. Ne se déclenche pas
+  // pendant le chargement d'une demande pour modification (chargerPourEdition) : là, la valeur
+  // vient de la demande elle-même, pas d'une nouvelle détection qui écraserait un choix manuel.
+  useEffect(() => {
+    if (editDemandeId) return;
+    setRetourIfco(/ifco/i.test(articleFini));
+  }, [articleFini, editDemandeId]);
 
   function notify(type: "success" | "error", message: string) {
     setNotification({ type, message });
@@ -702,6 +728,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setCaissesIfcoEnvoyees("");
     setCartonsBabyBlancEnvoyes("");
     setEmballageIfcoManuel(false);
+    setRetourIfco(false);
     setTransporteurId("");
     setPdfFile(null);
     setEditDemandeId(null);
@@ -729,6 +756,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     }
     setCaissesIfcoEnvoyees(d.caissesIfcoEnvoyees != null ? String(d.caissesIfcoEnvoyees) : "");
     setEmballageIfcoManuel(d.caissesIfcoEnvoyees != null && d.caissesIfcoEnvoyees !== 640);
+    // Reprend la valeur enregistrée sur la demande (choix éventuellement corrigé à la main) —
+    // ne retombe sur la détection par le nom que pour d'anciennes demandes créées avant ce champ.
+    setRetourIfco(d.retourEnIfco ?? /ifco/i.test(d.articleFini || ""));
     setCartonsBabyBlancEnvoyes(d.cartonsBabyBlancEnvoyes != null ? String(d.cartonsBabyBlancEnvoyes) : "");
     setTransporteurId(d.transporteurId || "");
     setPdfFile(d.pdfGeslotBase64 ? { nom: d.pdfGeslotNom || "geslot.pdf", base64: d.pdfGeslotBase64 } : null);
@@ -834,6 +864,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       // sens pour ce dépôt (caisses IFCO pour Andès, cartons pour NLT), jamais pour un simple 0.
       caissesIfcoEnvoyees: depot === "nlt" ? caisses : undefined,
       cartonsBabyBlancEnvoyes: depot === "andes" ? cartons : undefined,
+      retourEnIfco: depot === "nlt" ? retourIfco : false,
       transporteurId,
       transporteurNom: transporteur?.nom,
       // Le scan Geslot d'origine n'est gardé que comme archive / pont de données — le "bon"
@@ -988,6 +1019,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           depot: demande.depot,
           qteConditionnementAttendue: demande.qteConditionnement ?? null,
           origine: `${DEPOT_LABEL[demande.depot]}${demande.transporteurNom ? ` · ${demande.transporteurNom}` : ""}`,
+          // Décidé une fois pour toutes à la création de la demande (case cochée dans le
+          // formulaire, pré-remplie d'après le nom de l'article) — plus fiable, au moment du
+          // pointage du retour, qu'une nouvelle détection sur le nom de l'article seul.
+          retour_en_ifco: demande.retourEnIfco ?? false,
         });
       } catch (err) {
         console.error("Erreur création arrivage retour reconditionnement:", err);
@@ -1097,6 +1132,35 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setSemainesOuvertes(prev => {
       const next = new Set(prev || []);
       if (next.has(cle)) next.delete(cle); else next.add(cle);
+      return next;
+    });
+  };
+
+  // ── Détail par transporteur, jour par jour : combien de palettes sont parties de Moorea vers
+  // le reconditionneur, combien sont revenues, et le n° de lot de l'article concerné — pour
+  // pouvoir attribuer les coûts de transport plus tard (une ligne par trajet, pas juste un
+  // total). Reprend toutes les demandes non annulées (pas seulement celles déjà "reçu") : une
+  // demande "prêt"/"parti" a bien un trajet aller à facturer même si le retour n'est pas encore
+  // pointé.
+  const demandesAvecTransporteur = demandes.filter(d => d.statut !== "annulé" && d.transporteurNom);
+  const parTransporteur: Record<string, Demande[]> = {};
+  demandesAvecTransporteur.forEach(d => {
+    const nom = d.transporteurNom!;
+    if (!parTransporteur[nom]) parTransporteur[nom] = [];
+    parTransporteur[nom].push(d);
+  });
+  const transporteursTries = Object.keys(parTransporteur).sort((a, b) => a.localeCompare(b, "fr"));
+  const formatPalettes = (p?: NbPalettes) => {
+    if (!p || ((p.grandes || 0) === 0 && (p.demi || 0) === 0)) return "—";
+    const parts = [];
+    if (p.grandes) parts.push(`${p.grandes} grande${p.grandes > 1 ? "s" : ""}`);
+    if (p.demi) parts.push(`${p.demi} demi`);
+    return parts.join(" + ");
+  };
+  const toggleTransporteur = (nom: string) => {
+    setTransporteursOuverts(prev => {
+      const next = new Set(prev);
+      if (next.has(nom)) next.delete(nom); else next.add(nom);
       return next;
     });
   };
@@ -1215,18 +1279,17 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       {d.transporteurNom && <div>Transporteur : <b>{d.transporteurNom}</b></div>}
                     </div>
 
-                    {d.pdfBase64 && (
-                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-                        <a href={d.pdfBase64} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                          📄 Ouvrir le bon en aperçu
-                        </a>
-                        <a href={d.pdfBase64} download={d.pdfNom || "bon-reconditionnement.pdf"} style={{ fontSize: 11, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                          ⬇️ Télécharger
-                        </a>
+                    {(d.pdfBase64 || d.pdfGeslotBase64) && (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         {d.pdfGeslotBase64 && (
-                          <a href={d.pdfGeslotBase64} target="_blank" rel="noreferrer" style={{ fontSize: 10.5, color: "#aaa", textDecoration: "none" }}>
-                            📎 scan Geslot d'origine (archive)
-                          </a>
+                          <button type="button" onClick={() => setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: d.pdfGeslotBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            📄 Bon Geslot
+                          </button>
+                        )}
+                        {d.pdfBase64 && (
+                          <button type="button" onClick={() => setPdfApercu({ titre: `Bon de prépa — ${d.numero || d.id}`, base64: d.pdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            📄 Bon de prépa (avec QR)
+                          </button>
                         )}
                       </div>
                     )}
@@ -1360,9 +1423,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 {pdfFile && (
                   <span style={{ fontSize: 11.5, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {pdfFile.nom}{" "}
-                    <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+                    <button type="button" onClick={() => setPdfApercu({ titre: "Bon Geslot", base64: pdfFile.base64 })} style={{ fontWeight: 700, color: COLORS.primary, textDecoration: "none", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}>
                       · aperçu
-                    </a>
+                    </button>
                   </span>
                 )}
                 {lectureEnCours && (
@@ -1523,6 +1586,14 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               )}
               <F label="Article à fabriquer" required><ArticleSelect value={articleFini} onSelect={setArticleFini} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
 
+              {depot === "nlt" && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "2px 0 10px", cursor: "pointer" }}>
+                  <input type="checkbox" checked={retourIfco} onChange={e => setRetourIfco(e.target.checked)} style={{ width: "auto", margin: 0 }} />
+                  <span style={{ fontSize: 12, color: COLORS.gray700, fontWeight: 600 }}>📦 Le retour se fait en caisses IFCO</span>
+                  <span style={{ fontSize: 10.5, color: "#9ca3af" }}>({retourIfco ? "coché" : "décoché"} auto d'après le nom de l'article, modifiable)</span>
+                </label>
+              )}
+
               {/* Emballage à envoyer — pour NLT, réglé via le bouton "palette IFCO" en haut de
                   page ; ici, seulement le cas Andès (cartons) qui n'a pas ce raccourci. */}
               {depot === "andes" && (
@@ -1626,6 +1697,72 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                               ))}
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Détail par transporteur (palettes parties/revenues + lot) — pour l'attribution
+                des coûts de transport, une ligne par trajet plutôt qu'un simple total. ── */}
+            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🚚 Détail par transporteur (pour facturation)</p>
+            {transporteursTries.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}`, marginBottom: 24 }}>
+                <p style={{ margin: 0, fontSize: 13 }}>Aucune demande avec transporteur pour l'instant</p>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 24 }}>
+                {transporteursTries.map(nom => {
+                  const lignes = [...parTransporteur[nom]].sort((a, b) => {
+                    const ta = parseFrDate(a.departDate || a.dateCreationFr)?.getTime() || 0;
+                    const tb = parseFrDate(b.departDate || b.dateCreationFr)?.getTime() || 0;
+                    return tb - ta;
+                  });
+                  const totalParties = lignes.reduce((s, d) => s + (d.nbPalettesDepart ? (d.nbPalettesDepart.grandes || 0) + (d.nbPalettesDepart.demi || 0) : 0), 0);
+                  const totalRevenues = lignes.reduce((s, d) => s + (d.retour?.nbPalettes ? (d.retour.nbPalettes.grandes || 0) + (d.retour.nbPalettes.demi || 0) : 0), 0);
+                  const ouvert = transporteursOuverts.has(nom);
+                  return (
+                    <div key={nom} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
+                      <div onClick={() => toggleTransporteur(nom)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
+                          🚚 {nom}{" "}
+                          <span style={{ color: "#999", fontWeight: 600 }}>
+                            ({lignes.length} trajet{lignes.length > 1 ? "s" : ""} · {totalParties} palette{totalParties !== 1 ? "s" : ""} parties · {totalRevenues} revenue{totalRevenues !== 1 ? "s" : ""})
+                          </span>
+                        </span>
+                        <span style={{ fontSize: 14, color: COLORS.primary, transform: ouvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                      </div>
+                      {ouvert && (
+                        <div style={{ padding: "0 16px 12px", background: "#fafafa", overflowX: "auto" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginTop: 4 }}>
+                            <thead>
+                              <tr style={{ textAlign: "left", color: "#888", fontSize: 10.5, textTransform: "uppercase" }}>
+                                <th style={{ padding: "6px 4px" }}>Date départ</th>
+                                <th style={{ padding: "6px 4px" }}>N° / Lot</th>
+                                <th style={{ padding: "6px 4px" }}>Dépôt</th>
+                                <th style={{ padding: "6px 4px" }}>Palettes parties</th>
+                                <th style={{ padding: "6px 4px" }}>Palettes revenues</th>
+                                <th style={{ padding: "6px 4px" }}>Statut</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lignes.map(d => (
+                                <tr key={d.id} style={{ borderTop: `1px solid ${COLORS.gray100}` }}>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{d.departDate || d.dateCreationFr || "—"}</td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                                    {d.numero && <span style={{ color: COLORS.primary, fontWeight: 700 }}>{d.numero}</span>}
+                                    {d.lot ? ` · lot ${d.lot}` : ""}
+                                  </td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{DEPOT_LABEL[d.depot]}</td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{formatPalettes(d.nbPalettesDepart)}</td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{formatPalettes(d.retour?.nbPalettes)}</td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}><StatutBadge statut={d.statut} /></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
@@ -1751,6 +1888,22 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       {/* Le pointage du retour se fait désormais dans le module Arrivage ("Pointer arrivage") —
           la demande de reconditionnement y apparaît automatiquement comme un arrivage attendu
           dès qu'elle est marquée "parti" (voir marquerParti). Plus de modale ici. */}
+
+      {/* MODALE — Aperçu PDF (bon Geslot ou bon de prépa), dans un iframe intégré à la page —
+          un <a target="_blank"> vers une data:URI se fait bloquer/rediriger par Chrome (page
+          Google vide constatée par l'utilisateur) car c'est une navigation top-level vers un
+          data: URL ; l'iframe, lui, l'affiche sans problème. */}
+      {pdfApercu && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 800, display: "flex", flexDirection: "column", padding: 16 }} onClick={() => setPdfApercu(null)}>
+          <div style={{ background: "#fff", borderRadius: 14, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", maxWidth: 900, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: `1.5px solid ${COLORS.gray200}` }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>{pdfApercu.titre}</span>
+              <button onClick={() => setPdfApercu(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: COLORS.gray600, lineHeight: 1 }}>×</button>
+            </div>
+            <iframe src={pdfApercu.base64} title={pdfApercu.titre} style={{ flex: 1, border: "none", background: "#fff" }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
