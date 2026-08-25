@@ -893,7 +893,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 subject: `Confirmation de réception - Commande cartons #${commandeId}`,
                 html: emailHtmlPresta,
                 to: [emailPresta.trim()],
-                sender: "agreage",
+                sender: "elinathan",
               }),
             });
             if (!emailPrestaRes.ok) throw new Error(`Erreur ${emailPrestaRes.status}`);
