@@ -696,12 +696,37 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setActiveTab("nouvelle");
   }
 
-  // Suppression définitive — uniquement pour une demande encore "en attente" (pas encore
-  // partie, pas d'arrivage lié) : simple confirmation puis remove() de l'enregistrement.
+  // Suppression définitive — pour "en attente", "prêt" ou "parti" (pas pour "reçu", déjà
+  // clôturée). Si un arrivage retour a été créé (cas "parti", pas encore pointé), on le
+  // supprime aussi pour ne pas laisser une carte fantôme dans « Pointer arrivage ».
   async function supprimerDemande(id: string) {
     if (!window.confirm("Supprimer définitivement cette demande de reconditionnement ?")) return;
+    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
+    if (arrivageLie) {
+      await remove(ref(db, `arrivages/${arrivageLie.id}`));
+    }
     await remove(ref(db, `reconditionnement_demandes/${id}`));
     notify("success", "🗑️ Demande supprimée");
+  }
+
+  // Retour à l'étape 0 ("en attente") pour une demande "prêt" ou "parti" — par ex. erreur de
+  // saisie ou transporteur qui ne vient plus. Si elle était "parti", l'arrivage retour créé
+  // (pas encore pointé) est supprimé en même temps, sinon il resterait affiché dans « Pointer
+  // arrivage » pour une demande qui n'est plus censée être partie.
+  async function reinitialiserDemande(id: string) {
+    if (!window.confirm("Remettre cette demande à l'étape « en attente » ? Si elle était marquée partie, le retour attendu dans « Pointer arrivage » sera annulé.")) return;
+    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
+    if (arrivageLie) {
+      await remove(ref(db, `arrivages/${arrivageLie.id}`));
+    }
+    await update(ref(db, `reconditionnement_demandes/${id}`), {
+      statut: "en attente",
+      entrepotPretPar: null,
+      entrepotPretDate: null,
+      nbPalettesDepart: null,
+      departDate: null,
+    });
+    notify("success", "↩️ Demande remise à l'étape « en attente »");
   }
 
   async function creerDemande() {
@@ -1192,14 +1217,30 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                         </>
                       )}
                       {d.statut === "prêt" && (
-                        <button onClick={() => marquerParti(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                          🚚 Marquer parti
-                        </button>
+                        <>
+                          <button onClick={() => marquerParti(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            🚚 Marquer parti
+                          </button>
+                          <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            ↩️ Revenir à « en attente »
+                          </button>
+                          <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            🗑️ Supprimer
+                          </button>
+                        </>
                       )}
                       {d.statut === "parti" && (
-                        <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic" }}>
-                          📥 Retour à pointer dans « Pointer arrivage »
-                        </span>
+                        <>
+                          <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic", marginRight: 4 }}>
+                            📥 Retour à pointer dans « Pointer arrivage »
+                          </span>
+                          <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            ↩️ Revenir à « en attente »
+                          </button>
+                          <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            🗑️ Supprimer
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
