@@ -1163,22 +1163,16 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6" }}>{stockLevels.nlt}</div>
                 <div style={{ fontSize: 10, color: "#aaa" }}>caisses</div>
               </div>
-              <div style={{ background: stockLevels.pleines > 0 ? "#fefce8" : "#fff", border: `1.5px solid ${stockLevels.pleines > 0 ? "#fde68a" : "#e8e0d0"}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🟢 IFCO pleines (à vider)</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#ca8a04" }}>{stockLevels.pleines}</div>
-                <div style={{ fontSize: 10, color: "#aaa", marginBottom: stockLevels.pleines > 0 ? 6 : 0 }}>caisses</div>
-                {stockLevels.pleines > 0 && (
-                  <button onClick={viderCaissesPleines} style={{ padding: "4px 10px", borderRadius: 6, border: "1.5px solid #ca8a04", background: "#fff", color: "#ca8a04", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                    Vider →
-                  </button>
-                )}
-              </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Baby Blanc — Andes</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{stockCartonAndes}</div>
                 <div style={{ fontSize: 10, color: "#aaa" }}>cartons</div>
               </div>
             </div>
+            {/* Le compteur "IFCO pleines" existe toujours en interne (séparé du stock vide
+                Moorea, voir viderCaissesPleines dans l'onglet Configuration) mais n'est plus
+                affiché ici : vidé tous les 2 jours en vrai, cette donnée n'apporte rien au
+                jour le jour puisqu'il n'y a pas de suivi des ventes qui en dépendrait. */}
 
             {/* CALENDRIER UNIFIÉ — cartons, palettes IFCO et déclarations IFCO */}
             <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
@@ -2131,7 +2125,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {activeTab === "ifco-histo" && (
           <div>
             {/* STOCKS EN HAUT */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🏭 Moorea</div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: "#27ae60" }}>{stockLevels.moorea}</div>
@@ -2141,15 +2135,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 NLT</div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: "#3b82f6" }}>{stockLevels.nlt}</div>
                 <div style={{ fontSize: 9, color: "#ccc" }}>caisses</div>
-              </div>
-              <div style={{ background: stockLevels.pleines > 0 ? "#fefce8" : "#fff", border: `1.5px solid ${stockLevels.pleines > 0 ? "#fde68a" : "#e8e0d0"}`, borderRadius: 12, padding: "14px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🟢 Pleines (à vider)</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#ca8a04" }}>{stockLevels.pleines}</div>
-                {stockLevels.pleines > 0 ? (
-                  <button onClick={viderCaissesPleines} style={{ marginTop: 4, padding: "3px 8px", borderRadius: 6, border: "1.5px solid #ca8a04", background: "#fff", color: "#ca8a04", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
-                    Vider →
-                  </button>
-                ) : <div style={{ fontSize: 9, color: "#ccc" }}>caisses</div>}
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 En attente</div>
@@ -2276,6 +2261,21 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     style={{ width: "100%", padding: "8px 14px", background: COLORS.tertiary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
                   >
                     Valider la correction
+                  </button>
+                </div>
+                <div>
+                  {/* Compteur interne (séparé du stock vide Moorea) des caisses IFCO pleines
+                      reçues au retour d'un reconditionnement, pas encore vidées. Pas affiché
+                      sur le Dashboard — en pratique ces caisses sont vidées tous les 2 jours,
+                      donc ce n'est utile qu'ici, pour le faire au moment voulu. */}
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🟢 IFCO — Pleines en attente ({stockLevels.pleines} caisse{stockLevels.pleines !== 1 ? "s" : ""})</div>
+                  <p style={{ margin: "0 0 8px", fontSize: "11px", color: COLORS.gray600 }}>Vidées tous les 2 jours en pratique — rejoint le stock vide Moorea ci-dessus.</p>
+                  <button
+                    onClick={viderCaissesPleines}
+                    disabled={stockLevels.pleines <= 0}
+                    style={{ width: "100%", padding: "8px 14px", background: stockLevels.pleines <= 0 ? COLORS.gray200 : "#ca8a04", color: stockLevels.pleines <= 0 ? "#999" : "white", border: "none", borderRadius: "6px", cursor: stockLevels.pleines <= 0 ? "not-allowed" : "pointer", fontWeight: "700", fontSize: "12px" }}
+                  >
+                    Vider vers le stock Moorea
                   </button>
                 </div>
               </div>
