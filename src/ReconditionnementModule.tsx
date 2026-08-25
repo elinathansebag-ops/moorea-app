@@ -34,6 +34,10 @@ const COLORS = {
   gray700: "#1f2937",
 };
 
+// Même valeur que le module Prestataires & IFCO (formatCaisses / enregistrerCaissesEtEnvoyer) :
+// une palette IFCO complète = 640 caisses.
+const CAISSES_PAR_PALETTE = 640;
+
 type Depot = "nlt" | "andes";
 
 type NbPalettes = { grandes: number; demi: number };
@@ -96,6 +100,11 @@ type Mouvement = {
 };
 
 const DEPOT_LABEL: Record<Depot, string> = { nlt: "NLT", andes: "Andès" };
+
+// NOTE — impression automatique (relais PC, même mécanisme que les étiquettes palette dans
+// ArrivageModule.tsx via "printQueue") : volontairement pas encore branchée ici. Pour l'instant,
+// le bon reste simplement consultable en aperçu et téléchargeable (voir les liens "aperçu" sur
+// le formulaire et sur chaque demande) — le temps de valider print-relay.js côté PC entrepôt.
 
 function nowFr(): string {
   const n = new Date();
@@ -335,17 +344,19 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     })();
   }, []);
 
-  // Règle générale : il faut a priori 1 caisse IFCO vide (NLT) par colis fini à entrer.
-  // Suggestion automatique, mais le commercial reste libre de corriger (ex : la passion repart
-  // dans son carton d'origine chez NLT, pas en IFCO — il met alors 0 caisse IFCO).
+  // Règle générale : 99% du temps on envoie à NLT une palette IFCO complète (640 caisses),
+  // indépendamment du nombre exact de colis à produire pour cette demande précise. Suggestion
+  // automatique, mais le commercial reste libre de corriger (ex : la passion repart dans son
+  // carton d'origine chez NLT, pas en IFCO — il met alors 0 caisse IFCO).
   useEffect(() => {
     if (depot !== "nlt") return;
-    const suggestion = nbColisAEntrer || "";
+    const suggestion = String(CAISSES_PAR_PALETTE);
     if (caissesIfcoEnvoyees === "" || caissesIfcoEnvoyees === dernierEmballageAuto.current) {
       setCaissesIfcoEnvoyees(suggestion);
     }
     dernierEmballageAuto.current = suggestion;
-  }, [nbColisAEntrer, depot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depot]);
 
   function notify(type: "success" | "error", message: string) {
     setNotification({ type, message });
@@ -587,11 +598,14 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   }
 
   function ouvrirModaleRetour(id: string) {
+    const demande = demandes.find(d => d.id === id);
     setRetourDemandeId(id);
     setRetourQualite("conforme");
     setRetourCommentaire("");
-    setRetourNbColis("");
-    setRetourQteConditionnement("");
+    // Pré-rempli avec le nombre de colis attendu (celui de la demande) pour que l'entrepôt
+    // n'ait qu'à confirmer ou corriger, plutôt que de ressaisir depuis zéro.
+    setRetourNbColis(demande?.nbColisAEntrer != null ? String(demande.nbColisAEntrer) : "");
+    setRetourQteConditionnement(demande?.qteConditionnement != null ? String(demande.qteConditionnement) : "");
     setRetourGrandes("");
     setRetourDemi("");
     setRetourCaissesIfco("");
@@ -803,9 +817,14 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                     </div>
 
                     {d.pdfBase64 && (
-                      <a href={d.pdfBase64} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                        📄 Ouvrir le bon Geslot ({d.pdfNom || "PDF"})
-                      </a>
+                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                        <a href={d.pdfBase64} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+                          📄 Ouvrir en aperçu ({d.pdfNom || "PDF"})
+                        </a>
+                        <a href={d.pdfBase64} download={d.pdfNom || "bon-reconditionnement.pdf"} style={{ fontSize: 11, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+                          ⬇️ Télécharger
+                        </a>
+                      </div>
                     )}
 
                     {d.statut === "prêt" && d.nbPalettesDepart && (
@@ -900,9 +919,14 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
               <div className="section-title">📄 Bon Geslot</div>
               <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ width: "auto", fontSize: 12, padding: "8px" }} />
               {pdfFile && (
-                <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                  📄 aperçu
-                </a>
+                <>
+                  <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+                    📄 aperçu
+                  </a>
+                  <a href={pdfFile.base64} download={pdfFile.nom} style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+                    ⬇️ télécharger
+                  </a>
+                </>
               )}
               {lectureEnCours && (
                 <span style={{ marginLeft: 10, fontSize: 12, color: "#1d4ed8", fontWeight: 700 }}>⏳ lecture en cours…</span>
@@ -1013,10 +1037,16 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
 
             <div style={{ marginBottom: 12, background: COLORS.amberLight, border: "2px solid #fde68a", borderRadius: 16, padding: "14px 20px" }}>
               <div className="section-title" style={{ marginBottom: 8 }}>📦 Emballage à envoyer</div>
+              {/* Toujours visible, même si l'emballage envoyé (IFCO ou carton) est mis à 0 —
+                  c'est le nombre de colis qu'on doit récupérer au retour, indépendamment de
+                  l'emballage utilisé (ex : la passion repart dans son carton d'origine). */}
+              <p style={{ margin: "0 0 10px", fontSize: 11, color: COLORS.gray600, fontWeight: 600 }}>
+                📋 Colis à récupérer : <b>{nbColisAEntrer || "—"}</b>
+              </p>
               {depot === "nlt" ? (
                 <>
                   <p style={{ margin: "0 0 8px", fontSize: 11, color: stockIfco.nlt > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
-                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO
+                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO — 99% du temps une palette complète (640) part avec la demande
                   </p>
                   <F label="Caisses IFCO vides à envoyer"><input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si pas d'IFCO" /></F>
                 </>
@@ -1212,6 +1242,24 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                 <textarea value={retourCommentaire} onChange={e => setRetourCommentaire(e.target.value)} rows={2} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12, boxSizing: "border-box", resize: "vertical" }} />
               </div>
             )}
+
+            {retourDemande?.nbColisAEntrer != null && (() => {
+              const attendu = retourDemande.nbColisAEntrer as number;
+              const saisi = retourNbColis.trim() === "" ? null : parseInt(retourNbColis);
+              const conforme = saisi != null && saisi === attendu;
+              const ecart = saisi != null && saisi !== attendu;
+              return (
+                <div style={{
+                  marginBottom: 12, padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                  background: conforme ? COLORS.secondaryLight : ecart ? COLORS.dangerLight : COLORS.gray100,
+                  color: conforme ? COLORS.secondary : ecart ? COLORS.danger : COLORS.gray600,
+                }}>
+                  Colis attendus (demande) : {attendu}
+                  {conforme && " — ✅ conforme"}
+                  {ecart && ` — ⚠️ écart de ${Math.abs((saisi as number) - attendu)}`}
+                </div>
+              );
+            })()}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
               <div>
