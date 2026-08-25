@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
+// Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 // ── Module Reconditionnement ──
 // Le reconditionnement (vrac → produit fini) est fait et suivi côté stock dans Geslot.
@@ -59,6 +61,7 @@ type Demande = {
   nbColisAEntrer?: number;
   qteConditionnement?: number;
   caissesIfcoEnvoyees?: number;
+  cartonsBabyBlancEnvoyes?: number;
   transporteurId?: string;
   transporteurNom?: string;
   pdfNom?: string;
@@ -133,9 +136,14 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   const [nbColisAEntrer, setNbColisAEntrer] = useState("");
   const [qteConditionnement, setQteConditionnement] = useState("");
   const [caissesIfcoEnvoyees, setCaissesIfcoEnvoyees] = useState("");
+  const [cartonsBabyBlancEnvoyes, setCartonsBabyBlancEnvoyes] = useState("");
   const [transporteurId, setTransporteurId] = useState("");
   const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
+  const [lectureEnCours, setLectureEnCours] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Base articles Geslot, pour proposer une saisie assistée sur les 2 champs article.
+  const [geslotArticles, setGeslotArticles] = useState<{ id: string; label: string }[]>([]);
 
   // Configuration — nouveau transporteur
   const [nvNom, setNvNom] = useState("");
@@ -146,6 +154,8 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   // Stock IFCO Moorea (vide / pleine) — granularité propre au reconditionnement.
   const [stockIfcoVide, setStockIfcoVide] = useState(0);
   const [stockIfcoPleine, setStockIfcoPleine] = useState(0);
+  // Stock cartons BABY BLANC @ Andès — partagé avec le tracker du module Prestataires.
+  const [stockBabyBlancAndes, setStockBabyBlancAndes] = useState(0);
 
   useEffect(() => {
     const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
@@ -158,7 +168,12 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     });
     const u3 = onValue(ref(db, "reconditionnement_stock_ifco/vide"), snap => setStockIfcoVide(typeof snap.val() === "number" ? snap.val() : 0));
     const u4 = onValue(ref(db, "reconditionnement_stock_ifco/pleine"), snap => setStockIfcoPleine(typeof snap.val() === "number" ? snap.val() : 0));
-    return () => { u1(); u2(); u3(); u4(); };
+    const u5 = onValue(ref(db, "stock_carton_andes/baby_blanc"), snap => setStockBabyBlancAndes(typeof snap.val() === "number" ? snap.val() : 0));
+    const u6 = onValue(ref(db, "geslot_articles"), snap => {
+      const d = snap.val();
+      setGeslotArticles(d ? Object.entries(d).map(([id, v]: any) => ({ id, label: `${v.name || v.CODE_PRODUIT || id} ${v.CONDITIONNEMENT ? `(${v.CONDITIONNEMENT})` : ""}`.trim() })) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
   }, []);
 
   function notify(type: "success" | "error", message: string) {
@@ -173,6 +188,69 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     const reader = new FileReader();
     reader.onload = () => setPdfFile({ nom: f.name, base64: reader.result as string });
     reader.readAsDataURL(f);
+    lireEtPreremplirDepuisPdf(f);
+  }
+
+  // Lecture automatique du bon Geslot : les pages sont des scans (pas de texte sélectionnable),
+  // donc on rend la 1ère page en image (pdf.js) puis on lit cette image par OCR (tesseract.js).
+  // Le champ "Dépôt" est manuscrit sur le bon : il n'est jamais lu automatiquement, le commercial
+  // le choisit toujours lui-même.
+  async function lireEtPreremplirDepuisPdf(file: File) {
+    setLectureEnCours(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfjsLib: any = await import("pdfjs-dist");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+      const page = await doc.getPage(1);
+      const viewport = page.getViewport({ scale: 2.5 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      const Tesseract: any = await import("tesseract.js");
+      const { data } = await Tesseract.recognize(canvas, "fra");
+      const lines: string[] = (data?.text || "").split("\n");
+
+      const lire = (label: string): string => {
+        const re = new RegExp(label + "\\s*[:：]?\\s*(.+)", "i");
+        for (const line of lines) {
+          const m = line.match(re);
+          if (m && m[1] && m[1].trim()) return m[1].trim();
+        }
+        return "";
+      };
+      const lireNombre = (label: string): string => {
+        const digits = lire(label).replace(/[^\d]/g, "");
+        return digits;
+      };
+
+      const vArticleVrac = lire("Article\\s*[àa]\\s*utiliser");
+      const vLot = lire("Lot");
+      const vNbSortir = lireNombre("Nb\\s*colis\\s*[àa]\\s*sortir");
+      const vArticleFini = lire("Article\\s*[àa]\\s*fabriquer");
+      const vNbEntrer = lireNombre("Nb\\s*colis\\s*[àa]\\s*entrer");
+      const vQte = lireNombre("Qte\\s*conditionnement");
+
+      if (vArticleVrac) setArticleVrac(vArticleVrac);
+      if (vLot) setLot(vLot);
+      if (vNbSortir) setNbColisASortir(vNbSortir);
+      if (vArticleFini) setArticleFini(vArticleFini);
+      if (vNbEntrer) setNbColisAEntrer(vNbEntrer);
+      if (vQte) setQteConditionnement(vQte);
+
+      if (vArticleVrac || vArticleFini) {
+        notify("success", "📄 Champs pré-remplis depuis le PDF — vérifie-les avant d'envoyer");
+      } else {
+        notify("error", "⚠️ Lecture automatique incomplète — vérifie/complète les champs manuellement");
+      }
+    } catch (err) {
+      notify("error", "⚠️ Impossible de lire automatiquement ce PDF — remplis les champs manuellement");
+    } finally {
+      setLectureEnCours(false);
+    }
   }
 
   function resetForm() {
@@ -184,6 +262,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     setNbColisAEntrer("");
     setQteConditionnement("");
     setCaissesIfcoEnvoyees("");
+    setCartonsBabyBlancEnvoyes("");
     setTransporteurId("");
     setPdfFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -200,7 +279,8 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     }
     const transporteur = transporteurs.find(t => t.id === transporteurId);
     const now = new Date();
-    const caisses = parseInt(caissesIfcoEnvoyees) || 0;
+    const caisses = depot === "nlt" ? (parseInt(caissesIfcoEnvoyees) || 0) : 0;
+    const cartons = depot === "andes" ? (parseInt(cartonsBabyBlancEnvoyes) || 0) : 0;
 
     const demande: Omit<Demande, "id"> = {
       dateCreation: now.toISOString(),
@@ -214,6 +294,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       nbColisAEntrer: nbColisAEntrer ? parseInt(nbColisAEntrer) : undefined,
       qteConditionnement: qteConditionnement ? parseInt(qteConditionnement) : undefined,
       caissesIfcoEnvoyees: caisses || undefined,
+      cartonsBabyBlancEnvoyes: cartons || undefined,
       transporteurId,
       transporteurNom: transporteur?.nom,
       pdfNom: pdfFile?.nom,
@@ -226,15 +307,17 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     try {
       await push(ref(db, "reconditionnement_demandes"), demande);
 
-      // Mouvement de stock IFCO : caisses vides envoyées de Moorea vers le reconditionneur.
+      // Mouvement de stock : emballage envoyé avec ce reconditionnement, selon le dépôt.
       if (caisses > 0) {
         await update(ref(db, "reconditionnement_stock_ifco"), { vide: Math.max(0, stockIfcoVide - caisses) });
         await push(ref(db, "reconditionnement_stock_mouvements"), {
-          type: "envoi_reconditionneur",
-          depot,
-          quantite: caisses,
-          date: nowFr(),
-          ts: now.getTime(),
+          type: "envoi_reconditionneur", article: "ifco_vide", depot, quantite: caisses, date: nowFr(), ts: now.getTime(),
+        });
+      }
+      if (cartons > 0) {
+        await update(ref(db, "stock_carton_andes"), { baby_blanc: Math.max(0, stockBabyBlancAndes - cartons) });
+        await push(ref(db, "reconditionnement_stock_mouvements"), {
+          type: "envoi_reconditionneur", article: "carton_baby_blanc", depot, quantite: cartons, date: nowFr(), ts: now.getTime(),
         });
       }
 
@@ -341,6 +424,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   }
 
   const demandesFiltrees = demandes.filter(d => filtreStatut === "toutes" || d.statut === filtreStatut);
+  const retourDemande = demandes.find(d => d.id === retourDemandeId);
 
   // ── Stats simples pour facturation ──
   const statsParTransporteur: Record<string, { nom: string; palettesParties: number; palettesRevenues: number }> = {};
@@ -403,15 +487,19 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
         {/* ── DASHBOARD ── */}
         {activeTab === "dashboard" && (
           <div>
-            {/* Stock IFCO Moorea (vide/pleine) */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+            {/* Stock d'emballage — IFCO Moorea (NLT) et carton BABY BLANC (Andès) */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📭 IFCO Moorea — vides</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📭 IFCO Moorea — vides (NLT)</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfcoVide}</div>
               </div>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO Moorea — pleines</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO Moorea — pleines (NLT)</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfcoPleine}</div>
+              </div>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🧺 Carton BABY BLANC (Andès)</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
               </div>
             </div>
 
@@ -459,6 +547,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                       {d.nbColisAEntrer != null && <div>Colis à entrer : <b>{d.nbColisAEntrer}</b></div>}
                       {d.qteConditionnement != null && <div>Qté conditionnement : <b>{d.qteConditionnement}</b></div>}
                       {d.caissesIfcoEnvoyees != null && <div>Caisses IFCO envoyées : <b>{d.caissesIfcoEnvoyees}</b></div>}
+                      {d.cartonsBabyBlancEnvoyes != null && <div>Cartons BABY BLANC envoyés : <b>{d.cartonsBabyBlancEnvoyes}</b></div>}
                       {d.transporteurNom && <div>Transporteur : <b>{d.transporteurNom}</b></div>}
                     </div>
 
@@ -552,8 +641,11 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                   </a>
                 </div>
               )}
+              {lectureEnCours && (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: COLORS.primary, fontWeight: 700 }}>⏳ Lecture automatique du PDF en cours…</p>
+              )}
               <p style={{ margin: "6px 0 0", fontSize: 11, color: "#999" }}>
-                Le PDF est joint à la demande à titre d'archive/aperçu. Les champs ci-dessous ne sont pas encore pré-remplis automatiquement à partir du PDF — remplis-les toi-même à partir du bon (on ajoutera la lecture automatique plus tard).
+                Les champs ci-dessous sont pré-remplis automatiquement à partir du bon (lecture par OCR) — vérifie-les, corrige si besoin, avant d'envoyer. Le champ "Dépôt" étant manuscrit sur le bon, il reste toujours à choisir toi-même.
               </p>
             </div>
 
@@ -565,16 +657,52 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
               </select>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 14 }}>
+            <datalist id="geslot-articles-list">
+              {geslotArticles.map(a => <option key={a.id} value={a.label} />)}
+            </datalist>
+
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 6 }}>
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Article vrac (à utiliser)</label>
-                <input type="text" value={articleVrac} onChange={e => setArticleVrac(e.target.value)} placeholder="ex: PASSION COLOMBIE (VRAC 2 KG)" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                <input type="text" list="geslot-articles-list" value={articleVrac} onChange={e => setArticleVrac(e.target.value)} placeholder="ex: PASSION COLOMBIE (VRAC 2 KG)" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Lot</label>
                 <input type="text" value={lot} onChange={e => setLot(e.target.value)} placeholder="ex: 2608637201" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
               </div>
             </div>
+
+            {lot.trim().length >= 4 && (() => {
+              const suffixe = lot.trim().slice(-4);
+              const correspondances = demandes.filter(d => d.lot && d.lot.slice(-4) === suffixe && (d.articleVrac !== articleVrac || d.articleFini !== articleFini));
+              // Dédoublonne par couple article vrac / article fini déjà vu pour ce suffixe de lot.
+              const vues = new Set<string>();
+              const suggestions = correspondances.filter(d => {
+                const cle = `${d.articleVrac}→${d.articleFini}`;
+                if (vues.has(cle)) return false;
+                vues.add(cle);
+                return true;
+              }).slice(0, 4);
+              if (suggestions.length === 0) return null;
+              return (
+                <div style={{ marginBottom: 14 }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Articles déjà utilisés avec un lot se terminant par {suffixe} :</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {suggestions.map((d, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => { setArticleVrac(d.articleVrac); setArticleFini(d.articleFini); }}
+                        style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        {d.articleVrac} → {d.articleFini}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            {!(lot.trim().length >= 4) && <div style={{ marginBottom: 14 }} />}
 
             <div style={{ marginBottom: 14 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Nb colis à sortir</label>
@@ -583,7 +711,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
 
             <div style={{ marginBottom: 14 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Article à fabriquer</label>
-              <input type="text" value={articleFini} onChange={e => setArticleFini(e.target.value)} placeholder="ex: LIME BRESIL CAL.54 IFCO (FILET 500GR X 10)" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+              <input type="text" list="geslot-articles-list" value={articleFini} onChange={e => setArticleFini(e.target.value)} placeholder="ex: LIME BRESIL CAL.54 IFCO (FILET 500GR X 10)" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
@@ -597,10 +725,24 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
               </div>
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Caisses IFCO vides envoyées avec ce reconditionnement (optionnel)</label>
-              <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
-              <p style={{ margin: "4px 0 0", fontSize: 11, color: "#999" }}>Stock IFCO vides Moorea disponible : {stockIfcoVide}</p>
+            <div style={{ marginBottom: 14, background: COLORS.amberLight, border: `1.5px solid #fde68a`, borderRadius: 10, padding: 12 }}>
+              {depot === "nlt" ? (
+                <>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Caisses IFCO vides à envoyer avec ce reconditionnement</label>
+                  <p style={{ margin: "0 0 8px", fontSize: 12, color: stockIfcoVide > 0 ? "#666" : COLORS.danger, fontWeight: 700 }}>
+                    Stock IFCO vides disponible chez Moorea : {stockIfcoVide} — vérifie si ça suffit pour la production du jour, sinon indique combien envoyer en plus.
+                  </p>
+                  <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si le stock chez NLT est déjà suffisant" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                </>
+              ) : (
+                <>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Cartons BABY BLANC à envoyer avec ce reconditionnement</label>
+                  <p style={{ margin: "0 0 8px", fontSize: 12, color: stockBabyBlancAndes > 0 ? "#666" : COLORS.danger, fontWeight: 700 }}>
+                    Stock carton BABY BLANC disponible chez Andès : {stockBabyBlancAndes} — vérifie si ça suffit pour la production du jour, sinon indique combien envoyer en plus.
+                  </p>
+                  <input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si le stock chez Andès est déjà suffisant" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                </>
+              )}
             </div>
 
             <div style={{ marginBottom: 20 }}>
@@ -731,10 +873,12 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
               </div>
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Caisses IFCO pleines reçues (optionnel)</label>
-              <input type="number" value={retourCaissesIfco} onChange={e => setRetourCaissesIfco(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-            </div>
+            {retourDemande?.depot === "nlt" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Caisses IFCO pleines reçues (optionnel)</label>
+                <input type="number" value={retourCaissesIfco} onChange={e => setRetourCaissesIfco(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setRetourDemandeId(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>

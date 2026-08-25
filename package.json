@@ -20,6 +20,7 @@
     "xlsx": "^0.18.5",
     "html5-qrcode": "^2.3.8",
     "tesseract.js": "^5.1.1",
+    "pdfjs-dist": "^6.2.108",
     "nodemailer": "^6.9.7"
   },
   "devDependencies": {
