@@ -813,6 +813,14 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     const now = new Date();
     const caisses = depot === "nlt" ? (parseInt(caissesIfcoEnvoyees) || 0) : 0;
     const cartons = depot === "andes" ? (parseInt(cartonsBabyBlancEnvoyes) || 0) : 0;
+    // Moorea ne peut pas envoyer plus de caisses IFCO qu'il n'en a réellement en stock — le
+    // transfert se fait depuis le stock Moorea vers NLT (voir plus bas), donc c'est bien le
+    // stock Moorea qui doit être suffisant, pas celui de NLT. Uniquement à la création : en
+    // mode édition, aucun nouveau mouvement de stock n'est déclenché (voir plus bas).
+    if (!editDemandeId && caisses > 0 && caisses > stockIfco.moorea) {
+      notify("error", `✗ Pas assez de caisses IFCO en stock à Moorea (${stockIfco.moorea} dispo, ${caisses} demandées)`);
+      return;
+    }
     // Quantité totale à produire = quantité par colis (filet) × nb colis à entrer — on ne
     // demande plus le total directement, il est calculé pour éviter les erreurs de saisie.
     const nEntrerNum = parseInt(nbColisAEntrer) || 0;
@@ -1485,22 +1493,37 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px" }}>
                   {/* Pas systématique — dépend du stock d'IFCO dispo côté Moorea au moment de la
                       demande. Le bouton est décochable : un 2ᵉ clic annule l'envoi (0 caisse). */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const dejaActif = !emballageIfcoManuel && caissesIfcoEnvoyees === "640";
-                      setCaissesIfcoEnvoyees(dejaActif ? "" : "640");
-                      setEmballageIfcoManuel(false);
-                    }}
-                    style={{
-                      padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray200}`,
-                      background: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondaryLight : "#fff",
-                      color: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray700,
-                      fontSize: 12.5, fontWeight: 700, cursor: "pointer", width: "100%",
-                    }}
-                  >
-                    {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? "✓ " : "☐ "}Envoyer 1 palette IFCO à NLT (640 caisses)
-                  </button>
+                  {(() => {
+                    // Moorea ne peut pas envoyer plus de caisses IFCO qu'il n'en a en stock —
+                    // le bouton "1 palette complète" se désactive si le stock Moorea ne suffit
+                    // pas, avec une explication claire (pas juste un bouton grisé muet).
+                    const stockInsuffisant = stockIfco.moorea < CAISSES_PAR_PALETTE;
+                    return (
+                      <button
+                        type="button"
+                        disabled={stockInsuffisant}
+                        onClick={() => {
+                          const dejaActif = !emballageIfcoManuel && caissesIfcoEnvoyees === "640";
+                          setCaissesIfcoEnvoyees(dejaActif ? "" : "640");
+                          setEmballageIfcoManuel(false);
+                        }}
+                        style={{
+                          padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray200}`,
+                          background: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondaryLight : "#fff",
+                          color: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray700,
+                          fontSize: 12.5, fontWeight: 700, cursor: stockInsuffisant ? "not-allowed" : "pointer", width: "100%",
+                          opacity: stockInsuffisant ? 0.5 : 1,
+                        }}
+                      >
+                        {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? "✓ " : "☐ "}Envoyer 1 palette IFCO à NLT (640 caisses)
+                      </button>
+                    );
+                  })()}
+                  {stockIfco.moorea < CAISSES_PAR_PALETTE && (
+                    <p style={{ margin: "4px 0 0", fontSize: 10.5, color: COLORS.danger, fontWeight: 700 }}>
+                      ⚠️ Stock Moorea insuffisant pour une palette complète ({stockIfco.moorea} caisse{stockIfco.moorea !== 1 ? "s" : ""} dispo sur 640)
+                    </p>
+                  )}
                   <div style={{ marginTop: 4 }}>
                     <button type="button" onClick={() => setEmballageIfcoManuel(v => !v)} style={{ background: "none", border: "none", padding: 0, fontSize: 10.5, color: COLORS.gray600, textDecoration: "underline", cursor: "pointer" }}>
                       {emballageIfcoManuel ? "▾" : "▸"} Cas rare : palette incomplète, ou 2/3 palettes
@@ -1510,7 +1533,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     )}
                   </div>
                   <p style={{ margin: "6px 0 0", fontSize: 10, color: COLORS.gray600 }}>
-                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO
+                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b style={{ color: stockIfco.moorea < CAISSES_PAR_PALETTE ? COLORS.danger : COLORS.gray600 }}>{stockIfco.moorea}</b> caisses IFCO
                   </p>
                 </div>
               )}
