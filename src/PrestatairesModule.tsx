@@ -141,7 +141,7 @@ const COLORS = {
 
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stock" | "ifco-recond" | "configuration" | "nouvelle-carton" | "nouvelle-palette"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-recond" | "configuration" | "nouvelle-carton" | "nouvelle-palette"
   >("dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
@@ -1126,25 +1126,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </button>
 
               <button
-                onClick={() => setActiveTab("ifco-stock")}
-                style={{
-                  padding: "14px 22px",
-                  background: "white",
-                  color: COLORS.secondary,
-                  border: `2px solid ${COLORS.secondary}`,
-                  borderRadius: "10px",
-                  cursor: "pointer",
-                  fontSize: "15px",
-                  fontWeight: "700",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
-              >
-                🏭 Stock IFCO
-              </button>
-
-              <button
                 onClick={() => setActiveTab("ifco-recond")}
                 style={{
                   padding: "14px 22px",
@@ -1164,103 +1145,24 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginBottom: "20px" }}>
-              {/* Cartons Summary */}
-              <div style={{
-                background: "white",
-                borderRadius: "12px",
-                padding: "20px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                border: `1px solid ${COLORS.gray200}`,
-                borderTop: `4px solid ${COLORS.primary}`
-              }}>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>📦 Cartons en attente</div>
-                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.primary, margin: "8px 0" }}>{commandes.filter(c => c.statut === "commandé").length}</div>
-                <button
-                  onClick={() => setActiveTab("nouvelle-carton")}
-                  style={{
-                    marginTop: "12px",
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: COLORS.primaryLight,
-                    color: COLORS.primary,
-                    border: `1px solid ${COLORS.primaryBorder}`,
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                    fontSize: "12px",
-                  }}
-                >
-                  ➕ Nouvelle commande
-                </button>
-              </div>
-
-              {/* Palettes IFCO Summary */}
-              <div style={{
-                background: "white",
-                borderRadius: "12px",
-                padding: "20px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                border: `1px solid ${COLORS.gray200}`,
-                borderTop: `4px solid ${COLORS.secondary}`
-              }}>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>🟦 Palettes IFCO en attente</div>
-                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.secondary, margin: "8px 0" }}>{palettesCommandes.filter(c => c.statut === "commandé").length}</div>
-                <button
-                  onClick={() => setActiveTab("nouvelle-palette")}
-                  style={{
-                    marginTop: "12px",
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: `${COLORS.secondary}15`,
-                    color: COLORS.secondary,
-                    border: `1px solid ${COLORS.secondary}30`,
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                    fontSize: "12px",
-                  }}
-                >
-                  ➕ Nouvelle commande
-                </button>
-              </div>
-
-              {/* IFCO Summary */}
-              <div style={{
-                background: "white",
-                borderRadius: "12px",
-                padding: "20px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                border: `1px solid ${COLORS.gray200}`,
-                borderTop: `4px solid ${COLORS.tertiary}`
-              }}>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>🔄 IFCO</div>
-                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.tertiary, margin: "8px 0" }}>{histo.length}</div>
-                <div style={{ fontSize: "12px", color: COLORS.gray600 }}>déclarations{pendingClients.length > 0 ? ` · ⏳ ${pendingClients.length} en attente` : ""}</div>
-                <button
-                  onClick={() => setActiveTab("ifco-histo")}
-                  style={{
-                    marginTop: "12px",
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: `${COLORS.tertiary}15`,
-                    color: COLORS.tertiary,
-                    border: `1px solid ${COLORS.tertiary}30`,
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                    fontSize: "12px",
-                  }}
-                >
-                  Voir détails
-                </button>
-              </div>
-            </div>
-
             {/* CALENDRIER UNIFIÉ — cartons, palettes IFCO et déclarations IFCO */}
             <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
-              <div style={{ background: "linear-gradient(135deg, #1a6b3a, #27ae60)", padding: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ background: "linear-gradient(135deg, #1a6b3a, #27ae60)", padding: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#fff" }}>📅 {ifcoMonthLabel}</h3>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ background: "rgba(255,255,255,0.18)", color: "#fff", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 700 }}>
+                    📦 {commandes.filter(c => c.statut === "commandé").length} carton{commandes.filter(c => c.statut === "commandé").length !== 1 ? "s" : ""} en attente
+                  </span>
+                  <span style={{ background: "rgba(255,255,255,0.18)", color: "#fff", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 700 }}>
+                    🟦 {palettesCommandes.filter(c => c.statut === "commandé").length} palette{palettesCommandes.filter(c => c.statut === "commandé").length !== 1 ? "s" : ""} IFCO en attente
+                  </span>
+                  <button
+                    onClick={() => setActiveTab("ifco-histo")}
+                    style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    🔄 {histo.length} déclaration{histo.length !== 1 ? "s" : ""} IFCO{pendingClients.length > 0 ? ` · ⏳ ${pendingClients.length} en attente` : ""}
+                  </button>
+                </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))} style={{ background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 6, width: 32, height: 32, cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 700 }}>◀</button>
                   <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))} style={{ background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 6, width: 32, height: 32, cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 700 }}>▶</button>
@@ -2220,56 +2122,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   </table>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* IFCO — STOCK */}
-        {activeTab === "ifco-stock" && (
-          <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
-              {[["moorea", "🏭 Moorea", "#27ae60"], ["nlt", "🔄 NLT", "#3b82f6"], ["transit", "📦 En attente", "#f59e0b"]].map(([k, label, color]: any) => {
-                const qty = stockLevels[k as keyof typeof stockLevels];
-                const palettes = Math.floor(qty / 640);
-                const loose = qty % 640;
-                return (
-                  <div key={k} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "16px", textAlign: "center" }}>
-                    <div style={{ fontSize: 24, marginBottom: 8 }}>{label.split(' ')[0]}</div>
-                    <div style={{ fontSize: 28, fontWeight: 800, color, marginBottom: 4 }}>{qty}</div>
-                    <div style={{ fontSize: 10, color: "#ccc" }}>{palettes}p {loose > 0 ? `+${loose}c` : ''}</div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "16px", marginBottom: 24 }}>
-              <h3 style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 800, color: "#1a6b3a" }}>Mouvement stock</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                <select value={fromLoc} onChange={e => setFromLoc(e.target.value as any)} style={{ padding: "8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 11 }}>
-                  <option value="moorea">Moorea</option>
-                  <option value="nlt">NLT</option>
-                  <option value="transit">En attente</option>
-                </select>
-                <select value={toLoc} onChange={e => setToLoc(e.target.value as any)} style={{ padding: "8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 11 }}>
-                  <option value="moorea">Moorea</option>
-                  <option value="nlt">NLT</option>
-                  <option value="transit">En attente</option>
-                </select>
-              </div>
-              <input type="number" value={qteCaisses} onChange={e => setQteCaisses(e.target.value)} placeholder="Caisses" style={{ width: "100%", padding: "8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 11, marginBottom: 10, boxSizing: "border-box" }} />
-              <button onClick={enregistrerMouvementStock} style={{ width: "100%", padding: "8px", borderRadius: 8, border: "none", background: "#27ae60", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓</button>
-              {ifcoStatus && (
-                <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: ifcoStatusType === "success" ? "#eafaf1" : ifcoStatusType === "error" ? "#fdedec" : "#eaf4fb", color: ifcoStatusType === "success" ? "#1e8449" : ifcoStatusType === "error" ? "#c0392b" : "#1a5276" }}>{ifcoStatus}</div>
-              )}
-            </div>
-
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "16px" }}>
-              <h3 style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: "#1a6b3a" }}>Mouvements ({stockMovements.length})</h3>
-              {stockMovements.slice(0, 5).map((m, i) => (
-                <div key={m.id || i} style={{ borderBottom: "1px solid #eee", paddingBottom: 6, marginBottom: 6, fontSize: 10, color: "#666" }}>
-                  {m.caisses}c · {m.from}→{m.to} · {m.date}
-                </div>
-              ))}
             </div>
           </div>
         )}

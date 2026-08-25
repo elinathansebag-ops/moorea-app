@@ -911,7 +911,24 @@ export default function App() {
       setConflitReport({ arrivage, nouvelleDateFr, existant });
     } else {
       update(ref(db, `arrivages/${arrivage.id}`), { date: nouvelleDateFr }).catch(() => {});
+      syncDateCommandeLiee(arrivage, nouvelleDateFr);
       logActivite("Report de date", `${arrivage.produit || ""} (${arrivage.fournisseur || ""}) reporté au ${nouvelleDateFr}`);
+    }
+  };
+
+  // Si l'arrivage reporté provient d'une commande de cartons/palettes IFCO (module
+  // Prestataires), on répercute la nouvelle date sur la commande pour que le calendrier
+  // Prestataires affiche le bon jour (sinon la commande reste affichée à son ancienne date
+  // alors que l'arrivage, lui, a été déplacé).
+  const syncDateCommandeLiee = (arrivage: any, nouvelleDateFr: string) => {
+    const p = nouvelleDateFr.split("/");
+    if (p.length !== 3) return;
+    const iso = `${p[2]}-${p[1]}-${p[0]}`;
+    if (arrivage.carton_commande_id) {
+      update(ref(db, `prestataires_cartons/${arrivage.carton_commande_id}`), { dateLivraisonPrevue: iso }).catch(() => {});
+    }
+    if (arrivage.ifco_palette_commande_id) {
+      update(ref(db, `ifco_palettes_commandes/${arrivage.ifco_palette_commande_id}`), { dateLivraisonPrevue: iso }).catch(() => {});
     }
   };
 
@@ -924,6 +941,7 @@ export default function App() {
       await remove(ref(db, `arrivages/${existant.id}`)).catch(() => {});
     }
     await update(ref(db, `arrivages/${arrivage.id}`), { date: nouvelleDateFr }).catch(() => {});
+    syncDateCommandeLiee(arrivage, nouvelleDateFr);
     logActivite("Report de date", `${arrivage.produit || ""} (${arrivage.fournisseur || ""}) reporté au ${nouvelleDateFr}${choix === "supprimerExistant" ? " (ancien arrivage supprimé)" : " (les deux conservés)"}`);
     setConflitReport(null);
   };

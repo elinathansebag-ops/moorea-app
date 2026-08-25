@@ -125,8 +125,9 @@ export function formaterHeureMesure(at: number) {
 }
 
 export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onReporterDate, selectMode, selected, onToggleSelect, gencodeArticles }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; onReporterDate?: (arrivage: any, nouvelleDateFr: string) => void; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[] }) {
-  // Déterminer si c'est un carton Go-Embal pour simplifier le formulaire
+  // Déterminer si c'est un carton Go-Embal ou une palette IFCO pour simplifier le formulaire
   const isGoEmbal = arrivage.carton_commande_id || arrivage.fournisseur === "Go-Embal";
+  const isPaletteIFCO = arrivage.palette_ifco_commande_id || arrivage.fournisseur === "IFCO";
 
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
@@ -316,11 +317,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => { setDateReportIso(frToIso(arrivage.date)); setShowReport(true); }} title="Reporter à une autre date"
               style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
-            {!isGoEmbal && matchedGencode && (
+            {!isGoEmbal && !isPaletteIFCO && matchedGencode && (
               <button onClick={() => setShowGencodeScan(true)} style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷️ Contrôler gencode</button>
             )}
           </div>
-          {!isGoEmbal && (
+          {!isGoEmbal && !isPaletteIFCO && (
             <button onClick={() => setShowScanEtiquette(true)}
               style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
               📷 Scanner l'étiquette
@@ -350,7 +351,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
             </span>
           )}
         </div>
-        {!isGoEmbal && (
+        {!isGoEmbal && !isPaletteIFCO && (
           <>
             <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
@@ -386,7 +387,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           une même ligne. Elles repassent l'une sous l'autre sur écran étroit (flexWrap), et
           les listes de mesures démarrent vides pour ne pas alourdir les autres produits. */}
       <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
-        {!isGoEmbal && (
+        {!isGoEmbal && !isPaletteIFCO && (
           <div style={{ flex: 1, minWidth: 210, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
@@ -412,7 +413,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           </div>
         )}
 
-        {!isGoEmbal && [
+        {!isGoEmbal && !isPaletteIFCO && [
           { cle: "temp", titre: "🌡️ Températures (°C)", liste: temperatures, setter: setTemperatures, step: "0.1", min: undefined, libelle: "une température" },
           { cle: "poids", titre: "⚖️ Poids barquettes (g)", liste: poidsBarquettes, setter: setPoidsBarquettes, step: "1", min: "0", libelle: "un poids" },
         ].map(sec => (
@@ -445,7 +446,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         ))}
       </div>
 
-      {!isGoEmbal && (
+      {!isGoEmbal && !isPaletteIFCO && (
         <>
           {scanEtiquetteMsg && <p style={{ margin: "0 0 6px", fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>✓ {scanEtiquetteMsg}</p>}
           {showScanEtiquette && <ScannerQR onScan={handleScanEtiquette} onClose={() => setShowScanEtiquette(false)} />}
@@ -485,7 +486,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       )}
 
       {/* Palettes — détermine combien d'étiquettes seront imprimées automatiquement à la validation */}
-      {!isGoEmbal && (
+      {!isGoEmbal && !isPaletteIFCO && (
         <>
           <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
@@ -1830,6 +1831,15 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
               const { ref: fbRef, update: fbUpdate } = await import("firebase/database");
               const { db: dbImport } = await import("./firebase");
               await fbUpdate(fbRef(dbImport, `arrivages/${a.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
+              // Si cet arrivage vient d'une commande de cartons/palettes IFCO (module Prestataires),
+              // on repasse aussi la commande en "commandé" pour qu'elle ne reste pas affichée comme
+              // reçue dans le calendrier Prestataires alors qu'elle a été re-pointée.
+              if (a.carton_commande_id) {
+                await fbUpdate(fbRef(dbImport, `prestataires_cartons/${a.carton_commande_id}`), { statut: "commandé", dateReception: null });
+              }
+              if (a.ifco_palette_commande_id) {
+                await fbUpdate(fbRef(dbImport, `ifco_palettes_commandes/${a.ifco_palette_commande_id}`), { statut: "commandé", dateReception: null });
+              }
             }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#d97706", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>↺ Re-pointer</button>
           </div>
         </div>
