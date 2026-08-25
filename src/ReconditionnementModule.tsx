@@ -144,6 +144,8 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
 
   // Base articles Geslot, pour proposer une saisie assistée sur les 2 champs article.
   const [geslotArticles, setGeslotArticles] = useState<{ id: string; label: string }[]>([]);
+  // Arrivages (agréage) — sert à retrouver l'article vrac réceptionné pour un lot donné.
+  const [arrivagesData, setArrivagesData] = useState<any[]>([]);
 
   // Configuration — nouveau transporteur
   const [nvNom, setNvNom] = useState("");
@@ -173,7 +175,11 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       const d = snap.val();
       setGeslotArticles(d ? Object.entries(d).map(([id, v]: any) => ({ id, label: `${v.name || v.CODE_PRODUIT || id} ${v.CONDITIONNEMENT ? `(${v.CONDITIONNEMENT})` : ""}`.trim() })) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
+    const u7 = onValue(ref(db, "arrivages"), snap => {
+      const d = snap.val();
+      setArrivagesData(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
 
   function notify(type: "success" | "error", message: string) {
@@ -674,31 +680,56 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
 
             {lot.trim().length >= 4 && (() => {
               const suffixe = lot.trim().slice(-4);
-              const correspondances = demandes.filter(d => d.lot && d.lot.slice(-4) === suffixe && (d.articleVrac !== articleVrac || d.articleFini !== articleFini));
-              // Dédoublonne par couple article vrac / article fini déjà vu pour ce suffixe de lot.
-              const vues = new Set<string>();
-              const suggestions = correspondances.filter(d => {
-                const cle = `${d.articleVrac}→${d.articleFini}`;
-                if (vues.has(cle)) return false;
-                vues.add(cle);
-                return true;
-              }).slice(0, 4);
-              if (suggestions.length === 0) return null;
+              const correspondLot = (val?: string | number | null) => val != null && String(val).slice(-4) === suffixe;
+
+              // Source 1 — arrivages (agréage) : donne l'article vrac réceptionné pour ce lot
+              // (lot_interne = n° de lot Moorea, lot_fournisseur = n° de traçabilité fournisseur).
+              const arrivagesCorrespondants = arrivagesData.filter(a =>
+                correspondLot(a.lot_interne) || correspondLot(a.lot_fournisseur) ||
+                (Array.isArray(a.lot_fournisseur_liste) && a.lot_fournisseur_liste.some((l: string) => correspondLot(l)))
+              );
+              const vuesVrac = new Set<string>();
+              const suggestionsVrac = arrivagesCorrespondants
+                .map(a => a.produit || a.article || a.nom || a.designation)
+                .filter((p): p is string => !!p && p !== articleVrac)
+                .filter(p => { if (vuesVrac.has(p)) return false; vuesVrac.add(p); return true; })
+                .slice(0, 4);
+
+              // Source 2 — historique des demandes de reconditionnement déjà faites pour ce lot :
+              // donne le couple vrac → fini déjà utilisé.
+              const vuesPaire = new Set<string>();
+              const suggestionsPaire = demandes
+                .filter(d => d.lot && correspondLot(d.lot) && (d.articleVrac !== articleVrac || d.articleFini !== articleFini))
+                .filter(d => { const cle = `${d.articleVrac}→${d.articleFini}`; if (vuesPaire.has(cle)) return false; vuesPaire.add(cle); return true; })
+                .slice(0, 4);
+
+              if (suggestionsVrac.length === 0 && suggestionsPaire.length === 0) return null;
               return (
                 <div style={{ marginBottom: 14 }}>
-                  <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Articles déjà utilisés avec un lot se terminant par {suffixe} :</p>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {suggestions.map((d, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => { setArticleVrac(d.articleVrac); setArticleFini(d.articleFini); }}
-                        style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                      >
-                        {d.articleVrac} → {d.articleFini}
-                      </button>
-                    ))}
-                  </div>
+                  {suggestionsVrac.length > 0 && (
+                    <div style={{ marginBottom: suggestionsPaire.length > 0 ? 8 : 0 }}>
+                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Article réceptionné (arrivage) avec un lot se terminant par {suffixe} :</p>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {suggestionsVrac.map((p, i) => (
+                          <button key={i} type="button" onClick={() => setArticleVrac(p)} style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {suggestionsPaire.length > 0 && (
+                    <div>
+                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Déjà reconditionné avec un lot se terminant par {suffixe} :</p>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {suggestionsPaire.map((d, i) => (
+                          <button key={i} type="button" onClick={() => { setArticleVrac(d.articleVrac); setArticleFini(d.articleFini); }} style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.secondary}`, background: COLORS.secondaryLight, color: COLORS.secondary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            {d.articleVrac} → {d.articleFini}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
