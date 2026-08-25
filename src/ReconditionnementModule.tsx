@@ -871,36 +871,36 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
         {/* ── NOUVELLE DEMANDE ── */}
         {activeTab === "nouvelle" && (
           <div className="fade-up">
-            <div style={{ marginBottom: 16, background: "linear-gradient(135deg, #eff6ff, #f0f9ff)", border: "2px solid #bfdbfe", borderRadius: 20, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🔄</div>
-              <div>
-                <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.6px" }}>Nouvelle demande</p>
-                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>Reconditionnement</p>
+            {/* Stock en un coup d'œil, toujours visible en haut — pas besoin de scroller */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#666" }}>IFCO Moorea</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
+              </div>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#666" }}>IFCO NLT</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
+              </div>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#666" }}>Carton Andès</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
               </div>
             </div>
 
-            <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+            <div className="card" style={{ padding: "16px 20px", marginBottom: 12 }}>
               <div className="section-title">📄 Bon Geslot</div>
               <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ width: "auto", fontSize: 12, padding: "8px" }} />
               {pdfFile && (
-                <div style={{ marginTop: 10 }}>
-                  <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                    📄 {pdfFile.nom} — voir l'aperçu
-                  </a>
-                </div>
+                <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+                  📄 aperçu
+                </a>
               )}
               {lectureEnCours && (
-                <div style={{ marginTop: 12, background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 16 }}>⏳</span>
-                  <span style={{ fontSize: 13, color: "#1d4ed8", fontWeight: 700 }}>Lecture automatique du PDF en cours…</span>
-                </div>
+                <span style={{ marginLeft: 10, fontSize: 12, color: "#1d4ed8", fontWeight: 700 }}>⏳ lecture en cours…</span>
               )}
-              <p style={{ margin: "10px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                Les champs ci-dessous sont pré-remplis automatiquement à partir du bon (lecture par OCR) — vérifie-les, corrige si besoin, avant d'envoyer. Le champ "Dépôt" étant manuscrit sur le bon, il reste toujours à choisir toi-même.
-              </p>
             </div>
 
-            <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+            <div className="card" style={{ padding: "16px 20px", marginBottom: 12 }}>
               <div className="section-title">📍 Dépôt & article</div>
               <F label="Dépôt" required>
                 <select value={depot} onChange={e => setDepot(e.target.value as Depot)}>
@@ -992,7 +992,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
               })()}
             </div>
 
-            <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+            <div className="card" style={{ padding: "16px 20px", marginBottom: 12 }}>
               <div className="section-title">📦 Quantités</div>
               <div className="grid-2">
                 <F label="Nb colis à sortir"><input type="number" value={nbColisASortir} onChange={e => setNbColisASortir(e.target.value)} /></F>
@@ -1002,29 +1002,26 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
               <F label="Qté conditionnement"><input type="number" value={qteConditionnement} onChange={e => setQteConditionnement(e.target.value)} /></F>
             </div>
 
-            <div style={{ marginBottom: 16, background: COLORS.amberLight, border: "2px solid #fde68a", borderRadius: 20, padding: "20px 24px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>📦</div>
-                <span style={{ fontSize: 14, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>Emballage à envoyer</span>
-              </div>
+            <div style={{ marginBottom: 12, background: COLORS.amberLight, border: "2px solid #fde68a", borderRadius: 16, padding: "14px 20px" }}>
+              <div className="section-title" style={{ marginBottom: 8 }}>📦 Emballage à envoyer</div>
               {depot === "nlt" ? (
                 <>
-                  <p style={{ margin: "0 0 10px", fontSize: 12, color: stockIfco.nlt > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
-                    Déjà chez NLT : <b>{stockIfco.nlt}</b> caisses IFCO · disponible chez Moorea pour un envoi complémentaire : <b>{stockIfco.moorea}</b> — pré-rempli avec le nb de colis à entrer (1 caisse par colis fini), vérifie si le stock déjà chez NLT suffit et corrige. Mets 0 si ce produit ne repart pas en IFCO (ex : la passion repart dans son carton d'origine).
+                  <p style={{ margin: "0 0 8px", fontSize: 11, color: stockIfco.nlt > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
+                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO
                   </p>
-                  <F label="Caisses IFCO vides à envoyer"><input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si ce produit ne repart pas en IFCO" /></F>
+                  <F label="Caisses IFCO vides à envoyer"><input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si pas d'IFCO" /></F>
                 </>
               ) : (
                 <>
-                  <p style={{ margin: "0 0 10px", fontSize: 12, color: stockBabyBlancAndes > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
-                    Stock carton BABY BLANC disponible chez Andès : <b>{stockBabyBlancAndes}</b> — vérifie si ça suffit pour la production du jour, sinon indique combien envoyer en plus.
+                  <p style={{ margin: "0 0 8px", fontSize: 11, color: stockBabyBlancAndes > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
+                    Andès : <b>{stockBabyBlancAndes}</b> cartons BABY BLANC
                   </p>
-                  <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si le stock chez Andès est déjà suffisant" /></F>
+                  <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si stock suffisant" /></F>
                 </>
               )}
             </div>
 
-            <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+            <div className="card" style={{ padding: "16px 20px", marginBottom: 12 }}>
               <div className="section-title">🚚 Transport</div>
               <F label="Transporteur" required>
                 <select value={transporteurId} onChange={e => setTransporteurId(e.target.value)}>
