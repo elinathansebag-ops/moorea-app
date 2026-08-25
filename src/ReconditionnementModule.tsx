@@ -174,52 +174,77 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   doc.setFillColor(245, 243, 238); doc.roundedRect(M, y, CW, 16, 2, 2, "F");
   doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
   doc.text(`${demande.articleVrac}  →  ${demande.articleFini}`, M + 6, y + 10);
-  y += 22;
+  y += 24;
 
-  const section = (title: string) => {
-    doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
-    doc.setFillColor(200, 168, 75); doc.rect(M, y, 3, 8, "F");
-    doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-    doc.text(title, M + 6, y + 5.5); y += 12;
-  };
-  const col1 = M + 2, col2 = M + CW / 2 + 2;
-  const ligne = (label: string, valeur: string, col: number) => {
+  const col1 = M + 8, col2 = M + CW / 2 + 4;
+  const ligne = (label: string, valeur: string, col: number, yy: number) => {
     doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text(label + " :", col, y);
+    doc.text(label + " :", col, yy);
     doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
-    doc.text(valeur || "-", col, y + 5);
+    doc.text(valeur || "-", col, yy + 5);
   };
 
-  section("DEMANDE");
-  ligne("Dépôt", DEPOT_LABEL[demande.depot], col1);
-  ligne("Lot", demande.lot || "-", col2);
-  y += 11;
-  ligne("Créée par", demande.creePar, col1);
-  ligne("Transporteur", demande.transporteurNom || "-", col2);
-  y += 14;
+  // Le bon est coupé en deux zones bien distinctes, chacune pour un public différent : ce que
+  // l'ENTREPÔT MOOREA doit faire avant le départ (haut, bleu), et ce que le RECONDITIONNEUR
+  // (NLT/Andès) doit préparer et retourner (bas, or) — pour éviter toute confusion sur qui fait
+  // quoi quand plusieurs bons circulent le même jour.
 
-  section("QUANTITÉS");
-  ligne("Colis à sortir", demande.nbColisASortir != null ? `${demande.nbColisASortir} — ${demande.articleVrac}` : "-", col1);
-  ligne("Colis à entrer", demande.nbColisAEntrer != null ? `${demande.nbColisAEntrer} — ${demande.articleFini}` : "-", col2);
-  y += 11;
-  ligne("Qté conditionnement", demande.qteConditionnement != null ? String(demande.qteConditionnement) : "-", col1);
+  // ─── ZONE 1 — ENTREPÔT MOOREA ───
+  const zone1Top = y, zone1H = 104;
+  doc.setFillColor(239, 246, 255); doc.rect(M, zone1Top, CW, zone1H, "F");
+  doc.setFillColor(29, 78, 216); doc.rect(M, zone1Top, 4, zone1H, "F");
+  doc.setTextColor(29, 78, 216); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text("🏭 ENTREPÔT MOOREA — À FAIRE AVANT LE DÉPART", M + 10, zone1Top + 9);
+
+  let yy = zone1Top + 20;
+  ligne("Dépôt destinataire", DEPOT_LABEL[demande.depot], col1, yy);
+  ligne("Lot", demande.lot || "-", col2, yy);
+  yy += 12;
+  ligne("Créée par", demande.creePar, col1, yy);
+  ligne("Transporteur", demande.transporteurNom || "-", col2, yy);
+  yy += 14;
+  ligne("Colis à sortir", demande.nbColisASortir != null ? `${demande.nbColisASortir} — ${demande.articleVrac}` : "-", col1, yy);
   if (demande.depot === "nlt") {
-    ligne("Caisses IFCO envoyées", demande.caissesIfcoEnvoyees != null ? String(demande.caissesIfcoEnvoyees) : "-", col2);
+    ligne("Caisses IFCO envoyées", demande.caissesIfcoEnvoyees != null ? String(demande.caissesIfcoEnvoyees) : "-", col2, yy);
   } else {
-    ligne("Cartons BABY BLANC envoyés", demande.cartonsBabyBlancEnvoyes != null ? String(demande.cartonsBabyBlancEnvoyes) : "-", col2);
+    ligne("Cartons BABY BLANC envoyés", demande.cartonsBabyBlancEnvoyes != null ? String(demande.cartonsBabyBlancEnvoyes) : "-", col2, yy);
   }
-  y += 18;
+  yy += 16;
 
-  // QR de suivi — scanner pour valider "prêt" puis "parti" depuis l'entrepôt
-  const qrSize = 32;
-  doc.setDrawColor(220, 220, 220); doc.roundedRect(M, y, CW, qrSize + 10, 2, 2, "S");
-  doc.addImage(qrDataUrl, "PNG", M + 6, y + 5, qrSize, qrSize);
-  doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-  doc.text("Scanner pour valider à l'entrepôt", M + qrSize + 14, y + 16);
-  doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-  doc.text("1er scan → marque \"prêt\"", M + qrSize + 14, y + 23);
-  doc.text("2e scan (une fois prêt) → marque \"parti\"", M + qrSize + 14, y + 29);
-  y += qrSize + 16;
+  // QR de suivi — réservé à l'entrepôt Moorea (le reconditionneur n'a pas besoin de le scanner)
+  const qrSize = 26;
+  doc.setFillColor(255, 255, 255); doc.roundedRect(M + 8, yy, CW - 16, qrSize + 8, 2, 2, "F");
+  doc.addImage(qrDataUrl, "PNG", M + 12, yy + 4, qrSize, qrSize);
+  doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+  doc.text("Scanner pour valider \"prêt\" puis \"parti\"", M + 12 + qrSize + 8, yy + 12);
+  doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2);
+  doc.text("(personnel Moorea uniquement — le reconditionneur n'a rien à scanner)", M + 12 + qrSize + 8, yy + 18, { maxWidth: CW - qrSize - 44 });
+  y = zone1Top + zone1H;
+
+  // ─── Séparateur visuel entre les deux zones ───
+  y += 7;
+  doc.setDrawColor(190, 190, 190);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.line(M, y, W - M, y);
+  doc.setLineDashPattern([], 0);
+  doc.setTextColor(150, 150, 150); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+  doc.text("✂  partie ci-dessous à conserver / remettre au reconditionneur", W / 2, y + 4, { align: "center" });
+  y += 13;
+
+  // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) ───
+  const zone2Top = y, zone2H = 50;
+  doc.setFillColor(255, 251, 240); doc.rect(M, zone2Top, CW, zone2H, "F");
+  doc.setFillColor(200, 168, 75); doc.rect(M, zone2Top, 4, zone2H, "F");
+  doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text(`📦 ${DEPOT_LABEL[demande.depot].toUpperCase()} — À PRÉPARER ET RETOURNER`, M + 10, zone2Top + 9);
+
+  let yy2 = zone2Top + 20;
+  ligne("Colis à entrer", demande.nbColisAEntrer != null ? `${demande.nbColisAEntrer} — ${demande.articleFini}` : "-", col1, yy2);
+  ligne("Qté conditionnement attendue", demande.qteConditionnement != null ? String(demande.qteConditionnement) : "-", col2, yy2);
+  yy2 += 13;
+  doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(7.3);
+  doc.text("Le retour sera pointé par Moorea à réception. Merci de signaler toute anomalie au transporteur.", M + 10, yy2, { maxWidth: CW - 20 });
+  y = zone2Top + zone2H + 10;
 
   doc.setTextColor(180, 180, 180); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
   doc.text(`Réf. demande : ${demande.id}`, M, 290);
@@ -325,6 +350,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [filtreStatut, setFiltreStatut] = useState<"toutes" | Demande["statut"]>("toutes");
+  // Accordéon par semaine de l'historique des reconditionnements terminés (onglet Historique) —
+  // null = pas encore initialisé (la semaine la plus récente s'ouvrira automatiquement).
+  const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
 
   // Modale "prêt" (validation entrepôt étape 1)
   const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
@@ -825,6 +853,67 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     if (d.retour?.qteConditionnementRecue) statsParDepot[d.depot].qteConditionnementRecue += d.retour.qteConditionnementRecue;
   });
 
+  // ── Historique des reconditionnements terminés (statut "reçu"), regroupés par jour puis
+  // par semaine — avec toujours la semaine la plus récente ouverte par défaut.
+  const demandesTerminees = demandes.filter(d => d.statut === "reçu");
+  const parseFrDate = (s?: string): Date | null => {
+    if (!s) return null;
+    const [dd, mm, yyyy] = s.split(" ")[0].split("/");
+    if (!dd || !mm || !yyyy) return null;
+    return new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
+  };
+  const lundiDe = (d: Date): Date => {
+    const jour = d.getDay();
+    const lundi = new Date(d);
+    lundi.setDate(d.getDate() + (jour === 0 ? -6 : 1 - jour));
+    lundi.setHours(0, 0, 0, 0);
+    return lundi;
+  };
+  const numeroSemaine = (d: Date): number => {
+    const date = new Date(d.getTime());
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));
+    const semaine1 = new Date(date.getFullYear(), 0, 4);
+    return 1 + Math.round(((date.getTime() - semaine1.getTime()) / 86400000 - 3 + ((semaine1.getDay() + 6) % 7)) / 7);
+  };
+  const parJour: Record<string, Demande[]> = {};
+  demandesTerminees.forEach(d => {
+    const date = parseFrDate(d.retour?.date) || parseFrDate(d.dateCreationFr);
+    const cle = date ? date.toLocaleDateString("fr-FR") : "Date inconnue";
+    if (!parJour[cle]) parJour[cle] = [];
+    parJour[cle].push(d);
+  });
+  const joursTries = Object.keys(parJour).sort((a, b) => (parseFrDate(b)?.getTime() || 0) - (parseFrDate(a)?.getTime() || 0));
+  const parSemaine: Record<string, { label: string; jours: string[]; tri: number }> = {};
+  joursTries.forEach(jourStr => {
+    const date = parseFrDate(jourStr);
+    if (!date) {
+      if (!parSemaine["?"]) parSemaine["?"] = { label: "Date inconnue", jours: [], tri: -Infinity };
+      parSemaine["?"].jours.push(jourStr);
+      return;
+    }
+    const lundi = lundiDe(date);
+    const cleSemaine = `${lundi.getFullYear()}-${String(lundi.getMonth() + 1).padStart(2, "0")}-${String(lundi.getDate()).padStart(2, "0")}`;
+    if (!parSemaine[cleSemaine]) parSemaine[cleSemaine] = { label: `Semaine ${numeroSemaine(date)} · ${date.getFullYear()}`, jours: [], tri: lundi.getTime() };
+    parSemaine[cleSemaine].jours.push(jourStr);
+  });
+  const semainesTriees = Object.entries(parSemaine).sort((a, b) => b[1].tri - a[1].tri);
+
+  // La semaine la plus récente s'ouvre automatiquement dès que les données arrivent ; ensuite
+  // l'utilisateur garde le contrôle (ouvrir/fermer librement) sans qu'on lui réimpose l'état.
+  useEffect(() => {
+    if (semainesOuvertes === null && semainesTriees.length > 0) {
+      setSemainesOuvertes(new Set([semainesTriees[0][0]]));
+    }
+  }, [semainesTriees.length]);
+  const toggleSemaine = (cle: string) => {
+    setSemainesOuvertes(prev => {
+      const next = new Set(prev || []);
+      if (next.has(cle)) next.delete(cle); else next.add(cle);
+      return next;
+    });
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: COLORS.gray100 }}>
       <style>{styles}</style>
@@ -1212,7 +1301,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               <div style={{ width: 44, height: 44, borderRadius: 12, background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🕘</div>
               <div>
                 <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.6px" }}>Historique</p>
-                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>Mouvements de stock (colis / caisses)</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>Reconditionnements terminés & mouvements de stock</p>
               </div>
             </div>
 
@@ -1232,6 +1321,59 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               </div>
             </div>
 
+            {/* ── Reconditionnements terminés, par jour, regroupés en accordéon par semaine ── */}
+            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>✅ Reconditionnements terminés</p>
+            {semainesTriees.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#aaa", padding: "30px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}`, marginBottom: 24 }}>
+                <p style={{ margin: 0, fontSize: 13 }}>Aucun reconditionnement terminé pour l'instant</p>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 24 }}>
+                {semainesTriees.map(([cleSemaine, info]) => {
+                  const ouverte = semainesOuvertes?.has(cleSemaine) ?? false;
+                  const totalDemandes = info.jours.reduce((s, j) => s + parJour[j].length, 0);
+                  return (
+                    <div key={cleSemaine} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
+                      <div onClick={() => toggleSemaine(cleSemaine)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
+                          📅 {info.label}{" "}
+                          <span style={{ color: "#999", fontWeight: 600 }}>
+                            ({info.jours.length} jour{info.jours.length > 1 ? "s" : ""} · {totalDemandes} reconditionnement{totalDemandes > 1 ? "s" : ""})
+                          </span>
+                        </span>
+                        <span style={{ fontSize: 14, color: COLORS.primary, transform: ouverte ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                      </div>
+                      {ouverte && (
+                        <div style={{ padding: "0 16px 12px", background: "#fafafa" }}>
+                          {info.jours.map(jourStr => (
+                            <div key={jourStr} style={{ marginTop: 12 }}>
+                              <p style={{ margin: "0 0 6px", fontSize: 11.5, fontWeight: 700, color: "#888" }}>{jourStr}</p>
+                              {parJour[jourStr].map(d => (
+                                <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "10px 14px", marginBottom: 6 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.gray700 }}>{d.articleVrac} → {d.articleFini}</span>
+                                    <span style={{ fontSize: 11, color: d.retour?.qualite === "probleme" ? COLORS.danger : COLORS.secondary, fontWeight: 700, whiteSpace: "nowrap" }}>
+                                      {d.retour?.qualite === "probleme" ? "⚠️ Problème" : "✅ Conforme"}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>
+                                    {DEPOT_LABEL[d.depot]}
+                                    {d.retour?.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
+                                    {d.retour?.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} unités` : ""}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>📦 Mouvements de stock (colis / caisses)</p>
             {mouvements.length === 0 ? (
               <div style={{ textAlign: "center", color: "#aaa", padding: "40px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}` }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>🕘</div>
