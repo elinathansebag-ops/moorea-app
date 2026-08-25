@@ -384,26 +384,25 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         </div>
         {isRetourRecond && (
           <>
-            <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🧺 Qté conditionnement</span>
-              <input type="number" min="0" inputMode="numeric" value={retourQte} onChange={e => setRetourQte(e.target.value)}
-                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 130, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            {/* Libellé au-dessus de la case (comme DLC/poids ci-dessous) plutôt que sur la même
+                ligne — avec 3-4 champs qui se retrouvent trop serrés, le libellé long ("Caisses
+                IFCO pleines") écrasait la case de saisie et donnait l'impression que les
+                cellules se chevauchaient. */}
+            <div style={{ flex: 1, minWidth: 130, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🎫 Grandes palettes</span>
               <input type="number" min="0" inputMode="numeric" value={retourGrandes} onChange={e => setRetourGrandes(e.target.value)}
-                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }} />
+                style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
             </div>
-            <div style={{ flex: 1, minWidth: 130, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <div style={{ flex: 1, minWidth: 130, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🎫 Demi-palettes</span>
               <input type="number" min="0" inputMode="numeric" value={retourDemi} onChange={e => setRetourDemi(e.target.value)}
-                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }} />
+                style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
             </div>
             {arrivage.depot === "nlt" && (
-              <div style={{ flex: 1, minWidth: 170, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+              <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Caisses IFCO pleines</span>
                 <input type="number" min="0" inputMode="numeric" value={retourCaissesIfco} onChange={e => setRetourCaissesIfco(e.target.value)}
-                  style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }} />
+                  style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
               </div>
             )}
           </>
@@ -1925,14 +1924,24 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
   const pdfApercuTracaIframeRef = useRef<HTMLIFrameElement>(null);
   const totalArticles = arrivages.length + (arrivagesArchives?.length || 0);
   const nbTraites = arrivagesArchives?.length || 0;
+  // Les retours de reconditionnement sont enregistrés avec fournisseur:"Reconditionnement" (pour
+  // les regrouper entre eux dans les listes globales), mais ici, à l'écran "Pointer arrivage",
+  // c'est bien plus utile d'afficher le dépôt réel (NLT / Andès) que ce libellé générique.
+  const libelleGroupe = (a: any): string => {
+    if (a.reconditionnement_demande_id) {
+      if (a.depot === "andes") return "Andès (reconditionnement)";
+      if (a.depot === "nlt") return "NLT (reconditionnement)";
+    }
+    return a.fournisseur;
+  };
   const allFournisseurs: Record<string, boolean> = {};
-  [...arrivages, ...(arrivagesArchives || [])].forEach((a: any) => { allFournisseurs[a.fournisseur] = true; });
+  [...arrivages, ...(arrivagesArchives || [])].forEach((a: any) => { allFournisseurs[libelleGroupe(a)] = true; });
   const nbFourn = Object.keys(allFournisseurs).length;
   const byFournisseur: Record<string, any[]> = {};
-  arrivages.forEach((a: any) => { if (!byFournisseur[a.fournisseur]) byFournisseur[a.fournisseur] = []; byFournisseur[a.fournisseur].push(a); });
+  arrivages.forEach((a: any) => { const g = libelleGroupe(a); if (!byFournisseur[g]) byFournisseur[g] = []; byFournisseur[g].push(a); });
   // Grouper les traités par fournisseur aussi
   const byFournisseurTraites: Record<string, any[]> = {};
-  (arrivagesArchives || []).forEach((a: any) => { if (!byFournisseurTraites[a.fournisseur]) byFournisseurTraites[a.fournisseur] = []; byFournisseurTraites[a.fournisseur].push(a); });
+  (arrivagesArchives || []).forEach((a: any) => { const g = libelleGroupe(a); if (!byFournisseurTraites[g]) byFournisseurTraites[g] = []; byFournisseurTraites[g].push(a); });
   // Tous les fournisseurs (en attente + traités)
   const allFourn = [...new Set([...Object.keys(byFournisseur), ...Object.keys(byFournisseurTraites)])];
 
@@ -1956,7 +1965,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
 
     const parFourn: Record<string, any[]> = {};
     tous.forEach((a: any) => {
-      const f = a.fournisseur || "(sans fournisseur)";
+      const f = libelleGroupe(a) || "(sans fournisseur)";
       if (!parFourn[f]) parFourn[f] = [];
       parFourn[f].push(a);
     });
