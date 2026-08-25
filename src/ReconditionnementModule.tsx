@@ -393,9 +393,18 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
         }
         return "";
       };
+      // Sur le bon Geslot, la valeur d'un champ partage souvent sa ligne OCR avec le LABEL DU
+      // CHAMP SUIVANT (ex : "Nb colis à sortir : 80 Nb colis réellement sortis :") — prendre
+      // tous les chiffres du reste de la ligne concatènerait à tort d'autres nombres présents
+      // plus loin. On ne capture donc que le tout premier groupe de chiffres juste après le
+      // label, jamais le reste de la ligne.
       const lireNombre = (label: string): string => {
-        const digits = lire(label).replace(/[^\d]/g, "");
-        return digits;
+        const re = new RegExp(label + "\\s*[:：]?\\s*(\\d+)", "i");
+        for (const line of lines) {
+          const m = line.match(re);
+          if (m && m[1]) return m[1];
+        }
+        return "";
       };
 
       // L'OCR capte souvent un code produit accolé au libellé (ex : Geslot affiche parfois
