@@ -132,6 +132,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const isPaletteIFCO = arrivage.palette_ifco_commande_id || arrivage.fournisseur === "IFCO";
   const isRetourRecond = !!arrivage.reconditionnement_demande_id;
   const isSimple = isGoEmbal || isPaletteIFCO || isRetourRecond;
+  // Un retour de reconditionnement ne revient pas forcément en caisses IFCO (ex : la passion
+  // repart dans son carton d'origine) — plutôt que de se fier uniquement au dépôt (NLT),
+  // on regarde si "IFCO" apparaît dans le nom de l'article fabriqué, qui l'indique déjà
+  // (ex : "LIME BRESIL CAL.54 IFCO (FILET 500GR X 10)").
+  const retourEnIfco = isRetourRecond && arrivage.depot === "nlt" && /ifco/i.test(String(arrivage.produit || ""));
 
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
@@ -398,7 +403,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               <input type="number" min="0" inputMode="numeric" value={retourDemi} onChange={e => setRetourDemi(e.target.value)}
                 style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
             </div>
-            {arrivage.depot === "nlt" && (
+            {retourEnIfco && (
               <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Caisses IFCO pleines</span>
                 <input type="number" min="0" inputMode="numeric" value={retourCaissesIfco} onChange={e => setRetourCaissesIfco(e.target.value)}
