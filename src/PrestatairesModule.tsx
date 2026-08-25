@@ -1164,6 +1164,99 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </button>
             </div>
 
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginBottom: "20px" }}>
+              {/* Cartons Summary */}
+              <div style={{
+                background: "white",
+                borderRadius: "12px",
+                padding: "20px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                border: `1px solid ${COLORS.gray200}`,
+                borderTop: `4px solid ${COLORS.primary}`
+              }}>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>📦 Cartons en attente</div>
+                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.primary, margin: "8px 0" }}>{commandes.filter(c => c.statut === "commandé").length}</div>
+                <button
+                  onClick={() => setActiveTab("nouvelle-carton")}
+                  style={{
+                    marginTop: "12px",
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: COLORS.primaryLight,
+                    color: COLORS.primary,
+                    border: `1px solid ${COLORS.primaryBorder}`,
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: "600",
+                    fontSize: "12px",
+                  }}
+                >
+                  ➕ Nouvelle commande
+                </button>
+              </div>
+
+              {/* Palettes IFCO Summary */}
+              <div style={{
+                background: "white",
+                borderRadius: "12px",
+                padding: "20px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                border: `1px solid ${COLORS.gray200}`,
+                borderTop: `4px solid ${COLORS.secondary}`
+              }}>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>🟦 Palettes IFCO en attente</div>
+                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.secondary, margin: "8px 0" }}>{palettesCommandes.filter(c => c.statut === "commandé").length}</div>
+                <button
+                  onClick={() => setActiveTab("nouvelle-palette")}
+                  style={{
+                    marginTop: "12px",
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: `${COLORS.secondary}15`,
+                    color: COLORS.secondary,
+                    border: `1px solid ${COLORS.secondary}30`,
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: "600",
+                    fontSize: "12px",
+                  }}
+                >
+                  ➕ Nouvelle commande
+                </button>
+              </div>
+
+              {/* IFCO Summary */}
+              <div style={{
+                background: "white",
+                borderRadius: "12px",
+                padding: "20px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                border: `1px solid ${COLORS.gray200}`,
+                borderTop: `4px solid ${COLORS.tertiary}`
+              }}>
+                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>🔄 IFCO</div>
+                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.tertiary, margin: "8px 0" }}>{histo.length}</div>
+                <div style={{ fontSize: "12px", color: COLORS.gray600 }}>déclarations{pendingClients.length > 0 ? ` · ⏳ ${pendingClients.length} en attente` : ""}</div>
+                <button
+                  onClick={() => setActiveTab("ifco-histo")}
+                  style={{
+                    marginTop: "12px",
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: `${COLORS.tertiary}15`,
+                    color: COLORS.tertiary,
+                    border: `1px solid ${COLORS.tertiary}30`,
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: "600",
+                    fontSize: "12px",
+                  }}
+                >
+                  Voir détails
+                </button>
+              </div>
+            </div>
+
             {/* CALENDRIER UNIFIÉ — cartons, palettes IFCO et déclarations IFCO */}
             <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
               <div style={{ background: "linear-gradient(135deg, #1a6b3a, #27ae60)", padding: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1310,104 +1403,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
-              {/* Cartons Summary */}
-              <div style={{
-                background: "white",
-                borderRadius: "12px",
-                padding: "20px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                border: `1px solid ${COLORS.gray200}`,
-                borderTop: `4px solid ${COLORS.primary}`
-              }}>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>📦 Cartons</div>
-                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.primary, margin: "8px 0" }}>{commandes.length}</div>
-                <div style={{ fontSize: "12px", color: COLORS.gray600 }}>
-                  {commandes.filter(c => c.statut === "commandé").length} commandé{commandes.filter(c => c.statut === "commandé").length !== 1 ? "s" : ""}
-                </div>
-                <button
-                  onClick={() => setActiveTab("nouvelle-carton")}
-                  style={{
-                    marginTop: "12px",
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: COLORS.primaryLight,
-                    color: COLORS.primary,
-                    border: `1px solid ${COLORS.primaryBorder}`,
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                    fontSize: "12px",
-                  }}
-                >
-                  ➕ Nouvelle commande
-                </button>
-              </div>
-
-              {/* Palettes IFCO Summary */}
-              <div style={{
-                background: "white",
-                borderRadius: "12px",
-                padding: "20px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                border: `1px solid ${COLORS.gray200}`,
-                borderTop: `4px solid ${COLORS.secondary}`
-              }}>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>🟦 Palettes IFCO</div>
-                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.secondary, margin: "8px 0" }}>{palettesCommandes.length}</div>
-                <div style={{ fontSize: "12px", color: COLORS.gray600 }}>
-                  {palettesCommandes.filter(c => c.statut === "commandé").length} commandé{palettesCommandes.filter(c => c.statut === "commandé").length !== 1 ? "s" : ""}
-                </div>
-                <button
-                  onClick={() => setActiveTab("nouvelle-palette")}
-                  style={{
-                    marginTop: "12px",
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: `${COLORS.secondary}15`,
-                    color: COLORS.secondary,
-                    border: `1px solid ${COLORS.secondary}30`,
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                    fontSize: "12px",
-                  }}
-                >
-                  ➕ Nouvelle commande
-                </button>
-              </div>
-
-              {/* IFCO Summary */}
-              <div style={{
-                background: "white",
-                borderRadius: "12px",
-                padding: "20px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                border: `1px solid ${COLORS.gray200}`,
-                borderTop: `4px solid ${COLORS.tertiary}`
-              }}>
-                <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray400, textTransform: "uppercase", letterSpacing: "0.5px" }}>🔄 IFCO</div>
-                <div style={{ fontSize: "32px", fontWeight: "700", color: COLORS.tertiary, margin: "8px 0" }}>{histo.length}</div>
-                <div style={{ fontSize: "12px", color: COLORS.gray600 }}>déclarations{pendingClients.length > 0 ? ` · ⏳ ${pendingClients.length} en attente` : ""}</div>
-                <button
-                  onClick={() => setActiveTab("ifco-histo")}
-                  style={{
-                    marginTop: "12px",
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: `${COLORS.tertiary}15`,
-                    color: COLORS.tertiary,
-                    border: `1px solid ${COLORS.tertiary}30`,
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                    fontSize: "12px",
-                  }}
-                >
-                  Voir détails
-                </button>
-              </div>
-            </div>
           </div>
         )}
 
