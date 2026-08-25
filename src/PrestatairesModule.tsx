@@ -211,7 +211,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         let headerIdx = 0;
         for (let i = 0; i < Math.min(raw.length, 10); i++) {
           if ((raw[i] as any[]).join("|").toLowerCase().match(/vente|livraison|bl/)) {
-            headerIdx = i;
+      const dateLivraisonFr = new Date(dateLivraison).toLocaleDateString("fr-FR", { year: 'numeric', month: '2-digit', day: '2-digit' });
             break;
           }
         }
