@@ -1477,9 +1477,15 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                   <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 6, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                     Emballage à envoyer
                   </label>
+                  {/* Pas systématique — dépend du stock d'IFCO dispo côté Moorea au moment de la
+                      demande. Le bouton est décochable : un 2ᵉ clic annule l'envoi (0 caisse). */}
                   <button
                     type="button"
-                    onClick={() => { setCaissesIfcoEnvoyees("640"); setEmballageIfcoManuel(false); }}
+                    onClick={() => {
+                      const dejaActif = !emballageIfcoManuel && caissesIfcoEnvoyees === "640";
+                      setCaissesIfcoEnvoyees(dejaActif ? "" : "640");
+                      setEmballageIfcoManuel(false);
+                    }}
                     style={{
                       padding: "10px 16px", borderRadius: 10, border: `1.5px solid ${(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray200}`,
                       background: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondaryLight : "#fff",
@@ -1487,14 +1493,19 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%",
                     }}
                   >
-                    {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? "✓ " : "📦 "}Envoyer 1 palette IFCO à NLT (640 caisses)
+                    {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? "✓ " : "☐ "}Envoyer 1 palette IFCO à NLT (640 caisses)
                   </button>
+                  <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "#9ca3af" }}>
+                    {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640")
+                      ? "Reclique pour annuler si finalement pas d'IFCO envoyé cette fois."
+                      : (emballageIfcoManuel ? "" : "Non cochée = pas d'IFCO envoyé cette fois (selon le stock dispo).")}
+                  </p>
                   <div style={{ marginTop: 6 }}>
                     <button type="button" onClick={() => setEmballageIfcoManuel(v => !v)} style={{ background: "none", border: "none", padding: 0, fontSize: 11, color: COLORS.gray600, textDecoration: "underline", cursor: "pointer" }}>
                       {emballageIfcoManuel ? "▾" : "▸"} Cas rare : palette incomplète, ou 2/3 palettes — saisir une quantité
                     </button>
                     {emballageIfcoManuel && (
-                      <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="Nb de caisses IFCO (ex: 1280 pour 2 palettes)" style={{ marginTop: 6 }} />
+                      <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="Nb de caisses IFCO (0 si finalement aucune)" style={{ marginTop: 6 }} />
                     )}
                   </div>
                   <p style={{ margin: "8px 0 0", fontSize: 10.5, color: COLORS.gray600 }}>
