@@ -28,7 +28,7 @@ type CartonCommande = {
   dateLivraisonPrevue: string;
   creneau: "1er tour 7h-11h" | "2e tour 11h-14h";
   lieuLivraison: string;
-  statut: "commandé" | "reçu" | "facturé";
+  statut: "commandé" | "reçu" | "facturé" | "annulé";
   dateReception?: string;
 };
 
@@ -37,7 +37,7 @@ type PaletteIFCOCommande = {
   lignes: LignePaletteIFCO[];
   dateCommande: string;
   dateLivraisonPrevue: string;
-  statut: "commandé" | "reçu" | "retourné";
+  statut: "commandé" | "reçu" | "retourné" | "annulé";
   dateReception?: string;
   notes?: string;
 };
@@ -141,7 +141,7 @@ const COLORS = {
 
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stock" | "ifco-recond" | "ifco-clients" | "nouvelle-carton" | "nouvelle-palette"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stock" | "ifco-recond" | "configuration" | "nouvelle-carton" | "nouvelle-palette"
   >("dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
@@ -230,6 +230,17 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     const u = onValue(ref(db, "prestataires_cartons"), (snap) => {
       const data = snap.val() || {};
       setCommandes(Object.entries(data).map(([id, cmd]: any) => ({ id, ...cmd })));
+    });
+    return () => u();
+  }, []);
+
+  // Arrivages liés aux commandes (pour pouvoir les annuler ou les remettre en attente
+  // quand on change le statut d'une commande de cartons/palettes IFCO)
+  const [arrivagesLies, setArrivagesLies] = useState<any[]>([]);
+  useEffect(() => {
+    const u = onValue(ref(db, "arrivages"), (snap) => {
+      const data = snap.val() || {};
+      setArrivagesLies(Object.entries(data).map(([id, a]: any) => ({ id, ...a })));
     });
     return () => u();
   }, []);
@@ -660,8 +671,8 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
           return k === dateStr;
         })
       );
-      const cartonsJour = commandes.filter((c) => c.dateLivraisonPrevue === dateStr);
-      const palettesJour = palettesCommandes.filter((c) => c.dateLivraisonPrevue === dateStr);
+      const cartonsJour = commandes.filter((c) => c.dateLivraisonPrevue === dateStr && c.statut !== "annulé");
+      const palettesJour = palettesCommandes.filter((c) => c.dateLivraisonPrevue === dateStr && c.statut !== "annulé");
       days.push({ d, dateStr, isSunday, isToday, isPast, hasDone, hasPending, entries, uniqueUsers, cartonsJour, palettesJour });
     }
     return { days, monthLabel: `${MONTHS[month]} ${year}` };
@@ -677,8 +688,8 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       return k === selectedDay;
     })
   ) : [];
-  const selectedCartons = selectedDay ? commandes.filter((c) => c.dateLivraisonPrevue === selectedDay) : [];
-  const selectedPalettes = selectedDay ? palettesCommandes.filter((c) => c.dateLivraisonPrevue === selectedDay) : [];
+  const selectedCartons = selectedDay ? commandes.filter((c) => c.dateLivraisonPrevue === selectedDay && c.statut !== "annulé") : [];
+  const selectedPalettes = selectedDay ? palettesCommandes.filter((c) => c.dateLivraisonPrevue === selectedDay && c.statut !== "annulé") : [];
 
   // ── Gestion des clients IFCO ──
   const saveIfcoClient = async () => {
@@ -927,6 +938,52 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     }
   };
 
+  // ── Annulation / retour en attente des commandes (cartons & palettes IFCO) ──
+  // Annuler une commande la marque "annulé" (elle reste visible dans l'historique mais ne
+  // compte plus dans les stats) et annule aussi l'arrivage lié s'il n'a pas encore été traité.
+  const handleAnnulerCartonCommande = async (id: string) => {
+    if (!window.confirm("Annuler cette commande de cartons ?")) return;
+    await update(ref(db, `prestataires_cartons/${id}`), { statut: "annulé" as const });
+    const arrivageLie = arrivagesLies.find((a) => a.carton_commande_id === id);
+    if (arrivageLie && arrivageLie.statut !== "validé") {
+      await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "annulé" });
+    }
+    setNotification({ type: "success", message: "✓ Commande de cartons annulée" });
+  };
+
+  const handleAnnulerPaletteCommande = async (id: string) => {
+    if (!window.confirm("Annuler cette commande de palettes IFCO ?")) return;
+    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "annulé" as const });
+    const arrivageLie = arrivagesLies.find((a) => a.ifco_palette_commande_id === id);
+    if (arrivageLie && arrivageLie.statut !== "validé") {
+      await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "annulé" });
+    }
+    setNotification({ type: "success", message: "✓ Commande de palettes IFCO annulée" });
+  };
+
+  // Repasser une commande "reçu" en "en attente de livraison" : on remet aussi son arrivage
+  // lié en attente (statut "en attente", rapport/validation effacés) pour qu'il réapparaisse
+  // dans l'écran "Pointer arrivage".
+  const handleRemettreEnAttenteCarton = async (id: string) => {
+    if (!window.confirm("Repasser cette commande en attente de livraison ? Elle réapparaîtra dans les arrivages à pointer.")) return;
+    await update(ref(db, `prestataires_cartons/${id}`), { statut: "commandé" as const, dateReception: null });
+    const arrivageLie = arrivagesLies.find((a) => a.carton_commande_id === id);
+    if (arrivageLie) {
+      await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
+    }
+    setNotification({ type: "success", message: "✓ Commande repassée en attente, arrivage réaffiché" });
+  };
+
+  const handleRemettreEnAttentePalette = async (id: string) => {
+    if (!window.confirm("Repasser cette commande en attente de livraison ? Elle réapparaîtra dans les arrivages à pointer.")) return;
+    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "commandé" as const, dateReception: null });
+    const arrivageLie = arrivagesLies.find((a) => a.ifco_palette_commande_id === id);
+    if (arrivageLie) {
+      await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
+    }
+    setNotification({ type: "success", message: "✓ Commande repassée en attente, arrivage réaffiché" });
+  };
+
   return (
     <div style={{ background: "linear-gradient(135deg, #f0f9f8 0%, #f9fbf8 100%)", minHeight: "100vh", margin: 0, padding: 0 }}>
       <PageHeader titre="📦 Prestataires & IFCO" onBack={onClose} onHome={onClose} />
@@ -964,13 +1021,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         }}>
           {[
             { key: "dashboard", label: "📊 Dashboard", icon: "📊" },
-            { key: "cartons", label: "📦 Cartons", icon: "📦" },
-            { key: "palettes", label: "🟦 Palettes IFCO", icon: "🟦" },
-            { key: "ifco", label: "🔄 Déclarer IFCO", icon: "🔄" },
-            { key: "ifco-histo", label: "📅 Calendrier IFCO", icon: "📅" },
-            { key: "ifco-stock", label: "🏭 Stock IFCO", icon: "🏭" },
-            { key: "ifco-recond", label: "🔄 Reconditionnement", icon: "🔄" },
-            { key: "ifco-clients", label: "👥 Clients IFCO", icon: "👥" },
+            { key: "configuration", label: "⚙️ Configuration", icon: "⚙️" },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -1072,6 +1123,44 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 }}
               >
                 📢 Déclarer IFCO
+              </button>
+
+              <button
+                onClick={() => setActiveTab("ifco-stock")}
+                style={{
+                  padding: "14px 22px",
+                  background: "white",
+                  color: COLORS.secondary,
+                  border: `2px solid ${COLORS.secondary}`,
+                  borderRadius: "10px",
+                  cursor: "pointer",
+                  fontSize: "15px",
+                  fontWeight: "700",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                🏭 Stock IFCO
+              </button>
+
+              <button
+                onClick={() => setActiveTab("ifco-recond")}
+                style={{
+                  padding: "14px 22px",
+                  background: "white",
+                  color: COLORS.secondary,
+                  border: `2px solid ${COLORS.secondary}`,
+                  borderRadius: "10px",
+                  cursor: "pointer",
+                  fontSize: "15px",
+                  fontWeight: "700",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                🔄 Reconditionnement
               </button>
             </div>
 
@@ -1345,12 +1434,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     <div key={cmd.id} style={{
                       background: COLORS.gray100,
                       border: `1px solid ${COLORS.gray200}`,
-                      borderLeft: `4px solid ${cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : COLORS.primary}`,
+                      borderLeft: `4px solid ${cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : cmd.statut === "annulé" ? COLORS.gray400 : COLORS.primary}`,
                       borderRadius: "8px",
                       padding: "12px 14px",
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      opacity: cmd.statut === "annulé" ? 0.6 : 1,
                     }}>
                       <div>
                         <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>
@@ -1360,16 +1450,16 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                           {cmd.lignes.map(l => `${l.nbPalettes} × ${l.type}`).join(" + ")}
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{
-                          background: cmd.statut === "commandé" ? `${COLORS.tertiary}20` : cmd.statut === "reçu" ? `${COLORS.success}20` : `${COLORS.primary}20`,
-                          color: cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : COLORS.primary,
+                          background: cmd.statut === "commandé" ? `${COLORS.tertiary}20` : cmd.statut === "reçu" ? `${COLORS.success}20` : cmd.statut === "annulé" ? `${COLORS.gray400}20` : `${COLORS.primary}20`,
+                          color: cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : cmd.statut === "annulé" ? COLORS.gray400 : COLORS.primary,
                           borderRadius: "6px",
                           padding: "4px 10px",
                           fontSize: "11px",
                           fontWeight: "700",
                         }}>
-                          {cmd.statut === "commandé" ? "⏱️ Commandé" : cmd.statut === "reçu" ? "✓ Reçu" : "💳 Facturé"}
+                          {cmd.statut === "commandé" ? "⏱️ Commandé" : cmd.statut === "reçu" ? "✓ Reçu" : cmd.statut === "annulé" ? "✗ Annulé" : "💳 Facturé"}
                         </span>
                         {cmd.statut === "commandé" && (
                           <button
@@ -1386,6 +1476,40 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                             }}
                           >
                             ✓ Reçu
+                          </button>
+                        )}
+                        {cmd.statut === "reçu" && (
+                          <button
+                            onClick={() => handleRemettreEnAttenteCarton(cmd.id)}
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.tertiary,
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            ↩️ En attente
+                          </button>
+                        )}
+                        {(cmd.statut === "commandé" || cmd.statut === "reçu") && (
+                          <button
+                            onClick={() => handleAnnulerCartonCommande(cmd.id)}
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.dangerLight,
+                              color: COLORS.danger,
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            ✗ Annuler
                           </button>
                         )}
                         <button
@@ -1625,12 +1749,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     <div key={cmd.id} style={{
                       background: COLORS.gray100,
                       border: `1px solid ${COLORS.gray200}`,
-                      borderLeft: `4px solid ${cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : COLORS.danger}`,
+                      borderLeft: `4px solid ${cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : cmd.statut === "annulé" ? COLORS.gray400 : COLORS.danger}`,
                       borderRadius: "8px",
                       padding: "12px 14px",
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      opacity: cmd.statut === "annulé" ? 0.6 : 1,
                     }}>
                       <div>
                         <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>
@@ -1641,16 +1766,16 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                         </div>
                         {cmd.notes && <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>📝 {cmd.notes}</div>}
                       </div>
-                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{
-                          background: cmd.statut === "commandé" ? `${COLORS.tertiary}20` : cmd.statut === "reçu" ? `${COLORS.success}20` : `${COLORS.danger}20`,
-                          color: cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : COLORS.danger,
+                          background: cmd.statut === "commandé" ? `${COLORS.tertiary}20` : cmd.statut === "reçu" ? `${COLORS.success}20` : cmd.statut === "annulé" ? `${COLORS.gray400}20` : `${COLORS.danger}20`,
+                          color: cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : cmd.statut === "annulé" ? COLORS.gray400 : COLORS.danger,
                           borderRadius: "6px",
                           padding: "4px 10px",
                           fontSize: "11px",
                           fontWeight: "700",
                         }}>
-                          {cmd.statut === "commandé" ? "⏱️ Commandé" : cmd.statut === "reçu" ? "✓ Reçu" : "↩️ Retourné"}
+                          {cmd.statut === "commandé" ? "⏱️ Commandé" : cmd.statut === "reçu" ? "✓ Reçu" : cmd.statut === "annulé" ? "✗ Annulé" : "↩️ Retourné"}
                         </span>
                         {cmd.statut === "commandé" && (
                           <button
@@ -1667,6 +1792,40 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                             }}
                           >
                             ✓ Reçu
+                          </button>
+                        )}
+                        {cmd.statut === "reçu" && (
+                          <button
+                            onClick={() => handleRemettreEnAttentePalette(cmd.id)}
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.tertiary,
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            ↩️ En attente
+                          </button>
+                        )}
+                        {(cmd.statut === "commandé" || cmd.statut === "reçu") && (
+                          <button
+                            onClick={() => handleAnnulerPaletteCommande(cmd.id)}
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.dangerLight,
+                              color: COLORS.danger,
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            ✗ Annuler
                           </button>
                         )}
                         <button
@@ -2146,7 +2305,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         )}
 
         {/* IFCO — CLIENTS */}
-        {activeTab === "ifco-clients" && (
+        {activeTab === "configuration" && (
           <div style={{ display: "grid", gap: "20px" }}>
             <div style={{
               background: "white",
