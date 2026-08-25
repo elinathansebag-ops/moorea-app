@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader } from "./shared";
+import { PageHeader, F, styles } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
@@ -109,8 +109,7 @@ function StatutBadge({ statut }: { statut: Demande["statut"] }) {
 // (`moorea_articles`, même source que le module Catalogue) — aucune saisie libre acceptée.
 // Le champ affiche un contour rouge et un message tant que la valeur ne correspond pas
 // exactement à un article du catalogue.
-function ArticleSelect({ label, value, onSelect, articles, placeholder }: {
-  label: string;
+function ArticleSelect({ value, onSelect, articles, placeholder }: {
   value: string;
   onSelect: (libelle: string) => void;
   articles: { code: string; libelle: string }[];
@@ -126,7 +125,6 @@ function ArticleSelect({ label, value, onSelect, articles, placeholder }: {
 
   return (
     <div style={{ position: "relative" }}>
-      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>{label}</label>
       <input
         type="text"
         value={search}
@@ -169,7 +167,6 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
   const filtres = value.trim() ? lotsConnus.filter(l => l.includes(value.trim()) && l !== value.trim()).slice(0, 8) : [];
   return (
     <div style={{ position: "relative" }}>
-      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Lot</label>
       <input
         type="text"
         value={value}
@@ -607,6 +604,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.gray100 }}>
+      <style>{styles}</style>
       <PageHeader
         titre="🔄 Reconditionnement"
         couleur={COLORS.primary}
@@ -792,41 +790,50 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
 
         {/* ── NOUVELLE DEMANDE ── */}
         {activeTab === "nouvelle" && (
-          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 800, color: COLORS.gray700 }}>➕ Nouvelle demande de reconditionnement</h3>
+          <div className="fade-up">
+            <div style={{ marginBottom: 16, background: "linear-gradient(135deg, #eff6ff, #f0f9ff)", border: "2px solid #bfdbfe", borderRadius: 20, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🔄</div>
+              <div>
+                <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.6px" }}>Nouvelle demande</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>Reconditionnement</p>
+              </div>
+            </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Bon Geslot (PDF)</label>
-              <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ fontSize: 12 }} />
+            <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+              <div className="section-title">📄 Bon Geslot</div>
+              <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ width: "auto", fontSize: 12, padding: "8px" }} />
               {pdfFile && (
-                <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ marginTop: 10 }}>
                   <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
                     📄 {pdfFile.nom} — voir l'aperçu
                   </a>
                 </div>
               )}
               {lectureEnCours && (
-                <p style={{ margin: "6px 0 0", fontSize: 12, color: COLORS.primary, fontWeight: 700 }}>⏳ Lecture automatique du PDF en cours…</p>
+                <div style={{ marginTop: 12, background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>⏳</span>
+                  <span style={{ fontSize: 13, color: "#1d4ed8", fontWeight: 700 }}>Lecture automatique du PDF en cours…</span>
+                </div>
               )}
-              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#999" }}>
+              <p style={{ margin: "10px 0 0", fontSize: 11, color: "#9ca3af" }}>
                 Les champs ci-dessous sont pré-remplis automatiquement à partir du bon (lecture par OCR) — vérifie-les, corrige si besoin, avant d'envoyer. Le champ "Dépôt" étant manuscrit sur le bon, il reste toujours à choisir toi-même.
               </p>
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Dépôt</label>
-              <select value={depot} onChange={e => setDepot(e.target.value as Depot)} style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}>
-                <option value="nlt">NLT</option>
-                <option value="andes">Andès</option>
-              </select>
-            </div>
+            <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+              <div className="section-title">📍 Dépôt & article</div>
+              <F label="Dépôt" required>
+                <select value={depot} onChange={e => setDepot(e.target.value as Depot)}>
+                  <option value="nlt">NLT</option>
+                  <option value="andes">Andès</option>
+                </select>
+              </F>
+              <div className="grid-2">
+                <F label="Article vrac (à utiliser)" required><ArticleSelect value={articleVrac} onSelect={setArticleVrac} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
+                <F label="Lot"><LotSelect value={lot} onChange={setLot} lotsConnus={lotsConnus} /></F>
+              </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 6 }}>
-              <ArticleSelect label="Article vrac (à utiliser)" value={articleVrac} onSelect={setArticleVrac} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" />
-              <LotSelect value={lot} onChange={setLot} lotsConnus={lotsConnus} />
-            </div>
-
-            {lot.trim().length >= 1 && (() => {
+              {lot.trim().length >= 1 && (() => {
               const saisie = lot.trim();
               const correspondLot = (val?: string | number | null) => val != null && String(val).includes(saisie);
 
@@ -902,61 +909,55 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                   )}
                 </div>
               );
-            })()}
-            {!(lot.trim().length >= 1) && <div style={{ marginBottom: 14 }} />}
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Nb colis à sortir</label>
-              <input type="number" value={nbColisASortir} onChange={e => setNbColisASortir(e.target.value)} style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+              })()}
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <ArticleSelect label="Article à fabriquer" value={articleFini} onSelect={setArticleFini} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Nb colis à entrer</label>
-                <input type="number" value={nbColisAEntrer} onChange={e => setNbColisAEntrer(e.target.value)} style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+            <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+              <div className="section-title">📦 Quantités</div>
+              <div className="grid-2">
+                <F label="Nb colis à sortir"><input type="number" value={nbColisASortir} onChange={e => setNbColisASortir(e.target.value)} /></F>
+                <F label="Nb colis à entrer"><input type="number" value={nbColisAEntrer} onChange={e => setNbColisAEntrer(e.target.value)} /></F>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Qté conditionnement</label>
-                <input type="number" value={qteConditionnement} onChange={e => setQteConditionnement(e.target.value)} style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
+              <F label="Article à fabriquer" required><ArticleSelect value={articleFini} onSelect={setArticleFini} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
+              <F label="Qté conditionnement"><input type="number" value={qteConditionnement} onChange={e => setQteConditionnement(e.target.value)} /></F>
             </div>
 
-            <div style={{ marginBottom: 14, background: COLORS.amberLight, border: `1.5px solid #fde68a`, borderRadius: 10, padding: 12 }}>
+            <div style={{ marginBottom: 16, background: COLORS.amberLight, border: "2px solid #fde68a", borderRadius: 20, padding: "20px 24px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>📦</div>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>Emballage à envoyer</span>
+              </div>
               {depot === "nlt" ? (
                 <>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Caisses IFCO vides à envoyer avec ce reconditionnement</label>
-                  <p style={{ margin: "0 0 8px", fontSize: 12, color: stockIfcoVide > 0 ? "#666" : COLORS.danger, fontWeight: 700 }}>
-                    Stock IFCO vides disponible chez Moorea : {stockIfcoVide} — pré-rempli avec le nb de colis à entrer (1 caisse par colis fini), vérifie si le stock déjà chez NLT suffit et corrige. Mets 0 si ce produit ne repart pas en IFCO (ex : la passion repart dans son carton d'origine).
+                  <p style={{ margin: "0 0 10px", fontSize: 12, color: stockIfcoVide > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
+                    Stock IFCO vides disponible chez Moorea : <b>{stockIfcoVide}</b> — pré-rempli avec le nb de colis à entrer (1 caisse par colis fini), vérifie si le stock déjà chez NLT suffit et corrige. Mets 0 si ce produit ne repart pas en IFCO (ex : la passion repart dans son carton d'origine).
                   </p>
-                  <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si ce produit ne repart pas en IFCO" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                  <F label="Caisses IFCO vides à envoyer"><input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si ce produit ne repart pas en IFCO" /></F>
                 </>
               ) : (
                 <>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Cartons BABY BLANC à envoyer avec ce reconditionnement</label>
-                  <p style={{ margin: "0 0 8px", fontSize: 12, color: stockBabyBlancAndes > 0 ? "#666" : COLORS.danger, fontWeight: 700 }}>
-                    Stock carton BABY BLANC disponible chez Andès : {stockBabyBlancAndes} — vérifie si ça suffit pour la production du jour, sinon indique combien envoyer en plus.
+                  <p style={{ margin: "0 0 10px", fontSize: 12, color: stockBabyBlancAndes > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
+                    Stock carton BABY BLANC disponible chez Andès : <b>{stockBabyBlancAndes}</b> — vérifie si ça suffit pour la production du jour, sinon indique combien envoyer en plus.
                   </p>
-                  <input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si le stock chez Andès est déjà suffisant" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                  <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si le stock chez Andès est déjà suffisant" /></F>
                 </>
               )}
             </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Transporteur</label>
-              <select value={transporteurId} onChange={e => setTransporteurId(e.target.value)} style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}>
-                <option value="">— Choisir —</option>
-                {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-              </select>
+            <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+              <div className="section-title">🚚 Transport</div>
+              <F label="Transporteur" required>
+                <select value={transporteurId} onChange={e => setTransporteurId(e.target.value)}>
+                  <option value="">— Choisir —</option>
+                  {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                </select>
+              </F>
               {transporteurs.length === 0 && (
-                <p style={{ margin: "6px 0 0", fontSize: 11, color: COLORS.danger }}>Aucun transporteur configuré — ajoute-en un dans l'onglet Configuration.</p>
+                <p style={{ margin: "-6px 0 0", fontSize: 11, color: COLORS.danger }}>Aucun transporteur configuré — ajoute-en un dans l'onglet Configuration.</p>
               )}
             </div>
 
-            <button onClick={creerDemande} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: COLORS.primary, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            <button className="btn-primary" onClick={creerDemande}>
               ✓ Envoyer la demande à l'entrepôt
             </button>
           </div>
