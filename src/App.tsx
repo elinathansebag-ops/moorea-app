@@ -587,6 +587,50 @@ export default function App() {
       }
     }
 
+    // Retour d'une demande de reconditionnement (NLT/Andès) : pointé ici, dans "Pointer
+    // arrivage", comme n'importe quelle livraison — plus de modale dédiée dans le module
+    // Reconditionnement. On répercute le résultat sur la demande d'origine (statut "reçu" +
+    // détail du retour) et, si des caisses IFCO pleines reviennent, on les retransfère au
+    // tracker de stock partagé avec le module Prestataires (NLT → Moorea).
+    if (arrivage.reconditionnement_demande_id) {
+      try {
+        const rr = ctrl.retourRecond || {};
+        const caissesPleines = parseInt(rr.caissesIfco) || 0;
+        const retour: any = {
+          date: now2.toLocaleDateString("fr-FR") + " " + now2.toTimeString().slice(0, 5),
+          qualite: decision === "conforme" ? "conforme" : "probleme",
+          commentaire: raison || undefined,
+          nbColisRecus: ctrl.colisRecus,
+          qteConditionnementRecue: rr.qteConditionnement != null && String(rr.qteConditionnement).trim() !== "" ? parseInt(rr.qteConditionnement) : undefined,
+          nbPalettes: { grandes: parseInt(rr.grandes) || 0, demi: parseInt(rr.demi) || 0 },
+          caissesIfcoPleinesRecues: rr.caissesIfco != null && String(rr.caissesIfco).trim() !== "" ? caissesPleines : undefined,
+        };
+        Object.keys(retour).forEach(k => { if (retour[k] === undefined) delete retour[k]; });
+        await update(ref(db, `reconditionnement_demandes/${arrivage.reconditionnement_demande_id}`), { statut: "reçu", retour });
+
+        if (caissesPleines > 0) {
+          const { get } = await import("firebase/database");
+          const levelsSnap = await get(ref(db, "ifco_stock/levels"));
+          const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0 };
+          const newNlt = Math.max(0, (levels.nlt || 0) - caissesPleines);
+          const newMoorea = (levels.moorea || 0) + caissesPleines;
+          await update(ref(db, "ifco_stock/levels"), { nlt: newNlt, moorea: newMoorea });
+          await push(ref(db, "ifco_stock/movements"), {
+            date: now2.toLocaleDateString("fr-FR"), from: "nlt", to: "moorea", caisses: caissesPleines,
+            raison: `Reconditionnement — retour${arrivage.origine ? ` (${arrivage.origine})` : ""}`,
+            user: user?.displayName || "Moorea", ts: Date.now(),
+          });
+          await push(ref(db, "reconditionnement_stock_mouvements"), {
+            type: "retour_moorea", depot: arrivage.depot, quantite: caissesPleines,
+            date: now2.toLocaleDateString("fr-FR"), ts: Date.now(),
+          });
+        }
+        logActivite("Retour reconditionnement pointé", `${arrivage.produit || "-"} · ${ctrl.colisRecus ?? "-"} colis`);
+      } catch (error) {
+        console.error("Erreur pointage retour reconditionnement:", error);
+      }
+    }
+
     showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
     logActivite(decision === "conforme" ? "Validation arrivage" : "Litige créé", `${arrivage.produit || "-"} · ${arrivage.fournisseur || "-"} · lot ${arrivage.lot_interne || "-"}`);
     // Chaque article validé doit repartir avec son étiquette — impression automatique dès la
@@ -594,7 +638,7 @@ export default function App() {
     // "🎫 Palettes" de la carte d'agréage), on imprime une étiquette par palette avec le bon
     // nombre de colis ; sinon une seule étiquette avec la quantité totale. Exception rare (~5%) :
     // "sansEtiquette" coché sur la carte saute complètement cette impression automatique.
-    if (decision === "conforme" && !sansEtiquette) {
+    if (decision === "conforme" && !sansEtiquette && !arrivage.reconditionnement_demande_id) {
       try {
         const arrivageMaj = { ...arrivage, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal };
         if (palettes && palettes.length > 1) {

@@ -126,15 +126,25 @@ export function formaterHeureMesure(at: number) {
 }
 
 export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onReporterDate, selectMode, selected, onToggleSelect, gencodeArticles }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; onReporterDate?: (arrivage: any, nouvelleDateFr: string) => void; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[] }) {
-  // Déterminer si c'est un carton Go-Embal ou une palette IFCO pour simplifier le formulaire
+  // Déterminer si c'est un carton Go-Embal, une palette IFCO, ou un retour de reconditionnement
+  // pour simplifier le formulaire (pas de DLC/poids/température/traçabilité à saisir).
   const isGoEmbal = arrivage.carton_commande_id || arrivage.fournisseur === "Go-Embal";
   const isPaletteIFCO = arrivage.palette_ifco_commande_id || arrivage.fournisseur === "IFCO";
+  const isRetourRecond = !!arrivage.reconditionnement_demande_id;
+  const isSimple = isGoEmbal || isPaletteIFCO || isRetourRecond;
 
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
   const [poidsOk, setPoidsOk] = useState(true);
   const [litige, setLitige] = useState(false);
   const [colisRecus, setColisRecus] = useState<string>("");
+  // Champs spécifiques au retour d'une demande de reconditionnement (NLT/Andès) — remplacent
+  // l'ancienne modale "Pointage du retour" du module Reconditionnement, désormais pointée ici.
+  const [retourQte, setRetourQte] = useState<string>(arrivage.qteConditionnementAttendue != null ? String(arrivage.qteConditionnementAttendue) : "");
+  const [retourGrandes, setRetourGrandes] = useState<string>("");
+  const [retourDemi, setRetourDemi] = useState<string>("");
+  const [retourCaissesIfco, setRetourCaissesIfco] = useState<string>("");
+  const [retourCommentaire, setRetourCommentaire] = useState<string>("");
   const [poidsBrut, setPoidsBrut] = useState<string>(arrivage.poids_brut || "");
   const [poidsNet, setPoidsNet] = useState<string>(arrivage.poids_net || arrivage.poids_colis || "");
   const [dlc, setDlc] = useState<string>(arrivage.dlc || "");
@@ -294,10 +304,17 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       poidsNet ? `Poids net : ${poidsNet} kg` : "",
     ].filter(Boolean).join(" | ");
     const tracaPropre = tracaList.map(t => t.trim()).filter(Boolean);
-    const ctrl = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaPropre.join(", "), lot_fournisseur_liste: tracaPropre };
-    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", hasEcartColis ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})` : "", "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquette);
+    const ctrl: any = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaPropre.join(", "), lot_fournisseur_liste: tracaPropre, colisRecus: colisRecusNum };
+    if (isRetourRecond) {
+      ctrl.retourRecond = { qteConditionnement: retourQte, grandes: retourGrandes, demi: retourDemi, caissesIfco: retourCaissesIfco };
+    }
+    const raisonFinal = hasEcartColis
+      ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})`
+      : (isRetourRecond && litige ? (retourCommentaire.trim() || "Problème signalé au retour") : "");
+    const sansEtiquetteFinal = isRetourRecond ? true : sansEtiquette;
+    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", raisonFinal, "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquetteFinal);
     setSaving(false);
-    if (hasLitige) onOuvreRapport(arrivage, true);
+    if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
   };
 
   const statusColor = (litige || hasEcartColis) ? "#dc2626" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
@@ -318,11 +335,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => { setDateReportIso(frToIso(arrivage.date)); setShowReport(true); }} title="Reporter à une autre date"
               style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
-            {!isGoEmbal && !isPaletteIFCO && matchedGencode && (
+            {!isSimple && matchedGencode && (
               <button onClick={() => setShowGencodeScan(true)} style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷️ Contrôler gencode</button>
             )}
           </div>
-          {!isGoEmbal && !isPaletteIFCO && (
+          {!isSimple && (
             <button onClick={() => setShowScanEtiquette(true)}
               style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
               📷 Scanner l'étiquette
@@ -331,6 +348,20 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         </div>
       </div>
       {showGencodeScan && matchedGencode && <GencodeChecker onClose={() => setShowGencodeScan(false)} expectedEan={matchedGencode.ean} expectedArticle={matchedGencode} />}
+
+      {isRetourRecond && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: litige ? 6 : 0 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>Qualité du retour</span>
+            <button onClick={() => setLitige(false)} style={{ padding: "5px 10px", borderRadius: 8, border: `1.5px solid ${!litige ? "#27ae60" : "#e5e7eb"}`, background: !litige ? "#27ae6018" : "#fff", color: !litige ? "#27ae60" : "#9ca3af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Conforme</button>
+            <button onClick={() => setLitige(true)} style={{ padding: "5px 10px", borderRadius: 8, border: `1.5px solid ${litige ? "#dc2626" : "#e5e7eb"}`, background: litige ? "#dc262618" : "#fff", color: litige ? "#dc2626" : "#9ca3af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>⚠️ Problème</button>
+          </div>
+          {litige && (
+            <textarea value={retourCommentaire} onChange={e => setRetourCommentaire(e.target.value)} rows={2} placeholder="Commentaire sur le problème…"
+              style={{ width: "100%", marginTop: 6, padding: "8px 10px", border: "1.5px solid #fca5a5", borderRadius: 8, fontSize: 12, boxSizing: "border-box", resize: "vertical" }} />
+          )}
+        </div>
+      )}
 
       {/* Colis reçus + DLC + poids brut/net, tout sur une ligne */}
       <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
@@ -352,7 +383,33 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
             </span>
           )}
         </div>
-        {!isGoEmbal && !isPaletteIFCO && (
+        {isRetourRecond && (
+          <>
+            <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🧺 Qté conditionnement</span>
+              <input type="number" min="0" inputMode="numeric" value={retourQte} onChange={e => setRetourQte(e.target.value)}
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 130, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🎫 Grandes palettes</span>
+              <input type="number" min="0" inputMode="numeric" value={retourGrandes} onChange={e => setRetourGrandes(e.target.value)}
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }} />
+            </div>
+            <div style={{ flex: 1, minWidth: 130, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🎫 Demi-palettes</span>
+              <input type="number" min="0" inputMode="numeric" value={retourDemi} onChange={e => setRetourDemi(e.target.value)}
+                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }} />
+            </div>
+            {arrivage.depot === "nlt" && (
+              <div style={{ flex: 1, minWidth: 170, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Caisses IFCO pleines</span>
+                <input type="number" min="0" inputMode="numeric" value={retourCaissesIfco} onChange={e => setRetourCaissesIfco(e.target.value)}
+                  style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }} />
+              </div>
+            )}
+          </>
+        )}
+        {!isSimple && (
           <>
             <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
@@ -388,7 +445,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           une même ligne. Elles repassent l'une sous l'autre sur écran étroit (flexWrap), et
           les listes de mesures démarrent vides pour ne pas alourdir les autres produits. */}
       <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
-        {!isGoEmbal && !isPaletteIFCO && (
+        {!isSimple && (
           <div style={{ flex: 1, minWidth: 210, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
@@ -414,7 +471,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           </div>
         )}
 
-        {!isGoEmbal && !isPaletteIFCO && [
+        {!isSimple && [
           { cle: "temp", titre: "🌡️ Températures (°C)", liste: temperatures, setter: setTemperatures, step: "0.1", min: undefined, libelle: "une température" },
           { cle: "poids", titre: "⚖️ Poids barquettes (g)", liste: poidsBarquettes, setter: setPoidsBarquettes, step: "1", min: "0", libelle: "un poids" },
         ].map(sec => (
@@ -447,7 +504,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         ))}
       </div>
 
-      {!isGoEmbal && !isPaletteIFCO && (
+      {!isSimple && (
         <>
           {scanEtiquetteMsg && <p style={{ margin: "0 0 6px", fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>✓ {scanEtiquetteMsg}</p>}
           {showScanEtiquette && <ScannerQR onScan={handleScanEtiquette} onClose={() => setShowScanEtiquette(false)} />}
@@ -487,7 +544,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       )}
 
       {/* Palettes — détermine combien d'étiquettes seront imprimées automatiquement à la validation */}
-      {!isGoEmbal && !isPaletteIFCO && (
+      {!isSimple && (
         <>
           <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>

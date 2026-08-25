@@ -199,8 +199,8 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   y += 14;
 
   section("QUANTITÉS");
-  ligne("Colis à sortir", demande.nbColisASortir != null ? String(demande.nbColisASortir) : "-", col1);
-  ligne("Colis à entrer", demande.nbColisAEntrer != null ? String(demande.nbColisAEntrer) : "-", col2);
+  ligne("Colis à sortir", demande.nbColisASortir != null ? `${demande.nbColisASortir} — ${demande.articleVrac}` : "-", col1);
+  ligne("Colis à entrer", demande.nbColisAEntrer != null ? `${demande.nbColisAEntrer} — ${demande.articleFini}` : "-", col2);
   y += 11;
   ligne("Qté conditionnement", demande.qteConditionnement != null ? String(demande.qteConditionnement) : "-", col1);
   if (demande.depot === "nlt") {
@@ -326,16 +326,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [filtreStatut, setFiltreStatut] = useState<"toutes" | Demande["statut"]>("toutes");
 
-  // Modale de pointage retour
-  const [retourDemandeId, setRetourDemandeId] = useState<string | null>(null);
-  const [retourQualite, setRetourQualite] = useState<"conforme" | "probleme">("conforme");
-  const [retourCommentaire, setRetourCommentaire] = useState("");
-  const [retourNbColis, setRetourNbColis] = useState("");
-  const [retourQteConditionnement, setRetourQteConditionnement] = useState("");
-  const [retourGrandes, setRetourGrandes] = useState("");
-  const [retourDemi, setRetourDemi] = useState("");
-  const [retourCaissesIfco, setRetourCaissesIfco] = useState("");
-
   // Modale "prêt" (validation entrepôt étape 1)
   const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
   const [pretGrandes, setPretGrandes] = useState("");
@@ -384,7 +374,8 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   const [stockBabyBlancAndes, setStockBabyBlancAndes] = useState(0);
 
   // Historique des mouvements de stock d'emballage (envois vers le reconditionneur, retours
-  // chez Moorea) — alimenté automatiquement par creerDemande() et validerRetour().
+  // chez Moorea) — alimenté automatiquement par creerDemande() et, pour les retours, par la
+  // validation de l'arrivage correspondant dans App.tsx (handleAgrement).
   const [mouvements, setMouvements] = useState<Mouvement[]>([]);
 
   useEffect(() => {
@@ -756,71 +747,39 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   }
 
   async function marquerParti(id: string) {
-    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "parti", departDate: nowFr() });
-    notify("success", "🚚 Marqué parti avec le transporteur");
-  }
-
-  function ouvrirModaleRetour(id: string) {
     const demande = demandes.find(d => d.id === id);
-    setRetourDemandeId(id);
-    setRetourQualite("conforme");
-    setRetourCommentaire("");
-    // Pré-rempli avec le nombre de colis attendu (celui de la demande) pour que l'entrepôt
-    // n'ait qu'à confirmer ou corriger, plutôt que de ressaisir depuis zéro.
-    setRetourNbColis(demande?.nbColisAEntrer != null ? String(demande.nbColisAEntrer) : "");
-    setRetourQteConditionnement(demande?.qteConditionnement != null ? String(demande.qteConditionnement) : "");
-    setRetourGrandes("");
-    setRetourDemi("");
-    setRetourCaissesIfco("");
-  }
+    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "parti", departDate: nowFr() });
 
-  async function validerRetour() {
-    if (!retourDemandeId) return;
-    const demande = demandes.find(d => d.id === retourDemandeId);
-    const caissesPleines = parseInt(retourCaissesIfco) || 0;
-
-    const retour: RetourInfo = {
-      date: nowFr(),
-      qualite: retourQualite,
-      commentaire: retourCommentaire.trim() || undefined,
-      nbColisRecus: retourNbColis ? parseInt(retourNbColis) : undefined,
-      qteConditionnementRecue: retourQteConditionnement ? parseInt(retourQteConditionnement) : undefined,
-      nbPalettes: { grandes: parseInt(retourGrandes) || 0, demi: parseInt(retourDemi) || 0 },
-      // 0 est une valeur valide (aucune caisse IFCO au retour) — seule l'absence de saisie doit
-      // être omise. On nettoie les "undefined" juste avant l'update, jamais avec "|| undefined"
-      // sur un nombre (ça transformerait aussi un vrai 0 en "undefined").
-      caissesIfcoPleinesRecues: retourCaissesIfco.trim() === "" ? undefined : caissesPleines,
-    };
-    Object.keys(retour).forEach(k => { if ((retour as any)[k] === undefined) delete (retour as any)[k]; });
-
-    try {
-      await update(ref(db, `reconditionnement_demandes/${retourDemandeId}`), { statut: "reçu", retour });
-
-      // Caisses IFCO pleines reçues : transfert NLT → Moorea sur le même tracker partagé que
-      // le module Prestataires (les caisses physiques reviennent chez Moorea, pleines).
-      if (caissesPleines > 0) {
-        const newNlt = Math.max(0, stockIfco.nlt - caissesPleines);
-        const newMoorea = stockIfco.moorea + caissesPleines;
-        await update(ref(db, "ifco_stock/levels"), { nlt: newNlt, moorea: newMoorea });
-        await push(ref(db, "ifco_stock/movements"), {
-          date: nowFr(), from: "nlt", to: "moorea", caisses: caissesPleines,
-          raison: `Reconditionnement — retour${demande ? ` (${DEPOT_LABEL[demande.depot]})` : ""}`,
-          user: userName || "Moorea", ts: Date.now(),
+    // Le retour n'est plus pointé depuis une modale ici : on crée l'arrivage attendu
+    // correspondant, comme n'importe quelle livraison, pour qu'il apparaisse directement dans
+    // "Pointer arrivage" côté entrepôt (même écran, mêmes boutons que pour un fournisseur).
+    // Le discriminant `reconditionnement_demande_id` dit à ArrivageModule d'afficher une carte
+    // simplifiée (pas de DLC/poids/température) et, à la validation, de répercuter le résultat
+    // sur cette demande (statut "reçu" + transfert des caisses IFCO pleines NLT → Moorea).
+    if (demande) {
+      try {
+        await push(ref(db, "arrivages"), {
+          fournisseur: "Reconditionnement",
+          produit: demande.articleFini,
+          variete: demande.articleVrac,
+          lot_interne: demande.lot || demande.id,
+          lot_fournisseur: "",
+          quantite: demande.nbColisAEntrer ?? 0,
+          unite: "colis",
+          date: new Date().toLocaleDateString("fr-FR"),
+          statut: "en attente",
+          timestamp: Date.now(),
+          reconditionnement_demande_id: demande.id,
+          depot: demande.depot,
+          qteConditionnementAttendue: demande.qteConditionnement ?? null,
+          origine: `${DEPOT_LABEL[demande.depot]}${demande.transporteurNom ? ` · ${demande.transporteurNom}` : ""}`,
         });
-        await push(ref(db, "reconditionnement_stock_mouvements"), {
-          type: "retour_moorea",
-          depot: demande?.depot,
-          quantite: caissesPleines,
-          date: nowFr(),
-          ts: Date.now(),
-        });
+      } catch (err) {
+        console.error("Erreur création arrivage retour reconditionnement:", err);
       }
-
-      notify("success", "✅ Retour pointé");
-      setRetourDemandeId(null);
-    } catch (err: any) {
-      notify("error", `❌ Erreur: ${err.message}`);
     }
+
+    notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
   }
 
   async function ajouterTransporteur() {
@@ -840,7 +799,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   }
 
   const demandesFiltrees = demandes.filter(d => filtreStatut === "toutes" || d.statut === filtreStatut);
-  const retourDemande = demandes.find(d => d.id === retourDemandeId);
 
   // Tous les lots connus (arrivages, stock, historique reconditionnement), pour la saisie
   // assistée du champ Lot du formulaire.
@@ -971,8 +929,8 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, fontSize: 12, color: COLORS.gray600, marginBottom: 10 }}>
-                      {d.nbColisASortir != null && <div>Colis à sortir : <b>{d.nbColisASortir}</b></div>}
-                      {d.nbColisAEntrer != null && <div>Colis à entrer : <b>{d.nbColisAEntrer}</b></div>}
+                      {d.nbColisASortir != null && <div>Colis à sortir : <b>{d.nbColisASortir}</b> — {d.articleVrac}</div>}
+                      {d.nbColisAEntrer != null && <div>Colis à entrer : <b>{d.nbColisAEntrer}</b> — {d.articleFini}</div>}
                       {d.qteConditionnement != null && <div>Qté conditionnement : <b>{d.qteConditionnement}</b></div>}
                       {d.caissesIfcoEnvoyees != null && <div>Caisses IFCO envoyées : <b>{d.caissesIfcoEnvoyees}</b></div>}
                       {d.cartonsBabyBlancEnvoyes != null && <div>Cartons BABY BLANC envoyés : <b>{d.cartonsBabyBlancEnvoyes}</b></div>}
@@ -1030,9 +988,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                         </button>
                       )}
                       {d.statut === "parti" && (
-                        <button onClick={() => ouvrirModaleRetour(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.amber, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                          📥 Pointer le retour
-                        </button>
+                        <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic" }}>
+                          📥 Retour à pointer dans « Pointer arrivage »
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1387,84 +1345,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         </div>
       )}
 
-      {/* MODALE — Pointage du retour */}
-      {retourDemandeId && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 440, width: "100%", borderTop: `7px solid ${COLORS.amber}`, maxHeight: "90vh", overflowY: "auto" }}>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📥</div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Pointage du retour</p>
-            </div>
-
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Qualité</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => setRetourQualite("conforme")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: `1.5px solid ${retourQualite === "conforme" ? COLORS.secondary : COLORS.gray200}`, background: retourQualite === "conforme" ? COLORS.secondaryLight : "#fff", color: retourQualite === "conforme" ? COLORS.secondary : COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✅ Conforme</button>
-                <button onClick={() => setRetourQualite("probleme")} style={{ flex: 1, padding: "8px", borderRadius: 8, border: `1.5px solid ${retourQualite === "probleme" ? COLORS.danger : COLORS.gray200}`, background: retourQualite === "probleme" ? COLORS.dangerLight : "#fff", color: retourQualite === "probleme" ? COLORS.danger : COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>⚠️ Problème</button>
-              </div>
-            </div>
-
-            {retourQualite === "probleme" && (
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Commentaire</label>
-                <textarea value={retourCommentaire} onChange={e => setRetourCommentaire(e.target.value)} rows={2} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12, boxSizing: "border-box", resize: "vertical" }} />
-              </div>
-            )}
-
-            {retourDemande?.nbColisAEntrer != null && (() => {
-              const attendu = retourDemande.nbColisAEntrer as number;
-              const saisi = retourNbColis.trim() === "" ? null : parseInt(retourNbColis);
-              const conforme = saisi != null && saisi === attendu;
-              const ecart = saisi != null && saisi !== attendu;
-              return (
-                <div style={{
-                  marginBottom: 12, padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700,
-                  background: conforme ? COLORS.secondaryLight : ecart ? COLORS.dangerLight : COLORS.gray100,
-                  color: conforme ? COLORS.secondary : ecart ? COLORS.danger : COLORS.gray600,
-                }}>
-                  Colis attendus (demande) : {attendu}
-                  {conforme && " — ✅ conforme"}
-                  {ecart && ` — ⚠️ écart de ${Math.abs((saisi as number) - attendu)}`}
-                </div>
-              );
-            })()}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Colis reçus</label>
-                <input type="number" value={retourNbColis} onChange={e => setRetourNbColis(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Qté conditionnement</label>
-                <input type="number" value={retourQteConditionnement} onChange={e => setRetourQteConditionnement(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes reçues</label>
-                <input type="number" value={retourGrandes} onChange={e => setRetourGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Demi-palettes reçues</label>
-                <input type="number" value={retourDemi} onChange={e => setRetourDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-            </div>
-
-            {retourDemande?.depot === "nlt" && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Caisses IFCO pleines reçues (optionnel)</label>
-                <input type="number" value={retourCaissesIfco} onChange={e => setRetourCaissesIfco(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setRetourDemandeId(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-              <button onClick={validerRetour} style={{ flex: 2, background: COLORS.amber, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Valider le retour</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Le pointage du retour se fait désormais dans le module Arrivage ("Pointer arrivage") —
+          la demande de reconditionnement y apparaît automatiquement comme un arrivage attendu
+          dès qu'elle est marquée "parti" (voir marquerParti). Plus de modale ici. */}
     </div>
   );
 }
