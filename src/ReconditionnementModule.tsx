@@ -258,9 +258,11 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   const [nvTelephone, setNvTelephone] = useState("");
   const [nvEmail, setNvEmail] = useState("");
 
-  // Stock IFCO Moorea (vide / pleine) — granularité propre au reconditionnement.
-  const [stockIfcoVide, setStockIfcoVide] = useState(0);
-  const [stockIfcoPleine, setStockIfcoPleine] = useState(0);
+  // Stock IFCO — RÉUTILISE le même tracker que le module Prestataires (chemin Firebase
+  // "ifco_stock/levels", { moorea, transit, nlt }) : c'est le stock réel de caisses IFCO par
+  // emplacement, pas un compteur séparé. Envoyer des caisses pour un reconditionnement est un
+  // transfert moorea → nlt ; le retour de caisses pleines est un transfert nlt → moorea.
+  const [stockIfco, setStockIfco] = useState<{ moorea: number; transit: number; nlt: number }>({ moorea: 0, transit: 0, nlt: 0 });
   // Stock cartons BABY BLANC @ Andès — partagé avec le tracker du module Prestataires.
   const [stockBabyBlancAndes, setStockBabyBlancAndes] = useState(0);
 
@@ -277,22 +279,24 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       const d = snap.val();
       setTransporteurs(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
-    const u3 = onValue(ref(db, "reconditionnement_stock_ifco/vide"), snap => setStockIfcoVide(typeof snap.val() === "number" ? snap.val() : 0));
-    const u4 = onValue(ref(db, "reconditionnement_stock_ifco/pleine"), snap => setStockIfcoPleine(typeof snap.val() === "number" ? snap.val() : 0));
-    const u5 = onValue(ref(db, "stock_carton_andes/baby_blanc"), snap => setStockBabyBlancAndes(typeof snap.val() === "number" ? snap.val() : 0));
-    const u6 = onValue(ref(db, "moorea_articles"), snap => {
+    const u3 = onValue(ref(db, "ifco_stock/levels"), snap => {
+      const v = snap.val();
+      setStockIfco(v ? { moorea: v.moorea || 0, transit: v.transit || 0, nlt: v.nlt || 0 } : { moorea: 0, transit: 0, nlt: 0 });
+    });
+    const u4 = onValue(ref(db, "stock_carton_andes/baby_blanc"), snap => setStockBabyBlancAndes(typeof snap.val() === "number" ? snap.val() : 0));
+    const u5 = onValue(ref(db, "moorea_articles"), snap => {
       const d = snap.val();
       setCatalogueArticles(d ? (Object.values(d) as any[]).map((v: any) => ({ code: v.code, libelle: v.libelle })).sort((a, b) => a.libelle.localeCompare(b.libelle)) : []);
     });
-    const u7 = onValue(ref(db, "arrivages"), snap => {
+    const u6 = onValue(ref(db, "arrivages"), snap => {
       const d = snap.val();
       setArrivagesData(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
-    const u8 = onValue(ref(db, "reconditionnement_stock_mouvements"), snap => {
+    const u7 = onValue(ref(db, "reconditionnement_stock_mouvements"), snap => {
       const d = snap.val();
       setMouvements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
@@ -465,8 +469,12 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       articleFini: articleFini.trim(),
       nbColisAEntrer: nbColisAEntrer ? parseInt(nbColisAEntrer) : undefined,
       qteConditionnement: qteConditionnement ? parseInt(qteConditionnement) : undefined,
-      caissesIfcoEnvoyees: caisses || undefined,
-      cartonsBabyBlancEnvoyes: cartons || undefined,
+      // Note : ces 2 champs sont bien inclus même quand ils valent 0 (ex : passion qui ne
+      // repart pas en IFCO) — c'est une info utile, pas une absence de donnée. Firebase refuse
+      // "undefined" dans un push(), donc on ne met "undefined" QUE quand la valeur n'a pas de
+      // sens pour ce dépôt (caisses IFCO pour Andès, cartons pour NLT), jamais pour un simple 0.
+      caissesIfcoEnvoyees: depot === "nlt" ? caisses : undefined,
+      cartonsBabyBlancEnvoyes: depot === "andes" ? cartons : undefined,
       transporteurId,
       transporteurNom: transporteur?.nom,
       pdfNom: pdfFile?.nom,
@@ -476,12 +484,26 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       ts: now.getTime(),
     } as any;
 
+    // Firebase (push/update) refuse toute valeur "undefined" — on retire ces clés avant
+    // l'envoi plutôt que de risquer une erreur "value argument contains undefined".
+    Object.keys(demande).forEach(k => { if ((demande as any)[k] === undefined) delete (demande as any)[k]; });
+
     try {
       await push(ref(db, "reconditionnement_demandes"), demande);
 
       // Mouvement de stock : emballage envoyé avec ce reconditionnement, selon le dépôt.
+      // Caisses IFCO : on réutilise le vrai tracker partagé avec le module Prestataires
+      // (ifco_stock/levels + ifco_stock/movements) — c'est un transfert Moorea → NLT, pas un
+      // compteur séparé propre au reconditionnement.
       if (caisses > 0) {
-        await update(ref(db, "reconditionnement_stock_ifco"), { vide: Math.max(0, stockIfcoVide - caisses) });
+        const newMoorea = Math.max(0, stockIfco.moorea - caisses);
+        const newNlt = stockIfco.nlt + caisses;
+        await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+        await push(ref(db, "ifco_stock/movements"), {
+          date: nowFr(), from: "moorea", to: "nlt", caisses,
+          raison: `Reconditionnement — envoi vers ${DEPOT_LABEL[depot]}${transporteur?.nom ? ` (${transporteur.nom})` : ""}`,
+          user: userName || "Moorea", ts: now.getTime(),
+        });
         await push(ref(db, "reconditionnement_stock_mouvements"), {
           type: "envoi_reconditionneur", article: "ifco_vide", depot, quantite: caisses, date: nowFr(), ts: now.getTime(),
         });
@@ -555,14 +577,27 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       nbColisRecus: retourNbColis ? parseInt(retourNbColis) : undefined,
       qteConditionnementRecue: retourQteConditionnement ? parseInt(retourQteConditionnement) : undefined,
       nbPalettes: { grandes: parseInt(retourGrandes) || 0, demi: parseInt(retourDemi) || 0 },
-      caissesIfcoPleinesRecues: caissesPleines || undefined,
+      // 0 est une valeur valide (aucune caisse IFCO au retour) — seule l'absence de saisie doit
+      // être omise. On nettoie les "undefined" juste avant l'update, jamais avec "|| undefined"
+      // sur un nombre (ça transformerait aussi un vrai 0 en "undefined").
+      caissesIfcoPleinesRecues: retourCaissesIfco.trim() === "" ? undefined : caissesPleines,
     };
+    Object.keys(retour).forEach(k => { if ((retour as any)[k] === undefined) delete (retour as any)[k]; });
 
     try {
       await update(ref(db, `reconditionnement_demandes/${retourDemandeId}`), { statut: "reçu", retour });
 
+      // Caisses IFCO pleines reçues : transfert NLT → Moorea sur le même tracker partagé que
+      // le module Prestataires (les caisses physiques reviennent chez Moorea, pleines).
       if (caissesPleines > 0) {
-        await update(ref(db, "reconditionnement_stock_ifco"), { pleine: stockIfcoPleine + caissesPleines });
+        const newNlt = Math.max(0, stockIfco.nlt - caissesPleines);
+        const newMoorea = stockIfco.moorea + caissesPleines;
+        await update(ref(db, "ifco_stock/levels"), { nlt: newNlt, moorea: newMoorea });
+        await push(ref(db, "ifco_stock/movements"), {
+          date: nowFr(), from: "nlt", to: "moorea", caisses: caissesPleines,
+          raison: `Reconditionnement — retour${demande ? ` (${DEPOT_LABEL[demande.depot]})` : ""}`,
+          user: userName || "Moorea", ts: Date.now(),
+        });
         await push(ref(db, "reconditionnement_stock_mouvements"), {
           type: "retour_moorea",
           depot: demande?.depot,
@@ -671,15 +706,15 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
         {/* ── DASHBOARD ── */}
         {activeTab === "dashboard" && (
           <div>
-            {/* Stock d'emballage — IFCO Moorea (NLT) et carton BABY BLANC (Andès) */}
+            {/* Stock d'emballage — mêmes compteurs que le module Prestataires & IFCO */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📭 IFCO Moorea — vides (NLT)</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfcoVide}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — Moorea</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
               </div>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO Moorea — pleines (NLT)</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfcoPleine}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — NLT</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
               </div>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🧺 Carton BABY BLANC (Andès)</div>
@@ -951,8 +986,8 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
               </div>
               {depot === "nlt" ? (
                 <>
-                  <p style={{ margin: "0 0 10px", fontSize: 12, color: stockIfcoVide > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
-                    Stock IFCO vides disponible chez Moorea : <b>{stockIfcoVide}</b> — pré-rempli avec le nb de colis à entrer (1 caisse par colis fini), vérifie si le stock déjà chez NLT suffit et corrige. Mets 0 si ce produit ne repart pas en IFCO (ex : la passion repart dans son carton d'origine).
+                  <p style={{ margin: "0 0 10px", fontSize: 12, color: stockIfco.nlt > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
+                    Déjà chez NLT : <b>{stockIfco.nlt}</b> caisses IFCO · disponible chez Moorea pour un envoi complémentaire : <b>{stockIfco.moorea}</b> — pré-rempli avec le nb de colis à entrer (1 caisse par colis fini), vérifie si le stock déjà chez NLT suffit et corrige. Mets 0 si ce produit ne repart pas en IFCO (ex : la passion repart dans son carton d'origine).
                   </p>
                   <F label="Caisses IFCO vides à envoyer"><input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si ce produit ne repart pas en IFCO" /></F>
                 </>
@@ -999,12 +1034,12 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
             {/* Stock actuel, rappel */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📭 IFCO Moorea — vides (NLT)</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfcoVide}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — Moorea</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
               </div>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO Moorea — pleines (NLT)</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfcoPleine}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — NLT</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
               </div>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🧺 Carton BABY BLANC (Andès)</div>
