@@ -1926,7 +1926,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
                 style={{ padding: "5px 10px", background: "#f5f3ff", border: "1px solid #8b5cf6", color: "#7c3aed", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 Étiquettes (palettes)</button>
             )}
             <button onClick={async () => {
-              const { ref: fbRef, update: fbUpdate } = await import("firebase/database");
+              const { ref: fbRef, update: fbUpdate, get: fbGet } = await import("firebase/database");
               const { db: dbImport } = await import("./firebase");
               await fbUpdate(fbRef(dbImport, `arrivages/${a.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
               // Si cet arrivage vient d'une commande de cartons/palettes IFCO (module Prestataires),
@@ -1937,6 +1937,36 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
               }
               if (a.ifco_palette_commande_id) {
                 await fbUpdate(fbRef(dbImport, `ifco_palettes_commandes/${a.ifco_palette_commande_id}`), { statut: "commandé", dateReception: null });
+              }
+              // Si cet arrivage est le retour d'une demande de reconditionnement, la demande
+              // était passée en "reçu" à la validation — sans ça, elle reste bloquée sur "reçu"
+              // (recap de l'ancien pointage) alors que l'arrivage lui-même redevient "à pointer".
+              // On la remet en "parti" (elle réapparaît donc bien "à pointer") et, si des caisses
+              // IFCO pleines avaient été comptabilisées au retour, on annule ce mouvement de
+              // stock — sinon il serait compté deux fois quand le nouveau pointage sera validé.
+              if (a.reconditionnement_demande_id) {
+                try {
+                  const demandeSnap = await fbGet(fbRef(dbImport, `reconditionnement_demandes/${a.reconditionnement_demande_id}`));
+                  const demandeData = demandeSnap.val();
+                  const caissesPleinesAnnulees = demandeData?.retour?.caissesIfcoPleinesRecues || 0;
+                  await fbUpdate(fbRef(dbImport, `reconditionnement_demandes/${a.reconditionnement_demande_id}`), { statut: "parti", retour: null });
+                  if (caissesPleinesAnnulees > 0) {
+                    const levelsSnap = await fbGet(fbRef(dbImport, "ifco_stock/levels"));
+                    const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0 };
+                    const newMoorea = Math.max(0, (levels.moorea || 0) - caissesPleinesAnnulees);
+                    const newNlt = (levels.nlt || 0) + caissesPleinesAnnulees;
+                    await fbUpdate(fbRef(dbImport, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+                    const { push: fbPush } = await import("firebase/database");
+                    await fbPush(fbRef(dbImport, "ifco_stock/movements"), {
+                      date: new Date().toLocaleDateString("fr-FR"), from: "moorea", to: "nlt", caisses: caissesPleinesAnnulees,
+                      raison: `Reconditionnement — annulation du retour (re-pointage${a.origine ? `, ${a.origine}` : ""})`,
+                      reconditionnement_demande_id: a.reconditionnement_demande_id,
+                      user: "Moorea", ts: Date.now(),
+                    });
+                  }
+                } catch (err) {
+                  console.error("Erreur annulation retour reconditionnement au re-pointage:", err);
+                }
               }
             }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#d97706", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>↺ Re-pointer</button>
           </div>

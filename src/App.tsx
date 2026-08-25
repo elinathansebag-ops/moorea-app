@@ -618,11 +618,13 @@ export default function App() {
           await push(ref(db, "ifco_stock/movements"), {
             date: now2.toLocaleDateString("fr-FR"), from: "nlt", to: "moorea", caisses: caissesPleines,
             raison: `Reconditionnement — retour${arrivage.origine ? ` (${arrivage.origine})` : ""}`,
+            reconditionnement_demande_id: arrivage.reconditionnement_demande_id,
             user: user?.displayName || "Moorea", ts: Date.now(),
           });
           await push(ref(db, "reconditionnement_stock_mouvements"), {
             type: "retour_moorea", depot: arrivage.depot, quantite: caissesPleines,
             date: now2.toLocaleDateString("fr-FR"), ts: Date.now(),
+            reconditionnement_demande_id: arrivage.reconditionnement_demande_id,
           });
         }
         logActivite("Retour reconditionnement pointé", `${arrivage.produit || "-"} · ${ctrl.colisRecus ?? "-"} colis`);

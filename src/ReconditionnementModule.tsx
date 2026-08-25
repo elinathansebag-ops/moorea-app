@@ -423,6 +423,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // ci-dessus mais pour la liste filtrée par statut, pas pour l'historique des "reçu".
   const [semainesOuvertesDemandes, setSemainesOuvertesDemandes] = useState<Set<string> | null>(null);
 
+  // Outil de nettoyage des tests (Configuration → repliable, pas affiché par défaut) : coche
+  // les demandes "reçu" à supprimer définitivement, avec correction du stock associée.
+  const [outilsTestVisibles, setOutilsTestVisibles] = useState(false);
+  const [demandesASupprimerTest, setDemandesASupprimerTest] = useState<Set<string>>(new Set());
+
   // Modale "prêt" (validation entrepôt étape 1)
   const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
   // Aperçu PDF (bon de prépa ou scan Geslot) dans une modale avec iframe, plutôt qu'un lien
@@ -799,6 +804,60 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     notify("success", "↩️ Demande remise à l'étape « en attente »");
   }
 
+  // ─── Nettoyage des demandes de test déjà terminées ("reçu") ───
+  // Outil discret (Configuration → onglet caché), pas destiné à l'usage courant : sert à faire
+  // disparaître les demandes de test créées pendant le développement, SANS fausser les stats de
+  // caisses/cartons ni les stats de transport (par transporteur) qui se basent sur ces demandes.
+  // On annule donc aussi le mouvement de stock que la demande avait généré (envoi + retour IFCO,
+  // ou consommation de cartons Andès), en repartant des valeurs enregistrées sur la demande
+  // elle-même — la source la plus sûre, plutôt que d'essayer de retrouver les lignes de
+  // mouvement correspondantes (les anciennes, créées avant ce nettoyage, n'ont pas d'id de
+  // demande associé et ne peuvent donc pas être supprimées individuellement ; seules celles
+  // créées depuis peuvent l'être, via reconditionnement_demande_id).
+  async function supprimerDemandeTerminee(d: Demande) {
+    try {
+      const { get } = await import("firebase/database");
+      const caissesEnvoyees = d.depot === "nlt" ? (d.caissesIfcoEnvoyees || 0) : 0;
+      const caissesPleinesRecues = d.retour?.caissesIfcoPleinesRecues || 0;
+      const cartonsUtilises = d.depot === "andes" ? (d.cartonsBabyBlancEnvoyes || 0) : 0;
+
+      if (caissesEnvoyees > 0 || caissesPleinesRecues > 0) {
+        const levelsSnap = await get(ref(db, "ifco_stock/levels"));
+        const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0 };
+        // Annule l'envoi (Moorea → NLT, +caissesEnvoyees côté Moorea) et le retour
+        // (NLT → Moorea, -caissesPleinesRecues côté Moorea) en une fois.
+        const newMoorea = Math.max(0, (levels.moorea || 0) + caissesEnvoyees - caissesPleinesRecues);
+        const newNlt = Math.max(0, (levels.nlt || 0) - caissesEnvoyees + caissesPleinesRecues);
+        await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+      }
+      if (cartonsUtilises > 0) {
+        const stockSnap = await get(ref(db, "stock_carton_andes"));
+        const stock = stockSnap.val() || {};
+        await update(ref(db, "stock_carton_andes"), { baby_blanc: (stock.baby_blanc || 0) + cartonsUtilises });
+      }
+
+      // Lignes de mouvement taguées avec cette demande (reconditionnement_demande_id) — ne
+      // couvre que les mouvements créés après ce champ ; les anciens tests restent dans le log
+      // mais les stocks, eux, sont bien corrigés ci-dessus.
+      const ifcoMvSnap = await get(ref(db, "ifco_stock/movements"));
+      const ifcoMv = ifcoMvSnap.val() || {};
+      const ifcoMvIdsASupprimer = Object.entries(ifcoMv).filter(([, v]: any) => v?.reconditionnement_demande_id === d.id).map(([id]) => id);
+      const stockMvIdsASupprimer = mouvements.filter((m: any) => m.reconditionnement_demande_id === d.id).map(m => m.id);
+      await Promise.all([
+        ...ifcoMvIdsASupprimer.map(id => remove(ref(db, `ifco_stock/movements/${id}`))),
+        ...stockMvIdsASupprimer.map(id => remove(ref(db, `reconditionnement_stock_mouvements/${id}`))),
+      ]);
+
+      const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === d.id);
+      if (arrivageLie) await remove(ref(db, `arrivages/${arrivageLie.id}`));
+      await remove(ref(db, `reconditionnement_demandes/${d.id}`));
+
+      notify("success", `🗑️ Test supprimé (${d.numero || d.id}) — stock et stats corrigés`);
+    } catch (err: any) {
+      notify("error", `❌ Erreur lors du nettoyage : ${err.message}`);
+    }
+  }
+
   async function creerDemande() {
     if (!depot) {
       notify("error", "✗ Choisis un dépôt");
@@ -931,6 +990,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           await push(ref(db, "ifco_stock/movements"), {
             date: nowFr(), from: deltaCaisses > 0 ? "moorea" : "nlt", to: deltaCaisses > 0 ? "nlt" : "moorea", caisses: Math.abs(deltaCaisses),
             raison: `Reconditionnement — correction après modification de ${demande.numero || editDemandeId}`,
+            reconditionnement_demande_id: editDemandeId,
             user: userName || "Moorea", ts: now.getTime(),
           });
         }
@@ -985,10 +1045,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         await push(ref(db, "ifco_stock/movements"), {
           date: nowFr(), from: "moorea", to: "nlt", caisses,
           raison: `Reconditionnement — envoi vers ${DEPOT_LABEL[depot]}${transporteur?.nom ? ` (${transporteur.nom})` : ""}`,
+          reconditionnement_demande_id: demandeId,
           user: userName || "Moorea", ts: now.getTime(),
         });
         await push(ref(db, "reconditionnement_stock_mouvements"), {
           type: "envoi_reconditionneur", article: "ifco_vide", depot, quantite: caisses, date: nowFr(), ts: now.getTime(),
+          reconditionnement_demande_id: demandeId,
         });
       }
       if (cartons > 0) {
@@ -999,6 +1061,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         await update(ref(db, "stock_carton_andes"), { baby_blanc: Math.max(0, stockBabyBlancAndes - cartons) });
         await push(ref(db, "reconditionnement_stock_mouvements"), {
           type: "envoi_reconditionneur", article: "carton_baby_blanc", depot, quantite: cartons, date: nowFr(), ts: now.getTime(),
+          reconditionnement_demande_id: demandeId,
         });
       }
 
@@ -2036,6 +2099,62 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                   ))
                 )}
               </div>
+            </div>
+
+            {/* ── Nettoyage des tests — repliable, pas affiché par défaut : sert à faire
+                disparaître les demandes "reçu" créées pendant les tests, sans fausser les stats
+                de caisses/cartons ni de transport (le stock est corrigé en conséquence). ── */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
+              <button type="button" onClick={() => setOutilsTestVisibles(v => !v)} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: COLORS.gray600, textDecoration: "underline", cursor: "pointer", fontWeight: 700 }}>
+                {outilsTestVisibles ? "▾" : "▸"} 🧹 Nettoyage des tests (usage avancé)
+              </button>
+              {outilsTestVisibles && (
+                <div style={{ marginTop: 14 }}>
+                  <p style={{ margin: "0 0 12px", fontSize: 11.5, color: COLORS.gray600 }}>
+                    Coche les demandes de test à supprimer définitivement. Le stock IFCO/carton concerné est corrigé automatiquement (annulation de l'envoi et du retour), et les stats par transporteur/reconditionneur ne les compteront plus.
+                  </p>
+                  {demandesTerminees.length === 0 ? (
+                    <p style={{ fontSize: 12, color: "#999" }}>Aucune demande « reçue » pour l'instant.</p>
+                  ) : (
+                    <>
+                      <div style={{ display: "grid", gap: 6, marginBottom: 12, maxHeight: 320, overflowY: "auto" }}>
+                        {demandesTerminees.map(d => (
+                          <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: demandesASupprimerTest.has(d.id) ? "#fef2f2" : COLORS.gray100, border: `1.5px solid ${demandesASupprimerTest.has(d.id) ? "#fca5a5" : COLORS.gray200}`, borderRadius: 8, cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={demandesASupprimerTest.has(d.id)}
+                              onChange={() => setDemandesASupprimerTest(prev => {
+                                const next = new Set(prev);
+                                if (next.has(d.id)) next.delete(d.id); else next.add(d.id);
+                                return next;
+                              })}
+                              style={{ width: "auto", margin: 0, flexShrink: 0 }}
+                            />
+                            <span style={{ fontSize: 12, color: COLORS.gray700 }}>
+                              {d.numero && <b style={{ color: COLORS.primary, marginRight: 6 }}>{d.numero}</b>}
+                              {d.articleVrac} → {d.articleFini} · {DEPOT_LABEL[d.depot]} · {d.retour?.date || d.dateCreationFr}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={demandesASupprimerTest.size === 0}
+                        onClick={async () => {
+                          if (!window.confirm(`Supprimer définitivement ${demandesASupprimerTest.size} demande(s) et corriger le stock en conséquence ? Cette action est irréversible.`)) return;
+                          for (const d of demandesTerminees.filter(d => demandesASupprimerTest.has(d.id))) {
+                            await supprimerDemandeTerminee(d);
+                          }
+                          setDemandesASupprimerTest(new Set());
+                        }}
+                        style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: demandesASupprimerTest.size === 0 ? COLORS.gray200 : COLORS.danger, color: demandesASupprimerTest.size === 0 ? "#999" : "#fff", fontSize: 12, fontWeight: 700, cursor: demandesASupprimerTest.size === 0 ? "not-allowed" : "pointer" }}
+                      >
+                        🗑️ Supprimer définitivement ({demandesASupprimerTest.size})
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
