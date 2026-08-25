@@ -65,6 +65,42 @@ export default async function handler(req, res) {
       }),
     });
 
+    // Cartons BABY BLANC livrés directement chez Andès (hors site) : c'est LE moment réel de
+    // réception — Andès confirme lui-même via ce lien 99% du temps, il n'y a pas de pointage
+    // d'arrivage côté Moorea pour ces livraisons. On fait donc avancer ici le compteur
+    // stock_carton_andes/baby_blanc, qui ne sert qu'à anticiper le stock restant pour les
+    // prochaines productions (pas un suivi strict aller/retour comme pour les caisses IFCO).
+    if (type === "carton" && Array.isArray(commande.lignes)) {
+      const CARTONS_PAR_PALETTE = { "BABY BLANC": 360 };
+      const qteBabyBlanc = commande.lignes.reduce((sum, l) => {
+        if (l?.type !== "BABY BLANC") return sum;
+        return sum + (parseInt(l.nbPalettes) || 0) * CARTONS_PAR_PALETTE["BABY BLANC"];
+      }, 0);
+      if (qteBabyBlanc > 0) {
+        try {
+          const stockRes = await fetch(`${DATABASE_URL}/stock_carton_andes.json`);
+          const stock = (await stockRes.json()) || {};
+          const ancienneValeur = stock.baby_blanc || 0;
+          const nouvelleValeur = ancienneValeur + qteBabyBlanc;
+          await fetch(`${DATABASE_URL}/stock_carton_andes.json`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ baby_blanc: nouvelleValeur }),
+          });
+          await fetch(`${DATABASE_URL}/stock_ajustements.json`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              emplacement: "Carton Baby Blanc — Andes",
+              ancienneValeur, nouvelleValeur,
+              raison: `Livraison confirmée par le prestataire (commande #${id})`,
+              date: dateFr, timestamp: Date.now(),
+            }),
+          });
+        } catch {}
+      }
+    }
+
     // Best effort : marque aussi l'arrivage lié (traçabilité), sans bloquer si ça échoue.
     try {
       const field = type === "palette" ? "ifco_palette_commande_id" : "carton_commande_id";
