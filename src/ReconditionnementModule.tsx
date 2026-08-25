@@ -813,6 +813,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     const now = new Date();
     const caisses = depot === "nlt" ? (parseInt(caissesIfcoEnvoyees) || 0) : 0;
     const cartons = depot === "andes" ? (parseInt(cartonsBabyBlancEnvoyes) || 0) : 0;
+    // Quantité totale à produire = quantité par colis (filet) × nb colis à entrer — on ne
+    // demande plus le total directement, il est calculé pour éviter les erreurs de saisie.
+    const nEntrerNum = parseInt(nbColisAEntrer) || 0;
+    const parColisNum = parseFloat(qtePerColis) || 0;
+    const qteConditionnementTotal = (nEntrerNum > 0 && parColisNum > 0) ? Math.round(parColisNum * nEntrerNum) : undefined;
     // Moorea ne peut pas envoyer plus de caisses IFCO qu'il n'en a réellement en stock — le
     // transfert se fait depuis le stock Moorea vers NLT (voir plus bas), donc c'est bien le
     // stock Moorea qui doit être suffisant, pas celui de NLT. Uniquement à la création : en
@@ -821,11 +826,17 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       notify("error", `✗ Pas assez de caisses IFCO en stock à Moorea (${stockIfco.moorea} dispo, ${caisses} demandées)`);
       return;
     }
-    // Quantité totale à produire = quantité par colis (filet) × nb colis à entrer — on ne
-    // demande plus le total directement, il est calculé pour éviter les erreurs de saisie.
-    const nEntrerNum = parseInt(nbColisAEntrer) || 0;
-    const parColisNum = parseFloat(qtePerColis) || 0;
-    const qteConditionnementTotal = (nEntrerNum > 0 && parColisNum > 0) ? Math.round(parColisNum * nEntrerNum) : undefined;
+    // Si le retour se fait en caisses IFCO, NLT doit avoir assez de caisses VIDES pour
+    // conditionner tous les colis prévus (une caisse IFCO par colis à entrer) — son stock actuel
+    // plus la palette qu'on lui envoie éventuellement avec cette demande. Sinon la demande est
+    // bloquée : il faut d'abord cocher/envoyer une palette IFCO pour couvrir le manque.
+    if (depot === "nlt" && retourIfco && nEntrerNum > 0) {
+      const disponibleNlt = stockIfco.nlt + caisses;
+      if (disponibleNlt < nEntrerNum) {
+        notify("error", `✗ NLT n'a pas assez de caisses IFCO vides pour ${nEntrerNum} colis (${disponibleNlt} dispo avec cet envoi) — envoie une palette IFCO à NLT`);
+        return;
+      }
+    }
 
     // Traçabilité d'origine : on retrouve automatiquement le fournisseur et son n° de lot en
     // cherchant le lot saisi dans les arrivages connus (module Arrivage) — que ce lot vienne
@@ -1658,7 +1669,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               <F label="Article à fabriquer" required><ArticleSelect value={articleFini} onSelect={setArticleFini} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
 
               {depot === "nlt" && (
-                <label
+                <div
+                  role="checkbox"
+                  aria-checked={retourIfco}
+                  onClick={() => setRetourIfco(v => !v)}
                   style={{
                     display: "flex", alignItems: "center", gap: 10, margin: "2px 0 10px", padding: "10px 14px",
                     borderRadius: 10, cursor: "pointer",
@@ -1667,14 +1681,19 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     transition: "background 0.15s, border-color 0.15s",
                   }}
                 >
-                  <input type="checkbox" checked={retourIfco} onChange={e => setRetourIfco(e.target.checked)} style={{ width: 18, height: 18, margin: 0, accentColor: COLORS.secondary, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, color: retourIfco ? COLORS.secondary : COLORS.gray700, fontWeight: 800 }}>
                     {retourIfco ? "✓" : "📦"} Le retour se fait en caisses IFCO
                   </span>
                   <span style={{ fontSize: 10.5, color: retourIfco ? COLORS.secondary : "#9ca3af", marginLeft: "auto", whiteSpace: "nowrap" }}>
                     ({retourIfco ? "coché" : "décoché"} auto d'après le nom, modifiable)
                   </span>
-                </label>
+                </div>
+              )}
+              {depot === "nlt" && retourIfco && (parseInt(nbColisAEntrer) || 0) > (stockIfco.nlt + (parseInt(caissesIfcoEnvoyees) || 0)) && (
+                <p style={{ margin: "-6px 0 10px", fontSize: 10.5, color: COLORS.danger, fontWeight: 700 }}>
+                  ⚠️ NLT n'a pas assez de caisses IFCO vides pour conditionner {nbColisAEntrer || 0} colis
+                  ({stockIfco.nlt + (parseInt(caissesIfcoEnvoyees) || 0)} dispo avec l'envoi actuel) — envoie une palette IFCO à NLT ci-dessus.
+                </p>
               )}
 
               {/* Emballage à envoyer — pour NLT, réglé via le bouton "palette IFCO" en haut de
