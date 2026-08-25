@@ -18,6 +18,14 @@ const PALETTES_IFCO = {
   "BLL4314 (640 caisses)": { dims: "400×300mm", materiel: "BLL4314", caisses: 640, prixHT: 12.5 },
 };
 
+// Les 2 seuls lieux de livraison possibles pour une commande de cartons. Andès est livré
+// directement chez le prestataire (pas chez Moorea) : pas d'agréage, confirmation par email
+// automatiquement envoyée au contact du site.
+const LIEUX_CARTONS: Record<string, { horsSite: boolean; email: string }> = {
+  "Moorea Commerce Fruit - Bat D3": { horsSite: false, email: "" },
+  "Andès - Le Potager de Marianne - 15 Avenue des 3 Marches bat B4, 94550 Chevilly-Larue": { horsSite: true, email: "nicolas.lemonnier@andes-france.com" },
+};
+
 type LigneCarton = { type: string; nbPalettes: number };
 type LignePaletteIFCO = { type: string; quantite: number };
 
@@ -1594,63 +1602,47 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>📍 Lieu</label>
-                <input
-                  type="text"
+                <select
                   value={lieuLivraison}
-                  onChange={(e) => setLieuLivraison(e.target.value)}
+                  onChange={(e) => {
+                    const lieu = e.target.value;
+                    setLieuLivraison(lieu);
+                    const infos = LIEUX_CARTONS[lieu];
+                    setLivraisonHorsSite(infos?.horsSite || false);
+                    setEmailPresta(infos?.email || "");
+                  }}
                   style={{
                     width: "100%",
                     padding: "9px 12px",
                     border: `1px solid ${COLORS.gray200}`,
                     borderRadius: "6px",
                     fontSize: "14px",
-                    boxSizing: "border-box",
                   }}
-                />
+                >
+                  {Object.keys(LIEUX_CARTONS).map((lieu) => (
+                    <option key={lieu} value={lieu}>{lieu}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            <label style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "10px",
-              marginBottom: "16px",
-              padding: "12px 14px",
-              background: livraisonHorsSite ? `${COLORS.tertiary}15` : COLORS.gray100,
-              border: `1px solid ${livraisonHorsSite ? COLORS.tertiary : COLORS.gray200}`,
-              borderRadius: "8px",
-              cursor: "pointer",
-            }}>
-              <input
-                type="checkbox"
-                checked={livraisonHorsSite}
-                onChange={(e) => setLivraisonHorsSite(e.target.checked)}
-                style={{ marginTop: "2px", width: "16px", height: "16px", cursor: "pointer" }}
-              />
-              <div>
-                <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>📍 Livré directement chez le prestataire (pas chez Moorea)</div>
-                <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
-                  Coche cette case si la commande arrive directement au lieu indiqué ci-dessus (ex: Andes - Potager de Mariane) sans passer par Moorea. L'agréage n'aura pas à la pointer : un email sera envoyé au prestataire pour qu'il confirme lui-même la réception.
+            {livraisonHorsSite && (
+              <div style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                marginBottom: "16px",
+                padding: "12px 14px",
+                background: `${COLORS.tertiary}15`,
+                border: `1px solid ${COLORS.tertiary}`,
+                borderRadius: "8px",
+              }}>
+                <div style={{ fontSize: "16px" }}>📍</div>
+                <div style={{ fontSize: "12px", color: COLORS.gray700 }}>
+                  Livraison directe chez le prestataire (pas chez Moorea) : l'agréage n'aura pas à la pointer. Un email de confirmation sera envoyé à <strong>{emailPresta}</strong> une fois la commande créée.
                 </div>
-                {livraisonHorsSite && (
-                  <input
-                    type="email"
-                    value={emailPresta}
-                    onChange={(e) => setEmailPresta(e.target.value)}
-                    placeholder="Email du prestataire (pour la confirmation)"
-                    style={{
-                      width: "100%",
-                      marginTop: "10px",
-                      padding: "8px 10px",
-                      border: `1px solid ${COLORS.tertiary}`,
-                      borderRadius: "6px",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                )}
               </div>
-            </label>
+            )}
 
             <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "10px" }}>📦 Lignes de cartons</label>
