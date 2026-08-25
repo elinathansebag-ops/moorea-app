@@ -181,6 +181,11 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   // Stock IFCO
   const [stockLevels, setStockLevels] = useState<{ moorea: number; transit: number; nlt: number }>({ moorea: 0, transit: 0, nlt: 0 });
   const [stockMovements, setStockMovements] = useState<any[]>([]);
+  // Stock carton "BABY BLANC" livré chez Andes (suivi manuel, distinct du stock IFCO)
+  const [stockCartonAndes, setStockCartonAndes] = useState(0);
+  const [ajustStockMoorea, setAjustStockMoorea] = useState("");
+  const [ajustStockNlt, setAjustStockNlt] = useState("");
+  const [ajustStockAndes, setAjustStockAndes] = useState("");
   const [reconConditions, setReconditions] = useState<any[]>([]);
   const [fromLoc, setFromLoc] = useState<"moorea" | "transit" | "nlt">("moorea");
   const [toLoc, setToLoc] = useState<"moorea" | "transit" | "nlt">("nlt");
@@ -295,7 +300,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         setReconditions([]);
       }
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
+    const u7 = onValue(ref(db, "stock_carton_andes/baby_blanc"), snap => {
+      setStockCartonAndes(typeof snap.val() === "number" ? snap.val() : 0);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
 
   // Charger les lots (mouvements de stock) et articles Geslot quand la modal reconditionnement s'ouvre
@@ -986,7 +994,11 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
   return (
     <div style={{ background: "linear-gradient(135deg, #f0f9f8 0%, #f9fbf8 100%)", minHeight: "100vh", margin: 0, padding: 0 }}>
-      <PageHeader titre="📦 Prestataires & IFCO" onBack={onClose} onHome={onClose} />
+      <PageHeader
+        titre="📦 Prestataires & IFCO"
+        onBack={() => { if (activeTab !== "dashboard") setActiveTab("dashboard"); else onClose(); }}
+        onHome={onClose}
+      />
 
       {notification && (
         <div
@@ -1010,37 +1022,23 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       )}
 
       <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
-        {/* Tabs Navigation */}
-        <div style={{
-          display: "flex",
-          gap: "12px",
-          marginBottom: "24px",
-          flexWrap: "wrap",
-          borderBottom: `2px solid ${COLORS.gray200}`,
-          paddingBottom: "12px"
-        }}>
-          {[
-            { key: "dashboard", label: "📊 Dashboard", icon: "📊" },
-            { key: "configuration", label: "⚙️ Configuration", icon: "⚙️" },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              style={{
-                padding: "10px 16px",
-                background: activeTab === tab.key ? COLORS.primary : "white",
-                color: activeTab === tab.key ? "white" : COLORS.gray700,
-                border: activeTab === tab.key ? `2px solid ${COLORS.primary}` : `2px solid ${COLORS.gray200}`,
-                cursor: "pointer",
-                borderRadius: "8px 8px 0 0",
-                fontSize: "14px",
-                fontWeight: activeTab === tab.key ? "700" : "600",
-                transition: "all 0.2s",
-              }}
-            >
-              {tab.icon} {tab.label}
-            </button>
-          ))}
+        {/* Bouton Configuration / retour au Dashboard (en haut à droite) */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+          <button
+            onClick={() => setActiveTab(activeTab === "dashboard" ? "configuration" : "dashboard")}
+            style={{
+              padding: "8px 16px",
+              background: activeTab === "configuration" ? COLORS.primary : "white",
+              color: activeTab === "configuration" ? "white" : COLORS.gray700,
+              border: `2px solid ${activeTab === "configuration" ? COLORS.primary : COLORS.gray200}`,
+              cursor: "pointer",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: "700",
+            }}
+          >
+            {activeTab === "dashboard" ? "⚙️ Configuration" : "📊 Dashboard"}
+          </button>
         </div>
 
         {/* DASHBOARD TAB */}
@@ -1143,6 +1141,25 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               >
                 🔄 Reconditionnement
               </button>
+            </div>
+
+            {/* STOCKS — IFCO Moorea, IFCO NLT, Carton Baby Blanc (Andes) */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🏭 IFCO — Moorea</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#27ae60" }}>{stockLevels.moorea}</div>
+                <div style={{ fontSize: 10, color: "#aaa" }}>caisses</div>
+              </div>
+              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 IFCO — NLT</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6" }}>{stockLevels.nlt}</div>
+                <div style={{ fontSize: 10, color: "#aaa" }}>caisses</div>
+              </div>
+              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Baby Blanc — Andes</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{stockCartonAndes}</div>
+                <div style={{ fontSize: 10, color: "#aaa" }}>cartons</div>
+              </div>
             </div>
 
             {/* CALENDRIER UNIFIÉ — cartons, palettes IFCO et déclarations IFCO */}
@@ -2154,6 +2171,76 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {/* IFCO — CLIENTS */}
         {activeTab === "configuration" && (
           <div style={{ display: "grid", gap: "20px" }}>
+            {/* Ajustement manuel des stocks — pour corriger les écarts */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`
+            }}>
+              <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
+                <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>⚖️ Ajuster les stocks</h3>
+                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock affiché sur le Dashboard s'il ne correspond plus au stock réel.</p>
+              </div>
+              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {stockLevels.moorea} caisses)</div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur" style={{ flex: 1, padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }} />
+                    <button
+                      onClick={async () => {
+                        const v = parseInt(ajustStockMoorea);
+                        if (isNaN(v) || v < 0) return;
+                        await update(ref(db, "ifco_stock/levels"), { moorea: v });
+                        setAjustStockMoorea("");
+                        setNotification({ type: "success", message: "✓ Stock IFCO Moorea ajusté" });
+                      }}
+                      style={{ padding: "8px 14px", background: COLORS.primary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                    >
+                      Valider
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🔄 IFCO — NLT (actuel : {stockLevels.nlt} caisses)</div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Nouvelle valeur" style={{ flex: 1, padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }} />
+                    <button
+                      onClick={async () => {
+                        const v = parseInt(ajustStockNlt);
+                        if (isNaN(v) || v < 0) return;
+                        await update(ref(db, "ifco_stock/levels"), { nlt: v });
+                        setAjustStockNlt("");
+                        setNotification({ type: "success", message: "✓ Stock IFCO NLT ajusté" });
+                      }}
+                      style={{ padding: "8px 14px", background: COLORS.secondary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                    >
+                      Valider
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>📦 Carton Baby Blanc — Andes (actuel : {stockCartonAndes} cartons)</div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input type="number" value={ajustStockAndes} onChange={(e) => setAjustStockAndes(e.target.value)} placeholder="Nouvelle valeur" style={{ flex: 1, padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }} />
+                    <button
+                      onClick={async () => {
+                        const v = parseInt(ajustStockAndes);
+                        if (isNaN(v) || v < 0) return;
+                        await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
+                        setAjustStockAndes("");
+                        setNotification({ type: "success", message: "✓ Stock carton Baby Blanc (Andes) ajusté" });
+                      }}
+                      style={{ padding: "8px 14px", background: COLORS.tertiary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                    >
+                      Valider
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div style={{
               background: "white",
               borderRadius: "12px",
