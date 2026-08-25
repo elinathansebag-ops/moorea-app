@@ -189,6 +189,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [ajustStockMoorea, setAjustStockMoorea] = useState("");
   const [ajustStockNlt, setAjustStockNlt] = useState("");
   const [ajustStockAndes, setAjustStockAndes] = useState("");
+  const [raisonAjustMoorea, setRaisonAjustMoorea] = useState("");
+  const [raisonAjustNlt, setRaisonAjustNlt] = useState("");
+  const [raisonAjustAndes, setRaisonAjustAndes] = useState("");
+  const [stockAjustements, setStockAjustements] = useState<any[]>([]);
   const [reconConditions, setReconditions] = useState<any[]>([]);
   const [fromLoc, setFromLoc] = useState<"moorea" | "transit" | "nlt">("moorea");
   const [toLoc, setToLoc] = useState<"moorea" | "transit" | "nlt">("nlt");
@@ -306,8 +310,22 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     const u7 = onValue(ref(db, "stock_carton_andes/baby_blanc"), snap => {
       setStockCartonAndes(typeof snap.val() === "number" ? snap.val() : 0);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = onValue(ref(db, "stock_ajustements"), snap => {
+      const d = snap.val();
+      setStockAjustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0)) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, []);
+
+  // Pré-remplit les champs d'ajustement de stock avec la valeur actuelle quand on ouvre
+  // l'onglet Configuration, pour que ce soit clair sur quoi on part avant de corriger.
+  useEffect(() => {
+    if (activeTab === "configuration") {
+      setAjustStockMoorea(String(stockLevels.moorea));
+      setAjustStockNlt(String(stockLevels.nlt));
+      setAjustStockAndes(String(stockCartonAndes));
+    }
+  }, [activeTab]);
 
   // Charger les lots (mouvements de stock) et articles Geslot quand la modal reconditionnement s'ouvre
   useEffect(() => {
@@ -2215,62 +2233,87 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>⚖️ Ajuster les stocks</h3>
                 <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock affiché sur le Dashboard s'il ne correspond plus au stock réel.</p>
               </div>
-              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {stockLevels.moorea} caisses)</div>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur" style={{ flex: 1, padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }} />
-                    <button
-                      onClick={async () => {
-                        const v = parseInt(ajustStockMoorea);
-                        if (isNaN(v) || v < 0) return;
-                        await update(ref(db, "ifco_stock/levels"), { moorea: v });
-                        setAjustStockMoorea("");
-                        setNotification({ type: "success", message: "✓ Stock IFCO Moorea ajusté" });
-                      }}
-                      style={{ padding: "8px 14px", background: COLORS.primary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
-                    >
-                      Valider
-                    </button>
-                  </div>
+                  <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="text" value={raisonAjustMoorea} onChange={(e) => setRaisonAjustMoorea(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <button
+                    onClick={async () => {
+                      const v = parseInt(ajustStockMoorea);
+                      if (isNaN(v) || v < 0) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
+                      if (!raisonAjustMoorea.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockLevels.moorea;
+                      await update(ref(db, "ifco_stock/levels"), { moorea: v });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      setRaisonAjustMoorea("");
+                      setNotification({ type: "success", message: "✓ Stock IFCO Moorea ajusté" });
+                    }}
+                    style={{ width: "100%", padding: "8px 14px", background: COLORS.primary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                  >
+                    Valider la correction
+                  </button>
                 </div>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🔄 IFCO — NLT (actuel : {stockLevels.nlt} caisses)</div>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Nouvelle valeur" style={{ flex: 1, padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }} />
-                    <button
-                      onClick={async () => {
-                        const v = parseInt(ajustStockNlt);
-                        if (isNaN(v) || v < 0) return;
-                        await update(ref(db, "ifco_stock/levels"), { nlt: v });
-                        setAjustStockNlt("");
-                        setNotification({ type: "success", message: "✓ Stock IFCO NLT ajusté" });
-                      }}
-                      style={{ padding: "8px 14px", background: COLORS.secondary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
-                    >
-                      Valider
-                    </button>
-                  </div>
+                  <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="text" value={raisonAjustNlt} onChange={(e) => setRaisonAjustNlt(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <button
+                    onClick={async () => {
+                      const v = parseInt(ajustStockNlt);
+                      if (isNaN(v) || v < 0) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
+                      if (!raisonAjustNlt.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockLevels.nlt;
+                      await update(ref(db, "ifco_stock/levels"), { nlt: v });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      setRaisonAjustNlt("");
+                      setNotification({ type: "success", message: "✓ Stock IFCO NLT ajusté" });
+                    }}
+                    style={{ width: "100%", padding: "8px 14px", background: COLORS.secondary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                  >
+                    Valider la correction
+                  </button>
                 </div>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>📦 Carton Baby Blanc — Andes (actuel : {stockCartonAndes} cartons)</div>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <input type="number" value={ajustStockAndes} onChange={(e) => setAjustStockAndes(e.target.value)} placeholder="Nouvelle valeur" style={{ flex: 1, padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }} />
-                    <button
-                      onClick={async () => {
-                        const v = parseInt(ajustStockAndes);
-                        if (isNaN(v) || v < 0) return;
-                        await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
-                        setAjustStockAndes("");
-                        setNotification({ type: "success", message: "✓ Stock carton Baby Blanc (Andes) ajusté" });
-                      }}
-                      style={{ padding: "8px 14px", background: COLORS.tertiary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
-                    >
-                      Valider
-                    </button>
-                  </div>
+                  <input type="number" value={ajustStockAndes} onChange={(e) => setAjustStockAndes(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="text" value={raisonAjustAndes} onChange={(e) => setRaisonAjustAndes(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <button
+                    onClick={async () => {
+                      const v = parseInt(ajustStockAndes);
+                      if (isNaN(v) || v < 0) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
+                      if (!raisonAjustAndes.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockCartonAndes;
+                      await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      setRaisonAjustAndes("");
+                      setNotification({ type: "success", message: "✓ Stock carton Baby Blanc (Andes) ajusté" });
+                    }}
+                    style={{ width: "100%", padding: "8px 14px", background: COLORS.tertiary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                  >
+                    Valider la correction
+                  </button>
                 </div>
               </div>
+
+              {stockAjustements.length > 0 && (
+                <div style={{ padding: "0 16px 16px" }}>
+                  <h4 style={{ margin: "8px 0 10px", fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>🕐 Historique des corrections ({stockAjustements.length})</h4>
+                  <div style={{ display: "grid", gap: "8px", maxHeight: "260px", overflowY: "auto" }}>
+                    {stockAjustements.map((a) => (
+                      <div key={a.id} style={{ background: COLORS.gray100, border: `1px solid ${COLORS.gray200}`, borderRadius: "8px", padding: "10px 12px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
+                          <span style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray700 }}>{a.emplacement}</span>
+                          <span style={{ fontSize: "11px", color: COLORS.gray600 }}>{a.date}</span>
+                        </div>
+                        <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
+                          {a.ancienneValeur} → <strong style={{ color: COLORS.gray700 }}>{a.nouvelleValeur}</strong> · {a.raison}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{
