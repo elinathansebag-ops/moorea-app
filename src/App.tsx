@@ -17,6 +17,7 @@ import { YukonApp } from "./YukonApp";
 import { RackModule } from "./RackModule";
 import { StattModule } from "./StattModule";
 import { PrestatairesModule } from "./PrestatairesModule";
+import { ReconditionnementModule } from "./ReconditionnementModule";
 import { DashboardModule } from "./DashboardModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
@@ -203,6 +204,7 @@ export default function App() {
   const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showStatt, setShowStatt] = useState(false);
   const [showPrestataires, setShowPrestataires] = useState(false);
+  const [showReconditionnement, setShowReconditionnement] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
   const ADMIN_PIN = "17092005";
@@ -2268,6 +2270,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <PrestatairesModule onClose={() => { setShowPrestataires(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
+  if (showReconditionnement) {
+    return <ReconditionnementModule onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
+  }
+
   if (showAdmin) {
     const fermerAdmin = () => { setShowAdmin(false); setAdminUnlocked(false); setAdminPinInput(""); setShowAccueil(true); };
     const majModePlacementRack = async (v: "manuel" | "scan") => {
@@ -2391,6 +2397,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
       { icon: "🛒", label: "Statt", color: "#ea580c", badge: null, stat: "Ventes réelles + objectifs par période", action: () => { setShowAccueil(false); setShowStatt(true); } },
       { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
+      { icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
     ];
 
     const leofreshBtns = [
