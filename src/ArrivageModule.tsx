@@ -15,6 +15,7 @@ export function BadgeArrivage({ status }: { status: string }) {
     "validé": { bg: "#eafaf1", color: "#1a6b3a", border: "#d4edda", label: "Validé ✓" },
     "refusé": { bg: "#fef2f2", color: "#dc2626", border: "#fca5a5", label: "Litige refus" },
     "sous réserve": { bg: "#fffbeb", color: "#92400e", border: "#fcd34d", label: "Sous réserve" },
+    "hors site": { bg: "#f3f4f6", color: "#6b7280", border: "#d1d5db", label: "📍 Livré hors site" },
   };
   const s = map[status] || map["en attente"];
   return (

@@ -153,6 +153,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [dateLivraison, setDateLivraison] = useState(new Date().toISOString().split("T")[0]);
   const [creneau, setCreneau] = useState<"1er tour 7h-11h" | "2e tour 11h-14h">("1er tour 7h-11h");
   const [lieuLivraison, setLieuLivraison] = useState("Moorea Commerce Fruit - Bat D3");
+  // Cochée quand la commande est livrée directement chez le prestataire (ex: Andes - Potager
+  // de Mariane) et non chez Moorea : l'arrivage créé n'a alors pas à être pointé par l'agréage.
+  const [livraisonHorsSite, setLivraisonHorsSite] = useState(false);
 
   // Palettes IFCO form (commande fournisseur)
   const [lignesIfco, setLignesIfco] = useState<LignePaletteIFCO[]>([{ type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
@@ -794,7 +797,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             quantite: totalCartons,
             unite: "cartons",
             date: dateLivraisonFr,
-            statut: "en attente",
+            // Livraison directe chez le prestataire (ex: Andes - Potager de Mariane) : l'arrivage
+            // reste tracé mais n'a pas à être pointé par l'agréage, contrairement à une livraison
+            // chez Moorea qui doit apparaître dans "Pointer arrivage".
+            statut: livraisonHorsSite ? "hors site" : "en attente",
             timestamp: Date.now(),
             carton_commande_id: commandeId,
             origine: lieuLivraison,
@@ -842,6 +848,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       setDateLivraison(new Date().toISOString().split("T")[0]);
       setCreneau("1er tour 7h-11h");
       setLieuLivraison("Moorea Commerce Fruit - Bat D3");
+      setLivraisonHorsSite(false);
       setActiveTab("cartons");
       setNotification({ type: "success", message: "✓ Commande de cartons créée, arrivage ajouté et email envoyé" });
     } catch (error) {
@@ -1535,6 +1542,31 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 />
               </div>
             </div>
+
+            <label style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "10px",
+              marginBottom: "16px",
+              padding: "12px 14px",
+              background: livraisonHorsSite ? `${COLORS.tertiary}15` : COLORS.gray100,
+              border: `1px solid ${livraisonHorsSite ? COLORS.tertiary : COLORS.gray200}`,
+              borderRadius: "8px",
+              cursor: "pointer",
+            }}>
+              <input
+                type="checkbox"
+                checked={livraisonHorsSite}
+                onChange={(e) => setLivraisonHorsSite(e.target.checked)}
+                style={{ marginTop: "2px", width: "16px", height: "16px", cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>📍 Livré directement chez le prestataire (pas chez Moorea)</div>
+                <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
+                  Coche cette case si la commande arrive directement au lieu indiqué ci-dessus (ex: Andes - Potager de Mariane) sans passer par Moorea. L'agréage n'aura pas à la pointer ; confirme la réception avec le bouton "✓ Reçu" une fois livrée.
+                </div>
+              </div>
+            </label>
 
             <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "10px" }}>📦 Lignes de cartons</label>

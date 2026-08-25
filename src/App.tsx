@@ -3406,7 +3406,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             <p style={{ fontWeight:700, fontSize:12, color:"#6b7280", margin:"0 0 16px", textTransform:"uppercase", letterSpacing:"0.8px", fontFamily:"'Syne',sans-serif" }}>📊 Stats fournisseurs</p>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
               <StatCardArr label="Total arrivages" value={arrivages.length} color="#c8a84b" />
-              <StatCardArr label="Taux conformité" value={arrivages.filter(a=>a.statut!=="en attente").length ? `${Math.round(arrivages.filter(a=>a.statut==="validé").length/Math.max(arrivages.filter(a=>a.statut!=="en attente").length,1)*100)}%` : "-"} color="#1a6b3a" />
+              <StatCardArr label="Taux conformité" value={arrivages.filter(a=>a.statut!=="en attente"&&a.statut!=="hors site").length ? `${Math.round(arrivages.filter(a=>a.statut==="validé").length/Math.max(arrivages.filter(a=>a.statut!=="en attente"&&a.statut!=="hors site").length,1)*100)}%` : "-"} color="#1a6b3a" />
               <StatCardArr label="Litiges ouverts" value={arrivages.filter(a=>a.litige?.statut==="ouvert").length} color="#dc2626" />
             </div>
             {(() => {
