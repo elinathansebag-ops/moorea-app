@@ -150,6 +150,9 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   const [geslotArticles, setGeslotArticles] = useState<{ id: string; label: string }[]>([]);
   // Arrivages (agréage) — sert à retrouver l'article vrac réceptionné pour un lot donné.
   const [arrivagesData, setArrivagesData] = useState<any[]>([]);
+  // Stock (module séparé, projet Firebase "moorea-stock") — lecture seule, uniquement pour
+  // retrouver quel article correspond à un lot déjà en stock. On ne touche jamais à ces données.
+  const [stockLots, setStockLots] = useState<{ lot: string; article: string }[]>([]);
 
   // Configuration — nouveau transporteur
   const [nvNom, setNvNom] = useState("");
@@ -184,6 +187,42 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       setArrivagesData(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+  }, []);
+
+  // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
+  // séparé "moorea-stock" — on ne modifie jamais rien là-dedans, juste une consultation pour
+  // proposer l'article correspondant quand le commercial tape un lot déjà en stock.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { initializeApp, getApps } = await import("firebase/app");
+        const { getFirestore, collection, getDocs } = await import("firebase/firestore");
+        const stockCfg = {
+          apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8",
+          authDomain: "moorea-stock.firebaseapp.com",
+          projectId: "moorea-stock",
+          storageBucket: "moorea-stock.firebasestorage.app",
+          messagingSenderId: "639598259840",
+          appId: "1:639598259840:web:ff3c048f9aac1b99f40065",
+        };
+        const existing = getApps().find((a: any) => a.name === "moorea-stock");
+        const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
+        const stockDb = getFirestore(stockApp);
+        const snap = await getDocs(collection(stockDb, "stocks"));
+        const paires: { lot: string; article: string }[] = [];
+        snap.forEach(docSnap => {
+          const d: any = docSnap.data();
+          (d.articles || []).forEach((a: any) => {
+            const codes: string[] = Array.isArray(a.lots) && a.lots.length ? a.lots : (a.lot ? String(a.lot).split(/\s+/).filter(Boolean) : []);
+            codes.forEach(code => { if (code && a.article) paires.push({ lot: code, article: a.article }); });
+          });
+        });
+        setStockLots(paires);
+      } catch {
+        // Lecture best-effort : si le module Stock n'est pas joignable, on se contente des
+        // suggestions issues des arrivages et de l'historique reconditionnement.
+      }
+    })();
   }, []);
 
   // Règle générale : il faut a priori 1 caisse IFCO vide (NLT) par colis fini à entrer.
@@ -712,6 +751,16 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                 .filter(p => { if (vuesVrac.has(p)) return false; vuesVrac.add(p); return true; })
                 .slice(0, 4);
 
+              // Source 3 — module Stock (lecture seule) : lots déjà en stock, potentiellement
+              // candidats au reconditionnement.
+              const vuesStock = new Set<string>();
+              const suggestionsStock = stockLots
+                .filter(s => correspondLot(s.lot))
+                .map(s => s.article)
+                .filter(p => p && p !== articleVrac)
+                .filter(p => { if (vuesStock.has(p)) return false; vuesStock.add(p); return true; })
+                .slice(0, 4);
+
               // Source 2 — historique des demandes de reconditionnement déjà faites pour ce lot :
               // donne le couple vrac → fini déjà utilisé.
               const vuesPaire = new Set<string>();
@@ -720,15 +769,27 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                 .filter(d => { const cle = `${d.articleVrac}→${d.articleFini}`; if (vuesPaire.has(cle)) return false; vuesPaire.add(cle); return true; })
                 .slice(0, 4);
 
-              if (suggestionsVrac.length === 0 && suggestionsPaire.length === 0) return null;
+              if (suggestionsVrac.length === 0 && suggestionsStock.length === 0 && suggestionsPaire.length === 0) return null;
               return (
                 <div style={{ marginBottom: 14 }}>
                   {suggestionsVrac.length > 0 && (
-                    <div style={{ marginBottom: suggestionsPaire.length > 0 ? 8 : 0 }}>
+                    <div style={{ marginBottom: (suggestionsStock.length > 0 || suggestionsPaire.length > 0) ? 8 : 0 }}>
                       <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Article réceptionné (arrivage) avec un lot se terminant par {suffixe} :</p>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {suggestionsVrac.map((p, i) => (
                           <button key={i} type="button" onClick={() => setArticleVrac(p)} style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {suggestionsStock.length > 0 && (
+                    <div style={{ marginBottom: suggestionsPaire.length > 0 ? 8 : 0 }}>
+                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Déjà en stock avec un lot se terminant par {suffixe} :</p>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {suggestionsStock.map((p, i) => (
+                          <button key={i} type="button" onClick={() => setArticleVrac(p)} style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.amber}`, background: COLORS.amberLight, color: "#b45309", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                             {p}
                           </button>
                         ))}
