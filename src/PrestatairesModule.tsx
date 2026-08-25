@@ -660,7 +660,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
           return k === dateStr;
         })
       );
-      days.push({ d, dateStr, isSunday, isToday, isPast, hasDone, hasPending, entries, uniqueUsers });
+      const cartonsJour = commandes.filter((c) => c.dateLivraisonPrevue === dateStr);
+      const palettesJour = palettesCommandes.filter((c) => c.dateLivraisonPrevue === dateStr);
+      days.push({ d, dateStr, isSunday, isToday, isPast, hasDone, hasPending, entries, uniqueUsers, cartonsJour, palettesJour });
     }
     return { days, monthLabel: `${MONTHS[month]} ${year}` };
   }
@@ -675,6 +677,8 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       return k === selectedDay;
     })
   ) : [];
+  const selectedCartons = selectedDay ? commandes.filter((c) => c.dateLivraisonPrevue === selectedDay) : [];
+  const selectedPalettes = selectedDay ? palettesCommandes.filter((c) => c.dateLivraisonPrevue === selectedDay) : [];
 
   // ── Gestion des clients IFCO ──
   const saveIfcoClient = async () => {
@@ -1071,6 +1075,152 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </button>
             </div>
 
+            {/* CALENDRIER UNIFIÉ — cartons, palettes IFCO et déclarations IFCO */}
+            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
+              <div style={{ background: "linear-gradient(135deg, #1a6b3a, #27ae60)", padding: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#fff" }}>📅 {ifcoMonthLabel}</h3>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))} style={{ background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 6, width: 32, height: 32, cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 700 }}>◀</button>
+                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))} style={{ background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 6, width: 32, height: 32, cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 700 }}>▶</button>
+                </div>
+              </div>
+              <div style={{ padding: "16px" }}>
+                {/* Légende */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16, padding: "12px", background: "#f8fffe", borderRadius: 10 }}>
+                  {[["#eafaf1", "#a9dfbf", "✓ IFCO déclaré"], ["#fff8e6", "#f59e0b", "⚠️ IFCO en attente"], ["#fdedec", "#f5b7b1", "✗ IFCO non déclaré"], ["#fff", "#ea580c", "🟠 Aujourd'hui"]].map(([bg, bd, label]) => (
+                    <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#666" }}>
+                      <span style={{ width: 14, height: 14, borderRadius: 4, background: bg, border: `2px solid ${bd}`, display: "inline-block", flexShrink: 0 }} />
+                      <span style={{ fontWeight: 600 }}>{label}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#666" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, background: "#eaf4fb", color: "#1a5276", borderRadius: 4, padding: "1px 6px" }}>📦</span>
+                    <span style={{ fontWeight: 600 }}>Cartons commandés</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#666" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, background: "#e6eeff", color: "#2452b8", borderRadius: 4, padding: "1px 6px" }}>🟦</span>
+                    <span style={{ fontWeight: 600 }}>Palettes IFCO commandées</span>
+                  </div>
+                </div>
+
+                {/* Jours de semaine */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 8 }}>
+                  {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: i === 6 ? "#ddd" : "#666", padding: "8px 0" }}>{d}</div>)}
+                </div>
+
+                {/* Calendrier */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
+                  {ifcoCalDays.map((day: any, i: number) => {
+                    if (!day) return <div key={i} />;
+                    const { d, dateStr, isSunday, isToday, isPast, hasDone, hasPending, uniqueUsers, cartonsJour, palettesJour } = day;
+                    const isSelected = selectedDay === dateStr;
+                    let bg = "#fafafa", border = "1.5px solid #e8e0d0", numColor = "#bbb", shadow = "none";
+                    if (isSunday) { numColor = "#e0e0e0"; border = "1.5px solid #f0f0f0"; }
+                    else if (hasDone && hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
+                    else if (hasDone) { bg = "#eafaf1"; border = "1.5px solid #a9dfbf"; numColor = "#1a6b3a"; }
+                    else if (hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
+                    else if (isPast && !isToday && !isSunday) { bg = "#fdedec"; border = "1.5px solid #f5b7b1"; numColor = "#c0392b"; }
+                    else { numColor = "#999"; }
+                    if (isToday) { border = "2.5px solid #ea580c"; shadow = "0 0 0 3px rgba(234,88,12,0.1)"; if (!hasDone && !hasPending) numColor = "#ea580c"; }
+                    if (isSelected) { border = "2.5px solid #1a6b3a"; shadow = "0 0 0 3px rgba(26,107,58,0.1)"; }
+                    return (
+                      <div key={i} onClick={() => { if (!isSunday) setSelectedDay(selectedDay === dateStr ? null : dateStr); }}
+                        style={{ height: 84, background: bg, border, borderRadius: 8, padding: "8px 6px", cursor: isSunday ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", overflow: "hidden", boxShadow: shadow, transition: "all .15s" }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: numColor, lineHeight: 1 }}>{d}</div>
+                        {hasDone && <div style={{ fontSize: 9, fontWeight: 700, textAlign: "center", color: "#1e8449", lineHeight: 1.1, marginTop: 4, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>✓ {uniqueUsers.join(',')}</div>}
+                        {hasPending && !hasDone && <div style={{ fontSize: 10, color: "#b45309", fontWeight: 700, marginTop: 4 }}>⏳</div>}
+                        {!hasDone && !hasPending && isPast && !isSunday && !isToday && <div style={{ fontSize: 10, color: "#e07070", marginTop: 4, fontWeight: 700 }}>✗</div>}
+                        {(cartonsJour.length > 0 || palettesJour.length > 0) && (
+                          <div style={{ display: "flex", gap: 3, marginTop: 3, flexWrap: "wrap", justifyContent: "center" }}>
+                            {cartonsJour.length > 0 && <span style={{ fontSize: 8, fontWeight: 700, background: "#eaf4fb", color: "#1a5276", borderRadius: 4, padding: "1px 4px" }}>📦{cartonsJour.length}</span>}
+                            {palettesJour.length > 0 && <span style={{ fontSize: 8, fontWeight: 700, background: "#e6eeff", color: "#2452b8", borderRadius: 4, padding: "1px 4px" }}>🟦{palettesJour.length}</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Panneau détail jour */}
+                {selectedDay && (
+                  <div style={{ marginTop: 16, background: "#f8fffe", border: "1.5px solid #a9dfbf", borderRadius: 12, padding: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: "#1a6b3a" }}>
+                        📅 {new Date(selectedDay + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                      </span>
+                      <button onClick={() => setSelectedDay(null)} style={{ background: "#e8f0ea", border: "none", cursor: "pointer", fontSize: 18, color: "#1a6b3a", borderRadius: 6, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                    </div>
+                    {selectedEntries.length === 0 && selectedPending.length === 0 && selectedCartons.length === 0 && selectedPalettes.length === 0 && (
+                      <div style={{ textAlign: "center", padding: "16px 0", color: "#aaa" }}>
+                        <div style={{ fontSize: 24, marginBottom: 8 }}>—</div>
+                        <p style={{ margin: 0, fontSize: 13, color: "#999" }}>Rien de prévu pour ce jour</p>
+                      </div>
+                    )}
+                    {selectedEntries.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1a6b3a", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>✓ Déclarations IFCO ({selectedEntries.length})</div>
+                        {selectedEntries.map((e: any, i: number) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#fff", borderRadius: 6, marginBottom: i < selectedEntries.length - 1 ? 6 : 0, border: "1px solid #e8f0ea" }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#2c3e50" }}>{e.user || "—"}</div>
+                              <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>{e.lignes} lignes · {e.date}</div>
+                            </div>
+                            <span style={{ background: e.type === "envoi" ? "#eaf4fb" : e.type === "traitement" ? "#f0f9ff" : "#eafaf1", color: e.type === "envoi" ? "#1a5276" : e.type === "traitement" ? "#0369a1" : "#1e8449", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                              {e.type === "envoi" ? "🌐 IFCO" : e.type === "traitement" ? "📂 Traité" : "⬇️ DL"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {selectedPending.length > 0 && (
+                      <div style={{ background: "#fffbe6", borderRadius: 8, padding: "12px", border: "1.5px solid #fde68a", marginBottom: 12 }}>
+                        <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 800, color: "#b45309", display: "flex", alignItems: "center", gap: 6 }}>⏳ IFCO en attente</p>
+                        {selectedPending.map((e: any, i: number) => {
+                          const colisCount = (e.lignes || []).filter((r: any) => { const dv = r['DATE DE LIVRAISON']; if (!dv) return false; let k = dv; if (dv.includes('.')) { const p = dv.split('.'); k = `${p[2]}-${p[1]}-${p[0]}`; } return k === selectedDay; }).reduce((s: number, r: any) => s + (parseInt(r['QUANTITE']) || 0), 0);
+                          return (
+                            <div key={i} style={{ fontSize: 12, color: "#92400e", marginBottom: i < selectedPending.length - 1 ? 6 : 0, padding: "6px 0" }}>
+                              <span style={{ fontWeight: 700 }}>• {e.nom}</span> — {colisCount} colis
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {selectedCartons.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1a5276", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>📦 Cartons ({selectedCartons.length})</div>
+                        {selectedCartons.map((c) => (
+                          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#fff", borderRadius: 6, marginBottom: 6, border: "1px solid #eaf4fb" }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#2c3e50" }}>{c.lignes.map((l) => `${l.nbPalettes} × ${l.type}`).join(" + ")}</div>
+                              <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>{c.creneau} · {c.lieuLivraison}</div>
+                            </div>
+                            <span style={{ background: "#eaf4fb", color: "#1a5276", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                              {c.statut === "commandé" ? "⏱️ Commandé" : c.statut === "reçu" ? "✓ Reçu" : "💳 Facturé"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {selectedPalettes.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#2452b8", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>🟦 Palettes IFCO ({selectedPalettes.length})</div>
+                        {selectedPalettes.map((c) => (
+                          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#fff", borderRadius: 6, marginBottom: 6, border: "1px solid #e6eeff" }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#2c3e50" }}>{c.lignes[0]?.quantite || 0} palettes ({(c.lignes[0]?.quantite || 0) * 640} caisses)</div>
+                              {c.notes && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>📝 {c.notes}</div>}
+                            </div>
+                            <span style={{ background: "#e6eeff", color: "#2452b8", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                              {c.statut === "commandé" ? "⏱️ Commandé" : c.statut === "reçu" ? "✓ Reçu" : "↩️ Retourné"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
               {/* Cartons Summary */}
               <div style={{
@@ -1175,101 +1325,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {/* CARTONS TAB */}
         {activeTab === "cartons" && (
           <div style={{ display: "grid", gap: "20px" }}>
-            {/* Calendar */}
-            <div style={{
-              background: "white",
-              borderRadius: "12px",
-              padding: "20px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-              border: `1px solid ${COLORS.gray200}`
-            }}>
-              <div style={{ display: "flex", gap: "16px", alignItems: "center", marginBottom: "16px" }}>
-                <button
-                  onClick={() => {
-                    if (selectedMonth === 0) {
-                      setSelectedMonth(11);
-                      setSelectedYear(selectedYear - 1);
-                    } else {
-                      setSelectedMonth(selectedMonth - 1);
-                    }
-                  }}
-                  style={{
-                    padding: "8px 12px",
-                    background: COLORS.primary,
-                    color: "white",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                  }}
-                >
-                  ◀ Précédent
-                </button>
-                <div style={{ fontSize: "18px", fontWeight: "700", color: COLORS.primary, minWidth: "220px", textAlign: "center" }}>
-                  {moisNoms[selectedMonth]} {selectedYear}
-                </div>
-                <button
-                  onClick={() => {
-                    if (selectedMonth === 11) {
-                      setSelectedMonth(0);
-                      setSelectedYear(selectedYear + 1);
-                    } else {
-                      setSelectedMonth(selectedMonth + 1);
-                    }
-                  }}
-                  style={{
-                    padding: "8px 12px",
-                    background: COLORS.primary,
-                    color: "white",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: "pointer",
-                    fontWeight: "600",
-                  }}
-                >
-                  Suivant ▶
-                </button>
-              </div>
-
-              {/* Calendar Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "6px" }}>
-                {["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"].map((j) => (
-                  <div key={j} style={{ textAlign: "center", fontWeight: "700", fontSize: "11px", color: COLORS.gray600, padding: "8px 0" }}>
-                    {j}
-                  </div>
-                ))}
-                {Array.from({ length: new Date(selectedYear, selectedMonth, 0).getDay() }).map((_, i) => (
-                  <div key={`empty-${i}`} style={{ padding: "6px", minHeight: "48px" }}></div>
-                ))}
-                {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, i) => {
-                  const date = new Date(selectedYear, selectedMonth, i + 1);
-                  const dateStr = date.toISOString().split("T")[0];
-                  const cmds = commandes.filter((c) => c.dateLivraisonPrevue === dateStr);
-                  return (
-                    <div
-                      key={dateStr}
-                      style={{
-                        background: cmds.length > 0 ? COLORS.primaryLight : COLORS.gray100,
-                        border: cmds.length > 0 ? `2px solid ${COLORS.primary}` : `1px solid ${COLORS.gray200}`,
-                        padding: "8px 6px",
-                        borderRadius: "8px",
-                        minHeight: "48px",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        textAlign: "center",
-                        cursor: cmds.length > 0 ? "pointer" : "default",
-                      }}
-                    >
-                      <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.primary }}>{i + 1}</div>
-                      {cmds.length > 0 && <div style={{ fontSize: "10px", color: COLORS.success, fontWeight: "700", marginTop: "2px" }}>✓ {cmds.length}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
+            {/* Le calendrier des commandes est désormais unifié sur le Dashboard */}
             {/* Commandes List */}
             <div style={{
               background: "white",
@@ -1976,105 +2032,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               <button onClick={() => setShowEntreeForm(true)} style={{ padding: "12px", borderRadius: 10, border: "2px solid #f59e0b", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>📦 Entrée IFCO</button>
             </div>
 
-            {/* CALENDRIER */}
-            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, overflow: "hidden", marginBottom: 24 }}>
-              <div style={{ background: "linear-gradient(135deg, #1a6b3a, #27ae60)", padding: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#fff" }}>📅 {ifcoMonthLabel}</h3>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))} style={{ background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 6, width: 32, height: 32, cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 700 }}>◀</button>
-                  <button onClick={() => setCalDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))} style={{ background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 6, width: 32, height: 32, cursor: "pointer", color: "#fff", fontSize: 14, fontWeight: 700 }}>▶</button>
-                </div>
-              </div>
-              <div style={{ padding: "16px" }}>
-                {/* Légende */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16, padding: "12px", background: "#f8fffe", borderRadius: 10 }}>
-                  {[["#eafaf1", "#a9dfbf", "✓ Déclaré"], ["#fff8e6", "#f59e0b", "⚠️ En attente"], ["#fdedec", "#f5b7b1", "✗ Non déclaré"], ["#fff", "#ea580c", "🟠 Aujourd'hui"]].map(([bg, bd, label]) => (
-                    <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#666" }}>
-                      <span style={{ width: 14, height: 14, borderRadius: 4, background: bg, border: `2px solid ${bd}`, display: "inline-block", flexShrink: 0 }} />
-                      <span style={{ fontWeight: 600 }}>{label}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Jours de semaine */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 8 }}>
-                  {["L", "M", "M", "J", "V", "S", "D"].map((d, i) => <div key={i} style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: i === 6 ? "#ddd" : "#666", padding: "8px 0" }}>{d}</div>)}
-                </div>
-
-                {/* Calendrier */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
-                  {ifcoCalDays.map((day: any, i: number) => {
-                    if (!day) return <div key={i} />;
-                    const { d, dateStr, isSunday, isToday, isPast, hasDone, hasPending, uniqueUsers } = day;
-                    const isSelected = selectedDay === dateStr;
-                    let bg = "#fafafa", border = "1.5px solid #e8e0d0", numColor = "#bbb", shadow = "none";
-                    if (isSunday) { numColor = "#e0e0e0"; border = "1.5px solid #f0f0f0"; }
-                    else if (hasDone && hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
-                    else if (hasDone) { bg = "#eafaf1"; border = "1.5px solid #a9dfbf"; numColor = "#1a6b3a"; }
-                    else if (hasPending) { bg = "#fff8e6"; border = "1.5px solid #f59e0b"; numColor = "#b45309"; }
-                    else if (isPast && !isToday && !isSunday) { bg = "#fdedec"; border = "1.5px solid #f5b7b1"; numColor = "#c0392b"; }
-                    else { numColor = "#999"; }
-                    if (isToday) { border = "2.5px solid #ea580c"; shadow = "0 0 0 3px rgba(234,88,12,0.1)"; if (!hasDone && !hasPending) numColor = "#ea580c"; }
-                    if (isSelected) { border = "2.5px solid #1a6b3a"; shadow = "0 0 0 3px rgba(26,107,58,0.1)"; }
-                    return (
-                      <div key={i} onClick={() => { if (!isSunday) setSelectedDay(selectedDay === dateStr ? null : dateStr); }}
-                        style={{ height: 70, background: bg, border, borderRadius: 8, padding: "8px 6px", cursor: isSunday ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", overflow: "hidden", boxShadow: shadow, transition: "all .15s" }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: numColor, lineHeight: 1 }}>{d}</div>
-                        {hasDone && <div style={{ fontSize: 9, fontWeight: 700, textAlign: "center", color: "#1e8449", lineHeight: 1.1, marginTop: 4, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>✓ {uniqueUsers.join(',')}</div>}
-                        {hasPending && !hasDone && <div style={{ fontSize: 10, color: "#b45309", fontWeight: 700, marginTop: 4 }}>⏳</div>}
-                        {!hasDone && !hasPending && isPast && !isSunday && !isToday && <div style={{ fontSize: 10, color: "#e07070", marginTop: 4, fontWeight: 700 }}>✗</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-                {/* Panneau détail jour */}
-                {selectedDay && (
-                  <div style={{ marginTop: 16, background: "#f8fffe", border: "1.5px solid #a9dfbf", borderRadius: 12, padding: "16px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: "#1a6b3a" }}>
-                        📅 {new Date(selectedDay + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                      </span>
-                      <button onClick={() => setSelectedDay(null)} style={{ background: "#e8f0ea", border: "none", cursor: "pointer", fontSize: 18, color: "#1a6b3a", borderRadius: 6, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
-                    </div>
-                    {selectedEntries.length === 0 && selectedPending.length === 0 && (
-                      <div style={{ textAlign: "center", padding: "16px 0", color: "#aaa" }}>
-                        <div style={{ fontSize: 24, marginBottom: 8 }}>—</div>
-                        <p style={{ margin: 0, fontSize: 13, color: "#999" }}>Aucune déclaration pour ce jour</p>
-                      </div>
-                    )}
-                    {selectedEntries.length > 0 && (
-                      <div style={{ marginBottom: selectedPending.length > 0 ? 12 : 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#1a6b3a", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>✓ Déclarations ({selectedEntries.length})</div>
-                        {selectedEntries.map((e: any, i: number) => (
-                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#fff", borderRadius: 6, marginBottom: i < selectedEntries.length - 1 ? 6 : 0, border: "1px solid #e8f0ea" }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "#2c3e50" }}>{e.user || "—"}</div>
-                              <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>{e.lignes} lignes · {e.date}</div>
-                            </div>
-                            <span style={{ background: e.type === "envoi" ? "#eaf4fb" : e.type === "traitement" ? "#f0f9ff" : "#eafaf1", color: e.type === "envoi" ? "#1a5276" : e.type === "traitement" ? "#0369a1" : "#1e8449", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-                              {e.type === "envoi" ? "🌐 IFCO" : e.type === "traitement" ? "📂 Traité" : "⬇️ DL"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {selectedPending.length > 0 && (
-                      <div style={{ background: "#fffbe6", borderRadius: 8, padding: "12px", border: "1.5px solid #fde68a" }}>
-                        <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 800, color: "#b45309", display: "flex", alignItems: "center", gap: 6 }}>⏳ En attente</p>
-                        {selectedPending.map((e: any, i: number) => {
-                          const colisCount = (e.lignes || []).filter((r: any) => { const dv = r['DATE DE LIVRAISON']; if (!dv) return false; let k = dv; if (dv.includes('.')) { const p = dv.split('.'); k = `${p[2]}-${p[1]}-${p[0]}`; } return k === selectedDay; }).reduce((s: number, r: any) => s + (parseInt(r['QUANTITE']) || 0), 0);
-                          return (
-                            <div key={i} style={{ fontSize: 12, color: "#92400e", marginBottom: i < selectedPending.length - 1 ? 6 : 0, padding: "6px 0" }}>
-                              <span style={{ fontWeight: 700 }}>• {e.nom}</span> — {colisCount} colis
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+            {/* Le calendrier unifié (cartons + palettes IFCO + déclarations) est désormais sur le Dashboard */}
 
             {/* HISTORIQUE — rendu identique à l'ancien onglet IFCO */}
             <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "24px" }}>
