@@ -894,11 +894,20 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     // l'envoi plutôt que de risquer une erreur "value argument contains undefined".
     Object.keys(demande).forEach(k => { if ((demande as any)[k] === undefined) delete (demande as any)[k]; });
 
-    // ── Mode édition : on met juste à jour l'enregistrement existant et on régénère le bon.
-    // Pas de nouveau mouvement de stock ici (déjà comptabilisé à la création) — si le dépôt ou
-    // les quantités d'emballage ont changé, corrige le stock manuellement dans Configuration/
-    // Prestataires si besoin.
+    // ── Mode édition : on met à jour l'enregistrement existant et on régénère le bon. Si la
+    // quantité de caisses IFCO (ou de cartons Andès) envoyée a changé par rapport à la valeur
+    // d'origine, on applique la DIFFÉRENCE sur le stock réel — sinon le stock reste désynchronisé
+    // de ce qui est écrit sur le bon (ex : on ajoute une palette IFCO après coup, en modifiant
+    // une demande déjà créée sans caisses).
     if (editDemandeId) {
+      const caissesAvant = (original?.depot === "nlt" ? original?.caissesIfcoEnvoyees : 0) || 0;
+      const cartonsAvant = (original?.depot === "andes" ? original?.cartonsBabyBlancEnvoyes : 0) || 0;
+      const deltaCaisses = caisses - caissesAvant;
+      const deltaCartons = cartons - cartonsAvant;
+      if (deltaCaisses > 0 && deltaCaisses > stockIfco.moorea) {
+        notify("error", `✗ Pas assez de caisses IFCO en stock à Moorea (${stockIfco.moorea} dispo, ${deltaCaisses} en plus demandées)`);
+        return;
+      }
       try {
         await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), demande);
         try {
@@ -907,6 +916,19 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), { pdfNom, pdfBase64 });
         } catch (errPdf: any) {
           notify("error", `⚠️ Demande modifiée, mais la régénération du bon a échoué : ${errPdf?.message || "erreur inconnue"}`);
+        }
+        if (deltaCaisses !== 0) {
+          const newMoorea = Math.max(0, stockIfco.moorea - deltaCaisses);
+          const newNlt = Math.max(0, stockIfco.nlt + deltaCaisses);
+          await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+          await push(ref(db, "ifco_stock/movements"), {
+            date: nowFr(), from: deltaCaisses > 0 ? "moorea" : "nlt", to: deltaCaisses > 0 ? "nlt" : "moorea", caisses: Math.abs(deltaCaisses),
+            raison: `Reconditionnement — correction après modification de ${demande.numero || editDemandeId}`,
+            user: userName || "Moorea", ts: now.getTime(),
+          });
+        }
+        if (deltaCartons !== 0) {
+          await update(ref(db, "stock_carton_andes"), { baby_blanc: Math.max(0, stockBabyBlancAndes - deltaCartons) });
         }
         notify("success", "✏️ Demande modifiée");
         resetForm();
