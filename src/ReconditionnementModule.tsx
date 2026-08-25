@@ -408,6 +408,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   const [cartonsBabyBlancEnvoyes, setCartonsBabyBlancEnvoyes] = useState("");
   const [transporteurId, setTransporteurId] = useState("");
   const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
+  const [editDemandeId, setEditDemandeId] = useState<string | null>(null);
   const [lectureEnCours, setLectureEnCours] = useState(false);
   // Retient la dernière valeur d'emballage suggérée automatiquement (règle générale : 1 caisse
   // IFCO par colis fini à entrer), pour ne pas écraser une correction manuelle du commercial
@@ -672,8 +673,35 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setCartonsBabyBlancEnvoyes("");
     setTransporteurId("");
     setPdfFile(null);
+    setEditDemandeId(null);
     dernierEmballageAuto.current = "";
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  // Charge une demande "en attente" dans le formulaire pour la modifier, plutôt que d'en créer
+  // une nouvelle — creerDemande() détecte editDemandeId et fait un update() au lieu d'un push().
+  function chargerPourEdition(d: Demande) {
+    setEditDemandeId(d.id);
+    setDepot(d.depot);
+    setArticleVrac(d.articleVrac || "");
+    setLot(d.lot || "");
+    setNbColisASortir(d.nbColisASortir != null ? String(d.nbColisASortir) : "");
+    setArticleFini(d.articleFini || "");
+    setNbColisAEntrer(d.nbColisAEntrer != null ? String(d.nbColisAEntrer) : "");
+    setQteConditionnement(d.qteConditionnement != null ? String(d.qteConditionnement) : "");
+    setCaissesIfcoEnvoyees(d.caissesIfcoEnvoyees != null ? String(d.caissesIfcoEnvoyees) : "");
+    setCartonsBabyBlancEnvoyes(d.cartonsBabyBlancEnvoyes != null ? String(d.cartonsBabyBlancEnvoyes) : "");
+    setTransporteurId(d.transporteurId || "");
+    setPdfFile(d.pdfGeslotBase64 ? { nom: d.pdfGeslotNom || "geslot.pdf", base64: d.pdfGeslotBase64 } : null);
+    setActiveTab("nouvelle");
+  }
+
+  // Suppression définitive — uniquement pour une demande encore "en attente" (pas encore
+  // partie, pas d'arrivage lié) : simple confirmation puis remove() de l'enregistrement.
+  async function supprimerDemande(id: string) {
+    if (!window.confirm("Supprimer définitivement cette demande de reconditionnement ?")) return;
+    await remove(ref(db, `reconditionnement_demandes/${id}`));
+    notify("success", "🗑️ Demande supprimée");
   }
 
   async function creerDemande() {
@@ -707,11 +735,15 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         )
       : null;
 
+    // En mode édition (editDemandeId défini), on garde le numéro/date/créateur d'origine —
+    // seuls les champs du formulaire sont mis à jour.
+    const original = editDemandeId ? demandes.find(d => d.id === editDemandeId) : null;
+
     const demande: Omit<Demande, "id"> = {
-      numero: genererNumeroDemande(now, demandes),
-      dateCreation: now.toISOString(),
-      dateCreationFr: nowFr(),
-      creePar: userName || "Moorea",
+      numero: original?.numero || genererNumeroDemande(now, demandes),
+      dateCreation: original?.dateCreation || now.toISOString(),
+      dateCreationFr: original?.dateCreationFr || nowFr(),
+      creePar: original?.creePar || userName || "Moorea",
       depot,
       articleVrac: articleVrac.trim(),
       lot: lotSaisi || undefined,
@@ -734,14 +766,37 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       // (nécessaire pour le QR code de suivi).
       pdfGeslotNom: pdfFile?.nom,
       pdfGeslotBase64: pdfFile?.base64,
-      statut: "en attente",
+      statut: original?.statut || "en attente",
       // @ts-ignore — champ interne pour le tri, non typé dans Demande
-      ts: now.getTime(),
+      ts: original?.ts ?? now.getTime(),
     } as any;
 
     // Firebase (push/update) refuse toute valeur "undefined" — on retire ces clés avant
     // l'envoi plutôt que de risquer une erreur "value argument contains undefined".
     Object.keys(demande).forEach(k => { if ((demande as any)[k] === undefined) delete (demande as any)[k]; });
+
+    // ── Mode édition : on met juste à jour l'enregistrement existant et on régénère le bon.
+    // Pas de nouveau mouvement de stock ici (déjà comptabilisé à la création) — si le dépôt ou
+    // les quantités d'emballage ont changé, corrige le stock manuellement dans Configuration/
+    // Prestataires si besoin.
+    if (editDemandeId) {
+      try {
+        await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), demande);
+        try {
+          const pdfBase64 = await genererBonPdf({ ...demande, id: editDemandeId } as Demande);
+          const pdfNom = `bon-reconditionnement-${editDemandeId}.pdf`;
+          await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), { pdfNom, pdfBase64 });
+        } catch (errPdf: any) {
+          notify("error", `⚠️ Demande modifiée, mais la régénération du bon a échoué : ${errPdf?.message || "erreur inconnue"}`);
+        }
+        notify("success", "✏️ Demande modifiée");
+        resetForm();
+        setActiveTab("dashboard");
+      } catch (err: any) {
+        notify("error", `❌ Erreur: ${err.message}`);
+      }
+      return;
+    }
 
     try {
       const demandeRef = await push(ref(db, "reconditionnement_demandes"), demande);
@@ -1125,7 +1180,13 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                           <button onClick={() => ouvrirModalePret(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                             ✓ Marquer prêt
                           </button>
-                          <button onClick={() => annulerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          <button onClick={() => chargerPourEdition(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            ✏️ Modifier
+                          </button>
+                          <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            🗑️ Supprimer
+                          </button>
+                          <button onClick={() => annulerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                             Annuler
                           </button>
                         </>
@@ -1173,49 +1234,52 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         {/* ── NOUVELLE DEMANDE ── */}
         {activeTab === "nouvelle" && (
           <div className="fade-up">
-            {/* Stock en un coup d'œil, toujours visible en haut — pas besoin de scroller */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#666" }}>IFCO Moorea</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
+            {editDemandeId && (
+              <div style={{ marginBottom: 10, background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary }}>✏️ Modification d'une demande existante</span>
+                <button type="button" onClick={resetForm} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "transparent", color: COLORS.gray600, fontSize: 11, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>
+                  Annuler la modification
+                </button>
               </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#666" }}>IFCO NLT</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
-              </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#666" }}>Carton Andès</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
-              </div>
-            </div>
+            )}
 
-            <div className="card" style={{ padding: "16px 20px", marginBottom: 12 }}>
-              <div className="section-title">📄 Bon Geslot</div>
-              <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ width: "auto", fontSize: 12, padding: "8px" }} />
-              {pdfFile && (
-                <>
-                  <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+            {/* Stock + Geslot sur une seule ligne compacte, toujours visible en haut — pas besoin de scroller */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginBottom: 10 }}>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "6px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: "#666" }}>IFCO Moorea</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
+              </div>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "6px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: "#666" }}>IFCO NLT</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
+              </div>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "6px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: "#666" }}>Carton Andès</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
+              </div>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "6px 10px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: "#666", whiteSpace: "nowrap" }}>📄 Geslot (optionnel) :</span>
+                <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ width: "auto", fontSize: 10.5, maxWidth: 130 }} />
+                {pdfFile && (
+                  <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
                     📄 aperçu
                   </a>
-                  <a href={pdfFile.base64} download={pdfFile.nom} style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                    ⬇️ télécharger
-                  </a>
-                </>
-              )}
-              {lectureEnCours && (
-                <span style={{ marginLeft: 10, fontSize: 12, color: "#1d4ed8", fontWeight: 700 }}>⏳ lecture en cours…</span>
-              )}
+                )}
+                {lectureEnCours && (
+                  <span style={{ fontSize: 10.5, color: "#1d4ed8", fontWeight: 700 }}>⏳…</span>
+                )}
+              </div>
             </div>
 
-            <div className="card" style={{ padding: "16px 20px", marginBottom: 12 }}>
-              <div className="section-title">📍 Dépôt & article</div>
-              <F label="Dépôt" required>
-                <select value={depot} onChange={e => setDepot(e.target.value as Depot)}>
-                  <option value="nlt">NLT</option>
-                  <option value="andes">Andès</option>
-                </select>
-              </F>
-              <div className="grid-2">
+            <div className="card" style={{ padding: "12px 16px", marginBottom: 8 }}>
+              <div className="section-title" style={{ marginBottom: 10 }}>📍 Dépôt & article</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0 14px" }}>
+                <F label="Dépôt" required>
+                  <select value={depot} onChange={e => setDepot(e.target.value as Depot)}>
+                    <option value="nlt">NLT</option>
+                    <option value="andes">Andès</option>
+                  </select>
+                </F>
                 <F label="Article vrac (à utiliser)" required><ArticleSelect value={articleVrac} onSelect={setArticleVrac} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
                 <F label="Lot"><LotSelect value={lot} onChange={setLot} lotsConnus={lotsConnus} /></F>
               </div>
@@ -1299,43 +1363,33 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               })()}
             </div>
 
-            <div className="card" style={{ padding: "16px 20px", marginBottom: 12 }}>
-              <div className="section-title">📦 Quantités</div>
-              <div className="grid-2">
+            <div className="card" style={{ padding: "12px 16px", marginBottom: 8 }}>
+              <div className="section-title" style={{ marginBottom: 10 }}>📦 Quantités & emballage</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0 14px" }}>
                 <F label="Nb colis à sortir"><input type="number" value={nbColisASortir} onChange={e => setNbColisASortir(e.target.value)} /></F>
                 <F label="Nb colis à entrer"><input type="number" value={nbColisAEntrer} onChange={e => setNbColisAEntrer(e.target.value)} /></F>
+                <F label="Qté conditionnement"><input type="number" value={qteConditionnement} onChange={e => setQteConditionnement(e.target.value)} /></F>
+                {depot === "nlt" ? (
+                  <F label="Caisses IFCO vides à envoyer"><input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si pas d'IFCO" /></F>
+                ) : (
+                  <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si stock suffisant" /></F>
+                )}
               </div>
               <F label="Article à fabriquer" required><ArticleSelect value={articleFini} onSelect={setArticleFini} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
-              <F label="Qté conditionnement"><input type="number" value={qteConditionnement} onChange={e => setQteConditionnement(e.target.value)} /></F>
-            </div>
-
-            <div style={{ marginBottom: 12, background: COLORS.amberLight, border: "2px solid #fde68a", borderRadius: 16, padding: "14px 20px" }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>📦 Emballage à envoyer</div>
-              {/* Toujours visible, même si l'emballage envoyé (IFCO ou carton) est mis à 0 —
-                  c'est le nombre de colis qu'on doit récupérer au retour, indépendamment de
-                  l'emballage utilisé (ex : la passion repart dans son carton d'origine). */}
-              <p style={{ margin: "0 0 10px", fontSize: 11, color: COLORS.gray600, fontWeight: 600 }}>
+              {/* Rappel emballage : toujours visible même si l'emballage envoyé (IFCO ou carton) est
+                  mis à 0 — la passion, par ex., repart dans son carton d'origine sans IFCO. */}
+              <p style={{ margin: "6px 0 0", fontSize: 10.5, color: COLORS.gray600, fontWeight: 600 }}>
                 📋 Colis à récupérer : <b>{nbColisAEntrer || "—"}</b>
+                {depot === "nlt" ? (
+                  <> · <span style={{ color: stockIfco.nlt > 0 ? "#78350f" : COLORS.danger }}>NLT : <b>{stockIfco.nlt}</b> / Moorea : <b>{stockIfco.moorea}</b> caisses IFCO (palette complète = 640)</span></>
+                ) : (
+                  <> · <span style={{ color: stockBabyBlancAndes > 0 ? "#78350f" : COLORS.danger }}>Andès : <b>{stockBabyBlancAndes}</b> cartons BABY BLANC</span></>
+                )}
               </p>
-              {depot === "nlt" ? (
-                <>
-                  <p style={{ margin: "0 0 8px", fontSize: 11, color: stockIfco.nlt > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
-                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO — 99% du temps une palette complète (640) part avec la demande
-                  </p>
-                  <F label="Caisses IFCO vides à envoyer"><input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si pas d'IFCO" /></F>
-                </>
-              ) : (
-                <>
-                  <p style={{ margin: "0 0 8px", fontSize: 11, color: stockBabyBlancAndes > 0 ? "#78350f" : COLORS.danger, fontWeight: 600 }}>
-                    Andès : <b>{stockBabyBlancAndes}</b> cartons BABY BLANC
-                  </p>
-                  <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si stock suffisant" /></F>
-                </>
-              )}
             </div>
 
-            <div className="card" style={{ padding: "16px 20px", marginBottom: 12 }}>
-              <div className="section-title">🚚 Transport</div>
+            <div className="card" style={{ padding: "12px 16px", marginBottom: 10 }}>
+              <div className="section-title" style={{ marginBottom: 10 }}>🚚 Transport</div>
               <F label="Transporteur" required>
                 <select value={transporteurId} onChange={e => setTransporteurId(e.target.value)}>
                   <option value="">— Choisir —</option>
@@ -1348,7 +1402,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
             </div>
 
             <button className="btn-primary" onClick={creerDemande}>
-              ✓ Envoyer la demande à l'entrepôt
+              {editDemandeId ? "✏️ Enregistrer les modifications" : "✓ Envoyer la demande à l'entrepôt"}
             </button>
           </div>
         )}
