@@ -30,6 +30,11 @@ type CartonCommande = {
   lieuLivraison: string;
   statut: "commandé" | "reçu" | "facturé" | "annulé";
   dateReception?: string;
+  // Livraison directe chez le prestataire (pas chez Moorea) : on lui envoie un email avec
+  // un lien pour confirmer lui-même la réception, plutôt que de passer par l'agréage.
+  horsSite?: boolean;
+  emailPresta?: string;
+  confirmationPresta?: { confirme: boolean; date?: string };
 };
 
 type PaletteIFCOCommande = {
@@ -156,6 +161,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   // Cochée quand la commande est livrée directement chez le prestataire (ex: Andes - Potager
   // de Mariane) et non chez Moorea : l'arrivage créé n'a alors pas à être pointé par l'agréage.
   const [livraisonHorsSite, setLivraisonHorsSite] = useState(false);
+  const [emailPresta, setEmailPresta] = useState("");
 
   // Palettes IFCO form (commande fournisseur)
   const [lignesIfco, setLignesIfco] = useState<LignePaletteIFCO[]>([{ type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
@@ -791,6 +797,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       creneau,
       lieuLivraison,
       statut: "commandé" as const,
+      ...(livraisonHorsSite ? { horsSite: true, emailPresta: emailPresta.trim() } : {}),
     };
 
     try {
@@ -860,6 +867,40 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         } catch (emailError) {
           console.error("Erreur lors de l'envoi de l'email:", emailError);
         }
+
+        // Livraison directe chez le prestataire : envoie un email avec un lien qu'il clique
+        // lui-même pour confirmer la réception (pas de passage par l'agréage).
+        if (livraisonHorsSite && emailPresta.trim()) {
+          try {
+            const lignesHtml = lignes
+              .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? "s" : ""}</li>`)
+              .join("");
+            const lienConfirmation = `${window.location.origin}/api/confirm-livraison?id=${commandeId}&type=carton`;
+            const emailHtmlPresta = `
+              <p>Bonjour,</p>
+              <p>Une commande de cartons vous a été livrée (ou est prévue) à l'adresse suivante :</p>
+              <p><strong>Lieu de livraison:</strong> ${lieuLivraison}</p>
+              <p><strong>Date de livraison prévue:</strong> ${dateLivraison}</p>
+              <ul>${lignesHtml}</ul>
+              <p>Merci de confirmer la bonne réception de cette commande en cliquant sur le lien ci-dessous :</p>
+              <p><a href="${lienConfirmation}" style="display:inline-block;padding:12px 20px;background:#27ae60;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">✓ J'ai bien reçu la commande</a></p>
+              <p>Merci !</p>
+            `;
+            const emailPrestaRes = await fetch("/api/send-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                subject: `Confirmation de réception - Commande cartons #${commandeId}`,
+                html: emailHtmlPresta,
+                to: [emailPresta.trim()],
+                sender: "agreage",
+              }),
+            });
+            if (!emailPrestaRes.ok) throw new Error(`Erreur ${emailPrestaRes.status}`);
+          } catch (emailPrestaError) {
+            console.error("Erreur lors de l'envoi de l'email de confirmation au prestataire:", emailPrestaError);
+          }
+        }
       }
 
       setLignes([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
@@ -867,8 +908,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       setCreneau("1er tour 7h-11h");
       setLieuLivraison("Moorea Commerce Fruit - Bat D3");
       setLivraisonHorsSite(false);
+      setEmailPresta("");
       setActiveTab("cartons");
-      setNotification({ type: "success", message: "✓ Commande de cartons créée, arrivage ajouté et email envoyé" });
+      setNotification({ type: "success", message: livraisonHorsSite ? "✓ Commande de cartons créée, email de confirmation envoyé au prestataire" : "✓ Commande de cartons créée, arrivage ajouté et email envoyé" });
     } catch (error) {
       setNotification({ type: "error", message: "✗ Erreur" });
     }
@@ -1388,6 +1430,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                         <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "4px" }}>
                           {cmd.lignes.map(l => `${l.nbPalettes} × ${l.type}`).join(" + ")}
                         </div>
+                        {cmd.horsSite && (
+                          <div style={{ fontSize: "11px", color: COLORS.gray600, marginTop: "4px" }}>
+                            📍 {cmd.lieuLivraison} — {cmd.confirmationPresta?.confirme
+                              ? `✓ confirmé par le prestataire le ${cmd.confirmationPresta.date}`
+                              : `📧 en attente de confirmation${cmd.emailPresta ? ` (${cmd.emailPresta})` : ""}`}
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{
@@ -1581,8 +1630,25 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               <div>
                 <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>📍 Livré directement chez le prestataire (pas chez Moorea)</div>
                 <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
-                  Coche cette case si la commande arrive directement au lieu indiqué ci-dessus (ex: Andes - Potager de Mariane) sans passer par Moorea. L'agréage n'aura pas à la pointer ; confirme la réception avec le bouton "✓ Reçu" une fois livrée.
+                  Coche cette case si la commande arrive directement au lieu indiqué ci-dessus (ex: Andes - Potager de Mariane) sans passer par Moorea. L'agréage n'aura pas à la pointer : un email sera envoyé au prestataire pour qu'il confirme lui-même la réception.
                 </div>
+                {livraisonHorsSite && (
+                  <input
+                    type="email"
+                    value={emailPresta}
+                    onChange={(e) => setEmailPresta(e.target.value)}
+                    placeholder="Email du prestataire (pour la confirmation)"
+                    style={{
+                      width: "100%",
+                      marginTop: "10px",
+                      padding: "8px 10px",
+                      border: `1px solid ${COLORS.tertiary}`,
+                      borderRadius: "6px",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                )}
               </div>
             </label>
 
