@@ -505,12 +505,43 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     };
 
     try {
-      await push(ref(db, "ifco_palettes_commandes"), newCmd);
+      const refPush = await push(ref(db, "ifco_palettes_commandes"), newCmd);
+      const commandeId = refPush.key;
+
+      if (commandeId) {
+        // Crée aussi un arrivage correspondant, pour que la commande apparaisse
+        // dans l'écran "Pointer arrivage" (comme pour les cartons).
+        try {
+          const totalCaisses = lignesIfco.reduce((sum, l) => {
+            const specs = PALETTES_IFCO[l.type as keyof typeof PALETTES_IFCO];
+            return sum + (specs ? l.quantite * specs.caisses : 0);
+          }, 0);
+          const dateLivraisonFr = new Date(dateLivraisonIfco).toLocaleDateString("fr-FR", { year: "numeric", month: "2-digit", day: "2-digit" });
+
+          await push(ref(db, "arrivages"), {
+            fournisseur: "IFCO",
+            produit: "Palettes IFCO " + lignesIfco.map((l) => l.type).join(" + "),
+            lot_interne: commandeId,
+            lot_fournisseur: "",
+            quantite: totalCaisses,
+            unite: "caisses",
+            date: dateLivraisonFr,
+            statut: "en attente",
+            timestamp: Date.now(),
+            ifco_palette_commande_id: commandeId,
+            origine: "",
+            variete: notesIfco,
+          });
+        } catch (arrivageError) {
+          console.error("Erreur lors de la création de l'arrivage palette IFCO:", arrivageError);
+        }
+      }
+
       setLignesIfco([{ type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
       setDateLivraisonIfco(new Date().toISOString().split("T")[0]);
       setNotesIfco("");
       setActiveTab("palettes");
-      setNotification({ type: "success", message: "✓ Commande de palettes IFCO créée" });
+      setNotification({ type: "success", message: "✓ Commande de palettes IFCO créée et arrivage ajouté" });
     } catch (error) {
       setNotification({ type: "error", message: "✗ Erreur" });
     }
