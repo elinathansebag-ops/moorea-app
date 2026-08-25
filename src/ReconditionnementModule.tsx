@@ -171,6 +171,13 @@ function normaliserLot(brut: string): string {
   return chiffres || brut.trim();
 }
 
+// Le retour d'une demande se fait-il en caisses IFCO ? On reprend la case cochée à la création
+// (retourEnIfco, la source la plus fiable) et on ne retombe sur la détection par le nom que pour
+// les demandes créées avant l'existence de ce champ — même règle que côté ArrivageModule.tsx.
+function retourEnIfcoDemande(d: Demande): boolean {
+  return d.depot === "nlt" && (d.retourEnIfco ?? /ifco/i.test(d.articleFini || ""));
+}
+
 function StatutBadge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<Demande["statut"], { bg: string; color: string; label: string }> = {
     "en attente": { bg: "#fffbeb", color: "#b45309", label: "🕐 En attente entrepôt" },
@@ -1411,6 +1418,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                         {d.retour.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
                         {d.retour.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} unités` : ""}
                         {` · ${d.retour.nbPalettes.grandes} grande(s) + ${d.retour.nbPalettes.demi} demi-palette(s)`}
+                        {d.retour.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisse(s) IFCO pleines reçues` : (retourEnIfcoDemande(d) ? " · ⚠️ aucune caisse IFCO pleine saisie au retour" : "")}
                         {d.retour.commentaire ? ` · "${d.retour.commentaire}"` : ""}
                       </div>
                     )}
@@ -1800,6 +1808,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                                     {DEPOT_LABEL[d.depot]}
                                     {d.retour?.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
                                     {d.retour?.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} unités` : ""}
+                                    {d.retour?.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisses IFCO pleines` : (retourEnIfcoDemande(d) ? " · ⚠️ pas de caisse IFCO saisie" : "")}
                                   </div>
                                 </div>
                               ))}
@@ -1830,6 +1839,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       <th style={{ padding: "8px 10px" }}>Article / Lot</th>
                       <th style={{ padding: "8px 10px" }}>Colis reçus (cartons)</th>
                       <th style={{ padding: "8px 10px" }}>Qté conditionnée (unités)</th>
+                      <th style={{ padding: "8px 10px" }}>Caisses IFCO pleines reçues</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1843,6 +1853,13 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                         </td>
                         <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.nbColisRecus ?? "—"}</b></td>
                         <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.qteConditionnementRecue ?? "—"}</b></td>
+                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                          {d.retour?.caissesIfcoPleinesRecues != null ? (
+                            <b>{d.retour.caissesIfcoPleinesRecues}</b>
+                          ) : retourEnIfcoDemande(d) ? (
+                            <span style={{ color: COLORS.danger, fontWeight: 700 }}>⚠️ non saisi</span>
+                          ) : "—"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
