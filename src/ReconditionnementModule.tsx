@@ -82,6 +82,19 @@ type Transporteur = {
   email?: string;
 };
 
+// Un mouvement de stock d'emballage lié au reconditionnement : soit un envoi de caisses/cartons
+// vides vers le reconditionneur (avec une demande), soit un retour de caisses IFCO pleines chez
+// Moorea (au pointage du retour).
+type Mouvement = {
+  id: string;
+  type: "envoi_reconditionneur" | "retour_moorea";
+  article?: "ifco_vide" | "carton_baby_blanc";
+  depot?: Depot;
+  quantite: number;
+  date: string;
+  ts: number;
+};
+
 const DEPOT_LABEL: Record<Depot, string> = { nlt: "NLT", andes: "Andès" };
 
 function nowFr(): string {
@@ -190,7 +203,7 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
 }
 
 export function ReconditionnementModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "nouvelle" | "configuration">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "nouvelle" | "historique" | "configuration">("dashboard");
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -251,6 +264,10 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   // Stock cartons BABY BLANC @ Andès — partagé avec le tracker du module Prestataires.
   const [stockBabyBlancAndes, setStockBabyBlancAndes] = useState(0);
 
+  // Historique des mouvements de stock d'emballage (envois vers le reconditionneur, retours
+  // chez Moorea) — alimenté automatiquement par creerDemande() et validerRetour().
+  const [mouvements, setMouvements] = useState<Mouvement[]>([]);
+
   useEffect(() => {
     const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
       const d = snap.val();
@@ -271,7 +288,11 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       const d = snap.val();
       setArrivagesData(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = onValue(ref(db, "reconditionnement_stock_mouvements"), snap => {
+      const d = snap.val();
+      setMouvements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
@@ -630,6 +651,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
           {[
             { key: "dashboard", label: "📋 Demandes" },
             { key: "nouvelle", label: "➕ Nouvelle demande" },
+            { key: "historique", label: "🕘 Historique" },
             { key: "configuration", label: "⚙️ Configuration" },
           ].map(t => (
             <button
@@ -960,6 +982,81 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
             <button className="btn-primary" onClick={creerDemande}>
               ✓ Envoyer la demande à l'entrepôt
             </button>
+          </div>
+        )}
+
+        {/* ── HISTORIQUE DES MOUVEMENTS DE STOCK (colis/caisses) ── */}
+        {activeTab === "historique" && (
+          <div className="fade-up">
+            <div style={{ marginBottom: 16, background: "linear-gradient(135deg, #eff6ff, #f0f9ff)", border: "2px solid #bfdbfe", borderRadius: 20, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🕘</div>
+              <div>
+                <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.6px" }}>Historique</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>Mouvements de stock (colis / caisses)</p>
+              </div>
+            </div>
+
+            {/* Stock actuel, rappel */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📭 IFCO Moorea — vides (NLT)</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfcoVide}</div>
+              </div>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO Moorea — pleines (NLT)</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfcoPleine}</div>
+              </div>
+              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🧺 Carton BABY BLANC (Andès)</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
+              </div>
+            </div>
+
+            {mouvements.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#aaa", padding: "40px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}` }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>🕘</div>
+                <p style={{ margin: 0, fontSize: 13 }}>Aucun mouvement enregistré pour l'instant</p>
+              </div>
+            ) : (
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                {mouvements.map((m, i) => {
+                  const estEnvoi = m.type === "envoi_reconditionneur";
+                  const libelleArticle = m.article === "ifco_vide" ? "Caisses IFCO vides"
+                    : m.article === "carton_baby_blanc" ? "Cartons BABY BLANC"
+                    : "Caisses IFCO pleines";
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 12, padding: "14px 20px",
+                        borderBottom: i < mouvements.length - 1 ? `1px solid ${COLORS.gray100}` : "none",
+                      }}
+                    >
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                        background: estEnvoi ? COLORS.amberLight : COLORS.secondaryLight,
+                      }}>
+                        {estEnvoi ? "📤" : "📥"}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>
+                          {estEnvoi ? "Envoi vers le reconditionneur" : "Retour chez Moorea"} — {libelleArticle}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
+                          {m.date}{m.depot ? ` · ${DEPOT_LABEL[m.depot]}` : ""}
+                        </div>
+                      </div>
+                      <div style={{
+                        fontSize: 14, fontWeight: 800, flexShrink: 0,
+                        color: estEnvoi ? "#b45309" : COLORS.secondary,
+                      }}>
+                        {estEnvoi ? "−" : "+"}{m.quantite}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
