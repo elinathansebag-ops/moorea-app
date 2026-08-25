@@ -21,7 +21,8 @@
     "html5-qrcode": "^2.3.8",
     "tesseract.js": "^5.1.1",
     "pdfjs-dist": "^6.2.108",
-    "nodemailer": "^6.9.7"
+    "nodemailer": "^6.9.7",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

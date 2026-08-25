@@ -3,6 +3,8 @@ import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, F, styles } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import jsPDF from "jspdf";
+import QRCode from "qrcode";
 
 // ── Module Reconditionnement ──
 // Le reconditionnement (vrac → produit fini) est fait et suivi côté stock dans Geslot.
@@ -68,8 +70,14 @@ type Demande = {
   cartonsBabyBlancEnvoyes?: number;
   transporteurId?: string;
   transporteurNom?: string;
+  // Le "bon" propre, généré par l'app (jsPDF) à partir des champs structurés de la demande, avec
+  // un QR code de suivi — c'est LUI qui est affiché/téléchargé/imprimé partout dans l'app.
   pdfNom?: string;
   pdfBase64?: string;
+  // Le scan Geslot d'origine, tel qu'uploadé par le commercial — gardé uniquement comme archive
+  // / pont de données (il a servi à pré-remplir le formulaire par OCR), jamais montré en premier.
+  pdfGeslotNom?: string;
+  pdfGeslotBase64?: string;
   statut: "en attente" | "prêt" | "parti" | "reçu" | "annulé";
   entrepotPretPar?: string;
   entrepotPretDate?: string;
@@ -136,6 +144,87 @@ function StatutBadge({ statut }: { statut: Demande["statut"] }) {
       {s.label}
     </span>
   );
+}
+
+// ─── GÉNÉRATION DU BON PROPRE (jsPDF) — remplace le scan Geslot comme document affiché/envoyé ───
+// Le scan Geslot original est illisible/pas homogène (photo/scan) : on ne le garde plus que
+// comme archive (pdfGeslotBase64), et on génère nous-mêmes un bon propre à partir des champs
+// structurés de la demande, avec un QR code de suivi numérique. Scanner ce QR avec le scanner de
+// l'app (même mécanisme que les QR palette/refus arrivages) permet de valider "prêt" puis "parti"
+// directement depuis l'entrepôt, sans repasser par l'écran Demandes.
+async function genererBonPdf(demande: Demande): Promise<string> {
+  const qrUrl = `${window.location.origin}${window.location.pathname}?recond=${demande.id}`;
+  const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 400, margin: 1, color: { dark: "#0a0a0a", light: "#ffffff" } });
+
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 16, CW = W - M * 2;
+  let y = 0;
+
+  // En-tête — même charte que les autres PDF Moorea (bandeau noir, filet or)
+  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
+  doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
+  doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+  doc.text("MOOREA", M, 14);
+  doc.setTextColor(255, 255, 255); doc.setFontSize(10);
+  doc.text("Bon de reconditionnement", M + 32, 14);
+  doc.setTextColor(150, 150, 150); doc.setFontSize(8);
+  doc.text(demande.dateCreationFr, W - M, 14, { align: "right" });
+  y = 32;
+
+  doc.setFillColor(245, 243, 238); doc.roundedRect(M, y, CW, 16, 2, 2, "F");
+  doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+  doc.text(`${demande.articleVrac}  →  ${demande.articleFini}`, M + 6, y + 10);
+  y += 22;
+
+  const section = (title: string) => {
+    doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
+    doc.setFillColor(200, 168, 75); doc.rect(M, y, 3, 8, "F");
+    doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+    doc.text(title, M + 6, y + 5.5); y += 12;
+  };
+  const col1 = M + 2, col2 = M + CW / 2 + 2;
+  const ligne = (label: string, valeur: string, col: number) => {
+    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(label + " :", col, y);
+    doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+    doc.text(valeur || "-", col, y + 5);
+  };
+
+  section("DEMANDE");
+  ligne("Dépôt", DEPOT_LABEL[demande.depot], col1);
+  ligne("Lot", demande.lot || "-", col2);
+  y += 11;
+  ligne("Créée par", demande.creePar, col1);
+  ligne("Transporteur", demande.transporteurNom || "-", col2);
+  y += 14;
+
+  section("QUANTITÉS");
+  ligne("Colis à sortir", demande.nbColisASortir != null ? String(demande.nbColisASortir) : "-", col1);
+  ligne("Colis à entrer", demande.nbColisAEntrer != null ? String(demande.nbColisAEntrer) : "-", col2);
+  y += 11;
+  ligne("Qté conditionnement", demande.qteConditionnement != null ? String(demande.qteConditionnement) : "-", col1);
+  if (demande.depot === "nlt") {
+    ligne("Caisses IFCO envoyées", demande.caissesIfcoEnvoyees != null ? String(demande.caissesIfcoEnvoyees) : "-", col2);
+  } else {
+    ligne("Cartons BABY BLANC envoyés", demande.cartonsBabyBlancEnvoyes != null ? String(demande.cartonsBabyBlancEnvoyes) : "-", col2);
+  }
+  y += 18;
+
+  // QR de suivi — scanner pour valider "prêt" puis "parti" depuis l'entrepôt
+  const qrSize = 32;
+  doc.setDrawColor(220, 220, 220); doc.roundedRect(M, y, CW, qrSize + 10, 2, 2, "S");
+  doc.addImage(qrDataUrl, "PNG", M + 6, y + 5, qrSize, qrSize);
+  doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+  doc.text("Scanner pour valider à l'entrepôt", M + qrSize + 14, y + 16);
+  doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+  doc.text("1er scan → marque \"prêt\"", M + qrSize + 14, y + 23);
+  doc.text("2e scan (une fois prêt) → marque \"parti\"", M + qrSize + 14, y + 29);
+  y += qrSize + 16;
+
+  doc.setTextColor(180, 180, 180); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+  doc.text(`Réf. demande : ${demande.id}`, M, 290);
+
+  return doc.output("datauristring");
 }
 
 // Sélecteur d'article strict : ne permet de choisir que dans le catalogue global Moorea
@@ -222,7 +311,15 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
   );
 }
 
-export function ReconditionnementModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
+export function ReconditionnementModule({ onClose, userName, scanDemandeId, onScanHandled }: {
+  onClose: () => void;
+  userName?: string;
+  // Id de demande transmis quand l'app a été ouverte via le QR code imprimé sur le bon (voir
+  // App.tsx, paramètre d'URL "?recond=<id>") — permet de valider "prêt" puis "parti" directement
+  // en scannant, sans repasser par l'écran Demandes.
+  scanDemandeId?: string | null;
+  onScanHandled?: () => void;
+}) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "nouvelle" | "historique" | "configuration">("dashboard");
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
@@ -373,6 +470,35 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 3500);
   }
+
+  // ─── VALIDATION PAR SCAN DU QR CODE DU BON ───
+  // App.tsx ouvre ce module avec scanDemandeId quand l'app a été chargée via l'URL du QR
+  // (?recond=<id>). Le 1er scan (statut "en attente") ouvre la modale "Marquer prêt" — il faut
+  // toujours que l'entrepôt saisisse le nombre de palettes, donc pas d'auto-validation muette.
+  // Le 2e scan (statut déjà "prêt") marque directement "parti", sans saisie supplémentaire.
+  const scanHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!scanDemandeId || scanHandledRef.current === scanDemandeId || !demandes.length) return;
+    const demande = demandes.find(d => d.id === scanDemandeId);
+    scanHandledRef.current = scanDemandeId;
+    if (!demande) {
+      notify("error", "❌ Demande introuvable pour ce QR");
+    } else if (demande.statut === "en attente") {
+      setActiveTab("dashboard");
+      ouvrirModalePret(demande.id);
+      notify("success", "📷 Scanné — confirme le nombre de palettes pour valider \"prêt\"");
+    } else if (demande.statut === "prêt") {
+      marquerParti(demande.id);
+    } else if (demande.statut === "parti") {
+      notify("error", "Cette demande est déjà marquée \"parti\"");
+    } else if (demande.statut === "reçu") {
+      notify("error", "Cette demande est déjà reçue");
+    } else {
+      notify("error", "Cette demande a été annulée");
+    }
+    onScanHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanDemandeId, demandes]);
 
   function handlePdfChange(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -531,8 +657,11 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       cartonsBabyBlancEnvoyes: depot === "andes" ? cartons : undefined,
       transporteurId,
       transporteurNom: transporteur?.nom,
-      pdfNom: pdfFile?.nom,
-      pdfBase64: pdfFile?.base64,
+      // Le scan Geslot d'origine n'est gardé que comme archive / pont de données — le "bon"
+      // propre (pdfNom/pdfBase64) est généré juste après, une fois qu'on a l'id de la demande
+      // (nécessaire pour le QR code de suivi).
+      pdfGeslotNom: pdfFile?.nom,
+      pdfGeslotBase64: pdfFile?.base64,
       statut: "en attente",
       // @ts-ignore — champ interne pour le tri, non typé dans Demande
       ts: now.getTime(),
@@ -543,17 +672,28 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     Object.keys(demande).forEach(k => { if ((demande as any)[k] === undefined) delete (demande as any)[k]; });
 
     try {
-      await push(ref(db, "reconditionnement_demandes"), demande);
+      const demandeRef = await push(ref(db, "reconditionnement_demandes"), demande);
+      const demandeId = demandeRef.key;
 
-      // Impression automatique du bon à l'entrepôt (relais PC) — seulement si un PDF Geslot a
-      // été joint à la demande, sinon il n'y a rien à imprimer. Best-effort : une panne
-      // d'impression ne doit jamais empêcher la demande elle-même d'être enregistrée —
-      // l'entrepôt la verra quand même dans l'onglet Demandes, avec le lien de téléchargement.
-      if (pdfFile) {
+      // Génère le bon propre (jsPDF, avec QR code de suivi) maintenant qu'on a l'id réel de la
+      // demande, puis l'attache à l'enregistrement qu'on vient de créer. Best-effort : si la
+      // génération échoue pour une raison quelconque, la demande reste quand même enregistrée
+      // (juste sans bon téléchargeable/imprimable — cas très rare, ex: jsPDF indisponible).
+      if (demandeId) {
         try {
-          await envoyerBonReconditionnementPourImpressionPC(pdfFile.nom, pdfFile.base64);
-        } catch {
-          notify("error", "⚠️ Demande envoyée, mais l'envoi à l'impression automatique a échoué");
+          const pdfBase64 = await genererBonPdf({ ...demande, id: demandeId } as Demande);
+          const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
+          await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
+
+          // Impression automatique du bon à l'entrepôt (relais PC) — sur le bon propre généré,
+          // pas sur le scan Geslot d'origine.
+          try {
+            await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
+          } catch {
+            notify("error", "⚠️ Demande envoyée, mais l'envoi à l'impression automatique a échoué");
+          }
+        } catch (errPdf: any) {
+          notify("error", `⚠️ Demande envoyée, mais la génération du bon a échoué : ${errPdf?.message || "erreur inconnue"}`);
         }
       }
 
@@ -840,13 +980,18 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                     </div>
 
                     {d.pdfBase64 && (
-                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
                         <a href={d.pdfBase64} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                          📄 Ouvrir en aperçu ({d.pdfNom || "PDF"})
+                          📄 Ouvrir le bon en aperçu
                         </a>
                         <a href={d.pdfBase64} download={d.pdfNom || "bon-reconditionnement.pdf"} style={{ fontSize: 11, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
                           ⬇️ Télécharger
                         </a>
+                        {d.pdfGeslotBase64 && (
+                          <a href={d.pdfGeslotBase64} target="_blank" rel="noreferrer" style={{ fontSize: 10.5, color: "#aaa", textDecoration: "none" }}>
+                            📎 scan Geslot d'origine (archive)
+                          </a>
+                        )}
                       </div>
                     )}
 

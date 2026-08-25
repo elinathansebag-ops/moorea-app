@@ -205,6 +205,9 @@ export default function App() {
   const [showStatt, setShowStatt] = useState(false);
   const [showPrestataires, setShowPrestataires] = useState(false);
   const [showReconditionnement, setShowReconditionnement] = useState(false);
+  // Id de demande scanné via le QR code imprimé sur le bon (voir useEffect des paramètres
+  // d'URL ci-dessous, param "recond") — transmis au module pour valider "prêt"/"parti" au scan.
+  const [qrRecondDemandeId, setQrRecondDemandeId] = useState<string | null>(null);
   const [showDashboard, setShowDashboard] = useState(false);
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
   const ADMIN_PIN = "17092005";
@@ -496,6 +499,11 @@ export default function App() {
     const action = params.get("action");
     const aid = params.get("aid");
     if (action && aid) setQrAction({ action, aid });
+    // Bon de reconditionnement scanné : "recond" contient l'id de la demande — ouvre directement
+    // le module Reconditionnement pour valider "prêt" puis "parti" (voir ReconditionnementModule,
+    // prop scanDemandeId). Réservé au personnel déjà connecté, comme les autres QR ci-dessus.
+    const recond = params.get("recond");
+    if (recond) { setQrRecondDemandeId(recond); setShowAccueil(false); setShowReconditionnement(true); }
   }, []);
   // Une fois connecté et les données chargées, ouvre directement la signature du bon de retour
   // si un rapport est déjà lié à cet arrivage, sinon ouvre l'écran Stock Refus pour en créer un.
@@ -2271,7 +2279,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showReconditionnement) {
-    return <ReconditionnementModule onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
+    return <ReconditionnementModule
+      onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
+      userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
+      scanDemandeId={qrRecondDemandeId}
+      onScanHandled={() => { setQrRecondDemandeId(null); window.history.replaceState({}, "", window.location.pathname); }}
+    />;
   }
 
   if (showAdmin) {
