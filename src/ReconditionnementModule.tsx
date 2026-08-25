@@ -398,10 +398,33 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
         return digits;
       };
 
-      const vArticleVrac = lire("Article\\s*[àa]\\s*utiliser");
+      // L'OCR capte souvent un code produit accolé au libellé (ex : Geslot affiche parfois
+      // "(PASSIO0001) – PASSION COLOMBIE (VRAC 2 KG)" alors que le catalogue Moorea ne connaît
+      // que "PASSION COLOMBIE (VRAC 2 KG)"). On essaie donc de retrouver le vrai libellé du
+      // catalogue même quand le texte lu contient du bruit autour (code, tirets, espaces mal
+      // reconnus) plutôt que d'exiger une correspondance exacte à l'OCR.
+      const resoudreArticle = (brut: string): string => {
+        if (!brut) return "";
+        const nettoye = brut.toUpperCase().replace(/\s+/g, " ").trim();
+        if (!nettoye) return brut;
+        // 1. Correspondance exacte
+        let trouve = catalogueArticles.find(a => a.libelle.toUpperCase() === nettoye);
+        if (trouve) return trouve.libelle;
+        // 2. Le libellé du catalogue est contenu dans le texte lu (code/préfixe en trop)
+        trouve = catalogueArticles.find(a => nettoye.includes(a.libelle.toUpperCase()));
+        if (trouve) return trouve.libelle;
+        // 3. Le texte lu est contenu dans le libellé du catalogue (OCR tronqué)
+        trouve = catalogueArticles.find(a => nettoye.length > 4 && a.libelle.toUpperCase().includes(nettoye));
+        if (trouve) return trouve.libelle;
+        // Rien trouvé : on laisse le texte brut — le contour rouge de ArticleSelect avertira
+        // le commercial qu'il doit choisir manuellement dans le catalogue.
+        return brut;
+      };
+
+      const vArticleVrac = resoudreArticle(lire("Article\\s*[àa]\\s*utiliser"));
       const vLot = lire("Lot");
       const vNbSortir = lireNombre("Nb\\s*colis\\s*[àa]\\s*sortir");
-      const vArticleFini = lire("Article\\s*[àa]\\s*fabriquer");
+      const vArticleFini = resoudreArticle(lire("Article\\s*[àa]\\s*fabriquer"));
       const vNbEntrer = lireNombre("Nb\\s*colis\\s*[àa]\\s*entrer");
       const vQte = lireNombre("Qte\\s*conditionnement");
 
