@@ -397,15 +397,23 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   const [pretDemi, setPretDemi] = useState("");
 
   // Formulaire nouvelle demande
-  const [depot, setDepot] = useState<Depot>("nlt");
+  // Pas de dépôt présélectionné par défaut : on force un choix explicite plutôt que de risquer
+  // qu'une demande soit créée pour "NLT" sans que personne n'ait vraiment vérifié.
+  const [depot, setDepot] = useState<Depot | "">("");
   const [articleVrac, setArticleVrac] = useState("");
   const [lot, setLot] = useState("");
   const [nbColisASortir, setNbColisASortir] = useState("");
   const [articleFini, setArticleFini] = useState("");
   const [nbColisAEntrer, setNbColisAEntrer] = useState("");
-  const [qteConditionnement, setQteConditionnement] = useState("");
+  // On saisit la quantité par colis (ex: par filet) plutôt que le total — le total
+  // (qteConditionnement, envoyé/affiché partout ailleurs) est calculé automatiquement à partir
+  // de nbColisAEntrer × qtePerColis.
+  const [qtePerColis, setQtePerColis] = useState("");
   const [caissesIfcoEnvoyees, setCaissesIfcoEnvoyees] = useState("");
   const [cartonsBabyBlancEnvoyes, setCartonsBabyBlancEnvoyes] = useState("");
+  // Cas rare : palette IFCO incomplète ou plusieurs palettes — révèle un champ quantité
+  // manuel à la place du bouton "1 palette" par défaut.
+  const [emballageIfcoManuel, setEmballageIfcoManuel] = useState(false);
   const [transporteurId, setTransporteurId] = useState("");
   const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
   const [editDemandeId, setEditDemandeId] = useState<string | null>(null);
@@ -647,7 +655,15 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       if (vNbSortir) setNbColisASortir(vNbSortir);
       if (vArticleFini) setArticleFini(vArticleFini);
       if (vNbEntrer) setNbColisAEntrer(vNbEntrer);
-      if (vQte) setQteConditionnement(vQte);
+      // Le Geslot scanné donne le total (pas la quantité par colis) — on le redivise par le
+      // nombre de colis à entrer pour retrouver la quantité par colis, désormais le champ saisi.
+      if (vQte) {
+        const nEntrerNum = parseInt(vNbEntrer) || 0;
+        if (nEntrerNum > 0) {
+          const parColis = parseFloat(vQte) / nEntrerNum;
+          setQtePerColis(String(Number.isInteger(parColis) ? parColis : Math.round(parColis * 100) / 100));
+        }
+      }
 
       if (vArticleVrac || vArticleFini) {
         notify("success", "📄 Champs pré-remplis depuis le PDF — vérifie-les avant d'envoyer");
@@ -662,15 +678,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   }
 
   function resetForm() {
-    setDepot("nlt");
+    setDepot("");
     setArticleVrac("");
     setLot("");
     setNbColisASortir("");
     setArticleFini("");
     setNbColisAEntrer("");
-    setQteConditionnement("");
+    setQtePerColis("");
     setCaissesIfcoEnvoyees("");
     setCartonsBabyBlancEnvoyes("");
+    setEmballageIfcoManuel(false);
     setTransporteurId("");
     setPdfFile(null);
     setEditDemandeId(null);
@@ -688,8 +705,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setNbColisASortir(d.nbColisASortir != null ? String(d.nbColisASortir) : "");
     setArticleFini(d.articleFini || "");
     setNbColisAEntrer(d.nbColisAEntrer != null ? String(d.nbColisAEntrer) : "");
-    setQteConditionnement(d.qteConditionnement != null ? String(d.qteConditionnement) : "");
+    // La quantité par colis n'est pas stockée telle quelle (seul le total qteConditionnement
+    // l'est) — on la retrouve par division, en best-effort, pour pré-remplir le champ.
+    if (d.qteConditionnement != null && d.nbColisAEntrer) {
+      const parColis = d.qteConditionnement / d.nbColisAEntrer;
+      setQtePerColis(String(Number.isInteger(parColis) ? parColis : Math.round(parColis * 100) / 100));
+    } else {
+      setQtePerColis("");
+    }
     setCaissesIfcoEnvoyees(d.caissesIfcoEnvoyees != null ? String(d.caissesIfcoEnvoyees) : "");
+    setEmballageIfcoManuel(d.caissesIfcoEnvoyees != null && d.caissesIfcoEnvoyees !== 640);
     setCartonsBabyBlancEnvoyes(d.cartonsBabyBlancEnvoyes != null ? String(d.cartonsBabyBlancEnvoyes) : "");
     setTransporteurId(d.transporteurId || "");
     setPdfFile(d.pdfGeslotBase64 ? { nom: d.pdfGeslotNom || "geslot.pdf", base64: d.pdfGeslotBase64 } : null);
@@ -730,6 +755,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   }
 
   async function creerDemande() {
+    if (!depot) {
+      notify("error", "✗ Choisis un dépôt");
+      return;
+    }
     if (!articleVrac.trim() || !articleFini.trim()) {
       notify("error", "✗ Renseigne au moins l'article vrac et l'article à fabriquer");
       return;
@@ -746,6 +775,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     const now = new Date();
     const caisses = depot === "nlt" ? (parseInt(caissesIfcoEnvoyees) || 0) : 0;
     const cartons = depot === "andes" ? (parseInt(cartonsBabyBlancEnvoyes) || 0) : 0;
+    // Quantité totale à produire = quantité par colis (filet) × nb colis à entrer — on ne
+    // demande plus le total directement, il est calculé pour éviter les erreurs de saisie.
+    const nEntrerNum = parseInt(nbColisAEntrer) || 0;
+    const parColisNum = parseFloat(qtePerColis) || 0;
+    const qteConditionnementTotal = (nEntrerNum > 0 && parColisNum > 0) ? Math.round(parColisNum * nEntrerNum) : undefined;
 
     // Traçabilité d'origine : on retrouve automatiquement le fournisseur et son n° de lot en
     // cherchant le lot saisi dans les arrivages connus (module Arrivage) — que ce lot vienne
@@ -777,7 +811,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       nbColisASortir: nbColisASortir ? parseInt(nbColisASortir) : undefined,
       articleFini: articleFini.trim(),
       nbColisAEntrer: nbColisAEntrer ? parseInt(nbColisAEntrer) : undefined,
-      qteConditionnement: qteConditionnement ? parseInt(qteConditionnement) : undefined,
+      qteConditionnement: qteConditionnementTotal,
       // Note : ces 2 champs sont bien inclus même quand ils valent 0 (ex : passion qui ne
       // repart pas en IFCO) — c'est une info utile, pas une absence de donnée. Firebase refuse
       // "undefined" dans un push(), donc on ne met "undefined" QUE quand la valeur n'a pas de
@@ -1284,42 +1318,53 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               </div>
             )}
 
-            {/* Stock + Geslot sur une seule ligne compacte, toujours visible en haut — pas besoin de scroller */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginBottom: 10 }}>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "6px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 9.5, fontWeight: 700, color: "#666" }}>IFCO Moorea</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
+            {/* Stock, en couleur pâle pour repérer chaque compteur d'un coup d'œil */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 8 }}>
+              <div style={{ background: COLORS.secondaryLight, border: `1.5px solid #c8e8d4`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.secondary }}>IFCO Moorea</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.secondary }}>{stockIfco.moorea}</div>
               </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "6px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 9.5, fontWeight: 700, color: "#666" }}>IFCO NLT</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
+              <div style={{ background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary }}>IFCO NLT</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{stockIfco.nlt}</div>
               </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "6px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 9.5, fontWeight: 700, color: "#666" }}>Carton Andès</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
+              <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes}</div>
               </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "6px 10px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: "#666", whiteSpace: "nowrap" }}>📄 Geslot (optionnel) :</span>
-                <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ width: "auto", fontSize: 10.5, maxWidth: 130 }} />
-                {pdfFile && (
-                  <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                    📄 aperçu
+            </div>
+
+            {/* Bon Geslot — bouton unique (pas de double-cadre), pour ne pas couper le texte */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: COLORS.gray200, color: COLORS.gray700, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                📄 Importer un bon Geslot (optionnel)
+                <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ display: "none" }} />
+              </label>
+              {pdfFile && (
+                <span style={{ fontSize: 11.5, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {pdfFile.nom}{" "}
+                  <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+                    · aperçu
                   </a>
-                )}
-                {lectureEnCours && (
-                  <span style={{ fontSize: 10.5, color: "#1d4ed8", fontWeight: 700 }}>⏳…</span>
-                )}
-              </div>
+                </span>
+              )}
+              {lectureEnCours && (
+                <span style={{ fontSize: 11.5, color: "#1d4ed8", fontWeight: 700 }}>⏳ lecture en cours…</span>
+              )}
             </div>
 
             <div className="card" style={{ padding: "12px 16px", marginBottom: 8 }}>
               <div className="section-title" style={{ marginBottom: 10 }}>📍 Dépôt & article</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0 14px" }}>
                 <F label="Dépôt" required>
-                  <select value={depot} onChange={e => setDepot(e.target.value as Depot)}>
-                    <option value="nlt">NLT</option>
-                    <option value="andes">Andès</option>
-                  </select>
+                  <div style={{ position: "relative" }}>
+                    <select value={depot} onChange={e => setDepot(e.target.value as Depot | "")} style={{ paddingRight: 30, color: depot ? undefined : "#9ca3af" }}>
+                      <option value="" disabled>— Choisir un dépôt —</option>
+                      <option value="nlt">NLT</option>
+                      <option value="andes">Andès</option>
+                    </select>
+                    <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 11, color: COLORS.gray600 }}>▾</span>
+                  </div>
                 </F>
                 <F label="Article vrac (à utiliser)" required><ArticleSelect value={articleVrac} onSelect={setArticleVrac} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
                 <F label="Lot"><LotSelect value={lot} onChange={setLot} lotsConnus={lotsConnus} /></F>
@@ -1409,33 +1454,70 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0 14px" }}>
                 <F label="Nb colis à sortir"><input type="number" value={nbColisASortir} onChange={e => setNbColisASortir(e.target.value)} /></F>
                 <F label="Nb colis à entrer"><input type="number" value={nbColisAEntrer} onChange={e => setNbColisAEntrer(e.target.value)} /></F>
-                <F label="Qté conditionnement"><input type="number" value={qteConditionnement} onChange={e => setQteConditionnement(e.target.value)} /></F>
-                {depot === "nlt" ? (
-                  <F label="Caisses IFCO vides à envoyer"><input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si pas d'IFCO" /></F>
-                ) : (
-                  <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si stock suffisant" /></F>
-                )}
+                <F label="Quantité par colis">
+                  <input type="number" value={qtePerColis} onChange={e => setQtePerColis(e.target.value)} placeholder="ex: 8 filets/colis" />
+                </F>
               </div>
+              {/* Total calculé automatiquement — jamais saisi directement, pour éviter les erreurs
+                  d'arrondi ou de multiplication faites à la main. */}
+              {qtePerColis && nbColisAEntrer ? (
+                <p style={{ margin: "4px 0 10px", fontSize: 12, color: COLORS.secondary, fontWeight: 700 }}>
+                  → {Math.round((parseFloat(qtePerColis) || 0) * (parseInt(nbColisAEntrer) || 0))} unités à produire au total
+                </p>
+              ) : (
+                <p style={{ margin: "4px 0 10px", fontSize: 11, color: "#9ca3af" }}>
+                  Renseigne "Nb colis à entrer" et "Quantité par colis" pour calculer le total automatiquement.
+                </p>
+              )}
               <F label="Article à fabriquer" required><ArticleSelect value={articleFini} onSelect={setArticleFini} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
-              {/* Rappel emballage : toujours visible même si l'emballage envoyé (IFCO ou carton) est
-                  mis à 0 — la passion, par ex., repart dans son carton d'origine sans IFCO. */}
-              <p style={{ margin: "6px 0 0", fontSize: 10.5, color: COLORS.gray600, fontWeight: 600 }}>
-                📋 Colis à récupérer : <b>{nbColisAEntrer || "—"}</b>
-                {depot === "nlt" ? (
-                  <> · <span style={{ color: stockIfco.nlt > 0 ? "#78350f" : COLORS.danger }}>NLT : <b>{stockIfco.nlt}</b> / Moorea : <b>{stockIfco.moorea}</b> caisses IFCO (palette complète = 640)</span></>
-                ) : (
-                  <> · <span style={{ color: stockBabyBlancAndes > 0 ? "#78350f" : COLORS.danger }}>Andès : <b>{stockBabyBlancAndes}</b> cartons BABY BLANC</span></>
-                )}
-              </p>
+
+              {/* Emballage à envoyer */}
+              {depot === "nlt" ? (
+                <div style={{ marginTop: 10 }}>
+                  <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 6, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Emballage à envoyer
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setCaissesIfcoEnvoyees("640"); setEmballageIfcoManuel(false); }}
+                    style={{
+                      padding: "10px 16px", borderRadius: 10, border: `1.5px solid ${(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray200}`,
+                      background: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondaryLight : "#fff",
+                      color: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray700,
+                      fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%",
+                    }}
+                  >
+                    {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? "✓ " : "📦 "}Envoyer 1 palette IFCO à NLT (640 caisses)
+                  </button>
+                  <div style={{ marginTop: 6 }}>
+                    <button type="button" onClick={() => setEmballageIfcoManuel(v => !v)} style={{ background: "none", border: "none", padding: 0, fontSize: 11, color: COLORS.gray600, textDecoration: "underline", cursor: "pointer" }}>
+                      {emballageIfcoManuel ? "▾" : "▸"} Cas rare : palette incomplète, ou 2/3 palettes — saisir une quantité
+                    </button>
+                    {emballageIfcoManuel && (
+                      <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="Nb de caisses IFCO (ex: 1280 pour 2 palettes)" style={{ marginTop: 6 }} />
+                    )}
+                  </div>
+                  <p style={{ margin: "8px 0 0", fontSize: 10.5, color: COLORS.gray600 }}>
+                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO
+                  </p>
+                </div>
+              ) : depot === "andes" ? (
+                <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si stock suffisant" /></F>
+              ) : (
+                <p style={{ margin: "10px 0 0", fontSize: 11, color: "#9ca3af" }}>Choisis un dépôt ci-dessus pour voir les options d'emballage.</p>
+              )}
             </div>
 
             <div className="card" style={{ padding: "12px 16px", marginBottom: 10 }}>
               <div className="section-title" style={{ marginBottom: 10 }}>🚚 Transport</div>
               <F label="Transporteur" required>
-                <select value={transporteurId} onChange={e => setTransporteurId(e.target.value)}>
-                  <option value="">— Choisir —</option>
-                  {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-                </select>
+                <div style={{ position: "relative" }}>
+                  <select value={transporteurId} onChange={e => setTransporteurId(e.target.value)} style={{ paddingRight: 30, color: transporteurId ? undefined : "#9ca3af" }}>
+                    <option value="">— Choisir —</option>
+                    {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                  </select>
+                  <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 11, color: COLORS.gray600 }}>▾</span>
+                </div>
               </F>
               {transporteurs.length === 0 && (
                 <p style={{ margin: "-6px 0 0", fontSize: 11, color: COLORS.danger }}>Aucun transporteur configuré — ajoute-en un dans l'onglet Configuration.</p>
