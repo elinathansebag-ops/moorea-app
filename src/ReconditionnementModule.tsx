@@ -56,12 +56,21 @@ type RetourInfo = {
 
 type Demande = {
   id: string;
+  // Numéro de reconditionnement lisible, avec la date dedans (ex: "RC260825-01" = 25/08/2026,
+  // 1ère demande du jour) — sert de référence humaine sur le bon et dans les listes, à la place
+  // de la longue clé Firebase (id).
+  numero?: string;
   dateCreation: string;
   dateCreationFr: string;
   creePar: string;
   depot: Depot;
   articleVrac: string;
   lot?: string;
+  // Traçabilité d'origine : le fournisseur réel et son n° de lot, retrouvés automatiquement en
+  // recherchant `lot` dans les arrivages connus (module Arrivage) — pas une saisie manuelle.
+  // Sert sur le bon (zone entrepôt) et sur l'étiquette palette imprimée au retour.
+  origineFournisseur?: string;
+  origineLotFournisseur?: string;
   nbColisASortir?: number;
   articleFini: string;
   nbColisAEntrer?: number;
@@ -130,6 +139,21 @@ function nowFr(): string {
   return n.toLocaleDateString("fr-FR") + " " + n.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Numéro de reconditionnement lisible, avec la date dedans : "RC" + AAMMJJ + un compteur qui
+// repart de 01 chaque jour (ex : "RC260825-01", "RC260825-02"...). Le compteur se base sur les
+// demandes déjà créées aujourd'hui (connues côté client via le listener temps réel) — largement
+// suffisant pour un volume de quelques demandes par jour, sans avoir besoin d'un compteur
+// transactionnel côté serveur.
+function genererNumeroDemande(dateCreation: Date, demandesExistantes: Demande[]): string {
+  const aa = String(dateCreation.getFullYear()).slice(-2);
+  const mm = String(dateCreation.getMonth() + 1).padStart(2, "0");
+  const jj = String(dateCreation.getDate()).padStart(2, "0");
+  const prefixeJour = `RC${aa}${mm}${jj}`;
+  const dejaAujourdhui = demandesExistantes.filter(d => d.numero?.startsWith(prefixeJour)).length;
+  const seq = String(dejaAujourdhui + 1).padStart(2, "0");
+  return `${prefixeJour}-${seq}`;
+}
+
 function StatutBadge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<Demande["statut"], { bg: string; color: string; label: string }> = {
     "en attente": { bg: "#fffbeb", color: "#b45309", label: "🕐 En attente entrepôt" },
@@ -160,15 +184,19 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   const W = 210, M = 16, CW = W - M * 2;
   let y = 0;
 
-  // En-tête — même charte que les autres PDF Moorea (bandeau noir, filet or)
+  // En-tête — même charte que les autres PDF Moorea (bandeau noir, filet or). Le numéro de
+  // reconditionnement (avec la date dedans, ex: RC260825-01) est mis en avant à côté du titre —
+  // c'est LA référence à utiliser à l'oral/écrit avec le transporteur ou le reconditionneur.
   doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
   doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
   doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
   doc.text("MOOREA", M, 14);
   doc.setTextColor(255, 255, 255); doc.setFontSize(10);
   doc.text("Bon de reconditionnement", M + 32, 14);
-  doc.setTextColor(150, 150, 150); doc.setFontSize(8);
-  doc.text(demande.dateCreationFr, W - M, 14, { align: "right" });
+  doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text(demande.numero || "-", W - M, 10.5, { align: "right" });
+  doc.setTextColor(170, 170, 170); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+  doc.text(demande.dateCreationFr, W - M, 16.5, { align: "right" });
   y = 32;
 
   doc.setFillColor(245, 243, 238); doc.roundedRect(M, y, CW, 16, 2, 2, "F");
@@ -178,30 +206,35 @@ async function genererBonPdf(demande: Demande): Promise<string> {
 
   const col1 = M + 8, col2 = M + CW / 2 + 4;
   const ligne = (label: string, valeur: string, col: number, yy: number) => {
-    doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text(label + " :", col, yy);
-    doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+    doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
     doc.text(valeur || "-", col, yy + 5);
   };
 
   // Le bon est coupé en deux zones bien distinctes, chacune pour un public différent : ce que
-  // l'ENTREPÔT MOOREA doit faire avant le départ (haut, bleu), et ce que le RECONDITIONNEUR
-  // (NLT/Andès) doit préparer et retourner (bas, or) — pour éviter toute confusion sur qui fait
-  // quoi quand plusieurs bons circulent le même jour.
+  // l'ENTREPÔT MOOREA doit faire avant le départ (haut), et ce que le RECONDITIONNEUR (NLT/Andès)
+  // doit préparer et retourner (bas) — pour éviter toute confusion sur qui fait quoi quand
+  // plusieurs bons circulent le même jour. Conçu pour une impression noir & blanc : les deux
+  // zones se distinguent par un bandeau plein NOIR (zone 1) vs un encadré simple (zone 2), pas
+  // par la couleur — ça reste lisible même sur une imprimante N&B.
 
-  // ─── ZONE 1 — ENTREPÔT MOOREA ───
-  const zone1Top = y, zone1H = 104;
-  doc.setFillColor(239, 246, 255); doc.rect(M, zone1Top, CW, zone1H, "F");
-  doc.setFillColor(29, 78, 216); doc.rect(M, zone1Top, 4, zone1H, "F");
-  doc.setTextColor(29, 78, 216); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-  doc.text("🏭 ENTREPÔT MOOREA — À FAIRE AVANT LE DÉPART", M + 10, zone1Top + 9);
+  // ─── ZONE 1 — ENTREPÔT MOOREA (bandeau plein noir) ───
+  const zone1Top = y, zone1H = 116;
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.rect(M, zone1Top, CW, zone1H, "S");
+  doc.setFillColor(0, 0, 0); doc.rect(M, zone1Top, CW, 10, "F");
+  doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text("ENTREPÔT MOOREA — À FAIRE AVANT LE DÉPART", M + 6, zone1Top + 7);
 
-  let yy = zone1Top + 20;
+  let yy = zone1Top + 18;
   ligne("Dépôt destinataire", DEPOT_LABEL[demande.depot], col1, yy);
   ligne("Lot", demande.lot || "-", col2, yy);
   yy += 12;
   ligne("Créée par", demande.creePar, col1, yy);
   ligne("Transporteur", demande.transporteurNom || "-", col2, yy);
+  yy += 12;
+  ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy);
+  ligne("N° lot fournisseur", demande.origineLotFournisseur || "-", col2, yy);
   yy += 14;
   ligne("Colis à sortir", demande.nbColisASortir != null ? `${demande.nbColisASortir} — ${demande.articleVrac}` : "-", col1, yy);
   if (demande.depot === "nlt") {
@@ -213,41 +246,45 @@ async function genererBonPdf(demande: Demande): Promise<string> {
 
   // QR de suivi — réservé à l'entrepôt Moorea (le reconditionneur n'a pas besoin de le scanner)
   const qrSize = 26;
-  doc.setFillColor(255, 255, 255); doc.roundedRect(M + 8, yy, CW - 16, qrSize + 8, 2, 2, "F");
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2); doc.rect(M + 8, yy, CW - 16, qrSize + 8, "S");
   doc.addImage(qrDataUrl, "PNG", M + 12, yy + 4, qrSize, qrSize);
-  doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+  doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
   doc.text("Scanner pour valider \"prêt\" puis \"parti\"", M + 12 + qrSize + 8, yy + 12);
-  doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2);
+  doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2);
   doc.text("(personnel Moorea uniquement — le reconditionneur n'a rien à scanner)", M + 12 + qrSize + 8, yy + 18, { maxWidth: CW - qrSize - 44 });
   y = zone1Top + zone1H;
 
   // ─── Séparateur visuel entre les deux zones ───
   y += 7;
-  doc.setDrawColor(190, 190, 190);
+  doc.setDrawColor(150, 150, 150);
   doc.setLineDashPattern([2, 2], 0);
   doc.line(M, y, W - M, y);
   doc.setLineDashPattern([], 0);
-  doc.setTextColor(150, 150, 150); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+  doc.setTextColor(120, 120, 120); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
   doc.text("✂  partie ci-dessous à conserver / remettre au reconditionneur", W / 2, y + 4, { align: "center" });
   y += 13;
 
-  // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) ───
-  const zone2Top = y, zone2H = 50;
-  doc.setFillColor(255, 251, 240); doc.rect(M, zone2Top, CW, zone2H, "F");
-  doc.setFillColor(200, 168, 75); doc.rect(M, zone2Top, 4, zone2H, "F");
-  doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-  doc.text(`📦 ${DEPOT_LABEL[demande.depot].toUpperCase()} — À PRÉPARER ET RETOURNER`, M + 10, zone2Top + 9);
+  // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) : encadré simple, sans bandeau plein, pour bien
+  // se distinguer de la zone 1 même sans couleur ───
+  const zone2Top = y, zone2H = 64;
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.6); doc.rect(M, zone2Top, CW, zone2H, "S");
+  doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text(`${DEPOT_LABEL[demande.depot].toUpperCase()} — À PRÉPARER ET RETOURNER`, M + 8, zone2Top + 10);
+  doc.setLineWidth(0.3); doc.line(M + 6, zone2Top + 13, M + CW - 6, zone2Top + 13);
 
-  let yy2 = zone2Top + 20;
+  let yy2 = zone2Top + 24;
   ligne("Colis à entrer", demande.nbColisAEntrer != null ? `${demande.nbColisAEntrer} — ${demande.articleFini}` : "-", col1, yy2);
   ligne("Qté conditionnement attendue", demande.qteConditionnement != null ? String(demande.qteConditionnement) : "-", col2, yy2);
   yy2 += 13;
-  doc.setTextColor(107, 114, 128); doc.setFont("helvetica", "normal"); doc.setFontSize(7.3);
-  doc.text("Le retour sera pointé par Moorea à réception. Merci de signaler toute anomalie au transporteur.", M + 10, yy2, { maxWidth: CW - 20 });
+  ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy2);
+  ligne("N° lot fournisseur", demande.origineLotFournisseur || "-", col2, yy2);
+  yy2 += 13;
+  doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.3);
+  doc.text("Le retour sera pointé par Moorea à réception. Merci de signaler toute anomalie au transporteur.", M + 8, yy2, { maxWidth: CW - 16 });
   y = zone2Top + zone2H + 10;
 
-  doc.setTextColor(180, 180, 180); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
-  doc.text(`Réf. demande : ${demande.id}`, M, 290);
+  doc.setTextColor(160, 160, 160); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+  doc.text(`N° ${demande.numero || demande.id}`, M, 290);
 
   return doc.output("datauristring");
 }
@@ -657,13 +694,29 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     const caisses = depot === "nlt" ? (parseInt(caissesIfcoEnvoyees) || 0) : 0;
     const cartons = depot === "andes" ? (parseInt(cartonsBabyBlancEnvoyes) || 0) : 0;
 
+    // Traçabilité d'origine : on retrouve automatiquement le fournisseur et son n° de lot en
+    // cherchant le lot saisi dans les arrivages connus (module Arrivage) — que ce lot vienne
+    // d'un arrivage direct ou d'un numéro de lot repris du stock, tant qu'il correspond à un
+    // arrivage déjà enregistré, on récupère son fournisseur. Pas de saisie manuelle du nom.
+    const lotSaisi = lot.trim();
+    const arrivageOrigine = lotSaisi
+      ? arrivagesData.find(a =>
+          String(a.lot_interne || "") === lotSaisi ||
+          String(a.lot_fournisseur || "") === lotSaisi ||
+          (Array.isArray(a.lot_fournisseur_liste) && a.lot_fournisseur_liste.map(String).includes(lotSaisi))
+        )
+      : null;
+
     const demande: Omit<Demande, "id"> = {
+      numero: genererNumeroDemande(now, demandes),
       dateCreation: now.toISOString(),
       dateCreationFr: nowFr(),
       creePar: userName || "Moorea",
       depot,
       articleVrac: articleVrac.trim(),
-      lot: lot.trim() || undefined,
+      lot: lotSaisi || undefined,
+      origineFournisseur: arrivageOrigine?.fournisseur || undefined,
+      origineLotFournisseur: arrivageOrigine?.lot_fournisseur || undefined,
       nbColisASortir: nbColisASortir ? parseInt(nbColisASortir) : undefined,
       articleFini: articleFini.trim(),
       nbColisAEntrer: nbColisAEntrer ? parseInt(nbColisAEntrer) : undefined,
@@ -788,10 +841,14 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       try {
         await push(ref(db, "arrivages"), {
           fournisseur: "Reconditionnement",
+          // Fournisseur réel d'origine (retrouvé via le lot au moment de la demande) — distinct
+          // de `fournisseur` ci-dessus qui reste "Reconditionnement" pour le regroupement dans
+          // Pointer arrivage ; sert à faire figurer le vrai nom sur l'étiquette palette imprimée.
+          fournisseur_origine: demande.origineFournisseur || null,
           produit: demande.articleFini,
           variete: demande.articleVrac,
-          lot_interne: demande.lot || demande.id,
-          lot_fournisseur: "",
+          lot_interne: demande.lot || demande.numero || demande.id,
+          lot_fournisseur: demande.origineLotFournisseur || "",
           quantite: demande.nbColisAEntrer ?? 0,
           unite: "colis",
           date: new Date().toLocaleDateString("fr-FR"),
@@ -1007,11 +1064,13 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>
+                          {d.numero && <span style={{ color: COLORS.primary, marginRight: 6 }}>{d.numero}</span>}
                           {d.articleVrac} → {d.articleFini}
                         </div>
                         <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
                           {DEPOT_LABEL[d.depot]} · {d.dateCreationFr} · par {d.creePar}
                           {d.lot ? ` · Lot ${d.lot}` : ""}
+                          {d.origineFournisseur ? ` · ${d.origineFournisseur}` : ""}
                         </div>
                       </div>
                       <StatutBadge statut={d.statut} />
@@ -1351,7 +1410,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                               {parJour[jourStr].map(d => (
                                 <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "10px 14px", marginBottom: 6 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
-                                    <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.gray700 }}>{d.articleVrac} → {d.articleFini}</span>
+                                    <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.gray700 }}>
+                                      {d.numero && <span style={{ color: COLORS.primary, marginRight: 6 }}>{d.numero}</span>}
+                                      {d.articleVrac} → {d.articleFini}
+                                    </span>
                                     <span style={{ fontSize: 11, color: d.retour?.qualite === "probleme" ? COLORS.danger : COLORS.secondary, fontWeight: 700, whiteSpace: "nowrap" }}>
                                       {d.retour?.qualite === "probleme" ? "⚠️ Problème" : "✅ Conforme"}
                                     </span>
