@@ -101,10 +101,21 @@ type Mouvement = {
 
 const DEPOT_LABEL: Record<Depot, string> = { nlt: "NLT", andes: "Andès" };
 
-// NOTE — impression automatique (relais PC, même mécanisme que les étiquettes palette dans
-// ArrivageModule.tsx via "printQueue") : volontairement pas encore branchée ici. Pour l'instant,
-// le bon reste simplement consultable en aperçu et téléchargeable (voir les liens "aperçu" sur
-// le formulaire et sur chaque demande) — le temps de valider print-relay.js côté PC entrepôt.
+// ─── FILE D'IMPRESSION À DISTANCE (relais PC) ───
+// Même mécanisme que les étiquettes palette (ArrivageModule.tsx : envoyerEtiquettePourImpressionPC)
+// — un job pushé dans Firebase (Realtime Database, chemin "printQueue"), que print-relay.js (sur
+// le PC entrepôt) écoute et imprime automatiquement, sans action côté iPad ni côté PC. Le job
+// "bon_reconditionnement" est traité à part côté relais (imprimante A4 normale, PDF Geslot
+// imprimé tel quel) — voir la fonction traiterBonReconditionnement dans print-relay.js.
+async function envoyerBonReconditionnementPourImpressionPC(pdfNom: string, pdfBase64: string) {
+  await push(ref(db, "printQueue"), {
+    type: "bon_reconditionnement",
+    pdfNom,
+    pdfBase64,
+    status: "pending",
+    createdAt: Date.now(),
+  });
+}
 
 function nowFr(): string {
   const n = new Date();
@@ -533,6 +544,18 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
 
     try {
       await push(ref(db, "reconditionnement_demandes"), demande);
+
+      // Impression automatique du bon à l'entrepôt (relais PC) — seulement si un PDF Geslot a
+      // été joint à la demande, sinon il n'y a rien à imprimer. Best-effort : une panne
+      // d'impression ne doit jamais empêcher la demande elle-même d'être enregistrée —
+      // l'entrepôt la verra quand même dans l'onglet Demandes, avec le lien de téléchargement.
+      if (pdfFile) {
+        try {
+          await envoyerBonReconditionnementPourImpressionPC(pdfFile.nom, pdfFile.base64);
+        } catch {
+          notify("error", "⚠️ Demande envoyée, mais l'envoi à l'impression automatique a échoué");
+        }
+      }
 
       // Mouvement de stock : emballage envoyé avec ce reconditionnement, selon le dépôt.
       // Caisses IFCO : on réutilise le vrai tracker partagé avec le module Prestataires
