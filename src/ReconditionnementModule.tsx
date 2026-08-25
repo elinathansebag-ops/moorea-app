@@ -140,6 +140,10 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   const [transporteurId, setTransporteurId] = useState("");
   const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
   const [lectureEnCours, setLectureEnCours] = useState(false);
+  // Retient la dernière valeur d'emballage suggérée automatiquement (règle générale : 1 caisse
+  // IFCO par colis fini à entrer), pour ne pas écraser une correction manuelle du commercial
+  // (ex : la passion repart dans son carton d'origine chez NLT, pas en IFCO → il met 0).
+  const dernierEmballageAuto = useRef<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Base articles Geslot, pour proposer une saisie assistée sur les 2 champs article.
@@ -181,6 +185,18 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     });
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
+
+  // Règle générale : il faut a priori 1 caisse IFCO vide (NLT) par colis fini à entrer.
+  // Suggestion automatique, mais le commercial reste libre de corriger (ex : la passion repart
+  // dans son carton d'origine chez NLT, pas en IFCO — il met alors 0 caisse IFCO).
+  useEffect(() => {
+    if (depot !== "nlt") return;
+    const suggestion = nbColisAEntrer || "";
+    if (caissesIfcoEnvoyees === "" || caissesIfcoEnvoyees === dernierEmballageAuto.current) {
+      setCaissesIfcoEnvoyees(suggestion);
+    }
+    dernierEmballageAuto.current = suggestion;
+  }, [nbColisAEntrer, depot]);
 
   function notify(type: "success" | "error", message: string) {
     setNotification({ type, message });
@@ -271,6 +287,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     setCartonsBabyBlancEnvoyes("");
     setTransporteurId("");
     setPdfFile(null);
+    dernierEmballageAuto.current = "";
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -761,9 +778,9 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                 <>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Caisses IFCO vides à envoyer avec ce reconditionnement</label>
                   <p style={{ margin: "0 0 8px", fontSize: 12, color: stockIfcoVide > 0 ? "#666" : COLORS.danger, fontWeight: 700 }}>
-                    Stock IFCO vides disponible chez Moorea : {stockIfcoVide} — vérifie si ça suffit pour la production du jour, sinon indique combien envoyer en plus.
+                    Stock IFCO vides disponible chez Moorea : {stockIfcoVide} — pré-rempli avec le nb de colis à entrer (1 caisse par colis fini), vérifie si le stock déjà chez NLT suffit et corrige. Mets 0 si ce produit ne repart pas en IFCO (ex : la passion repart dans son carton d'origine).
                   </p>
-                  <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si le stock chez NLT est déjà suffisant" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                  <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="0 si ce produit ne repart pas en IFCO" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
                 </>
               ) : (
                 <>
