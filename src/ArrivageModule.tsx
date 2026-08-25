@@ -152,6 +152,9 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const [retourGrandes, setRetourGrandes] = useState<string>("");
   const [retourDemi, setRetourDemi] = useState<string>("");
   const [retourCaissesIfco, setRetourCaissesIfco] = useState<string>("");
+  // Colis contenant les pièces écartées au tri (jamais 100% récupérable) — reviennent avec le
+  // lot reconditionné, à détruire plutôt qu'à remettre en stock.
+  const [retourColisADetruire, setRetourColisADetruire] = useState<string>("");
   const [retourCommentaire, setRetourCommentaire] = useState<string>("");
   const [poidsBrut, setPoidsBrut] = useState<string>(arrivage.poids_brut || "");
   const [poidsNet, setPoidsNet] = useState<string>(arrivage.poids_net || arrivage.poids_colis || "");
@@ -320,7 +323,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     const tracaPropre = tracaList.map(t => t.trim()).filter(Boolean);
     const ctrl: any = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaPropre.join(", "), lot_fournisseur_liste: tracaPropre, colisRecus: colisRecusNum };
     if (isRetourRecond) {
-      ctrl.retourRecond = { qteConditionnement: retourQte, grandes: retourGrandes, demi: retourDemi, caissesIfco: retourCaissesIfco };
+      ctrl.retourRecond = { qteConditionnement: retourQte, grandes: retourGrandes, demi: retourDemi, caissesIfco: retourCaissesIfco, colisADetruire: retourColisADetruire };
     }
     const raisonFinal = hasEcartColis
       ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})`
@@ -444,6 +447,14 @@ _Écart lié au tri/poids, pas un souci qualité._`;
                   style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
               </div>
             )}
+            {/* Colis avec les pièces écartées au tri — reviennent avec le lot, jamais 100%
+                récupérable, à détruire plutôt qu'à remettre en stock. */}
+            <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: retourColisADetruire && parseInt(retourColisADetruire) > 0 ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${retourColisADetruire && parseInt(retourColisADetruire) > 0 ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🗑️ Colis à détruire</span>
+              <input type="number" min="0" inputMode="numeric" value={retourColisADetruire} onChange={e => setRetourColisADetruire(e.target.value)}
+                placeholder="0 si rien à détruire"
+                style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
+            </div>
           </>
         )}
         {!isSimple && (
@@ -1952,13 +1963,15 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
                   await fbUpdate(fbRef(dbImport, `reconditionnement_demandes/${a.reconditionnement_demande_id}`), { statut: "parti", retour: null });
                   if (caissesPleinesAnnulees > 0) {
                     const levelsSnap = await fbGet(fbRef(dbImport, "ifco_stock/levels"));
-                    const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0 };
-                    const newMoorea = Math.max(0, (levels.moorea || 0) - caissesPleinesAnnulees);
+                    const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
+                    // Les caisses pleines créditées au retour vont dans le bucket "pleines"
+                    // (voir handleAgrement dans App.tsx) — on les retire de là, pas de "moorea".
+                    const newPleines = Math.max(0, (levels.pleines || 0) - caissesPleinesAnnulees);
                     const newNlt = (levels.nlt || 0) + caissesPleinesAnnulees;
-                    await fbUpdate(fbRef(dbImport, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+                    await fbUpdate(fbRef(dbImport, "ifco_stock/levels"), { pleines: newPleines, nlt: newNlt });
                     const { push: fbPush } = await import("firebase/database");
                     await fbPush(fbRef(dbImport, "ifco_stock/movements"), {
-                      date: new Date().toLocaleDateString("fr-FR"), from: "moorea", to: "nlt", caisses: caissesPleinesAnnulees,
+                      date: new Date().toLocaleDateString("fr-FR"), from: "pleines", to: "nlt", caisses: caissesPleinesAnnulees,
                       raison: `Reconditionnement — annulation du retour (re-pointage${a.origine ? `, ${a.origine}` : ""})`,
                       reconditionnement_demande_id: a.reconditionnement_demande_id,
                       user: "Moorea", ts: Date.now(),
@@ -2065,7 +2078,14 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
       n("en attente") ? `${n("en attente")} en attente` : "",
     ].filter(Boolean).join(" · ");
 
-    const msg = `ARRIVAGES MOOREA - ${date}\n${synthese}\n\n${lignes.join("\n")}`;
+    // Colis à détruire, revenus avec des retours de reconditionnement (pièces écartées au tri)
+    // — une ligne par lot/fournisseur, pour que ce soit visible sans avoir à ouvrir chaque carte.
+    const aDetruire = tous.filter((a: any) => (a.colis_a_detruire || 0) > 0);
+    const ligneDetruire = aDetruire.length
+      ? `\n\n🗑️ COLIS À DÉTRUIRE\n${aDetruire.map((a: any) => `• ${a.colis_a_detruire} colis · ${a.produit || "-"} · Lot ${a.lot_interne || "-"} · ${a.fournisseur_origine || a.fournisseur || "-"}`).join("\n")}`
+      : "";
+
+    const msg = `ARRIVAGES MOOREA - ${date}\n${synthese}\n\n${lignes.join("\n")}${ligneDetruire}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 

@@ -427,6 +427,8 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // les demandes "reçu" à supprimer définitivement, avec correction du stock associée.
   const [outilsTestVisibles, setOutilsTestVisibles] = useState(false);
   const [demandesASupprimerTest, setDemandesASupprimerTest] = useState<Set<string>>(new Set());
+  const [mouvementsASupprimer, setMouvementsASupprimer] = useState<Set<string>>(new Set());
+  const [outilsMouvementsVisibles, setOutilsMouvementsVisibles] = useState(false);
 
   // Modale "prêt" (validation entrepôt étape 1)
   const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
@@ -823,12 +825,14 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
 
       if (caissesEnvoyees > 0 || caissesPleinesRecues > 0) {
         const levelsSnap = await get(ref(db, "ifco_stock/levels"));
-        const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0 };
-        // Annule l'envoi (Moorea → NLT, +caissesEnvoyees côté Moorea) et le retour
-        // (NLT → Moorea, -caissesPleinesRecues côté Moorea) en une fois.
-        const newMoorea = Math.max(0, (levels.moorea || 0) + caissesEnvoyees - caissesPleinesRecues);
+        const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
+        // Annule l'envoi (Moorea → NLT, +caissesEnvoyees côté Moorea, vides) et le retour
+        // (NLT → bucket "pleines", -caissesPleinesRecues sur ce bucket, PAS sur "moorea"
+        // puisque les pleines ne rejoignent le stock vide qu'après un vidage manuel).
+        const newMoorea = Math.max(0, (levels.moorea || 0) + caissesEnvoyees);
         const newNlt = Math.max(0, (levels.nlt || 0) - caissesEnvoyees + caissesPleinesRecues);
-        await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+        const newPleines = Math.max(0, (levels.pleines || 0) - caissesPleinesRecues);
+        await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt, pleines: newPleines });
       }
       if (cartonsUtilises > 0) {
         const stockSnap = await get(ref(db, "stock_carton_andes"));
@@ -2150,6 +2154,67 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                         style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: demandesASupprimerTest.size === 0 ? COLORS.gray200 : COLORS.danger, color: demandesASupprimerTest.size === 0 ? "#999" : "#fff", fontSize: 12, fontWeight: 700, cursor: demandesASupprimerTest.size === 0 ? "not-allowed" : "pointer" }}
                       >
                         🗑️ Supprimer définitivement ({demandesASupprimerTest.size})
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Nettoyage manuel des lignes "Mouvements de stock" — pour les entrées créées
+                avant l'ajout du tag reconditionnement_demande_id (donc invisibles pour le
+                nettoyage automatique ci-dessus). Supprimer une ligne ici ne touche PAS aux
+                niveaux de stock actuels (déjà corrects) : c'est uniquement un log historique. ── */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
+              <button type="button" onClick={() => setOutilsMouvementsVisibles(v => !v)} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: COLORS.gray600, textDecoration: "underline", cursor: "pointer", fontWeight: 700 }}>
+                {outilsMouvementsVisibles ? "▾" : "▸"} 🧹 Nettoyage manuel du journal "Mouvements de stock"
+              </button>
+              {outilsMouvementsVisibles && (
+                <div style={{ marginTop: 14 }}>
+                  <p style={{ margin: "0 0 12px", fontSize: 11.5, color: COLORS.gray600 }}>
+                    Ces lignes viennent de tests faits avant la correction du suivi — elles ne sont pas liées à une demande supprimable automatiquement. Les cocher et les supprimer ici n'a <b>aucun effet sur le stock actuel</b> (déjà correct) : ça nettoie juste l'affichage de ce journal.
+                  </p>
+                  {mouvements.length === 0 ? (
+                    <p style={{ fontSize: 12, color: "#999" }}>Aucun mouvement enregistré pour l'instant.</p>
+                  ) : (
+                    <>
+                      <div style={{ display: "grid", gap: 6, marginBottom: 12, maxHeight: 320, overflowY: "auto" }}>
+                        {mouvements.map((m: any) => {
+                          const estEnvoi = m.type === "envoi_reconditionneur";
+                          const estCarton = m.article === "carton_baby_blanc";
+                          const libelleArticle = m.article === "ifco_vide" ? "Caisses IFCO vides" : estCarton ? "Cartons BABY BLANC" : "Caisses IFCO pleines";
+                          return (
+                            <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: mouvementsASupprimer.has(m.id) ? "#fef2f2" : COLORS.gray100, border: `1.5px solid ${mouvementsASupprimer.has(m.id) ? "#fca5a5" : COLORS.gray200}`, borderRadius: 8, cursor: "pointer" }}>
+                              <input
+                                type="checkbox"
+                                checked={mouvementsASupprimer.has(m.id)}
+                                onChange={() => setMouvementsASupprimer(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(m.id)) next.delete(m.id); else next.add(m.id);
+                                  return next;
+                                })}
+                                style={{ width: "auto", margin: 0, flexShrink: 0 }}
+                              />
+                              <span style={{ fontSize: 12, color: COLORS.gray700 }}>
+                                {estEnvoi ? "📤 Envoi" : "📥 Retour"} — {libelleArticle} · {estEnvoi ? "−" : "+"}{m.quantite} · {m.depot ? `${DEPOT_LABEL[m.depot]} · ` : ""}{m.date}
+                                {!m.reconditionnement_demande_id && <span style={{ color: "#d97706", fontWeight: 700 }}> (non lié à une demande)</span>}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={mouvementsASupprimer.size === 0}
+                        onClick={async () => {
+                          if (!window.confirm(`Supprimer définitivement ${mouvementsASupprimer.size} ligne(s) du journal ? Le stock actuel n'est pas modifié. Cette action est irréversible.`)) return;
+                          await Promise.all(Array.from(mouvementsASupprimer).map(id => remove(ref(db, `reconditionnement_stock_mouvements/${id}`))));
+                          setMouvementsASupprimer(new Set());
+                          notify("success", "🧹 Journal nettoyé — le stock actuel n'a pas été modifié");
+                        }}
+                        style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: mouvementsASupprimer.size === 0 ? COLORS.gray200 : COLORS.danger, color: mouvementsASupprimer.size === 0 ? "#999" : "#fff", fontSize: 12, fontWeight: 700, cursor: mouvementsASupprimer.size === 0 ? "not-allowed" : "pointer" }}
+                      >
+                        🗑️ Supprimer du journal ({mouvementsASupprimer.size})
                       </button>
                     </>
                   )}

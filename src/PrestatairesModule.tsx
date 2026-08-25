@@ -196,7 +196,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [ifcoStatusType, setIfcoStatusType] = useState<"info" | "success" | "error" | "">("");
 
   // Stock IFCO
-  const [stockLevels, setStockLevels] = useState<{ moorea: number; transit: number; nlt: number }>({ moorea: 0, transit: 0, nlt: 0 });
+  // "pleines" = caisses IFCO pleines reçues au retour d'un reconditionnement, en attente
+  // d'être vidées manuellement (bouton "Vider") pour rejoindre le stock de caisses vides
+  // Moorea. Bucket séparé du stock "moorea" (vides) — voir viderCaissesPleines().
+  const [stockLevels, setStockLevels] = useState<{ moorea: number; transit: number; nlt: number; pleines: number }>({ moorea: 0, transit: 0, nlt: 0, pleines: 0 });
   const [stockMovements, setStockMovements] = useState<any[]>([]);
   // Stock carton "BABY BLANC" livré chez Andes (suivi manuel, distinct du stock IFCO)
   const [stockCartonAndes, setStockCartonAndes] = useState(0);
@@ -287,8 +290,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       }
     });
     const u4 = onValue(ref(db, "ifco_stock/levels"), snap => {
-      if (snap.val()) setStockLevels(snap.val());
-      else setStockLevels({ moorea: 0, transit: 0, nlt: 0 });
+      const v = snap.val();
+      if (v) setStockLevels({ moorea: v.moorea || 0, transit: v.transit || 0, nlt: v.nlt || 0, pleines: v.pleines || 0 });
+      else setStockLevels({ moorea: 0, transit: 0, nlt: 0, pleines: 0 });
     });
     const u5 = onValue(ref(db, "ifco_stock/movements"), snap => {
       const d = snap.val();
@@ -546,6 +550,34 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     if (caisseLoose === 0) return `${caisses} caisses (${palettes} palette${palettes > 1 ? 's' : ''})`;
     return `${caisses} caisses (${palettes} palette${palettes > 1 ? 's' : ''} + ${caisseLoose} caisses)`;
   };
+
+  // Vide manuellement tout ou partie des caisses IFCO "pleines" reçues au retour d'un
+  // reconditionnement : elles rejoignent le stock de caisses vides Moorea (une fois vidées,
+  // elles sont réutilisables comme n'importe quelle caisse vide). Ne touche à rien d'autre.
+  async function viderCaissesPleines() {
+    const dispo = stockLevels.pleines || 0;
+    if (dispo <= 0) { setNotification({ type: "error", message: "Aucune caisse pleine à vider" }); return; }
+    const saisie = window.prompt(`Combien de caisses pleines vider vers le stock vide Moorea ? (${dispo} disponible(s))`, String(dispo));
+    if (saisie == null) return;
+    const qte = parseInt(saisie);
+    if (isNaN(qte) || qte <= 0) { setNotification({ type: "error", message: "Quantité invalide" }); return; }
+    if (qte > dispo) { setNotification({ type: "error", message: `Seulement ${dispo} caisse(s) pleine(s) disponible(s)` }); return; }
+    try {
+      const newPleines = dispo - qte;
+      const newMoorea = (stockLevels.moorea || 0) + qte;
+      await update(ref(db, "ifco_stock/levels"), { pleines: newPleines, moorea: newMoorea });
+      const now = new Date();
+      await push(ref(db, "ifco_stock/movements"), {
+        date: now.toLocaleDateString("fr-FR") + " " + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+        from: "pleines", to: "moorea", caisses: qte,
+        raison: "Vidage manuel des caisses pleines",
+        user: userName, ts: now.getTime(),
+      });
+      setNotification({ type: "success", message: `✓ ${qte} caisse(s) vidée(s) — stock vide Moorea mis à jour` });
+    } catch (err: any) {
+      setNotification({ type: "error", message: `Erreur : ${err.message}` });
+    }
+  }
 
   async function enregistrerMouvementStock() {
     const qte = parseInt(qteCaisses);
@@ -1130,6 +1162,16 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 IFCO — NLT</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6" }}>{stockLevels.nlt}</div>
                 <div style={{ fontSize: 10, color: "#aaa" }}>caisses</div>
+              </div>
+              <div style={{ background: stockLevels.pleines > 0 ? "#fefce8" : "#fff", border: `1.5px solid ${stockLevels.pleines > 0 ? "#fde68a" : "#e8e0d0"}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🟢 IFCO pleines (à vider)</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#ca8a04" }}>{stockLevels.pleines}</div>
+                <div style={{ fontSize: 10, color: "#aaa", marginBottom: stockLevels.pleines > 0 ? 6 : 0 }}>caisses</div>
+                {stockLevels.pleines > 0 && (
+                  <button onClick={viderCaissesPleines} style={{ padding: "4px 10px", borderRadius: 6, border: "1.5px solid #ca8a04", background: "#fff", color: "#ca8a04", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    Vider →
+                  </button>
+                )}
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Baby Blanc — Andes</div>
@@ -2089,7 +2131,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {activeTab === "ifco-histo" && (
           <div>
             {/* STOCKS EN HAUT */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🏭 Moorea</div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: "#27ae60" }}>{stockLevels.moorea}</div>
@@ -2099,6 +2141,15 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 NLT</div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: "#3b82f6" }}>{stockLevels.nlt}</div>
                 <div style={{ fontSize: 9, color: "#ccc" }}>caisses</div>
+              </div>
+              <div style={{ background: stockLevels.pleines > 0 ? "#fefce8" : "#fff", border: `1.5px solid ${stockLevels.pleines > 0 ? "#fde68a" : "#e8e0d0"}`, borderRadius: 12, padding: "14px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🟢 Pleines (à vider)</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#ca8a04" }}>{stockLevels.pleines}</div>
+                {stockLevels.pleines > 0 ? (
+                  <button onClick={viderCaissesPleines} style={{ marginTop: 4, padding: "3px 8px", borderRadius: 6, border: "1.5px solid #ca8a04", background: "#fff", color: "#ca8a04", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
+                    Vider →
+                  </button>
+                ) : <div style={{ fontSize: 9, color: "#ccc" }}>caisses</div>}
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 En attente</div>

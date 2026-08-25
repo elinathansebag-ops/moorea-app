@@ -572,7 +572,13 @@ export default function App() {
     const lotFournisseurListeFinal = ctrl.lot_fournisseur_liste || arrivage.lot_fournisseur_liste || [];
     const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut, poids_net: ctrl.poids_net, observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
-    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, ...(litige ? { litige } : {}), validatedAt: Date.now() });
+    // Retour de reconditionnement : les colis triés/écartés reviennent aussi avec le lot (tout
+    // n'est pas récupérable au tri) — on garde ce nombre à la racine de l'arrivage (pas seulement
+    // sur la demande) pour que le récap WhatsApp du jour puisse le lister par lot/fournisseur.
+    const colisADetruireFinal = ctrl.retourRecond?.colisADetruire != null && String(ctrl.retourRecond.colisADetruire).trim() !== ""
+      ? parseInt(ctrl.retourRecond.colisADetruire) || 0
+      : undefined;
+    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, ...(litige ? { litige } : {}), ...(colisADetruireFinal != null ? { colis_a_detruire: colisADetruireFinal } : {}), validatedAt: Date.now() });
 
     // Si cet arrivage provient d'une commande de cartons, mettre à jour le statut de la commande
     if (arrivage.carton_commande_id && decision === "conforme") {
@@ -604,6 +610,7 @@ export default function App() {
           qteConditionnementRecue: rr.qteConditionnement != null && String(rr.qteConditionnement).trim() !== "" ? parseInt(rr.qteConditionnement) : undefined,
           nbPalettes: { grandes: parseInt(rr.grandes) || 0, demi: parseInt(rr.demi) || 0 },
           caissesIfcoPleinesRecues: rr.caissesIfco != null && String(rr.caissesIfco).trim() !== "" ? caissesPleines : undefined,
+          colisADetruire: colisADetruireFinal,
         };
         Object.keys(retour).forEach(k => { if (retour[k] === undefined) delete retour[k]; });
         await update(ref(db, `reconditionnement_demandes/${arrivage.reconditionnement_demande_id}`), { statut: "reçu", retour });
@@ -611,12 +618,16 @@ export default function App() {
         if (caissesPleines > 0) {
           const { get } = await import("firebase/database");
           const levelsSnap = await get(ref(db, "ifco_stock/levels"));
-          const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0 };
+          const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
           const newNlt = Math.max(0, (levels.nlt || 0) - caissesPleines);
-          const newMoorea = (levels.moorea || 0) + caissesPleines;
-          await update(ref(db, "ifco_stock/levels"), { nlt: newNlt, moorea: newMoorea });
+          // Les caisses pleines qui reviennent ne rejoignent PAS directement le stock de
+          // caisses vides Moorea : elles vont dans le bucket "pleines", en attente d'être
+          // vidées manuellement (bouton "Vider" dans le module Prestataires) — c'est ce
+          // bucket qui répond à "où est le stock de caisses IFCO pleines".
+          const newPleines = (levels.pleines || 0) + caissesPleines;
+          await update(ref(db, "ifco_stock/levels"), { nlt: newNlt, pleines: newPleines });
           await push(ref(db, "ifco_stock/movements"), {
-            date: now2.toLocaleDateString("fr-FR"), from: "nlt", to: "moorea", caisses: caissesPleines,
+            date: now2.toLocaleDateString("fr-FR"), from: "nlt", to: "pleines", caisses: caissesPleines,
             raison: `Reconditionnement — retour${arrivage.origine ? ` (${arrivage.origine})` : ""}`,
             reconditionnement_demande_id: arrivage.reconditionnement_demande_id,
             user: user?.displayName || "Moorea", ts: Date.now(),
