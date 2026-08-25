@@ -267,7 +267,7 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   if (demande.depot === "nlt") {
     ligne("Caisses IFCO envoyées", demande.caissesIfcoEnvoyees != null ? String(demande.caissesIfcoEnvoyees) : "-", col2, yy);
   } else {
-    ligne("Cartons BABY BLANC envoyés", demande.cartonsBabyBlancEnvoyes != null ? String(demande.cartonsBabyBlancEnvoyes) : "-", col2, yy);
+    ligne("Cartons BABY BLANC utilisés", demande.cartonsBabyBlancEnvoyes != null ? String(demande.cartonsBabyBlancEnvoyes) : "-", col2, yy);
   }
   yy += 16;
 
@@ -972,10 +972,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         }
       }
 
-      // Mouvement de stock : emballage envoyé avec ce reconditionnement, selon le dépôt.
-      // Caisses IFCO : on réutilise le vrai tracker partagé avec le module Prestataires
-      // (ifco_stock/levels + ifco_stock/movements) — c'est un transfert Moorea → NLT, pas un
-      // compteur séparé propre au reconditionnement.
+      // Mouvement de stock d'emballage lié à ce reconditionnement, selon le dépôt — mais les
+      // deux dépôts ne fonctionnent PAS pareil : l'IFCO est réellement envoyé par palette depuis
+      // Moorea (transfert Moorea → NLT, via le tracker partagé avec le module Prestataires :
+      // ifco_stock/levels + ifco_stock/movements), alors que les cartons BABY BLANC sont déjà en
+      // stock chez Andès — cette demande ne fait que CONSOMMER une partie de ce stock existant,
+      // rien n'est expédié depuis Moorea (voir le bloc "cartons" plus bas).
       if (caisses > 0) {
         const newMoorea = Math.max(0, stockIfco.moorea - caisses);
         const newNlt = stockIfco.nlt + caisses;
@@ -990,6 +992,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         });
       }
       if (cartons > 0) {
+        // Consommation du stock de cartons déjà chez Andès (pas un envoi depuis Moorea) — voir
+        // le commentaire ci-dessus. Le type "envoi_reconditionneur" est gardé tel quel pour le
+        // mouvement stocké (c'est juste un discriminant technique de sens de mouvement), mais son
+        // libellé affiché dans l'historique est bien "Utilisation chez Andès", pas "Envoi".
         await update(ref(db, "stock_carton_andes"), { baby_blanc: Math.max(0, stockBabyBlancAndes - cartons) });
         await push(ref(db, "reconditionnement_stock_mouvements"), {
           type: "envoi_reconditionneur", article: "carton_baby_blanc", depot, quantite: cartons, date: nowFr(), ts: now.getTime(),
@@ -1385,7 +1391,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       {d.nbColisAEntrer != null && <div>Colis à entrer : <b>{d.nbColisAEntrer}</b> — {d.articleFini}</div>}
                       {d.qteConditionnement != null && <div>Qté conditionnement : <b>{d.qteConditionnement}</b></div>}
                       {d.caissesIfcoEnvoyees != null && <div>Caisses IFCO envoyées : <b>{d.caissesIfcoEnvoyees}</b></div>}
-                      {d.cartonsBabyBlancEnvoyes != null && <div>Cartons BABY BLANC envoyés : <b>{d.cartonsBabyBlancEnvoyes}</b></div>}
+                      {d.cartonsBabyBlancEnvoyes != null && <div>Cartons BABY BLANC utilisés : <b>{d.cartonsBabyBlancEnvoyes}</b></div>}
                       {d.transporteurNom && <div>Transporteur : <b>{d.transporteurNom}</b></div>}
                     </div>
 
@@ -1726,10 +1732,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 </p>
               )}
 
-              {/* Emballage à envoyer — pour NLT, réglé via le bouton "palette IFCO" en haut de
-                  page ; ici, seulement le cas Andès (cartons) qui n'a pas ce raccourci. */}
+              {/* Contrairement à l'IFCO (envoyé physiquement par palette depuis Moorea), les
+                  cartons BABY BLANC sont déjà en stock chez Andès — on ne les envoie pas avec le
+                  produit, cette demande consomme juste une partie de ce stock existant. */}
               {depot === "andes" && (
-                <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si stock suffisant" /></F>
+                <F label="Cartons BABY BLANC utilisés (déjà en stock chez Andès)"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="Nb de cartons utilisés pour cette production" /></F>
               )}
             </div>
 
@@ -1951,9 +1958,15 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               <div className="card" style={{ padding: 0, overflow: "hidden" }}>
                 {mouvements.map((m, i) => {
                   const estEnvoi = m.type === "envoi_reconditionneur";
+                  // Les cartons BABY BLANC ne sont jamais physiquement envoyés depuis Moorea —
+                  // ils sont déjà en stock chez Andès ; cette ligne ne fait que consommer une
+                  // partie de ce stock existant, contrairement à l'IFCO qui part réellement par
+                  // palette. Le libellé doit donc être différent pour ne pas induire en erreur.
+                  const estCarton = m.article === "carton_baby_blanc";
                   const libelleArticle = m.article === "ifco_vide" ? "Caisses IFCO vides"
-                    : m.article === "carton_baby_blanc" ? "Cartons BABY BLANC"
+                    : estCarton ? "Cartons BABY BLANC"
                     : "Caisses IFCO pleines";
+                  const libelleAction = estCarton ? "Utilisation chez Andès (déjà en stock là-bas)" : (estEnvoi ? "Envoi vers le reconditionneur" : "Retour chez Moorea");
                   return (
                     <div
                       key={m.id}
@@ -1964,13 +1977,13 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     >
                       <div style={{
                         width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-                        background: estEnvoi ? COLORS.amberLight : COLORS.secondaryLight,
+                        background: estCarton ? COLORS.amberLight : (estEnvoi ? COLORS.amberLight : COLORS.secondaryLight),
                       }}>
-                        {estEnvoi ? "📤" : "📥"}
+                        {estCarton ? "🧺" : (estEnvoi ? "📤" : "📥")}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>
-                          {estEnvoi ? "Envoi vers le reconditionneur" : "Retour chez Moorea"} — {libelleArticle}
+                          {libelleAction} — {libelleArticle}
                         </div>
                         <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
                           {m.date}{m.depot ? ` · ${DEPOT_LABEL[m.depot]}` : ""}

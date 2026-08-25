@@ -305,7 +305,13 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     // ne suffit pas toujours) — ce qui déclenchait parfois une double impression d'étiquette.
     if (saving) return;
     setSaving(true);
-    const hasLitige = litige || hasEcartColis;
+    // Pour un retour de reconditionnement, un écart de colis n'est PAS un litige : le tri fait
+    // que le poids ne tombe jamais exactement sur un compte rond (ex: pas moyen de faire des
+    // colis de 4kg00 pile), donc le nombre de colis produits diffère presque toujours un peu de
+    // ce qui était demandé — c'est normal, pas un problème qualité. Seul le choix explicite
+    // "⚠️ Problème" (litige) compte pour un retour ; pour un arrivage normal (fournisseur), un
+    // écart de colis reste un litige comme avant.
+    const hasLitige = isRetourRecond ? litige : (litige || hasEcartColis);
     const obs = [
       colisRecus !== "" ? `Colis reçus : ${colisRecusNum}/${colisAttendu}` : "",
       poidsBrut ? `Poids brut : ${poidsBrut} kg` : "",
@@ -324,7 +330,23 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
   };
 
-  const statusColor = (litige || hasEcartColis) ? "#dc2626" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
+  // Message WhatsApp prévenant le commercial d'un écart de quantité au retour d'un
+  // reconditionnement — pas un litige, juste une info utile (le tri/le poids explique l'écart).
+  // Pas de numéro précis (comme le partage WhatsApp existant ailleurs dans l'app) : on ouvre le
+  // sélecteur de contact WhatsApp avec le message déjà rempli.
+  const alerterEcartWhatsApp = () => {
+    const msg = `📦 Écart quantité — retour reconditionnement
+${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""}
+${arrivage.origine ? `${arrivage.origine}` : ""}
+
+Demandé : ${colisAttendu} colis
+Reçu : ${colisRecusNum} colis (écart ${ecartColis > 0 ? "+" : ""}${ecartColis})
+
+_Écart lié au tri/poids, pas un souci qualité._`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  const statusColor = litige || (hasEcartColis && !isRetourRecond) ? "#dc2626" : (hasEcartColis && isRetourRecond) ? "#d97706" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
 
   return (
     <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : (litige || hasEcartColis) ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
@@ -372,7 +394,9 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
 
       {/* Colis reçus + DLC + poids brut/net, tout sur une ligne */}
       <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 8, background: hasEcartColis ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
+        {/* Pour un retour de reconditionnement, un écart de colis n'est pas alarmant (tri/poids)
+            — couleur ambre informative plutôt que rouge "problème" réservée aux vrais arrivages. */}
+        <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 8, background: hasEcartColis ? (isRetourRecond ? "#fffbeb" : "#fef2f2") : "#f9fafb", border: `1.5px solid ${hasEcartColis ? (isRetourRecond ? "#fde3a8" : "#fca5a5") : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Colis</span>
           <button onClick={() => setColisRecus("")}
             style={{ padding: "3px 9px", borderRadius: 7, border: `1.5px solid #27ae60`, background: colisRecus === "" ? "#27ae6018" : "#fff", color: "#27ae60", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
@@ -382,12 +406,19 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
             value={colisRecus}
             placeholder={String(colisAttendu)}
             onChange={e => setColisRecus(e.target.value)}
-            style={{ width: 56, padding: "4px 6px", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: hasEcartColis ? "#dc2626" : "#1a2e1a" }}
+            style={{ width: 56, padding: "4px 6px", border: `1.5px solid ${hasEcartColis ? (isRetourRecond ? "#fde3a8" : "#fca5a5") : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: hasEcartColis ? (isRetourRecond ? "#b45309" : "#dc2626") : "#1a2e1a" }}
           />
           {hasEcartColis && (
-            <span style={{ fontSize: 11, fontWeight: 700, color: ecartColis < 0 ? "#dc2626" : "#d97706", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: isRetourRecond ? "#b45309" : (ecartColis < 0 ? "#dc2626" : "#d97706"), whiteSpace: "nowrap" }}>
               {ecartColis > 0 ? `+${ecartColis}` : `${ecartColis}`}
             </span>
+          )}
+          {isRetourRecond && hasEcartColis && (
+            <button type="button" onClick={alerterEcartWhatsApp}
+              title="Prévenir le commercial de l'écart par WhatsApp"
+              style={{ padding: "3px 9px", borderRadius: 7, border: "1.5px solid #25d366", background: "#25d36618", color: "#128c7e", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
+              📲 Prévenir
+            </button>
           )}
         </div>
         {isRetourRecond && (
