@@ -154,6 +154,18 @@ function genererNumeroDemande(dateCreation: Date, demandesExistantes: Demande[])
   return `${prefixeJour}-${seq}`;
 }
 
+// Même règle que dans l'import Arrivage (App.tsx, "curLot.slice(4, 8)") : le n° de lot
+// Geslot/Moorea est un code du type AAMM + 4 chiffres de lot + 2 chiffres de séquence (ex :
+// "2608661502" → 26/08 + "6615" + "02"). Seuls ces 4 chiffres du milieu sont utilisés partout
+// dans l'appli comme identifiant court du lot — on les retrouve ici en ne gardant que les
+// chiffres puis en prenant l'indice [4:8), pour rester cohérent avec le reste de l'appli quelle
+// que soit la source (OCR du bon Geslot, saisie manuelle, import Arrivage).
+function normaliserLot(brut: string): string {
+  const chiffres = (brut || "").replace(/\D/g, "");
+  if (chiffres.length >= 8) return chiffres.slice(4, 8);
+  return chiffres || brut.trim();
+}
+
 function StatutBadge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<Demande["statut"], { bg: string; color: string; label: string }> = {
     "en attente": { bg: "#fffbeb", color: "#b45309", label: "🕐 En attente entrepôt" },
@@ -644,7 +656,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       };
 
       const vArticleVrac = resoudreArticle(lire("Article\\s*[àa]\\s*utiliser"));
-      const vLot = lire("Lot");
+      // Le champ "Lot" du bon Geslot donne le n° complet (ex: "2608661502") — on ne garde que
+      // les 4 chiffres internes (voir normaliserLot), la même règle que partout ailleurs.
+      const vLot = normaliserLot(lire("Lot"));
       const vNbSortir = lireNombre("Nb\\s*colis\\s*[àa]\\s*sortir");
       const vArticleFini = resoudreArticle(lire("Article\\s*[àa]\\s*fabriquer"));
       const vNbEntrer = lireNombre("Nb\\s*colis\\s*[àa]\\s*entrer");
@@ -785,7 +799,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     // cherchant le lot saisi dans les arrivages connus (module Arrivage) — que ce lot vienne
     // d'un arrivage direct ou d'un numéro de lot repris du stock, tant qu'il correspond à un
     // arrivage déjà enregistré, on récupère son fournisseur. Pas de saisie manuelle du nom.
-    const lotSaisi = lot.trim();
+    // Normalisé au format court (4 chiffres) — que le lot ait été tapé en entier (ex: bon
+    // Geslot recopié à la main) ou déjà sous sa forme courte, on retombe sur la même valeur.
+    const lotSaisi = normaliserLot(lot.trim());
     const arrivageOrigine = lotSaisi
       ? arrivagesData.find(a =>
           String(a.lot_interne || "") === lotSaisi ||
@@ -1334,22 +1350,58 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               </div>
             </div>
 
-            {/* Bon Geslot — bouton unique (pas de double-cadre), pour ne pas couper le texte */}
-            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: COLORS.gray200, color: COLORS.gray700, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                📄 Importer un bon Geslot (optionnel)
-                <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ display: "none" }} />
-              </label>
-              {pdfFile && (
-                <span style={{ fontSize: 11.5, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {pdfFile.nom}{" "}
-                  <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
-                    · aperçu
-                  </a>
-                </span>
-              )}
-              {lectureEnCours && (
-                <span style={{ fontSize: 11.5, color: "#1d4ed8", fontWeight: 700 }}>⏳ lecture en cours…</span>
+            {/* Bon Geslot + envoi palette IFCO, côte à côte en haut — les deux actions rapides */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap", alignItems: "stretch" }}>
+              <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: COLORS.gray200, color: COLORS.gray700, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  📄 Importer un bon Geslot
+                  <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ display: "none" }} />
+                </label>
+                {pdfFile && (
+                  <span style={{ fontSize: 11.5, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {pdfFile.nom}{" "}
+                    <a href={pdfFile.base64} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: COLORS.primary, textDecoration: "none" }}>
+                      · aperçu
+                    </a>
+                  </span>
+                )}
+                {lectureEnCours && (
+                  <span style={{ fontSize: 11.5, color: "#1d4ed8", fontWeight: 700 }}>⏳ lecture en cours…</span>
+                )}
+              </div>
+
+              {depot === "nlt" && (
+                <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px" }}>
+                  {/* Pas systématique — dépend du stock d'IFCO dispo côté Moorea au moment de la
+                      demande. Le bouton est décochable : un 2ᵉ clic annule l'envoi (0 caisse). */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const dejaActif = !emballageIfcoManuel && caissesIfcoEnvoyees === "640";
+                      setCaissesIfcoEnvoyees(dejaActif ? "" : "640");
+                      setEmballageIfcoManuel(false);
+                    }}
+                    style={{
+                      padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray200}`,
+                      background: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondaryLight : "#fff",
+                      color: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray700,
+                      fontSize: 12.5, fontWeight: 700, cursor: "pointer", width: "100%",
+                    }}
+                  >
+                    {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? "✓ " : "☐ "}Envoyer 1 palette IFCO à NLT (640 caisses)
+                  </button>
+                  <div style={{ marginTop: 4 }}>
+                    <button type="button" onClick={() => setEmballageIfcoManuel(v => !v)} style={{ background: "none", border: "none", padding: 0, fontSize: 10.5, color: COLORS.gray600, textDecoration: "underline", cursor: "pointer" }}>
+                      {emballageIfcoManuel ? "▾" : "▸"} Cas rare : palette incomplète, ou 2/3 palettes
+                    </button>
+                    {emballageIfcoManuel && (
+                      <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="Nb de caisses IFCO (0 si finalement aucune)" style={{ marginTop: 6 }} />
+                    )}
+                  </div>
+                  <p style={{ margin: "6px 0 0", fontSize: 10, color: COLORS.gray600 }}>
+                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO
+                  </p>
+                </div>
               )}
             </div>
 
@@ -1471,51 +1523,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               )}
               <F label="Article à fabriquer" required><ArticleSelect value={articleFini} onSelect={setArticleFini} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" /></F>
 
-              {/* Emballage à envoyer */}
-              {depot === "nlt" ? (
-                <div style={{ marginTop: 10 }}>
-                  <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 6, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    Emballage à envoyer
-                  </label>
-                  {/* Pas systématique — dépend du stock d'IFCO dispo côté Moorea au moment de la
-                      demande. Le bouton est décochable : un 2ᵉ clic annule l'envoi (0 caisse). */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const dejaActif = !emballageIfcoManuel && caissesIfcoEnvoyees === "640";
-                      setCaissesIfcoEnvoyees(dejaActif ? "" : "640");
-                      setEmballageIfcoManuel(false);
-                    }}
-                    style={{
-                      padding: "10px 16px", borderRadius: 10, border: `1.5px solid ${(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray200}`,
-                      background: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondaryLight : "#fff",
-                      color: (!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? COLORS.secondary : COLORS.gray700,
-                      fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%",
-                    }}
-                  >
-                    {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640") ? "✓ " : "☐ "}Envoyer 1 palette IFCO à NLT (640 caisses)
-                  </button>
-                  <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "#9ca3af" }}>
-                    {(!emballageIfcoManuel && caissesIfcoEnvoyees === "640")
-                      ? "Reclique pour annuler si finalement pas d'IFCO envoyé cette fois."
-                      : (emballageIfcoManuel ? "" : "Non cochée = pas d'IFCO envoyé cette fois (selon le stock dispo).")}
-                  </p>
-                  <div style={{ marginTop: 6 }}>
-                    <button type="button" onClick={() => setEmballageIfcoManuel(v => !v)} style={{ background: "none", border: "none", padding: 0, fontSize: 11, color: COLORS.gray600, textDecoration: "underline", cursor: "pointer" }}>
-                      {emballageIfcoManuel ? "▾" : "▸"} Cas rare : palette incomplète, ou 2/3 palettes — saisir une quantité
-                    </button>
-                    {emballageIfcoManuel && (
-                      <input type="number" value={caissesIfcoEnvoyees} onChange={e => setCaissesIfcoEnvoyees(e.target.value)} placeholder="Nb de caisses IFCO (0 si finalement aucune)" style={{ marginTop: 6 }} />
-                    )}
-                  </div>
-                  <p style={{ margin: "8px 0 0", fontSize: 10.5, color: COLORS.gray600 }}>
-                    NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO
-                  </p>
-                </div>
-              ) : depot === "andes" ? (
+              {/* Emballage à envoyer — pour NLT, réglé via le bouton "palette IFCO" en haut de
+                  page ; ici, seulement le cas Andès (cartons) qui n'a pas ce raccourci. */}
+              {depot === "andes" && (
                 <F label="Cartons BABY BLANC à envoyer"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="0 si stock suffisant" /></F>
-              ) : (
-                <p style={{ margin: "10px 0 0", fontSize: 11, color: "#9ca3af" }}>Choisis un dépôt ci-dessus pour voir les options d'emballage.</p>
               )}
             </div>
 
