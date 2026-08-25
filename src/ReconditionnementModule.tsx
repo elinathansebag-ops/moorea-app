@@ -105,6 +105,93 @@ function StatutBadge({ statut }: { statut: Demande["statut"] }) {
   );
 }
 
+// Sélecteur d'article strict : ne permet de choisir que dans le catalogue global Moorea
+// (`moorea_articles`, même source que le module Catalogue) — aucune saisie libre acceptée.
+// Le champ affiche un contour rouge et un message tant que la valeur ne correspond pas
+// exactement à un article du catalogue.
+function ArticleSelect({ label, value, onSelect, articles, placeholder }: {
+  label: string;
+  value: string;
+  onSelect: (libelle: string) => void;
+  articles: { code: string; libelle: string }[];
+  placeholder?: string;
+}) {
+  const [search, setSearch] = useState(value);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setSearch(value); }, [value]);
+  const filtered = search.trim()
+    ? articles.filter(a => a.libelle.toLowerCase().includes(search.toLowerCase())).slice(0, 30)
+    : articles.slice(0, 30);
+  const valide = value.trim() === "" || articles.some(a => a.libelle === value);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>{label}</label>
+      <input
+        type="text"
+        value={search}
+        onChange={e => { setSearch(e.target.value); setOpen(true); if (e.target.value.trim() === "") onSelect(""); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder={placeholder}
+        style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${valide ? COLORS.gray200 : COLORS.danger}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+      />
+      {!valide && (
+        <p style={{ margin: "4px 0 0", fontSize: 11, color: COLORS.danger }}>Choisis un article dans la liste du catalogue Moorea.</p>
+      )}
+      {open && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 220, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 10px rgba(0,0,0,0.08)" }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "10px", fontSize: 12, color: "#999" }}>Aucun article trouvé dans le catalogue.</div>
+          ) : (
+            filtered.map(a => (
+              <div
+                key={a.code}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => { onSelect(a.libelle); setSearch(a.libelle); setOpen(false); }}
+                style={{ padding: "8px 10px", cursor: "pointer", borderBottom: `1px solid ${COLORS.gray100}`, fontSize: 12 }}
+              >
+                {a.libelle}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Sélecteur de lot : dès qu'on tape un chiffre, propose les lots connus (arrivages, stock,
+// historique reconditionnement) qui contiennent ce qui a été tapé. Reste une saisie libre
+// (contrairement à ArticleSelect) puisqu'un lot peut ne pas encore exister ailleurs.
+function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (v: string) => void; lotsConnus: string[] }) {
+  const [open, setOpen] = useState(false);
+  const filtres = value.trim() ? lotsConnus.filter(l => l.includes(value.trim()) && l !== value.trim()).slice(0, 8) : [];
+  return (
+    <div style={{ position: "relative" }}>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Lot</label>
+      <input
+        type="text"
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="ex: 2608637201"
+        style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+      />
+      {open && filtres.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 180, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 10px rgba(0,0,0,0.08)" }}>
+          {filtres.map((l, i) => (
+            <div key={i} onMouseDown={e => e.preventDefault()} onClick={() => { onChange(l); setOpen(false); }} style={{ padding: "8px 10px", cursor: "pointer", borderBottom: `1px solid ${COLORS.gray100}`, fontSize: 12 }}>
+              {l}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ReconditionnementModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "nouvelle" | "configuration">("dashboard");
   const [demandes, setDemandes] = useState<Demande[]>([]);
@@ -146,8 +233,9 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
   const dernierEmballageAuto = useRef<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Base articles Geslot, pour proposer une saisie assistée sur les 2 champs article.
-  const [geslotArticles, setGeslotArticles] = useState<{ id: string; label: string }[]>([]);
+  // Catalogue global des produits Moorea (même source que le module Catalogue) — les 2 champs
+  // article sont limités à ce catalogue, aucune saisie libre n'est acceptée.
+  const [catalogueArticles, setCatalogueArticles] = useState<{ code: string; libelle: string }[]>([]);
   // Arrivages (agréage) — sert à retrouver l'article vrac réceptionné pour un lot donné.
   const [arrivagesData, setArrivagesData] = useState<any[]>([]);
   // Stock (module séparé, projet Firebase "moorea-stock") — lecture seule, uniquement pour
@@ -178,9 +266,9 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
     const u3 = onValue(ref(db, "reconditionnement_stock_ifco/vide"), snap => setStockIfcoVide(typeof snap.val() === "number" ? snap.val() : 0));
     const u4 = onValue(ref(db, "reconditionnement_stock_ifco/pleine"), snap => setStockIfcoPleine(typeof snap.val() === "number" ? snap.val() : 0));
     const u5 = onValue(ref(db, "stock_carton_andes/baby_blanc"), snap => setStockBabyBlancAndes(typeof snap.val() === "number" ? snap.val() : 0));
-    const u6 = onValue(ref(db, "geslot_articles"), snap => {
+    const u6 = onValue(ref(db, "moorea_articles"), snap => {
       const d = snap.val();
-      setGeslotArticles(d ? Object.entries(d).map(([id, v]: any) => ({ id, label: `${v.name || v.CODE_PRODUIT || id} ${v.CONDITIONNEMENT ? `(${v.CONDITIONNEMENT})` : ""}`.trim() })) : []);
+      setCatalogueArticles(d ? (Object.values(d) as any[]).map((v: any) => ({ code: v.code, libelle: v.libelle })).sort((a, b) => a.libelle.localeCompare(b.libelle)) : []);
     });
     const u7 = onValue(ref(db, "arrivages"), snap => {
       const d = snap.val();
@@ -335,6 +423,10 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
       notify("error", "✗ Renseigne au moins l'article vrac et l'article à fabriquer");
       return;
     }
+    if (!catalogueArticles.some(a => a.libelle === articleVrac) || !catalogueArticles.some(a => a.libelle === articleFini)) {
+      notify("error", "✗ Choisis les articles dans le catalogue Moorea (aucune saisie libre)");
+      return;
+    }
     if (!transporteurId) {
       notify("error", "✗ Choisis un transporteur");
       return;
@@ -487,6 +579,16 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
 
   const demandesFiltrees = demandes.filter(d => filtreStatut === "toutes" || d.statut === filtreStatut);
   const retourDemande = demandes.find(d => d.id === retourDemandeId);
+
+  // Tous les lots connus (arrivages, stock, historique reconditionnement), pour la saisie
+  // assistée du champ Lot du formulaire.
+  const lotsConnus = Array.from(new Set(
+    [
+      ...arrivagesData.flatMap(a => [a.lot_interne, a.lot_fournisseur, ...(Array.isArray(a.lot_fournisseur_liste) ? a.lot_fournisseur_liste : [])]),
+      ...stockLots.map(s => s.lot),
+      ...demandes.map(d => d.lot),
+    ].filter(Boolean).map(String)
+  ));
 
   // ── Stats simples pour facturation ──
   const statsParTransporteur: Record<string, { nom: string; palettesParties: number; palettesRevenues: number }> = {};
@@ -719,24 +821,14 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
               </select>
             </div>
 
-            <datalist id="geslot-articles-list">
-              {geslotArticles.map(a => <option key={a.id} value={a.label} />)}
-            </datalist>
-
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 6 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Article vrac (à utiliser)</label>
-                <input type="text" list="geslot-articles-list" value={articleVrac} onChange={e => setArticleVrac(e.target.value)} placeholder="ex: PASSION COLOMBIE (VRAC 2 KG)" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Lot</label>
-                <input type="text" value={lot} onChange={e => setLot(e.target.value)} placeholder="ex: 2608637201" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
+              <ArticleSelect label="Article vrac (à utiliser)" value={articleVrac} onSelect={setArticleVrac} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" />
+              <LotSelect value={lot} onChange={setLot} lotsConnus={lotsConnus} />
             </div>
 
-            {lot.trim().length >= 4 && (() => {
-              const suffixe = lot.trim().slice(-4);
-              const correspondLot = (val?: string | number | null) => val != null && String(val).slice(-4) === suffixe;
+            {lot.trim().length >= 1 && (() => {
+              const saisie = lot.trim();
+              const correspondLot = (val?: string | number | null) => val != null && String(val).includes(saisie);
 
               // Source 1 — arrivages (agréage) : donne l'article vrac réceptionné pour ce lot
               // (lot_interne = n° de lot Moorea, lot_fournisseur = n° de traçabilité fournisseur).
@@ -774,7 +866,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                 <div style={{ marginBottom: 14 }}>
                   {suggestionsVrac.length > 0 && (
                     <div style={{ marginBottom: (suggestionsStock.length > 0 || suggestionsPaire.length > 0) ? 8 : 0 }}>
-                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Article réceptionné (arrivage) avec un lot se terminant par {suffixe} :</p>
+                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Article réceptionné (arrivage) contenant {saisie} :</p>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {suggestionsVrac.map((p, i) => (
                           <button key={i} type="button" onClick={() => setArticleVrac(p)} style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -786,7 +878,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                   )}
                   {suggestionsStock.length > 0 && (
                     <div style={{ marginBottom: suggestionsPaire.length > 0 ? 8 : 0 }}>
-                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Déjà en stock avec un lot se terminant par {suffixe} :</p>
+                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Déjà en stock contenant {saisie} :</p>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {suggestionsStock.map((p, i) => (
                           <button key={i} type="button" onClick={() => setArticleVrac(p)} style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.amber}`, background: COLORS.amberLight, color: "#b45309", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -798,7 +890,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                   )}
                   {suggestionsPaire.length > 0 && (
                     <div>
-                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Déjà reconditionné avec un lot se terminant par {suffixe} :</p>
+                      <p style={{ margin: "0 0 6px", fontSize: 11, color: "#888" }}>Déjà reconditionné contenant {saisie} :</p>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {suggestionsPaire.map((d, i) => (
                           <button key={i} type="button" onClick={() => { setArticleVrac(d.articleVrac); setArticleFini(d.articleFini); }} style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.secondary}`, background: COLORS.secondaryLight, color: COLORS.secondary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -811,7 +903,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
                 </div>
               );
             })()}
-            {!(lot.trim().length >= 4) && <div style={{ marginBottom: 14 }} />}
+            {!(lot.trim().length >= 1) && <div style={{ marginBottom: 14 }} />}
 
             <div style={{ marginBottom: 14 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Nb colis à sortir</label>
@@ -819,8 +911,7 @@ export function ReconditionnementModule({ onClose, userName }: { onClose: () => 
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Article à fabriquer</label>
-              <input type="text" list="geslot-articles-list" value={articleFini} onChange={e => setArticleFini(e.target.value)} placeholder="ex: LIME BRESIL CAL.54 IFCO (FILET 500GR X 10)" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+              <ArticleSelect label="Article à fabriquer" value={articleFini} onSelect={setArticleFini} articles={catalogueArticles} placeholder="Rechercher un article du catalogue…" />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
