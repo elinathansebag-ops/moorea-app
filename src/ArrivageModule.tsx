@@ -311,8 +311,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     const raisonFinal = hasEcartColis
       ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})`
       : (isRetourRecond && litige ? (retourCommentaire.trim() || "Problème signalé au retour") : "");
-    const sansEtiquetteFinal = isRetourRecond ? true : sansEtiquette;
-    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", raisonFinal, "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquetteFinal);
+    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", raisonFinal, "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquette);
     setSaving(false);
     if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
   };
@@ -543,8 +542,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         </>
       )}
 
-      {/* Palettes — détermine combien d'étiquettes seront imprimées automatiquement à la validation */}
-      {!isSimple && (
+      {/* Palettes — détermine combien d'étiquettes seront imprimées automatiquement à la validation.
+          Contrairement aux autres champs "produce" (DLC/poids/traça), on garde cette section pour
+          un retour de reconditionnement : il y a bien un produit physique sur palette, qui doit
+          repartir avec une étiquette portant le lot de CET arrivage (lot_interne/lot_fournisseur). */}
+      {!(isGoEmbal || isPaletteIFCO) && (
         <>
           <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>

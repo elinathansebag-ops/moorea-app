@@ -638,7 +638,7 @@ export default function App() {
     // "🎫 Palettes" de la carte d'agréage), on imprime une étiquette par palette avec le bon
     // nombre de colis ; sinon une seule étiquette avec la quantité totale. Exception rare (~5%) :
     // "sansEtiquette" coché sur la carte saute complètement cette impression automatique.
-    if (decision === "conforme" && !sansEtiquette && !arrivage.reconditionnement_demande_id) {
+    if (decision === "conforme" && !sansEtiquette) {
       try {
         const arrivageMaj = { ...arrivage, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal };
         if (palettes && palettes.length > 1) {
