@@ -216,9 +216,13 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   doc.text(demande.dateCreationFr, W - M, 16.5, { align: "right" });
   y = 32;
 
+  // NB : la police standard jsPDF ("helvetica"/WinAnsi) ne connaît pas le caractère flèche
+  // unicode "→" (ni les ciseaux "✂" plus bas) — les inclure dans doc.text() produit des
+  // caractères corrompus à l'impression. On utilise donc "»" (guillemet simple, bien présent
+  // dans l'encodage WinAnsi) comme séparateur visuel à la place d'une vraie flèche.
   doc.setFillColor(245, 243, 238); doc.roundedRect(M, y, CW, 16, 2, 2, "F");
   doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
-  doc.text(`${demande.articleVrac}  →  ${demande.articleFini}`, M + 6, y + 10);
+  doc.text(`${demande.articleVrac}  »  ${demande.articleFini}`, M + 6, y + 10);
   y += 24;
 
   const col1 = M + 8, col2 = M + CW / 2 + 4;
@@ -251,7 +255,6 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   ligne("Transporteur", demande.transporteurNom || "-", col2, yy);
   yy += 12;
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy);
-  ligne("N° lot fournisseur", demande.origineLotFournisseur || "-", col2, yy);
   yy += 14;
   ligne("Colis à sortir", demande.nbColisASortir != null ? `${demande.nbColisASortir} — ${demande.articleVrac}` : "-", col1, yy);
   if (demande.depot === "nlt") {
@@ -278,7 +281,7 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   doc.line(M, y, W - M, y);
   doc.setLineDashPattern([], 0);
   doc.setTextColor(120, 120, 120); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
-  doc.text("✂  partie ci-dessous à conserver / remettre au reconditionneur", W / 2, y + 4, { align: "center" });
+  doc.text("partie ci-dessous à conserver / remettre au reconditionneur", W / 2, y + 4, { align: "center" });
   y += 13;
 
   // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) : encadré simple, sans bandeau plein, pour bien
@@ -294,7 +297,6 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   ligne("Qté conditionnement attendue", demande.qteConditionnement != null ? String(demande.qteConditionnement) : "-", col2, yy2);
   yy2 += 13;
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy2);
-  ligne("N° lot fournisseur", demande.origineLotFournisseur || "-", col2, yy2);
   yy2 += 13;
   doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.3);
   doc.text("Le retour sera pointé par Moorea à réception. Merci de signaler toute anomalie au transporteur.", M + 8, yy2, { maxWidth: CW - 16 });
@@ -1166,6 +1168,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     });
   };
 
+  // ── Détail de la production faite par le reconditionneur (NLT / Andès), une ligne par
+  // demande "reçue" — colis reçus (cartons) et quantité conditionnée (ex : filets) pointés au
+  // retour, pour l'attribution des coûts de reconditionnement (facturation) plutôt qu'un simple
+  // total agrégé.
+  const productionReconditionneur = [...demandesTerminees].sort((a, b) => {
+    const ta = parseFrDate(a.retour?.date || a.dateCreationFr)?.getTime() || 0;
+    const tb = parseFrDate(b.retour?.date || b.dateCreationFr)?.getTime() || 0;
+    return tb - ta;
+  });
+
   // ── Détail par transporteur, jour par jour : combien de palettes sont parties de Moorea vers
   // le reconditionneur, combien sont revenues, et le n° de lot de l'article concerné — pour
   // pouvoir attribuer les coûts de transport plus tard (une ligne par trajet, pas juste un
@@ -1682,22 +1694,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               </div>
             </div>
 
-            {/* Stock actuel, rappel */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — Moorea</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
-              </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — NLT</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
-              </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🧺 Carton BABY BLANC (Andès)</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
-              </div>
-            </div>
-
             {/* ── Reconditionnements terminés, par jour, regroupés en accordéon par semaine ── */}
             <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>✅ Reconditionnements terminés</p>
             {semainesTriees.length === 0 ? (
@@ -1750,6 +1746,43 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* ── Détail de la production faite par le reconditionneur (colis reçus / quantité
+                conditionnée), une ligne par demande reçue — pour la facturation du reconditionneur. ── */}
+            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🧾 Détail production reconditionneur (pour facturation)</p>
+            {productionReconditionneur.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}`, marginBottom: 24 }}>
+                <p style={{ margin: 0, fontSize: 13 }}>Aucun retour pointé pour l'instant</p>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 24, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden", overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "#888", fontSize: 10.5, textTransform: "uppercase", background: "#fafafa" }}>
+                      <th style={{ padding: "8px 10px" }}>Date reçu</th>
+                      <th style={{ padding: "8px 10px" }}>Reconditionneur</th>
+                      <th style={{ padding: "8px 10px" }}>Article / Lot</th>
+                      <th style={{ padding: "8px 10px" }}>Colis reçus (cartons)</th>
+                      <th style={{ padding: "8px 10px" }}>Qté conditionnée (unités)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productionReconditionneur.map(d => (
+                      <tr key={d.id} style={{ borderTop: `1px solid ${COLORS.gray100}`, background: "#fff" }}>
+                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{d.retour?.date || d.dateCreationFr || "—"}</td>
+                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{DEPOT_LABEL[d.depot]}</td>
+                        <td style={{ padding: "8px 10px" }}>
+                          {d.numero && <span style={{ color: COLORS.primary, fontWeight: 700 }}>{d.numero}</span>}
+                          {" "}{d.articleFini}{d.lot ? ` · lot ${d.lot}` : ""}
+                        </td>
+                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.nbColisRecus ?? "—"}</b></td>
+                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.qteConditionnementRecue ?? "—"}</b></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
 
