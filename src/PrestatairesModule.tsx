@@ -402,13 +402,77 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     };
 
     try {
-      await push(ref(db, "prestataires_cartons"), newCmd);
+      const refPush = await push(ref(db, "prestataires_cartons"), newCmd);
+      const commandeId = refPush.key;
+
+      if (commandeId) {
+        // Crée aussi un arrivage correspondant dans le système classique, pour que
+        // la commande apparaisse dans l'écran "Pointer arrivage".
+        const totalCartons = lignes.reduce((sum, l) => {
+          const specs = CARTONS_CATALOGUE[l.type as keyof typeof CARTONS_CATALOGUE];
+          return sum + (specs ? l.nbPalettes * specs.parPalette : 0);
+        }, 0);
+        const dateLivraisonFr = new Date(dateLivraison).toLocaleDateString("fr-FR", { year: "numeric", month: "2-digit", day: "2-digit" });
+
+        try {
+          await push(ref(db, "arrivages"), {
+            fournisseur: "Go-Embal",
+            produit: "Cartons " + lignes.map((l) => l.type).join(" + "),
+            lot_interne: commandeId,
+            lot_fournisseur: "",
+            quantite: totalCartons,
+            unite: "cartons",
+            date: dateLivraisonFr,
+            statut: "en attente",
+            timestamp: Date.now(),
+            carton_commande_id: commandeId,
+            origine: lieuLivraison,
+            variete: creneau,
+          });
+        } catch (arrivageError) {
+          console.error("Erreur lors de la création de l'arrivage:", arrivageError);
+        }
+
+        // Envoie l'email de confirmation à Go-Embal
+        try {
+          const lignesHtml = lignes
+            .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? "s" : ""}</li>`)
+            .join("");
+          const emailHtml = `
+            <p>Bonjour,</p>
+            <p>Suite à notre appel téléphonique, voici la confirmation de votre commande de cartons:</p>
+            <h2>Confirmation de Commande de Cartons</h2>
+            <p><strong>Numéro de commande:</strong> ${commandeId}</p>
+            <p><strong>Date de commande:</strong> ${newCmd.dateCommande}</p>
+            <p><strong>Date de livraison prévue:</strong> ${dateLivraison}</p>
+            <p><strong>Créneau de livraison:</strong> ${creneau}</p>
+            <p><strong>Lieu de livraison:</strong> ${lieuLivraison}</p>
+            <h3>Détails de la commande:</h3>
+            <ul>${lignesHtml}</ul>
+            <p>Merci!</p>
+          `;
+          const emailRes = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subject: `Confirmation de commande cartons #${commandeId}`,
+              html: emailHtml,
+              to: ["contact@go-embal.fr"],
+              sender: "elinathan",
+            }),
+          });
+          if (!emailRes.ok) throw new Error(`Erreur ${emailRes.status}`);
+        } catch (emailError) {
+          console.error("Erreur lors de l'envoi de l'email:", emailError);
+        }
+      }
+
       setLignes([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
       setDateLivraison(new Date().toISOString().split("T")[0]);
       setCreneau("1er tour 7h-11h");
       setLieuLivraison("Moorea Commerce Fruit - Bat D3");
       setActiveTab("cartons");
-      setNotification({ type: "success", message: "✓ Commande de cartons créée" });
+      setNotification({ type: "success", message: "✓ Commande de cartons créée, arrivage ajouté et email envoyé" });
     } catch (error) {
       setNotification({ type: "error", message: "✗ Erreur" });
     }
