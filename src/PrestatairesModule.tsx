@@ -210,6 +210,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [raisonAjustNlt, setRaisonAjustNlt] = useState("");
   const [raisonAjustAndes, setRaisonAjustAndes] = useState("");
   const [stockAjustements, setStockAjustements] = useState<any[]>([]);
+  const [ajustementsASupprimer, setAjustementsASupprimer] = useState<Set<string>>(new Set());
   const [fromLoc, setFromLoc] = useState<"moorea" | "transit" | "nlt">("moorea");
   const [toLoc, setToLoc] = useState<"moorea" | "transit" | "nlt">("nlt");
   const [qteCaisses, setQteCaisses] = useState("");
@@ -2282,18 +2283,47 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
               {stockAjustements.length > 0 && (
                 <div style={{ padding: "0 16px 16px" }}>
-                  <h4 style={{ margin: "8px 0 10px", fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>🕐 Historique des corrections ({stockAjustements.length})</h4>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                    <h4 style={{ margin: "8px 0 0", fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>🕐 Historique des corrections ({stockAjustements.length})</h4>
+                    {ajustementsASupprimer.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Supprimer définitivement ${ajustementsASupprimer.size} ligne(s) de l'historique ? Le stock actuel n'est pas modifié — c'est juste le journal.`)) return;
+                          await Promise.all(Array.from(ajustementsASupprimer).map(id => remove(ref(db, `stock_ajustements/${id}`))));
+                          setAjustementsASupprimer(new Set());
+                          setNotification({ type: "success", message: "🧹 Historique nettoyé" });
+                        }}
+                        style={{ padding: "5px 12px", borderRadius: "6px", border: "none", background: "#dc2626", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        🗑️ Supprimer ({ajustementsASupprimer.size})
+                      </button>
+                    )}
+                  </div>
+                  <p style={{ margin: "0 0 10px", fontSize: "11px", color: COLORS.gray600 }}>Coche les lignes créées pendant des tests pour les retirer de ce journal — ça ne touche pas au stock actuel, déjà correct.</p>
                   <div style={{ display: "grid", gap: "8px", maxHeight: "260px", overflowY: "auto" }}>
                     {stockAjustements.map((a) => (
-                      <div key={a.id} style={{ background: COLORS.gray100, border: `1px solid ${COLORS.gray200}`, borderRadius: "8px", padding: "10px 12px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
-                          <span style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray700 }}>{a.emplacement}</span>
-                          <span style={{ fontSize: "11px", color: COLORS.gray600 }}>{a.date}</span>
+                      <label key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: "8px", background: ajustementsASupprimer.has(a.id) ? "#fef2f2" : COLORS.gray100, border: `1px solid ${ajustementsASupprimer.has(a.id) ? "#fca5a5" : COLORS.gray200}`, borderRadius: "8px", padding: "10px 12px", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={ajustementsASupprimer.has(a.id)}
+                          onChange={() => setAjustementsASupprimer(prev => {
+                            const next = new Set(prev);
+                            if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+                            return next;
+                          })}
+                          style={{ width: "auto", margin: "2px 0 0", flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
+                            <span style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray700 }}>{a.emplacement}</span>
+                            <span style={{ fontSize: "11px", color: COLORS.gray600 }}>{a.date}</span>
+                          </div>
+                          <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
+                            {a.ancienneValeur} → <strong style={{ color: COLORS.gray700 }}>{a.nouvelleValeur}</strong> · {a.raison}
+                          </div>
                         </div>
-                        <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
-                          {a.ancienneValeur} → <strong style={{ color: COLORS.gray700 }}>{a.nouvelleValeur}</strong> · {a.raison}
-                        </div>
-                      </div>
+                      </label>
                     ))}
                   </div>
                 </div>
