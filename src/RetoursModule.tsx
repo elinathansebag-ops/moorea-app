@@ -441,9 +441,16 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
   }
 
   async function validerControle(fiche: FicheRetour, commentPrep?: string) {
-    await update(ref(db, "retours/" + fiche.id), { products: fiche.products, statut: "traite", commentPrep: commentPrep ?? fiche.commentPrep ?? "" });
+    // Important : on ferme le panneau et on ouvre la modale de succès AVANT le `update` Firebase,
+    // pas après. Dès que `update` part, le listener `onValue` (temps réel) reçoit quasi
+    // instantanément le nouveau statut "traite" et fait disparaître la fiche de l'onglet "En
+    // attente" — si la modale n'est pas déjà affichée à ce moment-là (en position fixed, par-dessus
+    // toute la page), on voit la liste "sauter" pendant un instant avant que le popup n'apparaisse.
+    // En ouvrant la modale en premier (dans le même tick, avant tout `await`), elle est déjà là pour
+    // masquer ce réarrangement de liste.
     setOpenId(null);
     setModal("success"); setModalData({ fiche, source: "valide" });
+    await update(ref(db, "retours/" + fiche.id), { products: fiche.products, statut: "traite", commentPrep: commentPrep ?? fiche.commentPrep ?? "" });
   }
 
   async function doSupprimer() {
@@ -466,9 +473,12 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
   }
 
   async function repointerFiche(fiche: FicheRetour) {
-    await update(ref(db, "retours/" + fiche.id), { statut: "en_attente" });
+    // Même principe que validerControle : on bascule l'onglet et on ouvre la fiche AVANT le
+    // `update`, pour ne pas voir la liste "traité" sauter (la fiche en disparaît dès que le
+    // listener temps réel reçoit le nouveau statut) avant que l'écran n'ait déjà changé d'onglet.
     setOpenId(fiche.id!);
     setTab("att");
+    await update(ref(db, "retours/" + fiche.id), { statut: "en_attente" });
   }
 
   // ── Panneau pointage — inputs non-contrôlés, validation métier ──
