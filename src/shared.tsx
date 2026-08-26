@@ -106,7 +106,7 @@ export const styles = `
   }
   @keyframes slideIn { from { opacity:0; transform: translateY(-8px); } to { opacity:1; transform: translateY(0); } }
   .toast { animation: slideIn 0.25s ease; }
-  @keyframes fadeUp { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
+  @keyframes fadeUp { from { opacity:0; } to { opacity:1; } }
   .fade-up { animation: fadeUp 0.3s ease both; }
 
   /* ── DARK MODE ── */
