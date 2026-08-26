@@ -79,16 +79,34 @@ function allegerDemande(id, d) {
   return { id, ...reste, ...(pertesAllegees ? { pertes: pertesAllegees } : {}) };
 }
 
+// Snapshot factice utilisé quand une lecture Firebase échoue (chemin pas encore ouvert dans les
+// règles de sécurité, etc.) — évite de faire planter tout le chargement du portail pour une
+// fonctionnalité secondaire (voir commentaire plus bas sur stock_ajustements/prestataires_cartons).
+const SNAPSHOT_VIDE = { val: () => null };
+
 async function handleGet(res, depot) {
   const adminDb = getAdminDb();
+  // stock_ajustements et prestataires_cartons ne faisaient PAS partie des chemins ouverts dans
+  // les règles de sécurité Firebase à l'origine (voir api/_firebaseAdmin.js — seuls
+  // reconditionnement_demandes, reajustements_stock_demandes, ifco_stock/levels et
+  // stock_carton_andes l'étaient). Sans la règle ajoutée pour ces deux nouveaux chemins,
+  // Firebase refuse la lecture (401/403) : makeRef.once() lève alors une erreur, qui — si elle
+  // n'est pas rattrapée ICI, au niveau de chaque promesse — fait échouer tout le Promise.all et
+  // donc TOUT le chargement du portail (demandes, stock...), pas seulement l'historique des
+  // mouvements ou les livraisons à confirmer. D'où la panne du 26/08/2026 : le portail entier
+  // renvoyait 500 à cause de ces deux lectures secondaires. On les rattrape donc individuellement
+  // ici avec un fallback "vide", pour que le reste du portail continue de fonctionner même si ces
+  // chemins ne sont pas (ou pas encore) ouverts dans les règles.
   const [demandesSnap, stockSnap, reajustementsSnap, ajustementsSnap, cartonsSnap] = await Promise.all([
     adminDb.ref("reconditionnement_demandes").once("value"),
     adminDb.ref(EMBALLAGE_CHAMP_STOCK[depot]).once("value"),
     adminDb.ref("reajustements_stock_demandes").once("value"),
-    adminDb.ref("stock_ajustements").once("value"),
+    adminDb.ref("stock_ajustements").once("value").catch(err => { console.error("Lecture stock_ajustements refusée (portail, non bloquant) — vérifier les règles Firebase:", err.message); return SNAPSHOT_VIDE; }),
     // Seul Andès reçoit des cartons livrés directement chez lui (voir LIEUX_CARTONS dans
     // PrestatairesModule.tsx) — inutile de charger cette collection pour NLT.
-    depot === "andes" ? adminDb.ref("prestataires_cartons").once("value") : Promise.resolve(null),
+    depot === "andes"
+      ? adminDb.ref("prestataires_cartons").once("value").catch(err => { console.error("Lecture prestataires_cartons refusée (portail, non bloquant) — vérifier les règles Firebase:", err.message); return SNAPSHOT_VIDE; })
+      : Promise.resolve(null),
   ]);
   const data = demandesSnap.val() || {};
   const demandes = Object.entries(data)
@@ -105,22 +123,35 @@ async function handleGet(res, depot) {
   // Historique des mouvements de caisses/cartons pour CE dépôt — ajustements manuels saisis
   // côté Moorea (corrections d'inventaire, livraisons hors site confirmées...) sur l'emplacement
   // correspondant à leur emballage. Purement informatif côté portail (lecture seule).
-  const ajustData = ajustementsSnap.val() || {};
-  const mouvements = Object.entries(ajustData)
-    .filter(([, a]) => a && a.emplacement === EMPLACEMENT_STOCK[depot])
-    .map(([id, a]) => ({ id, ...a }))
-    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-    .slice(0, 50);
+  // Entouré d'un try/catch : c'est un ajout secondaire, une donnée mal formée ici (entrée non
+  // objet, champ inattendu...) ne doit surtout pas faire planter tout le chargement du portail
+  // (demandes, stock...) — au pire, l'historique reste vide plutôt que de tout casser.
+  let mouvements = [];
+  try {
+    const ajustData = ajustementsSnap.val() || {};
+    mouvements = Object.entries(ajustData)
+      .filter(([, a]) => a && typeof a === "object" && a.emplacement === EMPLACEMENT_STOCK[depot])
+      .map(([id, a]) => ({ id, ...a }))
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 50);
+  } catch (err) {
+    console.error("Erreur calcul mouvements (portail, non bloquant):", err);
+  }
 
   // Commandes de cartons livrées directement chez Andès (hors site), pas encore confirmées par
   // le prestataire — jusqu'ici, la confirmation ne passait que par un lien email
   // (api/confirm-livraison.js) ; on l'affiche aussi ici pour qu'il puisse la faire directement
-  // depuis son espace, sans dépendre de l'email.
-  const cartonsData = cartonsSnap ? (cartonsSnap.val() || {}) : {};
-  const cartonsEnAttente = Object.entries(cartonsData)
-    .filter(([, c]) => c && c.horsSite && !c.confirmationPresta?.confirme && c.statut !== "annulé")
-    .map(([id, c]) => ({ id, ...c }))
-    .sort((a, b) => (a.dateLivraisonPrevue || "").localeCompare(b.dateLivraisonPrevue || ""));
+  // depuis son espace, sans dépendre de l'email. Même principe : try/catch non bloquant.
+  let cartonsEnAttente = [];
+  try {
+    const cartonsData = cartonsSnap ? (cartonsSnap.val() || {}) : {};
+    cartonsEnAttente = Object.entries(cartonsData)
+      .filter(([, c]) => c && typeof c === "object" && c.horsSite && !c.confirmationPresta?.confirme && c.statut !== "annulé")
+      .map(([id, c]) => ({ id, ...c }))
+      .sort((a, b) => (a.dateLivraisonPrevue || "").localeCompare(b.dateLivraisonPrevue || ""));
+  } catch (err) {
+    console.error("Erreur calcul cartonsEnAttente (portail, non bloquant):", err);
+  }
 
   return res.status(200).json({ demandes, stock: typeof stockVal === "number" ? stockVal : 0, reajustements, mouvements, cartonsEnAttente });
 }
