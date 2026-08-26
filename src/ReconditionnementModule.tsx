@@ -149,6 +149,32 @@ async function envoyerBonReconditionnementPourImpressionPC(pdfNom: string, pdfBa
   });
 }
 
+// Bon fictif utilisé uniquement par le bouton "Tester l'impression" en Configuration — permet
+// de vérifier toute la chaîne (génération PDF → file Firebase → relais PC → imprimante A4) sans
+// avoir à créer une vraie demande. Marqué "TEST" en gros sur le bon pour qu'il soit reconnaissable
+// et jetable si jamais quelqu'un le retrouve dans une pile de bons imprimés.
+function demandeTestPourImpression(): Demande {
+  const n = new Date();
+  return {
+    id: "test",
+    numero: "TEST-IMPRESSION",
+    dateCreation: n.toISOString(),
+    dateCreationFr: nowFr(),
+    creePar: "Test impression",
+    depot: "nlt",
+    articleVrac: "TEST — article vrac",
+    articleFini: "TEST — article fini",
+    lot: "0000",
+    origineFournisseur: "Test fournisseur",
+    nbColisASortir: 10,
+    nbColisAEntrer: 10,
+    qteConditionnement: 10,
+    caissesIfcoEnvoyees: 5,
+    transporteurNom: "Test transporteur",
+    statut: "en attente",
+  };
+}
+
 function nowFr(): string {
   const n = new Date();
   return n.toLocaleDateString("fr-FR") + " " + n.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -2127,6 +2153,27 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         {/* ── CONFIGURATION ── */}
         {activeTab === "configuration" && (
           <div style={{ display: "grid", gap: 20 }}>
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>🧪 Tester l'impression du bon</h3>
+              <p style={{ margin: "0 0 12px", fontSize: 12, color: COLORS.gray600 }}>
+                Envoie un bon factice (marqué "TEST") dans la file d'impression, sans créer de vraie demande — utile pour vérifier que le relais PC de l'entrepôt et l'imprimante A4 (Ricoh) fonctionnent bien, de bout en bout.
+              </p>
+              <button
+                onClick={async () => {
+                  try {
+                    const pdfBase64 = await genererBonPdf(demandeTestPourImpression());
+                    await envoyerBonReconditionnementPourImpressionPC(`bon-test-impression-${Date.now()}.pdf`, pdfBase64);
+                    notify("success", "🧪 Bon de test envoyé à l'impression — vérifie l'imprimante A4 à l'entrepôt");
+                  } catch (err: any) {
+                    notify("error", `❌ Erreur lors de l'envoi du test : ${err?.message || "erreur inconnue"}`);
+                  }
+                }}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.amber, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >
+                🖨️ Envoyer un bon de test à l'impression
+              </button>
+            </div>
+
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
               <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>🚚 Transporteurs</h3>
 
