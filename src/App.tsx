@@ -661,7 +661,7 @@ export default function App() {
                   date: retour.date,
                   quantiteDeclaree: quantiteRecue,
                   ecart,
-                  commentaire: "Validé automatiquement à l'agréage Moorea — non confirmé par le reconditionneur avant le retour.",
+                  commentaire: "Validé à l'agréage chez Moorea",
                 },
               });
             }

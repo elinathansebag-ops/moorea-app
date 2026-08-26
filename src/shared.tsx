@@ -25,6 +25,24 @@ export const ETIQUETTE_ITEMS = [
   { id: "num_lot", label: "Numéro de lot" },
 ];
 
+// ─── Couleurs partagées pour harmoniser les accordéons "Reconditionnement" (Reconditionnement,
+// Préparation entrepôt, portail reconditionneur) : une couleur par dépôt (NLT / Andès) pour
+// distinguer les prestas d'un coup d'œil, et une couleur par jour de la semaine pour repérer
+// les jours sans avoir à relire la date à chaque fois.
+export const DEPOT_ACCENT: Record<string, string> = { nlt: "#3b82f6", andes: "#8b5cf6" };
+// Index = Date.getDay() (0 = dimanche ... 6 = samedi).
+const WEEKDAY_ACCENTS = ["#ef4444", "#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#06b6d4", "#ec4899"];
+// Accepte une date au format français "JJ/MM/AAAA" (avec ou sans heure derrière) — même format
+// que dateCreationFr partout dans l'app. Retourne une couleur neutre si la date est illisible.
+export function weekdayAccent(dateStr?: string | null): string {
+  if (!dateStr) return "#9ca3af";
+  const [dd, mm, yyyy] = String(dateStr).split(" ")[0].split("/");
+  if (!dd || !mm || !yyyy) return "#9ca3af";
+  const d = new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
+  if (isNaN(d.getTime())) return "#9ca3af";
+  return WEEKDAY_ACCENTS[d.getDay()];
+}
+
 export const NOTE_LABELS: Record<number, string> = { 1: "Insuffisant", 2: "Passable", 3: "Correct", 4: "Bon", 5: "Excellent" };
 export const NOTE_COLORS: Record<number, string> = { 1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#22c55e", 5: "#15803d" };
 export const initialNotes = { qualite: 0, couleur: 0, emballage: 0, sanitaire: 0, etat_general: 0 };

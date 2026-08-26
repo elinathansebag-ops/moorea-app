@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader, F, styles } from "./shared";
+import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import jsPDF from "jspdf";
@@ -1535,19 +1535,21 @@ export function ReconditionnementModule({ onClose, userName }: {
                       {ouverte && (
                         <div style={{ padding: "12px 16px 4px", background: "#fafafa" }}>
                           {info.jours.map(jourStr => (
-                            <div key={jourStr} style={{ marginBottom: 14 }}>
-                              <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: "#888" }}>{jourStr}</p>
+                            <div key={jourStr} style={{ marginBottom: 14, borderLeft: `3px solid ${weekdayAccent(jourStr)}`, paddingLeft: 10 }}>
+                              <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: weekdayAccent(jourStr) }}>{jourStr}</p>
                               {(["nlt", "andes"] as Depot[]).map(dep => {
                                 const demandesJourDepot = parJourDemandes[jourStr].filter(d => d.depot === dep);
                                 if (demandesJourDepot.length === 0) return null;
                                 const cleDepot = `${jourStr}::${dep}`;
                                 const depotOuvert = !depotsFermesDemandes.has(cleDepot);
+                                const accentDepot = DEPOT_ACCENT[dep];
                                 return (
-                                  <div key={dep} style={{ marginBottom: 10 }}>
+                                  <div key={dep} style={{ marginBottom: 10, background: `${accentDepot}0d`, border: `1px solid ${accentDepot}33`, borderRadius: 10, padding: 8 }}>
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0 }}>
                                       <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                                        <span style={{ fontSize: 12, color: COLORS.primary, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
-                                        <span style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray700 }}>
+                                        <span style={{ fontSize: 12, color: accentDepot, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: accentDepot, display: "inline-block" }} />
+                                        <span style={{ fontSize: 12, fontWeight: 800, color: accentDepot }}>
                                           {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
                                         </span>
                                       </div>
@@ -1555,7 +1557,7 @@ export function ReconditionnementModule({ onClose, userName }: {
                                     {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
                                 {demandesJourDepot.map(d => (
-                  <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 16 }}>
+                  <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderLeft: `4px solid ${accentDepot}`, borderRadius: 12, padding: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>
@@ -2058,10 +2060,10 @@ export function ReconditionnementModule({ onClose, userName }: {
                       {ouverte && (
                         <div style={{ padding: "0 16px 12px", background: "#fafafa" }}>
                           {info.jours.map(jourStr => (
-                            <div key={jourStr} style={{ marginTop: 12 }}>
-                              <p style={{ margin: "0 0 6px", fontSize: 11.5, fontWeight: 700, color: "#888" }}>{jourStr}</p>
+                            <div key={jourStr} style={{ marginTop: 12, borderLeft: `3px solid ${weekdayAccent(jourStr)}`, paddingLeft: 10 }}>
+                              <p style={{ margin: "0 0 6px", fontSize: 11.5, fontWeight: 700, color: weekdayAccent(jourStr) }}>{jourStr}</p>
                               {parJour[jourStr].map(d => (
-                                <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "10px 14px", marginBottom: 6 }}>
+                                <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderLeft: `4px solid ${DEPOT_ACCENT[d.depot] || COLORS.gray200}`, borderRadius: 10, padding: "10px 14px", marginBottom: 6 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
                                     <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.gray700 }}>
                                       {d.numero && <span style={{ color: COLORS.primary, marginRight: 6 }}>{d.numero}</span>}

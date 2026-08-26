@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader, styles } from "./shared";
+import { PageHeader, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
 
 // ── Module Préparation entrepôt ──
 // Anciennement l'onglet "📋 Demandes" du module Reconditionnement — extrait ici en module à part
@@ -534,28 +534,6 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           </div>
         )}
 
-        {/* Stock d'emballage — mêmes compteurs que le module Prestataires & IFCO */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — Moorea</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
-          </div>
-          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — NLT</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
-            {caissesNltReserveesNonParties > 0 && (
-              <div style={{ fontSize: 10.5, color: COLORS.amber, fontWeight: 700, marginTop: 3 }}>
-                dont {caissesNltReserveesNonParties} déjà réservées (pas encore parties)
-                <br />→ {Math.max(0, stockIfco.nlt - caissesNltReserveesNonParties)} vraiment libres pour la suite
-              </div>
-            )}
-          </div>
-          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🧺 Carton BABY BLANC (Andès)</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
-          </div>
-        </div>
-
         {/* Envoi du récap du jour — manuel, un bouton par dépôt */}
         {(["nlt", "andes"] as Depot[]).map(dep => {
           const enAttente = demandes.filter(d => d.depot === dep && d.emailEnvoye === false).length;
@@ -643,22 +621,24 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                   {ouverte && (
                     <div style={{ padding: "12px 16px 4px", background: "#fafafa" }}>
                       {info.jours.map(jourStr => (
-                        <div key={jourStr} style={{ marginBottom: 14 }}>
-                          <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: "#888" }}>{jourStr}</p>
+                        <div key={jourStr} style={{ marginBottom: 14, borderLeft: `3px solid ${weekdayAccent(jourStr)}`, paddingLeft: 10 }}>
+                          <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: weekdayAccent(jourStr) }}>{jourStr}</p>
                           {(["nlt", "andes"] as Depot[]).map(dep => {
                             const demandesJourDepot = parJourDemandes[jourStr].filter(d => d.depot === dep);
                             if (demandesJourDepot.length === 0) return null;
                             const cleDepot = `${jourStr}::${dep}`;
                             const depotOuvert = !depotsFermesDemandes.has(cleDepot);
+                            const accentDepot = DEPOT_ACCENT[dep];
                             // "Tout marquer parti" couvre les demandes déjà "prêt" ET celles encore
                             // "en attente" — un seul bouton, un seul total de palettes demandé.
                             const aEnvoyerDuGroupe = demandesJourDepot.filter(d => d.statut === "prêt" || d.statut === "en attente");
                             return (
-                              <div key={dep} style={{ marginBottom: 10 }}>
+                              <div key={dep} style={{ marginBottom: 10, background: `${accentDepot}0d`, border: `1px solid ${accentDepot}33`, borderRadius: 10, padding: 8 }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0 }}>
                                   <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                                    <span style={{ fontSize: 12, color: COLORS.primary, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
-                                    <span style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray700 }}>
+                                    <span style={{ fontSize: 12, color: accentDepot, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: accentDepot, display: "inline-block" }} />
+                                    <span style={{ fontSize: 12, fontWeight: 800, color: accentDepot }}>
                                       {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
                                     </span>
                                   </div>
@@ -678,7 +658,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                 {depotOuvert && (
                                   <div style={{ display: "grid", gap: 12 }}>
                                     {demandesJourDepot.map(d => (
-                                      <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 16 }}>
+                                      <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderLeft: `4px solid ${accentDepot}`, borderRadius: 12, padding: 16 }}>
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                                           <div>
                                             <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>
