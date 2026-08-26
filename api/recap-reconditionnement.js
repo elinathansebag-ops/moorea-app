@@ -133,7 +133,9 @@ async function envoyerRecapPourDepot(depot, demandesRecues) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ emailEnvoye: true, emailEnvoyeDate: dateFr }),
     });
-    return { id, ok: r.ok, statut: r.status };
+    if (r.ok) return { id, ok: true, statut: r.status };
+    const corps = await r.text().catch(() => "(corps illisible)");
+    return { id, ok: false, statut: r.status, corps: corps.slice(0, 300) };
   }));
   const patchEchoues = patchResultats.filter(p => !p.ok);
 

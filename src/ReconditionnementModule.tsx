@@ -699,7 +699,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
 
   function notify(type: "success" | "error", message: string) {
     setNotification({ type, message });
-    setTimeout(() => setNotification(null), 3500);
+    // Les erreurs restent affichées jusqu'à fermeture manuelle (× ou reclique ailleurs) — un
+    // message d'erreur qui disparaît tout seul en 3,5s est illisible/impossible à capturer en
+    // capture d'écran pour diagnostiquer un problème. Les succès restent auto-masqués, rapides.
+    if (type === "success") setTimeout(() => setNotification(null), 3500);
   }
 
   // ─── ENVOI MANUEL DU RÉCAP DU JOUR (NLT / Andès) ───
@@ -732,8 +735,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       if (!res.ok) throw new Error(data?.error || `Erreur ${res.status}`);
       if (data.envoye) {
         const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
-        const echecMarquage = data.patchEchoues?.length ? ` — ⚠️ ${data.patchEchoues.length} demande(s) pas marquée(s) comme envoyée(s), risque de doublon au prochain clic` : "";
-        notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}${echecMarquage}`);
+        if (data.patchEchoues?.length) {
+          // Le mail est bien parti, mais le marquage "envoyé" en base a échoué — la case reste
+          // affichée comme "pas encore envoyée" même si le mail est réellement arrivé. On affiche
+          // le détail (code HTTP + réponse Firebase) plutôt qu'un succès trompeur, pour comprendre
+          // pourquoi sans logs Vercel.
+          const p0 = data.patchEchoues[0];
+          notify("error", `📧 Mail envoyé à ${DEPOT_LABEL[depot]} MAIS le marquage "envoyé" a échoué pour ${data.patchEchoues.length}/${data.nb} demande(s) — la case va rester affichée et tu risques un doublon au prochain clic. 1er échec (id ${p0.id}) : HTTP ${p0.statut} — ${p0.corps || "(pas de détail)"}`);
+        } else {
+          notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}`);
+        }
       } else {
         notify("success", `Rien à envoyer pour ${DEPOT_LABEL[depot]} pour l'instant`);
       }
@@ -1559,8 +1570,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
             color: notification.type === "success" ? "#1a6b3a" : "#b91c1c",
             border: `1.5px solid ${notification.type === "success" ? "#a8d5b5" : "#fca5a5"}`,
             borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
+            maxWidth: "90vw", display: "flex", alignItems: "flex-start", gap: 10,
           }}>
-            {notification.message}
+            <span style={{ flex: 1 }}>{notification.message}</span>
+            {notification.type === "error" && (
+              <button onClick={() => setNotification(null)} style={{ border: "none", background: "transparent", color: "#b91c1c", fontSize: 16, fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
+            )}
           </div>
         )}
 
