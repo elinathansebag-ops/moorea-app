@@ -244,6 +244,17 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   });
   Object.values(parJour).forEach(liste => liste.sort((a, b) => PRIORITE_STATUT[a.statut] - PRIORITE_STATUT[b.statut]));
   const joursTries = Object.keys(parJour).sort((a, b) => (parseFrDate(b)?.getTime() || 0) - (parseFrDate(a)?.getTime() || 0));
+
+  // Total de production du jour, pour la carte "Historique des mouvements" : la quantité
+  // réellement déclarée par le reconditionneur (retourPresta.quantiteDeclaree) une fois la prod
+  // signalée prête, sinon la quantité prévue à la création de la demande (qteConditionnement) —
+  // pour que le total ait un sens même avant confirmation. Ignore les demandes annulées.
+  const totalProdParJour: Record<string, number> = {};
+  joursTries.forEach(jourStr => {
+    totalProdParJour[jourStr] = parJour[jourStr]
+      .filter(d => d.statut !== "annulé")
+      .reduce((s, d) => s + (d.retourPresta?.quantiteDeclaree ?? d.qteConditionnement ?? 0), 0);
+  });
   const parSemaine: Record<string, { label: string; jours: string[]; tri: number }> = {};
   joursTries.forEach(jourStr => {
     const date = parseFrDate(jourStr);
@@ -484,23 +495,43 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
             <span style={{ fontSize: 14, color: "#92722c", transform: mouvementsOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
           </div>
           {mouvementsOuvert && (
-            mouvements.length === 0 ? (
-              <p style={{ margin: "10px 0 0", fontSize: 12, color: COLORS.gray }}>Aucun mouvement enregistré pour l'instant.</p>
-            ) : (
-              <div style={{ marginTop: 10 }}>
-                {mouvements.map(m => (
-                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "8px 0", borderTop: `1px solid ${COLORS.border}` }}>
-                    <div>
-                      <div style={{ fontSize: 12, color: COLORS.ink }}>{m.raison}</div>
-                      <div style={{ fontSize: 10.5, color: COLORS.gray, marginTop: 2 }}>{m.date}</div>
+            <>
+              {joursTries.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                    Production par jour
+                  </p>
+                  {joursTries.map(jourStr => (
+                    <div key={jourStr} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: `1px solid ${COLORS.border}` }}>
+                      <span style={{ fontSize: 12, color: COLORS.ink }}>{jourStr}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.ink }}>
+                        {totalProdParJour[jourStr]} {UNITE_QTE[depot]}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: m.nouvelleValeur >= m.ancienneValeur ? "#15803d" : "#b91c1c", whiteSpace: "nowrap" }}>
-                      {m.ancienneValeur} → {m.nouvelleValeur}
+                  ))}
+                </div>
+              )}
+              {mouvements.length === 0 ? (
+                <p style={{ margin: "10px 0 0", fontSize: 12, color: COLORS.gray }}>Aucun mouvement de stock enregistré pour l'instant.</p>
+              ) : (
+                <div style={{ marginTop: 14 }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                    Ajustements de stock
+                  </p>
+                  {mouvements.map(m => (
+                    <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "8px 0", borderTop: `1px solid ${COLORS.border}` }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: COLORS.ink }}>{m.raison}</div>
+                        <div style={{ fontSize: 10.5, color: COLORS.gray, marginTop: 2 }}>{m.date}</div>
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: m.nouvelleValeur >= m.ancienneValeur ? "#15803d" : "#b91c1c", whiteSpace: "nowrap" }}>
+                        {m.ancienneValeur} → {m.nouvelleValeur}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </Card>
 
