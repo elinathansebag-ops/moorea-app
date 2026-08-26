@@ -17,9 +17,10 @@ export default async function handler(req, res) {
     // (envoi à Jordan) partent depuis entrepot@moorea.fr — voir `sender: "entrepot"` envoyé
     // par StockApp.tsx.
     const comptes = {
-      agreage: { email: 'agreage@moorea.fr', pass: 'ymxzktzulelevucp', label: 'Moorea Agréage' },
-      entrepot: { email: 'entrepot@moorea.fr', pass: 'carakcnlidduatxu', label: 'Moorea Entrepôt' },
-      elinathan: { email: 'elinathan.sebag@moorea.fr', pass: 'zkevxapyygkwmjiy', label: 'Elinathan Sebag' },
+      agreage: { email: 'agreage@moorea.fr', pass: 'ymxz ktzv lele vucp', label: 'Moorea Agréage' },
+      entrepot: { email: 'entrepot@moorea.fr', pass: 'cara kcnl iddu atxu', label: 'Moorea Entrepôt' },
+      elinathan: { email: 'elinathan.sebag@moorea.fr', pass: 'zkev xapy ygkw mjiy', label: 'Elinathan Sebag' },
+      jordan: { email: 'jordan.jouanest@moorea.fr', pass: 'zupv znno urcy qoqy', label: 'Jordan Jouanest' },
     };
     const compte = comptes[sender] || comptes.agreage;
 

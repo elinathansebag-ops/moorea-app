@@ -1764,7 +1764,7 @@ export function PalettePublique({ id }: { id: string }) {
         {/* Déclarer une perte */}
         {!arrivage.destruction && <PalettePerteForm arrivage={arrivage} />}
 
-        <p style={{ textAlign: "center", fontSize: 11, color: "#9ca3af", marginTop: 24 }}>🌿 Moorea · Rungis · moorea-qualite.vercel.app</p>
+        <p style={{ textAlign: "center", fontSize: 11, color: "#9ca3af", marginTop: 24 }}>🌿 Moorea · Rungis · moorea-app.vercel.app</p>
       </div>
     </div>
   );

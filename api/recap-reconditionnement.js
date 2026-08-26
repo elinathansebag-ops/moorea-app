@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { PDFDocument } from "pdf-lib";
+import { getAdminDb } from "./_firebaseAdmin.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -9,27 +10,22 @@ export const config = { runtime: "nodejs" };
 // un mail par demande créée (trop de mails séparés quand NLT ou Andès font plusieurs références
 // le même jour), on regroupe ici toutes les demandes en attente d'UN dépôt dans un seul mail
 // récapitulatif : tous les bons fusionnés en UN SEUL PDF (voir mergerBons ci-dessous — pour éviter
-// d'avoir plein de pièces jointes séparées quand il y a beaucoup de références), et un seul lien
-// pour déclarer un problème sur n'importe laquelle (voir declarer-perte.js, mode "ids").
+// d'avoir plein de pièces jointes séparées quand il y a beaucoup de références).
 //
-// IMPORTANT — pourquoi le CLIENT envoie les demandes complètes (pas juste des ids) : les règles
-// Firebase refusent toute lecture anonyme de reconditionnement_demandes, même pour un seul id précis
-// (confirmé en prod : "HTTP 401 — Permission denied"), alors que l'app elle-même (via le SDK client,
-// authentifié différemment) et les écritures anonymes (PATCH ci-dessous, comme dans declarer-perte.js)
-// fonctionnent très bien. Donc plutôt que de faire relire les demandes par ce endpoint (ce qui
-// échouait à chaque fois, silencieusement au départ, puis avec un vrai 401 une fois le diagnostic
-// ajouté), le client — qui a déjà toutes les données via son listener temps réel — les envoie
-// directement dans le corps de la requête. Ce endpoint ne fait plus AUCUNE lecture Firebase : il
-// construit et envoie le mail à partir de ce qu'on lui donne, puis marque les demandes envoyées
-// (PATCH par id, autorisé). Si le commercial clique plusieurs fois dans la journée, chaque envoi ne
-// reprend que les nouvelles demandes créées depuis le dernier clic (le client filtre déjà sur
-// emailEnvoye === false avant d'appeler cet endpoint).
+// Le CLIENT envoie les demandes complètes (pas juste des ids) car il les a déjà via son listener
+// temps réel — ce endpoint ne relit donc jamais reconditionnement_demandes. Par contre, marquer
+// les demandes comme envoyées (emailEnvoye: true) est une ÉCRITURE, et on a constaté en prod que
+// même les écritures anonymes (PATCH REST sans authentification) sont refusées par Firebase avec
+// un 401 — pas seulement les lectures comme on le pensait au départ. Ce PATCH passe donc
+// maintenant par le compte de service (voir api/_firebaseAdmin.js), qui contourne les règles de
+// sécurité au lieu d'essayer de deviner ce qu'elles autorisent.
 
 const DATABASE_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
-// "app.moorea.fr" n'existe pas (aucun DNS configuré dessus) — c'est pour ça que les liens du
-// mail renvoyaient une erreur DNS_PROBE_FINISHED_NXDOMAIN. Le vrai domaine de l'appli est celui
-// de Vercel (voir le footer de la palette publique dans ArrivageModule.tsx).
-const SITE_URL = "https://moorea-qualite.vercel.app";
+// "app.moorea.fr" n'existe pas (DNS_PROBE_FINISHED_NXDOMAIN), et "moorea-qualite.vercel.app" non
+// plus (DEPLOYMENT_NOT_FOUND — mauvais nom de projet Vercel, confirmé par une capture d'écran en
+// prod le 26/08/2026). Le vrai domaine, donné par l'utilisateur en copiant l'URL de l'appli
+// ouverte normalement dans son navigateur, est moorea-app.vercel.app.
+const SITE_URL = "https://moorea-app.vercel.app";
 
 // Mêmes adresses que ANDES_EMAILS / NLT_EMAILS dans ReconditionnementModule.tsx — dupliquées ici
 // car un fichier api/*.js ne peut pas importer depuis src/*.tsx. Si tu changes une adresse dans
@@ -214,17 +210,17 @@ async function envoyerRecapPourDepot(depot, demandesRecues, stockActuel) {
     throw new Error(`Aucun destinataire accepté par Gmail (${destinataires.join(", ") || "aucune adresse configurée"})`);
   }
 
-  // Marque ces demandes comme envoyées pour ne pas les reprendre le lendemain. Écriture anonyme par
-  // id — contrairement à la lecture, celle-ci fonctionne (même principe que declarer-perte.js).
+  // Marque ces demandes comme envoyées pour ne pas les reprendre le lendemain. Passe par le compte
+  // de service (voir api/_firebaseAdmin.js) — l'écriture anonyme REST utilisée avant était
+  // refusée elle aussi (401), pas seulement la lecture.
+  const adminDb = getAdminDb();
   const patchResultats = await Promise.all(idsEnvoyes.map(async id => {
-    const r = await fetch(`${DATABASE_URL}/reconditionnement_demandes/${id}.json`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emailEnvoye: true, emailEnvoyeDate: dateFr }),
-    });
-    if (r.ok) return { id, ok: true, statut: r.status };
-    const corps = await r.text().catch(() => "(corps illisible)");
-    return { id, ok: false, statut: r.status, corps: corps.slice(0, 300) };
+    try {
+      await adminDb.ref(`reconditionnement_demandes/${id}`).update({ emailEnvoye: true, emailEnvoyeDate: dateFr });
+      return { id, ok: true, statut: 200 };
+    } catch (e) {
+      return { id, ok: false, statut: 500, corps: String(e?.message || e).slice(0, 300) };
+    }
   }));
   const patchEchoues = patchResultats.filter(p => !p.ok);
 

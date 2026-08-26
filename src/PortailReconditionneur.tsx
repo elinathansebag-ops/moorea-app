@@ -1,22 +1,20 @@
-import { useState, useEffect } from "react";
-import { db, ref, onValue, update, push, auth, signInAnonymously } from "./firebase";
+import { useState, useEffect, useCallback } from "react";
 
 // ─── Espace reconditionneur (NLT / Andès) ───
 // Page publique (pas de compte @moorea.fr) ouverte via un lien fixe envoyé une fois pour toutes
-// dans le mail récap quotidien : moorea-qualite.vercel.app/?portail=nlt (ou andes). Voir App.tsx
+// dans le mail récap quotidien : moorea-app.vercel.app/?portail=nlt (ou andes). Voir App.tsx
 // (paramètre ?portail=... lu avant le verrou de connexion Google, même principe que la palette
 // publique) et api/recap-reconditionnement.js (lien "Ouvrir mon espace").
 //
-// Contrairement aux anciennes pages publiques (statut-reconditionnement.js, declarer-perte.js),
-// qui lisaient Firebase depuis le serveur avec une simple requête REST anonyme — refusée par les
-// règles de la base (401 Permission denied, diagnostiqué en prod), cette page lit les données
-// directement depuis le navigateur avec le SDK client, après une connexion Firebase Auth anonyme
-// (signInAnonymously). Si ça affiche une erreur de permission malgré tout, c'est que la connexion
-// anonyme n'est pas activée côté Firebase (Authentication → Sign-in method → Anonymous à cocher).
+// Toutes les données passent par api/portail-reconditionneur.js (GET pour charger, POST pour les
+// deux actions), qui lit/écrit Firebase avec un compte de service côté serveur — PAS de lecture
+// ou écriture Firebase directe depuis cette page. Un premier essai utilisait le SDK client avec
+// une connexion anonyme, mais on a ensuite constaté que même les ÉCRITURES anonymes vers
+// reconditionnement_demandes sont refusées par Firebase (401), pas seulement les lectures — donc
+// rien de fiable ne pouvait passer directement par le navigateur ici. Voir api/_firebaseAdmin.js.
 //
-// Les écritures (confirmer "prêt à repartir", déclarer une perte) réutilisent exactement les
-// mêmes chemins Firebase que le reste de l'appli (reconditionnement_demandes/{id}/...), donc tout
-// ce qui est saisi ici apparaît immédiatement côté Moorea dans le module Reconditionnement.
+// Pas de temps réel ici (onValue) : la page recharge au montage et toutes les 30s, plus un
+// bouton "Actualiser" manuel — largement suffisant pour un usage "je consulte, je valide".
 
 type Depot = "nlt" | "andes";
 
@@ -68,10 +66,22 @@ type Demande = {
   retourPresta?: RetourPresta;
 };
 
-function nowFr() {
-  const d = new Date();
-  return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-}
+// Demande de réajustement du stock d'emballage (caisses IFCO ou cartons BABY BLANC), envoyée par
+// le reconditionneur depuis cette page quand le compte affiché dans l'app ne correspond pas à ce
+// qu'il a réellement chez lui — validée ou refusée côté Moorea (voir ReconditionnementModule.tsx,
+// onglet Dashboard). Tant qu'elle n'est pas traitée, le stock affiché ici n'est PAS modifié : ce
+// n'est qu'une demande.
+type ReajustementDemande = {
+  id: string;
+  depot: Depot;
+  quantiteActuelle: number;
+  quantiteProposee: number;
+  raison: string;
+  date: string;
+  ts: number;
+  statut: "en attente" | "validé" | "refusé";
+  traiteDate?: string;
+};
 
 // Redimensionne/compresse une photo prise au téléphone avant de l'envoyer (même logique que
 // api/declarer-perte.js, portée côté React pour rester dans cette page).
@@ -121,39 +131,35 @@ function Badge({ statut }: { statut: Demande["statut"] }) {
 }
 
 export function PortailReconditionneur({ depot }: { depot: Depot }) {
-  const [authState, setAuthState] = useState<"loading" | "ready" | "error">("loading");
-  const [permError, setPermError] = useState(false);
+  const [chargeState, setChargeState] = useState<"loading" | "ready" | "error">("loading");
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [stock, setStock] = useState<number | null>(null);
+  const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
   const [onglet, setOnglet] = useState<"chezvous" | "avenir" | "recues">("chezvous");
   const [pretOuvertPour, setPretOuvertPour] = useState<string | null>(null);
   const [perteOuvertePour, setPerteOuvertePour] = useState<string | null>(null);
+  const [reajustementOuvert, setReajustementOuvert] = useState(false);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
 
-  useEffect(() => {
-    signInAnonymously(auth)
-      .then(() => setAuthState("ready"))
-      .catch(() => setAuthState("error"));
-  }, []);
+  const charger = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDemandes(Array.isArray(data.demandes) ? data.demandes : []);
+      setStock(typeof data.stock === "number" ? data.stock : 0);
+      setReajustements(Array.isArray(data.reajustements) ? data.reajustements : []);
+      setChargeState("ready");
+    } catch {
+      setChargeState("error");
+    }
+  }, [depot]);
 
   useEffect(() => {
-    if (authState !== "ready") return;
-    const u1 = onValue(
-      ref(db, "reconditionnement_demandes"),
-      snap => {
-        const data = snap.val() || {};
-        const list: Demande[] = Object.entries(data)
-          .map(([id, v]: [string, any]) => ({ id, ...v }))
-          .filter((d: any) => d.depot === depot && d.statut !== "annulé");
-        list.sort((a, b) => (b.dateCreation || "").localeCompare(a.dateCreation || ""));
-        setDemandes(list);
-      },
-      () => setPermError(true)
-    );
-    const stockPath = depot === "nlt" ? "ifco_stock/levels/nlt" : "stock_carton_andes/baby_blanc";
-    const u2 = onValue(ref(db, stockPath), snap => setStock(typeof snap.val() === "number" ? snap.val() : 0));
-    return () => { u1(); u2(); };
-  }, [authState, depot]);
+    charger();
+    const interval = setInterval(charger, 30000);
+    return () => clearInterval(interval);
+  }, [charger]);
 
   const chezVous = demandes.filter(d => d.statut === "parti");
   const aVenir = demandes.filter(d => d.statut === "en attente" || d.statut === "prêt");
@@ -163,12 +169,16 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   async function confirmerPret(d: Demande, quantite: number, commentaire: string) {
     setEnvoiEnCours(true);
     try {
-      const attendu = d.nbColisAEntrer ?? null;
-      const ecart = attendu != null ? quantite - attendu : null;
-      await update(ref(db, `reconditionnement_demandes/${d.id}`), {
-        retourPresta: { confirme: true, date: nowFr(), quantiteDeclaree: quantite, ecart, commentaire: commentaire || null },
+      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: d.id, action: "confirmerPret", quantite, commentaire }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setPretOuvertPour(null);
+      await charger();
+    } catch {
+      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
     } finally {
       setEnvoiEnCours(false);
     }
@@ -177,51 +187,57 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   async function envoyerPerte(d: Demande, motif: string, quantite: number, commentaire: string, photoEtiquette: string | null, photoProduit: string | null) {
     setEnvoiEnCours(true);
     try {
-      const perte: PerteInfo = { motif, quantite, commentaire: commentaire || "", photoEtiquette, photoProduit, date: nowFr(), ts: Date.now() };
-      await push(ref(db, `reconditionnement_demandes/${d.id}/pertes`), perte);
-      // Best effort : notifie Moorea par mail (mêmes destinataires que declarer-perte.js). Ne
-      // bloque pas la déclaration si l'envoi échoue — la perte est déjà enregistrée dans Firebase
-      // et visible côté Moorea dans le module Reconditionnement.
-      try {
-        await fetch("/api/send-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sender: "agreage",
-            to: ["qualite@moorea.fr", "commercial@moorea.fr"],
-            subject: `⚠️ Perte déclarée — Reconditionnement ${d.numero || d.id} (${DEPOT_LABEL[depot]})`,
-            html: `<p>⚠️ Une perte a été déclarée par ${DEPOT_LABEL[depot]} depuis son espace en ligne, sur la commande <strong>${d.numero || d.id}</strong>.</p>
-              <ul>
-                <li><strong>Article :</strong> ${d.articleFini || d.articleVrac || "—"}</li>
-                <li><strong>Motif :</strong> ${motif}</li>
-                <li><strong>Quantité :</strong> ${quantite} colis</li>
-                ${commentaire ? `<li><strong>Commentaire :</strong> ${commentaire}</li>` : ""}
-              </ul>
-              <p>Photos et détail complet visibles dans l'app, fiche de la demande.</p>`,
-          }),
-        });
-      } catch {}
+      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: d.id, action: "declarerPerte", motif, quantite, commentaire, photoEtiquette, photoProduit }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setPerteOuvertePour(null);
+      await charger();
+    } catch {
+      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
     } finally {
       setEnvoiEnCours(false);
     }
   }
 
-  if (authState === "error" || permError) {
+  async function demanderReajustement(quantiteProposee: number, raison: string) {
+    setEnvoiEnCours(true);
+    try {
+      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "demanderReajustement", quantiteProposee, raison }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setReajustementOuvert(false);
+      await charger();
+    } catch {
+      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
+    } finally {
+      setEnvoiEnCours(false);
+    }
+  }
+
+  if (chargeState === "error") {
     return (
       <div style={{ minHeight: "100vh", background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
         <Card style={{ maxWidth: 420, textAlign: "center" }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>⚠️</div>
           <h1 style={{ fontSize: 17, margin: "0 0 8px" }}>Accès indisponible</h1>
-          <p style={{ fontSize: 13.5, color: COLORS.gray, margin: 0 }}>
-            Impossible de charger ton espace pour le moment. Contacte Moorea directement — dis-leur "connexion anonyme Firebase à activer" si tu peux, ça les aidera à corriger vite.
+          <p style={{ fontSize: 13.5, color: COLORS.gray, margin: "0 0 14px" }}>
+            Impossible de charger ton espace pour le moment. Réessaie dans un instant ou contacte Moorea directement.
           </p>
+          <button onClick={() => { setChargeState("loading"); charger(); }} style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            Réessayer
+          </button>
         </Card>
       </div>
     );
   }
 
-  if (authState === "loading") {
+  if (chargeState === "loading") {
     return (
       <div style={{ minHeight: "100vh", background: COLORS.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ width: 30, height: 30, border: `3px solid ${COLORS.gold}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
@@ -232,18 +248,50 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-      <div style={{ background: COLORS.ink, padding: "16px 18px", position: "sticky", top: 0, zIndex: 10 }}>
-        <div style={{ color: COLORS.gold, fontSize: 17, fontWeight: 800, letterSpacing: 0.5 }}>MOOREA</div>
-        <div style={{ color: "#fff", fontSize: 13, marginTop: 2 }}>Espace reconditionneur — {DEPOT_LABEL[depot]}</div>
+      <div style={{ background: COLORS.ink, padding: "16px 18px", position: "sticky", top: 0, zIndex: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ color: COLORS.gold, fontSize: 17, fontWeight: 800, letterSpacing: 0.5 }}>MOOREA</div>
+          <div style={{ color: "#fff", fontSize: 13, marginTop: 2 }}>Espace reconditionneur — {DEPOT_LABEL[depot]}</div>
+        </div>
+        <button onClick={charger} title="Actualiser" style={{ background: "transparent", border: `1.5px solid ${COLORS.gold}`, color: COLORS.gold, borderRadius: 8, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>
+          ↻
+        </button>
       </div>
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: 14 }}>
         {stock != null && (
           <Card style={{ background: "#faf7ef", borderColor: "#e8dcc0" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#92722c", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>
-              📦 Stock {EMBALLAGE_LABEL[depot]} chez vous
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#92722c", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>
+                  📦 Stock {EMBALLAGE_LABEL[depot]} chez vous
+                </div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.ink }}>{stock}</div>
+              </div>
+              {!reajustementOuvert && (
+                <button
+                  onClick={() => setReajustementOuvert(true)}
+                  style={{ padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e8dcc0", background: "#fff", color: "#92722c", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  ✏️ Signaler un écart
+                </button>
+              )}
             </div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.ink }}>{stock}</div>
+
+            {reajustementOuvert && (
+              <FormReajustement stockActuel={stock} envoiEnCours={envoiEnCours} onAnnuler={() => setReajustementOuvert(false)} onValider={demanderReajustement} />
+            )}
+
+            {reajustements.filter(r => r.statut === "en attente").map(r => (
+              <div key={r.id} style={{ fontSize: 11.5, color: "#92722c", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 8, padding: "6px 10px", marginTop: 10 }}>
+                🕐 Demande en attente de validation Moorea : {r.quantiteProposee} (au lieu de {r.quantiteActuelle}) — {r.date}
+              </div>
+            ))}
+            {reajustements.filter(r => r.statut !== "en attente").slice(0, 3).map(r => (
+              <div key={r.id} style={{ fontSize: 11.5, color: r.statut === "validé" ? "#15803d" : "#b91c1c", marginTop: 8 }}>
+                {r.statut === "validé" ? "✅" : "❌"} {r.statut === "validé" ? "Validé" : "Refusé"} — proposition {r.quantiteProposee} le {r.date}
+              </div>
+            ))}
           </Card>
         )}
 
@@ -443,6 +491,48 @@ function FormPerte({ demande, envoiEnCours, onAnnuler, onValider }: {
           {envoiEnCours ? "Envoi..." : "Envoyer la déclaration"}
         </button>
         <button onClick={onAnnuler} style={{ padding: "10px 14px", borderRadius: 8, border: "1.5px solid #fecaca", background: "#fff", fontSize: 13, cursor: "pointer" }}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FormReajustement({ stockActuel, envoiEnCours, onAnnuler, onValider }: {
+  stockActuel: number; envoiEnCours: boolean; onAnnuler: () => void; onValider: (quantiteProposee: number, raison: string) => void;
+}) {
+  const [quantite, setQuantite] = useState(String(stockActuel));
+  const [raison, setRaison] = useState("");
+  const q = parseInt(quantite);
+  const valide = Number.isFinite(q) && q >= 0 && raison.trim().length > 0;
+  return (
+    <div style={{ marginTop: 10, background: "#fff", border: "1.5px solid #e8dcc0", borderRadius: 10, padding: 12 }}>
+      <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: "#92722c", textTransform: "uppercase", marginBottom: 4 }}>
+        Quantité réelle constatée chez vous
+      </label>
+      <input
+        type="number" min="0" value={quantite} onChange={e => setQuantite(e.target.value)}
+        style={{ width: "100%", padding: "9px 10px", border: "1.5px solid #e8dcc0", borderRadius: 8, fontSize: 14, marginBottom: 8, boxSizing: "border-box" }}
+      />
+      <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: "#92722c", textTransform: "uppercase", marginBottom: 4 }}>
+        Raison de l'écart
+      </label>
+      <textarea
+        value={raison} onChange={e => setRaison(e.target.value)} placeholder="Ex : comptage, casse, retour non pris en compte..."
+        style={{ width: "100%", minHeight: 60, padding: "9px 10px", border: "1.5px solid #e8dcc0", borderRadius: 8, fontSize: 13, marginBottom: 10, boxSizing: "border-box", fontFamily: "inherit" }}
+      />
+      <p style={{ fontSize: 11, color: "#92722c", margin: "0 0 10px" }}>
+        Ça n'ajuste rien tout de suite — Moorea reçoit ta demande et la valide ou la refuse.
+      </p>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          disabled={!valide || envoiEnCours}
+          onClick={() => onValider(q, raison.trim())}
+          style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: "#0a0a0a", color: "#c8a84b", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !valide || envoiEnCours ? 0.5 : 1 }}
+        >
+          {envoiEnCours ? "Envoi..." : "Envoyer la demande"}
+        </button>
+        <button onClick={onAnnuler} style={{ padding: "10px 14px", borderRadius: 8, border: "1.5px solid #e8dcc0", background: "#fff", fontSize: 13, cursor: "pointer" }}>
           Annuler
         </button>
       </div>

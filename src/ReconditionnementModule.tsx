@@ -121,6 +121,23 @@ type Demande = {
   };
 };
 
+// Demande de réajustement du stock d'emballage, envoyée par le reconditionneur depuis son espace
+// public (voir src/PortailReconditionneur.tsx) — validée ou refusée ici, dans le Dashboard.
+// Valider applique réellement la nouvelle quantité au stock (ifco_stock/levels/nlt ou
+// stock_carton_andes/baby_blanc) ; refuser ne change rien au stock.
+type ReajustementDemande = {
+  id: string;
+  depot: Depot;
+  quantiteActuelle: number;
+  quantiteProposee: number;
+  raison: string;
+  date: string;
+  ts: number;
+  statut: "en attente" | "validé" | "refusé";
+  traitePar?: string;
+  traiteDate?: string;
+};
+
 type PerteInfo = {
   motif: string;
   quantite: number;
@@ -619,6 +636,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // validation de l'arrivage correspondant dans App.tsx (handleAgrement).
   const [mouvements, setMouvements] = useState<Mouvement[]>([]);
 
+  // Demandes de réajustement de stock envoyées par le reconditionneur depuis son espace public
+  // (voir src/PortailReconditionneur.tsx, api/portail-reconditionneur.js) — à valider ou refuser
+  // ici, dans le Dashboard.
+  const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
+
   useEffect(() => {
     const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
       const d = snap.val();
@@ -645,7 +667,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       const d = snap.val();
       setMouvements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = onValue(ref(db, "reajustements_stock_demandes"), snap => {
+      const d = snap.val();
+      setReajustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
@@ -713,6 +739,37 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     // message d'erreur qui disparaît tout seul en 3,5s est illisible/impossible à capturer en
     // capture d'écran pour diagnostiquer un problème. Les succès restent auto-masqués, rapides.
     if (type === "success") setTimeout(() => setNotification(null), 3500);
+  }
+
+  // ─── VALIDATION / REFUS D'UNE DEMANDE DE RÉAJUSTEMENT DE STOCK (portail reconditionneur) ───
+  // Valider applique réellement la nouvelle quantité au compteur de stock réel (le même que
+  // celui affiché plus haut, stockIfco.nlt ou stockBabyBlancAndes) ; refuser ne touche à rien,
+  // seul le statut de la demande change. Les deux sont tracés dans stock_ajustements (même
+  // journal que les autres corrections de stock de l'app) pour garder un historique cohérent.
+  async function traiterReajustement(r: ReajustementDemande, valider: boolean) {
+    try {
+      await update(ref(db, `reajustements_stock_demandes/${r.id}`), {
+        statut: valider ? "validé" : "refusé",
+        traitePar: userName,
+        traiteDate: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      });
+      if (valider) {
+        const chemin = r.depot === "nlt" ? "ifco_stock/levels" : "stock_carton_andes";
+        const champ = r.depot === "nlt" ? "nlt" : "baby_blanc";
+        await update(ref(db, chemin), { [champ]: r.quantiteProposee });
+        await push(ref(db, "stock_ajustements"), {
+          emplacement: r.depot === "nlt" ? "Caisses IFCO — NLT" : "Carton Baby Blanc — Andes",
+          ancienneValeur: r.quantiteActuelle,
+          nouvelleValeur: r.quantiteProposee,
+          raison: `Réajustement demandé par ${DEPOT_LABEL[r.depot]} (${r.raison}) — validé par ${userName}`,
+          date: new Date().toLocaleDateString("fr-FR"),
+          timestamp: Date.now(),
+        });
+      }
+      notify("success", valider ? "✓ Réajustement validé, stock mis à jour" : "✓ Demande refusée, stock inchangé");
+    } catch (err: any) {
+      notify("error", `Erreur lors du traitement : ${err?.message || "erreur inconnue"}`);
+    }
   }
 
   // ─── ENVOI MANUEL DU RÉCAP DU JOUR (NLT / Andès) ───
@@ -1664,6 +1721,34 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 </div>
               );
             })}
+
+            {/* Demandes de réajustement de stock envoyées par les reconditionneurs depuis leur
+                espace public — à valider (applique la nouvelle quantité au stock) ou refuser
+                (ne change rien). Voir traiterReajustement() plus haut. */}
+            {reajustements.filter(r => r.statut === "en attente").map(r => (
+              <div key={r.id} style={{ background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginBottom: 4 }}>
+                  📦 {DEPOT_LABEL[r.depot]} demande un réajustement de stock — {r.quantiteActuelle} → <b>{r.quantiteProposee}</b>
+                </div>
+                <div style={{ fontSize: 12, color: "#92400e", marginBottom: 10 }}>
+                  "{r.raison}" — {r.date}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => traiterReajustement(r, true)}
+                    style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ✓ Valider ({r.quantiteProposee})
+                  </button>
+                  <button
+                    onClick={() => traiterReajustement(r, false)}
+                    style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ✗ Refuser
+                  </button>
+                </div>
+              </div>
+            ))}
 
             {/* Filtre statut */}
             <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
