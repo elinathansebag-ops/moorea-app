@@ -509,7 +509,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Catalogue global des produits Moorea (même source que le module Catalogue) — les 2 champs
-  // article sont limités à ce catalogue, aucune saisie libre n'est acceptée.
+  // article proposent en priorité ce catalogue, mais acceptent une saisie libre pour tout article
+  // qui n'y figure pas encore (avec confirmation à la création, voir creerDemande) — un article
+  // réel non détecté ne doit jamais bloquer complètement la création d'une demande.
   const [catalogueArticles, setCatalogueArticles] = useState<{ code: string; libelle: string }[]>([]);
   // Arrivages (agréage) — sert à retrouver l'article vrac réceptionné pour un lot donné.
   const [arrivagesData, setArrivagesData] = useState<any[]>([]);
