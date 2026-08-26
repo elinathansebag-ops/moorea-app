@@ -233,11 +233,18 @@ export default async function handler(req, res) {
           service: "gmail",
           auth: { user: "agreage@moorea.fr", pass: "ymxz ktzv lele vucp" },
         });
+        // `cid` (Content-ID) permet de référencer ces pièces jointes directement dans le corps du
+        // mail via <img src="cid:...">, pour que les photos s'affichent tout de suite à la
+        // lecture du mail, sans avoir à ouvrir les pièces jointes une par une.
         const attachments = [];
-        if (perte.photoEtiquette) attachments.push({ filename: "etiquette-colis.jpg", content: Buffer.from(perte.photoEtiquette.split(",").pop(), "base64"), contentType: "image/jpeg" });
-        if (perte.photoProduit) attachments.push({ filename: "produit.jpg", content: Buffer.from(perte.photoProduit.split(",").pop(), "base64"), contentType: "image/jpeg" });
+        if (perte.photoEtiquette) attachments.push({ filename: "etiquette-colis.jpg", content: Buffer.from(perte.photoEtiquette.split(",").pop(), "base64"), contentType: "image/jpeg", cid: "photo-etiquette" });
+        if (perte.photoProduit) attachments.push({ filename: "produit.jpg", content: Buffer.from(perte.photoProduit.split(",").pop(), "base64"), contentType: "image/jpeg", cid: "photo-produit" });
 
         const ref = demande.numero || id;
+        const photosHtml = `
+          ${perte.photoEtiquette ? `<div style="margin-bottom:10px"><p style="margin:0 0 4px;font-size:12px;color:#666">Étiquette du colis :</p><img src="cid:photo-etiquette" style="max-width:320px;border-radius:6px" /></div>` : ""}
+          ${perte.photoProduit ? `<div><p style="margin:0 0 4px;font-size:12px;color:#666">Produit :</p><img src="cid:photo-produit" style="max-width:320px;border-radius:6px" /></div>` : ""}
+        `;
         const emailHtml = `
           <p>⚠️ Une perte a été déclarée par le reconditionneur sur la commande <strong>${ref}</strong>.</p>
           <ul>
@@ -247,7 +254,7 @@ export default async function handler(req, res) {
             ${perte.commentaire ? `<li><strong>Commentaire :</strong> ${perte.commentaire}</li>` : ""}
             <li><strong>Date :</strong> ${perte.date}</li>
           </ul>
-          <p>Photos en pièce jointe (étiquette du colis + produit, si fournies).</p>
+          ${photosHtml || "<p>Aucune photo fournie.</p>"}
         `;
         await transporter.sendMail({
           from: "Moorea Agréage <agreage@moorea.fr>",
