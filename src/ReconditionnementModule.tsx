@@ -98,6 +98,20 @@ type Demande = {
   nbPalettesDepart?: NbPalettes;
   departDate?: string;
   retour?: RetourInfo;
+  // Pertes qualité déclarées par le reconditionneur lui-même (formulaire public, voir
+  // api/declarer-perte.js — lien envoyé dans l'email du bon) : lu tel quel depuis Firebase, donc
+  // un objet clé→valeur (clés = push id), pas un tableau.
+  pertes?: Record<string, PerteInfo>;
+};
+
+type PerteInfo = {
+  motif: string;
+  quantite: number;
+  commentaire?: string;
+  photoEtiquette?: string | null;
+  photoProduit?: string | null;
+  date: string;
+  ts: number;
 };
 
 type Transporteur = {
@@ -241,6 +255,13 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   const qrUrl = `${window.location.origin}${window.location.pathname}?recond=${demande.id}`;
   const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 400, margin: 1, color: { dark: "#0a0a0a", light: "#ffffff" } });
 
+  // QR de déclaration de perte — pour le reconditionneur (NLT ET Andès, imprimé sur tous les
+  // bons quel que soit le dépôt) : permet de signaler un souci qualité constaté à la préparation
+  // (produit abîmé, non conforme...) directement depuis son téléphone, avec deux photos à l'appui
+  // (étiquette du colis + produit) — voir api/declarer-perte.js.
+  const qrPerteUrl = `${window.location.origin}/api/declarer-perte?id=${demande.id}`;
+  const qrPerteDataUrl = await QRCode.toDataURL(qrPerteUrl, { width: 400, margin: 1, color: { dark: "#0a0a0a", light: "#ffffff" } });
+
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const W = 210, M = 16, CW = W - M * 2;
   let y = 0;
@@ -330,7 +351,7 @@ async function genererBonPdf(demande: Demande): Promise<string> {
 
   // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) : encadré simple, sans bandeau plein, pour bien
   // se distinguer de la zone 1 même sans couleur ───
-  const zone2Top = y, zone2H = 64;
+  const zone2Top = y, zone2H = 84;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.6); doc.rect(M, zone2Top, CW, zone2H, "S");
   doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
   doc.text(`${DEPOT_LABEL[demande.depot].toUpperCase()} — À PRÉPARER ET RETOURNER`, M + 8, zone2Top + 10);
@@ -341,9 +362,19 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   ligne("Qté conditionnement attendue", demande.qteConditionnement != null ? String(demande.qteConditionnement) : "-", col2, yy2);
   yy2 += 13;
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy2);
-  yy2 += 13;
+  yy2 += 12;
   doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.3);
-  doc.text("Le retour sera pointé par Moorea à réception. Merci de signaler toute anomalie au transporteur.", M + 8, yy2, { maxWidth: CW - 16 });
+  doc.text("Le retour sera pointé par Moorea à réception.", M + 8, yy2, { maxWidth: CW - 16 });
+  yy2 += 7;
+
+  // QR déclaration de perte — voir commentaire plus haut (qrPerteDataUrl)
+  const qrSize2 = 20;
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2); doc.rect(M + 8, yy2, CW - 16, qrSize2 + 8, "S");
+  doc.addImage(qrPerteDataUrl, "PNG", M + 12, yy2 + 4, qrSize2, qrSize2);
+  doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+  doc.text("Un souci qualité constaté ?", M + 12 + qrSize2 + 8, yy2 + 11);
+  doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2);
+  doc.text("Scannez pour déclarer une perte avec photos (étiquette + produit).", M + 12 + qrSize2 + 8, yy2 + 17, { maxWidth: CW - qrSize2 - 44 });
   y = zone2Top + zone2H + 10;
 
   doc.setTextColor(160, 160, 160); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
@@ -476,6 +507,8 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // vers un data: URL (d'où le renvoi vers une page Google constaté par l'utilisateur), alors
   // qu'un iframe src="data:..." affiché dans la page fonctionne normalement.
   const [pdfApercu, setPdfApercu] = useState<{ titre: string; base64: string } | null>(null);
+  // Aperçu plein écran d'une photo de perte déclarée par le reconditionneur (clic sur une miniature)
+  const [photoApercu, setPhotoApercu] = useState<string | null>(null);
   const [pretGrandes, setPretGrandes] = useState("");
   const [pretDemi, setPretDemi] = useState("");
 
@@ -1088,6 +1121,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           if (depot === "andes") {
             try {
               const lienSuivi = `${window.location.origin}/api/statut-reconditionnement?id=${demandeId}`;
+              const lienPerte = `${window.location.origin}/api/declarer-perte?id=${demandeId}`;
               const lignesHtml = `<li><strong>${demande.articleVrac}</strong> » <strong>${demande.articleFini}</strong> — ${demande.nbColisAEntrer ?? "-"} colis à entrer</li>`;
               const emailHtml = `
                 <p>Bonjour,</p>
@@ -1095,6 +1129,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 <ul>${lignesHtml}</ul>
                 <p>Merci de nous retourner la production avec le bon complété.</p>
                 <p><a href="${lienSuivi}">Suivre l'état de cette demande</a></p>
+                <p>⚠️ En cas de souci qualité constaté (produit abîmé, non conforme...) : <a href="${lienPerte}">déclarer une perte avec photos</a></p>
                 <p>Merci !</p>
               `;
               const emailRes = await fetch("/api/send-email", {
@@ -1578,6 +1613,30 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                         {` · ${d.retour.nbPalettes.grandes} grande(s) + ${d.retour.nbPalettes.demi} demi-palette(s)`}
                         {d.retour.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisse(s) IFCO pleines reçues` : (retourEnIfcoDemande(d) ? " · ⚠️ aucune caisse IFCO pleine saisie au retour" : "")}
                         {d.retour.commentaire ? ` · "${d.retour.commentaire}"` : ""}
+                      </div>
+                    )}
+
+                    {d.pertes && Object.keys(d.pertes).length > 0 && (
+                      <div style={{ marginTop: 10, background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 10, padding: "10px 12px" }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: "#b91c1c", marginBottom: 6 }}>
+                          ⚠️ {Object.keys(d.pertes).length} perte{Object.keys(d.pertes).length > 1 ? "s" : ""} déclarée{Object.keys(d.pertes).length > 1 ? "s" : ""} par le reconditionneur
+                        </div>
+                        {Object.entries(d.pertes).map(([pid, p]) => (
+                          <div key={pid} style={{ fontSize: 12, color: "#7f1d1d", marginBottom: 6 }}>
+                            <strong>{p.quantite}</strong> colis — {p.motif} · {p.date}
+                            {p.commentaire ? ` · "${p.commentaire}"` : ""}
+                            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                              {p.photoEtiquette && (
+                                <img src={p.photoEtiquette} alt="Étiquette" onClick={() => setPhotoApercu(p.photoEtiquette!)}
+                                  style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 6, border: "1px solid #fca5a5", cursor: "pointer" }} />
+                              )}
+                              {p.photoProduit && (
+                                <img src={p.photoProduit} alt="Produit" onClick={() => setPhotoApercu(p.photoProduit!)}
+                                  style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 6, border: "1px solid #fca5a5", cursor: "pointer" }} />
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -2385,6 +2444,14 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
             </div>
             <iframe src={pdfApercu.base64} title={pdfApercu.titre} style={{ flex: 1, border: "none", background: "#fff" }} />
           </div>
+        </div>
+      )}
+
+      {/* MODALE — Aperçu plein écran d'une photo de perte (étiquette ou produit) */}
+      {photoApercu && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setPhotoApercu(null)}>
+          <img src={photoApercu} alt="Aperçu" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }} />
+          <button onClick={() => setPhotoApercu(null)} style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,.15)", border: "none", color: "#fff", fontSize: 22, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>×</button>
         </div>
       )}
     </div>
