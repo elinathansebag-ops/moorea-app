@@ -748,6 +748,15 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
             </div>
           );
         })}
+
+        <div style={{ textAlign: "center", padding: "18px 10px 6px", fontSize: 11.5, color: COLORS.gray }}>
+          <p style={{ margin: "0 0 4px" }}>Une question, une demande ? Contactez Elinathan :</p>
+          <p style={{ margin: 0, fontWeight: 700, color: COLORS.ink }}>
+            <a href="mailto:elinathan.sebag@moorea.fr" style={{ color: "#92722c", textDecoration: "none" }}>elinathan.sebag@moorea.fr</a>
+            {" · "}
+            <a href="tel:+33769117107" style={{ color: "#92722c", textDecoration: "none" }}>07 69 11 71 07</a>
+          </p>
+        </div>
       </div>
     </div>
   );
