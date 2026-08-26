@@ -664,6 +664,14 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setRetourIfco(/ifco/i.test(articleFini));
   }, [articleFini, editDemandeId]);
 
+  // Pré-remplit "Cartons BABY BLANC utilisés" avec le nb de colis à entrer — chez Andès, c'est
+  // quasi-toujours 1 carton BABY BLANC par colis. Reste modifiable à la main pour les cas où ça
+  // diffère. Ne se déclenche pas en édition, où la valeur vient de la demande existante.
+  useEffect(() => {
+    if (editDemandeId) return;
+    if (depot === "andes") setCartonsBabyBlancEnvoyes(nbColisAEntrer);
+  }, [nbColisAEntrer, depot, editDemandeId]);
+
   function notify(type: "success" | "error", message: string) {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 3500);
@@ -1997,7 +2005,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                   cartons BABY BLANC sont déjà en stock chez Andès — on ne les envoie pas avec le
                   produit, cette demande consomme juste une partie de ce stock existant. */}
               {depot === "andes" && (
-                <F label="Cartons BABY BLANC utilisés (déjà en stock chez Andès)"><input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="Nb de cartons utilisés pour cette production" /></F>
+                <F label="Cartons BABY BLANC utilisés (déjà en stock chez Andès)">
+                  <input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="Nb de cartons utilisés pour cette production" />
+                  <span style={{ fontSize: 10.5, color: "#9ca3af" }}>= nb colis à entrer par défaut, modifiable</span>
+                </F>
               )}
             </div>
 
