@@ -14,6 +14,11 @@ interface ProduitLigne {
   motif: string;
   decisionArticle: null | "accepte" | "destruction";
   controle?: { qStock: number; qDestroy: number; qManque: number };
+  // Coché au pointage si l'article revient en caisses IFCO (plutôt qu'en carton/autre) — sert à
+  // réalimenter le stock de caisses IFCO vides Moorea (ifco_stock/levels.moorea, même compteur
+  // que PrestatairesModule.tsx / ReconditionnementModule.tsx) pour la part effectivement remise
+  // en stock (qStock), pas pour ce qui est détruit ou manquant.
+  emballageIfco?: boolean;
 }
 
 interface FicheRetour {
@@ -451,6 +456,27 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     setOpenId(null);
     setModal("success"); setModalData({ fiche, source: "valide" });
     await update(ref(db, "retours/" + fiche.id), { products: fiche.products, statut: "traite", commentPrep: commentPrep ?? fiche.commentPrep ?? "" });
+
+    // Caisses IFCO effectivement remises en stock au pointage (uniquement la part "En stock",
+    // pas ce qui est détruit ou manquant) : on réalimente le stock de caisses vides Moorea
+    // (ifco_stock/levels.moorea, même compteur partagé que PrestatairesModule.tsx et
+    // ReconditionnementModule.tsx). Best-effort, ne bloque pas la validation du retour si ça échoue.
+    const totalIfco = (fiche.products || []).reduce((s, p) => s + (p.emballageIfco ? (p.controle?.qStock || 0) : 0), 0);
+    if (totalIfco > 0) {
+      try {
+        const { get } = await import("firebase/database");
+        const levelsSnap = await get(ref(db, "ifco_stock/levels"));
+        const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
+        await update(ref(db, "ifco_stock/levels"), { moorea: (levels.moorea || 0) + totalIfco });
+        await push(ref(db, "ifco_stock/movements"), {
+          date: new Date().toLocaleDateString("fr-FR"), from: "client", to: "moorea", caisses: totalIfco,
+          raison: `Retour client — ${fiche.numero || fiche.id}${fiche.client ? ` (${fiche.client})` : ""}`,
+          ts: Date.now(),
+        });
+      } catch (err) {
+        console.error("Erreur mise à jour stock IFCO suite retour client:", err);
+      }
+    }
   }
 
   async function doSupprimer() {
@@ -495,6 +521,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
         const qS = parseInt((row?.querySelector('[data-f="stock"]') as HTMLInputElement)?.value) || 0;
         const qD = parseInt((row?.querySelector('[data-f="destroy"]') as HTMLInputElement)?.value) || 0;
         const qM = parseInt((row?.querySelector('[data-f="manque"]') as HTMLInputElement)?.value) || 0;
+        const ifco = (row?.querySelector('[data-f="ifco"]') as HTMLInputElement)?.checked || false;
         const att = parseInt(p.qteAttendue) || 0;
         const total = qS + qD + qM;
 
@@ -502,7 +529,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
           errs.push(`${p.nom} : total saisi (${total}) dépasse la quantité attendue (${att})`);
         }
         // qteRecue = stock + destruction (ce qu'on a physiquement reçu)
-        return { ...p, qteRecue: String(qS + qD), controle: { qStock: qS, qDestroy: qD, qManque: qM } };
+        return { ...p, qteRecue: String(qS + qD), controle: { qStock: qS, qDestroy: qD, qManque: qM }, emballageIfco: ifco };
       });
 
       if (errs.length > 0) { setErreurs(errs); return; }
@@ -551,6 +578,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                 <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#dc2626", width: 90 }}>✗ Détruit</th>
                 <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#b45309", width: 90 }}>⚠ Manquant</th>
                 <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#6b7280", width: 70 }}>Total reçu</th>
+                <th style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, color: "#6b7280", width: 60 }}>📦 IFCO</th>
               </tr></thead>
               <tbody>
                 {prods.map((p, pi) => {
@@ -599,6 +627,11 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                           {(p.controle?.qStock || 0) + (p.controle?.qDestroy || 0) || "—"}
                         </span>
                       </td>
+                      <td style={{ padding: "6px", textAlign: "center" }}>
+                        <input data-f="ifco" type="checkbox" defaultChecked={p.emballageIfco || false}
+                          title="Cet article revient en caisses IFCO — la quantité « En stock » réalimentera le stock de caisses vides Moorea"
+                          style={{ width: 20, height: 20, cursor: "pointer", accentColor: "#c8a84b" }} />
+                      </td>
                     </tr>
                   );
                 })}
@@ -608,6 +641,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
 
           <div style={{ marginTop: 12, padding: "10px 14px", background: "#f5f3ee", borderRadius: 10, fontSize: 12, color: "#6b7280" }}>
             💡 <strong>Total reçu</strong> = En stock + Détruit. Si des colis sont introuvables, indique-les dans <strong>Manquant</strong>. Le total ne peut pas dépasser la quantité attendue.
+            <br />📦 Coche <strong>IFCO</strong> pour un article qui revient en caisses IFCO : la quantité remise <strong>en stock</strong> sera automatiquement ajoutée au stock de caisses IFCO vides Moorea.
           </div>
 
           <div style={{ marginTop: 10 }}>
