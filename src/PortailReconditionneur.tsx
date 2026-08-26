@@ -60,6 +60,9 @@ type Demande = {
   articleFini: string;
   nbColisAEntrer?: number;
   qteConditionnement?: number;
+  // Le transporteur choisi à la création côté Moorea (voir ReconditionnementModule.tsx) — c'est
+  // forcément le même à l'aller et au retour, donc pas la peine de le redemander au presta ici.
+  transporteurNom?: string;
   statut: "en attente" | "prêt" | "parti" | "reçu" | "annulé";
   departDate?: string;
   retour?: { date: string; qualite: "conforme" | "probleme"; commentaire?: string };
@@ -236,7 +239,9 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   // Un seul geste côté reconditionneur — "Repartie" — qui couvre les deux informations dont
   // Moorea a besoin (côté serveur, ça reste deux actions distinctes : confirmerPret puis
   // confirmerDepart, chacune envoyant son propre mail — voir api/portail-reconditionneur.js).
-  async function confirmerRepartie(d: Demande, quantite: number, commentaire: string, transporteur: string) {
+  // Le transporteur n'est PAS redemandé au presta : c'est forcément le même qu'à l'aller, choisi
+  // par Moorea à la création de la demande (demande.transporteurNom).
+  async function confirmerRepartie(d: Demande, quantite: number, commentaire: string) {
     setEnvoiEnCours(true);
     try {
       const resPret = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
@@ -248,7 +253,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       const resDepart = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: d.id, action: "confirmerDepart", transporteur }),
+        body: JSON.stringify({ id: d.id, action: "confirmerDepart", transporteur: d.transporteurNom || "-" }),
       });
       if (!resDepart.ok) throw new Error(`HTTP ${resDepart.status}`);
       setRepartieOuvertPour(null);
@@ -489,30 +494,28 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
 }
 
 // Formulaire unique "Repartie" : couvre en un seul geste ce qui était avant deux étapes
-// séparées (prod prête, puis départ) — quantité réellement prête, commentaire optionnel, et
-// transporteur, envoyés d'un coup (voir confirmerRepartie).
+// séparées (prod prête, puis départ) — quantité réellement prête et commentaire optionnel,
+// envoyés d'un coup (voir confirmerRepartie). Le transporteur n'est pas redemandé ici : c'est
+// forcément le même qu'à l'aller, déjà connu (demande.transporteurNom), juste affiché en rappel.
 function FormRepartie({ demande, envoiEnCours, onAnnuler, onValider }: {
-  demande: Demande; envoiEnCours: boolean; onAnnuler: () => void; onValider: (d: Demande, quantite: number, commentaire: string, transporteur: string) => void;
+  demande: Demande; envoiEnCours: boolean; onAnnuler: () => void; onValider: (d: Demande, quantite: number, commentaire: string) => void;
 }) {
   const [quantite, setQuantite] = useState(String(demande.nbColisAEntrer ?? ""));
   const [commentaire, setCommentaire] = useState("");
-  const [transporteur, setTransporteur] = useState("");
   const q = parseInt(quantite);
-  const valide = q >= 0 && !!transporteur.trim();
+  const valide = q >= 0;
   return (
     <div style={{ marginTop: 10, background: "#f9fafb", border: `1.5px solid ${COLORS.border}`, borderRadius: 10, padding: 12 }}>
+      {demande.transporteurNom && (
+        <p style={{ margin: "0 0 10px", fontSize: 11.5, color: COLORS.gray }}>
+          🚚 Transporteur : <b style={{ color: COLORS.ink }}>{demande.transporteurNom}</b> (le même qu'à l'aller)
+        </p>
+      )}
       <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
         Quantité réellement prête (colis)
       </label>
       <input
         type="number" min="0" value={quantite} onChange={e => setQuantite(e.target.value)}
-        style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, marginBottom: 8, boxSizing: "border-box" }}
-      />
-      <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
-        Transporteur
-      </label>
-      <input
-        type="text" value={transporteur} onChange={e => setTransporteur(e.target.value)} placeholder="Ex : Chronopost, transporteur X..."
         style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, marginBottom: 8, boxSizing: "border-box" }}
       />
       <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
@@ -525,7 +528,7 @@ function FormRepartie({ demande, envoiEnCours, onAnnuler, onValider }: {
       <div style={{ display: "flex", gap: 8 }}>
         <button
           disabled={!valide || envoiEnCours}
-          onClick={() => onValider(demande, q, commentaire, transporteur.trim())}
+          onClick={() => onValider(demande, q, commentaire)}
           style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !valide || envoiEnCours ? 0.5 : 1 }}
         >
           {envoiEnCours ? "Envoi..." : "Confirmer"}
