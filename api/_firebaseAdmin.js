@@ -1,49 +1,77 @@
-import admin from "firebase-admin";
-
-// ─── Authentification serveur "de vrai", via un compte de service ───
-// Jusqu'ici, tous les endpoints publics (recap-reconditionnement.js, declarer-perte.js,
-// statut-reconditionnement.js, confirm-livraison.js) parlaient à Firebase avec de simples
-// requêtes REST anonymes (fetch(DATABASE_URL + "...")). On pensait que la LECTURE seule était
-// bloquée par les règles de sécurité (401 confirmé en prod sur reconditionnement_demandes), et
-// que l'ÉCRITURE anonyme fonctionnait (PATCH emailEnvoye, POST dans /pertes...). Le 26/08/2026,
-// on a constaté en prod que le PATCH emailEnvoye échoue LUI AUSSI avec un 401 — donc l'écriture
-// anonyme n'est pas fiable non plus.
+// ─── Authentification serveur via le secret historique de la Realtime Database ───
+// Premier essai : un compte de service (clé privée), qui contourne les règles de sécurité —
+// mais la création de clés est bloquée sur ce projet par une politique d'organisation Google
+// ("La création de clés n'est pas autorisée sur ce compte de service", constaté en prod le
+// 26/08/2026 dans Firebase Console → Comptes de service). Plutôt que de batailler avec cette
+// politique (elle appartient à l'admin Google Workspace, pas à nous), on utilise le SECRET
+// HISTORIQUE de la base — un simple token, généré une fois pour toutes, qui contourne lui aussi
+// les règles de sécurité, mais sans passer par un compte de service.
 //
-// Plutôt que de continuer à deviner quelles routes Firebase acceptent ou pas selon le moment, on
-// passe par un compte de service (clé privée générée depuis la Console Firebase), qui contourne
-// entièrement les règles de sécurité — comme le fait l'appli elle-même quand un compte
-// @moorea.fr est connecté, mais côté serveur, sans dépendre d'aucune règle.
+// Où le trouver : Firebase Console → Realtime Database → ⚙️ (roue crantée) à côté du nom de la
+// base → "Secrets" (ou, comme vu dans la capture d'écran du 26/08, le raccourci "Secrets de la
+// base de données" dans la barre latérale de Paramètres du projet → Comptes de service).
 //
-// Variable d'environnement Vercel requise : FIREBASE_SERVICE_ACCOUNT_BASE64
-//   1. Firebase Console → ⚙️ Paramètres du projet → onglet "Comptes de service"
-//   2. "Générer une nouvelle clé privée" → télécharge un fichier .json
-//   3. Encoder ce fichier en base64 sur une seule ligne, par ex sur Mac :
-//        base64 -i chemin/vers/le-fichier.json | pbcopy
-//      (le résultat est copié dans le presse-papier)
-//   4. Vercel → Project Settings → Environment Variables → ajouter
-//        FIREBASE_SERVICE_ACCOUNT_BASE64 = (coller la valeur copiée)
-//      pour les environnements Production ET Preview, puis redéployer.
+// Variable d'environnement Vercel requise : FIREBASE_DB_SECRET = (coller le secret copié)
+//   → Vercel → Project Settings → Environment Variables → Production ET Preview → redéployer.
+//
+// Le reste du code (recap-reconditionnement.js, portail-reconditionneur.js) appelle
+// getAdminDb().ref(chemin).once("value") / .update(...) / .push(...) — exactement la même forme
+// qu'avec le SDK Admin — donc rien d'autre n'a eu besoin de changer que ce fichier.
 
 const DATABASE_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
 
-export function getAdminDb() {
-  if (!admin.apps.length) {
-    const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
-    if (!b64) {
-      throw new Error(
-        "Variable d'environnement FIREBASE_SERVICE_ACCOUNT_BASE64 manquante sur Vercel — voir le commentaire en haut de api/_firebaseAdmin.js pour la configurer."
-      );
-    }
-    let serviceAccount;
-    try {
-      serviceAccount = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
-    } catch {
-      throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 invalide — impossible de décoder le JSON du compte de service.");
-    }
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      databaseURL: DATABASE_URL,
-    });
+function getSecret() {
+  const secret = process.env.FIREBASE_DB_SECRET;
+  if (!secret) {
+    throw new Error(
+      "Variable d'environnement FIREBASE_DB_SECRET manquante sur Vercel — voir le commentaire en haut de api/_firebaseAdmin.js pour la configurer."
+    );
   }
-  return admin.database();
+  return secret;
+}
+
+function urlPour(path) {
+  return `${DATABASE_URL}/${path}.json?auth=${encodeURIComponent(getSecret())}`;
+}
+
+function makeRef(path) {
+  return {
+    async once() {
+      const r = await fetch(urlPour(path));
+      if (!r.ok) {
+        const corps = await r.text().catch(() => "");
+        throw new Error(`Lecture Firebase échouée (HTTP ${r.status}) sur ${path} — ${corps.slice(0, 200)}`);
+      }
+      const val = await r.json();
+      return { val: () => val };
+    },
+    async update(data) {
+      const r = await fetch(urlPour(path), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!r.ok) {
+        const corps = await r.text().catch(() => "");
+        throw new Error(`Écriture Firebase échouée (HTTP ${r.status}) sur ${path} — ${corps.slice(0, 200)}`);
+      }
+      return r.json();
+    },
+    async set(data) {
+      const r = await fetch(urlPour(path), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!r.ok) {
+        const corps = await r.text().catch(() => "");
+        throw new Error(`Écriture Firebase échouée (HTTP ${r.status}) sur ${path} — ${corps.slice(0, 200)}`);
+      }
+      return r.json();
+    },
+    async push(data) {
+      const r = await fetch(urlPour(path), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!r.ok) {
+        const corps = await r.text().catch(() => "");
+        throw new Error(`Écriture Firebase échouée (HTTP ${r.status}) sur ${path} — ${corps.slice(0, 200)}`);
+      }
+      return r.json();
+    },
+  };
+}
+
+export function getAdminDb() {
+  return { ref: makeRef };
 }

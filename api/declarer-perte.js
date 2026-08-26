@@ -13,9 +13,9 @@ export const config = { runtime: "nodejs" };
 
 const DATABASE_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
 
-// Destinataires internes Moorea à prévenir d'une perte déclarée par le reconditionneur — mêmes
-// adresses que le repli par défaut de /api/send-email pour les échanges qualité/commercial.
-const NOTIF_EMAILS = ["qualite@moorea.fr", "commercial@moorea.fr"];
+// Destinataires internes Moorea à prévenir d'une perte déclarée par le reconditionneur.
+// qualite@ retiré (demande explicite du 26/08/2026) : le reconditionnement ne la concerne pas.
+const NOTIF_EMAILS = ["commercial@moorea.fr"];
 
 const MOTIFS = [
   "Défaut sanitaire – moisissure",

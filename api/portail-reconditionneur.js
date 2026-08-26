@@ -23,7 +23,8 @@ const EMBALLAGE_CHAMP_STOCK = {
   andes: "stock_carton_andes/baby_blanc",
 };
 
-const NOTIF_EMAILS = ["qualite@moorea.fr", "commercial@moorea.fr"];
+// qualite@ retiré (demande explicite du 26/08/2026) : le reconditionnement ne la concerne pas.
+const NOTIF_EMAILS = ["commercial@moorea.fr"];
 const DEPOT_LABEL = { nlt: "NLT", andes: "Andès" };
 const EMBALLAGE_LABEL = { nlt: "caisses IFCO", andes: "cartons BABY BLANC" };
 
