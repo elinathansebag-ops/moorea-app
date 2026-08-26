@@ -129,6 +129,10 @@ type Demande = {
     commentaire?: string;
     parti?: { confirme: boolean; date: string; transporteur: string; nbPalettes?: { grandes: number; demi: number } };
   };
+  // Pointage compta : une fois le reconditionnement reçu (statut "reçu"), la compta vérifie que
+  // la facture reçue du reconditionneur correspond bien à ce qui a réellement été fait et le
+  // marque ici — indépendant du statut principal, comme retourPresta ci-dessus.
+  pointageCompta?: { facture: boolean; date?: string; par?: string };
 };
 
 // Demande de réajustement du stock d'emballage, envoyée par le reconditionneur depuis son espace
@@ -930,6 +934,22 @@ export function ReconditionnementModule({ onClose, userName }: {
     }
     await remove(ref(db, `reconditionnement_demandes/${id}`));
     notify("success", "🗑️ Demande supprimée");
+  }
+
+  // ─── Pointage compta : la compta vérifie que la facture reçue du reconditionneur correspond
+  // bien à ce qui a réellement été fait (voir Historique) et le marque ici — indépendant du
+  // statut principal, comme pour les commandes cartons/palettes IFCO (module Prestataires). ───
+  async function marquerDemandeFacturee(id: string) {
+    if (!window.confirm("Confirmer que la facture correspond bien à ce qui a été reçu ?")) return;
+    await update(ref(db, `reconditionnement_demandes/${id}`), {
+      pointageCompta: { facture: true, date: nowFr(), par: userName },
+    });
+    notify("success", "✓ Facture vérifiée et pointée");
+  }
+
+  async function annulerFactureDemande(id: string) {
+    if (!window.confirm("Annuler le pointage compta de cette demande ?")) return;
+    await update(ref(db, `reconditionnement_demandes/${id}`), { pointageCompta: null });
   }
 
   // ─── Nettoyage des demandes de test déjà terminées ("reçu") ───
@@ -2078,6 +2098,24 @@ export function ReconditionnementModule({ onClose, userName }: {
                                     {d.retour?.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
                                     {d.retour?.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : ""}
                                     {d.retour?.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisses IFCO pleines` : (retourEnIfcoDemande(d) ? " · ⚠️ pas de caisse IFCO saisie" : "")}
+                                  </div>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                                    {d.pointageCompta?.facture ? (
+                                      <span style={{ fontSize: 11, color: COLORS.primary, fontWeight: 700 }}>
+                                        💳 Facture vérifiée par la compta le {d.pointageCompta.date || "-"}
+                                      </span>
+                                    ) : <span />}
+                                    {d.pointageCompta?.facture ? (
+                                      <button onClick={() => annulerFactureDemande(d.id)}
+                                        style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: COLORS.gray200, color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                        ↩️ Annuler le pointage
+                                      </button>
+                                    ) : (
+                                      <button onClick={() => marquerDemandeFacturee(d.id)} title="Pour la compta : confirme que la facture reçue du reconditionneur correspond à ce qui a été réellement fait"
+                                        style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: COLORS.primary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                        💳 Facture vérifiée
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               ))}

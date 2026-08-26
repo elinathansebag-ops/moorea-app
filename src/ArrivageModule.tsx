@@ -638,7 +638,7 @@ _Écart lié au tri/poids, pas un souci qualité._`;
           <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
             <div style={{ display: "flex", gap: 5, marginBottom: nbPalettes > 1 ? 8 : 0 }}>
-              {[1,2,3,4,5,6].map(n => (
+              {[1,2].map(n => (
                 <button key={n} onClick={() => updateNbPalettes(n)}
                   style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: `1.5px solid ${nbPalettes===n?"#c8a84b":"#e5e7eb"}`, background: nbPalettes===n?"#fffbf0":"#fff", cursor: "pointer", fontSize: 12, fontWeight: 800, color: nbPalettes===n?"#8a6f2e":"#9ca3af" }}>
                   {n}
@@ -939,7 +939,7 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
         <div style={{ marginBottom: 16 }}>
           <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>Nombre de palettes</p>
           <div style={{ display: "flex", gap: 8 }}>
-            {[1,2,3,4,5,6].map(n => (
+            {[1,2].map(n => (
               <button key={n} onClick={() => updateNb(n)}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `2px solid ${nbPalettes===n?"#c8a84b":"#e8e0d0"}`, background: nbPalettes===n?"#fffbf0":"#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, color: nbPalettes===n?"#8a6f2e":"#9ca3af" }}>
                 {n}
@@ -1032,7 +1032,7 @@ export function PopupEtiquetteRefusMulti({ arrivage, onClose }: { arrivage: any;
         <div style={{ marginBottom: 16 }}>
           <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>Nombre de palettes</p>
           <div style={{ display: "flex", gap: 8 }}>
-            {[1,2,3,4,5,6].map(n => (
+            {[1,2].map(n => (
               <button key={n} onClick={() => updateNb(n)}
                 style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `2px solid ${nbPalettes===n?"#dc2626":"#e8e0d0"}`, background: nbPalettes===n?"#fef2f2":"#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, color: nbPalettes===n?"#dc2626":"#9ca3af" }}>
                 {n}

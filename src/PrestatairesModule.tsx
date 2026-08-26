@@ -54,8 +54,12 @@ type PaletteIFCOCommande = {
   lignes: LignePaletteIFCO[];
   dateCommande: string;
   dateLivraisonPrevue: string;
-  statut: "commandé" | "reçu" | "retourné" | "annulé";
+  statut: "commandé" | "reçu" | "facturé" | "retourné" | "annulé";
   dateReception?: string;
+  // Pointage compta : une fois la commande reçue, la compta vérifie que la facture reçue du
+  // fournisseur correspond bien à ce qui a été réellement reçu et le marque ici — passe le
+  // statut en "facturé".
+  dateFacturation?: string;
   notes?: string;
 };
 
@@ -970,10 +974,17 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     });
   };
 
+  // Suppression pure et simple : contrairement à "Annuler" (qui garde une trace visible en
+  // historique), ceci retire complètement la commande — du calendrier ET des arrivages à
+  // pointer, en supprimant aussi l'arrivage lié s'il existe. Aucun email n'est envoyé.
   const handleSupprimerPaletteCommande = async (id: string) => {
-    if (window.confirm("Êtes-vous sûr ?")) {
-      await remove(ref(db, `ifco_palettes_commandes/${id}`));
+    if (!window.confirm("Supprimer définitivement cette commande de palettes IFCO ? Elle disparaîtra du calendrier et des arrivages à pointer. Aucun email n'est envoyé.")) return;
+    const arrivageLie = arrivagesLies.find((a) => a.ifco_palette_commande_id === id);
+    if (arrivageLie) {
+      await remove(ref(db, `arrivages/${arrivageLie.id}`));
     }
+    await remove(ref(db, `ifco_palettes_commandes/${id}`));
+    setNotification({ type: "success", message: "✓ Commande de palettes IFCO supprimée (calendrier + arrivage)" });
   };
 
   const handleMarquerCartonRecu = async (id: string) => {
@@ -983,10 +994,17 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     });
   };
 
+  // Suppression pure et simple : contrairement à "Annuler" (qui garde une trace visible en
+  // historique), ceci retire complètement la commande — du calendrier ET des arrivages à
+  // pointer, en supprimant aussi l'arrivage lié s'il existe. Aucun email n'est envoyé.
   const handleSupprimerCartonCommande = async (id: string) => {
-    if (window.confirm("Êtes-vous sûr ?")) {
-      await remove(ref(db, `prestataires_cartons/${id}`));
+    if (!window.confirm("Supprimer définitivement cette commande de cartons ? Elle disparaîtra du calendrier et des arrivages à pointer. Aucun email n'est envoyé.")) return;
+    const arrivageLie = arrivagesLies.find((a) => a.carton_commande_id === id);
+    if (arrivageLie) {
+      await remove(ref(db, `arrivages/${arrivageLie.id}`));
     }
+    await remove(ref(db, `prestataires_cartons/${id}`));
+    setNotification({ type: "success", message: "✓ Commande de cartons supprimée (calendrier + arrivage)" });
   };
 
   // Pointage compta : confirme que la facture fournisseur correspond bien à ce qui a été
@@ -1004,6 +1022,23 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const handleRemettreEnRecuCarton = async (id: string) => {
     if (!window.confirm("Annuler le pointage compta et repasser cette commande en \"reçu\" ?")) return;
     await update(ref(db, `prestataires_cartons/${id}`), { statut: "reçu" as const, dateFacturation: null });
+  };
+
+  // Même principe que handleMarquerCartonFacture/handleRemettreEnRecuCarton, pour les
+  // palettes IFCO — permet à la compta de comparer la facture reçue à ce qui a réellement
+  // été reçu et de pointer/dépointer.
+  const handleMarquerPaletteFacture = async (id: string) => {
+    if (!window.confirm("Confirmer que la facture correspond bien à ce qui a été reçu ?")) return;
+    await update(ref(db, `ifco_palettes_commandes/${id}`), {
+      statut: "facturé" as const,
+      dateFacturation: new Date().toISOString().split("T")[0],
+    });
+    setNotification({ type: "success", message: "✓ Facture vérifiée et pointée" });
+  };
+
+  const handleRemettreEnRecuPalette = async (id: string) => {
+    if (!window.confirm("Annuler le pointage compta et repasser cette commande en \"reçu\" ?")) return;
+    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "reçu" as const, dateFacturation: null });
   };
 
   // ── Annulation / retour en attente des commandes (cartons & palettes IFCO) ──
@@ -1369,6 +1404,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                             <span style={{ background: "#eaf4fb", color: "#1a5276", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
                               {c.statut === "commandé" ? "⏱️ Commandé" : c.statut === "reçu" ? "✓ Reçu" : "💳 Facturé"}
                             </span>
+                            <button onClick={() => handleSupprimerCartonCommande(c.id)} title="Supprimer définitivement (calendrier + arrivage)"
+                              style={{ padding: "4px 8px", background: "#fef2f2", color: "#dc2626", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                              🗑️
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -1383,8 +1422,12 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                               {c.notes && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>📝 {c.notes}</div>}
                             </div>
                             <span style={{ background: "#e6eeff", color: "#2452b8", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-                              {c.statut === "commandé" ? "⏱️ Commandé" : c.statut === "reçu" ? "✓ Reçu" : "↩️ Retourné"}
+                              {c.statut === "commandé" ? "⏱️ Commandé" : c.statut === "reçu" ? "✓ Reçu" : c.statut === "facturé" ? "💳 Facturé" : "↩️ Retourné"}
                             </span>
+                            <button onClick={() => handleSupprimerPaletteCommande(c.id)} title="Supprimer définitivement (calendrier + arrivage)"
+                              style={{ padding: "4px 8px", background: "#fef2f2", color: "#dc2626", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                              🗑️
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -1808,7 +1851,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     <div key={cmd.id} style={{
                       background: COLORS.gray100,
                       border: `1px solid ${COLORS.gray200}`,
-                      borderLeft: `4px solid ${cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : cmd.statut === "annulé" ? COLORS.gray400 : COLORS.danger}`,
+                      borderLeft: `4px solid ${cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : cmd.statut === "facturé" ? COLORS.primary : cmd.statut === "annulé" ? COLORS.gray400 : COLORS.danger}`,
                       borderRadius: "8px",
                       padding: "12px 14px",
                       display: "flex",
@@ -1824,17 +1867,22 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                           {cmd.lignes[0]?.quantite || 0} palettes BLL4314 ({(cmd.lignes[0]?.quantite || 0) * 640} caisses)
                         </div>
                         {cmd.notes && <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>📝 {cmd.notes}</div>}
+                        {cmd.statut === "facturé" && (
+                          <div style={{ fontSize: "11px", color: COLORS.primary, marginTop: "4px", fontWeight: 700 }}>
+                            💳 Facture vérifiée par la compta le {cmd.dateFacturation || "-"} — conforme à ce qui a été reçu
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{
-                          background: cmd.statut === "commandé" ? `${COLORS.tertiary}20` : cmd.statut === "reçu" ? `${COLORS.success}20` : cmd.statut === "annulé" ? `${COLORS.gray400}20` : `${COLORS.danger}20`,
-                          color: cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : cmd.statut === "annulé" ? COLORS.gray400 : COLORS.danger,
+                          background: cmd.statut === "commandé" ? `${COLORS.tertiary}20` : cmd.statut === "reçu" ? `${COLORS.success}20` : cmd.statut === "facturé" ? `${COLORS.primary}20` : cmd.statut === "annulé" ? `${COLORS.gray400}20` : `${COLORS.danger}20`,
+                          color: cmd.statut === "commandé" ? COLORS.tertiary : cmd.statut === "reçu" ? COLORS.success : cmd.statut === "facturé" ? COLORS.primary : cmd.statut === "annulé" ? COLORS.gray400 : COLORS.danger,
                           borderRadius: "6px",
                           padding: "4px 10px",
                           fontSize: "11px",
                           fontWeight: "700",
                         }}>
-                          {cmd.statut === "commandé" ? "⏱️ Commandé" : cmd.statut === "reçu" ? "✓ Reçu" : cmd.statut === "annulé" ? "✗ Annulé" : "↩️ Retourné"}
+                          {cmd.statut === "commandé" ? "⏱️ Commandé" : cmd.statut === "reçu" ? "✓ Reçu" : cmd.statut === "facturé" ? "💳 Facturé" : cmd.statut === "annulé" ? "✗ Annulé" : "↩️ Retourné"}
                         </span>
                         {cmd.statut === "commandé" && (
                           <button
@@ -1868,6 +1916,41 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                             }}
                           >
                             ↩️ En attente
+                          </button>
+                        )}
+                        {cmd.statut === "reçu" && (
+                          <button
+                            onClick={() => handleMarquerPaletteFacture(cmd.id)}
+                            title="Pour la compta : confirme que la facture reçue du fournisseur correspond à ce qui a été réellement reçu"
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.primary,
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            💳 Facture vérifiée
+                          </button>
+                        )}
+                        {cmd.statut === "facturé" && (
+                          <button
+                            onClick={() => handleRemettreEnRecuPalette(cmd.id)}
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.gray200,
+                              color: COLORS.gray700,
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            ↩️ Annuler le pointage
                           </button>
                         )}
                         {(cmd.statut === "commandé" || cmd.statut === "reçu") && (
