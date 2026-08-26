@@ -1357,6 +1357,15 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     if (d.retour?.qteConditionnementRecue) statsParDepot[d.depot].qteConditionnementRecue += d.retour.qteConditionnementRecue;
   });
 
+  // Caisses IFCO déjà comptées dans le stock "NLT" (ifco_stock/levels.nlt) mais rattachées à une
+  // demande pas encore "prête"/"partie" — le stock global les inclut dès la création de la
+  // demande (voir creerDemande, transfert Moorea → NLT immédiat), donc une partie de ce chiffre
+  // n'est pas encore réellement disponible pour une AUTRE production tant que cette demande-là
+  // n'a pas consommé ses caisses. Permet d'afficher "combien il en reste vraiment" pour la suite.
+  const caissesNltReserveesNonParties = demandes
+    .filter(d => d.depot === "nlt" && (d.statut === "en attente" || d.statut === "prêt"))
+    .reduce((s, d) => s + (d.caissesIfcoEnvoyees || 0), 0);
+
   // ── Historique des reconditionnements terminés (statut "reçu"), regroupés par jour puis
   // par semaine — avec toujours la semaine la plus récente ouverte par défaut.
   const demandesTerminees = demandes.filter(d => d.statut === "reçu");
@@ -1463,6 +1472,19 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     });
   };
 
+  // Sous-accordéon par dépôt (NLT / Andès) à l'intérieur de chaque jour, dans l'onglet
+  // "Demandes" — pour ne pas avoir à chercher les demandes NLT et Andès mélangées dans la même
+  // liste. Fermé = présent dans le Set (par défaut tout est ouvert, sans avoir à initialiser
+  // une clé par jour × dépôt à l'avance).
+  const [depotsFermesDemandes, setDepotsFermesDemandes] = useState<Set<string>>(new Set());
+  const toggleDepotDemandes = (cle: string) => {
+    setDepotsFermesDemandes(prev => {
+      const next = new Set(prev);
+      if (next.has(cle)) next.delete(cle); else next.add(cle);
+      return next;
+    });
+  };
+
   // ── Détail de la production faite par le reconditionneur (NLT / Andès), une ligne par
   // demande "reçue" — colis reçus (cartons) et quantité conditionnée (ex : filets) pointés au
   // retour, pour l'attribution des coûts de reconditionnement (facturation) plutôt qu'un simple
@@ -1561,6 +1583,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — NLT</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
+                {caissesNltReserveesNonParties > 0 && (
+                  <div style={{ fontSize: 10.5, color: COLORS.amber, fontWeight: 700, marginTop: 3 }}>
+                    dont {caissesNltReserveesNonParties} déjà réservées (pas encore parties)
+                    <br />→ {Math.max(0, stockIfco.nlt - caissesNltReserveesNonParties)} vraiment libres pour la suite
+                  </div>
+                )}
               </div>
               <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🧺 Carton BABY BLANC (Andès)</div>
@@ -1632,8 +1660,22 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                           {info.jours.map(jourStr => (
                             <div key={jourStr} style={{ marginBottom: 14 }}>
                               <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: "#888" }}>{jourStr}</p>
+                              {(["nlt", "andes"] as Depot[]).map(dep => {
+                                const demandesJourDepot = parJourDemandes[jourStr].filter(d => d.depot === dep);
+                                if (demandesJourDepot.length === 0) return null;
+                                const cleDepot = `${jourStr}::${dep}`;
+                                const depotOuvert = !depotsFermesDemandes.has(cleDepot);
+                                return (
+                                  <div key={dep} style={{ marginBottom: 10 }}>
+                                    <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", marginBottom: depotOuvert ? 8 : 0 }}>
+                                      <span style={{ fontSize: 12, color: COLORS.primary, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                                      <span style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray700 }}>
+                                        {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
+                                      </span>
+                                    </div>
+                                    {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
-                                {parJourDemandes[jourStr].map(d => (
+                                {demandesJourDepot.map(d => (
                   <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                       <div>
@@ -1770,6 +1812,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                   </div>
                                 ))}
                               </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ))}
                         </div>
