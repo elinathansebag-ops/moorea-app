@@ -140,6 +140,11 @@ type Mouvement = {
 };
 
 const DEPOT_LABEL: Record<Depot, string> = { nlt: "NLT", andes: "Andès" };
+// NLT reconditionne en filets et facture au filet ; Andès reconditionne en kilos et facture au
+// colis. La "Quantité par colis" saisie dans le formulaire et les totaux affichés partout
+// (Historique, dashboard...) doivent donc être libellés avec la bonne unité selon le dépôt.
+const UNITE_QTE: Record<Depot, string> = { nlt: "filets", andes: "kg" };
+const UNITE_QTE_SINGULIER: Record<Depot, string> = { nlt: "filet", andes: "kg" };
 
 // Contacts Andès / NLT du reconditionneur (même principe que LIEUX_CARTONS dans
 // PrestatairesModule.tsx). Gardés ici pour référence côté app, mais l'envoi effectif du
@@ -366,7 +371,7 @@ async function genererBonPdf(demande: Demande): Promise<string> {
 
   let yy2 = zone2Top + 24;
   ligne("Colis à entrer", demande.nbColisAEntrer != null ? `${demande.nbColisAEntrer} — ${demande.articleFini}` : "-", col1, yy2);
-  ligne("Qté conditionnement attendue", demande.qteConditionnement != null ? String(demande.qteConditionnement) : "-", col2, yy2);
+  ligne("Qté conditionnement attendue", demande.qteConditionnement != null ? `${demande.qteConditionnement} ${UNITE_QTE[demande.depot]}` : "-", col2, yy2);
   yy2 += 13;
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy2);
   yy2 += 12;
@@ -1610,7 +1615,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, fontSize: 12, color: COLORS.gray600, marginBottom: 10 }}>
                       {d.nbColisASortir != null && <div>Colis à sortir : <b>{d.nbColisASortir}</b> — {d.articleVrac}</div>}
                       {d.nbColisAEntrer != null && <div>Colis à entrer : <b>{d.nbColisAEntrer}</b> — {d.articleFini}</div>}
-                      {d.qteConditionnement != null && <div>Qté conditionnement : <b>{d.qteConditionnement}</b></div>}
+                      {d.qteConditionnement != null && <div>Qté conditionnement : <b>{d.qteConditionnement} {UNITE_QTE[d.depot]}</b></div>}
                       {d.caissesIfcoEnvoyees != null && <div>Caisses IFCO envoyées : <b>{d.caissesIfcoEnvoyees}</b></div>}
                       {d.cartonsBabyBlancEnvoyes != null && <div>Cartons BABY BLANC utilisés : <b>{d.cartonsBabyBlancEnvoyes}</b></div>}
                       {d.transporteurNom && <div>Transporteur : <b>{d.transporteurNom}</b></div>}
@@ -1643,7 +1648,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
                         Reçu le {d.retour.date} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé"}
                         {d.retour.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
-                        {d.retour.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} unités` : ""}
+                        {d.retour.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : ""}
                         {` · ${d.retour.nbPalettes.grandes} grande(s) + ${d.retour.nbPalettes.demi} demi-palette(s)`}
                         {d.retour.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisse(s) IFCO pleines reçues` : (retourEnIfcoDemande(d) ? " · ⚠️ aucune caisse IFCO pleine saisie au retour" : "")}
                         {d.retour.commentaire ? ` · "${d.retour.commentaire}"` : ""}
@@ -1942,15 +1947,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0 14px" }}>
                 <F label="Nb colis à sortir"><input type="number" value={nbColisASortir} onChange={e => setNbColisASortir(e.target.value)} /></F>
                 <F label="Nb colis à entrer"><input type="number" value={nbColisAEntrer} onChange={e => setNbColisAEntrer(e.target.value)} /></F>
-                <F label="Quantité par colis">
-                  <input type="number" value={qtePerColis} onChange={e => setQtePerColis(e.target.value)} placeholder="ex: 8 filets/colis" />
+                <F label={`Quantité par colis (${UNITE_QTE[depot]})`}>
+                  <input type="number" value={qtePerColis} onChange={e => setQtePerColis(e.target.value)} placeholder={depot === "nlt" ? "ex: 8 filets/colis" : "ex: 8 kg/colis"} />
                 </F>
               </div>
               {/* Total calculé automatiquement — jamais saisi directement, pour éviter les erreurs
-                  d'arrondi ou de multiplication faites à la main. */}
+                  d'arrondi ou de multiplication faites à la main. NLT facture au filet, Andès au
+                  colis — l'unité affichée doit donc suivre le dépôt sélectionné. */}
               {qtePerColis && nbColisAEntrer ? (
                 <p style={{ margin: "4px 0 10px", fontSize: 12, color: COLORS.secondary, fontWeight: 700 }}>
-                  → {Math.round((parseFloat(qtePerColis) || 0) * (parseInt(nbColisAEntrer) || 0))} unités à produire au total
+                  → {Math.round((parseFloat(qtePerColis) || 0) * (parseInt(nbColisAEntrer) || 0))} {UNITE_QTE[depot]} à produire au total
                 </p>
               ) : (
                 <p style={{ margin: "4px 0 10px", fontSize: 11, color: "#9ca3af" }}>
@@ -2069,7 +2075,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                                   <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>
                                     {DEPOT_LABEL[d.depot]}
                                     {d.retour?.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
-                                    {d.retour?.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} unités` : ""}
+                                    {d.retour?.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : ""}
                                     {d.retour?.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisses IFCO pleines` : (retourEnIfcoDemande(d) ? " · ⚠️ pas de caisse IFCO saisie" : "")}
                                   </div>
                                 </div>
@@ -2100,7 +2106,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       <th style={{ padding: "8px 10px" }}>Reconditionneur</th>
                       <th style={{ padding: "8px 10px" }}>Article / Lot</th>
                       <th style={{ padding: "8px 10px" }}>Colis reçus (cartons)</th>
-                      <th style={{ padding: "8px 10px" }}>Qté conditionnée (unités)</th>
+                      <th style={{ padding: "8px 10px" }}>Qté conditionnée (filets NLT / kg Andès)</th>
                       <th style={{ padding: "8px 10px" }}>Caisses IFCO pleines reçues</th>
                     </tr>
                   </thead>
@@ -2114,7 +2120,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                           {" "}{d.articleFini}{d.lot ? ` · lot ${d.lot}` : ""}
                         </td>
                         <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.nbColisRecus ?? "—"}</b></td>
-                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.qteConditionnementRecue ?? "—"}</b></td>
+                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.qteConditionnementRecue != null ? `${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : "—"}</b></td>
                         <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
                           {d.retour?.caissesIfcoPleinesRecues != null ? (
                             <b>{d.retour.caissesIfcoPleinesRecues}</b>
@@ -2199,8 +2205,8 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 ici avec le reste des statistiques de facturation. ── */}
             <div style={{ marginBottom: 24, background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 16 }}>
               <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>📊 Par reconditionneur</p>
-              <div style={{ fontSize: 12, color: COLORS.gray600, padding: "4px 0" }}>NLT — {statsParDepot.nlt.nbDemandes} demande(s), {statsParDepot.nlt.qteConditionnementRecue} unités reconditionnées reçues</div>
-              <div style={{ fontSize: 12, color: COLORS.gray600, padding: "4px 0" }}>Andès — {statsParDepot.andes.nbDemandes} demande(s), {statsParDepot.andes.qteConditionnementRecue} unités reconditionnées reçues</div>
+              <div style={{ fontSize: 12, color: COLORS.gray600, padding: "4px 0" }}>NLT — {statsParDepot.nlt.nbDemandes} demande(s), {statsParDepot.nlt.qteConditionnementRecue} {UNITE_QTE.nlt} reconditionnés reçus</div>
+              <div style={{ fontSize: 12, color: COLORS.gray600, padding: "4px 0" }}>Andès — {statsParDepot.andes.nbDemandes} demande(s), {statsParDepot.andes.qteConditionnementRecue} {UNITE_QTE.andes} reconditionnés reçus</div>
             </div>
 
             <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>📦 Mouvements de stock (colis / caisses)</p>
