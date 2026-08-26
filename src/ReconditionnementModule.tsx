@@ -351,10 +351,12 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   return doc.output("datauristring");
 }
 
-// Sélecteur d'article strict : ne permet de choisir que dans le catalogue global Moorea
-// (`moorea_articles`, même source que le module Catalogue) — aucune saisie libre acceptée.
-// Le champ affiche un contour rouge et un message tant que la valeur ne correspond pas
-// exactement à un article du catalogue.
+// Sélecteur d'article : propose en priorité les articles du catalogue global Moorea
+// (`moorea_articles`, même source que le module Catalogue), mais accepte aussi une saisie libre
+// si l'article n'y figure pas encore (nouvel article, référence pas encore ajoutée...) — la
+// création de la demande demande alors une confirmation plutôt que de bloquer complètement (voir
+// creerDemande). Le champ affiche un contour orange et un message tant que la valeur ne
+// correspond à aucun article connu, pour inciter à vérifier/l'ajouter au catalogue.
 function ArticleSelect({ value, onSelect, articles, placeholder }: {
   value: string;
   onSelect: (libelle: string) => void;
@@ -374,14 +376,14 @@ function ArticleSelect({ value, onSelect, articles, placeholder }: {
       <input
         type="text"
         value={search}
-        onChange={e => { setSearch(e.target.value); setOpen(true); if (e.target.value.trim() === "") onSelect(""); }}
+        onChange={e => { setSearch(e.target.value); setOpen(true); onSelect(e.target.value); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
-        style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${valide ? COLORS.gray200 : COLORS.danger}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+        style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${valide ? COLORS.gray200 : COLORS.amber}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
       />
       {!valide && (
-        <p style={{ margin: "4px 0 0", fontSize: 11, color: COLORS.danger }}>Choisis un article dans la liste du catalogue Moorea.</p>
+        <p style={{ margin: "4px 0 0", fontSize: 11, color: "#b45309" }}>⚠️ Absent du catalogue Moorea — vérifie l'orthographe ou ajoute-le dans Catalogue. Tu peux quand même continuer.</p>
       )}
       {open && (
         <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderTop: "none", borderRadius: "0 0 8px 8px", maxHeight: 220, overflowY: "auto", zIndex: 50, boxShadow: "0 4px 10px rgba(0,0,0,0.08)" }}>
@@ -907,9 +909,17 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       notify("error", "✗ Renseigne au moins l'article vrac et l'article à fabriquer");
       return;
     }
-    if (!catalogueArticles.some(a => a.libelle === articleVrac) || !catalogueArticles.some(a => a.libelle === articleFini)) {
-      notify("error", "✗ Choisis les articles dans le catalogue Moorea (aucune saisie libre)");
-      return;
+    // Si l'article tapé ne correspond à rien dans le catalogue Moorea (nouvel article pas
+    // encore ajouté, référence différente, etc.), on ne bloque plus la création — on demande
+    // juste une confirmation, pour éviter un vrai blocage comme "LIME MAROC CAL.54 IFCO" qui
+    // existe réellement mais n'était pas encore dans le catalogue.
+    const vracInconnu = !catalogueArticles.some(a => a.libelle === articleVrac);
+    const finiInconnu = !catalogueArticles.some(a => a.libelle === articleFini);
+    if (vracInconnu || finiInconnu) {
+      const liste = [vracInconnu ? `"${articleVrac}"` : null, finiInconnu ? `"${articleFini}"` : null].filter(Boolean).join(" et ");
+      if (!window.confirm(`${liste} n'est pas dans le catalogue Moorea (pense à l'ajouter dans Catalogue si c'est un article valide). Enregistrer quand même la demande ?`)) {
+        return;
+      }
     }
     if (!transporteurId) {
       notify("error", "✗ Choisis un transporteur");
