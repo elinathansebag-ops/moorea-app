@@ -285,6 +285,9 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const [nbPalettes, setNbPalettesState] = useState(1);
   const [repartitionPalettes, setRepartitionPalettes] = useState<number[]>([colisAttendu]);
   const dejaAjusteManuel = useRef(false);
+  // Cas rare (>2 palettes) : les boutons rapides s'arrêtent à 2 (99% des cas), un petit "+"
+  // discret ouvre une saisie libre du nombre de palettes pour les cas exceptionnels.
+  const [customPalettesOuvert, setCustomPalettesOuvert] = useState(false);
   useEffect(() => {
     // Tant que l'agréeur n'a pas touché à la répartition, on la garde calée sur le nombre de
     // colis reçus (utile si le champ "Colis" est modifié après avoir choisi le nb de palettes).
@@ -637,14 +640,25 @@ _Écart lié au tri/poids, pas un souci qualité._`;
         <>
           <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
-            <div style={{ display: "flex", gap: 5, marginBottom: nbPalettes > 1 ? 8 : 0 }}>
+            <div style={{ display: "flex", gap: 5, marginBottom: (nbPalettes > 1 || customPalettesOuvert) ? 8 : 0 }}>
               {[1,2].map(n => (
-                <button key={n} onClick={() => updateNbPalettes(n)}
-                  style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: `1.5px solid ${nbPalettes===n?"#c8a84b":"#e5e7eb"}`, background: nbPalettes===n?"#fffbf0":"#fff", cursor: "pointer", fontSize: 12, fontWeight: 800, color: nbPalettes===n?"#8a6f2e":"#9ca3af" }}>
+                <button key={n} onClick={() => { updateNbPalettes(n); setCustomPalettesOuvert(false); }}
+                  style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: `1.5px solid ${nbPalettes===n && !customPalettesOuvert?"#c8a84b":"#e5e7eb"}`, background: nbPalettes===n && !customPalettesOuvert?"#fffbf0":"#fff", cursor: "pointer", fontSize: 12, fontWeight: 800, color: nbPalettes===n && !customPalettesOuvert?"#8a6f2e":"#9ca3af" }}>
                   {n}
                 </button>
               ))}
+              <button type="button" onClick={() => setCustomPalettesOuvert(v => !v)} title="Cas rare : plus de 2 palettes"
+                style={{ width: 28, flexShrink: 0, padding: "6px 0", borderRadius: 8, border: `1.5px solid ${customPalettesOuvert || nbPalettes > 2 ?"#c8a84b":"#e5e7eb"}`, background: customPalettesOuvert || nbPalettes > 2 ?"#fffbf0":"#fff", cursor: "pointer", fontSize: 12, fontWeight: 800, color: customPalettesOuvert || nbPalettes > 2 ?"#8a6f2e":"#9ca3af" }}>
+                {nbPalettes > 2 ? nbPalettes : "+"}
+              </button>
             </div>
+            {customPalettesOuvert && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <input type="number" min="3" placeholder="Nombre de palettes" defaultValue={nbPalettes > 2 ? nbPalettes : ""}
+                  onChange={e => { const v = parseInt(e.target.value); if (v >= 1) updateNbPalettes(v); }}
+                  style={{ flex: 1, padding: "6px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12, fontWeight: 700, outline: "none", boxSizing: "border-box" as const }} />
+              </div>
+            )}
             {nbPalettes > 1 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {repartitionPalettes.map((q, i) => (
@@ -897,6 +911,9 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
   const [nbPalettes, setNbPalettes] = useState(1);
   const [repartition, setRepartition] = useState<number[]>([totalColis]);
   const [sendingPC, setSendingPC] = useState(false);
+  // Cas rare (>2 palettes) : les boutons rapides s'arrêtent à 2 (99% des cas), un petit "+"
+  // discret ouvre une saisie libre du nombre de palettes pour les cas exceptionnels.
+  const [customPalettesOuvert, setCustomPalettesOuvert] = useState(false);
 
   const updateNb = (n: number) => {
     setNbPalettes(n);
@@ -940,12 +957,23 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
           <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>Nombre de palettes</p>
           <div style={{ display: "flex", gap: 8 }}>
             {[1,2].map(n => (
-              <button key={n} onClick={() => updateNb(n)}
-                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `2px solid ${nbPalettes===n?"#c8a84b":"#e8e0d0"}`, background: nbPalettes===n?"#fffbf0":"#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, color: nbPalettes===n?"#8a6f2e":"#9ca3af" }}>
+              <button key={n} onClick={() => { updateNb(n); setCustomPalettesOuvert(false); }}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `2px solid ${nbPalettes===n && !customPalettesOuvert?"#c8a84b":"#e8e0d0"}`, background: nbPalettes===n && !customPalettesOuvert?"#fffbf0":"#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, color: nbPalettes===n && !customPalettesOuvert?"#8a6f2e":"#9ca3af" }}>
                 {n}
               </button>
             ))}
+            <button type="button" onClick={() => setCustomPalettesOuvert(v => !v)} title="Cas rare : plus de 2 palettes"
+              style={{ width: 40, flexShrink: 0, padding: "10px 0", borderRadius: 10, border: `2px solid ${customPalettesOuvert || nbPalettes > 2 ?"#c8a84b":"#e8e0d0"}`, background: customPalettesOuvert || nbPalettes > 2 ?"#fffbf0":"#fff", cursor: "pointer", fontSize: 14, fontWeight: 800, color: customPalettesOuvert || nbPalettes > 2 ?"#8a6f2e":"#9ca3af" }}>
+              {nbPalettes > 2 ? nbPalettes : "+"}
+            </button>
           </div>
+          {customPalettesOuvert && (
+            <div style={{ marginTop: 8 }}>
+              <input type="number" min="3" placeholder="Nombre de palettes" defaultValue={nbPalettes > 2 ? nbPalettes : ""}
+                onChange={e => { const v = parseInt(e.target.value); if (v >= 1) updateNb(v); }}
+                style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontWeight: 700, outline: "none", boxSizing: "border-box" as const }} />
+            </div>
+          )}
         </div>
         <div style={{ marginBottom: 16 }}>
           <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>Colis par palette</p>
@@ -992,6 +1020,9 @@ export function PopupEtiquetteRefusMulti({ arrivage, onClose }: { arrivage: any;
   const [nbPalettes, setNbPalettes] = useState(1);
   const [repartition, setRepartition] = useState<number[]>([totalColis]);
   const [sendingPC, setSendingPC] = useState(false);
+  // Cas rare (>2 palettes) : les boutons rapides s'arrêtent à 2 (99% des cas), un petit "+"
+  // discret ouvre une saisie libre du nombre de palettes pour les cas exceptionnels.
+  const [customPalettesOuvert, setCustomPalettesOuvert] = useState(false);
 
   const updateNb = (n: number) => {
     setNbPalettes(n);
@@ -1033,12 +1064,23 @@ export function PopupEtiquetteRefusMulti({ arrivage, onClose }: { arrivage: any;
           <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>Nombre de palettes</p>
           <div style={{ display: "flex", gap: 8 }}>
             {[1,2].map(n => (
-              <button key={n} onClick={() => updateNb(n)}
-                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `2px solid ${nbPalettes===n?"#dc2626":"#e8e0d0"}`, background: nbPalettes===n?"#fef2f2":"#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, color: nbPalettes===n?"#dc2626":"#9ca3af" }}>
+              <button key={n} onClick={() => { updateNb(n); setCustomPalettesOuvert(false); }}
+                style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `2px solid ${nbPalettes===n && !customPalettesOuvert?"#dc2626":"#e8e0d0"}`, background: nbPalettes===n && !customPalettesOuvert?"#fef2f2":"#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, color: nbPalettes===n && !customPalettesOuvert?"#dc2626":"#9ca3af" }}>
                 {n}
               </button>
             ))}
+            <button type="button" onClick={() => setCustomPalettesOuvert(v => !v)} title="Cas rare : plus de 2 palettes"
+              style={{ width: 40, flexShrink: 0, padding: "10px 0", borderRadius: 10, border: `2px solid ${customPalettesOuvert || nbPalettes > 2 ?"#dc2626":"#e8e0d0"}`, background: customPalettesOuvert || nbPalettes > 2 ?"#fef2f2":"#fff", cursor: "pointer", fontSize: 14, fontWeight: 800, color: customPalettesOuvert || nbPalettes > 2 ?"#dc2626":"#9ca3af" }}>
+              {nbPalettes > 2 ? nbPalettes : "+"}
+            </button>
           </div>
+          {customPalettesOuvert && (
+            <div style={{ marginTop: 8 }}>
+              <input type="number" min="3" placeholder="Nombre de palettes" defaultValue={nbPalettes > 2 ? nbPalettes : ""}
+                onChange={e => { const v = parseInt(e.target.value); if (v >= 1) updateNb(v); }}
+                style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontWeight: 700, outline: "none", boxSizing: "border-box" as const }} />
+            </div>
+          )}
         </div>
         <div style={{ marginBottom: 16 }}>
           <p style={{ margin: "0 0 8px", fontWeight: 700, fontSize: 13, color: "#374151" }}>Colis par palette</p>
