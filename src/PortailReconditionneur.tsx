@@ -60,6 +60,11 @@ type Demande = {
   articleFini: string;
   nbColisAEntrer?: number;
   qteConditionnement?: number;
+  // Nombre de caisses IFCO vides envoyées par Moorea pour cette demande — sert à reconstituer le
+  // solde caisses avant/après par jour dans "Historique des mouvements" (NLT uniquement) : ces
+  // mêmes caisses repartent pleines plus tard (voir retourPresta.parti), donc chaque envoi ET
+  // chaque départ confirmé du presta est un mouvement du même volume de caisses.
+  caissesIfcoEnvoyees?: number;
   // Le transporteur choisi à la création côté Moorea (voir ReconditionnementModule.tsx) — c'est
   // forcément le même à l'aller et au retour, donc pas la peine de le redemander au presta ici.
   transporteurNom?: string;
@@ -245,16 +250,56 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   Object.values(parJour).forEach(liste => liste.sort((a, b) => PRIORITE_STATUT[a.statut] - PRIORITE_STATUT[b.statut]));
   const joursTries = Object.keys(parJour).sort((a, b) => (parseFrDate(b)?.getTime() || 0) - (parseFrDate(a)?.getTime() || 0));
 
-  // Total de production du jour, pour la carte "Historique des mouvements" : la quantité
-  // réellement déclarée par le reconditionneur (retourPresta.quantiteDeclaree) une fois la prod
-  // signalée prête, sinon la quantité prévue à la création de la demande (qteConditionnement) —
-  // pour que le total ait un sens même avant confirmation. Ignore les demandes annulées.
+  // Total de production du jour, pour la carte "Historique des mouvements" (Andès — cartons
+  // consommés, pas de notion de solde avant/après pertinente ici) : la quantité réellement
+  // déclarée par le reconditionneur (retourPresta.quantiteDeclaree) une fois la prod signalée
+  // prête, sinon la quantité prévue à la création de la demande (qteConditionnement) — pour que
+  // le total ait un sens même avant confirmation. Ignore les demandes annulées.
   const totalProdParJour: Record<string, number> = {};
   joursTries.forEach(jourStr => {
     totalProdParJour[jourStr] = parJour[jourStr]
       .filter(d => d.statut !== "annulé")
       .reduce((s, d) => s + (d.retourPresta?.quantiteDeclaree ?? d.qteConditionnement ?? 0), 0);
   });
+
+  // NLT — caisses IFCO : contrairement aux cartons Andès (consommés), les caisses IFCO sont
+  // RÉUTILISÉES : Moorea envoie des caisses vides (caissesIfcoEnvoyees, comptées le jour de
+  // création de la demande), le presta les remplit, puis les mêmes caisses repartent pleines
+  // (comptées le jour où le presta confirme "Repartie" — retourPresta.parti.date, qui peut être
+  // un jour DIFFERENT de la création). On reconstitue donc un solde caisses avant/mouvement/après
+  // par jour, ancré sur le stock réel actuel (le plus fiable) et remonté en arrière — plutôt que
+  // parti de zéro, ce qui dériverait de la vraie valeur au fil du temps.
+  const ledgerCaissesParJour: Record<string, { avant: number; mouvement: number; apres: number }> = {};
+  if (depot === "nlt") {
+    const mouvementsParJour: Record<string, number> = {};
+    demandes.forEach(d => {
+      if (d.statut === "annulé") return;
+      const envoyees = d.caissesIfcoEnvoyees || 0;
+      if (envoyees <= 0) return;
+      const jourEnvoi = parseFrDate(d.dateCreationFr)?.toLocaleDateString("fr-FR");
+      if (jourEnvoi) mouvementsParJour[jourEnvoi] = (mouvementsParJour[jourEnvoi] || 0) + envoyees;
+      if (d.retourPresta?.parti?.confirme && d.retourPresta.parti.date) {
+        const jourRetour = parseFrDate(d.retourPresta.parti.date)?.toLocaleDateString("fr-FR");
+        if (jourRetour) mouvementsParJour[jourRetour] = (mouvementsParJour[jourRetour] || 0) - envoyees;
+      }
+    });
+    const joursMouvements = Object.keys(mouvementsParJour).sort((a, b) => (parseFrDate(a)?.getTime() || 0) - (parseFrDate(b)?.getTime() || 0));
+    let running = stock ?? 0; // "après" du jour le plus récent = le stock réel actuel
+    for (let i = joursMouvements.length - 1; i >= 0; i--) {
+      const jour = joursMouvements[i];
+      const mouvement = mouvementsParJour[jour];
+      const apres = running;
+      const avant = apres - mouvement;
+      ledgerCaissesParJour[jour] = { avant, mouvement, apres };
+      running = avant;
+    }
+  }
+  // Un jour peut avoir un mouvement de caisses (retour confirmé) sans avoir de demande CRÉÉE ce
+  // jour-là (ex : demande créée lundi, presta confirme "Repartie" le mercredi) — on fusionne donc
+  // les jours des demandes et ceux du grand livre caisses pour ne rien perdre à l'affichage.
+  const joursAffiches = depot === "nlt"
+    ? Array.from(new Set([...joursTries, ...Object.keys(ledgerCaissesParJour)])).sort((a, b) => (parseFrDate(b)?.getTime() || 0) - (parseFrDate(a)?.getTime() || 0))
+    : joursTries;
   const parSemaine: Record<string, { label: string; jours: string[]; tri: number }> = {};
   joursTries.forEach(jourStr => {
     const date = parseFrDate(jourStr);
@@ -496,7 +541,31 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
           </div>
           {mouvementsOuvert && (
             <>
-              {joursTries.length > 0 && (
+              {depot === "nlt" && joursAffiches.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                    Caisses IFCO — avant / mouvement / après par jour
+                  </p>
+                  {joursAffiches.map(jourStr => {
+                    const l = ledgerCaissesParJour[jourStr];
+                    return (
+                      <div key={jourStr} style={{ padding: "8px 0", borderTop: `1px solid ${COLORS.border}` }}>
+                        <div style={{ fontSize: 12, color: COLORS.ink, fontWeight: 700, marginBottom: 3 }}>{jourStr}</div>
+                        {l ? (
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11.5, color: COLORS.gray }}>
+                            <span>Avant : <b style={{ color: COLORS.ink }}>{l.avant}</b></span>
+                            <span>{l.mouvement >= 0 ? "+" : ""}{l.mouvement} ce jour</span>
+                            <span>Après : <b style={{ color: COLORS.ink }}>{l.apres}</b></span>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11.5, color: COLORS.gray }}>Aucun mouvement de caisses ce jour.</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {depot === "andes" && joursTries.length > 0 && (
                 <div style={{ marginTop: 10 }}>
                   <p style={{ margin: "0 0 6px", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>
                     Production par jour

@@ -2095,10 +2095,34 @@ export function ReconditionnementModule({ onClose, userName }: {
                                   </div>
                                   <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>
                                     {DEPOT_LABEL[d.depot]}
-                                    {d.retour?.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
-                                    {d.retour?.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : ""}
                                     {d.retour?.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisses IFCO pleines` : (retourEnIfcoDemande(d) ? " · ⚠️ pas de caisse IFCO saisie" : "")}
                                   </div>
+                                  {(() => {
+                                    // Demandé vs réellement fait — les deux chiffres qui comptent pour la compta/le
+                                    // suivi : ce qui était prévu à la création (nbColisAEntrer/qteConditionnement)
+                                    // vs ce qui a été réellement reçu (retour.nbColisRecus/qteConditionnementRecue).
+                                    // Écart affiché seulement quand les deux valeurs sont connues ET différentes —
+                                    // sinon, c'est juste du bruit.
+                                    const ecartColis = d.nbColisAEntrer != null && d.retour?.nbColisRecus != null ? d.retour.nbColisRecus - d.nbColisAEntrer : null;
+                                    const ecartQte = d.qteConditionnement != null && d.retour?.qteConditionnementRecue != null ? d.retour.qteConditionnementRecue - d.qteConditionnement : null;
+                                    if (d.nbColisAEntrer == null && d.qteConditionnement == null) return null;
+                                    return (
+                                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11, marginTop: 4 }}>
+                                        {d.nbColisAEntrer != null && (
+                                          <span style={{ color: ecartColis ? (ecartColis < 0 ? COLORS.danger : "#b45309") : COLORS.gray600 }}>
+                                            Colis — demandé <b>{d.nbColisAEntrer}</b> · fait <b>{d.retour?.nbColisRecus ?? "—"}</b>
+                                            {ecartColis ? ` (${ecartColis > 0 ? "+" : ""}${ecartColis})` : ""}
+                                          </span>
+                                        )}
+                                        {d.qteConditionnement != null && (
+                                          <span style={{ color: ecartQte ? (ecartQte < 0 ? COLORS.danger : "#b45309") : COLORS.gray600 }}>
+                                            {UNITE_QTE[d.depot]} — demandé <b>{d.qteConditionnement}</b> · fait <b>{d.retour?.qteConditionnementRecue ?? "—"}</b>
+                                            {ecartQte ? ` (${ecartQte > 0 ? "+" : ""}${ecartQte})` : ""}
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                                     {d.pointageCompta?.facture ? (
                                       <span style={{ fontSize: 11, color: COLORS.primary, fontWeight: 700 }}>
