@@ -1444,6 +1444,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           // une perte, juste un écart normal à visualiser plutôt qu'à corriger.
           caissesIfcoEnvoyees: demande.caissesIfcoEnvoyees ?? null,
           origine: `${DEPOT_LABEL[demande.depot]}${demande.transporteurNom ? ` · ${demande.transporteurNom}` : ""}`,
+          // Champ dédié (en plus du texte "origine" ci-dessus) pour qu'ArrivageModule puisse
+          // détecter directement "transport fait par Moorea" et adapter le formulaire de pointage
+          // (pas de nombre de palettes à demander — déjà donné par le presta au départ, voir
+          // retourPresta.parti.nbPalettes envoyé depuis le portail).
+          transporteurNom: demande.transporteurNom || null,
           // Décidé une fois pour toutes à la création de la demande (case cochée dans le
           // formulaire, pré-remplie d'après le nom de l'article) — plus fiable, au moment du
           // pointage du retour, qu'une nouvelle détection sur le nom de l'article seul.

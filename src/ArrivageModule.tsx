@@ -140,6 +140,10 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     arrivage.retour_en_ifco === true ||
     (arrivage.retour_en_ifco == null && arrivage.depot === "nlt" && /ifco/i.test(String(arrivage.produit || "")))
   );
+  // Quand le transport est assuré par Moorea elle-même, le nombre de palettes n'a pas besoin
+  // d'être redemandé ici à l'agréage — c'est déjà le presta qui l'a donné à son départ (voir
+  // retourPresta.parti.nbPalettes, saisi depuis le portail au moment de "Repartie").
+  const isTransportMoorea = isRetourRecond && !!arrivage.transporteurNom && /moorea/i.test(String(arrivage.transporteurNom));
 
   const [qualite, setQualite] = useState(3);
   const [tempOk, setTempOk] = useState(true);
@@ -446,16 +450,25 @@ _Écart lié au tri/poids, pas un souci qualité._`;
                 ligne — avec 3-4 champs qui se retrouvent trop serrés, le libellé long ("Caisses
                 IFCO pleines") écrasait la case de saisie et donnait l'impression que les
                 cellules se chevauchaient. */}
-            <div style={{ flex: 1, minWidth: 130, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🎫 Grandes palettes</span>
-              <input type="number" min="0" inputMode="numeric" value={retourGrandes} onChange={e => setRetourGrandes(e.target.value)}
-                style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 130, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🎫 Demi-palettes</span>
-              <input type="number" min="0" inputMode="numeric" value={retourDemi} onChange={e => setRetourDemi(e.target.value)}
-                style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
-            </div>
+            {!isTransportMoorea && (
+              <>
+                <div style={{ flex: 1, minWidth: 130, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🎫 Grandes palettes</span>
+                  <input type="number" min="0" inputMode="numeric" value={retourGrandes} onChange={e => setRetourGrandes(e.target.value)}
+                    style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 130, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🎫 Demi-palettes</span>
+                  <input type="number" min="0" inputMode="numeric" value={retourDemi} onChange={e => setRetourDemi(e.target.value)}
+                    style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
+                </div>
+              </>
+            )}
+            {isTransportMoorea && (
+              <div style={{ flex: 1, minWidth: 200, display: "flex", alignItems: "center", fontSize: 11, color: "#6b7280", background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+                🚚 Transport Moorea — nombre de palettes déjà donné par le presta à son départ, pas besoin de le ressaisir ici.
+              </div>
+            )}
             {retourEnIfco && (
               <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: hasEcartCaissesIfco ? "#fffbeb" : "#f9fafb", border: `1.5px solid ${hasEcartCaissesIfco ? "#fde3a8" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>
