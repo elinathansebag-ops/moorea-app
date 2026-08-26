@@ -149,10 +149,10 @@ const PRIORITE_STATUT: Record<Demande["statut"], number> = { "parti": 0, "prêt"
 
 function Badge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<string, [string, string, string]> = {
-    "en attente": ["#fffbeb", "#b45309", "En attente"],
-    "prêt": ["#eff6ff", "#1d4ed8", "Prêt à l'entrepôt"],
-    "parti": ["#eafaf1", "#15803d", "Chez vous"],
-    "reçu": ["#f3f4f6", "#374151", "Reçu par Moorea"],
+    "en attente": ["#fffbeb", "#b45309", "En cours de préparation"],
+    "prêt": ["#eff6ff", "#1d4ed8", "En cours de livraison"],
+    "parti": ["#eafaf1", "#15803d", "Livrée"],
+    "reçu": ["#f3f4f6", "#374151", "Agréé"],
     "annulé": ["#fef2f2", "#b91c1c", "Annulé"],
   };
   const [bg, color, label] = map[statut] || ["#f3f4f6", "#374151", statut];
@@ -165,9 +165,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   const [stock, setStock] = useState<number | null>(null);
   const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
   const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
-  const [pretOuvertPour, setPretOuvertPour] = useState<string | null>(null);
   const [perteOuvertePour, setPerteOuvertePour] = useState<string | null>(null);
-  const [departOuvertPour, setDepartOuvertPour] = useState<string | null>(null);
+  const [repartieOuvertPour, setRepartieOuvertPour] = useState<string | null>(null);
   const [reajustementOuvert, setReajustementOuvert] = useState(false);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
 
@@ -234,34 +233,25 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
     });
   }
 
-  async function confirmerPret(d: Demande, quantite: number, commentaire: string) {
+  // Un seul geste côté reconditionneur — "Repartie" — qui couvre les deux informations dont
+  // Moorea a besoin (côté serveur, ça reste deux actions distinctes : confirmerPret puis
+  // confirmerDepart, chacune envoyant son propre mail — voir api/portail-reconditionneur.js).
+  async function confirmerRepartie(d: Demande, quantite: number, commentaire: string, transporteur: string) {
     setEnvoiEnCours(true);
     try {
-      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
+      const resPret = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: d.id, action: "confirmerPret", quantite, commentaire }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setPretOuvertPour(null);
-      await charger();
-    } catch {
-      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
-    } finally {
-      setEnvoiEnCours(false);
-    }
-  }
-
-  async function confirmerDepart(d: Demande, transporteur: string) {
-    setEnvoiEnCours(true);
-    try {
-      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
+      if (!resPret.ok) throw new Error(`HTTP ${resPret.status}`);
+      const resDepart = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: d.id, action: "confirmerDepart", transporteur }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setDepartOuvertPour(null);
+      if (!resDepart.ok) throw new Error(`HTTP ${resDepart.status}`);
+      setRepartieOuvertPour(null);
       await charger();
     } catch {
       alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
@@ -463,20 +453,12 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
 
                       {d.statut === "parti" && (
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                          {!d.retourPresta?.confirme && (
+                          {!d.retourPresta?.parti?.confirme && (
                             <button
-                              onClick={() => setPretOuvertPour(pretOuvertPour === d.id ? null : d.id)}
+                              onClick={() => setRepartieOuvertPour(repartieOuvertPour === d.id ? null : d.id)}
                               style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                             >
-                              📦 Prévenir que la prod est prête
-                            </button>
-                          )}
-                          {d.retourPresta?.confirme && !d.retourPresta?.parti?.confirme && (
-                            <button
-                              onClick={() => setDepartOuvertPour(departOuvertPour === d.id ? null : d.id)}
-                              style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "#1d4ed8", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                            >
-                              🚚 Indiquer que c'est parti
+                              🚚 Repartie
                             </button>
                           )}
                           <button
@@ -488,11 +470,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                         </div>
                       )}
 
-                      {pretOuvertPour === d.id && (
-                        <FormPret demande={d} envoiEnCours={envoiEnCours} onAnnuler={() => setPretOuvertPour(null)} onValider={confirmerPret} />
-                      )}
-                      {departOuvertPour === d.id && (
-                        <FormDepart demande={d} envoiEnCours={envoiEnCours} onAnnuler={() => setDepartOuvertPour(null)} onValider={confirmerDepart} />
+                      {repartieOuvertPour === d.id && (
+                        <FormRepartie demande={d} envoiEnCours={envoiEnCours} onAnnuler={() => setRepartieOuvertPour(null)} onValider={confirmerRepartie} />
                       )}
                       {perteOuvertePour === d.id && (
                         <FormPerte demande={d} envoiEnCours={envoiEnCours} onAnnuler={() => setPerteOuvertePour(null)} onValider={envoyerPerte} />
@@ -509,12 +488,17 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   );
 }
 
-function FormPret({ demande, envoiEnCours, onAnnuler, onValider }: {
-  demande: Demande; envoiEnCours: boolean; onAnnuler: () => void; onValider: (d: Demande, quantite: number, commentaire: string) => void;
+// Formulaire unique "Repartie" : couvre en un seul geste ce qui était avant deux étapes
+// séparées (prod prête, puis départ) — quantité réellement prête, commentaire optionnel, et
+// transporteur, envoyés d'un coup (voir confirmerRepartie).
+function FormRepartie({ demande, envoiEnCours, onAnnuler, onValider }: {
+  demande: Demande; envoiEnCours: boolean; onAnnuler: () => void; onValider: (d: Demande, quantite: number, commentaire: string, transporteur: string) => void;
 }) {
   const [quantite, setQuantite] = useState(String(demande.nbColisAEntrer ?? ""));
   const [commentaire, setCommentaire] = useState("");
+  const [transporteur, setTransporteur] = useState("");
   const q = parseInt(quantite);
+  const valide = q >= 0 && !!transporteur.trim();
   return (
     <div style={{ marginTop: 10, background: "#f9fafb", border: `1.5px solid ${COLORS.border}`, borderRadius: 10, padding: 12 }}>
       <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
@@ -522,6 +506,13 @@ function FormPret({ demande, envoiEnCours, onAnnuler, onValider }: {
       </label>
       <input
         type="number" min="0" value={quantite} onChange={e => setQuantite(e.target.value)}
+        style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, marginBottom: 8, boxSizing: "border-box" }}
+      />
+      <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
+        Transporteur
+      </label>
+      <input
+        type="text" value={transporteur} onChange={e => setTransporteur(e.target.value)} placeholder="Ex : Chronopost, transporteur X..."
         style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, marginBottom: 8, boxSizing: "border-box" }}
       />
       <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
@@ -533,40 +524,11 @@ function FormPret({ demande, envoiEnCours, onAnnuler, onValider }: {
       />
       <div style={{ display: "flex", gap: 8 }}>
         <button
-          disabled={!q || q < 0 || envoiEnCours}
-          onClick={() => onValider(demande, q, commentaire)}
-          style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !q || q < 0 || envoiEnCours ? 0.5 : 1 }}
+          disabled={!valide || envoiEnCours}
+          onClick={() => onValider(demande, q, commentaire, transporteur.trim())}
+          style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !valide || envoiEnCours ? 0.5 : 1 }}
         >
           {envoiEnCours ? "Envoi..." : "Confirmer"}
-        </button>
-        <button onClick={onAnnuler} style={{ padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.border}`, background: "#fff", fontSize: 13, cursor: "pointer" }}>
-          Annuler
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function FormDepart({ demande, envoiEnCours, onAnnuler, onValider }: {
-  demande: Demande; envoiEnCours: boolean; onAnnuler: () => void; onValider: (d: Demande, transporteur: string) => void;
-}) {
-  const [transporteur, setTransporteur] = useState("");
-  return (
-    <div style={{ marginTop: 10, background: "#f9fafb", border: `1.5px solid ${COLORS.border}`, borderRadius: 10, padding: 12 }}>
-      <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
-        Transporteur
-      </label>
-      <input
-        type="text" value={transporteur} onChange={e => setTransporteur(e.target.value)} placeholder="Ex : Chronopost, transporteur X..."
-        style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, marginBottom: 10, boxSizing: "border-box" }}
-      />
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          disabled={!transporteur.trim() || envoiEnCours}
-          onClick={() => onValider(demande, transporteur.trim())}
-          style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: "#1d4ed8", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !transporteur.trim() || envoiEnCours ? 0.5 : 1 }}
-        >
-          {envoiEnCours ? "Envoi..." : "Confirmer le départ"}
         </button>
         <button onClick={onAnnuler} style={{ padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.border}`, background: "#fff", fontSize: 13, cursor: "pointer" }}>
           Annuler
