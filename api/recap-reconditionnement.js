@@ -65,14 +65,24 @@ async function envoyerRecapPourDepot(depot, ids) {
   // attente" inattendu directement depuis le message affiché dans l'app, sans avoir besoin des
   // logs Vercel — utile tant que ce endpoint n'a pas encore été validé en conditions réelles.
   let httpEchecs = 0, introuvables = 0, dejaEnvoyees = 0, sansPdf = 0, autreDepot = 0;
+  let premierEchec = null; // détail (statut HTTP + corps de la réponse Firebase) du 1er échec, pour voir la vraie cause (401 permission, id invalide, etc.) sans avoir besoin des logs Vercel.
   const lues = await Promise.all(ids.map(async id => {
     let r;
     try {
       r = await fetch(`${DATABASE_URL}/reconditionnement_demandes/${id}.json`);
-    } catch {
-      httpEchecs++; return null;
+    } catch (errFetch) {
+      httpEchecs++;
+      if (!premierEchec) premierEchec = { id, erreur: errFetch.message };
+      return null;
     }
-    if (!r.ok) { httpEchecs++; return null; }
+    if (!r.ok) {
+      httpEchecs++;
+      if (!premierEchec) {
+        const corps = await r.text().catch(() => "(corps illisible)");
+        premierEchec = { id, statut: r.status, corps: corps.slice(0, 300) };
+      }
+      return null;
+    }
     const v = await r.json();
     if (!v || typeof v !== "object") { introuvables++; return null; }
     return { id, ...v };
@@ -88,7 +98,7 @@ async function envoyerRecapPourDepot(depot, ids) {
   if (enAttente.length === 0) {
     return {
       depot, envoye: false, raison: "rien en attente",
-      diag: { idsDemandes: ids.length, httpEchecs, introuvables, dejaEnvoyees, sansPdf, autreDepot },
+      diag: { idsDemandes: ids.length, httpEchecs, introuvables, dejaEnvoyees, sansPdf, autreDepot, premierEchec },
     };
   }
 

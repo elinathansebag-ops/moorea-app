@@ -731,7 +731,8 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         // les a toutes exclues — affiche le détail plutôt qu'un "rien à envoyer" trompeur, pour
         // comprendre le problème sans avoir besoin des logs Vercel.
         const d = data.diag;
-        notify("error", `⚠️ Aucune demande envoyée à ${DEPOT_LABEL[depot]} — sur ${d.idsDemandes} : ${d.httpEchecs} lecture(s) Firebase échouée(s), ${d.introuvables} introuvable(s), ${d.dejaEnvoyees} déjà marquée(s) envoyée(s), ${d.sansPdf} sans PDF, ${d.autreDepot} autre dépôt`);
+        const detailEchec = d.premierEchec ? ` — 1er échec (id ${d.premierEchec.id}) : ${d.premierEchec.statut ? `HTTP ${d.premierEchec.statut} — ${d.premierEchec.corps}` : d.premierEchec.erreur}` : "";
+        notify("error", `⚠️ Aucune demande envoyée à ${DEPOT_LABEL[depot]} — sur ${d.idsDemandes} : ${d.httpEchecs} lecture(s) Firebase échouée(s), ${d.introuvables} introuvable(s), ${d.dejaEnvoyees} déjà marquée(s) envoyée(s), ${d.sansPdf} sans PDF, ${d.autreDepot} autre dépôt${detailEchec}`);
       } else {
         notify("success", `Rien à envoyer pour ${DEPOT_LABEL[depot]} pour l'instant`);
       }
