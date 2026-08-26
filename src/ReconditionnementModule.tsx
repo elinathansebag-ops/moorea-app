@@ -726,6 +726,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       if (data.envoye) {
         const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
         notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}`);
+      } else if (data.diag && (data.diag.httpEchecs > 0 || data.diag.idsDemandes > 0)) {
+        // On avait bien des demandes à envoyer côté client (idsEnAttente non vide), mais le serveur
+        // les a toutes exclues — affiche le détail plutôt qu'un "rien à envoyer" trompeur, pour
+        // comprendre le problème sans avoir besoin des logs Vercel.
+        const d = data.diag;
+        notify("error", `⚠️ Aucune demande envoyée à ${DEPOT_LABEL[depot]} — sur ${d.idsDemandes} : ${d.httpEchecs} lecture(s) Firebase échouée(s), ${d.introuvables} introuvable(s), ${d.dejaEnvoyees} déjà marquée(s) envoyée(s), ${d.sansPdf} sans PDF, ${d.autreDepot} autre dépôt`);
       } else {
         notify("success", `Rien à envoyer pour ${DEPOT_LABEL[depot]} pour l'instant`);
       }

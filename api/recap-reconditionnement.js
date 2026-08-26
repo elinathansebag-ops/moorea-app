@@ -60,16 +60,37 @@ async function envoyerRecapPourDepot(depot, ids) {
 
   // Lecture par identifiant, une par une — autorisée par les règles Firebase (contrairement à la
   // lecture de tout le nœud). Une demande introuvable ou déjà envoyée entre-temps (double-clic,
-  // envoi concurrent) est simplement ignorée plutôt que de faire échouer tout le lot.
+  // envoi concurrent) est simplement ignorée plutôt que de faire échouer tout le lot. On garde des
+  // compteurs diagnostiques (pourquoi chaque id a été exclu) pour pouvoir comprendre un "rien en
+  // attente" inattendu directement depuis le message affiché dans l'app, sans avoir besoin des
+  // logs Vercel — utile tant que ce endpoint n'a pas encore été validé en conditions réelles.
+  let httpEchecs = 0, introuvables = 0, dejaEnvoyees = 0, sansPdf = 0, autreDepot = 0;
   const lues = await Promise.all(ids.map(async id => {
-    const r = await fetch(`${DATABASE_URL}/reconditionnement_demandes/${id}.json`);
-    if (!r.ok) return null;
+    let r;
+    try {
+      r = await fetch(`${DATABASE_URL}/reconditionnement_demandes/${id}.json`);
+    } catch {
+      httpEchecs++; return null;
+    }
+    if (!r.ok) { httpEchecs++; return null; }
     const v = await r.json();
-    return v && typeof v === "object" ? { id, ...v } : null;
+    if (!v || typeof v !== "object") { introuvables++; return null; }
+    return { id, ...v };
   }));
 
-  const enAttente = lues.filter(d => d && d.depot === depot && d.emailEnvoye === false && d.pdfBase64);
-  if (enAttente.length === 0) return { depot, envoye: false, raison: "rien en attente" };
+  const enAttente = lues.filter(d => {
+    if (!d) return false;
+    if (d.depot !== depot) { autreDepot++; return false; }
+    if (d.emailEnvoye !== false) { dejaEnvoyees++; return false; }
+    if (!d.pdfBase64) { sansPdf++; return false; }
+    return true;
+  });
+  if (enAttente.length === 0) {
+    return {
+      depot, envoye: false, raison: "rien en attente",
+      diag: { idsDemandes: ids.length, httpEchecs, introuvables, dejaEnvoyees, sansPdf, autreDepot },
+    };
+  }
 
   const dateFr = new Date().toLocaleDateString("fr-FR");
   const idsEnvoyes = enAttente.map(d => d.id);
@@ -109,11 +130,11 @@ async function envoyerRecapPourDepot(depot, ids) {
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: { user: "agreage@moorea.fr", pass: "ymxz ktzv lele vucp" },
+    auth: { user: "jordan.jouanest@moorea.fr", pass: "zupv znno urcy qoqy" },
   });
   const destinataires = EMAILS_PAR_DEPOT[depot] || [];
   const info = await transporter.sendMail({
-    from: "Moorea Agréage <agreage@moorea.fr>",
+    from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
     to: destinataires.join(","),
     subject: `📋 Reconditionnement à faire aujourd'hui — ${DEPOT_LABEL[depot]} — ${enAttente.length} référence${enAttente.length > 1 ? "s" : ""} (${dateFr})`,
     html: emailHtml,
