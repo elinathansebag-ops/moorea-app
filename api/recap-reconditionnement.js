@@ -69,6 +69,8 @@ function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
   // confirmation "prêt à repartir" et déclaration de perte.
   const lienPortail = `${SITE_URL}/?portail=${depot}`;
 
+  // Pas de lien "Suivi" par ligne : c'était un doublon inutile du gros bouton "Ouvrir mon espace"
+  // en bas du mail, qui pointe déjà vers le même portail (demande explicite du 26/08/2026).
   const lignesHtml = enAttente.map(d => {
     const ref = d.numero || d.id;
     return `
@@ -78,11 +80,8 @@ function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
           <strong>${d.articleFini || "-"}</strong>
           ${d.articleVrac ? `<br/><span style="color:#888;font-size:11.5px;">à partir de ${d.articleVrac}</span>` : ""}
         </td>
-        <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#0a0a0a;text-align:center;white-space:nowrap;">
+        <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#0a0a0a;text-align:right;white-space:nowrap;">
           ${d.nbColisAEntrer ?? "-"} colis
-        </td>
-        <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:12px;text-align:right;white-space:nowrap;">
-          <a href="${lienPortail}" style="color:#92722c;text-decoration:none;">Suivi →</a>
         </td>
       </tr>`;
   }).join("");
