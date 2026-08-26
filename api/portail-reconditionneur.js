@@ -13,8 +13,10 @@ export const config = { runtime: "nodejs" };
 //
 // GET  ?depot=nlt|andes            → { demandes: [...], stock: number, reajustements: [...] }
 // POST ?depot=nlt|andes  body:
-//   { id, action: "confirmerPret", quantite, commentaire }        → mail à l'entrepôt : à aller chercher
-//   { id, action: "confirmerDepart", transporteur }                → mail à l'entrepôt : c'est parti
+//   { id, action: "confirmerRepartie", quantite, commentaire, transporteur, nbPalettes }
+//     → un seul geste côté presta ("Repartie" sur le portail) = un seul mail à l'entrepôt/
+//       Jordan/Elinathan pour dire que la prod est prête à aller chercher (transporteur et
+//       nombre de palettes optionnels, transmis pour info)
 //   { id, action: "declarerPerte", motif, quantite, commentaire, photoEtiquette, photoProduit }
 //   { action: "demanderReajustement", quantiteProposee, raison }   (pas de id — c'est le stock
 //     du dépôt entier, pas une demande précise ; validé/refusé côté Moorea, voir
@@ -77,11 +79,16 @@ async function handleGet(res, depot) {
   return res.status(200).json({ demandes, stock: typeof stockVal === "number" ? stockVal : 0, reajustements });
 }
 
-async function handleConfirmerPret(adminDb, depot, id, body) {
+// Un seul geste côté presta ("Repartie" sur le portail) = une seule écriture Firebase et un seul
+// mail à l'entrepôt/Jordan/Elinathan — avant, "prod prête" et "c'est parti" étaient deux actions
+// séparées avec chacune son mail ; fusionnées ici pour ne plus en envoyer deux d'affilée pour le
+// même geste (demande explicite du 26/08/2026).
+async function handleConfirmerRepartie(adminDb, depot, id, body) {
   const quantite = parseInt(body.quantite);
   if (!Number.isFinite(quantite) || quantite < 0) {
     throw Object.assign(new Error("Quantité invalide"), { statusCode: 400 });
   }
+  const transporteur = (body.transporteur || "").trim();
   const snap = await adminDb.ref(`reconditionnement_demandes/${id}`).once("value");
   const demande = snap.val();
   if (!demande || demande.depot !== depot) {
@@ -90,13 +97,22 @@ async function handleConfirmerPret(adminDb, depot, id, body) {
   const attendu = typeof demande.nbColisAEntrer === "number" ? demande.nbColisAEntrer : null;
   const ecart = attendu != null ? quantite - attendu : null;
   const commentaire = (body.commentaire || "").trim() || null;
+  // Nombre de palettes annoncé par le presta — optionnel (pas toujours pertinent selon le mode
+  // de transport), affiché côté Moorea si renseigné.
+  const g = parseInt(body.nbPalettes?.grandes);
+  const d = parseInt(body.nbPalettes?.demi);
+  const nbPalettes = (Number.isFinite(g) && g > 0) || (Number.isFinite(d) && d > 0)
+    ? { grandes: Number.isFinite(g) ? g : 0, demi: Number.isFinite(d) ? d : 0 }
+    : null;
+  const date = nowFr();
   await adminDb.ref(`reconditionnement_demandes/${id}`).update({
     retourPresta: {
       confirme: true,
-      date: nowFr(),
+      date,
       quantiteDeclaree: quantite,
       ecart,
       commentaire,
+      parti: { confirme: true, date, transporteur: transporteur || "-", ...(nbPalettes ? { nbPalettes } : {}) },
     },
   });
 
@@ -105,6 +121,7 @@ async function handleConfirmerPret(adminDb, depot, id, body) {
   try {
     const ref = demande.numero || id;
     const ecartHtml = ecart ? `<li><strong>⚠️ Écart vs prévu :</strong> ${ecart > 0 ? "+" : ""}${ecart}</li>` : "";
+    const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
     await creerMailer().sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
       to: PROD_PRETE_EMAILS.join(","),
@@ -116,56 +133,13 @@ async function handleConfirmerPret(adminDb, depot, id, body) {
           <li><strong>Article :</strong> ${demande.articleFini || demande.articleVrac || "—"}</li>
           <li><strong>Quantité prête :</strong> ${quantite} colis</li>
           ${ecartHtml}
+          ${transporteur ? `<li><strong>Transporteur :</strong> ${transporteur}</li>` : ""}
+          ${palettesHtml}
           ${commentaire ? `<li><strong>Commentaire :</strong> ${commentaire}</li>` : ""}
         </ul>`,
     });
   } catch (emailErr) {
     console.error("Erreur envoi email prod prête (portail):", emailErr);
-  }
-
-  return { success: true };
-}
-
-async function handleConfirmerDepart(adminDb, depot, id, body) {
-  const transporteur = (body.transporteur || "").trim();
-  if (!transporteur) {
-    throw Object.assign(new Error("Nom du transporteur manquant"), { statusCode: 400 });
-  }
-  // Nombre de palettes annoncé par le presta au retour — optionnel (pas toujours pertinent
-  // selon le mode de transport), affiché côté Moorea si renseigné.
-  const g = parseInt(body.nbPalettes?.grandes);
-  const d = parseInt(body.nbPalettes?.demi);
-  const nbPalettes = (Number.isFinite(g) && g > 0) || (Number.isFinite(d) && d > 0)
-    ? { grandes: Number.isFinite(g) ? g : 0, demi: Number.isFinite(d) ? d : 0 }
-    : null;
-  const snap = await adminDb.ref(`reconditionnement_demandes/${id}`).once("value");
-  const demande = snap.val();
-  if (!demande || demande.depot !== depot) {
-    throw Object.assign(new Error("Demande introuvable"), { statusCode: 404 });
-  }
-  const date = nowFr();
-  await adminDb.ref(`reconditionnement_demandes/${id}/retourPresta`).update({
-    parti: { confirme: true, date, transporteur, ...(nbPalettes ? { nbPalettes } : {}) },
-  });
-
-  try {
-    const ref = demande.numero || id;
-    const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
-    await creerMailer().sendMail({
-      from: "Moorea Agréage <agreage@moorea.fr>",
-      to: PROD_PRETE_EMAILS.join(","),
-      subject: `🚚 C'est parti — ${ref} (${DEPOT_LABEL[depot]})`,
-      html: `
-        <p>🚚 La production <strong>${ref}</strong> vient de partir de chez <strong>${DEPOT_LABEL[depot]}</strong>.</p>
-        <ul>
-          <li><strong>Article :</strong> ${demande.articleFini || demande.articleVrac || "—"}</li>
-          <li><strong>Transporteur :</strong> ${transporteur}</li>
-          ${palettesHtml}
-          <li><strong>Date :</strong> ${date}</li>
-        </ul>`,
-    });
-  } catch (emailErr) {
-    console.error("Erreur envoi email départ prod (portail):", emailErr);
   }
 
   return { success: true };
@@ -302,19 +276,14 @@ export default async function handler(req, res) {
       const { id, action } = body;
       if (!action) return res.status(400).json({ error: "action requise" });
       const adminDb = getAdminDb();
-      if (action === "confirmerPret") {
+      if (action === "confirmerRepartie") {
         if (!id) return res.status(400).json({ error: "id requis" });
-        const out = await handleConfirmerPret(adminDb, depot, id, body);
+        const out = await handleConfirmerRepartie(adminDb, depot, id, body);
         return res.status(200).json(out);
       }
       if (action === "declarerPerte") {
         if (!id) return res.status(400).json({ error: "id requis" });
         const out = await handleDeclarerPerte(adminDb, depot, id, body);
-        return res.status(200).json(out);
-      }
-      if (action === "confirmerDepart") {
-        if (!id) return res.status(400).json({ error: "id requis" });
-        const out = await handleConfirmerDepart(adminDb, depot, id, body);
         return res.status(200).json(out);
       }
       if (action === "demanderReajustement") {

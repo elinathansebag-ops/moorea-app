@@ -154,7 +154,7 @@ function Badge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<string, [string, string, string]> = {
     "en attente": ["#fffbeb", "#b45309", "En cours de préparation"],
     "prêt": ["#eff6ff", "#1d4ed8", "En cours de livraison"],
-    "parti": ["#eafaf1", "#15803d", "Livrée"],
+    "parti": ["#eafaf1", "#15803d", "Prêt à récupérer"],
     "reçu": ["#f3f4f6", "#374151", "Agréé"],
     "annulé": ["#fef2f2", "#b91c1c", "Annulé"],
   };
@@ -236,26 +236,20 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
     });
   }
 
-  // Un seul geste côté reconditionneur — "Repartie" — qui couvre les deux informations dont
-  // Moorea a besoin (côté serveur, ça reste deux actions distinctes : confirmerPret puis
-  // confirmerDepart, chacune envoyant son propre mail — voir api/portail-reconditionneur.js).
-  // Le transporteur n'est PAS redemandé au presta : c'est forcément le même qu'à l'aller, choisi
+  // Un seul geste côté reconditionneur — "Repartie" — envoie un seul mail à Moorea (une seule
+  // action serveur "confirmerRepartie", voir api/portail-reconditionneur.js — avant, "prod
+  // prête" et "c'est parti" étaient deux actions séparées avec chacune son mail). Le
+  // transporteur n'est PAS redemandé au presta : c'est forcément le même qu'à l'aller, choisi
   // par Moorea à la création de la demande (demande.transporteurNom).
   async function confirmerRepartie(d: Demande, quantite: number, commentaire: string, grandes: number, demi: number) {
     setEnvoiEnCours(true);
     try {
-      const resPret = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
+      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: d.id, action: "confirmerPret", quantite, commentaire }),
+        body: JSON.stringify({ id: d.id, action: "confirmerRepartie", quantite, commentaire, transporteur: d.transporteurNom || "-", nbPalettes: { grandes, demi } }),
       });
-      if (!resPret.ok) throw new Error(`HTTP ${resPret.status}`);
-      const resDepart = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: d.id, action: "confirmerDepart", transporteur: d.transporteurNom || "-", nbPalettes: { grandes, demi } }),
-      });
-      if (!resDepart.ok) throw new Error(`HTTP ${resDepart.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setRepartieOuvertPour(null);
       await charger();
     } catch {
