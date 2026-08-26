@@ -1407,7 +1407,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setPretDemandeId(null);
   }
 
-  async function marquerParti(id: string) {
+  // Cœur de "marquer parti", sans notification — utilisé aussi bien pour une demande seule
+  // (marquerParti) que pour plusieurs à la fois (marquerPartiGroupe), qui n'affiche qu'une seule
+  // notification consolidée à la fin plutôt qu'une par demande.
+  async function marquerPartiSilencieux(id: string) {
     const demande = demandes.find(d => d.id === id);
     await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "parti", departDate: nowFr() });
 
@@ -1459,8 +1462,21 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       // Le bon (email + pièce jointe, NLT et Andès) est maintenant envoyé dès la création de la
       // demande (voir creerDemande), pas ici au départ — inutile de le renvoyer une deuxième fois.
     }
+  }
 
+  async function marquerParti(id: string) {
+    await marquerPartiSilencieux(id);
     notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
+  }
+
+  // Version "plusieurs à la fois" de marquerParti — pour un jour où un dépôt a plusieurs
+  // demandes "prêt" en même temps (transporteur unique venu tout charger d'un coup) : évite de
+  // cliquer "Marquer parti" séparément sur chaque carte, une seule notification consolidée.
+  async function marquerPartiGroupe(ids: string[]) {
+    for (const id of ids) {
+      await marquerPartiSilencieux(id);
+    }
+    notify("success", `🚚 ${ids.length} demande${ids.length > 1 ? "s" : ""} marquée${ids.length > 1 ? "s" : ""} partie${ids.length > 1 ? "s" : ""} — les retours apparaîtront dans « Pointer arrivage »`);
   }
 
   async function ajouterTransporteur() {
@@ -1839,13 +1855,24 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                                 if (demandesJourDepot.length === 0) return null;
                                 const cleDepot = `${jourStr}::${dep}`;
                                 const depotOuvert = !depotsFermesDemandes.has(cleDepot);
+                                const pretsDuGroupe = demandesJourDepot.filter(d => d.statut === "prêt");
                                 return (
                                   <div key={dep} style={{ marginBottom: 10 }}>
-                                    <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", marginBottom: depotOuvert ? 8 : 0 }}>
-                                      <span style={{ fontSize: 12, color: COLORS.primary, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
-                                      <span style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray700 }}>
-                                        {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
-                                      </span>
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0 }}>
+                                      <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                                        <span style={{ fontSize: 12, color: COLORS.primary, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                                        <span style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray700 }}>
+                                          {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
+                                        </span>
+                                      </div>
+                                      {pretsDuGroupe.length > 1 && (
+                                        <button
+                                          onClick={() => marquerPartiGroupe(pretsDuGroupe.map(d => d.id))}
+                                          style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                                        >
+                                          🚚 Tout marquer parti ({pretsDuGroupe.length})
+                                        </button>
+                                      )}
                                     </div>
                                     {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
