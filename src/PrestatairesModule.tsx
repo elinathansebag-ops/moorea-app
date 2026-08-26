@@ -43,6 +43,10 @@ type CartonCommande = {
   horsSite?: boolean;
   emailPresta?: string;
   confirmationPresta?: { confirme: boolean; date?: string };
+  // Pointage compta : une fois la commande reçue, la compta vérifie que la facture reçue du
+  // fournisseur correspond bien à ce qui a été réellement reçu (quantités/lignes ci-dessus) et
+  // le marque ici — passe le statut en "facturé".
+  dateFacturation?: string;
 };
 
 type PaletteIFCOCommande = {
@@ -985,6 +989,23 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     }
   };
 
+  // Pointage compta : confirme que la facture fournisseur correspond bien à ce qui a été
+  // réellement reçu (voir CartonCommande.dateFacturation) — passe la commande en "facturé".
+  const handleMarquerCartonFacture = async (id: string) => {
+    if (!window.confirm("Confirmer que la facture correspond bien à ce qui a été reçu ?")) return;
+    await update(ref(db, `prestataires_cartons/${id}`), {
+      statut: "facturé" as const,
+      dateFacturation: new Date().toISOString().split("T")[0],
+    });
+    setNotification({ type: "success", message: "✓ Facture vérifiée et pointée" });
+  };
+
+  // Repasser une commande "facturé" en "reçu" en cas d'erreur de pointage compta.
+  const handleRemettreEnRecuCarton = async (id: string) => {
+    if (!window.confirm("Annuler le pointage compta et repasser cette commande en \"reçu\" ?")) return;
+    await update(ref(db, `prestataires_cartons/${id}`), { statut: "reçu" as const, dateFacturation: null });
+  };
+
   // ── Annulation / retour en attente des commandes (cartons & palettes IFCO) ──
   // Annuler une commande la marque "annulé" (elle reste visible dans l'historique mais ne
   // compte plus dans les stats) et annule aussi l'arrivage lié s'il n'a pas encore été traité.
@@ -1421,6 +1442,11 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                               : `📧 en attente de confirmation${cmd.emailPresta ? ` (${cmd.emailPresta})` : ""}`}
                           </div>
                         )}
+                        {cmd.statut === "facturé" && (
+                          <div style={{ fontSize: "11px", color: COLORS.primary, marginTop: "4px", fontWeight: 700 }}>
+                            💳 Facture vérifiée par la compta le {cmd.dateFacturation || "-"} — conforme à ce qui a été reçu
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{
@@ -1465,6 +1491,41 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                             }}
                           >
                             ↩️ En attente
+                          </button>
+                        )}
+                        {cmd.statut === "reçu" && (
+                          <button
+                            onClick={() => handleMarquerCartonFacture(cmd.id)}
+                            title="Pour la compta : confirme que la facture reçue du fournisseur correspond à ce qui a été réellement reçu"
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.primary,
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            💳 Facture vérifiée
+                          </button>
+                        )}
+                        {cmd.statut === "facturé" && (
+                          <button
+                            onClick={() => handleRemettreEnRecuCarton(cmd.id)}
+                            style={{
+                              padding: "4px 10px",
+                              background: COLORS.gray200,
+                              color: COLORS.gray700,
+                              border: "none",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "11px",
+                              fontWeight: "700",
+                            }}
+                          >
+                            ↩️ Annuler le pointage
                           </button>
                         )}
                         {(cmd.statut === "commandé" || cmd.statut === "reçu") && (
