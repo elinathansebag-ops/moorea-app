@@ -622,6 +622,36 @@ export default function App() {
         Object.keys(retour).forEach(k => { if (retour[k] === undefined) delete retour[k]; });
         await update(ref(db, `reconditionnement_demandes/${arrivage.reconditionnement_demande_id}`), { statut: "reçu", retour });
 
+        // Le reconditionneur est censé confirmer lui-même "prêt à repartir" depuis son espace en
+        // ligne (voir src/PortailReconditionneur.tsx) avant même le retour physique — mais ça peut
+        // être oublié de son côté. Plutôt que de laisser la fiche bloquée sur "en attente" côté
+        // portail alors que Moorea a déjà reçu et agréé la marchandise, on valide automatiquement
+        // cette confirmation ici, à partir de ce qui a réellement été pointé à l'agréage.
+        try {
+          const { get } = await import("firebase/database");
+          const demandeSnap = await get(ref(db, `reconditionnement_demandes/${arrivage.reconditionnement_demande_id}`));
+          const demandeActuelle = demandeSnap.val();
+          if (demandeActuelle && !demandeActuelle.retourPresta?.confirme) {
+            const quantiteRecue = typeof retour.nbColisRecus === "number" ? retour.nbColisRecus
+              : (typeof retour.qteConditionnementRecue === "number" ? retour.qteConditionnementRecue : null);
+            if (quantiteRecue != null) {
+              const attendu = typeof demandeActuelle.nbColisAEntrer === "number" ? demandeActuelle.nbColisAEntrer : null;
+              const ecart = attendu != null ? quantiteRecue - attendu : null;
+              await update(ref(db, `reconditionnement_demandes/${arrivage.reconditionnement_demande_id}`), {
+                retourPresta: {
+                  confirme: true,
+                  date: retour.date,
+                  quantiteDeclaree: quantiteRecue,
+                  ecart,
+                  commentaire: "Validé automatiquement à l'agréage Moorea — non confirmé par le reconditionneur avant le retour.",
+                },
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Erreur auto-validation retourPresta à l'agréage:", error);
+        }
+
         if (caissesPleines > 0) {
           const { get } = await import("firebase/database");
           const levelsSnap = await get(ref(db, "ifco_stock/levels"));
