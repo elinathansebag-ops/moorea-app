@@ -1449,7 +1449,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: COLORS.gray100 }}>
+    <div id="recond-root" style={{ minHeight: "100vh", background: COLORS.gray100, overflowX: "hidden", maxWidth: "100vw" }}>
       <style>{styles}</style>
       <PageHeader
         titre="🔄 Reconditionnement"
@@ -1471,8 +1471,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           </div>
         )}
 
-        {/* Onglets simples */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        {/* Onglets simples — scroll horizontal plutôt que wrap : sur téléphone les 4 libellés ne
+            tiennent jamais sur une seule ligne, autant permettre de glisser que de casser sur 2
+            lignes (même principe que RetoursModule.tsx). */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           {[
             { key: "dashboard", label: "📋 Demandes" },
             { key: "nouvelle", label: "➕ Nouvelle demande" },
@@ -1485,7 +1487,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               style={{
                 padding: "10px 16px", borderRadius: 10, border: `2px solid ${activeTab === t.key ? COLORS.primary : COLORS.gray200}`,
                 background: activeTab === t.key ? COLORS.primaryLight : "#fff", color: activeTab === t.key ? COLORS.primary : COLORS.gray600,
-                fontSize: 13, fontWeight: 700, cursor: "pointer",
+                fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
               }}
             >
               {t.label}

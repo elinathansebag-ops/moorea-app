@@ -119,6 +119,11 @@ export const styles = `
 
     /* Agréage */
     .arr-row-btns { flex-wrap: wrap !important; }
+
+    /* Prestataires — réduit le padding latéral sur téléphone (24px de chaque côté est trop
+       large sur un petit écran). overflow-x:hidden sur la racine des deux modules est déjà posé
+       en style inline (#presta-root / #recond-root), à toutes les tailles d'écran. */
+    .presta-content { padding: 14px !important; }
   }
 `;
 

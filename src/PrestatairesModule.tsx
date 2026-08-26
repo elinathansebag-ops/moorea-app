@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 import * as XLSX from "xlsx";
 
 // Types de cartons
@@ -1032,7 +1032,8 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   };
 
   return (
-    <div style={{ background: "linear-gradient(135deg, #f0f9f8 0%, #f9fbf8 100%)", minHeight: "100vh", margin: 0, padding: 0 }}>
+    <div id="presta-root" style={{ background: "linear-gradient(135deg, #f0f9f8 0%, #f9fbf8 100%)", minHeight: "100vh", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100vw" }}>
+      <style>{styles}</style>
       <PageHeader
         titre="📦 Prestataires & IFCO"
         onBack={() => { if (activeTab !== "dashboard") setActiveTab("dashboard"); else onClose(); }}
@@ -1060,7 +1061,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         </div>
       )}
 
-      <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
+      <div className="presta-content" style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
         {/* BANDEAU — déclarations d'entrée IFCO à faire (retours clients en caisses IFCO) */}
         {declarationsEntree.filter(d => !d.declare).length > 0 && (
           <div style={{ background: COLORS.tertiaryLight, border: `1.5px solid ${COLORS.tertiary}`, borderRadius: 12, padding: "14px 18px", marginBottom: "16px" }}>
