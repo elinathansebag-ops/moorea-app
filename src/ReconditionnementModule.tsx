@@ -82,6 +82,9 @@ type Demande = {
   // afficher ou non la case "Caisses IFCO pleines" (plus fiable qu'une simple détection du nom
   // à ce moment-là, puisque décidée une fois pour toutes à la création de la demande).
   retourEnIfco?: boolean;
+  // Commentaire libre (ex : EAN à utiliser) saisi à la création, transmis à la fois à l'entrepôt
+  // Moorea et au reconditionneur — imprimé dans les deux zones du bon.
+  commentaireEan?: string;
   transporteurId?: string;
   transporteurNom?: string;
   // Le "bon" propre, généré par l'app (jsPDF) à partir des champs structurés de la demande, avec
@@ -317,8 +320,12 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   // zones se distinguent par un bandeau plein NOIR (zone 1) vs un encadré simple (zone 2), pas
   // par la couleur — ça reste lisible même sur une imprimante N&B.
 
+  // Commentaire libre (typiquement un EAN à utiliser) — transmis à la fois à l'entrepôt et au
+  // reconditionneur, donc imprimé dans les deux zones. N'ajoute de la hauteur que s'il y en a un.
+  const commentExtra = demande.commentaireEan ? 12 : 0;
+
   // ─── ZONE 1 — ENTREPÔT MOOREA (bandeau plein noir) ───
-  const zone1Top = y, zone1H = 116;
+  const zone1Top = y, zone1H = 116 + commentExtra;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.rect(M, zone1Top, CW, zone1H, "S");
   doc.setFillColor(0, 0, 0); doc.rect(M, zone1Top, CW, 10, "F");
   doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
@@ -340,6 +347,13 @@ async function genererBonPdf(demande: Demande): Promise<string> {
     ligne("Cartons BABY BLANC utilisés", demande.cartonsBabyBlancEnvoyes != null ? String(demande.cartonsBabyBlancEnvoyes) : "-", col2, yy);
   }
   yy += 16;
+  if (demande.commentaireEan) {
+    doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text("Commentaire :", col1, yy);
+    doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text(demande.commentaireEan, col1, yy + 5, { maxWidth: CW - 16 });
+    yy += commentExtra;
+  }
 
   // QR de suivi — réservé à l'entrepôt Moorea (le reconditionneur n'a pas besoin de le scanner)
   const qrSize = 26;
@@ -363,7 +377,7 @@ async function genererBonPdf(demande: Demande): Promise<string> {
 
   // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) : encadré simple, sans bandeau plein, pour bien
   // se distinguer de la zone 1 même sans couleur ───
-  const zone2Top = y, zone2H = 84;
+  const zone2Top = y, zone2H = 84 + commentExtra;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.6); doc.rect(M, zone2Top, CW, zone2H, "S");
   doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
   doc.text(`${DEPOT_LABEL[demande.depot].toUpperCase()} — À PRÉPARER ET RETOURNER`, M + 8, zone2Top + 10);
@@ -375,6 +389,13 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   yy2 += 13;
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy2);
   yy2 += 12;
+  if (demande.commentaireEan) {
+    doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text("Commentaire :", col1, yy2);
+    doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text(demande.commentaireEan, col1, yy2 + 5, { maxWidth: CW - 16 });
+    yy2 += commentExtra;
+  }
   doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.3);
   doc.text("Le retour sera pointé par Moorea à réception.", M + 8, yy2, { maxWidth: CW - 16 });
   yy2 += 7;
@@ -545,6 +566,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // Coché automatiquement dès que "IFCO" apparaît dans le nom de l'article à fabriquer (voir
   // l'effet ci-dessous), mais reste modifiable à la main si jamais le nom ne suffit pas.
   const [retourIfco, setRetourIfco] = useState(false);
+  // Commentaire libre (typiquement un EAN à utiliser) transmis à la fois à l'entrepôt Moorea et
+  // au reconditionneur — imprimé sur le bon dans les deux zones (voir genererBonPdf) puisque les
+  // deux parties le lisent séparément.
+  const [commentaireEan, setCommentaireEan] = useState("");
   const [transporteurId, setTransporteurId] = useState("");
   const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
   const [editDemandeId, setEditDemandeId] = useState<string | null>(null);
@@ -690,7 +715,8 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erreur ${res.status}`);
       if (data.envoye) {
-        notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} — ${data.nb} référence${data.nb > 1 ? "s" : ""}`);
+        const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
+        notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}`);
       } else {
         notify("success", `Rien à envoyer pour ${DEPOT_LABEL[depot]} pour l'instant`);
       }
@@ -856,6 +882,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setCartonsBabyBlancEnvoyes("");
     setEmballageIfcoManuel(false);
     setRetourIfco(false);
+    setCommentaireEan("");
     setTransporteurId("");
     setPdfFile(null);
     setEditDemandeId(null);
@@ -886,6 +913,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     // ne retombe sur la détection par le nom que pour d'anciennes demandes créées avant ce champ.
     setRetourIfco(d.retourEnIfco ?? /ifco/i.test(d.articleFini || ""));
     setCartonsBabyBlancEnvoyes(d.cartonsBabyBlancEnvoyes != null ? String(d.cartonsBabyBlancEnvoyes) : "");
+    setCommentaireEan(d.commentaireEan || "");
     setTransporteurId(d.transporteurId || "");
     setPdfFile(d.pdfGeslotBase64 ? { nom: d.pdfGeslotNom || "geslot.pdf", base64: d.pdfGeslotBase64 } : null);
     setActiveTab("nouvelle");
@@ -1074,6 +1102,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       caissesIfcoEnvoyees: depot === "nlt" ? caisses : undefined,
       cartonsBabyBlancEnvoyes: depot === "andes" ? cartons : undefined,
       retourEnIfco: depot === "nlt" ? retourIfco : false,
+      commentaireEan: commentaireEan.trim() || undefined,
       transporteurId,
       transporteurNom: transporteur?.nom,
       // Le scan Geslot d'origine n'est gardé que comme archive / pont de données — le "bon"
@@ -1161,12 +1190,13 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           // NLT et Andès sont tous les deux livrés hors site, mais le bon n'est PLUS envoyé par
           // email individuellement à chaque demande créée (trop de mails séparés quand plusieurs
           // références sont faites le même jour) : chaque demande reste simplement marquée
-          // "emailEnvoye: false", et c'est api/recap-reconditionnement.js (déclenché une fois par
-          // matin, cf. vercel.json) qui regroupe toutes les demandes en attente d'un dépôt dans UN
-          // seul mail récapitulatif (un bon en pièce jointe par référence, un seul lien pour
-          // déclarer un problème sur n'importe laquelle). Le bon reste imprimé sur place via le
-          // relais impression pour NLT (voir envoyerBonReconditionnementPourImpressionPC ci-dessus)
-          // — ça, ça continue à se faire immédiatement à la création.
+          // "emailEnvoye: false", et c'est api/recap-reconditionnement.js (déclenché manuellement
+          // par le bouton "Envoyer le récap" du Dashboard, voir envoyerRecapDuJour ci-dessous) qui
+          // regroupe toutes les demandes en attente d'un dépôt dans UN seul mail récapitulatif (un
+          // bon en pièce jointe par référence, un seul lien pour déclarer un problème sur
+          // n'importe laquelle). Le bon reste imprimé sur place via le relais impression pour NLT
+          // (voir envoyerBonReconditionnementPourImpressionPC ci-dessus) — ça, ça continue à se
+          // faire immédiatement à la création.
           await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
         } catch (errPdf: any) {
           notify("error", `⚠️ Demande envoyée, mais la génération du bon a échoué : ${errPdf?.message || "erreur inconnue"}`);
@@ -1629,6 +1659,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       {d.transporteurNom && <div>Transporteur : <b>{d.transporteurNom}</b></div>}
                     </div>
 
+                    {d.commentaireEan && (
+                      <div style={{ fontSize: 12, color: "#92400e", background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+                        💬 <b>{d.commentaireEan}</b>
+                      </div>
+                    )}
+
                     {(d.pdfBase64 || d.pdfGeslotBase64) && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         {d.pdfGeslotBase64 && (
@@ -2010,6 +2046,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                   <span style={{ fontSize: 10.5, color: "#9ca3af" }}>= nb colis à entrer par défaut, modifiable</span>
                 </F>
               )}
+              <F label="Commentaire EAN (transmis à l'entrepôt et au reconditionneur)">
+                <input type="text" value={commentaireEan} onChange={e => setCommentaireEan(e.target.value)} placeholder="ex : utiliser l'EAN 3760123456789" />
+                <span style={{ fontSize: 10.5, color: "#9ca3af" }}>Imprimé sur le bon, visible dans les deux zones (entrepôt + reconditionneur)</span>
+              </F>
             </div>
 
             <div className="card" style={{ padding: "12px 16px", marginBottom: 10 }}>

@@ -33,13 +33,26 @@ const EMAILS_PAR_DEPOT = {
 const DEPOT_LABEL = { nlt: "NLT", andes: "Andès" };
 
 async function envoyerRecapPourDepot(depot) {
-  const getRes = await fetch(`${DATABASE_URL}/reconditionnement_demandes.json?orderBy="depot"&equalTo="${depot}"`);
+  // On récupère TOUT le nœud et on filtre en JS (comme le fait déjà l'app côté client avec son
+  // listener temps réel), plutôt que de passer par une requête Firebase orderBy/equalTo : celle-ci
+  // construisait une URL avec des guillemets non encodés (?orderBy="depot"&equalTo="andes") et, si
+  // Firebase répondait avec un objet d'erreur (index manquant, requête mal formée...) au lieu des
+  // données, ce code traitait silencieusement ça comme "rien à envoyer" — sans jamais remonter
+  // d'erreur ni envoyer le mail, ce qui correspond exactement au bug observé (bouton "envoyé" /
+  // "rien à envoyer" mais NLT ou Andès ne reçoivent jamais rien).
+  const getRes = await fetch(`${DATABASE_URL}/reconditionnement_demandes.json`);
+  if (!getRes.ok) {
+    throw new Error(`Lecture Firebase échouée (HTTP ${getRes.status})`);
+  }
   const data = await getRes.json();
+  if (data && typeof data === "object" && data.error) {
+    throw new Error(`Erreur Firebase : ${data.error}`);
+  }
   if (!data) return { depot, envoye: false, raison: "aucune demande" };
 
   const enAttente = Object.entries(data)
     .map(([id, v]) => ({ id, ...v }))
-    .filter(d => d.emailEnvoye === false && d.pdfBase64);
+    .filter(d => d.depot === depot && d.emailEnvoye === false && d.pdfBase64);
 
   if (enAttente.length === 0) return { depot, envoye: false, raison: "rien en attente" };
 
@@ -72,13 +85,24 @@ async function envoyerRecapPourDepot(depot) {
     service: "gmail",
     auth: { user: "agreage@moorea.fr", pass: "ymxz ktzv lele vucp" },
   });
-  await transporter.sendMail({
+  const destinataires = EMAILS_PAR_DEPOT[depot] || [];
+  const info = await transporter.sendMail({
     from: "Moorea Agréage <agreage@moorea.fr>",
-    to: (EMAILS_PAR_DEPOT[depot] || []).join(","),
+    to: destinataires.join(","),
     subject: `📋 Reconditionnement à faire aujourd'hui — ${DEPOT_LABEL[depot]} — ${enAttente.length} référence${enAttente.length > 1 ? "s" : ""} (${dateFr})`,
     html: emailHtml,
     attachments,
   });
+
+  // nodemailer peut résoudre sendMail() SANS erreur même si Gmail a rejeté un ou plusieurs
+  // destinataires (adresse inexistante, boîte pleine...) — sendMail() ne lève une exception que si
+  // AUCUN destinataire n'a été accepté. On vérifie donc explicitement `info.accepted`/`info.rejected`
+  // pour ne pas dire "envoyé" en silence si ça a partiellement (ou totalement) échoué.
+  const accepted = info.accepted || [];
+  const rejected = info.rejected || [];
+  if (accepted.length === 0) {
+    throw new Error(`Aucun destinataire accepté par Gmail (${destinataires.join(", ") || "aucune adresse configurée"})`);
+  }
 
   // Marque ces demandes comme envoyées pour ne pas les reprendre le lendemain.
   await Promise.all(ids.map(id =>
@@ -89,7 +113,7 @@ async function envoyerRecapPourDepot(depot) {
     })
   ));
 
-  return { depot, envoye: true, nb: enAttente.length };
+  return { depot, envoye: true, nb: enAttente.length, accepted, rejected };
 }
 
 export default async function handler(req, res) {
