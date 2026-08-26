@@ -150,11 +150,18 @@ function numeroSemaine(d: Date): number {
 // Priorité d'affichage dans un jour : ce qu'il y a vraiment à faire/valider en premier.
 const PRIORITE_STATUT: Record<Demande["statut"], number> = { "parti": 0, "prêt": 1, "en attente": 2, "reçu": 3, "annulé": 4 };
 
-function Badge({ statut }: { statut: Demande["statut"] }) {
+function Badge({ statut, repartieConfirmee }: { statut: Demande["statut"]; repartieConfirmee?: boolean }) {
+  // "parti" = le vrac est arrivé chez le reconditionneur, PAS que le produit fini est prêt — il
+  // ne l'est vraiment que lorsque le reconditionneur a lui-même cliqué "Repartie" une fois le
+  // travail terminé (voir retourPresta.parti.confirme). Avant ça, "Prêt à récupérer" était
+  // trompeur : ça laissait croire que c'était déjà prêt le jour même de l'arrivée, alors qu'il
+  // reste tout le travail de reconditionnement à faire (constaté le 26/08/2026 — Elinathan a
+  // marqué plusieurs demandes "parti" d'un coup et le badge affichait "Prêt à récupérer" avant
+  // même que NLT ait eu le temps de commencer).
   const map: Record<string, [string, string, string]> = {
     "en attente": ["#fffbeb", "#b45309", "En cours de préparation"],
     "prêt": ["#eff6ff", "#1d4ed8", "En cours de livraison"],
-    "parti": ["#eafaf1", "#15803d", "Prêt à récupérer"],
+    "parti": repartieConfirmee ? ["#eafaf1", "#15803d", "Prêt à récupérer"] : ["#fffbeb", "#b45309", "Reçu — à préparer"],
     "reçu": ["#f3f4f6", "#374151", "Agréé"],
     "annulé": ["#fef2f2", "#b91c1c", "Annulé"],
   };
@@ -170,6 +177,10 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
   const [perteOuvertePour, setPerteOuvertePour] = useState<string | null>(null);
   const [repartieOuvertPour, setRepartieOuvertPour] = useState<string | null>(null);
+  // Jour (clé "26/08/2026") pour lequel la modale "plusieurs prêts en même temps" est ouverte —
+  // utile les jours où le presta a plusieurs références "prêtes à récupérer" et veut tout mettre
+  // dans un seul mail plutôt que de cliquer "Repartie" séparément sur chaque carte.
+  const [groupeOuvertPour, setGroupeOuvertPour] = useState<string | null>(null);
   const [reajustementOuvert, setReajustementOuvert] = useState(false);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
 
@@ -251,6 +262,28 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setRepartieOuvertPour(null);
+      await charger();
+    } catch {
+      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
+    } finally {
+      setEnvoiEnCours(false);
+    }
+  }
+
+  // Version groupée de "Repartie" pour les jours où plusieurs références sont prêtes à la fois —
+  // le presta coche celles qui sont prêtes maintenant (les autres restent "à préparer"), indique
+  // un créneau optionnel pour le reste, et tout part dans UN SEUL mail (voir
+  // api/portail-reconditionneur.js, action "confirmerRepartieGroupee").
+  async function confirmerRepartieGroupee(items: { id: string; quantite: number }[], commentaire: string, grandes: number, demi: number, creneauReste: string) {
+    setEnvoiEnCours(true);
+    try {
+      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "confirmerRepartieGroupee", items, commentaire, nbPalettes: { grandes, demi }, creneauReste }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setGroupeOuvertPour(null);
       await charger();
     } catch {
       alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
@@ -389,11 +422,31 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                 <span style={{ fontSize: 14, color: "#92722c", transform: ouverte ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
               </div>
 
-              {ouverte && info.jours.map(jourStr => (
+              {ouverte && info.jours.map(jourStr => {
+                const pretesDuJour = parJour[jourStr].filter(d => d.statut === "parti" && !d.retourPresta?.parti?.confirme);
+                return (
                 <div key={jourStr} style={{ marginTop: 10 }}>
-                  <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: COLORS.gray, paddingLeft: 4 }}>
-                    {jourStr} <span style={{ fontWeight: 600 }}>({parJour[jourStr].length})</span>
-                  </p>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, paddingLeft: 4 }}>
+                    <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: COLORS.gray }}>
+                      {jourStr} <span style={{ fontWeight: 600 }}>({parJour[jourStr].length})</span>
+                    </p>
+                    {pretesDuJour.length > 1 && (
+                      <button
+                        onClick={() => setGroupeOuvertPour(groupeOuvertPour === jourStr ? null : jourStr)}
+                        style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        📦 Prévenir plusieurs prêts ({pretesDuJour.length})
+                      </button>
+                    )}
+                  </div>
+                  {groupeOuvertPour === jourStr && (
+                    <FormRepartieGroupee
+                      demandes={pretesDuJour}
+                      envoiEnCours={envoiEnCours}
+                      onAnnuler={() => setGroupeOuvertPour(null)}
+                      onValider={confirmerRepartieGroupee}
+                    />
+                  )}
                   {parJour[jourStr].map(d => (
                     <Card key={d.id}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
@@ -404,7 +457,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                           </div>
                           <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>{d.dateCreationFr}</div>
                         </div>
-                        <Badge statut={d.statut} />
+                        <Badge statut={d.statut} repartieConfirmee={d.retourPresta?.parti?.confirme} />
                       </div>
 
                       <div style={{ fontSize: 12.5, color: "#374151", marginBottom: 8 }}>
@@ -489,7 +542,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                     </Card>
                   ))}
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
         })}
@@ -564,6 +618,129 @@ function FormRepartie({ demande, envoiEnCours, onAnnuler, onValider }: {
           style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !valide || envoiEnCours ? 0.5 : 1 }}
         >
           {envoiEnCours ? "Envoi..." : "Confirmer"}
+        </button>
+        <button onClick={onAnnuler} style={{ padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.border}`, background: "#fff", fontSize: 13, cursor: "pointer" }}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Version "plusieurs à la fois" de FormRepartie — pour les jours où le presta a plusieurs
+// références prêtes à récupérer en même temps : une case à cocher par référence (cochées par
+// défaut) pour choisir ce qui part dans le mail maintenant, et si tout n'est pas coché, un
+// créneau optionnel pour dire dans combien de temps le reste sera prêt — tout part dans UN SEUL
+// mail (voir confirmerRepartieGroupee / api/portail-reconditionneur.js, action
+// "confirmerRepartieGroupee").
+function FormRepartieGroupee({ demandes, envoiEnCours, onAnnuler, onValider }: {
+  demandes: Demande[];
+  envoiEnCours: boolean;
+  onAnnuler: () => void;
+  onValider: (items: { id: string; quantite: number }[], commentaire: string, grandes: number, demi: number, creneauReste: string) => void;
+}) {
+  const [cochees, setCochees] = useState<Record<string, boolean>>(() => Object.fromEntries(demandes.map(d => [d.id, true])));
+  const [quantites, setQuantites] = useState<Record<string, string>>(() => Object.fromEntries(demandes.map(d => [d.id, String(d.nbColisAEntrer ?? "")])));
+  const [commentaire, setCommentaire] = useState("");
+  const [grandes, setGrandes] = useState("");
+  const [demi, setDemi] = useState("");
+  const [creneauReste, setCreneauReste] = useState("");
+
+  const selectionnees = demandes.filter(d => cochees[d.id]);
+  const resteNonCoche = demandes.length > selectionnees.length;
+  const valide = selectionnees.length > 0 && selectionnees.every(d => (parseInt(quantites[d.id]) || 0) >= 0 && quantites[d.id] !== "");
+
+  function toggle(id: string) {
+    setCochees(prev => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  return (
+    <div style={{ marginBottom: 10, background: "#f9fafb", border: `1.5px solid ${COLORS.border}`, borderRadius: 10, padding: 12 }}>
+      <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase" }}>
+        Références prêtes à inclure dans le mail
+      </p>
+      <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+        {demandes.map(d => (
+          <div
+            key={d.id}
+            role="checkbox"
+            aria-checked={!!cochees[d.id]}
+            onClick={() => toggle(d.id)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+              border: `1.5px solid ${cochees[d.id] ? COLORS.gold : COLORS.border}`,
+              background: cochees[d.id] ? "#fffbf0" : "#fff",
+            }}
+          >
+            <span style={{ fontSize: 15 }}>{cochees[d.id] ? "☑" : "☐"}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.ink }}>
+                {d.numero && <span style={{ color: "#92722c" }}>{d.numero} · </span>}{d.articleFini}
+              </div>
+              {d.transporteurNom && <div style={{ fontSize: 10.5, color: COLORS.gray }}>🚚 {d.transporteurNom}</div>}
+            </div>
+            {cochees[d.id] && (
+              <input
+                type="number" min="0" value={quantites[d.id]}
+                onClick={e => e.stopPropagation()}
+                onChange={e => setQuantites(prev => ({ ...prev, [d.id]: e.target.value }))}
+                placeholder="Qté"
+                style={{ width: 64, padding: "6px 8px", border: `1.5px solid ${COLORS.border}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
+        Nombre de palettes (pour cet enlèvement)
+      </label>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1 }}>
+          <input
+            type="number" min="0" value={grandes} onChange={e => setGrandes(e.target.value)} placeholder="Grandes"
+            style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, boxSizing: "border-box" }}
+          />
+          <span style={{ fontSize: 10, color: COLORS.gray }}>Grandes palettes</span>
+        </div>
+        <div style={{ flex: 1 }}>
+          <input
+            type="number" min="0" value={demi} onChange={e => setDemi(e.target.value)} placeholder="Demi"
+            style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, boxSizing: "border-box" }}
+          />
+          <span style={{ fontSize: 10, color: COLORS.gray }}>Demi-palettes</span>
+        </div>
+      </div>
+
+      {resteNonCoche && (
+        <>
+          <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: "#b45309", textTransform: "uppercase", marginBottom: 4 }}>
+            Créneau pour le reste (non coché ci-dessus)
+          </label>
+          <input
+            type="text" value={creneauReste} onChange={e => setCreneauReste(e.target.value)} placeholder="Ex : dans 2h, demain matin..."
+            style={{ width: "100%", padding: "9px 10px", border: "1.5px solid #fde3a8", background: "#fffbeb", borderRadius: 8, fontSize: 14, marginBottom: 8, boxSizing: "border-box" }}
+          />
+        </>
+      )}
+
+      <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
+        Commentaire (optionnel)
+      </label>
+      <textarea
+        value={commentaire} onChange={e => setCommentaire(e.target.value)} placeholder="Ex : écart dû à..."
+        style={{ width: "100%", minHeight: 50, padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 13, marginBottom: 10, boxSizing: "border-box", fontFamily: "inherit" }}
+      />
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          disabled={!valide || envoiEnCours}
+          onClick={() => onValider(
+            selectionnees.map(d => ({ id: d.id, quantite: parseInt(quantites[d.id]) || 0 })),
+            commentaire, parseInt(grandes) || 0, parseInt(demi) || 0, creneauReste.trim()
+          )}
+          style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !valide || envoiEnCours ? 0.5 : 1 }}
+        >
+          {envoiEnCours ? "Envoi..." : `Envoyer le mail (${selectionnees.length}/${demandes.length})`}
         </button>
         <button onClick={onAnnuler} style={{ padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.border}`, background: "#fff", fontSize: 13, cursor: "pointer" }}>
           Annuler

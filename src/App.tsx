@@ -18,6 +18,7 @@ import { RackModule } from "./RackModule";
 import { StattModule } from "./StattModule";
 import { PrestatairesModule } from "./PrestatairesModule";
 import { ReconditionnementModule } from "./ReconditionnementModule";
+import { PreparationModule } from "./PreparationModule";
 import { PortailReconditionneur } from "./PortailReconditionneur";
 import { DashboardModule } from "./DashboardModule";
 
@@ -206,6 +207,10 @@ export default function App() {
   const [showStatt, setShowStatt] = useState(false);
   const [showPrestataires, setShowPrestataires] = useState(false);
   const [showReconditionnement, setShowReconditionnement] = useState(false);
+  // Préparation entrepôt — anciennement l'onglet "Demandes" de Reconditionnement, extrait en
+  // module à part (voir src/PreparationModule.tsx) : c'est là que vivent les actions entrepôt
+  // (marquer prêt/parti, valider les réajustements de stock, envoyer le récap quotidien).
+  const [showPreparation, setShowPreparation] = useState(false);
   // Id de demande scanné via le QR code imprimé sur le bon (voir useEffect des paramètres
   // d'URL ci-dessous, param "recond") — transmis au module pour valider "prêt"/"parti" au scan.
   const [qrRecondDemandeId, setQrRecondDemandeId] = useState<string | null>(null);
@@ -507,7 +512,7 @@ export default function App() {
     // le module Reconditionnement pour valider "prêt" puis "parti" (voir ReconditionnementModule,
     // prop scanDemandeId). Réservé au personnel déjà connecté, comme les autres QR ci-dessus.
     const recond = params.get("recond");
-    if (recond) { setQrRecondDemandeId(recond); setShowAccueil(false); setShowReconditionnement(true); }
+    if (recond) { setQrRecondDemandeId(recond); setShowAccueil(false); setShowPreparation(true); }
     // Espace reconditionneur public — voir déclaration de portailDepot plus haut.
     const portail = params.get("portail");
     if (portail === "nlt" || portail === "andes") setPortailDepot(portail);
@@ -2380,6 +2385,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <ReconditionnementModule
       onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
       userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
+    />;
+  }
+
+  if (showPreparation) {
+    return <PreparationModule
+      onClose={() => { setShowPreparation(false); setShowAccueil(true); }}
+      userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
       scanDemandeId={qrRecondDemandeId}
       onScanHandled={() => { setQrRecondDemandeId(null); window.history.replaceState({}, "", window.location.pathname); }}
     />;
@@ -2504,7 +2516,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
     const row2 = [
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
-      { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", badge: null, stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
+      { icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
       { icon: "🛒", label: "Statt", color: "#ea580c", badge: null, stat: "Ventes réelles + objectifs par période", action: () => { setShowAccueil(false); setShowStatt(true); } },
       { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
@@ -2514,31 +2526,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const leofreshBtns = [
       { icon: "📚", label: "Catalogue", color: "#27ae60", stat: "Base articles Moorea", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowCatalogue(true); } },
       { icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowDashboard(true); } },
-      { icon: "🏷️", label: "Étiquettes", color: "#f59e0b", stat: "Export bilingue", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
-      { icon: "📊", label: "QR Code", color: "#27ae60", stat: "Scans réseau", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowQrCode(true); } },
+      { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowGencode(true); } },
       { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
       { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowYukon(true); } },
-      { icon: "✉️", label: "Test Email", color: "#c8a84b", stat: "Vérifier Resend", action: async () => {
-        try {
-          const resp = await fetch("/api/send-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to: ["elinathan.sebag@moorea.fr"],
-              subject: "✅ Test d'envoi d'email — Moorea Leofresh",
-              html: `<p>Ceci est un email de test envoyé depuis Leofresh de l'app Moorea.</p><p>Envoyé le ${new Date().toLocaleString("fr-FR")}.</p><p>Si tu reçois ce message, l'envoi d'email fonctionne correctement.</p>`,
-            }),
-          });
-          if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            showToast("❌ Erreur : " + (err.error || `HTTP ${resp.status}`));
-          } else {
-            showToast("✅ Email de test envoyé à elinathan.sebag@moorea.fr");
-          }
-        } catch (err: any) {
-          showToast("❌ Erreur : " + (err?.message || String(err)));
-        }
-      } },
     ];
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {

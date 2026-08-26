@@ -554,16 +554,11 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
   );
 }
 
-export function ReconditionnementModule({ onClose, userName, scanDemandeId, onScanHandled }: {
+export function ReconditionnementModule({ onClose, userName }: {
   onClose: () => void;
   userName?: string;
-  // Id de demande transmis quand l'app a été ouverte via le QR code imprimé sur le bon (voir
-  // App.tsx, paramètre d'URL "?recond=<id>") — permet de valider "prêt" puis "parti" directement
-  // en scannant, sans repasser par l'écran Demandes.
-  scanDemandeId?: string | null;
-  onScanHandled?: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "nouvelle" | "historique" | "configuration">("dashboard");
+  const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "configuration">("en_cours");
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -585,13 +580,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   const [mouvementsASupprimer, setMouvementsASupprimer] = useState<Set<string>>(new Set());
   const [outilsMouvementsVisibles, setOutilsMouvementsVisibles] = useState(false);
 
-  // Modale "prêt" (validation entrepôt étape 1)
-  const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
-  // Modale "Tout marquer parti" groupée (un seul total de palettes pour tout un dépôt/jour,
-  // peu importe le statut de départ de chaque demande — "en attente" ou déjà "prêt")
-  const [groupePartiIds, setGroupePartiIds] = useState<string[] | null>(null);
-  const [groupePartiGrandes, setGroupePartiGrandes] = useState("");
-  const [groupePartiDemi, setGroupePartiDemi] = useState("");
   // Aperçu PDF (bon de prépa ou scan Geslot) dans une modale avec iframe, plutôt qu'un lien
   // <a target="_blank"> vers une data:URI — Chrome bloque/redirige la navigation top-level
   // vers un data: URL (d'où le renvoi vers une page Google constaté par l'utilisateur), alors
@@ -599,8 +587,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   const [pdfApercu, setPdfApercu] = useState<{ titre: string; base64: string } | null>(null);
   // Aperçu plein écran d'une photo de perte déclarée par le reconditionneur (clic sur une miniature)
   const [photoApercu, setPhotoApercu] = useState<string | null>(null);
-  const [pretGrandes, setPretGrandes] = useState("");
-  const [pretDemi, setPretDemi] = useState("");
 
   // Formulaire nouvelle demande
   // Pas de dépôt présélectionné par défaut : on force un choix explicite plutôt que de risquer
@@ -667,11 +653,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // validation de l'arrivage correspondant dans App.tsx (handleAgrement).
   const [mouvements, setMouvements] = useState<Mouvement[]>([]);
 
-  // Demandes de réajustement de stock envoyées par le reconditionneur depuis son espace public
-  // (voir src/PortailReconditionneur.tsx, api/portail-reconditionneur.js) — à valider ou refuser
-  // ici, dans le Dashboard.
-  const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
-
   useEffect(() => {
     const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
       const d = snap.val();
@@ -698,11 +679,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       const d = snap.val();
       setMouvements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    const u8 = onValue(ref(db, "reajustements_stock_demandes"), snap => {
-      const d = snap.val();
-      setReajustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
-    });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
@@ -772,120 +749,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     if (type === "success") setTimeout(() => setNotification(null), 3500);
   }
 
-  // ─── VALIDATION / REFUS D'UNE DEMANDE DE RÉAJUSTEMENT DE STOCK (portail reconditionneur) ───
-  // Valider applique réellement la nouvelle quantité au compteur de stock réel (le même que
-  // celui affiché plus haut, stockIfco.nlt ou stockBabyBlancAndes) ; refuser ne touche à rien,
-  // seul le statut de la demande change. Les deux sont tracés dans stock_ajustements (même
-  // journal que les autres corrections de stock de l'app) pour garder un historique cohérent.
-  async function traiterReajustement(r: ReajustementDemande, valider: boolean) {
-    try {
-      await update(ref(db, `reajustements_stock_demandes/${r.id}`), {
-        statut: valider ? "validé" : "refusé",
-        traitePar: userName,
-        traiteDate: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      });
-      if (valider) {
-        const chemin = r.depot === "nlt" ? "ifco_stock/levels" : "stock_carton_andes";
-        const champ = r.depot === "nlt" ? "nlt" : "baby_blanc";
-        await update(ref(db, chemin), { [champ]: r.quantiteProposee });
-        await push(ref(db, "stock_ajustements"), {
-          emplacement: r.depot === "nlt" ? "Caisses IFCO — NLT" : "Carton Baby Blanc — Andes",
-          ancienneValeur: r.quantiteActuelle,
-          nouvelleValeur: r.quantiteProposee,
-          raison: `Réajustement demandé par ${DEPOT_LABEL[r.depot]} (${r.raison}) — validé par ${userName}`,
-          date: new Date().toLocaleDateString("fr-FR"),
-          timestamp: Date.now(),
-        });
-      }
-      notify("success", valider ? "✓ Réajustement validé, stock mis à jour" : "✓ Demande refusée, stock inchangé");
-    } catch (err: any) {
-      notify("error", `Erreur lors du traitement : ${err?.message || "erreur inconnue"}`);
-    }
-  }
-
-  // ─── ENVOI MANUEL DU RÉCAP DU JOUR (NLT / Andès) ───
-  // Pas d'envoi automatique programmé : c'est le commercial qui décide, une fois qu'il a fini de
-  // saisir toutes les demandes du jour pour un dépôt, de cliquer pour envoyer le mail groupé (un
-  // bon par référence + un lien de déclaration de perte commun). Voir api/recap-reconditionnement.js.
-  const [envoiRecapEnCours, setEnvoiRecapEnCours] = useState<Record<Depot, boolean>>({ nlt: false, andes: false });
-
-  async function envoyerRecapDuJour(depot: Depot) {
-    setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: true }));
-    try {
-      // Le serveur relit lui-même les demandes et leurs PDF dans Firebase (voir
-      // api/recap-reconditionnement.js) — on ne lui envoie plus que le stock actuel. Avant, le
-      // client envoyait les demandes complètes avec leur PDF en base64 dans le corps de la
-      // requête : avec plusieurs références le même jour (ex : NLT), ce corps dépassait la limite
-      // de taille de Vercel et l'envoi échouait ("Request Entity Too Large", pas du JSON valide —
-      // constaté en prod le 26/08/2026, Andès passait car moins de demandes en attente ce jour-là).
-      // Stock actuel de l'emballage concerné (déjà connu côté client via les listeners temps réel
-      // ci-dessus) — envoyé pour que le mail affiche "stock avant / après cet envoi" côté
-      // reconditionneur : le stock actuel est déjà net de ce lot (déduit dès la création de chaque
-      // demande, voir creerDemande), donc "avant" = stock actuel + total de ce lot.
-      const stockActuel = depot === "nlt" ? stockIfco.nlt : stockBabyBlancAndes;
-      const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stockActuel }),
-      });
-      // Réponse pas forcément du JSON en cas d'erreur plateforme (ex : Vercel qui renvoie du texte
-      // brut avant même d'atteindre le handler) — on lit le texte d'abord pour ne pas planter sur
-      // un message obscur type "Unexpected token..." si ce n'est pas parsable.
-      const texte = await res.text();
-      let data: any = null;
-      try { data = texte ? JSON.parse(texte) : null; } catch { /* réponse non-JSON, gérée ci-dessous */ }
-      if (!res.ok) throw new Error(data?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
-      if (!data) throw new Error("Réponse invalide du serveur");
-      if (data.envoye) {
-        const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
-        if (data.patchEchoues?.length) {
-          // Le mail est bien parti, mais le marquage "envoyé" en base a échoué — la case reste
-          // affichée comme "pas encore envoyée" même si le mail est réellement arrivé. On affiche
-          // le détail (code HTTP + réponse Firebase) plutôt qu'un succès trompeur, pour comprendre
-          // pourquoi sans logs Vercel.
-          const p0 = data.patchEchoues[0];
-          notify("error", `📧 Mail envoyé à ${DEPOT_LABEL[depot]} MAIS le marquage "envoyé" a échoué pour ${data.patchEchoues.length}/${data.nb} demande(s) — la case va rester affichée et tu risques un doublon au prochain clic. 1er échec (id ${p0.id}) : HTTP ${p0.statut} — ${p0.corps || "(pas de détail)"}`);
-        } else {
-          notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}`);
-        }
-      } else {
-        notify("success", `Rien à envoyer pour ${DEPOT_LABEL[depot]} pour l'instant`);
-      }
-    } catch (err: any) {
-      notify("error", `❌ Erreur envoi récap ${DEPOT_LABEL[depot]} : ${err?.message || "erreur inconnue"}`);
-    } finally {
-      setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: false }));
-    }
-  }
-
-  // ─── VALIDATION PAR SCAN DU QR CODE DU BON ───
-  // App.tsx ouvre ce module avec scanDemandeId quand l'app a été chargée via l'URL du QR
-  // (?recond=<id>). Le 1er scan (statut "en attente") ouvre la modale "Marquer prêt" — il faut
-  // toujours que l'entrepôt saisisse le nombre de palettes, donc pas d'auto-validation muette.
-  // Le 2e scan (statut déjà "prêt") marque directement "parti", sans saisie supplémentaire.
-  const scanHandledRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!scanDemandeId || scanHandledRef.current === scanDemandeId || !demandes.length) return;
-    const demande = demandes.find(d => d.id === scanDemandeId);
-    scanHandledRef.current = scanDemandeId;
-    if (!demande) {
-      notify("error", "❌ Demande introuvable pour ce QR");
-    } else if (demande.statut === "en attente") {
-      setActiveTab("dashboard");
-      ouvrirModalePret(demande.id);
-      notify("success", "📷 Scanné — confirme le nombre de palettes pour valider \"prêt\"");
-    } else if (demande.statut === "prêt") {
-      marquerParti(demande.id);
-    } else if (demande.statut === "parti") {
-      notify("error", "Cette demande est déjà marquée \"parti\"");
-    } else if (demande.statut === "reçu") {
-      notify("error", "Cette demande est déjà reçue");
-    } else {
-      notify("error", "Cette demande a été annulée");
-    }
-    onScanHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanDemandeId, demandes]);
+  // La validation des réajustements de stock demandés par le reconditionneur, l'envoi du récap
+  // quotidien et la validation par scan QR du bon ("prêt"/"parti") sont désormais des actions
+  // entrepôt — elles vivent dans le module Préparation entrepôt à part (voir
+  // src/PreparationModule.tsx), plus ici.
 
   function handlePdfChange(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -1063,26 +930,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     }
     await remove(ref(db, `reconditionnement_demandes/${id}`));
     notify("success", "🗑️ Demande supprimée");
-  }
-
-  // Retour à l'étape 0 ("en attente") pour une demande "prêt" ou "parti" — par ex. erreur de
-  // saisie ou transporteur qui ne vient plus. Si elle était "parti", l'arrivage retour créé
-  // (pas encore pointé) est supprimé en même temps, sinon il resterait affiché dans « Pointer
-  // arrivage » pour une demande qui n'est plus censée être partie.
-  async function reinitialiserDemande(id: string) {
-    if (!window.confirm("Remettre cette demande à l'étape « en attente » ? Si elle était marquée partie, le retour attendu dans « Pointer arrivage » sera annulé.")) return;
-    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
-    if (arrivageLie) {
-      await remove(ref(db, `arrivages/${arrivageLie.id}`));
-    }
-    await update(ref(db, `reconditionnement_demandes/${id}`), {
-      statut: "en attente",
-      entrepotPretPar: null,
-      entrepotPretDate: null,
-      nbPalettesDepart: null,
-      departDate: null,
-    });
-    notify("success", "↩️ Demande remise à l'étape « en attente »");
   }
 
   // ─── Nettoyage des demandes de test déjà terminées ("reçu") ───
@@ -1292,7 +1139,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         }
         notify("success", "✏️ Demande modifiée");
         resetForm();
-        setActiveTab("dashboard");
+        setActiveTab("en_cours");
       } catch (err: any) {
         notify("error", `❌ Erreur: ${err.message}`);
       }
@@ -1325,7 +1172,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           // email individuellement à chaque demande créée (trop de mails séparés quand plusieurs
           // références sont faites le même jour) : chaque demande reste simplement marquée
           // "emailEnvoye: false", et c'est api/recap-reconditionnement.js (déclenché manuellement
-          // par le bouton "Envoyer le récap" du Dashboard, voir envoyerRecapDuJour ci-dessous) qui
+          // par le bouton "Envoyer le récap" du module Préparation entrepôt) qui
           // regroupe toutes les demandes en attente d'un dépôt dans UN seul mail récapitulatif (un
           // bon en pièce jointe par référence, un seul lien pour déclarer un problème sur
           // n'importe laquelle). Le bon reste imprimé sur place via le relais impression pour NLT
@@ -1372,7 +1219,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
 
       notify("success", "✅ Demande envoyée à l'entrepôt");
       resetForm();
-      setActiveTab("dashboard");
+      setActiveTab("en_cours");
     } catch (err: any) {
       notify("error", `❌ Erreur: ${err.message}`);
     }
@@ -1381,121 +1228,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   async function annulerDemande(id: string) {
     await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "annulé" });
     notify("success", "Demande annulée");
-  }
-
-  function ouvrirModalePret(id: string) {
-    setPretDemandeId(id);
-    setPretGrandes("");
-    setPretDemi("");
-  }
-
-  // Quand le transport est assuré par Moorea elle-même (transporteur nommé "Moorea" dans la
-  // liste, plutôt qu'un vrai transporteur externe), il n'y a pas de nombre de palettes à
-  // indiquer pour le chargement — on marque directement "prêt" sans passer par la modale.
-  async function marquerPretSansPalettes(id: string) {
-    await update(ref(db, `reconditionnement_demandes/${id}`), {
-      statut: "prêt",
-      entrepotPretPar: userName || "Moorea",
-      entrepotPretDate: nowFr(),
-      nbPalettesDepart: null,
-    });
-    notify("success", "✅ Marqué prêt — transport Moorea, pas de palette à indiquer");
-  }
-
-  async function validerPret() {
-    if (!pretDemandeId) return;
-    const g = parseInt(pretGrandes) || 0;
-    const d = parseInt(pretDemi) || 0;
-    if (g === 0 && d === 0) { notify("error", "✗ Indique au moins une palette"); return; }
-    await update(ref(db, `reconditionnement_demandes/${pretDemandeId}`), {
-      statut: "prêt",
-      entrepotPretPar: userName || "Moorea",
-      entrepotPretDate: nowFr(),
-      nbPalettesDepart: { grandes: g, demi: d },
-    });
-    notify("success", "✅ Marqué prêt — en attente du transporteur");
-    setPretDemandeId(null);
-  }
-
-  // Cœur de "marquer parti", sans notification — utilisé aussi bien pour une demande seule
-  // (marquerParti) que pour plusieurs à la fois (marquerToutPretPuisPartiGroupe), qui n'affiche
-  // qu'une seule notification consolidée à la fin plutôt qu'une par demande. Accepte des champs
-  // supplémentaires (extra) pour le cas groupé, qui doit aussi écrire nbPalettesDepart etc.
-  async function marquerPartiSilencieux(id: string, extra?: Record<string, any>) {
-    const demande = demandes.find(d => d.id === id);
-    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "parti", departDate: nowFr(), ...(extra || {}) });
-
-    // Le retour n'est plus pointé depuis une modale ici : on crée l'arrivage attendu
-    // correspondant, comme n'importe quelle livraison, pour qu'il apparaisse directement dans
-    // "Pointer arrivage" côté entrepôt (même écran, mêmes boutons que pour un fournisseur).
-    // Le discriminant `reconditionnement_demande_id` dit à ArrivageModule d'afficher une carte
-    // simplifiée (pas de DLC/poids/température) et, à la validation, de répercuter le résultat
-    // sur cette demande (statut "reçu" + transfert des caisses IFCO pleines NLT → Moorea).
-    if (demande) {
-      try {
-        await push(ref(db, "arrivages"), {
-          fournisseur: "Reconditionnement",
-          // Fournisseur réel d'origine (retrouvé via le lot au moment de la demande) — distinct
-          // de `fournisseur` ci-dessus qui reste "Reconditionnement" pour le regroupement dans
-          // Pointer arrivage ; sert à faire figurer le vrai nom sur l'étiquette palette imprimée.
-          fournisseur_origine: demande.origineFournisseur || null,
-          produit: demande.articleFini,
-          variete: demande.articleVrac,
-          lot_interne: demande.lot || demande.numero || demande.id,
-          lot_fournisseur: demande.origineLotFournisseur || "",
-          quantite: demande.nbColisAEntrer ?? 0,
-          unite: "colis",
-          date: new Date().toLocaleDateString("fr-FR"),
-          statut: "en attente",
-          timestamp: Date.now(),
-          reconditionnement_demande_id: demande.id,
-          depot: demande.depot,
-          qteConditionnementAttendue: demande.qteConditionnement ?? null,
-          // Nombre de caisses IFCO vides envoyées à l'origine — permet à ArrivageModule d'afficher
-          // l'écart au pointage (ex: 100 envoyées, 99 pleines reçues car la qualité ne permettait
-          // pas de faire le dernier colis) : la caisse manquante reste vide chez NLT, ce n'est pas
-          // une perte, juste un écart normal à visualiser plutôt qu'à corriger.
-          caissesIfcoEnvoyees: demande.caissesIfcoEnvoyees ?? null,
-          origine: `${DEPOT_LABEL[demande.depot]}${demande.transporteurNom ? ` · ${demande.transporteurNom}` : ""}`,
-          // Champ dédié (en plus du texte "origine" ci-dessus) pour qu'ArrivageModule puisse
-          // détecter directement "transport fait par Moorea" et adapter le formulaire de pointage
-          // (pas de nombre de palettes à demander — déjà donné par le presta au départ, voir
-          // retourPresta.parti.nbPalettes envoyé depuis le portail).
-          transporteurNom: demande.transporteurNom || null,
-          // Décidé une fois pour toutes à la création de la demande (case cochée dans le
-          // formulaire, pré-remplie d'après le nom de l'article) — plus fiable, au moment du
-          // pointage du retour, qu'une nouvelle détection sur le nom de l'article seul.
-          retour_en_ifco: demande.retourEnIfco ?? false,
-        });
-      } catch (err) {
-        console.error("Erreur création arrivage retour reconditionnement:", err);
-      }
-      // Le bon (email + pièce jointe, NLT et Andès) est maintenant envoyé dès la création de la
-      // demande (voir creerDemande), pas ici au départ — inutile de le renvoyer une deuxième fois.
-    }
-  }
-
-  async function marquerParti(id: string) {
-    await marquerPartiSilencieux(id);
-    notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
-  }
-
-  // Version "tout d'un coup, peu importe le statut" : couvre à la fois les demandes déjà "prêt"
-  // ET celles encore "en attente" (l'entrepôt n'a pas forcément cliqué "Marquer prêt" une par
-  // une avant que le camion charge tout). Un seul total de palettes saisi pour tout le groupe
-  // (pas de détail par demande) — on tague chaque demande avec le même nbPalettesDepartGroupeId
-  // pour que le total ne soit compté qu'une fois dans les statistiques par transporteur.
-  async function marquerToutPretPuisPartiGroupe(ids: string[], grandes: number, demi: number) {
-    const groupeId = `grp_${Date.now()}_${ids[0]}`;
-    for (const id of ids) {
-      await marquerPartiSilencieux(id, {
-        entrepotPretPar: userName || "Moorea",
-        entrepotPretDate: nowFr(),
-        nbPalettesDepart: { grandes, demi },
-        nbPalettesDepartGroupeId: groupeId,
-      });
-    }
-    notify("success", `🚚 ${ids.length} demande${ids.length > 1 ? "s" : ""} marquée${ids.length > 1 ? "s" : ""} partie${ids.length > 1 ? "s" : ""} — les retours apparaîtront dans « Pointer arrivage »`);
   }
 
   async function ajouterTransporteur() {
@@ -1707,7 +1439,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       <PageHeader
         titre="🔄 Reconditionnement"
         couleur={COLORS.primary}
-        onBack={() => { if (activeTab !== "dashboard") setActiveTab("dashboard"); else onClose(); }}
+        onBack={() => { if (activeTab !== "en_cours") setActiveTab("en_cours"); else onClose(); }}
         onHome={onClose}
       />
 
@@ -1733,7 +1465,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
             lignes (même principe que RetoursModule.tsx). */}
         <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           {[
-            { key: "dashboard", label: "📋 Demandes" },
+            { key: "en_cours", label: "📋 En cours" },
             { key: "nouvelle", label: "➕ Nouvelle demande" },
             { key: "historique", label: "🕘 Historique" },
             { key: "configuration", label: "⚙️ Configuration" },
@@ -1752,80 +1484,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           ))}
         </div>
 
-        {/* ── DASHBOARD ── */}
-        {activeTab === "dashboard" && (
+        {/* ── EN COURS ── */}
+        {/* Anciennement l'onglet "Demandes" avec toutes les actions entrepôt (marquer prêt/parti,
+            réajustements, récap...) — tout ça vit désormais dans le module Préparation entrepôt
+            à part (voir src/PreparationModule.tsx, ouvert depuis l'accueil). Ici, côté
+            Reconditionnement (commercial), on ne garde qu'un suivi en lecture du détail et du
+            statut de chaque demande — seule la correction du contenu d'une demande pas encore
+            préparée (Modifier / Supprimer / Annuler) reste ici, puisque c'est le seul endroit où
+            se trouve le formulaire de création à réutiliser pour la modifier. */}
+        {activeTab === "en_cours" && (
           <div>
-            {/* Stock d'emballage — mêmes compteurs que le module Prestataires & IFCO */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — Moorea</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.moorea}</div>
-              </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 IFCO — NLT</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockIfco.nlt}</div>
-                {caissesNltReserveesNonParties > 0 && (
-                  <div style={{ fontSize: 10.5, color: COLORS.amber, fontWeight: 700, marginTop: 3 }}>
-                    dont {caissesNltReserveesNonParties} déjà réservées (pas encore parties)
-                    <br />→ {Math.max(0, stockIfco.nlt - caissesNltReserveesNonParties)} vraiment libres pour la suite
-                  </div>
-                )}
-              </div>
-              <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🧺 Carton BABY BLANC (Andès)</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
-              </div>
-            </div>
-
-            {/* Envoi du récap du jour — manuel, un bouton par dépôt, visible seulement s'il y a
-                des demandes en attente d'envoi pour ce dépôt. */}
-            {(["nlt", "andes"] as Depot[]).map(dep => {
-              const enAttente = demandes.filter(d => d.depot === dep && d.emailEnvoye === false).length;
-              if (enAttente === 0) return null;
-              return (
-                <div key={dep} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
-                    📧 {enAttente} demande{enAttente > 1 ? "s" : ""} {DEPOT_LABEL[dep]} pas encore envoyée{enAttente > 1 ? "s" : ""} au reconditionneur
-                  </span>
-                  <button
-                    onClick={() => envoyerRecapDuJour(dep)}
-                    disabled={envoiRecapEnCours[dep]}
-                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: envoiRecapEnCours[dep] ? COLORS.gray200 : COLORS.primary, color: envoiRecapEnCours[dep] ? COLORS.gray600 : "#fff", fontSize: 12, fontWeight: 700, cursor: envoiRecapEnCours[dep] ? "default" : "pointer" }}
-                  >
-                    {envoiRecapEnCours[dep] ? "Envoi..." : `Envoyer le récap à ${DEPOT_LABEL[dep]}`}
-                  </button>
-                </div>
-              );
-            })}
-
-            {/* Demandes de réajustement de stock envoyées par les reconditionneurs depuis leur
-                espace public — à valider (applique la nouvelle quantité au stock) ou refuser
-                (ne change rien). Voir traiterReajustement() plus haut. */}
-            {reajustements.filter(r => r.statut === "en attente").map(r => (
-              <div key={r.id} style={{ background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginBottom: 4 }}>
-                  📦 {DEPOT_LABEL[r.depot]} demande un réajustement de stock — {r.quantiteActuelle} → <b>{r.quantiteProposee}</b>
-                </div>
-                <div style={{ fontSize: 12, color: "#92400e", marginBottom: 10 }}>
-                  "{r.raison}" — {r.date}
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => traiterReajustement(r, true)}
-                    style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                  >
-                    ✓ Valider ({r.quantiteProposee})
-                  </button>
-                  <button
-                    onClick={() => traiterReajustement(r, false)}
-                    style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                  >
-                    ✗ Refuser
-                  </button>
-                </div>
-              </div>
-            ))}
-
             {/* Filtre statut */}
             <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
               {(["toutes", "en attente", "prêt", "parti", "reçu", "annulé"] as const).map(s => (
@@ -1874,11 +1542,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                                 if (demandesJourDepot.length === 0) return null;
                                 const cleDepot = `${jourStr}::${dep}`;
                                 const depotOuvert = !depotsFermesDemandes.has(cleDepot);
-                                // "Tout marquer parti" couvre maintenant aussi bien les demandes déjà
-                                // "prêt" que celles encore "en attente" — un seul bouton, un seul total
-                                // de palettes demandé (voir marquerToutPretPuisPartiGroupe), plus besoin
-                                // de cliquer "Marquer prêt" une par une avant que le camion charge tout.
-                                const aEnvoyerDuGroupe = demandesJourDepot.filter(d => d.statut === "prêt" || d.statut === "en attente");
                                 return (
                                   <div key={dep} style={{ marginBottom: 10 }}>
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0 }}>
@@ -1888,18 +1551,6 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                                           {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
                                         </span>
                                       </div>
-                                      {aEnvoyerDuGroupe.length > 1 && (
-                                        <button
-                                          onClick={() => {
-                                            setGroupePartiIds(aEnvoyerDuGroupe.map(d => d.id));
-                                            setGroupePartiGrandes("");
-                                            setGroupePartiDemi("");
-                                          }}
-                                          style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                                        >
-                                          🚚 Tout marquer parti ({aEnvoyerDuGroupe.length})
-                                        </button>
-                                      )}
                                     </div>
                                     {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
@@ -2022,53 +1673,19 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       </div>
                     )}
 
-                    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                      {d.statut === "en attente" && (
-                        <>
-                          <button
-                            onClick={() => (d.transporteurNom && /moorea/i.test(d.transporteurNom)) ? marquerPretSansPalettes(d.id) : ouvrirModalePret(d.id)}
-                            style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                          >
-                            ✓ Marquer prêt
-                          </button>
-                          <button onClick={() => chargerPourEdition(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            ✏️ Modifier
-                          </button>
-                          <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            🗑️ Supprimer
-                          </button>
-                          <button onClick={() => annulerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            Annuler
-                          </button>
-                        </>
-                      )}
-                      {d.statut === "prêt" && (
-                        <>
-                          <button onClick={() => marquerParti(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            🚚 Marquer parti
-                          </button>
-                          <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            ↩️ Revenir à « en attente »
-                          </button>
-                          <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            🗑️ Supprimer
-                          </button>
-                        </>
-                      )}
-                      {d.statut === "parti" && (
-                        <>
-                          <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic", marginRight: 4 }}>
-                            📥 Retour à pointer dans « Pointer arrivage »
-                          </span>
-                          <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            ↩️ Revenir à « en attente »
-                          </button>
-                          <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            🗑️ Supprimer
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    {d.statut === "en attente" && (
+                      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                        <button onClick={() => chargerPourEdition(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          ✏️ Modifier
+                        </button>
+                        <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          🗑️ Supprimer
+                        </button>
+                        <button onClick={() => annulerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          Annuler
+                        </button>
+                      </div>
+                    )}
                   </div>
                                 ))}
                               </div>
@@ -2833,77 +2450,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         )}
       </div>
 
-      {/* MODALE — Marquer prêt (validation entrepôt étape 1) */}
-      {pretDemandeId && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 400, width: "100%", borderTop: `7px solid ${COLORS.primary}` }}>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>✓</div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Marquer prêt</p>
-              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>Nombre de palettes réellement préparées</p>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes</label>
-                <input type="number" value={pretGrandes} onChange={e => setPretGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Demi-palettes</label>
-                <input type="number" value={pretDemi} onChange={e => setPretDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setPretDemandeId(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-              <button onClick={validerPret} style={{ flex: 2, background: COLORS.primary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Valider</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Le pointage du retour se fait désormais dans le module Arrivage ("Pointer arrivage") —
-          la demande de reconditionnement y apparaît automatiquement comme un arrivage attendu
-          dès qu'elle est marquée "parti" (voir marquerParti). Plus de modale ici. */}
-
-      {/* MODALE — "Tout marquer parti" groupée : un seul total de palettes pour tout un groupe
-          de demandes d'un dépôt/jour donné, peu importe si elles étaient "en attente" ou "prêt"
-          — évite de cliquer "Marquer prêt" une par une avant que le camion charge tout. */}
-      {groupePartiIds && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 400, width: "100%", borderTop: `7px solid ${COLORS.secondary}` }}>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>🚚</div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Tout marquer parti</p>
-              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                {groupePartiIds.length} demande{groupePartiIds.length > 1 ? "s" : ""} — total de palettes chargées (pas de détail par demande)
-              </p>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes</label>
-                <input type="number" value={groupePartiGrandes} onChange={e => setGroupePartiGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Demi-palettes</label>
-                <input type="number" value={groupePartiDemi} onChange={e => setGroupePartiDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setGroupePartiIds(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-              <button
-                onClick={async () => {
-                  const g = parseInt(groupePartiGrandes) || 0;
-                  const d = parseInt(groupePartiDemi) || 0;
-                  await marquerToutPretPuisPartiGroupe(groupePartiIds, g, d);
-                  setGroupePartiIds(null);
-                }}
-                style={{ flex: 2, background: COLORS.secondary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-              >
-                ✓ Valider
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Les actions "Marquer prêt" / "Marquer parti" / "Tout marquer parti" et le pointage du
+          retour vivent désormais dans le module Préparation entrepôt à part (voir
+          src/PreparationModule.tsx) — plus de modale ici pour ça. */}
 
       {/* MODALE — Aperçu PDF (bon Geslot ou bon de prépa), dans un iframe intégré à la page —
           un <a target="_blank"> vers une data:URI se fait bloquer/rediriger par Chrome (page
