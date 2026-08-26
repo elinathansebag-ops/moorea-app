@@ -802,19 +802,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   async function envoyerRecapDuJour(depot: Depot) {
     setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: true }));
     try {
-      // On envoie les demandes complètes (pas juste des ids) : les lectures Firebase anonymes sont
-      // refusées par les règles (confirmé : même une lecture par id précis renvoie 401 "Permission
-      // denied"), donc le serveur ne peut plus rien relire lui-même. Le client, qui a déjà toutes
-      // les données via son listener temps réel ci-dessus, les envoie directement — seule
-      // l'écriture (marquer emailEnvoye) reste faite côté serveur, et celle-là fonctionne bien en
-      // anonyme (comme dans declarer-perte.js).
-      const demandesEnAttente = demandes
-        .filter(d => d.depot === depot && d.emailEnvoye === false && d.pdfBase64)
-        .map(d => ({
-          id: d.id, depot: d.depot, numero: d.numero, articleVrac: d.articleVrac, articleFini: d.articleFini,
-          nbColisAEntrer: d.nbColisAEntrer, pdfNom: d.pdfNom, pdfBase64: d.pdfBase64,
-          caissesIfcoEnvoyees: d.caissesIfcoEnvoyees, cartonsBabyBlancEnvoyes: d.cartonsBabyBlancEnvoyes,
-        }));
+      // Le serveur relit lui-même les demandes et leurs PDF dans Firebase (voir
+      // api/recap-reconditionnement.js) — on ne lui envoie plus que le stock actuel. Avant, le
+      // client envoyait les demandes complètes avec leur PDF en base64 dans le corps de la
+      // requête : avec plusieurs références le même jour (ex : NLT), ce corps dépassait la limite
+      // de taille de Vercel et l'envoi échouait ("Request Entity Too Large", pas du JSON valide —
+      // constaté en prod le 26/08/2026, Andès passait car moins de demandes en attente ce jour-là).
       // Stock actuel de l'emballage concerné (déjà connu côté client via les listeners temps réel
       // ci-dessus) — envoyé pour que le mail affiche "stock avant / après cet envoi" côté
       // reconditionneur : le stock actuel est déjà net de ce lot (déduit dès la création de chaque
@@ -823,10 +816,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ demandes: demandesEnAttente, stockActuel }),
+        body: JSON.stringify({ stockActuel }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `Erreur ${res.status}`);
+      // Réponse pas forcément du JSON en cas d'erreur plateforme (ex : Vercel qui renvoie du texte
+      // brut avant même d'atteindre le handler) — on lit le texte d'abord pour ne pas planter sur
+      // un message obscur type "Unexpected token..." si ce n'est pas parsable.
+      const texte = await res.text();
+      let data: any = null;
+      try { data = texte ? JSON.parse(texte) : null; } catch { /* réponse non-JSON, gérée ci-dessous */ }
+      if (!res.ok) throw new Error(data?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
+      if (!data) throw new Error("Réponse invalide du serveur");
       if (data.envoye) {
         const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
         if (data.patchEchoues?.length) {

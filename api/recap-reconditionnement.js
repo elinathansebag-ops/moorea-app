@@ -12,14 +12,18 @@ export const config = { runtime: "nodejs" };
 // récapitulatif : tous les bons fusionnés en UN SEUL PDF (voir mergerBons ci-dessous — pour éviter
 // d'avoir plein de pièces jointes séparées quand il y a beaucoup de références).
 //
-// Le CLIENT envoie les demandes complètes (pas juste des ids) car il les a déjà via son listener
-// temps réel — ce endpoint ne relit donc jamais reconditionnement_demandes. Par contre, marquer
-// les demandes comme envoyées (emailEnvoye: true) est une ÉCRITURE, et on a constaté en prod que
-// même les écritures anonymes (PATCH REST sans authentification) sont refusées par Firebase avec
-// un 401 — pas seulement les lectures comme on le pensait au départ. Ce PATCH passe donc par
-// api/_firebaseAdmin.js, qui suppose que reconditionnement_demandes est ouvert en lecture/écriture
-// dans les règles de sécurité Firebase (comme printQueue/printRelayStatus) — voir ce fichier pour
-// le pourquoi (compte de service bloqué par une politique Google, secret historique déprécié).
+// Le serveur relit lui-même reconditionnement_demandes via api/_firebaseAdmin.js (chemin ouvert
+// en lecture/écriture dans les règles de sécurité Firebase, comme printQueue/printRelayStatus).
+// AVANT (jusqu'au 26/08/2026), c'était le CLIENT qui envoyait les demandes complètes — y compris
+// pdfBase64, plusieurs centaines de Ko par bon — dans le corps de la requête POST, parce qu'à
+// l'époque les lectures anonymes étaient refusées. Avec plusieurs références le même jour (ex :
+// NLT avec 6 demandes), ce corps dépassait la limite de taille de requête de Vercel, qui renvoyait
+// une erreur texte brut ("Request Entity Too Large") au lieu de JSON — d'où l'erreur
+// "Unexpected token 'R', "Request En"... is not valid JSON" côté client, alors qu'Andès (moins de
+// demandes ce jour-là) passait. Cette limite ne dépend QUE de la quantité de PDF à envoyer d'un
+// coup, donc le problème pouvait resurgir n'importe quand dès qu'un dépôt a plusieurs bons en
+// attente. Solution : le client n'envoie plus que `stockActuel` (un nombre) ; le serveur va
+// chercher lui-même les demandes et leurs PDF directement dans Firebase.
 
 const DATABASE_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
 // "app.moorea.fr" n'existe pas (DNS_PROBE_FINISHED_NXDOMAIN), et "moorea-qualite.vercel.app" non
@@ -157,11 +161,16 @@ async function mergerBons(enAttente) {
   return Buffer.from(await merged.save());
 }
 
-async function envoyerRecapPourDepot(depot, demandesRecues, stockActuel) {
-  // Le client a déjà filtré (depot, emailEnvoye === false, pdfBase64 présent) avant d'envoyer —
-  // on revalide quand même ici au cas où (défense en profondeur, données venues du client).
-  const enAttente = (Array.isArray(demandesRecues) ? demandesRecues : [])
-    .filter(d => d && d.id && d.depot === depot && d.pdfBase64);
+async function envoyerRecapPourDepot(depot, stockActuel) {
+  // Va chercher les demandes directement dans Firebase (voir commentaire en haut de fichier) —
+  // plus besoin que le client envoie les PDF, potentiellement plusieurs Mo à plusieurs, dans le
+  // corps de la requête.
+  const adminDb = getAdminDb();
+  const snap = await adminDb.ref("reconditionnement_demandes").once("value");
+  const toutes = snap.val() || {};
+  const enAttente = Object.entries(toutes)
+    .map(([id, d]) => ({ id, ...d }))
+    .filter(d => d && d.depot === depot && d.emailEnvoye === false && d.pdfBase64);
 
   if (enAttente.length === 0) {
     return { depot, envoye: false, raison: "rien en attente" };
@@ -212,10 +221,7 @@ async function envoyerRecapPourDepot(depot, demandesRecues, stockActuel) {
     throw new Error(`Aucun destinataire accepté par Gmail (${destinataires.join(", ") || "aucune adresse configurée"})`);
   }
 
-  // Marque ces demandes comme envoyées pour ne pas les reprendre le lendemain. Passe par le compte
-  // de service (voir api/_firebaseAdmin.js) — l'écriture anonyme REST utilisée avant était
-  // refusée elle aussi (401), pas seulement la lecture.
-  const adminDb = getAdminDb();
+  // Marque ces demandes comme envoyées pour ne pas les reprendre le lendemain.
   const patchResultats = await Promise.all(idsEnvoyes.map(async id => {
     try {
       await adminDb.ref(`reconditionnement_demandes/${id}`).update({ emailEnvoye: true, emailEnvoyeDate: dateFr });
@@ -239,21 +245,19 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Paramètre 'depot' invalide (attendu: nlt ou andes)" });
   }
 
-  // Les demandes complètes (pas juste des ids) viennent du client dans le corps de la requête — voir
-  // le commentaire en haut de fichier pour pourquoi (les lectures Firebase anonymes sont refusées,
-  // même par id précis, donc ce endpoint ne relit plus rien lui-même).
-  let demandes = [];
+  // Le client n'envoie plus que le stock actuel (un simple nombre, pour l'encart "avant/après"
+  // dans le mail) — voir le commentaire en haut de fichier : les demandes et leurs PDF sont
+  // maintenant relus directement côté serveur.
   let stockActuel = null;
   try {
     const body = req.body && typeof req.body === "object" ? req.body : JSON.parse(req.body || "{}");
-    demandes = Array.isArray(body.demandes) ? body.demandes : [];
     stockActuel = typeof body.stockActuel === "number" ? body.stockActuel : null;
   } catch {
-    demandes = [];
+    stockActuel = null;
   }
 
   try {
-    const resultat = await envoyerRecapPourDepot(depot, demandes, stockActuel);
+    const resultat = await envoyerRecapPourDepot(depot, stockActuel);
     return res.status(200).json({ success: true, ...resultat });
   } catch (err) {
     console.error("Erreur récap reconditionnement:", err);
