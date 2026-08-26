@@ -725,11 +725,17 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         .map(d => ({
           id: d.id, depot: d.depot, numero: d.numero, articleVrac: d.articleVrac, articleFini: d.articleFini,
           nbColisAEntrer: d.nbColisAEntrer, pdfNom: d.pdfNom, pdfBase64: d.pdfBase64,
+          caissesIfcoEnvoyees: d.caissesIfcoEnvoyees, cartonsBabyBlancEnvoyes: d.cartonsBabyBlancEnvoyes,
         }));
+      // Stock actuel de l'emballage concerné (déjà connu côté client via les listeners temps réel
+      // ci-dessus) — envoyé pour que le mail affiche "stock avant / après cet envoi" côté
+      // reconditionneur : le stock actuel est déjà net de ce lot (déduit dès la création de chaque
+      // demande, voir creerDemande), donc "avant" = stock actuel + total de ce lot.
+      const stockActuel = depot === "nlt" ? stockIfco.nlt : stockBabyBlancAndes;
       const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ demandes: demandesEnAttente }),
+        body: JSON.stringify({ demandes: demandesEnAttente, stockActuel }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erreur ${res.status}`);

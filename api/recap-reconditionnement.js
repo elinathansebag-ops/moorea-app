@@ -41,6 +41,98 @@ const EMAILS_PAR_DEPOT = {
   ],
 };
 const DEPOT_LABEL = { nlt: "NLT", andes: "Andès" };
+// Libellé de l'emballage suivi par dépôt : NLT reçoit des caisses IFCO vides envoyées depuis
+// Moorea, Andès consomme un stock de cartons BABY BLANC déjà sur place — voir ReconditionnementModule.tsx.
+const EMBALLAGE_LABEL = { nlt: "caisses IFCO", andes: "cartons BABY BLANC" };
+const EMBALLAGE_CHAMP = { nlt: "caissesIfcoEnvoyees", andes: "cartonsBabyBlancEnvoyes" };
+
+// Construit le mail HTML — habillage aux couleurs Moorea (bandeau noir/or, comme les bons PDF),
+// salutation adressée à l'équipe du dépôt plutôt qu'un "Bonjour," générique, et un encart visuel
+// du stock d'emballage avant/après cet envoi (le stock affiché dans l'app est déjà net de ce lot,
+// déduit dès la création de chaque demande — donc "avant" = stock actuel + total de ce lot).
+function construireEmailHtml({ depot, enAttente, dateFr, lienPerte, stockActuel }) {
+  const totalEmballage = enAttente.reduce((s, d) => s + (d[EMBALLAGE_CHAMP[depot]] || 0), 0);
+  const emballageLabel = EMBALLAGE_LABEL[depot];
+  const hasStock = typeof stockActuel === "number" && totalEmballage > 0;
+  const stockAvant = hasStock ? stockActuel + totalEmballage : null;
+
+  const lignesHtml = enAttente.map(d => {
+    const ref = d.numero || d.id;
+    const lienSuivi = `${SITE_URL}/api/statut-reconditionnement?id=${d.id}`;
+    return `
+      <tr>
+        <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#0a0a0a;">
+          <strong style="color:#92722c;">${ref}</strong><br/>
+          <span style="color:#555;">${d.articleVrac || "-"} » <strong>${d.articleFini || "-"}</strong></span>
+        </td>
+        <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#0a0a0a;text-align:center;white-space:nowrap;">
+          ${d.nbColisAEntrer ?? "-"} colis
+        </td>
+        <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:12px;text-align:right;white-space:nowrap;">
+          <a href="${lienSuivi}" style="color:#92722c;text-decoration:none;">Suivi →</a>
+        </td>
+      </tr>`;
+  }).join("");
+
+  const stockHtml = hasStock ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;background:#faf7ef;border:1.5px solid #e8dcc0;border-radius:10px;">
+      <tr>
+        <td style="padding:14px 18px;">
+          <div style="font-size:12px;font-weight:700;color:#92722c;text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;">
+            📦 Stock ${emballageLabel} chez vous
+          </div>
+          <div style="font-size:13px;color:#333;">
+            Avant cet envoi : <strong>${stockAvant}</strong> &nbsp;→&nbsp; Après : <strong>${stockActuel}</strong>
+            <span style="color:#777;"> (−${totalEmballage} utilisé${totalEmballage > 1 ? "s" : ""} sur cette production)</span>
+          </div>
+        </td>
+      </tr>
+    </table>` : "";
+
+  return `
+  <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="background:#0a0a0a;padding:18px 22px;border-radius:12px 12px 0 0;">
+          <span style="color:#c8a84b;font-size:18px;font-weight:800;letter-spacing:.5px;">MOOREA</span>
+          <span style="color:#fff;font-size:13px;margin-left:10px;">Reconditionnement — ${DEPOT_LABEL[depot]}</span>
+        </td>
+      </tr>
+      <tr><td style="height:3px;background:#c8a84b;"></td></tr>
+    </table>
+
+    <div style="padding:24px 22px;border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;">
+      <p style="font-size:14.5px;color:#0a0a0a;margin:0 0 6px;">Bonjour l'équipe ${DEPOT_LABEL[depot]},</p>
+      <p style="font-size:13.5px;color:#444;line-height:1.5;margin:0 0 18px;">
+        Voici les productions de reconditionnement à faire aujourd'hui (${dateFr}) —
+        <strong>${enAttente.length} référence${enAttente.length > 1 ? "s" : ""}</strong>,
+        tous les bons regroupés dans le PDF en pièce jointe.
+      </p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #eee;border-radius:10px;overflow:hidden;">
+        ${lignesHtml}
+      </table>
+
+      ${stockHtml}
+
+      <p style="font-size:13px;color:#444;margin:18px 0 4px;">Merci de nous retourner la production avec les bons complétés.</p>
+
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0;">
+        <tr>
+          <td style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:8px;padding:12px 16px;">
+            <span style="font-size:13px;color:#b91c1c;">⚠️ Souci qualité constaté sur l'une de ces références ?</span><br/>
+            <a href="${lienPerte}" style="display:inline-block;margin-top:8px;background:#b91c1c;color:#fff;text-decoration:none;font-size:12.5px;font-weight:700;padding:8px 16px;border-radius:6px;">
+              Déclarer une perte avec photos
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <p style="font-size:13px;color:#444;margin:22px 0 2px;">Merci et bonne journée !</p>
+      <p style="font-size:13px;color:#0a0a0a;font-weight:700;margin:0;">Jordan — Moorea Agréage</p>
+    </div>
+  </div>`;
+}
 
 // Fusionne tous les bons PDF (base64) en un seul document — un bon = une ou plusieurs pages, mises
 // bout à bout dans l'ordre des demandes. Si la fusion échoue pour une raison quelconque (un des PDF
@@ -56,7 +148,7 @@ async function mergerBons(enAttente) {
   return Buffer.from(await merged.save());
 }
 
-async function envoyerRecapPourDepot(depot, demandesRecues) {
+async function envoyerRecapPourDepot(depot, demandesRecues, stockActuel) {
   // Le client a déjà filtré (depot, emailEnvoye === false, pdfBase64 présent) avant d'envoyer —
   // on revalide quand même ici au cas où (défense en profondeur, données venues du client).
   const enAttente = (Array.isArray(demandesRecues) ? demandesRecues : [])
@@ -70,20 +162,7 @@ async function envoyerRecapPourDepot(depot, demandesRecues) {
   const idsEnvoyes = enAttente.map(d => d.id);
   const lienPerte = `${SITE_URL}/api/declarer-perte?ids=${idsEnvoyes.join(",")}`;
 
-  const lignesHtml = enAttente.map(d => {
-    const ref = d.numero || d.id;
-    const lienSuivi = `${SITE_URL}/api/statut-reconditionnement?id=${d.id}`;
-    return `<li><strong>${ref}</strong> — ${d.articleVrac || "-"} » <strong>${d.articleFini || "-"}</strong> — ${d.nbColisAEntrer ?? "-"} colis à entrer (<a href="${lienSuivi}">suivi</a>)</li>`;
-  }).join("");
-
-  const emailHtml = `
-    <p>Bonjour,</p>
-    <p>Voici les productions de reconditionnement à faire aujourd'hui (${dateFr}), ${enAttente.length} référence${enAttente.length > 1 ? "s" : ""} — tous les bons regroupés dans le PDF en pièce jointe :</p>
-    <ul>${lignesHtml}</ul>
-    <p>Merci de nous retourner la production avec les bons complétés.</p>
-    <p>⚠️ En cas de souci qualité constaté (produit abîmé, non conforme...) sur l'une de ces références : <a href="${lienPerte}">déclarer une perte avec photos</a></p>
-    <p>Merci !</p>
-  `;
+  const emailHtml = construireEmailHtml({ depot, enAttente, dateFr, lienPerte, stockActuel });
 
   let attachments;
   try {
@@ -156,15 +235,17 @@ export default async function handler(req, res) {
   // le commentaire en haut de fichier pour pourquoi (les lectures Firebase anonymes sont refusées,
   // même par id précis, donc ce endpoint ne relit plus rien lui-même).
   let demandes = [];
+  let stockActuel = null;
   try {
     const body = req.body && typeof req.body === "object" ? req.body : JSON.parse(req.body || "{}");
     demandes = Array.isArray(body.demandes) ? body.demandes : [];
+    stockActuel = typeof body.stockActuel === "number" ? body.stockActuel : null;
   } catch {
     demandes = [];
   }
 
   try {
-    const resultat = await envoyerRecapPourDepot(depot, demandes);
+    const resultat = await envoyerRecapPourDepot(depot, demandes, stockActuel);
     return res.status(200).json({ success: true, ...resultat });
   } catch (err) {
     console.error("Erreur récap reconditionnement:", err);
