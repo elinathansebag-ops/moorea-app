@@ -109,6 +109,16 @@ type Demande = {
   // — false à la création, mis à true par le job côté serveur une fois inclus dans un mail envoyé.
   emailEnvoye?: boolean;
   emailEnvoyeDate?: string;
+  // Confirmation "prêt à repartir" saisie par le reconditionneur lui-même depuis son espace public
+  // (voir src/PortailReconditionneur.tsx) — indépendant du statut principal ci-dessus, qui reste
+  // piloté par le scan/pointage côté Moorea. `ecart` = quantiteDeclaree − nbColisAEntrer.
+  retourPresta?: {
+    confirme: boolean;
+    date: string;
+    quantiteDeclaree?: number;
+    ecart?: number | null;
+    commentaire?: string;
+  };
 };
 
 type PerteInfo = {
@@ -1776,6 +1786,15 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                         {` · ${d.retour.nbPalettes.grandes} grande(s) + ${d.retour.nbPalettes.demi} demi-palette(s)`}
                         {d.retour.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisse(s) IFCO pleines reçues` : (retourEnIfcoDemande(d) ? " · ⚠️ aucune caisse IFCO pleine saisie au retour" : "")}
                         {d.retour.commentaire ? ` · "${d.retour.commentaire}"` : ""}
+                      </div>
+                    )}
+
+                    {d.retourPresta?.confirme && (
+                      <div style={{ fontSize: 11.5, color: "#15803d", background: COLORS.secondaryLight, border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "6px 10px", marginTop: 6 }}>
+                        ✅ {DEPOT_LABEL[d.depot]} a confirmé "prêt à repartir" le {d.retourPresta.date} depuis son espace en ligne
+                        {d.retourPresta.quantiteDeclaree != null ? ` — ${d.retourPresta.quantiteDeclaree} colis déclarés` : ""}
+                        {d.retourPresta.ecart ? ` · ⚠️ écart de ${d.retourPresta.ecart > 0 ? "+" : ""}${d.retourPresta.ecart} vs prévu` : ""}
+                        {d.retourPresta.commentaire ? ` · "${d.retourPresta.commentaire}"` : ""}
                       </div>
                     )}
 

@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, push, onValue, remove, update } from "firebase/database";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, signInAnonymously } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCnWg6Y2THauxyM4yk_QqhOcyybU0-WRI4",
@@ -20,4 +20,4 @@ export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence);
 
 export const googleProvider = new GoogleAuthProvider();
-export { ref, push, onValue, remove, update, signInWithPopup, signOut, onAuthStateChanged };
+export { ref, push, onValue, remove, update, signInWithPopup, signOut, onAuthStateChanged, signInAnonymously };

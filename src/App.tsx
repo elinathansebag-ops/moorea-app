@@ -18,6 +18,7 @@ import { RackModule } from "./RackModule";
 import { StattModule } from "./StattModule";
 import { PrestatairesModule } from "./PrestatairesModule";
 import { ReconditionnementModule } from "./ReconditionnementModule";
+import { PortailReconditionneur } from "./PortailReconditionneur";
 import { DashboardModule } from "./DashboardModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
@@ -275,6 +276,9 @@ export default function App() {
   const [popupApresRapport, setPopupApresRapport] = useState<{ rapport: any; arrivageId: string | null } | null>(null);
   const [showStock, setShowStock] = useState(false);
   const [showPalette, setShowPalette] = useState<string | null>(null);
+  // Espace public reconditionneur (NLT / Andès), ouvert via ?portail=nlt|andes — voir
+  // src/PortailReconditionneur.tsx et le lien envoyé dans le mail récap quotidien.
+  const [portailDepot, setPortailDepot] = useState<"nlt" | "andes" | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState<"palette" | "rapport">("palette");
   const [stockPage, setStockPage] = useState<"home"|"comptage"|"ecarts"|"config">("home");
@@ -504,6 +508,9 @@ export default function App() {
     // prop scanDemandeId). Réservé au personnel déjà connecté, comme les autres QR ci-dessus.
     const recond = params.get("recond");
     if (recond) { setQrRecondDemandeId(recond); setShowAccueil(false); setShowReconditionnement(true); }
+    // Espace reconditionneur public — voir déclaration de portailDepot plus haut.
+    const portail = params.get("portail");
+    if (portail === "nlt" || portail === "andes") setPortailDepot(portail);
   }, []);
   // Une fois connecté et les données chargées, ouvre directement la signature du bon de retour
   // si un rapport est déjà lié à cet arrivage, sinon ouvre l'écran Stock Refus pour en créer un.
@@ -2209,6 +2216,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // ─── RENDER ───
   if (showPalette) {
     return <PalettePublique id={showPalette} />;
+  }
+
+  if (portailDepot) {
+    return <PortailReconditionneur depot={portailDepot} />;
   }
 
   if (user === undefined) return (

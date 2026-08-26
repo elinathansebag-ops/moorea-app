@@ -26,7 +26,10 @@ export const config = { runtime: "nodejs" };
 // emailEnvoye === false avant d'appeler cet endpoint).
 
 const DATABASE_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
-const SITE_URL = "https://app.moorea.fr";
+// "app.moorea.fr" n'existe pas (aucun DNS configuré dessus) — c'est pour ça que les liens du
+// mail renvoyaient une erreur DNS_PROBE_FINISHED_NXDOMAIN. Le vrai domaine de l'appli est celui
+// de Vercel (voir le footer de la palette publique dans ArrivageModule.tsx).
+const SITE_URL = "https://moorea-qualite.vercel.app";
 
 // Mêmes adresses que ANDES_EMAILS / NLT_EMAILS dans ReconditionnementModule.tsx — dupliquées ici
 // car un fichier api/*.js ne peut pas importer depuis src/*.tsx. Si tu changes une adresse dans
@@ -50,15 +53,23 @@ const EMBALLAGE_CHAMP = { nlt: "caissesIfcoEnvoyees", andes: "cartonsBabyBlancEn
 // salutation adressée à l'équipe du dépôt plutôt qu'un "Bonjour," générique, et un encart visuel
 // du stock d'emballage avant/après cet envoi (le stock affiché dans l'app est déjà net de ce lot,
 // déduit dès la création de chaque demande — donc "avant" = stock actuel + total de ce lot).
-function construireEmailHtml({ depot, enAttente, dateFr, lienPerte, stockActuel }) {
+function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
   const totalEmballage = enAttente.reduce((s, d) => s + (d[EMBALLAGE_CHAMP[depot]] || 0), 0);
   const emballageLabel = EMBALLAGE_LABEL[depot];
   const hasStock = typeof stockActuel === "number" && totalEmballage > 0;
   const stockAvant = hasStock ? stockActuel + totalEmballage : null;
 
+  // Lien "Suivi" et lien "Déclarer une perte" pointent tous les deux vers le nouveau portail
+  // reconditionneur (voir src/PortailReconditionneur.tsx) plutôt que vers statut-reconditionnement.js
+  // / declarer-perte.js : ces deux pages lisaient reconditionnement_demandes en lecture anonyme
+  // côté serveur, ce qui est refusé par les règles Firebase (401, même diagnostic que pour ce
+  // fichier — voir plus haut). Le portail lit les données via le SDK client (connexion anonyme
+  // Firebase Auth), qui lui est autorisé, et regroupe tout au même endroit : stock, historique,
+  // confirmation "prêt à repartir" et déclaration de perte.
+  const lienPortail = `${SITE_URL}/?portail=${depot}`;
+
   const lignesHtml = enAttente.map(d => {
     const ref = d.numero || d.id;
-    const lienSuivi = `${SITE_URL}/api/statut-reconditionnement?id=${d.id}`;
     return `
       <tr>
         <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#0a0a0a;">
@@ -69,7 +80,7 @@ function construireEmailHtml({ depot, enAttente, dateFr, lienPerte, stockActuel 
           ${d.nbColisAEntrer ?? "-"} colis
         </td>
         <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:12px;text-align:right;white-space:nowrap;">
-          <a href="${lienSuivi}" style="color:#92722c;text-decoration:none;">Suivi →</a>
+          <a href="${lienPortail}" style="color:#92722c;text-decoration:none;">Suivi →</a>
         </td>
       </tr>`;
   }).join("");
@@ -117,12 +128,12 @@ function construireEmailHtml({ depot, enAttente, dateFr, lienPerte, stockActuel 
 
       <p style="font-size:13px;color:#444;margin:18px 0 4px;">Merci de nous retourner la production avec les bons complétés.</p>
 
-      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;">
         <tr>
-          <td style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:8px;padding:12px 16px;">
-            <span style="font-size:13px;color:#b91c1c;">⚠️ Souci qualité constaté sur l'une de ces références ?</span><br/>
-            <a href="${lienPerte}" style="display:inline-block;margin-top:8px;background:#b91c1c;color:#fff;text-decoration:none;font-size:12.5px;font-weight:700;padding:8px 16px;border-radius:6px;">
-              Déclarer une perte avec photos
+          <td style="background:#faf7ef;border:1.5px solid #e8dcc0;border-radius:8px;padding:12px 16px;text-align:center;">
+            <span style="font-size:13px;color:#333;">📦 Stock, historique, confirmer "prêt à repartir" ou déclarer une perte</span><br/>
+            <a href="${lienPortail}" style="display:inline-block;margin-top:8px;background:#0a0a0a;color:#c8a84b;text-decoration:none;font-size:12.5px;font-weight:700;padding:8px 16px;border-radius:6px;">
+              Ouvrir mon espace ${DEPOT_LABEL[depot]}
             </a>
           </td>
         </tr>
@@ -160,9 +171,8 @@ async function envoyerRecapPourDepot(depot, demandesRecues, stockActuel) {
 
   const dateFr = new Date().toLocaleDateString("fr-FR");
   const idsEnvoyes = enAttente.map(d => d.id);
-  const lienPerte = `${SITE_URL}/api/declarer-perte?ids=${idsEnvoyes.join(",")}`;
 
-  const emailHtml = construireEmailHtml({ depot, enAttente, dateFr, lienPerte, stockActuel });
+  const emailHtml = construireEmailHtml({ depot, enAttente, dateFr, stockActuel });
 
   let attachments;
   try {
