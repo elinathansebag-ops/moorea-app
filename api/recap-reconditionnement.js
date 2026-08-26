@@ -12,15 +12,18 @@ export const config = { runtime: "nodejs" };
 // d'avoir plein de pièces jointes séparées quand il y a beaucoup de références), et un seul lien
 // pour déclarer un problème sur n'importe laquelle (voir declarer-perte.js, mode "ids").
 //
-// Chaque demande a un champ `emailEnvoye` (false à la création, dans reconditionnement_demandes) —
-// le CLIENT (qui a déjà la liste à jour via son listener temps réel, voir envoyerRecapDuJour dans
-// ReconditionnementModule.tsx) envoie ici la liste des ids en attente pour ce dépôt ; cet endpoint
-// les relit un par un par id (lecture individuelle autorisée par les règles Firebase — contrairement
-// à une lecture de TOUT le nœud reconditionnement_demandes, refusée en anonyme avec un 401, ce qui
-// causait avant un échec silencieux : le code traitait cette erreur comme "rien à envoyer" sans
-// jamais prévenir ni envoyer le mail), envoie le récap, puis marque ces demandes à true. Si le
-// commercial clique plusieurs fois dans la journée, chaque envoi ne reprend que les nouvelles
-// demandes créées depuis le dernier clic.
+// IMPORTANT — pourquoi le CLIENT envoie les demandes complètes (pas juste des ids) : les règles
+// Firebase refusent toute lecture anonyme de reconditionnement_demandes, même pour un seul id précis
+// (confirmé en prod : "HTTP 401 — Permission denied"), alors que l'app elle-même (via le SDK client,
+// authentifié différemment) et les écritures anonymes (PATCH ci-dessous, comme dans declarer-perte.js)
+// fonctionnent très bien. Donc plutôt que de faire relire les demandes par ce endpoint (ce qui
+// échouait à chaque fois, silencieusement au départ, puis avec un vrai 401 une fois le diagnostic
+// ajouté), le client — qui a déjà toutes les données via son listener temps réel — les envoie
+// directement dans le corps de la requête. Ce endpoint ne fait plus AUCUNE lecture Firebase : il
+// construit et envoie le mail à partir de ce qu'on lui donne, puis marque les demandes envoyées
+// (PATCH par id, autorisé). Si le commercial clique plusieurs fois dans la journée, chaque envoi ne
+// reprend que les nouvelles demandes créées depuis le dernier clic (le client filtre déjà sur
+// emailEnvoye === false avant d'appeler cet endpoint).
 
 const DATABASE_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
 const SITE_URL = "https://app.moorea.fr";
@@ -53,53 +56,14 @@ async function mergerBons(enAttente) {
   return Buffer.from(await merged.save());
 }
 
-async function envoyerRecapPourDepot(depot, ids) {
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return { depot, envoye: false, raison: "rien en attente" };
-  }
+async function envoyerRecapPourDepot(depot, demandesRecues) {
+  // Le client a déjà filtré (depot, emailEnvoye === false, pdfBase64 présent) avant d'envoyer —
+  // on revalide quand même ici au cas où (défense en profondeur, données venues du client).
+  const enAttente = (Array.isArray(demandesRecues) ? demandesRecues : [])
+    .filter(d => d && d.id && d.depot === depot && d.pdfBase64);
 
-  // Lecture par identifiant, une par une — autorisée par les règles Firebase (contrairement à la
-  // lecture de tout le nœud). Une demande introuvable ou déjà envoyée entre-temps (double-clic,
-  // envoi concurrent) est simplement ignorée plutôt que de faire échouer tout le lot. On garde des
-  // compteurs diagnostiques (pourquoi chaque id a été exclu) pour pouvoir comprendre un "rien en
-  // attente" inattendu directement depuis le message affiché dans l'app, sans avoir besoin des
-  // logs Vercel — utile tant que ce endpoint n'a pas encore été validé en conditions réelles.
-  let httpEchecs = 0, introuvables = 0, dejaEnvoyees = 0, sansPdf = 0, autreDepot = 0;
-  let premierEchec = null; // détail (statut HTTP + corps de la réponse Firebase) du 1er échec, pour voir la vraie cause (401 permission, id invalide, etc.) sans avoir besoin des logs Vercel.
-  const lues = await Promise.all(ids.map(async id => {
-    let r;
-    try {
-      r = await fetch(`${DATABASE_URL}/reconditionnement_demandes/${id}.json`);
-    } catch (errFetch) {
-      httpEchecs++;
-      if (!premierEchec) premierEchec = { id, erreur: errFetch.message };
-      return null;
-    }
-    if (!r.ok) {
-      httpEchecs++;
-      if (!premierEchec) {
-        const corps = await r.text().catch(() => "(corps illisible)");
-        premierEchec = { id, statut: r.status, corps: corps.slice(0, 300) };
-      }
-      return null;
-    }
-    const v = await r.json();
-    if (!v || typeof v !== "object") { introuvables++; return null; }
-    return { id, ...v };
-  }));
-
-  const enAttente = lues.filter(d => {
-    if (!d) return false;
-    if (d.depot !== depot) { autreDepot++; return false; }
-    if (d.emailEnvoye !== false) { dejaEnvoyees++; return false; }
-    if (!d.pdfBase64) { sansPdf++; return false; }
-    return true;
-  });
   if (enAttente.length === 0) {
-    return {
-      depot, envoye: false, raison: "rien en attente",
-      diag: { idsDemandes: ids.length, httpEchecs, introuvables, dejaEnvoyees, sansPdf, autreDepot, premierEchec },
-    };
+    return { depot, envoye: false, raison: "rien en attente" };
   }
 
   const dateFr = new Date().toLocaleDateString("fr-FR");
@@ -161,16 +125,19 @@ async function envoyerRecapPourDepot(depot, ids) {
     throw new Error(`Aucun destinataire accepté par Gmail (${destinataires.join(", ") || "aucune adresse configurée"})`);
   }
 
-  // Marque ces demandes comme envoyées pour ne pas les reprendre le lendemain.
-  await Promise.all(idsEnvoyes.map(id =>
-    fetch(`${DATABASE_URL}/reconditionnement_demandes/${id}.json`, {
+  // Marque ces demandes comme envoyées pour ne pas les reprendre le lendemain. Écriture anonyme par
+  // id — contrairement à la lecture, celle-ci fonctionne (même principe que declarer-perte.js).
+  const patchResultats = await Promise.all(idsEnvoyes.map(async id => {
+    const r = await fetch(`${DATABASE_URL}/reconditionnement_demandes/${id}.json`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ emailEnvoye: true, emailEnvoyeDate: dateFr }),
-    })
-  ));
+    });
+    return { id, ok: r.ok, statut: r.status };
+  }));
+  const patchEchoues = patchResultats.filter(p => !p.ok);
 
-  return { depot, envoye: true, nb: enAttente.length, accepted, rejected };
+  return { depot, envoye: true, nb: enAttente.length, accepted, rejected, patchEchoues };
 }
 
 export default async function handler(req, res) {
@@ -183,19 +150,19 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Paramètre 'depot' invalide (attendu: nlt ou andes)" });
   }
 
-  // La liste des ids en attente vient du client dans le corps de la requête (il l'a déjà via son
-  // listener temps réel) — voir le commentaire en haut de fichier pour pourquoi (évite une lecture
-  // de tout le nœud Firebase, refusée en anonyme).
-  let ids = [];
+  // Les demandes complètes (pas juste des ids) viennent du client dans le corps de la requête — voir
+  // le commentaire en haut de fichier pour pourquoi (les lectures Firebase anonymes sont refusées,
+  // même par id précis, donc ce endpoint ne relit plus rien lui-même).
+  let demandes = [];
   try {
     const body = req.body && typeof req.body === "object" ? req.body : JSON.parse(req.body || "{}");
-    ids = Array.isArray(body.ids) ? body.ids : [];
+    demandes = Array.isArray(body.demandes) ? body.demandes : [];
   } catch {
-    ids = [];
+    demandes = [];
   }
 
   try {
-    const resultat = await envoyerRecapPourDepot(depot, ids);
+    const resultat = await envoyerRecapPourDepot(depot, demandes);
     return res.status(200).json({ success: true, ...resultat });
   } catch (err) {
     console.error("Erreur récap reconditionnement:", err);

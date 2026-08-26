@@ -711,28 +711,29 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   async function envoyerRecapDuJour(depot: Depot) {
     setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: true }));
     try {
-      // On envoie nous-mêmes la liste des ids en attente (déjà connue via le listener temps réel
-      // ci-dessus) plutôt que de laisser le serveur lire tout le nœud reconditionnement_demandes —
-      // cette lecture "tout le nœud" est refusée par les règles Firebase en anonyme (401), alors
-      // qu'une lecture individuelle par id (ce que fait le serveur avec cette liste) est autorisée.
-      const idsEnAttente = demandes.filter(d => d.depot === depot && d.emailEnvoye === false && d.pdfBase64).map(d => d.id);
+      // On envoie les demandes complètes (pas juste des ids) : les lectures Firebase anonymes sont
+      // refusées par les règles (confirmé : même une lecture par id précis renvoie 401 "Permission
+      // denied"), donc le serveur ne peut plus rien relire lui-même. Le client, qui a déjà toutes
+      // les données via son listener temps réel ci-dessus, les envoie directement — seule
+      // l'écriture (marquer emailEnvoye) reste faite côté serveur, et celle-là fonctionne bien en
+      // anonyme (comme dans declarer-perte.js).
+      const demandesEnAttente = demandes
+        .filter(d => d.depot === depot && d.emailEnvoye === false && d.pdfBase64)
+        .map(d => ({
+          id: d.id, depot: d.depot, numero: d.numero, articleVrac: d.articleVrac, articleFini: d.articleFini,
+          nbColisAEntrer: d.nbColisAEntrer, pdfNom: d.pdfNom, pdfBase64: d.pdfBase64,
+        }));
       const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: idsEnAttente }),
+        body: JSON.stringify({ demandes: demandesEnAttente }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erreur ${res.status}`);
       if (data.envoye) {
         const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
-        notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}`);
-      } else if (data.diag && (data.diag.httpEchecs > 0 || data.diag.idsDemandes > 0)) {
-        // On avait bien des demandes à envoyer côté client (idsEnAttente non vide), mais le serveur
-        // les a toutes exclues — affiche le détail plutôt qu'un "rien à envoyer" trompeur, pour
-        // comprendre le problème sans avoir besoin des logs Vercel.
-        const d = data.diag;
-        const detailEchec = d.premierEchec ? ` — 1er échec (id ${d.premierEchec.id}) : ${d.premierEchec.statut ? `HTTP ${d.premierEchec.statut} — ${d.premierEchec.corps}` : d.premierEchec.erreur}` : "";
-        notify("error", `⚠️ Aucune demande envoyée à ${DEPOT_LABEL[depot]} — sur ${d.idsDemandes} : ${d.httpEchecs} lecture(s) Firebase échouée(s), ${d.introuvables} introuvable(s), ${d.dejaEnvoyees} déjà marquée(s) envoyée(s), ${d.sansPdf} sans PDF, ${d.autreDepot} autre dépôt${detailEchec}`);
+        const echecMarquage = data.patchEchoues?.length ? ` — ⚠️ ${data.patchEchoues.length} demande(s) pas marquée(s) comme envoyée(s), risque de doublon au prochain clic` : "";
+        notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}${echecMarquage}`);
       } else {
         notify("success", `Rien à envoyer pour ${DEPOT_LABEL[depot]} pour l'instant`);
       }
