@@ -71,7 +71,8 @@ function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
       <tr>
         <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#0a0a0a;">
           <strong style="color:#92722c;">${ref}</strong><br/>
-          <span style="color:#555;">${d.articleVrac || "-"} » <strong>${d.articleFini || "-"}</strong></span>
+          <strong>${d.articleFini || "-"}</strong>
+          ${d.articleVrac ? `<br/><span style="color:#888;font-size:11.5px;">à partir de ${d.articleVrac}</span>` : ""}
         </td>
         <td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#0a0a0a;text-align:center;white-space:nowrap;">
           ${d.nbColisAEntrer ?? "-"} colis
@@ -112,9 +113,9 @@ function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
     <div style="padding:24px 22px;border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;">
       <p style="font-size:14.5px;color:#0a0a0a;margin:0 0 6px;">Bonjour l'équipe ${DEPOT_LABEL[depot]},</p>
       <p style="font-size:13.5px;color:#444;line-height:1.5;margin:0 0 18px;">
-        Voici les productions de reconditionnement à faire aujourd'hui (${dateFr}) —
+        Voici ${enAttente.length > 1 ? "les productions" : "la production"} de reconditionnement à faire aujourd'hui (${dateFr}) —
         <strong>${enAttente.length} référence${enAttente.length > 1 ? "s" : ""}</strong>,
-        tous les bons regroupés dans le PDF en pièce jointe.
+        ${enAttente.length > 1 ? "tous les bons regroupés dans le PDF en pièce jointe." : "le bon en pièce jointe."}
       </p>
 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #eee;border-radius:10px;overflow:hidden;">
