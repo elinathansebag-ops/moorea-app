@@ -702,13 +702,56 @@ _Écart lié au tri/poids, pas un souci qualité._`;
   );
 }
 
-export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles }: any) {
+export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById }: any) {
   const [open, setOpen] = useState(false);
   const nbTraites = traites.length;
   const allDone = produits.length === 0 && nbTraites > 0;
   const headerBg = allDone ? "#f0fdf4" : "#faf8f3";
   const headerBorder = allDone ? "1px solid #bbf7d0" : "none";
   const nomColor = allDone ? "#15803d" : "#1a2e1a";
+
+  // ─── TOTAL DE PALETTES ANNONCÉ (retour de reconditionnement uniquement) ───
+  // Même logique que côté départ presta (portail reconditionneur, "Tout marquer parti") : on
+  // veut UN total pour tout le groupe NLT/Andès du jour, pas un compte par arrivage — les
+  // étiquettes palette, elles, restent générées individuellement à chaque arrivage (ProduitRow,
+  // inchangé). Le total "annoncé" par défaut vient de ce que le reconditionneur a déclaré à son
+  // propre départ (retourPresta.parti.nbPalettes, sur chaque demande liée au groupe) ; un total
+  // corrigé manuellement (arrivage_palettes_annoncees) prend le pas dessus si présent.
+  const isRetourRecondGroupe = /\(reconditionnement\)$/.test(fournisseur || "");
+  const depotKeyGroupe = /andès/i.test(fournisseur || "") ? "andes" : "nlt";
+  const clePalettesAnnoncees = date ? `${String(date).replace(/\//g, "-")}_${depotKeyGroupe}` : null;
+  const [editionPalettesAnnoncees, setEditionPalettesAnnoncees] = useState(false);
+  const [ediGrandes, setEdiGrandes] = useState("");
+  const [ediDemi, setEdiDemi] = useState("");
+  const [overridePalettesAnnoncees, setOverridePalettesAnnoncees] = useState<{ grandes: number; demi: number } | null>(null);
+  useEffect(() => {
+    if (!isRetourRecondGroupe || !clePalettesAnnoncees) return;
+    const unsub = onValue(ref(db, `arrivage_palettes_annoncees/${clePalettesAnnoncees}`), snap => {
+      setOverridePalettesAnnoncees(snap.val() || null);
+    });
+    return () => unsub();
+  }, [isRetourRecondGroupe, clePalettesAnnoncees]);
+  let paletteAnnonceInfo: { grandes: number; demi: number; source: "manuel" | "presta" } | null = null;
+  if (isRetourRecondGroupe) {
+    const demandeIds = new Set<string>([...produits, ...traites].map((a: any) => a.reconditionnement_demande_id).filter(Boolean));
+    let sommeGrandes = 0, sommeDemi = 0;
+    demandeIds.forEach(id => {
+      const dem = reconditionnementDemandesById?.[id];
+      const np = dem?.retourPresta?.parti?.nbPalettes;
+      if (np) { sommeGrandes += np.grandes || 0; sommeDemi += np.demi || 0; }
+    });
+    paletteAnnonceInfo = overridePalettesAnnoncees
+      ? { grandes: overridePalettesAnnoncees.grandes || 0, demi: overridePalettesAnnoncees.demi || 0, source: "manuel" }
+      : { grandes: sommeGrandes, demi: sommeDemi, source: "presta" };
+  }
+  const validerPalettesAnnoncees = async () => {
+    if (!clePalettesAnnoncees) return;
+    const g = parseInt(ediGrandes) || 0;
+    const d = parseInt(ediDemi) || 0;
+    await update(ref(db, `arrivage_palettes_annoncees/${clePalettesAnnoncees}`), { grandes: g, demi: d, date: new Date().toLocaleDateString("fr-FR") });
+    setEditionPalettesAnnoncees(false);
+  };
+
   return (
     <div style={{ background: "#fff", borderRadius: 14, marginBottom: 10, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent" }}>
       <div onClick={() => setOpen(!open)} style={{ padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: headerBg, borderBottom: open ? "1px solid #e8e0d0" : headerBorder }}>
@@ -722,6 +765,35 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
       </div>
       {open && (
         <div style={{ padding: "12px 14px" }}>
+          {/* Total de palettes ANNONCÉ pour tout le groupe (pas par arrivage) — voir le calcul
+              plus haut. Purement informatif/de recoupement : les étiquettes palette et le
+              nombre de palettes saisi à la validation restent individuels à chaque arrivage. */}
+          {paletteAnnonceInfo && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, background: "#fffbf0", border: "1.5px solid #f3e3b8", borderRadius: 10, padding: "8px 12px", marginBottom: 10 }}>
+              {!editionPalettesAnnoncees ? (
+                <>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6f2e" }}>
+                    🎫 Palettes annoncées{paletteAnnonceInfo.source === "manuel" ? " (corrigé)" : ""} : {paletteAnnonceInfo.grandes} grande{paletteAnnonceInfo.grandes > 1 ? "s" : ""} + {paletteAnnonceInfo.demi} demi
+                  </span>
+                  <button
+                    onClick={e => { e.stopPropagation(); setEdiGrandes(String(paletteAnnonceInfo!.grandes)); setEdiDemi(String(paletteAnnonceInfo!.demi)); setEditionPalettesAnnoncees(true); }}
+                    style={{ padding: "4px 10px", borderRadius: 7, border: "1.5px solid #e8d9a8", background: "#fff", color: "#8a6f2e", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ✏️ Modifier
+                  </button>
+                </>
+              ) : (
+                <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", width: "100%" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#8a6f2e" }}>Grandes</span>
+                  <input type="number" value={ediGrandes} onChange={e => setEdiGrandes(e.target.value)} style={{ width: 56, padding: "5px 7px", border: "1.5px solid #e8d9a8", borderRadius: 6, fontSize: 12 }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#8a6f2e" }}>Demi</span>
+                  <input type="number" value={ediDemi} onChange={e => setEdiDemi(e.target.value)} style={{ width: 56, padding: "5px 7px", border: "1.5px solid #e8d9a8", borderRadius: 6, fontSize: 12 }} />
+                  <button onClick={validerPalettesAnnoncees} style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#c8a84b", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓ Valider</button>
+                  <button onClick={() => setEditionPalettesAnnoncees(false)} style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e8d9a8", background: "#fff", color: "#8a6f2e", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                </div>
+              )}
+            </div>
+          )}
           {produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} />)}
           {nbTraites > 0 && (
             <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
@@ -2030,7 +2102,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
   );
 }
 
-export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles }: any) {
+export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -2253,7 +2325,9 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               onImprimerMulti={onImprimerMulti}
               onReporterDate={onReporterDate}
               selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect}
-              gencodeArticles={gencodeArticles} />
+              gencodeArticles={gencodeArticles}
+              date={date}
+              reconditionnementDemandesById={reconditionnementDemandesById} />
           ))}
         </div>
       )}

@@ -365,6 +365,19 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // ─── FIREBASE: demandes de reconditionnement (juste retourPresta.parti.nbPalettes) ───
+  // Sert uniquement à afficher, en haut de chaque groupe NLT/Andès dans "Pointer arrivage", le
+  // total de palettes ANNONCÉ par le reconditionneur au moment de son "Repartie" — voir
+  // reconditionnementDemandesById, passé à DateBlock (ArrivageModule.tsx).
+  const [reconditionnementDemandesById, setReconditionnementDemandesById] = useState<Record<string, any>>({});
+  useEffect(() => {
+    const unsub = onValue(ref(db, "reconditionnement_demandes"), snap => {
+      const d = snap.val();
+      setReconditionnementDemandesById(d || {});
+    });
+    return () => unsub();
+  }, []);
+
   // ─── FIREBASE: arrivages ───
   const [arrivagesCharges, setArrivagesCharges] = useState(false);
   useEffect(() => {
@@ -3437,7 +3450,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} />
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} />
                           );
                         })}
                       </div>
