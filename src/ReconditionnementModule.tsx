@@ -711,7 +711,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   async function envoyerRecapDuJour(depot: Depot) {
     setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: true }));
     try {
-      const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, { method: "POST" });
+      // On envoie nous-mêmes la liste des ids en attente (déjà connue via le listener temps réel
+      // ci-dessus) plutôt que de laisser le serveur lire tout le nœud reconditionnement_demandes —
+      // cette lecture "tout le nœud" est refusée par les règles Firebase en anonyme (401), alors
+      // qu'une lecture individuelle par id (ce que fait le serveur avec cette liste) est autorisée.
+      const idsEnAttente = demandes.filter(d => d.depot === depot && d.emailEnvoye === false && d.pdfBase64).map(d => d.id);
+      const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: idsEnAttente }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erreur ${res.status}`);
       if (data.envoye) {
