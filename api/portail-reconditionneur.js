@@ -13,7 +13,8 @@ export const config = { runtime: "nodejs" };
 //
 // GET  ?depot=nlt|andes            → { demandes: [...], stock: number, reajustements: [...] }
 // POST ?depot=nlt|andes  body:
-//   { id, action: "confirmerPret", quantite, commentaire }
+//   { id, action: "confirmerPret", quantite, commentaire }        → mail à l'entrepôt : à aller chercher
+//   { id, action: "confirmerDepart", transporteur }                → mail à l'entrepôt : c'est parti
 //   { id, action: "declarerPerte", motif, quantite, commentaire, photoEtiquette, photoProduit }
 //   { action: "demanderReajustement", quantiteProposee, raison }   (pas de id — c'est le stock
 //     du dépôt entier, pas une demande précise ; validé/refusé côté Moorea, voir
@@ -26,8 +27,15 @@ const EMBALLAGE_CHAMP_STOCK = {
 
 // qualite@ retiré (demande explicite du 26/08/2026) : le reconditionnement ne la concerne pas.
 const NOTIF_EMAILS = ["commercial@moorea.fr"];
+// Destinataires pour "prod prête à récupérer" / "c'est parti" — l'entrepôt (qui doit organiser
+// l'enlèvement) et Jordan/Elinathan (demande explicite du 26/08/2026).
+const PROD_PRETE_EMAILS = ["entrepot@moorea.fr", "jordan.jouanest@moorea.fr", "elinathan.sebag@moorea.fr"];
 const DEPOT_LABEL = { nlt: "NLT", andes: "Andès" };
 const EMBALLAGE_LABEL = { nlt: "caisses IFCO", andes: "cartons BABY BLANC" };
+
+function creerMailer() {
+  return nodemailer.createTransport({ service: "gmail", auth: { user: "agreage@moorea.fr", pass: "ymxz ktzv lele vucp" } });
+}
 
 function nowFr() {
   const d = new Date();
@@ -81,15 +89,76 @@ async function handleConfirmerPret(adminDb, depot, id, body) {
   }
   const attendu = typeof demande.nbColisAEntrer === "number" ? demande.nbColisAEntrer : null;
   const ecart = attendu != null ? quantite - attendu : null;
+  const commentaire = (body.commentaire || "").trim() || null;
   await adminDb.ref(`reconditionnement_demandes/${id}`).update({
     retourPresta: {
       confirme: true,
       date: nowFr(),
       quantiteDeclaree: quantite,
       ecart,
-      commentaire: (body.commentaire || "").trim() || null,
+      commentaire,
     },
   });
+
+  // Prévient l'entrepôt qu'il y a une prod prête à aller chercher — best effort, ne bloque pas
+  // la confirmation si l'envoi échoue.
+  try {
+    const ref = demande.numero || id;
+    const ecartHtml = ecart ? `<li><strong>⚠️ Écart vs prévu :</strong> ${ecart > 0 ? "+" : ""}${ecart}</li>` : "";
+    await creerMailer().sendMail({
+      from: "Moorea Agréage <agreage@moorea.fr>",
+      to: PROD_PRETE_EMAILS.join(","),
+      subject: `📦 Prod prête à récupérer — ${ref} (${DEPOT_LABEL[depot]})`,
+      html: `
+        <p>📦 <strong>${DEPOT_LABEL[depot]}</strong> a signalé une production prête, à aller chercher.</p>
+        <ul>
+          <li><strong>Référence :</strong> ${ref}</li>
+          <li><strong>Article :</strong> ${demande.articleFini || demande.articleVrac || "—"}</li>
+          <li><strong>Quantité prête :</strong> ${quantite} colis</li>
+          ${ecartHtml}
+          ${commentaire ? `<li><strong>Commentaire :</strong> ${commentaire}</li>` : ""}
+        </ul>`,
+    });
+  } catch (emailErr) {
+    console.error("Erreur envoi email prod prête (portail):", emailErr);
+  }
+
+  return { success: true };
+}
+
+async function handleConfirmerDepart(adminDb, depot, id, body) {
+  const transporteur = (body.transporteur || "").trim();
+  if (!transporteur) {
+    throw Object.assign(new Error("Nom du transporteur manquant"), { statusCode: 400 });
+  }
+  const snap = await adminDb.ref(`reconditionnement_demandes/${id}`).once("value");
+  const demande = snap.val();
+  if (!demande || demande.depot !== depot) {
+    throw Object.assign(new Error("Demande introuvable"), { statusCode: 404 });
+  }
+  const date = nowFr();
+  await adminDb.ref(`reconditionnement_demandes/${id}/retourPresta`).update({
+    parti: { confirme: true, date, transporteur },
+  });
+
+  try {
+    const ref = demande.numero || id;
+    await creerMailer().sendMail({
+      from: "Moorea Agréage <agreage@moorea.fr>",
+      to: PROD_PRETE_EMAILS.join(","),
+      subject: `🚚 C'est parti — ${ref} (${DEPOT_LABEL[depot]})`,
+      html: `
+        <p>🚚 La production <strong>${ref}</strong> vient de partir de chez <strong>${DEPOT_LABEL[depot]}</strong>.</p>
+        <ul>
+          <li><strong>Article :</strong> ${demande.articleFini || demande.articleVrac || "—"}</li>
+          <li><strong>Transporteur :</strong> ${transporteur}</li>
+          <li><strong>Date :</strong> ${date}</li>
+        </ul>`,
+    });
+  } catch (emailErr) {
+    console.error("Erreur envoi email départ prod (portail):", emailErr);
+  }
+
   return { success: true };
 }
 
@@ -232,6 +301,11 @@ export default async function handler(req, res) {
       if (action === "declarerPerte") {
         if (!id) return res.status(400).json({ error: "id requis" });
         const out = await handleDeclarerPerte(adminDb, depot, id, body);
+        return res.status(200).json(out);
+      }
+      if (action === "confirmerDepart") {
+        if (!id) return res.status(400).json({ error: "id requis" });
+        const out = await handleConfirmerDepart(adminDb, depot, id, body);
         return res.status(200).json(out);
       }
       if (action === "demanderReajustement") {

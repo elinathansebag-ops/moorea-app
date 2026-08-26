@@ -118,6 +118,7 @@ type Demande = {
     quantiteDeclaree?: number;
     ecart?: number | null;
     commentaire?: string;
+    parti?: { confirme: boolean; date: string; transporteur: string };
   };
 };
 
@@ -1876,10 +1877,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
 
                     {d.retourPresta?.confirme && (
                       <div style={{ fontSize: 11.5, color: "#15803d", background: COLORS.secondaryLight, border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "6px 10px", marginTop: 6 }}>
-                        ✅ {DEPOT_LABEL[d.depot]} a confirmé "prêt à repartir" le {d.retourPresta.date} depuis son espace en ligne
+                        📦 {DEPOT_LABEL[d.depot]} a signalé la prod prête le {d.retourPresta.date} depuis son espace en ligne
                         {d.retourPresta.quantiteDeclaree != null ? ` — ${d.retourPresta.quantiteDeclaree} colis déclarés` : ""}
                         {d.retourPresta.ecart ? ` · ⚠️ écart de ${d.retourPresta.ecart > 0 ? "+" : ""}${d.retourPresta.ecart} vs prévu` : ""}
                         {d.retourPresta.commentaire ? ` · "${d.retourPresta.commentaire}"` : ""}
+                      </div>
+                    )}
+
+                    {d.retourPresta?.parti?.confirme && (
+                      <div style={{ fontSize: 11.5, color: "#1d4ed8", background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "6px 10px", marginTop: 6 }}>
+                        🚚 {DEPOT_LABEL[d.depot]} a confirmé le départ le {d.retourPresta.parti.date} avec {d.retourPresta.parti.transporteur}
                       </div>
                     )}
 
