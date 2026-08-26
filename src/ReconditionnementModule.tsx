@@ -1257,6 +1257,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
           reconditionnement_demande_id: demande.id,
           depot: demande.depot,
           qteConditionnementAttendue: demande.qteConditionnement ?? null,
+          // Nombre de caisses IFCO vides envoyées à l'origine — permet à ArrivageModule d'afficher
+          // l'écart au pointage (ex: 100 envoyées, 99 pleines reçues car la qualité ne permettait
+          // pas de faire le dernier colis) : la caisse manquante reste vide chez NLT, ce n'est pas
+          // une perte, juste un écart normal à visualiser plutôt qu'à corriger.
+          caissesIfcoEnvoyees: demande.caissesIfcoEnvoyees ?? null,
           origine: `${DEPOT_LABEL[demande.depot]}${demande.transporteurNom ? ` · ${demande.transporteurNom}` : ""}`,
           // Décidé une fois pour toutes à la création de la demande (case cochée dans le
           // formulaire, pré-remplie d'après le nom de l'article) — plus fiable, au moment du

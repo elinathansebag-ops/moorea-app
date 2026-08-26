@@ -267,6 +267,14 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const ecartColis = colisRecusNum - colisAttendu;
   const hasEcartColis = colisRecus !== "" && ecartColis !== 0;
 
+  // Écart caisses IFCO pleines vs. envoyées à l'origine (ex: 100 envoyées, 99 pleines reçues car
+  // la qualité ne permettait pas de faire le dernier colis) — purement informatif : la caisse
+  // manquante reste vide chez NLT (voir handleAgrement dans App.tsx, qui ne déduit du stock "nlt"
+  // que le nombre de caisses PLEINES réellement saisi ici, jamais le nombre envoyé).
+  const caissesIfcoEnvoyees = arrivage.caissesIfcoEnvoyees;
+  const ecartCaissesIfco = caissesIfcoEnvoyees != null ? (parseInt(retourCaissesIfco) || 0) - caissesIfcoEnvoyees : 0;
+  const hasEcartCaissesIfco = caissesIfcoEnvoyees != null && retourCaissesIfco !== "" && ecartCaissesIfco !== 0;
+
   // ─── Palettes pour l'étiquette imprimée automatiquement à la validation ───
   // Par défaut : 1 palette avec la totalité des colis. Si l'agréeur répartit sur plusieurs
   // palettes, une étiquette distincte sera imprimée pour chacune (bon nombre de colis chacune).
@@ -449,10 +457,19 @@ _Écart lié au tri/poids, pas un souci qualité._`;
                 style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
             </div>
             {retourEnIfco && (
-              <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Caisses IFCO pleines</span>
+              <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: hasEcartCaissesIfco ? "#fffbeb" : "#f9fafb", border: `1.5px solid ${hasEcartCaissesIfco ? "#fde3a8" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>
+                  📦 Caisses IFCO pleines{caissesIfcoEnvoyees != null ? ` (sur ${caissesIfcoEnvoyees} envoyées)` : ""}
+                </span>
                 <input type="number" min="0" inputMode="numeric" value={retourCaissesIfco} onChange={e => setRetourCaissesIfco(e.target.value)}
-                  style={{ width: "100%", padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" }} />
+                  style={{ width: "100%", padding: "4px 6px", border: `1.5px solid ${hasEcartCaissesIfco ? "#fde3a8" : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: hasEcartCaissesIfco ? "#b45309" : "#1a2e1a", boxSizing: "border-box" }} />
+                {hasEcartCaissesIfco && (
+                  <span style={{ fontSize: 10.5, color: "#b45309", fontWeight: 600, lineHeight: 1.3 }}>
+                    {ecartCaissesIfco < 0
+                      ? `${Math.abs(ecartCaissesIfco)} caisse${Math.abs(ecartCaissesIfco) > 1 ? "s" : ""} reste${Math.abs(ecartCaissesIfco) > 1 ? "nt" : ""} vide${Math.abs(ecartCaissesIfco) > 1 ? "s" : ""} chez NLT (pas une perte)`
+                      : `⚠️ ${ecartCaissesIfco} de plus que prévu, vérifie la saisie`}
+                  </span>
+                )}
               </div>
             )}
             {/* Colis avec les pièces écartées au tri — reviennent avec le lot, jamais 100%
