@@ -23,7 +23,7 @@ const PALETTES_IFCO = {
 // automatiquement envoyée au contact du site.
 const LIEUX_CARTONS: Record<string, { horsSite: boolean; email: string }> = {
   "Moorea Commerce Fruit - Bat D3": { horsSite: false, email: "" },
-  "Andès - Le Potager de Marianne - 15 Avenue des 3 Marches bat B4, 94550 Chevilly-Larue": { horsSite: true, email: "nicolas.lemonnier@andes-france.com" },
+  "Andès - Le Potager de Marianne - 15 Avenue des 3 Marches bat B4, 94550 Chevilly-Larue": { horsSite: true, email: "nicolas.lemonnier@andes-france.com,lydie.larralde@andes-france.com,aicha.oudjit@andes-france.com,arnaud.neuquelman@andes-france.com" },
 };
 
 type LigneCarton = { type: string; nbPalettes: number };
@@ -852,7 +852,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               body: JSON.stringify({
                 subject: `Confirmation de réception - Commande cartons #${commandeId}`,
                 html: emailHtmlPresta,
-                to: [emailPresta.trim()],
+                to: emailPresta.split(",").map(e => e.trim()).filter(Boolean),
                 sender: "elinathan",
               }),
             });
@@ -1577,7 +1577,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               }}>
                 <div style={{ fontSize: "16px" }}>📍</div>
                 <div style={{ fontSize: "12px", color: COLORS.gray700 }}>
-                  Livraison directe chez le prestataire (pas chez Moorea) : l'agréage n'aura pas à la pointer. Un email de confirmation sera envoyé à <strong>{emailPresta}</strong> une fois la commande créée.
+                  Livraison directe chez le prestataire (pas chez Moorea) : l'agréage n'aura pas à la pointer. Un email de confirmation sera envoyé à <strong>{emailPresta.split(",").map(e => e.trim()).filter(Boolean).join(", ")}</strong> une fois la commande créée.
                 </div>
               </div>
             )}

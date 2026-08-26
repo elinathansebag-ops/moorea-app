@@ -123,6 +123,16 @@ type Mouvement = {
 
 const DEPOT_LABEL: Record<Depot, string> = { nlt: "NLT", andes: "Andès" };
 
+// Contacts Andès à qui envoyer automatiquement le bon de reconditionnement par email quand une
+// demande "andes" est marquée parti (elle est livrée hors site, comme les cartons — même
+// principe que LIEUX_CARTONS dans PrestatairesModule.tsx).
+const ANDES_EMAILS = [
+  "nicolas.lemonnier@andes-france.com",
+  "lydie.larralde@andes-france.com",
+  "aicha.oudjit@andes-france.com",
+  "arnaud.neuquelman@andes-france.com",
+];
+
 // ─── FILE D'IMPRESSION À DISTANCE (relais PC) ───
 // Même mécanisme que les étiquettes palette (ArrivageModule.tsx : envoyerEtiquettePourImpressionPC)
 // — un job pushé dans Firebase (Realtime Database, chemin "printQueue"), que print-relay.js (sur
@@ -1141,6 +1151,40 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
         });
       } catch (err) {
         console.error("Erreur création arrivage retour reconditionnement:", err);
+      }
+
+      // Andès est livré hors site (comme les commandes de cartons) : on lui envoie le bon par
+      // email au moment du départ, plutôt que de compter sur une impression papier remise au
+      // transporteur. NLT n'est pas concerné ici (bon imprimé sur place via le relais impression).
+      if (demande.depot === "andes") {
+        try {
+          const bonDataUri = await genererBonPdf(demande);
+          const base64 = bonDataUri.split(",").pop() || "";
+          const lignesHtml = `<li><strong>${demande.articleVrac}</strong> » <strong>${demande.articleFini}</strong> — ${demande.nbColisAEntrer ?? "-"} colis à entrer</li>`;
+          const emailHtml = `
+            <p>Bonjour,</p>
+            <p>Voici le bon de reconditionnement pour la commande <strong>${demande.numero || demande.id}</strong>, en pièce jointe :</p>
+            <ul>${lignesHtml}</ul>
+            <p>Merci de nous retourner la production avec le bon complété.</p>
+            <p>Merci !</p>
+          `;
+          const emailRes = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subject: `Bon de reconditionnement ${demande.numero || demande.id} — Andès`,
+              html: emailHtml,
+              to: ANDES_EMAILS,
+              attachments: [{ filename: `bon-reconditionnement-${demande.numero || demande.id}.pdf`, content: base64 }],
+              sender: "agreage",
+            }),
+          });
+          if (!emailRes.ok) throw new Error(`Erreur ${emailRes.status}`);
+        } catch (emailErr) {
+          console.error("Erreur envoi email bon reconditionnement Andès:", emailErr);
+          notify("error", "⚠️ Marqué parti, mais l'email du bon à Andès n'a pas pu être envoyé");
+          return;
+        }
       }
     }
 
