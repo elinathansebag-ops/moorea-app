@@ -238,6 +238,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [palettesQte, setPalettesQte] = useState("");
   const [showPalettesForm, setShowPalettesForm] = useState(false);
 
+  // Déclarations d'entrée IFCO à faire suite à un retour client en caisses IFCO (voir
+  // RetoursModule.tsx / validerControle) — pense-bête affiché en bandeau tant que non traité.
+  const [declarationsEntree, setDeclarationsEntree] = useState<any[]>([]);
+
   const ifcoFileRef = useRef<HTMLInputElement>(null);
 
   const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -311,8 +315,16 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       const d = snap.val();
       setStockAjustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u8(); };
+    const u9 = onValue(ref(db, "ifco_declarations_entree"), snap => {
+      const d = snap.val();
+      setDeclarationsEntree(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u8(); u9(); };
   }, []);
+
+  async function marquerDeclarationFaite(id: string) {
+    await update(ref(db, `ifco_declarations_entree/${id}`), { declare: true });
+  }
 
   // Pré-remplit les champs d'ajustement de stock avec la valeur actuelle quand on ouvre
   // l'onglet Configuration, pour que ce soit clair sur quoi on part avant de corriger.
@@ -1049,6 +1061,31 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       )}
 
       <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
+        {/* BANDEAU — déclarations d'entrée IFCO à faire (retours clients en caisses IFCO) */}
+        {declarationsEntree.filter(d => !d.declare).length > 0 && (
+          <div style={{ background: COLORS.tertiaryLight, border: `1.5px solid ${COLORS.tertiary}`, borderRadius: 12, padding: "14px 18px", marginBottom: "16px" }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#92400e", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+              ⚠️ {declarationsEntree.filter(d => !d.declare).length} déclaration{declarationsEntree.filter(d => !d.declare).length > 1 ? "s" : ""} d'entrée IFCO à faire
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {declarationsEntree.filter(d => !d.declare).map(d => (
+                <div key={d.id} style={{ background: "#fff", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ fontSize: 13, color: COLORS.gray700 }}>
+                    <strong>{d.client}</strong> · BL {d.bl} · {d.date} · <strong>{d.quantite}</strong> caisse{d.quantite > 1 ? "s" : ""} IFCO
+                    <span style={{ color: COLORS.gray400 }}> — retour {d.numero}</span>
+                  </div>
+                  <button
+                    onClick={() => marquerDeclarationFaite(d.id)}
+                    style={{ padding: "6px 14px", background: COLORS.primary, color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+                  >
+                    ✓ Déclarée
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Bouton Configuration / retour au Dashboard (en haut à droite) */}
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
           <button

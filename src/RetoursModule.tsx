@@ -473,6 +473,15 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
           raison: `Retour client — ${fiche.numero || fiche.id}${fiche.client ? ` (${fiche.client})` : ""}`,
           ts: Date.now(),
         });
+        // Un retour client en caisses IFCO doit faire l'objet d'une déclaration d'entrée
+        // manuelle auprès d'IFCO (distincte du mouvement de stock ci-dessus) — on ajoute donc un
+        // pense-bête dans la file d'attente affichée en bandeau côté module Prestataires
+        // (ifco_declarations_entree), tant que personne ne l'a marqué comme fait.
+        await push(ref(db, "ifco_declarations_entree"), {
+          client: fiche.client || "—", bl: fiche.bl || "—", numero: fiche.numero || fiche.id,
+          date: new Date().toLocaleDateString("fr-FR"), quantite: totalIfco,
+          declare: false, ts: Date.now(),
+        });
       } catch (err) {
         console.error("Erreur mise à jour stock IFCO suite retour client:", err);
       }
