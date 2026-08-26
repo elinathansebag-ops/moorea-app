@@ -118,6 +118,34 @@ function Card({ children, style }: { children: any; style?: any }) {
   return <div style={{ background: "#fff", borderRadius: 14, padding: 16, border: `1.5px solid ${COLORS.border}`, marginBottom: 12, ...style }}>{children}</div>;
 }
 
+// ── Regroupement par semaine → jour, même principe que l'accordéon du module Reconditionnement
+// côté Moorea (ReconditionnementModule.tsx) — pour que le reconditionneur retrouve la même
+// logique de rangement. Semaine la plus récente ouverte par défaut, un seul niveau d'accordéon
+// (les jours, eux, restent toujours dépliés dans une semaine ouverte — pas la peine d'empiler
+// deux clics pour un usage "je regarde ce qu'il y a à faire").
+function parseFrDate(s?: string): Date | null {
+  if (!s) return null;
+  const [dd, mm, yyyy] = s.split(" ")[0].split("/");
+  if (!dd || !mm || !yyyy) return null;
+  return new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
+}
+function lundiDe(d: Date): Date {
+  const jour = d.getDay();
+  const lundi = new Date(d);
+  lundi.setDate(d.getDate() + (jour === 0 ? -6 : 1 - jour));
+  lundi.setHours(0, 0, 0, 0);
+  return lundi;
+}
+function numeroSemaine(d: Date): number {
+  const date = new Date(d.getTime());
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));
+  const semaine1 = new Date(date.getFullYear(), 0, 4);
+  return 1 + Math.round(((date.getTime() - semaine1.getTime()) / 86400000 - 3 + ((semaine1.getDay() + 6) % 7)) / 7);
+}
+// Priorité d'affichage dans un jour : ce qu'il y a vraiment à faire/valider en premier.
+const PRIORITE_STATUT: Record<Demande["statut"], number> = { "parti": 0, "prêt": 1, "en attente": 2, "reçu": 3, "annulé": 4 };
+
 function Badge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<string, [string, string, string]> = {
     "en attente": ["#fffbeb", "#b45309", "En attente"],
@@ -135,7 +163,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [stock, setStock] = useState<number | null>(null);
   const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
-  const [onglet, setOnglet] = useState<"chezvous" | "avenir" | "recues">("chezvous");
+  const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
   const [pretOuvertPour, setPretOuvertPour] = useState<string | null>(null);
   const [perteOuvertePour, setPerteOuvertePour] = useState<string | null>(null);
   const [reajustementOuvert, setReajustementOuvert] = useState(false);
@@ -161,10 +189,48 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
     return () => clearInterval(interval);
   }, [charger]);
 
-  const chezVous = demandes.filter(d => d.statut === "parti");
-  const aVenir = demandes.filter(d => d.statut === "en attente" || d.statut === "prêt");
-  const recues = demandes.filter(d => d.statut === "reçu");
-  const listeActive = onglet === "chezvous" ? chezVous : onglet === "avenir" ? aVenir : recues;
+  // Regroupe toutes les demandes (tous statuts confondus) par jour de création, puis range les
+  // jours par semaine — un seul accordéon à parcourir pour tout voir : ce qu'il y a chez soi à
+  // valider, ce qui arrive, ce qui est déjà reçu par Moorea.
+  const parJour: Record<string, Demande[]> = {};
+  demandes.forEach(d => {
+    const date = parseFrDate(d.dateCreationFr);
+    const cle = date ? date.toLocaleDateString("fr-FR") : "Date inconnue";
+    if (!parJour[cle]) parJour[cle] = [];
+    parJour[cle].push(d);
+  });
+  Object.values(parJour).forEach(liste => liste.sort((a, b) => PRIORITE_STATUT[a.statut] - PRIORITE_STATUT[b.statut]));
+  const joursTries = Object.keys(parJour).sort((a, b) => (parseFrDate(b)?.getTime() || 0) - (parseFrDate(a)?.getTime() || 0));
+  const parSemaine: Record<string, { label: string; jours: string[]; tri: number }> = {};
+  joursTries.forEach(jourStr => {
+    const date = parseFrDate(jourStr);
+    if (!date) {
+      if (!parSemaine["?"]) parSemaine["?"] = { label: "Date inconnue", jours: [], tri: -Infinity };
+      parSemaine["?"].jours.push(jourStr);
+      return;
+    }
+    const lundi = lundiDe(date);
+    const cleSemaine = `${lundi.getFullYear()}-${String(lundi.getMonth() + 1).padStart(2, "0")}-${String(lundi.getDate()).padStart(2, "0")}`;
+    if (!parSemaine[cleSemaine]) parSemaine[cleSemaine] = { label: `Semaine ${numeroSemaine(date)} · ${date.getFullYear()}`, jours: [], tri: lundi.getTime() };
+    parSemaine[cleSemaine].jours.push(jourStr);
+  });
+  const semainesTriees = Object.entries(parSemaine).sort((a, b) => b[1].tri - a[1].tri);
+
+  // La semaine la plus récente s'ouvre automatiquement dès que les données arrivent, ensuite
+  // l'utilisateur garde le contrôle (ouvrir/fermer librement).
+  useEffect(() => {
+    if (semainesOuvertes === null && semainesTriees.length > 0) {
+      setSemainesOuvertes(new Set([semainesTriees[0][0]]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [semainesTriees.length]);
+  function toggleSemaine(cle: string) {
+    setSemainesOuvertes(prev => {
+      const next = new Set(prev || []);
+      if (next.has(cle)) next.delete(cle); else next.add(cle);
+      return next;
+    });
+  }
 
   async function confirmerPret(d: Demande, quantite: number, commentaire: string) {
     setEnvoiEnCours(true);
@@ -295,107 +361,112 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
           </Card>
         )}
 
-        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-          {([
-            ["chezvous", `Chez vous (${chezVous.length})`],
-            ["avenir", `À venir (${aVenir.length})`],
-            ["recues", `Reçues (${recues.length})`],
-          ] as const).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setOnglet(key)}
-              style={{
-                flex: 1, padding: "9px 6px", borderRadius: 10, border: `1.5px solid ${onglet === key ? COLORS.ink : COLORS.border}`,
-                background: onglet === key ? COLORS.ink : "#fff", color: onglet === key ? COLORS.gold : COLORS.gray,
-                fontSize: 11.5, fontWeight: 800, cursor: "pointer",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {listeActive.length === 0 && (
+        {demandes.length === 0 && (
           <Card style={{ textAlign: "center", color: COLORS.gray, fontSize: 13 }}>Rien ici pour l'instant.</Card>
         )}
 
-        {listeActive.map(d => (
-          <Card key={d.id}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.ink }}>
-                  {d.numero && <span style={{ color: "#92722c", marginRight: 6 }}>{d.numero}</span>}
-                  {d.articleVrac} → {d.articleFini}
+        {semainesTriees.map(([cleSemaine, info]) => {
+          const ouverte = semainesOuvertes?.has(cleSemaine) ?? false;
+          const totalSemaine = info.jours.reduce((s, j) => s + (parJour[j]?.length || 0), 0);
+          return (
+            <div key={cleSemaine} style={{ marginBottom: 12 }}>
+              <div
+                onClick={() => toggleSemaine(cleSemaine)}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: "#fff", border: `1.5px solid ${COLORS.border}`, borderRadius: 10, padding: "12px 14px" }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.ink }}>
+                  📅 {info.label} <span style={{ color: COLORS.gray, fontWeight: 600 }}>({totalSemaine})</span>
+                </span>
+                <span style={{ fontSize: 14, color: "#92722c", transform: ouverte ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+              </div>
+
+              {ouverte && info.jours.map(jourStr => (
+                <div key={jourStr} style={{ marginTop: 10 }}>
+                  <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: COLORS.gray, paddingLeft: 4 }}>
+                    {jourStr} <span style={{ fontWeight: 600 }}>({parJour[jourStr].length})</span>
+                  </p>
+                  {parJour[jourStr].map(d => (
+                    <Card key={d.id}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.ink }}>
+                            {d.numero && <span style={{ color: "#92722c", marginRight: 6 }}>{d.numero}</span>}
+                            {d.articleVrac} → {d.articleFini}
+                          </div>
+                          <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>{d.dateCreationFr}</div>
+                        </div>
+                        <Badge statut={d.statut} />
+                      </div>
+
+                      <div style={{ fontSize: 12.5, color: "#374151", marginBottom: 8 }}>
+                        {d.nbColisAEntrer != null && <>Quantité prévue : <b>{d.nbColisAEntrer}</b> colis</>}
+                        {d.qteConditionnement != null && <> · {d.qteConditionnement} {UNITE_QTE[depot]}</>}
+                      </div>
+
+                      {d.statut === "parti" && d.departDate && (
+                        <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 8 }}>Parti de Moorea le {d.departDate}</div>
+                      )}
+
+                      {d.statut === "reçu" && d.retour && (
+                        <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
+                          Reçu par Moorea le {d.retour.date} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé côté Moorea"}
+                        </div>
+                      )}
+
+                      {d.retourPresta?.confirme && (
+                        <div style={{ fontSize: 12, color: "#15803d", background: "#eafaf1", border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
+                          ✅ Confirmé prêt à repartir le {d.retourPresta.date}
+                          {d.retourPresta.quantiteDeclaree != null && <> — {d.retourPresta.quantiteDeclaree} colis</>}
+                          {d.retourPresta.ecart ? <> · ⚠️ écart de {d.retourPresta.ecart > 0 ? "+" : ""}{d.retourPresta.ecart}</> : ""}
+                          {d.retourPresta.commentaire ? <> · "{d.retourPresta.commentaire}"</> : ""}
+                        </div>
+                      )}
+
+                      {d.pertes && Object.keys(d.pertes).length > 0 && (
+                        <div style={{ marginBottom: 8, background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 8, padding: "8px 10px" }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#b91c1c", marginBottom: 4 }}>
+                            ⚠️ {Object.keys(d.pertes).length} perte{Object.keys(d.pertes).length > 1 ? "s" : ""} déclarée{Object.keys(d.pertes).length > 1 ? "s" : ""}
+                          </div>
+                          {Object.entries(d.pertes).map(([pid, p]) => (
+                            <div key={pid} style={{ fontSize: 11.5, color: "#7f1d1d" }}>
+                              <b>{p.quantite}</b> colis — {p.motif} · {p.date}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {d.statut === "parti" && (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                          {!d.retourPresta?.confirme && (
+                            <button
+                              onClick={() => setPretOuvertPour(pretOuvertPour === d.id ? null : d.id)}
+                              style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              ✅ Confirmer prêt à repartir
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setPerteOuvertePour(perteOuvertePour === d.id ? null : d.id)}
+                            style={{ padding: "8px 12px", borderRadius: 8, border: "1.5px solid #fecaca", background: "#fff", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                          >
+                            ⚠️ Déclarer une perte
+                          </button>
+                        </div>
+                      )}
+
+                      {pretOuvertPour === d.id && (
+                        <FormPret demande={d} envoiEnCours={envoiEnCours} onAnnuler={() => setPretOuvertPour(null)} onValider={confirmerPret} />
+                      )}
+                      {perteOuvertePour === d.id && (
+                        <FormPerte demande={d} envoiEnCours={envoiEnCours} onAnnuler={() => setPerteOuvertePour(null)} onValider={envoyerPerte} />
+                      )}
+                    </Card>
+                  ))}
                 </div>
-                <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>{d.dateCreationFr}</div>
-              </div>
-              <Badge statut={d.statut} />
+              ))}
             </div>
-
-            <div style={{ fontSize: 12.5, color: "#374151", marginBottom: 8 }}>
-              {d.nbColisAEntrer != null && <>Quantité prévue : <b>{d.nbColisAEntrer}</b> colis</>}
-              {d.qteConditionnement != null && <> · {d.qteConditionnement} {UNITE_QTE[depot]}</>}
-            </div>
-
-            {d.statut === "parti" && d.departDate && (
-              <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 8 }}>Parti de Moorea le {d.departDate}</div>
-            )}
-
-            {d.statut === "reçu" && d.retour && (
-              <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
-                Reçu par Moorea le {d.retour.date} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé côté Moorea"}
-              </div>
-            )}
-
-            {d.retourPresta?.confirme && (
-              <div style={{ fontSize: 12, color: "#15803d", background: "#eafaf1", border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
-                ✅ Confirmé prêt à repartir le {d.retourPresta.date}
-                {d.retourPresta.quantiteDeclaree != null && <> — {d.retourPresta.quantiteDeclaree} colis</>}
-                {d.retourPresta.ecart ? <> · ⚠️ écart de {d.retourPresta.ecart > 0 ? "+" : ""}{d.retourPresta.ecart}</> : ""}
-                {d.retourPresta.commentaire ? <> · "{d.retourPresta.commentaire}"</> : ""}
-              </div>
-            )}
-
-            {d.pertes && Object.keys(d.pertes).length > 0 && (
-              <div style={{ marginBottom: 8, background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 8, padding: "8px 10px" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "#b91c1c", marginBottom: 4 }}>
-                  ⚠️ {Object.keys(d.pertes).length} perte{Object.keys(d.pertes).length > 1 ? "s" : ""} déclarée{Object.keys(d.pertes).length > 1 ? "s" : ""}
-                </div>
-                {Object.entries(d.pertes).map(([pid, p]) => (
-                  <div key={pid} style={{ fontSize: 11.5, color: "#7f1d1d" }}>
-                    <b>{p.quantite}</b> colis — {p.motif} · {p.date}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {d.statut === "parti" && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                {!d.retourPresta?.confirme && (
-                  <button
-                    onClick={() => setPretOuvertPour(pretOuvertPour === d.id ? null : d.id)}
-                    style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                  >
-                    ✅ Confirmer prêt à repartir
-                  </button>
-                )}
-                <button
-                  onClick={() => setPerteOuvertePour(perteOuvertePour === d.id ? null : d.id)}
-                  style={{ padding: "8px 12px", borderRadius: 8, border: "1.5px solid #fecaca", background: "#fff", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                >
-                  ⚠️ Déclarer une perte
-                </button>
-              </div>
-            )}
-
-            {pretOuvertPour === d.id && (
-              <FormPret demande={d} envoiEnCours={envoiEnCours} onAnnuler={() => setPretOuvertPour(null)} onValider={confirmerPret} />
-            )}
-            {perteOuvertePour === d.id && (
-              <FormPerte demande={d} envoiEnCours={envoiEnCours} onAnnuler={() => setPerteOuvertePour(null)} onValider={envoyerPerte} />
-            )}
-          </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
