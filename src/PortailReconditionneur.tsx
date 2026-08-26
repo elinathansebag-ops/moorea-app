@@ -47,7 +47,7 @@ type RetourPresta = {
   quantiteDeclaree?: number;
   ecart?: number | null;
   commentaire?: string;
-  parti?: { confirme: boolean; date: string; transporteur: string };
+  parti?: { confirme: boolean; date: string; transporteur: string; nbPalettes?: { grandes: number; demi: number } };
 };
 
 type Demande = {
@@ -241,7 +241,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   // confirmerDepart, chacune envoyant son propre mail — voir api/portail-reconditionneur.js).
   // Le transporteur n'est PAS redemandé au presta : c'est forcément le même qu'à l'aller, choisi
   // par Moorea à la création de la demande (demande.transporteurNom).
-  async function confirmerRepartie(d: Demande, quantite: number, commentaire: string) {
+  async function confirmerRepartie(d: Demande, quantite: number, commentaire: string, grandes: number, demi: number) {
     setEnvoiEnCours(true);
     try {
       const resPret = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
@@ -253,7 +253,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       const resDepart = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: d.id, action: "confirmerDepart", transporteur: d.transporteurNom || "-" }),
+        body: JSON.stringify({ id: d.id, action: "confirmerDepart", transporteur: d.transporteurNom || "-", nbPalettes: { grandes, demi } }),
       });
       if (!resDepart.ok) throw new Error(`HTTP ${resDepart.status}`);
       setRepartieOuvertPour(null);
@@ -422,6 +422,14 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                         <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 8 }}>Parti de Moorea le {d.departDate}</div>
                       )}
 
+                      {d.statut === "parti" && (
+                        d.transporteurNom ? (
+                          <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>🚚 Transporteur : <b style={{ color: COLORS.ink }}>{d.transporteurNom}</b></div>
+                        ) : (
+                          <div style={{ fontSize: 11.5, color: "#b45309", marginBottom: 8 }}>⚠️ Transporteur non renseigné — contacte Moorea</div>
+                        )
+                      )}
+
                       {d.statut === "reçu" && d.retour && (
                         <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
                           Reçu par Moorea le {d.retour.date} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé côté Moorea"}
@@ -440,6 +448,9 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                       {d.retourPresta?.parti?.confirme && (
                         <div style={{ fontSize: 12, color: "#1d4ed8", background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
                           🚚 Parti le {d.retourPresta.parti.date} avec {d.retourPresta.parti.transporteur} — Moorea a été prévenu
+                          {d.retourPresta.parti.nbPalettes && (d.retourPresta.parti.nbPalettes.grandes || d.retourPresta.parti.nbPalettes.demi) ? (
+                            <> — {d.retourPresta.parti.nbPalettes.grandes || 0} grande(s) + {d.retourPresta.parti.nbPalettes.demi || 0} demi-palette(s)</>
+                          ) : ""}
                         </div>
                       )}
 
@@ -498,17 +509,25 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
 // envoyés d'un coup (voir confirmerRepartie). Le transporteur n'est pas redemandé ici : c'est
 // forcément le même qu'à l'aller, déjà connu (demande.transporteurNom), juste affiché en rappel.
 function FormRepartie({ demande, envoiEnCours, onAnnuler, onValider }: {
-  demande: Demande; envoiEnCours: boolean; onAnnuler: () => void; onValider: (d: Demande, quantite: number, commentaire: string) => void;
+  demande: Demande; envoiEnCours: boolean; onAnnuler: () => void; onValider: (d: Demande, quantite: number, commentaire: string, grandes: number, demi: number) => void;
 }) {
   const [quantite, setQuantite] = useState(String(demande.nbColisAEntrer ?? ""));
   const [commentaire, setCommentaire] = useState("");
+  const [grandes, setGrandes] = useState("");
+  const [demi, setDemi] = useState("");
   const q = parseInt(quantite);
+  const g = parseInt(grandes) || 0;
+  const d = parseInt(demi) || 0;
   const valide = q >= 0;
   return (
     <div style={{ marginTop: 10, background: "#f9fafb", border: `1.5px solid ${COLORS.border}`, borderRadius: 10, padding: 12 }}>
-      {demande.transporteurNom && (
+      {demande.transporteurNom ? (
         <p style={{ margin: "0 0 10px", fontSize: 11.5, color: COLORS.gray }}>
           🚚 Transporteur : <b style={{ color: COLORS.ink }}>{demande.transporteurNom}</b> (le même qu'à l'aller)
+        </p>
+      ) : (
+        <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#b45309" }}>
+          ⚠️ Aucun transporteur renseigné sur cette demande — contacte Moorea si besoin.
         </p>
       )}
       <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
@@ -519,6 +538,25 @@ function FormRepartie({ demande, envoiEnCours, onAnnuler, onValider }: {
         style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, marginBottom: 8, boxSizing: "border-box" }}
       />
       <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
+        Nombre de palettes
+      </label>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1 }}>
+          <input
+            type="number" min="0" value={grandes} onChange={e => setGrandes(e.target.value)} placeholder="Grandes"
+            style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, boxSizing: "border-box" }}
+          />
+          <span style={{ fontSize: 10, color: COLORS.gray }}>Grandes palettes</span>
+        </div>
+        <div style={{ flex: 1 }}>
+          <input
+            type="number" min="0" value={demi} onChange={e => setDemi(e.target.value)} placeholder="Demi"
+            style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.border}`, borderRadius: 8, fontSize: 14, boxSizing: "border-box" }}
+          />
+          <span style={{ fontSize: 10, color: COLORS.gray }}>Demi-palettes</span>
+        </div>
+      </div>
+      <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", marginBottom: 4 }}>
         Commentaire (optionnel)
       </label>
       <textarea
@@ -528,7 +566,7 @@ function FormRepartie({ demande, envoiEnCours, onAnnuler, onValider }: {
       <div style={{ display: "flex", gap: 8 }}>
         <button
           disabled={!valide || envoiEnCours}
-          onClick={() => onValider(demande, q, commentaire)}
+          onClick={() => onValider(demande, q, commentaire, g, d)}
           style={{ flex: 1, padding: 10, borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: !valide || envoiEnCours ? 0.5 : 1 }}
         >
           {envoiEnCours ? "Envoi..." : "Confirmer"}

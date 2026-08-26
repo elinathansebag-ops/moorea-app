@@ -122,7 +122,7 @@ type Demande = {
     quantiteDeclaree?: number;
     ecart?: number | null;
     commentaire?: string;
-    parti?: { confirme: boolean; date: string; transporteur: string };
+    parti?: { confirme: boolean; date: string; transporteur: string; nbPalettes?: { grandes: number; demi: number } };
   };
 };
 
@@ -1380,6 +1380,19 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setPretDemi("");
   }
 
+  // Quand le transport est assuré par Moorea elle-même (transporteur nommé "Moorea" dans la
+  // liste, plutôt qu'un vrai transporteur externe), il n'y a pas de nombre de palettes à
+  // indiquer pour le chargement — on marque directement "prêt" sans passer par la modale.
+  async function marquerPretSansPalettes(id: string) {
+    await update(ref(db, `reconditionnement_demandes/${id}`), {
+      statut: "prêt",
+      entrepotPretPar: userName || "Moorea",
+      entrepotPretDate: nowFr(),
+      nbPalettesDepart: null,
+    });
+    notify("success", "✅ Marqué prêt — transport Moorea, pas de palette à indiquer");
+  }
+
   async function validerPret() {
     if (!pretDemandeId) return;
     const g = parseInt(pretGrandes) || 0;
@@ -1890,6 +1903,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                         Prêt le {d.entrepotPretDate} par {d.entrepotPretPar} — {d.nbPalettesDepart.grandes} grande(s) + {d.nbPalettesDepart.demi} demi-palette(s)
                       </div>
                     )}
+                    {d.statut === "prêt" && !d.nbPalettesDepart && (
+                      <div style={{ fontSize: 11, color: "#888", marginTop: 6 }}>
+                        Prêt le {d.entrepotPretDate} par {d.entrepotPretPar} — transport assuré par Moorea, pas de palette à indiquer
+                      </div>
+                    )}
                     {(d.statut === "parti" || d.statut === "reçu") && d.departDate && (
                       <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>Parti le {d.departDate}</div>
                     )}
@@ -1916,6 +1934,9 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     {d.retourPresta?.parti?.confirme && (
                       <div style={{ fontSize: 11.5, color: "#1d4ed8", background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 8, padding: "6px 10px", marginTop: 6 }}>
                         🚚 {DEPOT_LABEL[d.depot]} a confirmé le départ le {d.retourPresta.parti.date} avec {d.retourPresta.parti.transporteur}
+                        {d.retourPresta.parti.nbPalettes && (d.retourPresta.parti.nbPalettes.grandes || d.retourPresta.parti.nbPalettes.demi) ? (
+                          <> — {d.retourPresta.parti.nbPalettes.grandes || 0} grande(s) + {d.retourPresta.parti.nbPalettes.demi || 0} demi-palette(s)</>
+                        ) : ""}
                       </div>
                     )}
 
@@ -1946,7 +1967,10 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                       {d.statut === "en attente" && (
                         <>
-                          <button onClick={() => ouvrirModalePret(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          <button
+                            onClick={() => (d.transporteurNom && /moorea/i.test(d.transporteurNom)) ? marquerPretSansPalettes(d.id) : ouvrirModalePret(d.id)}
+                            style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                          >
                             ✓ Marquer prêt
                           </button>
                           <button onClick={() => chargerPourEdition(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>

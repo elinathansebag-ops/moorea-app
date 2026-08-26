@@ -131,6 +131,13 @@ async function handleConfirmerDepart(adminDb, depot, id, body) {
   if (!transporteur) {
     throw Object.assign(new Error("Nom du transporteur manquant"), { statusCode: 400 });
   }
+  // Nombre de palettes annoncé par le presta au retour — optionnel (pas toujours pertinent
+  // selon le mode de transport), affiché côté Moorea si renseigné.
+  const g = parseInt(body.nbPalettes?.grandes);
+  const d = parseInt(body.nbPalettes?.demi);
+  const nbPalettes = (Number.isFinite(g) && g > 0) || (Number.isFinite(d) && d > 0)
+    ? { grandes: Number.isFinite(g) ? g : 0, demi: Number.isFinite(d) ? d : 0 }
+    : null;
   const snap = await adminDb.ref(`reconditionnement_demandes/${id}`).once("value");
   const demande = snap.val();
   if (!demande || demande.depot !== depot) {
@@ -138,11 +145,12 @@ async function handleConfirmerDepart(adminDb, depot, id, body) {
   }
   const date = nowFr();
   await adminDb.ref(`reconditionnement_demandes/${id}/retourPresta`).update({
-    parti: { confirme: true, date, transporteur },
+    parti: { confirme: true, date, transporteur, ...(nbPalettes ? { nbPalettes } : {}) },
   });
 
   try {
     const ref = demande.numero || id;
+    const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
     await creerMailer().sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
       to: PROD_PRETE_EMAILS.join(","),
@@ -152,6 +160,7 @@ async function handleConfirmerDepart(adminDb, depot, id, body) {
         <ul>
           <li><strong>Article :</strong> ${demande.articleFini || demande.articleVrac || "—"}</li>
           <li><strong>Transporteur :</strong> ${transporteur}</li>
+          ${palettesHtml}
           <li><strong>Date :</strong> ${date}</li>
         </ul>`,
     });
