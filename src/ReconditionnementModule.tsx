@@ -102,6 +102,10 @@ type Demande = {
   // api/declarer-perte.js — lien envoyé dans l'email du bon) : lu tel quel depuis Firebase, donc
   // un objet clé→valeur (clés = push id), pas un tableau.
   pertes?: Record<string, PerteInfo>;
+  // Suivi du récapitulatif quotidien envoyé au reconditionneur (voir api/recap-reconditionnement.js)
+  // — false à la création, mis à true par le job côté serveur une fois inclus dans un mail envoyé.
+  emailEnvoye?: boolean;
+  emailEnvoyeDate?: string;
 };
 
 type PerteInfo = {
@@ -137,22 +141,18 @@ type Mouvement = {
 
 const DEPOT_LABEL: Record<Depot, string> = { nlt: "NLT", andes: "Andès" };
 
-// Contacts Andès à qui envoyer automatiquement le bon de reconditionnement par email dès la
-// création de la demande (validation par le commercial), pour une demande dépôt "andes" (elle
-// est livrée hors site, comme les cartons — même principe que LIEUX_CARTONS dans
-// PrestatairesModule.tsx).
+// Contacts Andès / NLT du reconditionneur (même principe que LIEUX_CARTONS dans
+// PrestatairesModule.tsx). Gardés ici pour référence côté app, mais l'envoi effectif du
+// récapitulatif quotidien se fait côté serveur, dans api/recap-reconditionnement.js — qui a sa
+// propre copie de ces adresses (un fichier api/*.js ne peut pas importer depuis src/*.tsx). Si tu
+// changes une adresse ici, pense à la changer aussi là-bas.
 const ANDES_EMAILS = [
   "nicolas.lemonnier@andes-france.com",
   "lydie.larralde@andes-france.com",
   "aicha.oudjit@andes-france.com",
   "arnaud.neuquelman@andes-france.com",
 ];
-
-// Contact NLT — même principe qu'ANDES_EMAILS ci-dessus.
 const NLT_EMAILS = ["nltconditionnement@gmail.com"];
-
-// Adresses email du reconditionneur pour un dépôt donné (utilisé pour l'envoi du bon à la
-// création de la demande — voir creerDemande).
 const EMAILS_PAR_DEPOT: Record<Depot, string[]> = { nlt: NLT_EMAILS, andes: ANDES_EMAILS };
 
 // ─── FILE D'IMPRESSION À DISTANCE (relais PC) ───
@@ -664,6 +664,30 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setTimeout(() => setNotification(null), 3500);
   }
 
+  // ─── ENVOI MANUEL DU RÉCAP DU JOUR (NLT / Andès) ───
+  // Pas d'envoi automatique programmé : c'est le commercial qui décide, une fois qu'il a fini de
+  // saisir toutes les demandes du jour pour un dépôt, de cliquer pour envoyer le mail groupé (un
+  // bon par référence + un lien de déclaration de perte commun). Voir api/recap-reconditionnement.js.
+  const [envoiRecapEnCours, setEnvoiRecapEnCours] = useState<Record<Depot, boolean>>({ nlt: false, andes: false });
+
+  async function envoyerRecapDuJour(depot: Depot) {
+    setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: true }));
+    try {
+      const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `Erreur ${res.status}`);
+      if (data.envoye) {
+        notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} — ${data.nb} référence${data.nb > 1 ? "s" : ""}`);
+      } else {
+        notify("success", `Rien à envoyer pour ${DEPOT_LABEL[depot]} pour l'instant`);
+      }
+    } catch (err: any) {
+      notify("error", `❌ Erreur envoi récap ${DEPOT_LABEL[depot]} : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: false }));
+    }
+  }
+
   // ─── VALIDATION PAR SCAN DU QR CODE DU BON ───
   // App.tsx ouvre ce module avec scanDemandeId quand l'app a été chargée via l'URL du QR
   // (?recond=<id>). Le 1er scan (statut "en attente") ouvre la modale "Marquer prêt" — il faut
@@ -1121,43 +1145,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
             notify("error", "⚠️ Demande envoyée, mais l'envoi à l'impression automatique a échoué");
           }
 
-          // NLT et Andès sont tous les deux livrés hors site : on leur envoie le bon par email dès
-          // la création/validation de la demande par le commercial, plutôt que d'attendre le départ
-          // côté entrepôt — ça leur laisse le temps de préparer avant l'arrivée du transporteur (ou
-          // du chariot électrique pour Andès). Le bon reste aussi imprimé sur place via le relais
-          // impression pour NLT (voir envoyerBonReconditionnementPourImpressionPC ci-dessus) : l'un
-          // n'exclut pas l'autre.
-          {
-            try {
-              const lienSuivi = `${window.location.origin}/api/statut-reconditionnement?id=${demandeId}`;
-              const lienPerte = `${window.location.origin}/api/declarer-perte?id=${demandeId}`;
-              const lignesHtml = `<li><strong>${demande.articleVrac}</strong> » <strong>${demande.articleFini}</strong> — ${demande.nbColisAEntrer ?? "-"} colis à entrer</li>`;
-              const emailHtml = `
-                <p>Bonjour,</p>
-                <p>Voici le bon de reconditionnement pour la commande <strong>${demande.numero || demandeId}</strong>, en pièce jointe :</p>
-                <ul>${lignesHtml}</ul>
-                <p>Merci de nous retourner la production avec le bon complété.</p>
-                <p><a href="${lienSuivi}">Suivre l'état de cette demande</a></p>
-                <p>⚠️ En cas de souci qualité constaté (produit abîmé, non conforme...) : <a href="${lienPerte}">déclarer une perte avec photos</a></p>
-                <p>Merci !</p>
-              `;
-              const emailRes = await fetch("/api/send-email", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  subject: `Bon de reconditionnement ${demande.numero || demandeId} — ${DEPOT_LABEL[depot]}`,
-                  html: emailHtml,
-                  to: EMAILS_PAR_DEPOT[depot],
-                  attachments: [{ filename: pdfNom, content: pdfBase64 }],
-                  sender: "agreage",
-                }),
-              });
-              if (!emailRes.ok) throw new Error(`Erreur ${emailRes.status}`);
-            } catch (emailErr) {
-              console.error(`Erreur envoi email bon reconditionnement ${DEPOT_LABEL[depot]}:`, emailErr);
-              notify("error", `⚠️ Demande envoyée, mais l'email du bon à ${DEPOT_LABEL[depot]} n'a pas pu être envoyé`);
-            }
-          }
+          // NLT et Andès sont tous les deux livrés hors site, mais le bon n'est PLUS envoyé par
+          // email individuellement à chaque demande créée (trop de mails séparés quand plusieurs
+          // références sont faites le même jour) : chaque demande reste simplement marquée
+          // "emailEnvoye: false", et c'est api/recap-reconditionnement.js (déclenché une fois par
+          // matin, cf. vercel.json) qui regroupe toutes les demandes en attente d'un dépôt dans UN
+          // seul mail récapitulatif (un bon en pièce jointe par référence, un seul lien pour
+          // déclarer un problème sur n'importe laquelle). Le bon reste imprimé sur place via le
+          // relais impression pour NLT (voir envoyerBonReconditionnementPourImpressionPC ci-dessus)
+          // — ça, ça continue à se faire immédiatement à la création.
+          await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
         } catch (errPdf: any) {
           notify("error", `⚠️ Demande envoyée, mais la génération du bon a échoué : ${errPdf?.message || "erreur inconnue"}`);
         }
@@ -1522,6 +1519,27 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.gray700 }}>{stockBabyBlancAndes}</div>
               </div>
             </div>
+
+            {/* Envoi du récap du jour — manuel, un bouton par dépôt, visible seulement s'il y a
+                des demandes en attente d'envoi pour ce dépôt. */}
+            {(["nlt", "andes"] as Depot[]).map(dep => {
+              const enAttente = demandes.filter(d => d.depot === dep && d.emailEnvoye === false).length;
+              if (enAttente === 0) return null;
+              return (
+                <div key={dep} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
+                    📧 {enAttente} demande{enAttente > 1 ? "s" : ""} {DEPOT_LABEL[dep]} pas encore envoyée{enAttente > 1 ? "s" : ""} au reconditionneur
+                  </span>
+                  <button
+                    onClick={() => envoyerRecapDuJour(dep)}
+                    disabled={envoiRecapEnCours[dep]}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: envoiRecapEnCours[dep] ? COLORS.gray200 : COLORS.primary, color: envoiRecapEnCours[dep] ? COLORS.gray600 : "#fff", fontSize: 12, fontWeight: 700, cursor: envoiRecapEnCours[dep] ? "default" : "pointer" }}
+                  >
+                    {envoiRecapEnCours[dep] ? "Envoi..." : `Envoyer le récap à ${DEPOT_LABEL[dep]}`}
+                  </button>
+                </div>
+              );
+            })}
 
             {/* Filtre statut */}
             <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>

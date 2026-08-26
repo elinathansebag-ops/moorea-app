@@ -67,6 +67,24 @@ function pageInfo(title, message, color) {
   </div>`);
 }
 
+function selectionPage(demandes) {
+  const items = demandes.map(d => {
+    const ref = d.numero || d.id;
+    const article = d.articleFini || d.articleVrac || "";
+    return `<a href="/api/declarer-perte?id=${d.id}" style="display:block;padding:14px;border:1.5px solid #e8e0d0;border-radius:10px;margin-bottom:10px;text-decoration:none;color:#1a2e1a">
+      <div style="font-weight:800;font-size:14px">${ref}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px">${article}</div>
+    </a>`;
+  }).join("");
+
+  return shell("Déclarer une perte — choisir la référence", `
+  <div class="card">
+    <h1>⚠️ Déclarer une perte</h1>
+    <p class="sub">Sur quelle référence du jour ?</p>
+    ${items || `<p class="sub">Aucune référence trouvée.</p>`}
+  </div>`);
+}
+
 function formPage(demande, id) {
   const ref = demande.numero || id;
   const article = demande.articleFini || demande.articleVrac || "";
@@ -177,8 +195,8 @@ function formPage(demande, id) {
 }
 
 export default async function handler(req, res) {
-  const { id } = req.query;
-  if (!id) {
+  const { id, ids } = req.query;
+  if (!id && !ids) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(400).send(pageInfo("Lien invalide", "Ce lien est incomplet ou invalide.", "error"));
   }
@@ -186,6 +204,19 @@ export default async function handler(req, res) {
   if (req.method === "GET") {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     try {
+      // Lien du récap quotidien (plusieurs références groupées dans un même mail, voir
+      // api/recap-reconditionnement.js) : on affiche d'abord un choix de référence, qui renvoie
+      // ensuite sur ce même endpoint avec un `id` unique (flux ci-dessous, inchangé).
+      if (ids && !id) {
+        const idList = ids.split(",").map(s => s.trim()).filter(Boolean);
+        const demandes = await Promise.all(idList.map(async i => {
+          const r = await fetch(`${DATABASE_URL}/reconditionnement_demandes/${i}.json`);
+          const d = await r.json();
+          return d ? { ...d, id: i } : null;
+        }));
+        return res.status(200).send(selectionPage(demandes.filter(Boolean)));
+      }
+
       const getRes = await fetch(`${DATABASE_URL}/reconditionnement_demandes/${id}.json`);
       const demande = await getRes.json();
       if (!demande) {
