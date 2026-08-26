@@ -11,21 +11,42 @@ export const config = { runtime: "nodejs" };
 // stock_carton_andes) sont ouverts explicitement dans les règles de sécurité Firebase, sur le même
 // principe que printQueue/printRelayStatus. Voir api/_firebaseAdmin.js pour le pourquoi.
 //
-// GET  ?depot=nlt|andes            → { demandes: [...], stock: number, reajustements: [...] }
+// GET  ?depot=nlt|andes            → { demandes: [...], stock: number, reajustements: [...],
+//                                       mouvements: [...] (historique stock_ajustements du dépôt),
+//                                       cartonsEnAttente: [...] (Andès seulement — commandes de
+//                                       cartons livrées hors site, pas encore confirmées) }
 // POST ?depot=nlt|andes  body:
 //   { id, action: "confirmerRepartie", quantite, commentaire, transporteur, nbPalettes }
 //     → un seul geste côté presta ("Repartie" sur le portail) = un seul mail à l'entrepôt/
 //       Jordan/Elinathan pour dire que la prod est prête à aller chercher (transporteur et
 //       nombre de palettes optionnels, transmis pour info)
+//   { action: "confirmerRepartieGroupee", items: [{id, quantite}], commentaire, nbPalettes,
+//     creneauReste }   (pas de id — plusieurs à la fois) → même chose mais pour plusieurs
+//     références prêtes le même jour : UN SEUL mail listant tout, avec un créneau optionnel
+//     pour dire dans combien de temps le reste sera prêt
 //   { id, action: "declarerPerte", motif, quantite, commentaire, photoEtiquette, photoProduit }
 //   { action: "demanderReajustement", quantiteProposee, raison }   (pas de id — c'est le stock
 //     du dépôt entier, pas une demande précise ; validé/refusé côté Moorea, voir
 //     ReconditionnementModule.tsx, onglet Dashboard)
+//   { id, action: "confirmerLivraisonCarton" }   (Andès seulement — confirme la réception d'une
+//     commande de cartons livrée hors site, même effet que le lien de confirmation par email,
+//     voir api/confirm-livraison.js)
 
 const EMBALLAGE_CHAMP_STOCK = {
   nlt: "ifco_stock/levels/nlt",
   andes: "stock_carton_andes/baby_blanc",
 };
+
+// Libellé "emplacement" utilisé dans stock_ajustements (voir PrestatairesModule.tsx et
+// api/confirm-livraison.js) pour chaque dépôt — sert à filtrer l'historique des mouvements
+// affiché au reconditionneur sur son propre embalage, sans lui montrer ceux de Moorea/l'autre
+// dépôt.
+const EMPLACEMENT_STOCK = {
+  nlt: "IFCO — NLT",
+  andes: "Carton Baby Blanc — Andes",
+};
+
+const CARTONS_PAR_PALETTE = { "BABY BLANC": 360 };
 
 // qualite@ retiré (demande explicite du 26/08/2026) : le reconditionnement ne la concerne pas.
 const NOTIF_EMAILS = ["commercial@moorea.fr"];
@@ -60,10 +81,14 @@ function allegerDemande(id, d) {
 
 async function handleGet(res, depot) {
   const adminDb = getAdminDb();
-  const [demandesSnap, stockSnap, reajustementsSnap] = await Promise.all([
+  const [demandesSnap, stockSnap, reajustementsSnap, ajustementsSnap, cartonsSnap] = await Promise.all([
     adminDb.ref("reconditionnement_demandes").once("value"),
     adminDb.ref(EMBALLAGE_CHAMP_STOCK[depot]).once("value"),
     adminDb.ref("reajustements_stock_demandes").once("value"),
+    adminDb.ref("stock_ajustements").once("value"),
+    // Seul Andès reçoit des cartons livrés directement chez lui (voir LIEUX_CARTONS dans
+    // PrestatairesModule.tsx) — inutile de charger cette collection pour NLT.
+    depot === "andes" ? adminDb.ref("prestataires_cartons").once("value") : Promise.resolve(null),
   ]);
   const data = demandesSnap.val() || {};
   const demandes = Object.entries(data)
@@ -76,7 +101,28 @@ async function handleGet(res, depot) {
     .filter(([, r]) => r && r.depot === depot)
     .map(([id, r]) => ({ id, ...r }))
     .sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  return res.status(200).json({ demandes, stock: typeof stockVal === "number" ? stockVal : 0, reajustements });
+
+  // Historique des mouvements de caisses/cartons pour CE dépôt — ajustements manuels saisis
+  // côté Moorea (corrections d'inventaire, livraisons hors site confirmées...) sur l'emplacement
+  // correspondant à leur emballage. Purement informatif côté portail (lecture seule).
+  const ajustData = ajustementsSnap.val() || {};
+  const mouvements = Object.entries(ajustData)
+    .filter(([, a]) => a && a.emplacement === EMPLACEMENT_STOCK[depot])
+    .map(([id, a]) => ({ id, ...a }))
+    .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+    .slice(0, 50);
+
+  // Commandes de cartons livrées directement chez Andès (hors site), pas encore confirmées par
+  // le prestataire — jusqu'ici, la confirmation ne passait que par un lien email
+  // (api/confirm-livraison.js) ; on l'affiche aussi ici pour qu'il puisse la faire directement
+  // depuis son espace, sans dépendre de l'email.
+  const cartonsData = cartonsSnap ? (cartonsSnap.val() || {}) : {};
+  const cartonsEnAttente = Object.entries(cartonsData)
+    .filter(([, c]) => c && c.horsSite && !c.confirmationPresta?.confirme && c.statut !== "annulé")
+    .map(([id, c]) => ({ id, ...c }))
+    .sort((a, b) => (a.dateLivraisonPrevue || "").localeCompare(b.dateLivraisonPrevue || ""));
+
+  return res.status(200).json({ demandes, stock: typeof stockVal === "number" ? stockVal : 0, reajustements, mouvements, cartonsEnAttente });
 }
 
 // Un seul geste côté presta ("Repartie" sur le portail) = une seule écriture Firebase et un seul
@@ -145,6 +191,86 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
   return { success: true };
 }
 
+// Version "plusieurs à la fois" de confirmerRepartie — pour les jours où le presta a plusieurs
+// références prêtes en même temps (voir FormRepartieGroupee côté client) : une écriture Firebase
+// par référence cochée, mais UN SEUL mail groupé listant tout, plutôt qu'un mail par référence.
+// Un créneau optionnel signale, dans ce même mail, dans combien de temps le reste (les références
+// non cochées) sera prêt — purement informatif, rien n'est écrit en base pour les non-cochées.
+async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (items.length === 0) {
+    throw Object.assign(new Error("Aucune référence sélectionnée"), { statusCode: 400 });
+  }
+  const commentaire = (body.commentaire || "").trim() || null;
+  const creneauReste = (body.creneauReste || "").trim() || null;
+  const g = parseInt(body.nbPalettes?.grandes);
+  const d = parseInt(body.nbPalettes?.demi);
+  const nbPalettes = (Number.isFinite(g) && g > 0) || (Number.isFinite(d) && d > 0)
+    ? { grandes: Number.isFinite(g) ? g : 0, demi: Number.isFinite(d) ? d : 0 }
+    : null;
+  const date = nowFr();
+
+  const traitees = [];
+  for (const item of items) {
+    const id = item?.id;
+    const quantite = parseInt(item?.quantite);
+    if (!id || !Number.isFinite(quantite) || quantite < 0) continue;
+    const snap = await adminDb.ref(`reconditionnement_demandes/${id}`).once("value");
+    const demande = snap.val();
+    if (!demande || demande.depot !== depot) continue;
+    const attendu = typeof demande.nbColisAEntrer === "number" ? demande.nbColisAEntrer : null;
+    const ecart = attendu != null ? quantite - attendu : null;
+    const transporteur = (demande.transporteurNom || "").trim() || "-";
+    await adminDb.ref(`reconditionnement_demandes/${id}`).update({
+      retourPresta: {
+        confirme: true,
+        date,
+        quantiteDeclaree: quantite,
+        ecart,
+        commentaire,
+        parti: { confirme: true, date, transporteur, ...(nbPalettes ? { nbPalettes } : {}) },
+      },
+    });
+    traitees.push({ id, demande, quantite, ecart, transporteur });
+  }
+
+  if (traitees.length === 0) {
+    throw Object.assign(new Error("Aucune demande valide trouvée"), { statusCode: 404 });
+  }
+
+  // Un seul mail groupé — best effort, ne bloque pas la confirmation si l'envoi échoue.
+  try {
+    const lignesHtml = traitees.map(t => {
+      const ref = t.demande.numero || t.id;
+      const ecartHtml = t.ecart ? ` (⚠️ écart de ${t.ecart > 0 ? "+" : ""}${t.ecart} vs prévu)` : "";
+      return `<li><strong>${ref}</strong> — ${t.demande.articleFini || t.demande.articleVrac || "—"} : ${t.quantite} colis${ecartHtml}</li>`;
+    }).join("");
+    const transporteursUniques = [...new Set(traitees.map(t => t.transporteur).filter(t => t && t !== "-"))];
+    const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
+    const creneauHtml = creneauReste
+      ? `<p style="margin-top:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">🕒 <strong>Reste à venir :</strong> le reste de la production sera prêt ${creneauReste}.</p>`
+      : "";
+    await creerMailer().sendMail({
+      from: "Moorea Agréage <agreage@moorea.fr>",
+      to: PROD_PRETE_EMAILS.join(","),
+      subject: `📦 ${traitees.length} production${traitees.length > 1 ? "s" : ""} prête${traitees.length > 1 ? "s" : ""} à récupérer — ${DEPOT_LABEL[depot]}`,
+      html: `
+        <p>📦 <strong>${DEPOT_LABEL[depot]}</strong> a signalé ${traitees.length} production${traitees.length > 1 ? "s" : ""} prête${traitees.length > 1 ? "s" : ""}, à aller chercher.</p>
+        <ul>${lignesHtml}</ul>
+        <ul>
+          ${transporteursUniques.length ? `<li><strong>Transporteur${transporteursUniques.length > 1 ? "s" : ""} :</strong> ${transporteursUniques.join(", ")}</li>` : ""}
+          ${palettesHtml}
+          ${commentaire ? `<li><strong>Commentaire :</strong> ${commentaire}</li>` : ""}
+        </ul>
+        ${creneauHtml}`,
+    });
+  } catch (emailErr) {
+    console.error("Erreur envoi email prod prête groupée (portail):", emailErr);
+  }
+
+  return { success: true, nb: traitees.length };
+}
+
 async function handleDeclarerPerte(adminDb, depot, id, body) {
   const quantite = parseInt(body.quantite);
   if (!Number.isFinite(quantite) || quantite <= 0) {
@@ -199,6 +325,70 @@ async function handleDeclarerPerte(adminDb, depot, id, body) {
     });
   } catch (emailErr) {
     console.error("Erreur envoi email perte reconditionnement (portail):", emailErr);
+  }
+
+  return { success: true };
+}
+
+// Le prestataire (Andès) confirme lui-même, depuis son espace, la réception d'une commande de
+// cartons livrée directement chez lui — même geste que le lien de confirmation par email (voir
+// api/confirm-livraison.js), mais fait ici via une écriture Firebase admin plutôt qu'un fetch
+// PATCH direct, pour rester dans le même pattern que le reste de ce fichier.
+async function handleConfirmerLivraisonCarton(adminDb, depot, id) {
+  if (depot !== "andes") {
+    throw Object.assign(new Error("Cette action n'est disponible que pour Andès"), { statusCode: 400 });
+  }
+  const snap = await adminDb.ref(`prestataires_cartons/${id}`).once("value");
+  const commande = snap.val();
+  if (!commande) {
+    throw Object.assign(new Error("Commande introuvable"), { statusCode: 404 });
+  }
+  if (commande.confirmationPresta?.confirme) {
+    return { success: true, dejaConfirme: true };
+  }
+  const date = nowFr();
+  await adminDb.ref(`prestataires_cartons/${id}`).update({
+    statut: "reçu",
+    dateReception: new Date().toISOString().split("T")[0],
+    confirmationPresta: { confirme: true, date },
+  });
+
+  // Même logique que confirm-livraison.js : une livraison hors site confirmée est LE moment
+  // réel de réception, donc on fait avancer le compteur de stock (anticipation, pas un suivi
+  // aller/retour strict comme les caisses IFCO), avec traçabilité dans stock_ajustements.
+  if (Array.isArray(commande.lignes)) {
+    const qteBabyBlanc = commande.lignes.reduce((sum, l) => {
+      if (l?.type !== "BABY BLANC") return sum;
+      return sum + (parseInt(l.nbPalettes) || 0) * CARTONS_PAR_PALETTE["BABY BLANC"];
+    }, 0);
+    if (qteBabyBlanc > 0) {
+      try {
+        const stockSnap = await adminDb.ref("stock_carton_andes/baby_blanc").once("value");
+        const ancienneValeur = typeof stockSnap.val() === "number" ? stockSnap.val() : 0;
+        const nouvelleValeur = ancienneValeur + qteBabyBlanc;
+        await adminDb.ref("stock_carton_andes/baby_blanc").set(nouvelleValeur);
+        await adminDb.ref("stock_ajustements").push({
+          emplacement: EMPLACEMENT_STOCK.andes,
+          ancienneValeur, nouvelleValeur,
+          raison: `Livraison confirmée par le prestataire depuis son espace (commande #${id})`,
+          date, timestamp: Date.now(),
+        });
+      } catch (err) {
+        console.error("Erreur ajustement stock Baby Blanc (portail):", err);
+      }
+    }
+  }
+
+  // Best effort : marque aussi l'arrivage lié (traçabilité), sans bloquer si ça échoue.
+  try {
+    const arrSnap = await adminDb.ref("arrivages").orderByChild("carton_commande_id").equalTo(id).once("value");
+    const arrData = arrSnap.val();
+    if (arrData) {
+      const arrId = Object.keys(arrData)[0];
+      if (arrId) await adminDb.ref(`arrivages/${arrId}`).update({ confirmationPresta: { confirme: true, date } });
+    }
+  } catch (err) {
+    console.error("Erreur maj arrivage lié (portail):", err);
   }
 
   return { success: true };
@@ -281,6 +471,10 @@ export default async function handler(req, res) {
         const out = await handleConfirmerRepartie(adminDb, depot, id, body);
         return res.status(200).json(out);
       }
+      if (action === "confirmerRepartieGroupee") {
+        const out = await handleConfirmerRepartieGroupee(adminDb, depot, body);
+        return res.status(200).json(out);
+      }
       if (action === "declarerPerte") {
         if (!id) return res.status(400).json({ error: "id requis" });
         const out = await handleDeclarerPerte(adminDb, depot, id, body);
@@ -288,6 +482,11 @@ export default async function handler(req, res) {
       }
       if (action === "demanderReajustement") {
         const out = await handleDemanderReajustement(adminDb, depot, body);
+        return res.status(200).json(out);
+      }
+      if (action === "confirmerLivraisonCarton") {
+        if (!id) return res.status(400).json({ error: "id requis" });
+        const out = await handleConfirmerLivraisonCarton(adminDb, depot, id);
         return res.status(200).json(out);
       }
       return res.status(400).json({ error: "Action inconnue" });

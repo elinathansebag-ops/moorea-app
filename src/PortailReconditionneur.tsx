@@ -87,6 +87,28 @@ type ReajustementDemande = {
   traiteDate?: string;
 };
 
+// Une ligne d'historique de mouvement de stock (ajustement manuel côté Moorea, ou livraison hors
+// site confirmée) — voir stock_ajustements dans Firebase et api/portail-reconditionneur.js.
+type MouvementStock = {
+  id: string;
+  ancienneValeur: number;
+  nouvelleValeur: number;
+  raison: string;
+  date: string;
+  timestamp?: number;
+};
+
+// Commande de cartons livrée directement chez Andès (hors site), pas encore confirmée par le
+// prestataire — voir PrestatairesModule.tsx (LIEUX_CARTONS) et api/confirm-livraison.js pour le
+// circuit historique par lien email.
+type CartonEnAttente = {
+  id: string;
+  lignes: { type: string; nbPalettes: number }[];
+  dateLivraisonPrevue: string;
+  creneau?: string;
+  lieuLivraison?: string;
+};
+
 // Redimensionne/compresse une photo prise au téléphone avant de l'envoyer (même logique que
 // api/declarer-perte.js, portée côté React pour rester dans cette page).
 function resizeImage(file: File): Promise<string> {
@@ -174,6 +196,10 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [stock, setStock] = useState<number | null>(null);
   const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
+  const [mouvements, setMouvements] = useState<MouvementStock[]>([]);
+  const [cartonsEnAttente, setCartonsEnAttente] = useState<CartonEnAttente[]>([]);
+  const [mouvementsOuvert, setMouvementsOuvert] = useState(false);
+  const [confirmationCartonEnCours, setConfirmationCartonEnCours] = useState<string | null>(null);
   const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
   const [perteOuvertePour, setPerteOuvertePour] = useState<string | null>(null);
   const [repartieOuvertPour, setRepartieOuvertPour] = useState<string | null>(null);
@@ -192,6 +218,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       setDemandes(Array.isArray(data.demandes) ? data.demandes : []);
       setStock(typeof data.stock === "number" ? data.stock : 0);
       setReajustements(Array.isArray(data.reajustements) ? data.reajustements : []);
+      setMouvements(Array.isArray(data.mouvements) ? data.mouvements : []);
+      setCartonsEnAttente(Array.isArray(data.cartonsEnAttente) ? data.cartonsEnAttente : []);
       setChargeState("ready");
     } catch {
       setChargeState("error");
@@ -310,6 +338,26 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
     }
   }
 
+  // Confirme la réception d'une commande de cartons livrée hors site — même geste que le lien de
+  // confirmation par email (api/confirm-livraison.js), mais fait directement depuis l'espace du
+  // reconditionneur, sans dépendre de l'ouverture d'un email.
+  async function confirmerLivraisonCarton(id: string) {
+    setConfirmationCartonEnCours(id);
+    try {
+      const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "confirmerLivraisonCarton" }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await charger();
+    } catch {
+      alert("Erreur de confirmation, réessaie ou contacte Moorea directement.");
+    } finally {
+      setConfirmationCartonEnCours(null);
+    }
+  }
+
   async function demanderReajustement(quantiteProposee: number, raison: string) {
     setEnvoiEnCours(true);
     try {
@@ -402,6 +450,59 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
             ))}
           </Card>
         )}
+
+        {cartonsEnAttente.length > 0 && (
+          <Card style={{ background: "#fffbeb", borderColor: "#fde68a" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 10 }}>
+              📦 Livraison{cartonsEnAttente.length > 1 ? "s" : ""} à confirmer ({cartonsEnAttente.length})
+            </div>
+            {cartonsEnAttente.map(c => (
+              <div key={c.id} style={{ background: "#fff", border: "1.5px solid #fde68a", borderRadius: 10, padding: "10px 12px", marginBottom: 8 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.ink }}>
+                  {c.lignes?.map(l => `${l.nbPalettes} × ${l.type}`).join(" + ") || "Cartons"}
+                </div>
+                <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>
+                  Livraison prévue le {c.dateLivraisonPrevue ? new Date(c.dateLivraisonPrevue).toLocaleDateString("fr-FR") : "—"}{c.creneau ? ` · ${c.creneau}` : ""}
+                </div>
+                <button
+                  onClick={() => confirmerLivraisonCarton(c.id)}
+                  disabled={confirmationCartonEnCours === c.id}
+                  style={{ marginTop: 8, padding: "8px 14px", borderRadius: 8, border: "none", background: confirmationCartonEnCours === c.id ? "#e8dcc0" : "#15803d", color: "#fff", fontSize: 12, fontWeight: 700, cursor: confirmationCartonEnCours === c.id ? "not-allowed" : "pointer", width: "100%" }}
+                >
+                  {confirmationCartonEnCours === c.id ? "⏳ Envoi..." : "✓ J'ai bien reçu cette commande"}
+                </button>
+              </div>
+            ))}
+          </Card>
+        )}
+
+        <Card>
+          <div onClick={() => setMouvementsOuvert(v => !v)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#92722c", textTransform: "uppercase", letterSpacing: 0.3 }}>
+              🧾 Historique des mouvements {EMBALLAGE_LABEL[depot]}
+            </span>
+            <span style={{ fontSize: 14, color: "#92722c", transform: mouvementsOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+          </div>
+          {mouvementsOuvert && (
+            mouvements.length === 0 ? (
+              <p style={{ margin: "10px 0 0", fontSize: 12, color: COLORS.gray }}>Aucun mouvement enregistré pour l'instant.</p>
+            ) : (
+              <div style={{ marginTop: 10 }}>
+                {mouvements.map(m => (
+                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "8px 0", borderTop: `1px solid ${COLORS.border}` }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: COLORS.ink }}>{m.raison}</div>
+                      <div style={{ fontSize: 10.5, color: COLORS.gray, marginTop: 2 }}>{m.date}</div>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: m.nouvelleValeur >= m.ancienneValeur ? "#15803d" : "#b91c1c", whiteSpace: "nowrap" }}>
+                      {m.ancienneValeur} → {m.nouvelleValeur}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </Card>
 
         {demandes.length === 0 && (
           <Card style={{ textAlign: "center", color: COLORS.gray, fontSize: 13 }}>Rien ici pour l'instant.</Card>
