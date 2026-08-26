@@ -1702,7 +1702,17 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0 14px" }}>
                 <F label="Dépôt" required>
                   <div style={{ position: "relative" }}>
-                    <select value={depot} onChange={e => setDepot(e.target.value as Depot | "")} style={{ paddingRight: 30, color: depot ? undefined : "#9ca3af" }}>
+                    <select value={depot} onChange={e => {
+                      const val = e.target.value as Depot | "";
+                      setDepot(val);
+                      // Andès livre lui-même en chariot électrique (pas un vrai transporteur
+                      // externe) — on présélectionne ce "transporteur" automatiquement pour ne
+                      // pas avoir à le rechoisir à chaque demande vers Andès.
+                      if (val === "andes") {
+                        const chariot = transporteurs.find(t => /chariot/i.test(t.nom));
+                        if (chariot) setTransporteurId(chariot.id);
+                      }
+                    }} style={{ paddingRight: 30, color: depot ? undefined : "#9ca3af" }}>
                       <option value="" disabled>— Choisir un dépôt —</option>
                       <option value="nlt">NLT</option>
                       <option value="andes">Andès</option>
