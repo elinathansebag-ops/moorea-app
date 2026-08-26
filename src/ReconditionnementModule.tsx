@@ -85,6 +85,10 @@ type Demande = {
   // Commentaire libre (ex : EAN à utiliser) saisi à la création, transmis à la fois à l'entrepôt
   // Moorea et au reconditionneur — imprimé dans les deux zones du bon.
   commentaireEan?: string;
+  // Faut-il fournir des étiquettes pour cette production ? Coché à la création — si oui, un
+  // encart dédié est imprimé sur le bon (zone reconditionneur) avec la quantité, le nom de
+  // l'article et le n° de lot à faire figurer sur les étiquettes.
+  fournirEtiquettes?: boolean;
   transporteurId?: string;
   transporteurNom?: string;
   // Le "bon" propre, généré par l'app (jsPDF) à partir des champs structurés de la demande, avec
@@ -351,6 +355,9 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   // Commentaire libre (typiquement un EAN à utiliser) — transmis à la fois à l'entrepôt et au
   // reconditionneur, donc imprimé dans les deux zones. N'ajoute de la hauteur que s'il y en a un.
   const commentExtra = demande.commentaireEan ? 12 : 0;
+  // Encart "étiquettes à fournir" — uniquement en zone 2 (reconditionneur), puisque c'est lui qui
+  // étiquette. N'ajoute de la hauteur que si la case a été cochée à la création.
+  const etiquetteExtra = demande.fournirEtiquettes ? 26 : 0;
 
   // ─── ZONE 1 — ENTREPÔT MOOREA (bandeau plein noir) ───
   const zone1Top = y, zone1H = 116 + commentExtra;
@@ -405,7 +412,7 @@ async function genererBonPdf(demande: Demande): Promise<string> {
 
   // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) : encadré simple, sans bandeau plein, pour bien
   // se distinguer de la zone 1 même sans couleur ───
-  const zone2Top = y, zone2H = 84 + commentExtra;
+  const zone2Top = y, zone2H = 84 + commentExtra + etiquetteExtra;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.6); doc.rect(M, zone2Top, CW, zone2H, "S");
   doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
   doc.text(`${DEPOT_LABEL[demande.depot].toUpperCase()} — À PRÉPARER ET RETOURNER`, M + 8, zone2Top + 10);
@@ -423,6 +430,18 @@ async function genererBonPdf(demande: Demande): Promise<string> {
     doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
     doc.text(demande.commentaireEan, col1, yy2 + 5, { maxWidth: CW - 16 });
     yy2 += commentExtra;
+  }
+  if (demande.fournirEtiquettes) {
+    doc.setFillColor(255, 251, 235); doc.setDrawColor(200, 168, 75); doc.setLineWidth(0.4);
+    doc.roundedRect(M + 8, yy2 - 4, CW - 16, etiquetteExtra - 6, 2, 2, "FD");
+    doc.setTextColor(146, 64, 14); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+    doc.text("🏷 ÉTIQUETTES À FOURNIR", M + 12, yy2 + 3);
+    doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(
+      `Quantité : ${demande.nbColisAEntrer != null ? demande.nbColisAEntrer : "-"}   ·   Article : ${demande.articleFini}   ·   Lot : ${demande.lot || "-"}`,
+      M + 12, yy2 + 10, { maxWidth: CW - 24 }
+    );
+    yy2 += etiquetteExtra;
   }
   doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.3);
   doc.text("Le retour sera pointé par Moorea à réception.", M + 8, yy2, { maxWidth: CW - 16 });
@@ -598,6 +617,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   // au reconditionneur — imprimé sur le bon dans les deux zones (voir genererBonPdf) puisque les
   // deux parties le lisent séparément.
   const [commentaireEan, setCommentaireEan] = useState("");
+  const [fournirEtiquettes, setFournirEtiquettes] = useState(false);
   const [transporteurId, setTransporteurId] = useState("");
   const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
   const [editDemandeId, setEditDemandeId] = useState<string | null>(null);
@@ -985,6 +1005,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setEmballageIfcoManuel(false);
     setRetourIfco(false);
     setCommentaireEan("");
+    setFournirEtiquettes(false);
     setTransporteurId("");
     setPdfFile(null);
     setEditDemandeId(null);
@@ -1016,6 +1037,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     setRetourIfco(d.retourEnIfco ?? /ifco/i.test(d.articleFini || ""));
     setCartonsBabyBlancEnvoyes(d.cartonsBabyBlancEnvoyes != null ? String(d.cartonsBabyBlancEnvoyes) : "");
     setCommentaireEan(d.commentaireEan || "");
+    setFournirEtiquettes(d.fournirEtiquettes ?? false);
     setTransporteurId(d.transporteurId || "");
     setPdfFile(d.pdfGeslotBase64 ? { nom: d.pdfGeslotNom || "geslot.pdf", base64: d.pdfGeslotBase64 } : null);
     setActiveTab("nouvelle");
@@ -1205,6 +1227,7 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       cartonsBabyBlancEnvoyes: depot === "andes" ? cartons : undefined,
       retourEnIfco: depot === "nlt" ? retourIfco : false,
       commentaireEan: commentaireEan.trim() || undefined,
+      fournirEtiquettes,
       transporteurId,
       transporteurNom: transporteur?.nom,
       // Le scan Geslot d'origine n'est gardé que comme archive / pont de données — le "bon"
@@ -1841,6 +1864,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                       </div>
                     )}
 
+                    {d.fournirEtiquettes && (
+                      <div style={{ fontSize: 12, color: "#92400e", background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+                        🏷️ Étiquettes à fournir — {d.nbColisAEntrer ?? "?"} colis · <b>{d.articleFini}</b> · lot {d.lot || "-"}
+                      </div>
+                    )}
+
                     {(d.pdfBase64 || d.pdfGeslotBase64) && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         {d.pdfGeslotBase64 && (
@@ -2245,6 +2274,31 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 <input type="text" value={commentaireEan} onChange={e => setCommentaireEan(e.target.value)} placeholder="ex : utiliser l'EAN 3760123456789" />
                 <span style={{ fontSize: 10.5, color: "#9ca3af" }}>Imprimé sur le bon, visible dans les deux zones (entrepôt + reconditionneur)</span>
               </F>
+
+              <div
+                role="checkbox"
+                aria-checked={fournirEtiquettes}
+                onClick={() => setFournirEtiquettes(v => !v)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, margin: "2px 0 10px", padding: "10px 14px",
+                  borderRadius: 10, cursor: "pointer",
+                  border: `2px solid ${fournirEtiquettes ? COLORS.amber : COLORS.gray200}`,
+                  background: fournirEtiquettes ? COLORS.amberLight : "#fff",
+                  transition: "background 0.15s, border-color 0.15s",
+                }}
+              >
+                <span style={{ fontSize: 13, color: fournirEtiquettes ? "#92400e" : COLORS.gray700, fontWeight: 800 }}>
+                  {fournirEtiquettes ? "✓" : "🏷️"} Faut-il fournir des étiquettes ?
+                </span>
+                <span style={{ fontSize: 10.5, color: fournirEtiquettes ? "#92400e" : "#9ca3af", marginLeft: "auto", whiteSpace: "nowrap" }}>
+                  {fournirEtiquettes ? "Oui — imprimé sur le bon (zone reconditionneur)" : "Non"}
+                </span>
+              </div>
+              {fournirEtiquettes && (
+                <p style={{ margin: "-6px 0 10px", fontSize: 10.5, color: "#9ca3af" }}>
+                  Le bon indiquera à {DEPOT_LABEL[depot]} d'étiqueter avec la quantité, le nom de l'article et le n° de lot ci-dessus.
+                </p>
+              )}
             </div>
 
             <div className="card" style={{ padding: "12px 16px", marginBottom: 10 }}>
