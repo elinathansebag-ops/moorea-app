@@ -5,10 +5,11 @@ export const config = { runtime: "nodejs" };
 
 // ─── API de l'espace reconditionneur public (voir src/PortailReconditionneur.tsx) ───
 // Contrairement au premier essai (lecture/écriture directe depuis le navigateur via le SDK
-// Firebase client + connexion anonyme), on est passés par un endpoint serveur classique, qui
-// lit/écrit avec le compte de service (voir api/_firebaseAdmin.js). Ça évite de dépendre d'un
-// réglage Firebase Auth (fournisseur "Anonymous" activé ou pas) et des règles de sécurité, dont
-// on a déjà eu deux mauvaises surprises ce mois-ci (lecture ET écriture anonymes refusées).
+// Firebase client + connexion anonyme), on passe par un endpoint serveur classique qui lit/écrit
+// via api/_firebaseAdmin.js — un simple fetch(), sans compte de service ni secret, parce que les
+// chemins utilisés ici (reconditionnement_demandes, reajustements_stock_demandes, ifco_stock/levels,
+// stock_carton_andes) sont ouverts explicitement dans les règles de sécurité Firebase, sur le même
+// principe que printQueue/printRelayStatus. Voir api/_firebaseAdmin.js pour le pourquoi.
 //
 // GET  ?depot=nlt|andes            → { demandes: [...], stock: number, reajustements: [...] }
 // POST ?depot=nlt|andes  body:

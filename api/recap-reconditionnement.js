@@ -16,9 +16,10 @@ export const config = { runtime: "nodejs" };
 // temps réel — ce endpoint ne relit donc jamais reconditionnement_demandes. Par contre, marquer
 // les demandes comme envoyées (emailEnvoye: true) est une ÉCRITURE, et on a constaté en prod que
 // même les écritures anonymes (PATCH REST sans authentification) sont refusées par Firebase avec
-// un 401 — pas seulement les lectures comme on le pensait au départ. Ce PATCH passe donc
-// maintenant par le compte de service (voir api/_firebaseAdmin.js), qui contourne les règles de
-// sécurité au lieu d'essayer de deviner ce qu'elles autorisent.
+// un 401 — pas seulement les lectures comme on le pensait au départ. Ce PATCH passe donc par
+// api/_firebaseAdmin.js, qui suppose que reconditionnement_demandes est ouvert en lecture/écriture
+// dans les règles de sécurité Firebase (comme printQueue/printRelayStatus) — voir ce fichier pour
+// le pourquoi (compte de service bloqué par une politique Google, secret historique déprécié).
 
 const DATABASE_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
 // "app.moorea.fr" n'existe pas (DNS_PROBE_FINISHED_NXDOMAIN), et "moorea-qualite.vercel.app" non

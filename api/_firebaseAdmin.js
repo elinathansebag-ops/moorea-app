@@ -1,37 +1,27 @@
-// ─── Authentification serveur via le secret historique de la Realtime Database ───
-// Premier essai : un compte de service (clé privée), qui contourne les règles de sécurité —
-// mais la création de clés est bloquée sur ce projet par une politique d'organisation Google
-// ("La création de clés n'est pas autorisée sur ce compte de service", constaté en prod le
-// 26/08/2026 dans Firebase Console → Comptes de service). Plutôt que de batailler avec cette
-// politique (elle appartient à l'admin Google Workspace, pas à nous), on utilise le SECRET
-// HISTORIQUE de la base — un simple token, généré une fois pour toutes, qui contourne lui aussi
-// les règles de sécurité, mais sans passer par un compte de service.
+// ─── Accès serveur à Firebase, SANS secret ni compte de service ───
+// Deux pistes essayées avant celle-ci ont échoué :
+//   1. Compte de service (SDK Admin) → création de clé bloquée par une politique d'organisation
+//      Google ("La création de clés n'est pas autorisée...", vu en prod le 26/08/2026).
+//   2. Secret historique de la base (?auth=SECRET) → marche, mais Firebase l'affiche comme
+//      "obsolète" dans la console et recommande justement le SDK Admin (donc on tourne en rond).
 //
-// Où le trouver : Firebase Console → Realtime Database → ⚙️ (roue crantée) à côté du nom de la
-// base → "Secrets" (ou, comme vu dans la capture d'écran du 26/08, le raccourci "Secrets de la
-// base de données" dans la barre latérale de Paramètres du projet → Comptes de service).
+// La vraie solution : ouvrir l'accès directement dans les RÈGLES DE SÉCURITÉ Firebase, sur les
+// quelques chemins dont le reconditionnement a besoin — exactement le même principe que
+// "printQueue" / "printRelayStatus", déjà ouverts en public dans les règles actuelles (vues le
+// 26/08/2026 : la règle par défaut exige un compte @moorea.fr, mais un chemin enfant peut avoir
+// sa propre règle ".read"/".write": true qui prend le dessus pour ce chemin précis). Avec ça,
+// plus besoin d'aucune authentification côté serveur : un simple fetch() suffit, comme pour
+// n'importe quel autre endpoint public de ce dossier (confirm-livraison.js, etc.).
 //
-// Variable d'environnement Vercel requise : FIREBASE_DB_SECRET = (coller le secret copié)
-//   → Vercel → Project Settings → Environment Variables → Production ET Preview → redéployer.
-//
-// Le reste du code (recap-reconditionnement.js, portail-reconditionneur.js) appelle
-// getAdminDb().ref(chemin).once("value") / .update(...) / .push(...) — exactement la même forme
-// qu'avec le SDK Admin — donc rien d'autre n'a eu besoin de changer que ce fichier.
+// Chemins qui doivent être ouverts dans les règles Firebase (Realtime Database → Rules) pour que
+// ce fichier fonctionne : reconditionnement_demandes (lecture + écriture), reajustements_stock_demandes
+// (lecture + écriture), ifco_stock/levels (lecture), stock_carton_andes (lecture). Voir le message
+// donné à l'utilisateur avec le JSON complet à coller dans la console.
 
 const DATABASE_URL = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
 
-function getSecret() {
-  const secret = process.env.FIREBASE_DB_SECRET;
-  if (!secret) {
-    throw new Error(
-      "Variable d'environnement FIREBASE_DB_SECRET manquante sur Vercel — voir le commentaire en haut de api/_firebaseAdmin.js pour la configurer."
-    );
-  }
-  return secret;
-}
-
 function urlPour(path) {
-  return `${DATABASE_URL}/${path}.json?auth=${encodeURIComponent(getSecret())}`;
+  return `${DATABASE_URL}/${path}.json`;
 }
 
 function makeRef(path) {
