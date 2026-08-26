@@ -307,6 +307,14 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     // peuvent partir avant que React n'ait eu le temps de désactiver le bouton (disabled={saving}
     // ne suffit pas toujours) — ce qui déclenchait parfois une double impression d'étiquette.
     if (saving) return;
+    // Écart de quantité sur un retour de reconditionnement : on ouvre directement l'alerte
+    // WhatsApp au moment de la validation, sans attendre que quelqu'un pense à cliquer sur le
+    // petit bouton "📲 Prévenir" à côté du champ colis — sinon ça passe trop facilement inaperçu.
+    // Appelé ici, avant tout `await`, pour rester dans le geste utilisateur (clic sur Valider) et
+    // éviter que le navigateur bloque l'ouverture de la fenêtre comme un pop-up indésirable.
+    if (isRetourRecond && hasEcartColis) {
+      alerterEcartWhatsApp();
+    }
     setSaving(true);
     // Pour un retour de reconditionnement, un écart de colis n'est PAS un litige : le tri fait
     // que le poids ne tombe jamais exactement sur un compte rond (ex: pas moyen de faire des
