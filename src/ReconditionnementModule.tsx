@@ -103,6 +103,11 @@ type Demande = {
   entrepotPretPar?: string;
   entrepotPretDate?: string;
   nbPalettesDepart?: NbPalettes;
+  // Quand plusieurs demandes partent d'un coup avec un seul total de palettes saisi (bouton
+  // "Tout marquer parti"), elles partagent ce même id : sert à ne compter le total qu'une seule
+  // fois dans les statistiques par transporteur (voir totalParties), au lieu de le compter en
+  // double/triple pour chaque demande du groupe.
+  nbPalettesDepartGroupeId?: string;
   departDate?: string;
   retour?: RetourInfo;
   // Pertes qualité déclarées par le reconditionneur lui-même (formulaire public, voir
@@ -582,6 +587,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
 
   // Modale "prêt" (validation entrepôt étape 1)
   const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
+  // Modale "Tout marquer parti" groupée (un seul total de palettes pour tout un dépôt/jour,
+  // peu importe le statut de départ de chaque demande — "en attente" ou déjà "prêt")
+  const [groupePartiIds, setGroupePartiIds] = useState<string[] | null>(null);
+  const [groupePartiGrandes, setGroupePartiGrandes] = useState("");
+  const [groupePartiDemi, setGroupePartiDemi] = useState("");
   // Aperçu PDF (bon de prépa ou scan Geslot) dans une modale avec iframe, plutôt qu'un lien
   // <a target="_blank"> vers une data:URI — Chrome bloque/redirige la navigation top-level
   // vers un data: URL (d'où le renvoi vers une page Google constaté par l'utilisateur), alors
@@ -1408,11 +1418,12 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
   }
 
   // Cœur de "marquer parti", sans notification — utilisé aussi bien pour une demande seule
-  // (marquerParti) que pour plusieurs à la fois (marquerPartiGroupe), qui n'affiche qu'une seule
-  // notification consolidée à la fin plutôt qu'une par demande.
-  async function marquerPartiSilencieux(id: string) {
+  // (marquerParti) que pour plusieurs à la fois (marquerToutPretPuisPartiGroupe), qui n'affiche
+  // qu'une seule notification consolidée à la fin plutôt qu'une par demande. Accepte des champs
+  // supplémentaires (extra) pour le cas groupé, qui doit aussi écrire nbPalettesDepart etc.
+  async function marquerPartiSilencieux(id: string, extra?: Record<string, any>) {
     const demande = demandes.find(d => d.id === id);
-    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "parti", departDate: nowFr() });
+    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "parti", departDate: nowFr(), ...(extra || {}) });
 
     // Le retour n'est plus pointé depuis une modale ici : on crée l'arrivage attendu
     // correspondant, comme n'importe quelle livraison, pour qu'il apparaisse directement dans
@@ -1469,12 +1480,20 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
     notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
   }
 
-  // Version "plusieurs à la fois" de marquerParti — pour un jour où un dépôt a plusieurs
-  // demandes "prêt" en même temps (transporteur unique venu tout charger d'un coup) : évite de
-  // cliquer "Marquer parti" séparément sur chaque carte, une seule notification consolidée.
-  async function marquerPartiGroupe(ids: string[]) {
+  // Version "tout d'un coup, peu importe le statut" : couvre à la fois les demandes déjà "prêt"
+  // ET celles encore "en attente" (l'entrepôt n'a pas forcément cliqué "Marquer prêt" une par
+  // une avant que le camion charge tout). Un seul total de palettes saisi pour tout le groupe
+  // (pas de détail par demande) — on tague chaque demande avec le même nbPalettesDepartGroupeId
+  // pour que le total ne soit compté qu'une fois dans les statistiques par transporteur.
+  async function marquerToutPretPuisPartiGroupe(ids: string[], grandes: number, demi: number) {
+    const groupeId = `grp_${Date.now()}_${ids[0]}`;
     for (const id of ids) {
-      await marquerPartiSilencieux(id);
+      await marquerPartiSilencieux(id, {
+        entrepotPretPar: userName || "Moorea",
+        entrepotPretDate: nowFr(),
+        nbPalettesDepart: { grandes, demi },
+        nbPalettesDepartGroupeId: groupeId,
+      });
     }
     notify("success", `🚚 ${ids.length} demande${ids.length > 1 ? "s" : ""} marquée${ids.length > 1 ? "s" : ""} partie${ids.length > 1 ? "s" : ""} — les retours apparaîtront dans « Pointer arrivage »`);
   }
@@ -1855,7 +1874,11 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                                 if (demandesJourDepot.length === 0) return null;
                                 const cleDepot = `${jourStr}::${dep}`;
                                 const depotOuvert = !depotsFermesDemandes.has(cleDepot);
-                                const pretsDuGroupe = demandesJourDepot.filter(d => d.statut === "prêt");
+                                // "Tout marquer parti" couvre maintenant aussi bien les demandes déjà
+                                // "prêt" que celles encore "en attente" — un seul bouton, un seul total
+                                // de palettes demandé (voir marquerToutPretPuisPartiGroupe), plus besoin
+                                // de cliquer "Marquer prêt" une par une avant que le camion charge tout.
+                                const aEnvoyerDuGroupe = demandesJourDepot.filter(d => d.statut === "prêt" || d.statut === "en attente");
                                 return (
                                   <div key={dep} style={{ marginBottom: 10 }}>
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0 }}>
@@ -1865,12 +1888,16 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                                           {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
                                         </span>
                                       </div>
-                                      {pretsDuGroupe.length > 1 && (
+                                      {aEnvoyerDuGroupe.length > 1 && (
                                         <button
-                                          onClick={() => marquerPartiGroupe(pretsDuGroupe.map(d => d.id))}
+                                          onClick={() => {
+                                            setGroupePartiIds(aEnvoyerDuGroupe.map(d => d.id));
+                                            setGroupePartiGrandes("");
+                                            setGroupePartiDemi("");
+                                          }}
                                           style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                                         >
-                                          🚚 Tout marquer parti ({pretsDuGroupe.length})
+                                          🚚 Tout marquer parti ({aEnvoyerDuGroupe.length})
                                         </button>
                                       )}
                                     </div>
@@ -2505,7 +2532,18 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                     const tb = parseFrDate(b.departDate || b.dateCreationFr)?.getTime() || 0;
                     return tb - ta;
                   });
-                  const totalParties = lignes.reduce((s, d) => s + (d.nbPalettesDepart ? (d.nbPalettesDepart.grandes || 0) + (d.nbPalettesDepart.demi || 0) : 0), 0);
+                  // Dédoublonne par nbPalettesDepartGroupeId : quand un total de palettes a été
+                  // saisi une seule fois pour tout un groupe ("Tout marquer parti"), il est
+                  // écrit sur chaque demande du groupe mais ne doit être compté qu'une fois ici.
+                  const groupesDejaComptes = new Set<string>();
+                  const totalParties = lignes.reduce((s, d) => {
+                    if (!d.nbPalettesDepart) return s;
+                    if (d.nbPalettesDepartGroupeId) {
+                      if (groupesDejaComptes.has(d.nbPalettesDepartGroupeId)) return s;
+                      groupesDejaComptes.add(d.nbPalettesDepartGroupeId);
+                    }
+                    return s + (d.nbPalettesDepart.grandes || 0) + (d.nbPalettesDepart.demi || 0);
+                  }, 0);
                   const totalRevenues = lignes.reduce((s, d) => s + (d.retour?.nbPalettes ? (d.retour.nbPalettes.grandes || 0) + (d.retour.nbPalettes.demi || 0) : 0), 0);
                   const ouvert = transporteursOuverts.has(nom);
                   return (
@@ -2825,6 +2863,47 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       {/* Le pointage du retour se fait désormais dans le module Arrivage ("Pointer arrivage") —
           la demande de reconditionnement y apparaît automatiquement comme un arrivage attendu
           dès qu'elle est marquée "parti" (voir marquerParti). Plus de modale ici. */}
+
+      {/* MODALE — "Tout marquer parti" groupée : un seul total de palettes pour tout un groupe
+          de demandes d'un dépôt/jour donné, peu importe si elles étaient "en attente" ou "prêt"
+          — évite de cliquer "Marquer prêt" une par une avant que le camion charge tout. */}
+      {groupePartiIds && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 400, width: "100%", borderTop: `7px solid ${COLORS.secondary}` }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🚚</div>
+              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Tout marquer parti</p>
+              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                {groupePartiIds.length} demande{groupePartiIds.length > 1 ? "s" : ""} — total de palettes chargées (pas de détail par demande)
+              </p>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes</label>
+                <input type="number" value={groupePartiGrandes} onChange={e => setGroupePartiGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Demi-palettes</label>
+                <input type="number" value={groupePartiDemi} onChange={e => setGroupePartiDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setGroupePartiIds(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+              <button
+                onClick={async () => {
+                  const g = parseInt(groupePartiGrandes) || 0;
+                  const d = parseInt(groupePartiDemi) || 0;
+                  await marquerToutPretPuisPartiGroupe(groupePartiIds, g, d);
+                  setGroupePartiIds(null);
+                }}
+                style={{ flex: 2, background: COLORS.secondary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >
+                ✓ Valider
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODALE — Aperçu PDF (bon Geslot ou bon de prépa), dans un iframe intégré à la page —
           un <a target="_blank"> vers une data:URI se fait bloquer/rediriger par Chrome (page
