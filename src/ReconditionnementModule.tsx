@@ -148,6 +148,13 @@ const ANDES_EMAILS = [
   "arnaud.neuquelman@andes-france.com",
 ];
 
+// Contact NLT — même principe qu'ANDES_EMAILS ci-dessus.
+const NLT_EMAILS = ["nltconditionnement@gmail.com"];
+
+// Adresses email du reconditionneur pour un dépôt donné (utilisé pour l'envoi du bon à la
+// création de la demande — voir creerDemande).
+const EMAILS_PAR_DEPOT: Record<Depot, string[]> = { nlt: NLT_EMAILS, andes: ANDES_EMAILS };
+
 // ─── FILE D'IMPRESSION À DISTANCE (relais PC) ───
 // Même mécanisme que les étiquettes palette (ArrivageModule.tsx : envoyerEtiquettePourImpressionPC)
 // — un job pushé dans Firebase (Realtime Database, chemin "printQueue"), que print-relay.js (sur
@@ -1114,11 +1121,13 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
             notify("error", "⚠️ Demande envoyée, mais l'envoi à l'impression automatique a échoué");
           }
 
-          // Andès est livré hors site (comme les commandes de cartons) : on lui envoie le bon par
-          // email dès la création/validation de la demande par le commercial, plutôt que d'attendre
-          // le départ côté entrepôt — ça leur laisse le temps de préparer avant l'arrivée du chariot.
-          // NLT n'est pas concerné ici (bon imprimé sur place via le relais impression).
-          if (depot === "andes") {
+          // NLT et Andès sont tous les deux livrés hors site : on leur envoie le bon par email dès
+          // la création/validation de la demande par le commercial, plutôt que d'attendre le départ
+          // côté entrepôt — ça leur laisse le temps de préparer avant l'arrivée du transporteur (ou
+          // du chariot électrique pour Andès). Le bon reste aussi imprimé sur place via le relais
+          // impression pour NLT (voir envoyerBonReconditionnementPourImpressionPC ci-dessus) : l'un
+          // n'exclut pas l'autre.
+          {
             try {
               const lienSuivi = `${window.location.origin}/api/statut-reconditionnement?id=${demandeId}`;
               const lienPerte = `${window.location.origin}/api/declarer-perte?id=${demandeId}`;
@@ -1136,17 +1145,17 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  subject: `Bon de reconditionnement ${demande.numero || demandeId} — Andès`,
+                  subject: `Bon de reconditionnement ${demande.numero || demandeId} — ${DEPOT_LABEL[depot]}`,
                   html: emailHtml,
-                  to: ANDES_EMAILS,
+                  to: EMAILS_PAR_DEPOT[depot],
                   attachments: [{ filename: pdfNom, content: pdfBase64 }],
                   sender: "agreage",
                 }),
               });
               if (!emailRes.ok) throw new Error(`Erreur ${emailRes.status}`);
             } catch (emailErr) {
-              console.error("Erreur envoi email bon reconditionnement Andès:", emailErr);
-              notify("error", "⚠️ Demande envoyée, mais l'email du bon à Andès n'a pas pu être envoyé");
+              console.error(`Erreur envoi email bon reconditionnement ${DEPOT_LABEL[depot]}:`, emailErr);
+              notify("error", `⚠️ Demande envoyée, mais l'email du bon à ${DEPOT_LABEL[depot]} n'a pas pu être envoyé`);
             }
           }
         } catch (errPdf: any) {
@@ -1260,8 +1269,8 @@ export function ReconditionnementModule({ onClose, userName, scanDemandeId, onSc
       } catch (err) {
         console.error("Erreur création arrivage retour reconditionnement:", err);
       }
-      // Le bon Andès (email + pièce jointe) est maintenant envoyé dès la création de la demande
-      // (voir creerDemande), pas ici au départ — inutile de le renvoyer une deuxième fois.
+      // Le bon (email + pièce jointe, NLT et Andès) est maintenant envoyé dès la création de la
+      // demande (voir creerDemande), pas ici au départ — inutile de le renvoyer une deuxième fois.
     }
 
     notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
