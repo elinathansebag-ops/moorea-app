@@ -993,6 +993,24 @@ export function ReconditionnementModule({ onClose, userName }: {
     notify("success", "↩️ Demande remise à l'étape « en attente »");
   }
 
+  // 27/08/2026 — Ajouté à la demande d'Elinathan : quand une demande est marquée "partie" par
+  // erreur, "Revenir à « en attente »" ci-dessus efface aussi le nombre de palettes et l'étape
+  // "prêt" déjà validée — trop radical pour une simple erreur de clic sur "Marquer parti". Ce
+  // bouton-ci ne défait QUE le départ : la demande repasse à "prêt" en gardant les palettes déjà
+  // saisies par l'entrepôt, prête à être revalidée correctement.
+  async function repasserAPret(id: string) {
+    if (!window.confirm("Repasser cette demande de « parti » à « prêt » ? Le retour attendu dans « Pointer arrivage » sera annulé, mais le nombre de palettes déjà saisi est conservé.")) return;
+    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
+    if (arrivageLie) {
+      await remove(ref(db, `arrivages/${arrivageLie.id}`));
+    }
+    await update(ref(db, `reconditionnement_demandes/${id}`), {
+      statut: "prêt",
+      departDate: null,
+    });
+    notify("success", "↩️ Demande repassée à « prêt »");
+  }
+
   // ─── Pointage compta : la compta vérifie que la facture reçue du reconditionneur correspond
   // bien à ce qui a réellement été fait (voir Historique) et le marque ici — indépendant du
   // statut principal, comme pour les commandes cartons/palettes IFCO (module Prestataires). ───
@@ -1810,6 +1828,11 @@ export function ReconditionnementModule({ onClose, userName }: {
                         commercial, même une fois la demande passée "prêt" ou "parti". */}
                     {(d.statut === "prêt" || d.statut === "parti") && (
                       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                        {d.statut === "parti" && (
+                          <button onClick={() => repasserAPret(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: "#fff", color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            ↩️ Repasser à « prêt »
+                          </button>
+                        )}
                         <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           ↩️ Revenir à « en attente »
                         </button>
