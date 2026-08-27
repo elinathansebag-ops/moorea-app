@@ -974,6 +974,25 @@ export function ReconditionnementModule({ onClose, userName }: {
     notify("success", "🗑️ Demande supprimée");
   }
 
+  // 27/08/2026 — Repris depuis Préparation entrepôt (retiré là-bas, voir plus haut) : remettre
+  // une demande "prêt" ou "parti" à l'étape "en attente" est une décision commerciale (annuler ce
+  // qui a été engagé), pas une action physique d'entrepôt.
+  async function reinitialiserDemande(id: string) {
+    if (!window.confirm("Remettre cette demande à l'étape « en attente » ? Si elle était marquée partie, le retour attendu dans « Pointer arrivage » sera annulé.")) return;
+    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
+    if (arrivageLie) {
+      await remove(ref(db, `arrivages/${arrivageLie.id}`));
+    }
+    await update(ref(db, `reconditionnement_demandes/${id}`), {
+      statut: "en attente",
+      entrepotPretPar: null,
+      entrepotPretDate: null,
+      nbPalettesDepart: null,
+      departDate: null,
+    });
+    notify("success", "↩️ Demande remise à l'étape « en attente »");
+  }
+
   // ─── Pointage compta : la compta vérifie que la facture reçue du reconditionneur correspond
   // bien à ce qui a réellement été fait (voir Historique) et le marque ici — indépendant du
   // statut principal, comme pour les commandes cartons/palettes IFCO (module Prestataires). ───
@@ -1783,6 +1802,19 @@ export function ReconditionnementModule({ onClose, userName }: {
                         </button>
                         <button onClick={() => annulerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           Annuler
+                        </button>
+                      </div>
+                    )}
+                    {/* 27/08/2026 — "prêt"/"parti" : Préparation entrepôt ne fait plus que marquer prêt/parti
+                        (voir PreparationModule.tsx) — annuler/supprimer/revenir en arrière reste ici, côté
+                        commercial, même une fois la demande passée "prêt" ou "parti". */}
+                    {(d.statut === "prêt" || d.statut === "parti") && (
+                      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                        <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          ↩️ Revenir à « en attente »
+                        </button>
+                        <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          🗑️ Supprimer
                         </button>
                       </div>
                     )}

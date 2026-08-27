@@ -245,36 +245,10 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // ReconditionnementModule.tsx (onglet "En cours") : c'est une décision commerciale, pas une
   // action physique d'entrepôt. Voir envoyerRecapDuJour là-bas.
 
-  async function supprimerDemande(id: string) {
-    if (!window.confirm("Supprimer définitivement cette demande de reconditionnement ?")) return;
-    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
-    if (arrivageLie) {
-      await remove(ref(db, `arrivages/${arrivageLie.id}`));
-    }
-    await remove(ref(db, `reconditionnement_demandes/${id}`));
-    notify("success", "🗑️ Demande supprimée");
-  }
-
-  async function annulerDemande(id: string) {
-    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "annulé" });
-    notify("success", "Demande annulée");
-  }
-
-  async function reinitialiserDemande(id: string) {
-    if (!window.confirm("Remettre cette demande à l'étape « en attente » ? Si elle était marquée partie, le retour attendu dans « Pointer arrivage » sera annulé.")) return;
-    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
-    if (arrivageLie) {
-      await remove(ref(db, `arrivages/${arrivageLie.id}`));
-    }
-    await update(ref(db, `reconditionnement_demandes/${id}`), {
-      statut: "en attente",
-      entrepotPretPar: null,
-      entrepotPretDate: null,
-      nbPalettesDepart: null,
-      departDate: null,
-    });
-    notify("success", "↩️ Demande remise à l'étape « en attente »");
-  }
+  // 27/08/2026 — supprimerDemande / annulerDemande / reinitialiserDemande retirées d'ici :
+  // ce sont des décisions commerciales, elles vivent maintenant uniquement dans
+  // ReconditionnementModule.tsx (voir plus haut le commentaire sur envoyerRecapDuJour, même
+  // logique). Préparation entrepôt ne garde que marquer "prêt" / marquer "parti".
 
   function ouvrirModalePret(id: string) {
     setPretDemandeId(id);
@@ -725,48 +699,28 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                           </div>
                                         )}
 
+                                        {/* 27/08/2026 — Restreint aux actions physiques d'entrepôt UNIQUEMENT (demande
+                                            d'Elinathan) : marquer "prêt" et marquer "parti" (avec le nombre de palettes).
+                                            Supprimer/Annuler/Revenir à "en attente" sont retirés d'ici — ce sont des
+                                            décisions commerciales, elles vivent uniquement dans Reconditionnement. */}
                                         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                                           {d.statut === "en attente" && (
-                                            <>
-                                              <button
-                                                onClick={() => (d.transporteurNom && /moorea/i.test(d.transporteurNom)) ? marquerPretSansPalettes(d.id) : ouvrirModalePret(d.id)}
-                                                style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                                              >
-                                                ✓ Marquer prêt
-                                              </button>
-                                              <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                                🗑️ Supprimer
-                                              </button>
-                                              <button onClick={() => annulerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                                Annuler
-                                              </button>
-                                            </>
+                                            <button
+                                              onClick={() => (d.transporteurNom && /moorea/i.test(d.transporteurNom)) ? marquerPretSansPalettes(d.id) : ouvrirModalePret(d.id)}
+                                              style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                                            >
+                                              ✓ Marquer prêt
+                                            </button>
                                           )}
                                           {d.statut === "prêt" && (
-                                            <>
-                                              <button onClick={() => marquerParti(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                                🚚 Marquer parti
-                                              </button>
-                                              <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                                ↩️ Revenir à « en attente »
-                                              </button>
-                                              <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                                🗑️ Supprimer
-                                              </button>
-                                            </>
+                                            <button onClick={() => marquerParti(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                                              🚚 Marquer parti
+                                            </button>
                                           )}
                                           {d.statut === "parti" && (
-                                            <>
-                                              <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic", marginRight: 4 }}>
-                                                📥 Retour à pointer dans « Pointer arrivage »
-                                              </span>
-                                              <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                                ↩️ Revenir à « en attente »
-                                              </button>
-                                              <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                                🗑️ Supprimer
-                                              </button>
-                                            </>
+                                            <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic" }}>
+                                              📥 Retour à pointer dans « Pointer arrivage »
+                                            </span>
                                           )}
                                         </div>
                                       </div>
