@@ -1514,6 +1514,23 @@ export function ReconditionnementModule({ onClose, userName }: {
             se trouve le formulaire de création à réutiliser pour la modifier. */}
         {activeTab === "en_cours" && (
           <div>
+            {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
+                changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 14 }}>
+              <div style={{ background: COLORS.secondaryLight, border: `1.5px solid #c8e8d4`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.secondary }}>IFCO Moorea</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.secondary }}>{stockIfco.moorea}</div>
+              </div>
+              <div style={{ background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary }}>IFCO NLT</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{stockIfco.nlt}</div>
+              </div>
+              <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes}</div>
+              </div>
+            </div>
+
             {/* Filtre statut */}
             <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
               {(["toutes", "en attente", "prêt", "parti", "reçu", "annulé"] as const).map(s => (
