@@ -805,6 +805,51 @@ export function ReconditionnementModule({ onClose, userName }: {
   // une demande précise).
   const [envoiPaletteIfcoEnCours, setEnvoiPaletteIfcoEnCours] = useState(false);
 
+  // 27/08/2026 — Cœur partagé de l'envoi d'une palette IFCO (mouvement de stock + étiquette),
+  // utilisé à la fois par le bouton "Envoyer une palette IFCO" (ci-dessous) ET par la case à
+  // cocher du formulaire de création (voir creerDemande plus bas) : demande d'Elinathan, avant
+  // la case rattachait l'envoi à LA SEULE demande en cours de création (reconditionnement_demande_id)
+  // — problématique quand les demandes précédentes du jour étaient déjà "prêt"/"parti" au moment
+  // où on cochait la case sur une nouvelle demande : l'envoi n'était alors affilié à AUCUNE des
+  // demandes réellement concernées (elles avaient déjà quitté l'entrepôt). Désormais, peu importe
+  // par où l'envoi est déclenché, il n'est jamais rattaché à une demande précise : il couvre
+  // TOUTES les demandes NLT du jour, comme le mouvement de stock et l'étiquette imprimée.
+  // `demandeSupplementaire` permet d'inclure sur l'étiquette la demande tout juste créée par
+  // creerDemande(), qui n'est pas encore dans le state local `demandes` au moment de l'appel.
+  async function pousserEnvoiPaletteIfco(caissesAEnvoyer: number, raison: string, demandeSupplementaire?: { reference: string; produit: string }) {
+    const now = new Date();
+    const newMoorea = Math.max(0, stockIfco.moorea - caissesAEnvoyer);
+    const newNlt = stockIfco.nlt + caissesAEnvoyer;
+    await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+    await push(ref(db, "ifco_stock/movements"), {
+      date: nowFr(),
+      from: "moorea",
+      to: "nlt",
+      caisses: caissesAEnvoyer,
+      raison,
+      user: userName || "Moorea",
+      ts: now.getTime(),
+    });
+
+    const todayFr = now.toLocaleDateString("fr-FR");
+    const demandesDuJour = demandes
+      .filter(d => d.depot === "nlt" && d.dateCreationFr && d.dateCreationFr.startsWith(todayFr))
+      .map(d => ({ reference: d.numero || d.id, produit: d.articleVrac }));
+    if (demandeSupplementaire && !demandesDuJour.some(x => x.reference === demandeSupplementaire.reference)) {
+      demandesDuJour.push(demandeSupplementaire);
+    }
+
+    await push(ref(db, "printQueue"), {
+      type: "etiquette_palette_ifco",
+      depot: DEPOT_LABEL.nlt,
+      dateEnvoi: todayFr,
+      caisses: caissesAEnvoyer,
+      demandesDuJour,
+      status: "pending",
+      createdAt: Date.now(),
+    });
+  }
+
   async function envoyerPaletteIfcoJournee() {
     if (stockIfco.moorea < CAISSES_PAR_PALETTE) {
       notify("error", `✗ Pas assez de caisses IFCO en stock à Moorea (${stockIfco.moorea} dispo, ${CAISSES_PAR_PALETTE} nécessaires)`);
@@ -813,33 +858,7 @@ export function ReconditionnementModule({ onClose, userName }: {
     if (!window.confirm(`Envoyer une palette IFCO (${CAISSES_PAR_PALETTE} caisses) à NLT pour toutes les demandes du jour ?`)) return;
     setEnvoiPaletteIfcoEnCours(true);
     try {
-      const now = new Date();
-      const newMoorea = Math.max(0, stockIfco.moorea - CAISSES_PAR_PALETTE);
-      const newNlt = stockIfco.nlt + CAISSES_PAR_PALETTE;
-      await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
-      await push(ref(db, "ifco_stock/movements"), {
-        date: nowFr(),
-        from: "moorea",
-        to: "nlt",
-        caisses: CAISSES_PAR_PALETTE,
-        raison: "Envoi palette IFCO du jour (toutes demandes)",
-        user: userName || "Moorea",
-        ts: now.getTime(),
-      });
-
-      const todayFr = now.toLocaleDateString("fr-FR");
-      const demandesDuJour = demandes.filter(d => d.depot === "nlt" && d.dateCreationFr && d.dateCreationFr.startsWith(todayFr));
-
-      await push(ref(db, "printQueue"), {
-        type: "etiquette_palette_ifco",
-        depot: DEPOT_LABEL.nlt,
-        dateEnvoi: todayFr,
-        caisses: CAISSES_PAR_PALETTE,
-        demandesDuJour: demandesDuJour.map(d => ({ reference: d.numero || d.id, produit: d.articleVrac })),
-        status: "pending",
-        createdAt: Date.now(),
-      });
-
+      await pousserEnvoiPaletteIfco(CAISSES_PAR_PALETTE, "Envoi palette IFCO du jour (toutes demandes)");
       notify("success", `✅ Palette IFCO envoyée à NLT (${CAISSES_PAR_PALETTE} caisses) — étiquette en cours d'impression`);
     } catch (err: any) {
       notify("error", `❌ Erreur envoi palette IFCO : ${err?.message || "erreur inconnue"}`);
@@ -1338,15 +1357,16 @@ export function ReconditionnementModule({ onClose, userName }: {
       // stock chez Andès — cette demande ne fait que CONSOMMER une partie de ce stock existant,
       // rien n'est expédié depuis Moorea (voir le bloc "cartons" plus bas).
       if (caisses > 0) {
-        const newMoorea = Math.max(0, stockIfco.moorea - caisses);
-        const newNlt = stockIfco.nlt + caisses;
-        await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
-        await push(ref(db, "ifco_stock/movements"), {
-          date: nowFr(), from: "moorea", to: "nlt", caisses,
-          raison: `Reconditionnement — envoi vers ${DEPOT_LABEL[depot]}${transporteur?.nom ? ` (${transporteur.nom})` : ""}`,
-          reconditionnement_demande_id: demandeId,
-          user: userName || "Moorea", ts: now.getTime(),
-        });
+        // 27/08/2026 — Ne rattache plus l'envoi à CETTE demande précise (voir le commentaire
+        // sur pousserEnvoiPaletteIfco plus haut) : la case à cocher du formulaire déclenche
+        // exactement le même envoi "toutes demandes du jour" que le bouton dédié de l'onglet
+        // "En cours", étiquette comprise — pour que le lien avec la palette réellement envoyée
+        // reste correct même si les demandes précédentes du jour sont déjà "prêt"/"parti".
+        await pousserEnvoiPaletteIfco(
+          caisses,
+          `Reconditionnement — envoi vers ${DEPOT_LABEL[depot]}${transporteur?.nom ? ` (${transporteur.nom})` : ""}`,
+          { reference: demande.numero || demandeId || "", produit: demande.articleVrac }
+        );
         await push(ref(db, "reconditionnement_stock_mouvements"), {
           type: "envoi_reconditionneur", article: "ifco_vide", depot, quantite: caisses, date: nowFr(), ts: now.getTime(),
           reconditionnement_demande_id: demandeId,
