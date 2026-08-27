@@ -1390,6 +1390,17 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
   // déborder de l'écran. Le décodage se fait toujours sur le flux vidéo réel, non affecté par
   // ce zoom purement visuel — donc le scan continue de fonctionner normalement, zoomé ou non.
   const [zoom, setZoom] = useState(1);
+  // Instance active du scanner, gardée à part de stopRef (qui ne sert qu'à l'arrêter) — permet
+  // de réappliquer une mise au point via applyVideoConstraints() quand l'utilisateur tape sur
+  // l'aperçu (voir plus bas). html5-qrcode expose cette méthode publiquement (v2.3.8+).
+  const scannerInstanceRef = useRef<Html5Qrcode | null>(null);
+  // Message d'aide affiché si rien n'est détecté après quelques secondes — sur beaucoup de
+  // téléphones (surtout iPhone), la mise au point automatique en continu ne s'enclenche pas
+  // vraiment tant qu'on ne "réveille" pas la caméra (taper l'écran, ou bouger légèrement) ; sans
+  // indice visuel, ça donnait l'impression que "le scan ne marche pas" alors que la caméra
+  // tournait juste flou en permanence.
+  const [aideMiseAuPoint, setAideMiseAuPoint] = useState(false);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleRaw = (raw: string) => {
     if (/^\d{8,13}$/.test(raw)) { onScan('EAN:' + raw); return; }
@@ -1472,9 +1483,9 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         // object should have exactly 1 key".
         const videoConstraints = {
           facingMode: "environment",
-          advanced: [{ focusMode: "continuous" }],
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          focusMode: "continuous",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         } as any;
 
         const baseConfig = {
@@ -1493,7 +1504,17 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         };
 
-        const onDecoded = (text: string) => { if (!done) { done = true; stopRef.current?.(); handleRaw(text.trim()); } };
+        const onDecoded = (text: string) => {
+          if (!done) {
+            done = true;
+            if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+            stopRef.current?.();
+            handleRaw(text.trim());
+          }
+        };
+        setAideMiseAuPoint(false);
+        if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+        hintTimerRef.current = setTimeout(() => { if (!done) setAideMiseAuPoint(true); }, 5000);
 
         // scanner.stop() lève une exception SYNCHRONE (pas une simple rejection de promesse)
         // si on l'appelle alors que le scanner n'est pas activement en train de tourner
@@ -1511,6 +1532,7 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         try {
           const scanner1 = new Html5Qrcode("qr-scanner-container", { verbose: false });
           stopRef.current = () => safeStop(scanner1);
+          scannerInstanceRef.current = scanner1;
           // Tente d'abord avec autofocus continu + haute résolution (meilleure netteté)
           await scanner1.start({ facingMode: "environment" }, { ...baseConfig, videoConstraints }, onDecoded, () => {});
         } catch {
@@ -1521,6 +1543,7 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
           if (done) return;
           const scanner2 = new Html5Qrcode("qr-scanner-container", { verbose: false });
           stopRef.current = () => safeStop(scanner2);
+          scannerInstanceRef.current = scanner2;
           // Fallback avec des contraintes minimales si les contraintes avancées posaient problème
           await scanner2.start({ facingMode: "environment" }, baseConfig, onDecoded, () => {});
         }
@@ -1530,14 +1553,32 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
       }
     };
     start();
-    return () => { done = true; stopRef.current?.(); };
+    return () => { done = true; if (hintTimerRef.current) clearTimeout(hintTimerRef.current); stopRef.current?.(); };
   }, [retryCount]);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000", zIndex: 999, display: "flex", flexDirection: "column" }}>
       <PageHeader titre="📷 Scanner" onBack={onClose} onHome={onClose} />
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        <div id="qr-scanner-container" style={{ width: "100%", height: "100%", transform: `scale(${zoom})`, transformOrigin: "center center" }} />
+        <div
+          id="qr-scanner-container"
+          onClick={() => {
+            // Taper l'écran relance la mise au point continue — utile car sur pas mal de
+            // téléphones (surtout iPhone), l'autofocus en continu s'endort si l'image ne
+            // bouge plus, et rien ne le "réveille" tout seul ensuite : le flux reste flou
+            // en permanence et rien ne se détecte, sans aucun message d'erreur. On avale
+            // l'erreur si applyVideoConstraints n'est pas supporté sur cet appareil/navigateur
+            // (pas grave, ce n'est qu'un geste d'appoint).
+            scannerInstanceRef.current?.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] } as any).catch(() => {});
+            setAideMiseAuPoint(false);
+          }}
+          style={{ width: "100%", height: "100%", transform: `scale(${zoom})`, transformOrigin: "center center", cursor: "pointer" }}
+        />
+        {scanning && !error && aideMiseAuPoint && (
+          <div style={{ position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)", maxWidth: "88%", textAlign: "center", background: "rgba(0,0,0,0.7)", borderRadius: 12, padding: "10px 16px", zIndex: 2 }}>
+            <p style={{ margin: 0, color: "#fff", fontSize: 12.5 }}>👆 Rien détecté — tape l'écran pour refaire la mise au point, ou rapproche/éloigne un peu le QR.</p>
+          </div>
+        )}
         {scanning && !error && (
           <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 10, background: "rgba(0,0,0,0.55)", borderRadius: 20, padding: "8px 16px", zIndex: 2 }}>
             <span style={{ color: "#fff", fontSize: 13 }}>🔍</span>
