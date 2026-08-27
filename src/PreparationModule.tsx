@@ -268,6 +268,30 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     notify("success", "✅ Marqué prêt — transport Moorea, pas de palette à indiquer");
   }
 
+  // 27/08/2026 — À la demande d'Elinathan : quand l'entrepôt saisit le nombre de palettes,
+  // on imprime automatiquement une étiquette "Production Moorea" par palette physique
+  // (grandes + demi confondues), avec la référence de la demande, le produit sorti, le dépôt
+  // destinataire, le numéro de palette (i/N), la date de production et le transporteur.
+  // Ne se déclenche QUE depuis validerPret() (saisie manuelle du nb de palettes) — pas depuis
+  // marquerPretSansPalettes() (transport Moorea, pas de palette) ni depuis le flux groupé
+  // "Tout marquer parti".
+  async function envoyerEtiquetteProductionPourImpressionPC(demande: Demande, paletteIndex: number, paletteTotal: number) {
+    const url = `${window.location.origin}${window.location.pathname}?recond=${demande.id}`;
+    await push(ref(db, "printQueue"), {
+      type: "etiquette_production",
+      reference: demande.numero || demande.id,
+      produit: demande.articleVrac,
+      depot: DEPOT_LABEL[demande.depot],
+      paletteIndex,
+      paletteTotal,
+      dateProd: new Date().toLocaleDateString("fr-FR"),
+      transporteur: demande.transporteurNom || "",
+      url,
+      status: "pending",
+      createdAt: Date.now(),
+    });
+  }
+
   async function validerPret() {
     if (!pretDemandeId) return;
     const g = parseInt(pretGrandes) || 0;
@@ -279,6 +303,18 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       entrepotPretDate: nowFr(),
       nbPalettesDepart: { grandes: g, demi: d },
     });
+    // Impression des étiquettes de production, une par palette
+    const demandePourEtiquette = demandes.find(dd => dd.id === pretDemandeId);
+    if (demandePourEtiquette) {
+      const totalPalettes = g + d;
+      for (let i = 1; i <= totalPalettes; i++) {
+        try {
+          await envoyerEtiquetteProductionPourImpressionPC(demandePourEtiquette, i, totalPalettes);
+        } catch (e) {
+          console.error("Erreur envoi étiquette production", e);
+        }
+      }
+    }
     notify("success", "✅ Marqué prêt — en attente du transporteur");
     setPretDemandeId(null);
   }
