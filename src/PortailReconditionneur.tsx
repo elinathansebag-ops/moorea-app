@@ -103,6 +103,20 @@ type MouvementStock = {
   timestamp?: number;
 };
 
+// Ligne d'historique RÉEL des envois/retours de caisses IFCO (NLT seulement) — source
+// ifco_stock/movements, poussée automatiquement à la création d'une demande (envoi) et au
+// pointage du retour à l'agréage (retour), que le reconditionneur ait ou non cliqué "Repartie"
+// lui-même sur ce portail. Remplace l'ancienne reconstitution approximative basée sur
+// caissesIfcoEnvoyees/retourPresta.parti, qui ratait les retours auto-validés à l'agréage.
+type MouvementIfcoAuto = {
+  id: string;
+  date: string;
+  ts: number;
+  caisses: number; // signé : positif = arrivée à NLT, négatif = départ de NLT
+  raison: string;
+  user?: string;
+};
+
 // Commande de cartons livrée directement chez Andès (hors site), pas encore confirmée par le
 // prestataire — voir PrestatairesModule.tsx (LIEUX_CARTONS) et api/confirm-livraison.js pour le
 // circuit historique par lien email.
@@ -202,6 +216,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   const [stock, setStock] = useState<number | null>(null);
   const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
   const [mouvements, setMouvements] = useState<MouvementStock[]>([]);
+  const [mouvementsAuto, setMouvementsAuto] = useState<MouvementIfcoAuto[]>([]);
   const [cartonsEnAttente, setCartonsEnAttente] = useState<CartonEnAttente[]>([]);
   const [mouvementsOuvert, setMouvementsOuvert] = useState(false);
   const [confirmationCartonEnCours, setConfirmationCartonEnCours] = useState<string | null>(null);
@@ -224,6 +239,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       setStock(typeof data.stock === "number" ? data.stock : 0);
       setReajustements(Array.isArray(data.reajustements) ? data.reajustements : []);
       setMouvements(Array.isArray(data.mouvements) ? data.mouvements : []);
+      setMouvementsAuto(Array.isArray(data.mouvementsAuto) ? data.mouvementsAuto : []);
       setCartonsEnAttente(Array.isArray(data.cartonsEnAttente) ? data.cartonsEnAttente : []);
       setChargeState("ready");
     } catch {
@@ -263,25 +279,26 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   });
 
   // NLT — caisses IFCO : contrairement aux cartons Andès (consommés), les caisses IFCO sont
-  // RÉUTILISÉES : Moorea envoie des caisses vides (caissesIfcoEnvoyees, comptées le jour de
-  // création de la demande), le presta les remplit, puis les mêmes caisses repartent pleines
-  // (comptées le jour où le presta confirme "Repartie" — retourPresta.parti.date, qui peut être
-  // un jour DIFFERENT de la création). On reconstitue donc un solde caisses avant/mouvement/après
-  // par jour, ancré sur le stock réel actuel (le plus fiable) et remonté en arrière — plutôt que
-  // parti de zéro, ce qui dériverait de la vraie valeur au fil du temps.
+  // RÉUTILISÉES : Moorea envoie des caisses vides à la création d'une demande, le presta les
+  // remplit, puis les mêmes caisses repartent pleines vers Moorea. On reconstitue un solde
+  // avant/mouvement/après par jour, ancré sur le stock réel actuel et remonté en arrière.
+  //
+  // 26/08/2026 — CORRIGÉ : la première version se basait sur caissesIfcoEnvoyees (demande) et
+  // retourPresta.parti.confirme/.date pour repérer les mouvements. Problème : retourPresta.parti
+  // n'est écrit QUE quand le reconditionneur clique lui-même "Repartie" sur ce portail
+  // (voir handleConfirmerRepartie côté API) — quand Moorea pointe et valide le retour directement
+  // à l'agréage (le cas le plus courant, voir handleAgrement dans App.tsx), retourPresta est
+  // rempli SANS le sous-objet .parti, donc ce retour n'était jamais compté : le "mouvement" du
+  // jour restait à zéro alors que la demande venait d'être agréée. On utilise maintenant
+  // mouvementsAuto (issu de ifco_stock/movements, poussé par le code à CHAQUE envoi ET à CHAQUE
+  // retour pointé, quel que soit le chemin emprunté) — la vraie source de vérité.
   const ledgerCaissesParJour: Record<string, { avant: number; mouvement: number; apres: number }> = {};
   if (depot === "nlt") {
     const mouvementsParJour: Record<string, number> = {};
-    demandes.forEach(d => {
-      if (d.statut === "annulé") return;
-      const envoyees = d.caissesIfcoEnvoyees || 0;
-      if (envoyees <= 0) return;
-      const jourEnvoi = parseFrDate(d.dateCreationFr)?.toLocaleDateString("fr-FR");
-      if (jourEnvoi) mouvementsParJour[jourEnvoi] = (mouvementsParJour[jourEnvoi] || 0) + envoyees;
-      if (d.retourPresta?.parti?.confirme && d.retourPresta.parti.date) {
-        const jourRetour = parseFrDate(d.retourPresta.parti.date)?.toLocaleDateString("fr-FR");
-        if (jourRetour) mouvementsParJour[jourRetour] = (mouvementsParJour[jourRetour] || 0) - envoyees;
-      }
+    mouvementsAuto.forEach(m => {
+      const jour = parseFrDate(m.date)?.toLocaleDateString("fr-FR");
+      if (!jour) return;
+      mouvementsParJour[jour] = (mouvementsParJour[jour] || 0) + m.caisses;
     });
     const joursMouvements = Object.keys(mouvementsParJour).sort((a, b) => (parseFrDate(a)?.getTime() || 0) - (parseFrDate(b)?.getTime() || 0));
     let running = stock ?? 0; // "après" du jour le plus récent = le stock réel actuel
@@ -580,12 +597,32 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                   ))}
                 </div>
               )}
+              {depot === "nlt" && mouvementsAuto.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                    Envois / retours de caisses (par demande)
+                  </p>
+                  {mouvementsAuto.map(m => (
+                    <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "8px 0", borderTop: `1px solid ${COLORS.border}` }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: COLORS.ink }}>{m.raison || (m.caisses > 0 ? "Envoi de caisses vides" : "Retour de caisses pleines")}</div>
+                        <div style={{ fontSize: 10.5, color: COLORS.gray, marginTop: 2 }}>{m.date}</div>
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: m.caisses >= 0 ? "#15803d" : "#b91c1c", whiteSpace: "nowrap" }}>
+                        {m.caisses >= 0 ? "+" : ""}{m.caisses} caisse{Math.abs(m.caisses) > 1 ? "s" : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {mouvements.length === 0 ? (
-                <p style={{ margin: "10px 0 0", fontSize: 12, color: COLORS.gray }}>Aucun mouvement de stock enregistré pour l'instant.</p>
+                (depot !== "nlt" || mouvementsAuto.length === 0) && (
+                  <p style={{ margin: "10px 0 0", fontSize: 12, color: COLORS.gray }}>Aucun mouvement de stock enregistré pour l'instant.</p>
+                )
               ) : (
                 <div style={{ marginTop: 14 }}>
                   <p style={{ margin: "0 0 6px", fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>
-                    Ajustements de stock
+                    Ajustements manuels de stock
                   </p>
                   {mouvements.map(m => (
                     <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "8px 0", borderTop: `1px solid ${COLORS.border}` }}>

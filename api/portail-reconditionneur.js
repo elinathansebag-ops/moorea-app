@@ -11,8 +11,19 @@ export const config = { runtime: "nodejs" };
 // stock_carton_andes) sont ouverts explicitement dans les règles de sécurité Firebase, sur le même
 // principe que printQueue/printRelayStatus. Voir api/_firebaseAdmin.js pour le pourquoi.
 //
+// IMPORTANT (26/08/2026) : "ifco_stock/movements" est un NOUVEAU chemin lu ici (voir handleGet
+// ci-dessous) — comme pour stock_ajustements/prestataires_cartons, il n'était PAS dans la liste
+// ci-dessus des chemins ouverts à l'origine. Tant que la règle Firebase n'est pas mise à jour pour
+// l'ouvrir en lecture, ce chemin renvoie 401/403 et l'historique des mouvements reste vide côté
+// portail (fallback non bloquant, voir SNAPSHOT_VIDE) — mais le reste du portail continue de
+// fonctionner normalement. Ajouter "ifco_stock/movements": { ".read": true } dans les règles de
+// la Realtime Database pour que l'historique NLT s'affiche correctement.
+//
 // GET  ?depot=nlt|andes            → { demandes: [...], stock: number, reajustements: [...],
 //                                       mouvements: [...] (historique stock_ajustements du dépôt),
+//                                       mouvementsAuto: [...] (NLT seulement — historique RÉEL des
+//                                       envois/retours de caisses IFCO liés aux demandes de
+//                                       reconditionnement, source ifco_stock/movements),
 //                                       cartonsEnAttente: [...] (Andès seulement — commandes de
 //                                       cartons livrées hors site, pas encore confirmées) }
 // POST ?depot=nlt|andes  body:
@@ -97,7 +108,7 @@ async function handleGet(res, depot) {
   // renvoyait 500 à cause de ces deux lectures secondaires. On les rattrape donc individuellement
   // ici avec un fallback "vide", pour que le reste du portail continue de fonctionner même si ces
   // chemins ne sont pas (ou pas encore) ouverts dans les règles.
-  const [demandesSnap, stockSnap, reajustementsSnap, ajustementsSnap, cartonsSnap] = await Promise.all([
+  const [demandesSnap, stockSnap, reajustementsSnap, ajustementsSnap, cartonsSnap, ifcoMouvementsSnap] = await Promise.all([
     adminDb.ref("reconditionnement_demandes").once("value"),
     adminDb.ref(EMBALLAGE_CHAMP_STOCK[depot]).once("value"),
     adminDb.ref("reajustements_stock_demandes").once("value"),
@@ -107,6 +118,15 @@ async function handleGet(res, depot) {
     depot === "andes"
       ? adminDb.ref("prestataires_cartons").once("value").catch(err => { console.error("Lecture prestataires_cartons refusée (portail, non bloquant) — vérifier les règles Firebase:", err.message); return SNAPSHOT_VIDE; })
       : Promise.resolve(null),
+    // Journal RÉEL des envois/retours de caisses IFCO (voir ReconditionnementModule.tsx et
+    // App.tsx — chaque envoi à la création d'une demande, chaque retour pointé à l'agréage, pousse
+    // ici) — c'est la vraie source de vérité pour "combien de caisses ont bougé tel jour", au lieu
+    // de la reconstitution approximative précédente à partir de caissesIfcoEnvoyees/retourPresta
+    // (qui ratait tous les retours auto-validés à l'agréage, sans passage par retourPresta.parti).
+    // Seul NLT en a besoin (Andès n'a pas de caisses IFCO).
+    depot === "nlt"
+      ? adminDb.ref("ifco_stock/movements").once("value").catch(err => { console.error("Lecture ifco_stock/movements refusée (portail, non bloquant) — vérifier les règles Firebase:", err.message); return SNAPSHOT_VIDE; })
+      : Promise.resolve(SNAPSHOT_VIDE),
   ]);
   const data = demandesSnap.val() || {};
   const demandes = Object.entries(data)
@@ -153,7 +173,33 @@ async function handleGet(res, depot) {
     console.error("Erreur calcul cartonsEnAttente (portail, non bloquant):", err);
   }
 
-  return res.status(200).json({ demandes, stock: typeof stockVal === "number" ? stockVal : 0, reajustements, mouvements, cartonsEnAttente });
+  // Historique RÉEL des mouvements de caisses IFCO pour NLT (envois à la création d'une demande +
+  // retours pointés à l'agréage, voir ifco_stock/movements) — normalisé en un delta signé par
+  // ligne (+caisses si elles arrivent à NLT, -caisses si elles en repartent), pour reconstituer un
+  // vrai solde avant/après par jour côté client. Try/catch non bloquant, même principe que les
+  // autres blocs secondaires ci-dessus.
+  let mouvementsAuto = [];
+  if (depot === "nlt") {
+    try {
+      const ifcoMvData = ifcoMouvementsSnap.val() || {};
+      mouvementsAuto = Object.entries(ifcoMvData)
+        .filter(([, m]) => m && typeof m === "object" && (m.from === "nlt" || m.to === "nlt") && typeof m.caisses === "number")
+        .map(([id, m]) => ({
+          id,
+          date: m.date || "",
+          ts: m.ts || 0,
+          caisses: m.to === "nlt" ? m.caisses : -m.caisses,
+          raison: m.raison || "",
+          user: m.user || "",
+        }))
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+        .slice(0, 100);
+    } catch (err) {
+      console.error("Erreur calcul mouvementsAuto (portail, non bloquant):", err);
+    }
+  }
+
+  return res.status(200).json({ demandes, stock: typeof stockVal === "number" ? stockVal : 0, reajustements, mouvements, mouvementsAuto, cartonsEnAttente });
 }
 
 // Un seul geste côté presta ("Repartie" sur le portail) = une seule écriture Firebase et un seul
