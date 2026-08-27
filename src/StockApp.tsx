@@ -1096,7 +1096,17 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let fusionSelected: string[] = [];
       let histoCache: any[] = [];
       let _byArticle: any = null;
-      let calcLastFocused: any = null;
+      // Champ actif visé par "↑ Utiliser" — sur window comme les autres variables de la
+      // calculatrice ci-dessus, et pour la même raison : StockApp se démonte/remonte à chaque
+      // sortie/entrée du module Stock, ce qui recrée cette fermeture (closure) à chaque fois.
+      // Le listener "focusin" plus bas, lui, n'est attaché qu'UNE seule fois (voir
+      // dataset.calcListenerAdded) — donc après un premier aller-retour dans Stock, le
+      // listener actif appartenait à l'ancienne fermeture et continuait à écrire dans son
+      // ancienne variable locale, tandis que la nouvelle sCalcUse() lisait une variable locale
+      // fraîche, restée à null pour toujours : le bouton "Utiliser" ne faisait plus rien après
+      // la première visite. En le stockant sur window, peu importe quelle fermeture a attaché
+      // le listener : tout le monde lit/écrit la même valeur.
+      (window as any)._calcLastFocused = (window as any)._calcLastFocused || null;
       let rackPalettesMap: Record<string, { qty: number; loc: string }[]> = {}; // article stock (lowercase) -> liste des palettes {quantité, emplacement}, vues aux niveaux 2 et 3
       let rackConfigCache: any = {}; // rack_config (labels des murs)
       let lastRackSnapshot: any = null; // recalculé si le rack change
@@ -2552,6 +2562,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
       (window as any).sCalcUse = () => {
         const val = document.getElementById("s-calc-result")?.textContent;
+        const calcLastFocused = (window as any)._calcLastFocused;
         if (val && calcLastFocused && document.body.contains(calcLastFocused as HTMLElement)) {
           (calcLastFocused as HTMLInputElement).value = val;
           (calcLastFocused as HTMLInputElement).dispatchEvent(new Event("change", { bubbles: true }));
@@ -2568,7 +2579,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         document.addEventListener("focusin", (e: Event) => {
           const el = e.target as HTMLElement;
           if (el && el.classList && el.classList.contains("qty-in")) {
-            calcLastFocused = el;
+            (window as any)._calcLastFocused = el;
           }
         }, true);
       }
