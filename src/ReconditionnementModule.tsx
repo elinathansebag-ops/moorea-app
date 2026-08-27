@@ -476,7 +476,9 @@ async function genererBonPdf(demande: Demande): Promise<string> {
 
   // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) : encadré simple, sans bandeau plein, pour bien
   // se distinguer de la zone 1 même sans couleur ───
-  const zone2Top = y, zone2H = 93 + commentExtra + etiquetteExtra + colisEntrerExtra;
+  // 28/08/2026 — La boîte QR "déclaration de perte" touchait le bord bas du grand cadre du
+  // reconditionneur (aucune marge) — on ajoute 8mm de respiration en bas de la zone 2.
+  const zone2Top = y, zone2H = 101 + commentExtra + etiquetteExtra + colisEntrerExtra;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.6); doc.rect(M, zone2Top, CW, zone2H, "S");
   doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
   doc.text(`${DEPOT_LABEL[demande.depot].toUpperCase()} — À PRÉPARER ET RETOURNER`, M + 8, zone2Top + 10);
@@ -485,7 +487,10 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   let yy2 = zone2Top + 24;
   ligne("Colis à entrer", colisEntrerTexte, col1, yy2, colisEntrerMaxWidth);
   yy2 += 9 + colisEntrerExtra;
-  ligne("Qté conditionnement attendue (= nombre de colis ci-dessus)", demande.qteConditionnement != null ? `${demande.qteConditionnement} ${UNITE_QTE[demande.depot]}` : "-", col1, yy2);
+  // 28/08/2026 (correction) — Elinathan précise que la quantité de conditionnement (filets) et
+  // le nombre de colis à entrer sont 2 valeurs DIFFÉRENTES (colis × quantité par colis = filets),
+  // pas la même chose sous 2 formes — le libellé ne doit donc pas laisser croire à une égalité.
+  ligne("Qté conditionnement attendue", demande.qteConditionnement != null ? `${demande.qteConditionnement} ${UNITE_QTE[demande.depot]}` : "-", col1, yy2);
   yy2 += 13;
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy2);
   yy2 += 12;
@@ -527,9 +532,11 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   // agrandie pour les libellés d'article longs (voir plus haut), elle peut maintenant s'étendre
   // jusque-là et chevaucher ce texte — on le pousse donc sous la zone 2 quand elle est haute.
   // Filet de sécurité : quelle que soit la hauteur réelle du contenu au-dessus, ce texte ne
-  // doit jamais se retrouver au-delà du bas de la page A4 (297mm) — invisible à l'impression.
+  // doit jamais se retrouver au-delà du bas de la page A4 (297mm, invisible à l'impression) NI
+  // collé au bord du cadre juste au-dessus (zone2Top + zone2H) — toujours 4mm sous ce bord, sans
+  // dépasser 296mm.
   doc.setTextColor(160, 160, 160); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
-  doc.text(`N° ${demande.numero || demande.id}`, M, Math.min(293, Math.max(290, y + 2)));
+  doc.text(`N° ${demande.numero || demande.id}`, M, Math.min(295, Math.max(290, zone2Top + zone2H + 4)));
 
   return doc.output("datauristring");
 }
