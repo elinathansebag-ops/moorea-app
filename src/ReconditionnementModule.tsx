@@ -341,17 +341,46 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   // unicode "→" (ni les ciseaux "✂" plus bas) — les inclure dans doc.text() produit des
   // caractères corrompus à l'impression. On utilise donc "»" (guillemet simple, bien présent
   // dans l'encodage WinAnsi) comme séparateur visuel à la place d'une vraie flèche.
-  doc.setFillColor(245, 243, 238); doc.roundedRect(M, y, CW, 16, 2, 2, "F");
-  doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
-  doc.text(`${demande.articleVrac}  »  ${demande.articleFini}`, M + 6, y + 10);
-  y += 24;
+  // 28/08/2026 — Ce titre (article vrac + article fini) pouvait dépasser la largeur de la page
+  // pour les libellés longs (ex : "LIME MAROC CAL 48 » (LIME 0050) - LIME 2 € MAROC CAL 48 IFCO
+  // (FILET 500GR X 12)") — texte coupé net au bord de la feuille. On réduit maintenant la taille
+  // de police si besoin, puis on laisse le texte passer sur 2 lignes (jamais plus, sinon le
+  // libellé est vraiment trop long et on tronque plutôt que de faire exploser la mise en page).
+  const titreTexte = `${demande.articleVrac}  »  ${demande.articleFini}`;
+  doc.setFont("helvetica", "bold");
+  let titreFontSize = 13;
+  doc.setFontSize(titreFontSize);
+  let titreLignes = doc.splitTextToSize(titreTexte, CW - 12);
+  while (titreLignes.length > 2 && titreFontSize > 8) {
+    titreFontSize -= 1;
+    doc.setFontSize(titreFontSize);
+    titreLignes = doc.splitTextToSize(titreTexte, CW - 12);
+  }
+  if (titreLignes.length > 2) titreLignes = titreLignes.slice(0, 2);
+  const titreBoxH = titreLignes.length > 1 ? 22 : 16;
+  doc.setFillColor(245, 243, 238); doc.roundedRect(M, y, CW, titreBoxH, 2, 2, "F");
+  doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(titreFontSize);
+  titreLignes.forEach((l: string, i: number) => doc.text(l, M + 6, y + 10 + i * (titreFontSize * 0.5)));
+  y += titreBoxH + 8;
 
   const col1 = M + 8, col2 = M + CW / 2 + 4;
-  const ligne = (label: string, valeur: string, col: number, yy: number) => {
+  // 28/08/2026 — `maxWidth` optionnel : sans lui, une valeur longue (ex : un nom d'article
+  // complet) continue tout droit et vient se superposer au texte de la colonne suivante sur la
+  // même ligne (bug observé : "Colis à entrer" chevauchant "Qté conditionnement attendue"). Avec
+  // `maxWidth`, le texte passe à la ligne dans SA colonne à lui — la fonction renvoie alors le
+  // nombre de lignes utilisées pour que l'appelant décale ce qui suit d'autant.
+  const ligne = (label: string, valeur: string, col: number, yy: number, maxWidth?: number): number => {
     doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text(label + " :", col, yy);
     doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
-    doc.text(valeur || "-", col, yy + 5);
+    const texte = valeur || "-";
+    if (maxWidth) {
+      const lignes: string[] = doc.splitTextToSize(texte, maxWidth);
+      lignes.forEach((l: string, i: number) => doc.text(l, col, yy + 5 + i * 4.3));
+      return lignes.length;
+    }
+    doc.text(texte, col, yy + 5);
+    return 1;
   };
 
   // Le bon est coupé en deux zones bien distinctes, chacune pour un public différent : ce que
@@ -368,8 +397,18 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   // étiquette. N'ajoute de la hauteur que si la case a été cochée à la création.
   const etiquetteExtra = demande.fournirEtiquettes ? 26 : 0;
 
+  // 28/08/2026 — "Colis à sortir" (col1) peut être un nom d'article long et venait chevaucher
+  // "Caisses IFCO envoyées" (col2) sur la même ligne. On le contraint à SA colonne (maxWidth) et
+  // on calcule à l'avance la hauteur supplémentaire si ça passe sur 2 lignes, pour agrandir la
+  // zone 1 en conséquence plutôt que de laisser le contenu déborder du cadre.
+  const colisSortirTexte = demande.nbColisASortir != null ? `${demande.nbColisASortir} — ${demande.articleVrac}` : "-";
+  const colisSortirMaxWidth = CW / 2 - 18;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+  const colisSortirLignes: string[] = doc.splitTextToSize(colisSortirTexte, colisSortirMaxWidth);
+  const colisSortirExtra = Math.max(0, colisSortirLignes.length - 1) * 4.3;
+
   // ─── ZONE 1 — ENTREPÔT MOOREA (bandeau plein noir) ───
-  const zone1Top = y, zone1H = 116 + commentExtra;
+  const zone1Top = y, zone1H = 116 + commentExtra + colisSortirExtra;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.rect(M, zone1Top, CW, zone1H, "S");
   doc.setFillColor(0, 0, 0); doc.rect(M, zone1Top, CW, 10, "F");
   doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
@@ -384,13 +423,13 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   yy += 12;
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy);
   yy += 14;
-  ligne("Colis à sortir", demande.nbColisASortir != null ? `${demande.nbColisASortir} — ${demande.articleVrac}` : "-", col1, yy);
+  ligne("Colis à sortir", colisSortirTexte, col1, yy, colisSortirMaxWidth);
   if (demande.depot === "nlt") {
     ligne("Caisses IFCO envoyées", demande.caissesIfcoEnvoyees != null ? String(demande.caissesIfcoEnvoyees) : "-", col2, yy);
   } else {
     ligne("Cartons BABY BLANC utilisés", demande.cartonsBabyBlancEnvoyes != null ? String(demande.cartonsBabyBlancEnvoyes) : "-", col2, yy);
   }
-  yy += 16;
+  yy += 16 + colisSortirExtra;
   if (demande.commentaireEan) {
     doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text("Commentaire :", col1, yy);
@@ -410,26 +449,43 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   y = zone1Top + zone1H;
 
   // ─── Séparateur visuel entre les deux zones ───
-  y += 7;
+  // 28/08/2026 — Marges resserrées ici (7→5, 13→9) pour compenser la hauteur ajoutée plus haut
+  // (titre sur 2 lignes, zone 2 agrandie) et garder tout le bon dans la page A4 — sinon, sur les
+  // libellés longs, le numéro de bon en pied de page finissait poussé hors de la page (invisible
+  // à l'impression).
+  y += 5;
   doc.setDrawColor(150, 150, 150);
   doc.setLineDashPattern([2, 2], 0);
   doc.line(M, y, W - M, y);
   doc.setLineDashPattern([], 0);
   doc.setTextColor(120, 120, 120); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
   doc.text("partie ci-dessous à conserver / remettre au reconditionneur", W / 2, y + 4, { align: "center" });
-  y += 13;
+  y += 9;
+
+  // 28/08/2026 — "Colis à entrer" (nom d'article complet, potentiellement long) et "Qté
+  // conditionnement attendue" (le nombre de colis correspondant, ex : 672 filets pour 56 colis)
+  // partageaient la même ligne sur 2 colonnes — le libellé d'article venait alors chevaucher la
+  // quantité, la rendant illisible (bug remonté sur RC260827-04). On les empile désormais l'un
+  // sous l'autre, pleine largeur, avec retour à la ligne si besoin, pour que les deux infos
+  // restent toujours lisibles côte à côte pour le reconditionneur.
+  const colisEntrerTexte = demande.nbColisAEntrer != null ? `${demande.nbColisAEntrer} — ${demande.articleFini}` : "-";
+  const colisEntrerMaxWidth = CW - 16;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+  const colisEntrerLignes: string[] = doc.splitTextToSize(colisEntrerTexte, colisEntrerMaxWidth);
+  const colisEntrerExtra = Math.max(0, colisEntrerLignes.length - 1) * 4.3;
 
   // ─── ZONE 2 — RECONDITIONNEUR (NLT / Andès) : encadré simple, sans bandeau plein, pour bien
   // se distinguer de la zone 1 même sans couleur ───
-  const zone2Top = y, zone2H = 84 + commentExtra + etiquetteExtra;
+  const zone2Top = y, zone2H = 93 + commentExtra + etiquetteExtra + colisEntrerExtra;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.6); doc.rect(M, zone2Top, CW, zone2H, "S");
   doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
   doc.text(`${DEPOT_LABEL[demande.depot].toUpperCase()} — À PRÉPARER ET RETOURNER`, M + 8, zone2Top + 10);
   doc.setLineWidth(0.3); doc.line(M + 6, zone2Top + 13, M + CW - 6, zone2Top + 13);
 
   let yy2 = zone2Top + 24;
-  ligne("Colis à entrer", demande.nbColisAEntrer != null ? `${demande.nbColisAEntrer} — ${demande.articleFini}` : "-", col1, yy2);
-  ligne("Qté conditionnement attendue", demande.qteConditionnement != null ? `${demande.qteConditionnement} ${UNITE_QTE[demande.depot]}` : "-", col2, yy2);
+  ligne("Colis à entrer", colisEntrerTexte, col1, yy2, colisEntrerMaxWidth);
+  yy2 += 9 + colisEntrerExtra;
+  ligne("Qté conditionnement attendue (= nombre de colis ci-dessus)", demande.qteConditionnement != null ? `${demande.qteConditionnement} ${UNITE_QTE[demande.depot]}` : "-", col1, yy2);
   yy2 += 13;
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy2);
   yy2 += 12;
@@ -464,10 +520,16 @@ async function genererBonPdf(demande: Demande): Promise<string> {
   doc.text("Un souci qualité constaté ?", M + 12 + qrSize2 + 8, yy2 + 11);
   doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.2);
   doc.text("Scannez pour déclarer une perte avec photos (étiquette + produit).", M + 12 + qrSize2 + 8, yy2 + 17, { maxWidth: CW - qrSize2 - 44 });
-  y = zone2Top + zone2H + 10;
+  y = zone2Top + zone2H + 6;
 
+  // 28/08/2026 — Le pied de page (numéro de bon) était toujours imprimé à une position fixe
+  // (y=290), en supposant que la zone 2 tienne toujours largement au-dessus. Avec la zone 2
+  // agrandie pour les libellés d'article longs (voir plus haut), elle peut maintenant s'étendre
+  // jusque-là et chevaucher ce texte — on le pousse donc sous la zone 2 quand elle est haute.
+  // Filet de sécurité : quelle que soit la hauteur réelle du contenu au-dessus, ce texte ne
+  // doit jamais se retrouver au-delà du bas de la page A4 (297mm) — invisible à l'impression.
   doc.setTextColor(160, 160, 160); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
-  doc.text(`N° ${demande.numero || demande.id}`, M, 290);
+  doc.text(`N° ${demande.numero || demande.id}`, M, Math.min(293, Math.max(290, y + 2)));
 
   return doc.output("datauristring");
 }
@@ -803,19 +865,15 @@ export function ReconditionnementModule({ onClose, userName }: {
   // NLT) s'applique globalement, et l'étiquette imprimée liste toutes les demandes NLT du jour
   // plutôt qu'une seule référence (pas de QR code ici, l'étiquette n'est pas censée pointer vers
   // une demande précise).
-  const [envoiPaletteIfcoEnCours, setEnvoiPaletteIfcoEnCours] = useState(false);
-  const [showPaletteIfcoModal, setShowPaletteIfcoModal] = useState(false);
-  const [nbPalettesIfcoModal, setNbPalettesIfcoModal] = useState("1");
-  const [transporteurIfcoId, setTransporteurIfcoId] = useState("");
-
-  // 27/08/2026 — Cœur partagé de l'envoi d'une palette IFCO (mouvement de stock + étiquettes),
-  // utilisé à la fois par le bouton "Envoyer une palette IFCO" (ci-dessous) ET par la case à
-  // cocher du formulaire de création (voir creerDemande plus bas). L'envoi n'est jamais rattaché
-  // à une demande précise (voir historique des commentaires ci-dessous pour le pourquoi).
-  // 27/08/2026 (v2) — Simplifié à la demande d'Elinathan : une étiquette PAR PALETTE physique
-  // (1/N, 2/N...), plus simple qu'une étiquette listant chaque demande/article du jour — et le
-  // nom du transporteur y figure clairement.
-  async function pousserEnvoiPaletteIfco(caissesAEnvoyer: number, nbPalettesPourEtiquette: number, transporteurNom: string, raison: string) {
+  // 28/08/2026 — Simplifié à la demande d'Elinathan : il n'y a plus qu'UN SEUL type
+  // d'étiquette palette, imprimée à un seul endroit (validerPret() dans PreparationModule.tsx,
+  // quand l'entrepôt saisit le nombre de palettes en marquant une demande "prêt") — que la
+  // palette contienne du produit, des caisses IFCO vides ou des cartons Andès, l'étiquette est
+  // la même et son nombre suit exactement ce que l'entrepôt a saisi à ce moment-là. Le bouton
+  // "Envoyer une palette IFCO" séparé (avec sa propre étiquette et son propre nombre de
+  // palettes) est donc supprimé — pousserEnvoiPaletteIfco ne fait plus qu'enregistrer le
+  // mouvement de stock (caisses vides envoyées à NLT), sans imprimer quoi que ce soit.
+  async function pousserEnvoiPaletteIfco(caissesAEnvoyer: number, raison: string) {
     const now = new Date();
     const newMoorea = Math.max(0, stockIfco.moorea - caissesAEnvoyer);
     const newNlt = stockIfco.nlt + caissesAEnvoyer;
@@ -829,49 +887,6 @@ export function ReconditionnementModule({ onClose, userName }: {
       user: userName || "Moorea",
       ts: now.getTime(),
     });
-
-    const todayFr = now.toLocaleDateString("fr-FR");
-    const total = Math.max(1, nbPalettesPourEtiquette);
-    for (let i = 1; i <= total; i++) {
-      await push(ref(db, "printQueue"), {
-        type: "etiquette_palette_ifco",
-        depot: DEPOT_LABEL.nlt,
-        dateEnvoi: todayFr,
-        caisses: CAISSES_PAR_PALETTE,
-        transporteur: transporteurNom || "",
-        paletteIndex: i,
-        paletteTotal: total,
-        status: "pending",
-        createdAt: Date.now(),
-      });
-    }
-  }
-
-  async function envoyerPaletteIfcoJournee() {
-    setNbPalettesIfcoModal("1");
-    setTransporteurIfcoId(transporteurs.find(t => /nlt/i.test(t.nom))?.id || "");
-    setShowPaletteIfcoModal(true);
-  }
-
-  async function confirmerEnvoiPaletteIfco() {
-    const nbPalettes = parseInt(nbPalettesIfcoModal) || 0;
-    if (nbPalettes <= 0) { notify("error", "✗ Indique au moins 1 palette"); return; }
-    const caissesTotal = nbPalettes * CAISSES_PAR_PALETTE;
-    if (stockIfco.moorea < caissesTotal) {
-      notify("error", `✗ Pas assez de caisses IFCO en stock à Moorea (${stockIfco.moorea} dispo, ${caissesTotal} nécessaires pour ${nbPalettes} palette${nbPalettes > 1 ? "s" : ""})`);
-      return;
-    }
-    const transporteur = transporteurs.find(t => t.id === transporteurIfcoId);
-    setEnvoiPaletteIfcoEnCours(true);
-    try {
-      await pousserEnvoiPaletteIfco(caissesTotal, nbPalettes, transporteur?.nom || "", `Envoi ${nbPalettes} palette${nbPalettes > 1 ? "s" : ""} IFCO du jour (toutes demandes)`);
-      notify("success", `✅ ${nbPalettes} palette${nbPalettes > 1 ? "s" : ""} IFCO envoyée${nbPalettes > 1 ? "s" : ""} à NLT (${caissesTotal} caisses) — étiquette${nbPalettes > 1 ? "s" : ""} en cours d'impression`);
-      setShowPaletteIfcoModal(false);
-    } catch (err: any) {
-      notify("error", `❌ Erreur envoi palette IFCO : ${err?.message || "erreur inconnue"}`);
-    } finally {
-      setEnvoiPaletteIfcoEnCours(false);
-    }
   }
 
   function handlePdfChange(e: ChangeEvent<HTMLInputElement>) {
@@ -1396,19 +1411,12 @@ export function ReconditionnementModule({ onClose, userName }: {
       // stock chez Andès — cette demande ne fait que CONSOMMER une partie de ce stock existant,
       // rien n'est expédié depuis Moorea (voir le bloc "cartons" plus bas).
       if (caisses > 0) {
-        // 27/08/2026 — Ne rattache plus l'envoi à CETTE demande précise (voir le commentaire
-        // sur pousserEnvoiPaletteIfco plus haut) : la case à cocher du formulaire déclenche
-        // exactement le même envoi "toutes demandes du jour" que le bouton dédié de l'onglet
-        // "En cours", étiquette comprise — pour que le lien avec la palette réellement envoyée
-        // reste correct même si les demandes précédentes du jour sont déjà "prêt"/"parti".
-        // Nombre de palettes déduit du nombre de caisses saisi (640 = 1 palette ; le "cas rare"
-        // en saisie manuelle peut correspondre à une palette incomplète ou à plusieurs — on
-        // arrondit au nombre de palettes le plus proche, au moins 1, pour l'étiquette).
-        const nbPalettesCheckbox = Math.max(1, Math.round(caisses / CAISSES_PAR_PALETTE));
+        // 28/08/2026 — N'imprime plus rien ici (voir le commentaire sur pousserEnvoiPaletteIfco
+        // plus haut) : seule l'étiquette imprimée à "Marquer prêt" (PreparationModule.tsx)
+        // compte désormais, avec le nombre de palettes que l'entrepôt y saisit. Cette case ne
+        // fait plus qu'enregistrer le mouvement de stock des caisses IFCO vides envoyées.
         await pousserEnvoiPaletteIfco(
           caisses,
-          nbPalettesCheckbox,
-          transporteur?.nom || "",
           `Reconditionnement — envoi vers ${DEPOT_LABEL[depot]}${transporteur?.nom ? ` (${transporteur.nom})` : ""}`
         );
         await push(ref(db, "reconditionnement_stock_mouvements"), {
@@ -1743,19 +1751,6 @@ export function ReconditionnementModule({ onClose, userName }: {
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes}</div>
               </div>
-            </div>
-
-            {/* 27/08/2026 — Envoi d'une palette IFCO indépendant de toute demande précise (voir
-                envoyerPaletteIfcoJournee plus haut) : couvre toutes les demandes NLT du jour au
-                lieu d'être rattaché à une seule. Imprime une étiquette dédiée (pas de QR code). */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
-              <button
-                onClick={envoyerPaletteIfcoJournee}
-                disabled={envoiPaletteIfcoEnCours}
-                style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: envoiPaletteIfcoEnCours ? COLORS.gray200 : COLORS.primaryLight, color: envoiPaletteIfcoEnCours ? COLORS.gray600 : COLORS.primary, fontSize: 12, fontWeight: 700, cursor: envoiPaletteIfcoEnCours ? "default" : "pointer" }}
-              >
-                📦 Envoyer une/des palette(s) IFCO à NLT
-              </button>
             </div>
 
             {/* Filtre statut */}
@@ -2807,38 +2802,6 @@ export function ReconditionnementModule({ onClose, userName }: {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setPhotoApercu(null)}>
           <img src={photoApercu} alt="Aperçu" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }} />
           <button onClick={() => setPhotoApercu(null)} style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,.15)", border: "none", color: "#fff", fontSize: 22, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>×</button>
-        </div>
-      )}
-
-      {/* MODALE — Envoi d'une/plusieurs palette(s) IFCO (27/08/2026) : nombre de palettes +
-          transporteur, une étiquette imprimée par palette (1/N, 2/N...). */}
-      {showPaletteIfcoModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => !envoiPaletteIfcoEnCours && setShowPaletteIfcoModal(false)}>
-          <div style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 380 }} onClick={e => e.stopPropagation()}>
-            <p style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 800, color: COLORS.gray700 }}>📦 Envoyer une/des palette(s) IFCO à NLT</p>
-            <F label="Nombre de palettes (640 caisses chacune)">
-              <input type="number" min="1" value={nbPalettesIfcoModal} onChange={e => setNbPalettesIfcoModal(e.target.value)} />
-            </F>
-            <div style={{ marginTop: 10 }}>
-              <F label="Transporteur">
-                <select value={transporteurIfcoId} onChange={e => setTransporteurIfcoId(e.target.value)}>
-                  <option value="">— Choisir un transporteur —</option>
-                  {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-                </select>
-              </F>
-            </div>
-            <p style={{ margin: "10px 0 0", fontSize: 10.5, color: COLORS.gray600 }}>
-              Moorea : <b style={{ color: stockIfco.moorea < CAISSES_PAR_PALETTE * (parseInt(nbPalettesIfcoModal) || 1) ? COLORS.danger : COLORS.gray600 }}>{stockIfco.moorea}</b> caisses IFCO dispo
-            </p>
-            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button onClick={confirmerEnvoiPaletteIfco} disabled={envoiPaletteIfcoEnCours} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: envoiPaletteIfcoEnCours ? COLORS.gray200 : COLORS.primary, color: envoiPaletteIfcoEnCours ? COLORS.gray600 : "#fff", fontSize: 13, fontWeight: 700, cursor: envoiPaletteIfcoEnCours ? "default" : "pointer" }}>
-                {envoiPaletteIfcoEnCours ? "Envoi..." : "✅ Envoyer"}
-              </button>
-              <button onClick={() => setShowPaletteIfcoModal(false)} disabled={envoiPaletteIfcoEnCours} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                Annuler
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
