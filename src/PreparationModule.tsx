@@ -241,40 +241,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     }
   }
 
-  // ─── ENVOI MANUEL DU RÉCAP DU JOUR (NLT / Andès) ───
-  const [envoiRecapEnCours, setEnvoiRecapEnCours] = useState<Record<Depot, boolean>>({ nlt: false, andes: false });
-
-  async function envoyerRecapDuJour(depot: Depot) {
-    setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: true }));
-    try {
-      const stockActuel = depot === "nlt" ? stockIfco.nlt : stockBabyBlancAndes;
-      const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stockActuel }),
-      });
-      const texte = await res.text();
-      let data: any = null;
-      try { data = texte ? JSON.parse(texte) : null; } catch { /* réponse non-JSON, gérée ci-dessous */ }
-      if (!res.ok) throw new Error(data?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
-      if (!data) throw new Error("Réponse invalide du serveur");
-      if (data.envoye) {
-        const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
-        if (data.patchEchoues?.length) {
-          const p0 = data.patchEchoues[0];
-          notify("error", `📧 Mail envoyé à ${DEPOT_LABEL[depot]} MAIS le marquage "envoyé" a échoué pour ${data.patchEchoues.length}/${data.nb} demande(s) — la case va rester affichée et tu risques un doublon au prochain clic. 1er échec (id ${p0.id}) : HTTP ${p0.statut} — ${p0.corps || "(pas de détail)"}`);
-        } else {
-          notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[depot]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}`);
-        }
-      } else {
-        notify("success", `Rien à envoyer pour ${DEPOT_LABEL[depot]} pour l'instant`);
-      }
-    } catch (err: any) {
-      notify("error", `❌ Erreur envoi récap ${DEPOT_LABEL[depot]} : ${err?.message || "erreur inconnue"}`);
-    } finally {
-      setEnvoiRecapEnCours(prev => ({ ...prev, [depot]: false }));
-    }
-  }
+  // 27/08/2026 — L'envoi manuel du récap du jour (NLT/Andès) est repassé côté commercial, dans
+  // ReconditionnementModule.tsx (onglet "En cours") : c'est une décision commerciale, pas une
+  // action physique d'entrepôt. Voir envoyerRecapDuJour là-bas.
 
   async function supprimerDemande(id: string) {
     if (!window.confirm("Supprimer définitivement cette demande de reconditionnement ?")) return;
@@ -533,26 +502,6 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
             )}
           </div>
         )}
-
-        {/* Envoi du récap du jour — manuel, un bouton par dépôt */}
-        {(["nlt", "andes"] as Depot[]).map(dep => {
-          const enAttente = demandes.filter(d => d.depot === dep && d.emailEnvoye === false).length;
-          if (enAttente === 0) return null;
-          return (
-            <div key={dep} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
-                📧 {enAttente} demande{enAttente > 1 ? "s" : ""} {DEPOT_LABEL[dep]} pas encore envoyée{enAttente > 1 ? "s" : ""} au reconditionneur
-              </span>
-              <button
-                onClick={() => envoyerRecapDuJour(dep)}
-                disabled={envoiRecapEnCours[dep]}
-                style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: envoiRecapEnCours[dep] ? COLORS.gray200 : COLORS.primary, color: envoiRecapEnCours[dep] ? COLORS.gray600 : "#fff", fontSize: 12, fontWeight: 700, cursor: envoiRecapEnCours[dep] ? "default" : "pointer" }}
-              >
-                {envoiRecapEnCours[dep] ? "Envoi..." : `Envoyer le récap à ${DEPOT_LABEL[dep]}`}
-              </button>
-            </div>
-          );
-        })}
 
         {/* Demandes de réajustement de stock envoyées par les reconditionneurs */}
         {reajustements.filter(r => r.statut === "en attente").map(r => (

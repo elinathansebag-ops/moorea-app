@@ -753,10 +753,48 @@ export function ReconditionnementModule({ onClose, userName }: {
     if (type === "success") setTimeout(() => setNotification(null), 3500);
   }
 
-  // La validation des réajustements de stock demandés par le reconditionneur, l'envoi du récap
-  // quotidien et la validation par scan QR du bon ("prêt"/"parti") sont désormais des actions
-  // entrepôt — elles vivent dans le module Préparation entrepôt à part (voir
-  // src/PreparationModule.tsx), plus ici.
+  // La validation des réajustements de stock demandés par le reconditionneur et la validation
+  // par scan QR du bon ("prêt"/"parti") sont des actions entrepôt — elles vivent dans le module
+  // Préparation entrepôt à part (voir src/PreparationModule.tsx), pas ici.
+  //
+  // 27/08/2026 — L'ENVOI DU RÉCAP, en revanche, est repassé côté commercial (ici) : Elinathan
+  // avait d'abord tout regroupé côté entrepôt (voir plus haut), mais l'envoi du récap au
+  // reconditionneur est une décision commerciale ("le lot du jour est prêt à partir"), pas une
+  // action physique d'entrepôt — donc le bouton revient ici, sur l'onglet "En cours", et est
+  // retiré de Préparation. Logique identique à envoyerRecapDuJour dans PreparationModule.tsx.
+  const [envoiRecapEnCours, setEnvoiRecapEnCours] = useState<Record<Depot, boolean>>({ nlt: false, andes: false });
+
+  async function envoyerRecapDuJour(dep: Depot) {
+    setEnvoiRecapEnCours(prev => ({ ...prev, [dep]: true }));
+    try {
+      const stockActuel = dep === "nlt" ? stockIfco.nlt : stockBabyBlancAndes;
+      const res = await fetch(`/api/recap-reconditionnement?depot=${dep}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stockActuel }),
+      });
+      const texte = await res.text();
+      let data: any = null;
+      try { data = texte ? JSON.parse(texte) : null; } catch { /* réponse non-JSON, gérée ci-dessous */ }
+      if (!res.ok) throw new Error(data?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
+      if (!data) throw new Error("Réponse invalide du serveur");
+      if (data.envoye) {
+        const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
+        if (data.patchEchoues?.length) {
+          const p0 = data.patchEchoues[0];
+          notify("error", `📧 Mail envoyé à ${DEPOT_LABEL[dep]} MAIS le marquage "envoyé" a échoué pour ${data.patchEchoues.length}/${data.nb} demande(s) — la case va rester affichée et tu risques un doublon au prochain clic. 1er échec (id ${p0.id}) : HTTP ${p0.statut} — ${p0.corps || "(pas de détail)"}`);
+        } else {
+          notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[dep]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}`);
+        }
+      } else {
+        notify("success", `Rien à envoyer pour ${DEPOT_LABEL[dep]} pour l'instant`);
+      }
+    } catch (err: any) {
+      notify("error", `❌ Erreur envoi récap ${DEPOT_LABEL[dep]} : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      setEnvoiRecapEnCours(prev => ({ ...prev, [dep]: false }));
+    }
+  }
 
   function handlePdfChange(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -1514,6 +1552,29 @@ export function ReconditionnementModule({ onClose, userName }: {
             se trouve le formulaire de création à réutiliser pour la modifier. */}
         {activeTab === "en_cours" && (
           <div>
+            {/* Envoi du récap du jour — manuel, un bouton par dépôt. Repassé côté commercial ici
+                le 27/08/2026 (retiré de Préparation entrepôt, voir envoyerRecapDuJour plus haut) :
+                c'est une décision commerciale ("le lot du jour est prêt à partir au reconditionneur"),
+                pas une action physique d'entrepôt. */}
+            {(["nlt", "andes"] as Depot[]).map(dep => {
+              const enAttenteRecap = demandes.filter(d => d.depot === dep && d.emailEnvoye === false).length;
+              if (enAttenteRecap === 0) return null;
+              return (
+                <div key={dep} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
+                    📧 {enAttenteRecap} demande{enAttenteRecap > 1 ? "s" : ""} {DEPOT_LABEL[dep]} pas encore envoyée{enAttenteRecap > 1 ? "s" : ""} au reconditionneur
+                  </span>
+                  <button
+                    onClick={() => envoyerRecapDuJour(dep)}
+                    disabled={envoiRecapEnCours[dep]}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: envoiRecapEnCours[dep] ? COLORS.gray200 : COLORS.primary, color: envoiRecapEnCours[dep] ? COLORS.gray600 : "#fff", fontSize: 12, fontWeight: 700, cursor: envoiRecapEnCours[dep] ? "default" : "pointer" }}
+                  >
+                    {envoiRecapEnCours[dep] ? "Envoi..." : `Envoyer le récap à ${DEPOT_LABEL[dep]}`}
+                  </button>
+                </div>
+              );
+            })}
+
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 14 }}>
