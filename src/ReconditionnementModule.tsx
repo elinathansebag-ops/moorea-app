@@ -804,19 +804,18 @@ export function ReconditionnementModule({ onClose, userName }: {
   // plutôt qu'une seule référence (pas de QR code ici, l'étiquette n'est pas censée pointer vers
   // une demande précise).
   const [envoiPaletteIfcoEnCours, setEnvoiPaletteIfcoEnCours] = useState(false);
+  const [showPaletteIfcoModal, setShowPaletteIfcoModal] = useState(false);
+  const [nbPalettesIfcoModal, setNbPalettesIfcoModal] = useState("1");
+  const [transporteurIfcoId, setTransporteurIfcoId] = useState("");
 
-  // 27/08/2026 — Cœur partagé de l'envoi d'une palette IFCO (mouvement de stock + étiquette),
+  // 27/08/2026 — Cœur partagé de l'envoi d'une palette IFCO (mouvement de stock + étiquettes),
   // utilisé à la fois par le bouton "Envoyer une palette IFCO" (ci-dessous) ET par la case à
-  // cocher du formulaire de création (voir creerDemande plus bas) : demande d'Elinathan, avant
-  // la case rattachait l'envoi à LA SEULE demande en cours de création (reconditionnement_demande_id)
-  // — problématique quand les demandes précédentes du jour étaient déjà "prêt"/"parti" au moment
-  // où on cochait la case sur une nouvelle demande : l'envoi n'était alors affilié à AUCUNE des
-  // demandes réellement concernées (elles avaient déjà quitté l'entrepôt). Désormais, peu importe
-  // par où l'envoi est déclenché, il n'est jamais rattaché à une demande précise : il couvre
-  // TOUTES les demandes NLT du jour, comme le mouvement de stock et l'étiquette imprimée.
-  // `demandeSupplementaire` permet d'inclure sur l'étiquette la demande tout juste créée par
-  // creerDemande(), qui n'est pas encore dans le state local `demandes` au moment de l'appel.
-  async function pousserEnvoiPaletteIfco(caissesAEnvoyer: number, raison: string, demandeSupplementaire?: { reference: string; produit: string }) {
+  // cocher du formulaire de création (voir creerDemande plus bas). L'envoi n'est jamais rattaché
+  // à une demande précise (voir historique des commentaires ci-dessous pour le pourquoi).
+  // 27/08/2026 (v2) — Simplifié à la demande d'Elinathan : une étiquette PAR PALETTE physique
+  // (1/N, 2/N...), plus simple qu'une étiquette listant chaque demande/article du jour — et le
+  // nom du transporteur y figure clairement.
+  async function pousserEnvoiPaletteIfco(caissesAEnvoyer: number, nbPalettesPourEtiquette: number, transporteurNom: string, raison: string) {
     const now = new Date();
     const newMoorea = Math.max(0, stockIfco.moorea - caissesAEnvoyer);
     const newNlt = stockIfco.nlt + caissesAEnvoyer;
@@ -832,34 +831,42 @@ export function ReconditionnementModule({ onClose, userName }: {
     });
 
     const todayFr = now.toLocaleDateString("fr-FR");
-    const demandesDuJour = demandes
-      .filter(d => d.depot === "nlt" && d.dateCreationFr && d.dateCreationFr.startsWith(todayFr))
-      .map(d => ({ reference: d.numero || d.id, produit: d.articleVrac }));
-    if (demandeSupplementaire && !demandesDuJour.some(x => x.reference === demandeSupplementaire.reference)) {
-      demandesDuJour.push(demandeSupplementaire);
+    const total = Math.max(1, nbPalettesPourEtiquette);
+    for (let i = 1; i <= total; i++) {
+      await push(ref(db, "printQueue"), {
+        type: "etiquette_palette_ifco",
+        depot: DEPOT_LABEL.nlt,
+        dateEnvoi: todayFr,
+        caisses: CAISSES_PAR_PALETTE,
+        transporteur: transporteurNom || "",
+        paletteIndex: i,
+        paletteTotal: total,
+        status: "pending",
+        createdAt: Date.now(),
+      });
     }
-
-    await push(ref(db, "printQueue"), {
-      type: "etiquette_palette_ifco",
-      depot: DEPOT_LABEL.nlt,
-      dateEnvoi: todayFr,
-      caisses: caissesAEnvoyer,
-      demandesDuJour,
-      status: "pending",
-      createdAt: Date.now(),
-    });
   }
 
   async function envoyerPaletteIfcoJournee() {
-    if (stockIfco.moorea < CAISSES_PAR_PALETTE) {
-      notify("error", `✗ Pas assez de caisses IFCO en stock à Moorea (${stockIfco.moorea} dispo, ${CAISSES_PAR_PALETTE} nécessaires)`);
+    setNbPalettesIfcoModal("1");
+    setTransporteurIfcoId(transporteurs.find(t => /nlt/i.test(t.nom))?.id || "");
+    setShowPaletteIfcoModal(true);
+  }
+
+  async function confirmerEnvoiPaletteIfco() {
+    const nbPalettes = parseInt(nbPalettesIfcoModal) || 0;
+    if (nbPalettes <= 0) { notify("error", "✗ Indique au moins 1 palette"); return; }
+    const caissesTotal = nbPalettes * CAISSES_PAR_PALETTE;
+    if (stockIfco.moorea < caissesTotal) {
+      notify("error", `✗ Pas assez de caisses IFCO en stock à Moorea (${stockIfco.moorea} dispo, ${caissesTotal} nécessaires pour ${nbPalettes} palette${nbPalettes > 1 ? "s" : ""})`);
       return;
     }
-    if (!window.confirm(`Envoyer une palette IFCO (${CAISSES_PAR_PALETTE} caisses) à NLT pour toutes les demandes du jour ?`)) return;
+    const transporteur = transporteurs.find(t => t.id === transporteurIfcoId);
     setEnvoiPaletteIfcoEnCours(true);
     try {
-      await pousserEnvoiPaletteIfco(CAISSES_PAR_PALETTE, "Envoi palette IFCO du jour (toutes demandes)");
-      notify("success", `✅ Palette IFCO envoyée à NLT (${CAISSES_PAR_PALETTE} caisses) — étiquette en cours d'impression`);
+      await pousserEnvoiPaletteIfco(caissesTotal, nbPalettes, transporteur?.nom || "", `Envoi ${nbPalettes} palette${nbPalettes > 1 ? "s" : ""} IFCO du jour (toutes demandes)`);
+      notify("success", `✅ ${nbPalettes} palette${nbPalettes > 1 ? "s" : ""} IFCO envoyée${nbPalettes > 1 ? "s" : ""} à NLT (${caissesTotal} caisses) — étiquette${nbPalettes > 1 ? "s" : ""} en cours d'impression`);
+      setShowPaletteIfcoModal(false);
     } catch (err: any) {
       notify("error", `❌ Erreur envoi palette IFCO : ${err?.message || "erreur inconnue"}`);
     } finally {
@@ -1394,10 +1401,15 @@ export function ReconditionnementModule({ onClose, userName }: {
         // exactement le même envoi "toutes demandes du jour" que le bouton dédié de l'onglet
         // "En cours", étiquette comprise — pour que le lien avec la palette réellement envoyée
         // reste correct même si les demandes précédentes du jour sont déjà "prêt"/"parti".
+        // Nombre de palettes déduit du nombre de caisses saisi (640 = 1 palette ; le "cas rare"
+        // en saisie manuelle peut correspondre à une palette incomplète ou à plusieurs — on
+        // arrondit au nombre de palettes le plus proche, au moins 1, pour l'étiquette).
+        const nbPalettesCheckbox = Math.max(1, Math.round(caisses / CAISSES_PAR_PALETTE));
         await pousserEnvoiPaletteIfco(
           caisses,
-          `Reconditionnement — envoi vers ${DEPOT_LABEL[depot]}${transporteur?.nom ? ` (${transporteur.nom})` : ""}`,
-          { reference: demande.numero || demandeId || "", produit: demande.articleVrac }
+          nbPalettesCheckbox,
+          transporteur?.nom || "",
+          `Reconditionnement — envoi vers ${DEPOT_LABEL[depot]}${transporteur?.nom ? ` (${transporteur.nom})` : ""}`
         );
         await push(ref(db, "reconditionnement_stock_mouvements"), {
           type: "envoi_reconditionneur", article: "ifco_vide", depot, quantite: caisses, date: nowFr(), ts: now.getTime(),
@@ -1742,7 +1754,7 @@ export function ReconditionnementModule({ onClose, userName }: {
                 disabled={envoiPaletteIfcoEnCours}
                 style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: envoiPaletteIfcoEnCours ? COLORS.gray200 : COLORS.primaryLight, color: envoiPaletteIfcoEnCours ? COLORS.gray600 : COLORS.primary, fontSize: 12, fontWeight: 700, cursor: envoiPaletteIfcoEnCours ? "default" : "pointer" }}
               >
-                {envoiPaletteIfcoEnCours ? "Envoi..." : `📦 Envoyer une palette IFCO à NLT (${CAISSES_PAR_PALETTE} caisses, toutes demandes du jour)`}
+                📦 Envoyer une/des palette(s) IFCO à NLT
               </button>
             </div>
 
@@ -2795,6 +2807,38 @@ export function ReconditionnementModule({ onClose, userName }: {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setPhotoApercu(null)}>
           <img src={photoApercu} alt="Aperçu" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }} />
           <button onClick={() => setPhotoApercu(null)} style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,.15)", border: "none", color: "#fff", fontSize: 22, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>×</button>
+        </div>
+      )}
+
+      {/* MODALE — Envoi d'une/plusieurs palette(s) IFCO (27/08/2026) : nombre de palettes +
+          transporteur, une étiquette imprimée par palette (1/N, 2/N...). */}
+      {showPaletteIfcoModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => !envoiPaletteIfcoEnCours && setShowPaletteIfcoModal(false)}>
+          <div style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <p style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 800, color: COLORS.gray700 }}>📦 Envoyer une/des palette(s) IFCO à NLT</p>
+            <F label="Nombre de palettes (640 caisses chacune)">
+              <input type="number" min="1" value={nbPalettesIfcoModal} onChange={e => setNbPalettesIfcoModal(e.target.value)} />
+            </F>
+            <div style={{ marginTop: 10 }}>
+              <F label="Transporteur">
+                <select value={transporteurIfcoId} onChange={e => setTransporteurIfcoId(e.target.value)}>
+                  <option value="">— Choisir un transporteur —</option>
+                  {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                </select>
+              </F>
+            </div>
+            <p style={{ margin: "10px 0 0", fontSize: 10.5, color: COLORS.gray600 }}>
+              Moorea : <b style={{ color: stockIfco.moorea < CAISSES_PAR_PALETTE * (parseInt(nbPalettesIfcoModal) || 1) ? COLORS.danger : COLORS.gray600 }}>{stockIfco.moorea}</b> caisses IFCO dispo
+            </p>
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button onClick={confirmerEnvoiPaletteIfco} disabled={envoiPaletteIfcoEnCours} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: envoiPaletteIfcoEnCours ? COLORS.gray200 : COLORS.primary, color: envoiPaletteIfcoEnCours ? COLORS.gray600 : "#fff", fontSize: 13, fontWeight: 700, cursor: envoiPaletteIfcoEnCours ? "default" : "pointer" }}>
+                {envoiPaletteIfcoEnCours ? "Envoi..." : "✅ Envoyer"}
+              </button>
+              <button onClick={() => setShowPaletteIfcoModal(false)} disabled={envoiPaletteIfcoEnCours} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                Annuler
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
