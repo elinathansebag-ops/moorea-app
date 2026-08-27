@@ -146,6 +146,39 @@ function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
   </div>`;
 }
 
+// Petit mail au transporteur — demande du 27/08/2026 : "quand le bon part au reconditionneur,
+// prévenir aussi le transporteur qu'il y a un enlèvement prêt aujourd'hui". Volontairement plus
+// court que le récap envoyé au reconditionneur (le transporteur n'a pas besoin du détail
+// produit/quantité par référence, juste "il y a X référence(s) prête(s) à Moorea, viens les
+// chercher pour les amener chez [dépôt]").
+function construireEmailTransporteurHtml({ transporteurNom, depot, nbReferences, dateFr }) {
+  return `
+  <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="background:#0a0a0a;padding:18px 22px;border-radius:12px 12px 0 0;">
+          <span style="color:#c8a84b;font-size:18px;font-weight:800;letter-spacing:.5px;">MOOREA</span>
+          <span style="color:#fff;font-size:13px;margin-left:10px;">Enlèvement à faire</span>
+        </td>
+      </tr>
+      <tr><td style="height:3px;background:#c8a84b;"></td></tr>
+    </table>
+    <div style="padding:24px 22px;border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;">
+      <p style="font-size:14.5px;color:#0a0a0a;margin:0 0 10px;">Bonjour ${transporteurNom || ""},</p>
+      <p style="font-size:13.5px;color:#444;line-height:1.6;margin:0 0 4px;">
+        Il y a <strong>${nbReferences} référence${nbReferences > 1 ? "s" : ""}</strong> de reconditionnement
+        prête${nbReferences > 1 ? "s" : ""} à récupérer chez Moorea aujourd'hui (${dateFr}), à destination de
+        <strong>${DEPOT_LABEL[depot]}</strong>.
+      </p>
+      <p style="font-size:13.5px;color:#444;line-height:1.6;margin:14px 0 0;">
+        Merci de passer les chercher dès que possible.
+      </p>
+      <p style="font-size:13px;color:#444;margin:22px 0 2px;">Merci et bonne journée !</p>
+      <p style="font-size:13px;color:#0a0a0a;font-weight:700;margin:0;">Jordan — Moorea Agréage</p>
+    </div>
+  </div>`;
+}
+
 // Fusionne tous les bons PDF (base64) en un seul document — un bon = une ou plusieurs pages, mises
 // bout à bout dans l'ordre des demandes. Si la fusion échoue pour une raison quelconque (un des PDF
 // corrompu, etc.), on retombe sur l'envoi en pièces jointes séparées plutôt que de bloquer l'envoi.
@@ -231,7 +264,46 @@ async function envoyerRecapPourDepot(depot, stockActuel) {
   }));
   const patchEchoues = patchResultats.filter(p => !p.ok);
 
-  return { depot, envoye: true, nb: enAttente.length, accepted, rejected, patchEchoues };
+  // Prévenir aussi le(s) transporteur(s) — demande du 27/08/2026 : jusqu'ici, choisir un
+  // transporteur sur une demande ne servait qu'en interne (stats/facturation, imprimé sur le
+  // bon) ; rien ne le prévenait qu'un enlèvement l'attendait chez Moorea. On regroupe les
+  // demandes de CE lot par transporteur (un lot peut mélanger plusieurs transporteurs — rare
+  // mais possible) et on envoie un mail court à chacun, uniquement s'il a une adresse email
+  // renseignée (voir Configuration → Transporteurs). Best-effort : un transporteur sans email,
+  // ou un envoi qui échoue, ne doit surtout pas faire échouer le récap déjà envoyé au
+  // reconditionneur — on log et on continue.
+  let transporteurEmails = [];
+  try {
+    const transporteursSnap = await adminDb.ref("reconditionnement_transporteurs").once("value");
+    const transporteursData = transporteursSnap.val() || {};
+    const parTransporteur = {};
+    enAttente.forEach(d => {
+      if (!d.transporteurId) return;
+      if (!parTransporteur[d.transporteurId]) parTransporteur[d.transporteurId] = [];
+      parTransporteur[d.transporteurId].push(d);
+    });
+    const envoisTransporteur = await Promise.all(Object.entries(parTransporteur).map(async ([transporteurId, demandesLot]) => {
+      const t = transporteursData[transporteurId];
+      if (!t || !t.email) return { transporteurId, envoye: false, raison: t ? "pas d'email configuré" : "transporteur introuvable" };
+      try {
+        const infoT = await transporter.sendMail({
+          from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
+          to: t.email,
+          subject: `🚚 Enlèvement à faire aujourd'hui — Moorea → ${DEPOT_LABEL[depot]} (${dateFr})`,
+          html: construireEmailTransporteurHtml({ transporteurNom: t.nom, depot, nbReferences: demandesLot.length, dateFr }),
+        });
+        return { transporteurId, envoye: true, accepted: infoT.accepted || [], rejected: infoT.rejected || [] };
+      } catch (errT) {
+        console.error(`Erreur envoi mail transporteur (${t.nom || transporteurId}):`, errT);
+        return { transporteurId, envoye: false, raison: String(errT?.message || errT).slice(0, 200) };
+      }
+    }));
+    transporteurEmails = envoisTransporteur;
+  } catch (errTransp) {
+    console.error("Erreur lecture reconditionnement_transporteurs (récap, non bloquant):", errTransp);
+  }
+
+  return { depot, envoye: true, nb: enAttente.length, accepted, rejected, patchEchoues, transporteurEmails };
 }
 
 export default async function handler(req, res) {
