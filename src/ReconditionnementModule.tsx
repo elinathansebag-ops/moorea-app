@@ -1082,6 +1082,38 @@ export function ReconditionnementModule({ onClose, userName }: {
     notify("success", "↩️ Demande repassée à « prêt »");
   }
 
+  // 27/08/2026 — Bouton de secours (même principe que "🏷 Étiquettes (palettes)" dans Arrivage) :
+  // réimprime les étiquettes de production d'une demande, palette par palette, même si elle est
+  // déjà "prêt" ou "parti" (étiquette perdue, imprimante en panne au moment de la validation par
+  // l'entrepôt, etc.). Disparaît une fois le retour validé dans agréage (statut "reçu") — à ce
+  // stade l'étiquette de production n'a plus de sens, c'est une autre étape.
+  async function reimprimerEtiquettesProduction(d: Demande) {
+    if (!d.nbPalettesDepart) return;
+    const total = (d.nbPalettesDepart.grandes || 0) + (d.nbPalettesDepart.demi || 0);
+    if (total <= 0) return;
+    const url = `${window.location.origin}${window.location.pathname}?recond=${d.id}`;
+    try {
+      for (let i = 1; i <= total; i++) {
+        await push(ref(db, "printQueue"), {
+          type: "etiquette_production",
+          reference: d.numero || d.id,
+          produit: d.articleVrac,
+          depot: DEPOT_LABEL[d.depot],
+          paletteIndex: i,
+          paletteTotal: total,
+          dateProd: d.entrepotPretDate ? d.entrepotPretDate.split(" ")[0] : new Date().toLocaleDateString("fr-FR"),
+          transporteur: d.transporteurNom || "",
+          url,
+          status: "pending",
+          createdAt: Date.now(),
+        });
+      }
+      notify("success", `🏷️ ${total} étiquette${total > 1 ? "s" : ""} de production renvoyée${total > 1 ? "s" : ""} à l'impression`);
+    } catch (err: any) {
+      notify("error", `❌ Erreur réimpression étiquettes : ${err?.message || "erreur inconnue"}`);
+    }
+  }
+
   // ─── Pointage compta : la compta vérifie que la facture reçue du reconditionneur correspond
   // bien à ce qui a réellement été fait (voir Historique) et le marque ici — indépendant du
   // statut principal, comme pour les commandes cartons/palettes IFCO (module Prestataires). ───
@@ -1913,6 +1945,12 @@ export function ReconditionnementModule({ onClose, userName }: {
                         commercial, même une fois la demande passée "prêt" ou "parti". */}
                     {(d.statut === "prêt" || d.statut === "parti") && (
                       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                        {d.nbPalettesDepart && (
+                          <button onClick={() => reimprimerEtiquettesProduction(d)} title="Réimprimer les étiquettes de production (secours) — disparaît une fois le retour validé dans agréage"
+                            style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid #ddd6c8", background: "#fff", color: "#8a6f2e", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            🏷️ Réimprimer étiquette(s)
+                          </button>
+                        )}
                         {d.statut === "parti" && (
                           <button onClick={() => repasserAPret(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: "#fff", color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                             ↩️ Repasser à « prêt »
