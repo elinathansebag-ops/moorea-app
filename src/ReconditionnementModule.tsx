@@ -796,6 +796,58 @@ export function ReconditionnementModule({ onClose, userName }: {
     }
   }
 
+  // 27/08/2026 — Ajouté à la demande d'Elinathan : jusqu'ici, envoyer une palette IFCO
+  // (640 caisses) n'était possible qu'en le rattachant à UNE seule demande précise (case à
+  // cocher dans le formulaire "Nouvelle demande"). Ce bouton-ci envoie une palette de façon
+  // indépendante, sans la lier à une demande en particulier — le mouvement de stock (Moorea →
+  // NLT) s'applique globalement, et l'étiquette imprimée liste toutes les demandes NLT du jour
+  // plutôt qu'une seule référence (pas de QR code ici, l'étiquette n'est pas censée pointer vers
+  // une demande précise).
+  const [envoiPaletteIfcoEnCours, setEnvoiPaletteIfcoEnCours] = useState(false);
+
+  async function envoyerPaletteIfcoJournee() {
+    if (stockIfco.moorea < CAISSES_PAR_PALETTE) {
+      notify("error", `✗ Pas assez de caisses IFCO en stock à Moorea (${stockIfco.moorea} dispo, ${CAISSES_PAR_PALETTE} nécessaires)`);
+      return;
+    }
+    if (!window.confirm(`Envoyer une palette IFCO (${CAISSES_PAR_PALETTE} caisses) à NLT pour toutes les demandes du jour ?`)) return;
+    setEnvoiPaletteIfcoEnCours(true);
+    try {
+      const now = new Date();
+      const newMoorea = Math.max(0, stockIfco.moorea - CAISSES_PAR_PALETTE);
+      const newNlt = stockIfco.nlt + CAISSES_PAR_PALETTE;
+      await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+      await push(ref(db, "ifco_stock/movements"), {
+        date: nowFr(),
+        from: "moorea",
+        to: "nlt",
+        caisses: CAISSES_PAR_PALETTE,
+        raison: "Envoi palette IFCO du jour (toutes demandes)",
+        user: userName || "Moorea",
+        ts: now.getTime(),
+      });
+
+      const todayFr = now.toLocaleDateString("fr-FR");
+      const demandesDuJour = demandes.filter(d => d.depot === "nlt" && d.dateCreationFr && d.dateCreationFr.startsWith(todayFr));
+
+      await push(ref(db, "printQueue"), {
+        type: "etiquette_palette_ifco",
+        depot: DEPOT_LABEL.nlt,
+        dateEnvoi: todayFr,
+        caisses: CAISSES_PAR_PALETTE,
+        demandesDuJour: demandesDuJour.map(d => ({ reference: d.numero || d.id, produit: d.articleVrac })),
+        status: "pending",
+        createdAt: Date.now(),
+      });
+
+      notify("success", `✅ Palette IFCO envoyée à NLT (${CAISSES_PAR_PALETTE} caisses) — étiquette en cours d'impression`);
+    } catch (err: any) {
+      notify("error", `❌ Erreur envoi palette IFCO : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      setEnvoiPaletteIfcoEnCours(false);
+    }
+  }
+
   function handlePdfChange(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -1627,6 +1679,19 @@ export function ReconditionnementModule({ onClose, userName }: {
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes}</div>
               </div>
+            </div>
+
+            {/* 27/08/2026 — Envoi d'une palette IFCO indépendant de toute demande précise (voir
+                envoyerPaletteIfcoJournee plus haut) : couvre toutes les demandes NLT du jour au
+                lieu d'être rattaché à une seule. Imprime une étiquette dédiée (pas de QR code). */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+              <button
+                onClick={envoyerPaletteIfcoJournee}
+                disabled={envoiPaletteIfcoEnCours}
+                style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: envoiPaletteIfcoEnCours ? COLORS.gray200 : COLORS.primaryLight, color: envoiPaletteIfcoEnCours ? COLORS.gray600 : COLORS.primary, fontSize: 12, fontWeight: 700, cursor: envoiPaletteIfcoEnCours ? "default" : "pointer" }}
+              >
+                {envoiPaletteIfcoEnCours ? "Envoi..." : `📦 Envoyer une palette IFCO à NLT (${CAISSES_PAR_PALETTE} caisses, toutes demandes du jour)`}
+              </button>
             </div>
 
             {/* Filtre statut */}
