@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, ChangeEvent } from "react";
+import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
@@ -1726,6 +1726,20 @@ export function ReconditionnementModule({ onClose, userName }: {
     return tb - ta;
   });
 
+  // Regroupement par jour du détail production reconditionneur, pour afficher un total
+  // filets/kg + caisses IFCO par jour (demande du 28/08/2026) — sans changer l'ordre
+  // (le plus récent en premier), juste inséré en sous-total après chaque groupe de jour.
+  const parJourProduction: Record<string, Demande[]> = {};
+  productionReconditionneur.forEach(d => {
+    const brut = d.retour?.date || d.dateCreationFr;
+    const cle = brut ? brut.split(" ")[0] : "Date inconnue";
+    if (!parJourProduction[cle]) parJourProduction[cle] = [];
+    parJourProduction[cle].push(d);
+  });
+  const joursProductionTries = Object.keys(parJourProduction).sort(
+    (a, b) => (parseFrDate(b)?.getTime() || 0) - (parseFrDate(a)?.getTime() || 0)
+  );
+
   // ── Détail par transporteur, jour par jour : combien de palettes sont parties de Moorea vers
   // le reconditionneur, combien sont revenues, et le n° de lot de l'article concerné — pour
   // pouvoir attribuer les coûts de transport plus tard (une ligne par trajet, pas juste un
@@ -2576,25 +2590,49 @@ export function ReconditionnementModule({ onClose, userName }: {
                     </tr>
                   </thead>
                   <tbody>
-                    {productionReconditionneur.map(d => (
-                      <tr key={d.id} style={{ borderTop: `1px solid ${COLORS.gray100}`, background: "#fff" }}>
-                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{d.retour?.date || d.dateCreationFr || "—"}</td>
-                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{DEPOT_LABEL[d.depot]}</td>
-                        <td style={{ padding: "8px 10px" }}>
-                          {d.numero && <span style={{ color: COLORS.primary, fontWeight: 700 }}>{d.numero}</span>}
-                          {" "}{d.articleFini}{d.lot ? ` · lot ${d.lot}` : ""}
-                        </td>
-                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.nbColisRecus ?? "—"}</b></td>
-                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.qteConditionnementRecue != null ? `${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : "—"}</b></td>
-                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
-                          {d.retour?.caissesIfcoPleinesRecues != null ? (
-                            <b>{d.retour.caissesIfcoPleinesRecues}</b>
-                          ) : retourEnIfcoDemande(d) ? (
-                            <span style={{ color: COLORS.danger, fontWeight: 700 }}>⚠️ non saisi</span>
-                          ) : "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {joursProductionTries.map(jourStr => {
+                      const lignesJour = parJourProduction[jourStr];
+                      const totalFiletsNlt = lignesJour.filter(d => d.depot === "nlt").reduce((s, d) => s + (d.retour?.qteConditionnementRecue || 0), 0);
+                      const totalKgAndes = lignesJour.filter(d => d.depot === "andes").reduce((s, d) => s + (d.retour?.qteConditionnementRecue || 0), 0);
+                      const totalCaisses = lignesJour.reduce((s, d) => s + (d.retour?.caissesIfcoPleinesRecues || 0), 0);
+                      const totalQteParts: string[] = [];
+                      if (totalFiletsNlt > 0) totalQteParts.push(`${totalFiletsNlt} filet${totalFiletsNlt > 1 ? "s" : ""}`);
+                      if (totalKgAndes > 0) totalQteParts.push(`${totalKgAndes} kg`);
+                      return (
+                        <Fragment key={jourStr}>
+                          {lignesJour.map(d => (
+                            <tr key={d.id} style={{ borderTop: `1px solid ${COLORS.gray100}`, background: "#fff" }}>
+                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{d.retour?.date || d.dateCreationFr || "—"}</td>
+                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{DEPOT_LABEL[d.depot]}</td>
+                              <td style={{ padding: "8px 10px" }}>
+                                {d.numero && <span style={{ color: COLORS.primary, fontWeight: 700 }}>{d.numero}</span>}
+                                {" "}{d.articleFini}{d.lot ? ` · lot ${d.lot}` : ""}
+                              </td>
+                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.nbColisRecus ?? "—"}</b></td>
+                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.qteConditionnementRecue != null ? `${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : "—"}</b></td>
+                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                                {d.retour?.caissesIfcoPleinesRecues != null ? (
+                                  <b>{d.retour.caissesIfcoPleinesRecues}</b>
+                                ) : retourEnIfcoDemande(d) ? (
+                                  <span style={{ color: COLORS.danger, fontWeight: 700 }}>⚠️ non saisi</span>
+                                ) : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr style={{ borderTop: `1.5px solid ${COLORS.gray200}`, background: COLORS.gray100 }}>
+                            <td colSpan={4} style={{ padding: "8px 10px", fontSize: 11.5, fontWeight: 800, color: COLORS.gray700, textAlign: "right" }}>
+                              Total {jourStr} :
+                            </td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap", fontSize: 11.5, fontWeight: 800, color: COLORS.gray700 }}>
+                              {totalQteParts.length > 0 ? totalQteParts.join(" + ") : "—"}
+                            </td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap", fontSize: 11.5, fontWeight: 800, color: COLORS.gray700 }}>
+                              {totalCaisses > 0 ? `${totalCaisses} caisse${totalCaisses > 1 ? "s" : ""}` : "—"}
+                            </td>
+                          </tr>
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
