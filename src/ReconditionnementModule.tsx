@@ -1697,6 +1697,24 @@ export function ReconditionnementModule({ onClose, userName }: {
       return next;
     });
   };
+  // Referme automatiquement l'accordéon prestataire (NLT / Andès) des jours différents
+  // d'aujourd'hui — un reconditionnement qui n'est pas du jour n'a pas besoin de rester déplié
+  // par défaut. L'utilisateur garde ensuite le contrôle (ouvrir/fermer librement) : on ne fait
+  // que fermer les nouveaux jours détectés, sans jamais rouvrir de force ceux déjà fermés/ouverts
+  // manuellement.
+  useEffect(() => {
+    const aujourdHui = new Date().toLocaleDateString("fr-FR");
+    setDepotsFermesDemandes(prev => {
+      const next = new Set(prev);
+      joursTriesDemandes.forEach(jourStr => {
+        if (jourStr !== aujourdHui) {
+          (["nlt", "andes"] as Depot[]).forEach(dep => next.add(`${jourStr}::${dep}`));
+        }
+      });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [joursTriesDemandes.join(",")]);
 
   // ── Détail de la production faite par le reconditionneur (NLT / Andès), une ligne par
   // demande "reçue" — colis reçus (cartons) et quantité conditionnée (ex : filets) pointés au
