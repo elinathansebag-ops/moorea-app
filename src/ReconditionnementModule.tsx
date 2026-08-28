@@ -5,6 +5,9 @@ import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
+// 28/08/2026 — Utilisé pour découper un PDF Geslot multi-pages (plusieurs bons imprimés à la
+// suite) en fichiers séparés, un par page (voir importerPdfMultiPages plus bas).
+import { PDFDocument } from "pdf-lib";
 
 // ── Module Reconditionnement ──
 // Le reconditionnement (vrac → produit fini) est fait et suivi côté stock dans Geslot.
@@ -726,6 +729,13 @@ export function ReconditionnementModule({ onClose, userName }: {
   // validation de l'arrivage correspondant dans App.tsx (handleAgrement).
   const [mouvements, setMouvements] = useState<Mouvement[]>([]);
 
+  // 28/08/2026 — Fichiers issus du découpage d'un PDF Geslot multi-pages (voir
+  // importerPdfMultiPages), en attente d'être rattachés à une demande via "Utiliser" dans le
+  // formulaire de création. Chaque entrée disparaît de cette liste une fois utilisée.
+  const [pdfsEnAttente, setPdfsEnAttente] = useState<{ id: string; nom: string; base64: string; dateFr: string; ts: number }[]>([]);
+  const [importMultiEnCours, setImportMultiEnCours] = useState(false);
+  const [afficherPdfsEnAttente, setAfficherPdfsEnAttente] = useState(false);
+
   useEffect(() => {
     const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
       const d = snap.val();
@@ -752,7 +762,11 @@ export function ReconditionnementModule({ onClose, userName }: {
       const d = snap.val();
       setMouvements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = onValue(ref(db, "reconditionnement_pdfs_en_attente"), snap => {
+      const d = snap.val();
+      setPdfsEnAttente(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.ts || 0) - (b.ts || 0)) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
@@ -894,6 +908,70 @@ export function ReconditionnementModule({ onClose, userName }: {
       user: userName || "Moorea",
       ts: now.getTime(),
     });
+  }
+
+  // 28/08/2026 — Découpe un PDF Geslot multi-pages (plusieurs bons imprimés à la suite) en
+  // fichiers séparés, un par page, et les enregistre dans l'app (pas juste téléchargés sur le
+  // PC) pour qu'ils servent ensuite de "fichier de base" quand on crée chaque demande — voir
+  // utiliserPdfEnAttente plus bas. Nommés reconditionnement-JJ-MM-AAAA-1.pdf, -2.pdf, etc.
+  async function importerPdfMultiPages(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.type !== "application/pdf") { notify("error", "✗ Merci de choisir un fichier PDF"); return; }
+    setImportMultiEnCours(true);
+    try {
+      const arrayBuffer = await f.arrayBuffer();
+      const srcDoc = await PDFDocument.load(arrayBuffer);
+      const nbPages = srcDoc.getPageCount();
+      if (nbPages <= 1) {
+        notify("error", "✗ Ce PDF n'a qu'une seule page — utilise plutôt « Importer un bon Geslot » directement");
+        return;
+      }
+      const dateStr = new Date().toLocaleDateString("fr-FR").split("/").join("-");
+      const dateFr = nowFr();
+      for (let i = 0; i < nbPages; i++) {
+        const pageDoc = await PDFDocument.create();
+        const [copiedPage] = await pageDoc.copyPages(srcDoc, [i]);
+        pageDoc.addPage(copiedPage);
+        const bytes = await pageDoc.save();
+        const blob = new Blob([bytes], { type: "application/pdf" });
+        const base64: string = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        const nom = `reconditionnement-${dateStr}-${i + 1}.pdf`;
+        await push(ref(db, "reconditionnement_pdfs_en_attente"), { nom, base64, dateFr, ts: Date.now() + i });
+      }
+      notify("success", `✅ ${nbPages} pages enregistrées — disponibles dans « Fichiers en attente »`);
+      setAfficherPdfsEnAttente(true);
+    } catch (err: any) {
+      notify("error", `❌ Erreur lors du découpage : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      setImportMultiEnCours(false);
+      e.target.value = "";
+    }
+  }
+
+  // Rattache un fichier déjà découpé (voir importerPdfMultiPages) à la demande en cours de
+  // création — exactement comme un import manuel via "Importer un bon Geslot" (même lecture
+  // automatique OCR), sauf qu'on reconstruit un objet File à partir du base64 déjà enregistré
+  // plutôt que de repartir d'un fichier choisi sur le disque. Retiré de la liste d'attente une
+  // fois utilisé.
+  async function utiliserPdfEnAttente(entree: { id: string; nom: string; base64: string }) {
+    setPdfFile({ nom: entree.nom, base64: entree.base64 });
+    setAfficherPdfsEnAttente(false);
+    await remove(ref(db, `reconditionnement_pdfs_en_attente/${entree.id}`));
+    try {
+      const reponse = await fetch(entree.base64);
+      const blob = await reponse.blob();
+      const file = new File([blob], entree.nom, { type: "application/pdf" });
+      await lireEtPreremplirDepuisPdf(file);
+    } catch {
+      // La lecture automatique est un confort, pas une nécessité — si elle échoue, le fichier
+      // reste quand même attaché, le commercial complète simplement les champs à la main.
+    }
   }
 
   function handlePdfChange(e: ChangeEvent<HTMLInputElement>) {
@@ -2044,6 +2122,42 @@ export function ReconditionnementModule({ onClose, userName }: {
                   <span style={{ fontSize: 11.5, color: "#1d4ed8", fontWeight: 700 }}>⏳ lecture en cours…</span>
                 )}
               </div>
+
+              {/* 28/08/2026 — Import d'un PDF Geslot multi-pages (plusieurs bons imprimés à la
+                  suite) : découpé automatiquement en un fichier par page, chaque page devenant
+                  disponible ci-dessous pour être rattachée à une demande (voir
+                  importerPdfMultiPages / utiliserPdfEnAttente). */}
+              <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: importMultiEnCours ? COLORS.gray200 : "#f5f3ff", color: importMultiEnCours ? COLORS.gray600 : "#7c3aed", fontSize: 11.5, fontWeight: 700, cursor: importMultiEnCours ? "default" : "pointer", whiteSpace: "nowrap" }}>
+                  {importMultiEnCours ? "⏳ Découpage..." : "📚 Importer un PDF multi-pages"}
+                  <input type="file" accept="application/pdf" onChange={importerPdfMultiPages} disabled={importMultiEnCours} style={{ display: "none" }} />
+                </label>
+                {pdfsEnAttente.length > 0 && (
+                  <button type="button" onClick={() => setAfficherPdfsEnAttente(v => !v)} style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e9d8fd", background: "#faf5ff", color: "#7c3aed", fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    📥 Fichiers en attente ({pdfsEnAttente.length})
+                  </button>
+                )}
+              </div>
+              {afficherPdfsEnAttente && pdfsEnAttente.length > 0 && (
+                <div style={{ flexBasis: "100%", background: "#faf5ff", border: "1.5px solid #e9d8fd", borderRadius: 10, padding: "8px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {pdfsEnAttente.map(p => (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11.5, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <button type="button" onClick={() => setPdfApercu({ titre: p.nom, base64: p.base64 })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e9d8fd", background: "#fff", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Aperçu
+                        </button>
+                        <button type="button" onClick={() => utiliserPdfEnAttente(p)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Utiliser
+                        </button>
+                        <button type="button" onClick={() => remove(ref(db, `reconditionnement_pdfs_en_attente/${p.id}`))} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #fca5a5", background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Suppr.
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {depot === "nlt" && (
                 <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px" }}>
