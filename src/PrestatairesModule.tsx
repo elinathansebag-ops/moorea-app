@@ -63,6 +63,27 @@ type PaletteIFCOCommande = {
   notes?: string;
 };
 
+// ── Entretiens / interventions de prestataires de maintenance (portes de quai, froid...) ──
+// Cycle : "programmé" (créé) → "en cours" (arrivée validée par l'entrepôt) → "terminé" (départ
+// validé, avec prénom + signature du technicien) — ou "annulé" si l'intervention n'a pas eu lieu.
+type Entretien = {
+  id: string;
+  prestataire: string;
+  motif: string;
+  dateProgrammee?: string;
+  statut: "programmé" | "en cours" | "terminé" | "annulé";
+  heureArrivee?: string;
+  heureDepart?: string;
+  dureeMinutes?: number | null;
+  technicienPrenom?: string;
+  signatureBase64?: string;
+  commentaire?: string;
+  creePar?: string;
+  ts: number;
+};
+
+const PRESTATAIRES_ENTRETIEN_DEFAUT = ["Porte Accès", "R.E.F", "Fernand"];
+
 // ── Types IFCO (fusionnés depuis IFCOModule.tsx) ──
 interface HistoEntry {
   id?: string;
@@ -162,7 +183,7 @@ const COLORS = {
 
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "configuration" | "nouvelle-carton" | "nouvelle-palette"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens"
   >("dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
@@ -185,6 +206,25 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [notesIfco, setNotesIfco] = useState("");
 
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  // ── Entretiens / interventions prestataires (maintenance) ──
+  const [entretiens, setEntretiens] = useState<Entretien[]>([]);
+  const [filtreEntretien, setFiltreEntretien] = useState<"en_cours" | "historique">("en_cours");
+  const [showNouvelEntretien, setShowNouvelEntretien] = useState(false);
+  const [entretienPrestataire, setEntretienPrestataire] = useState(PRESTATAIRES_ENTRETIEN_DEFAUT[0]);
+  const [entretienPrestataireAutre, setEntretienPrestataireAutre] = useState("");
+  const [entretienMotif, setEntretienMotif] = useState("");
+  const [entretienDate, setEntretienDate] = useState(new Date().toISOString().split("T")[0]);
+  const [entretienCommentaire, setEntretienCommentaire] = useState("");
+  const [entretienEnCoursCreation, setEntretienEnCoursCreation] = useState(false);
+  // Modal de validation du départ (prénom technicien + signature)
+  const [departModal, setDepartModal] = useState<Entretien | null>(null);
+  const [departTechnicienPrenom, setDepartTechnicienPrenom] = useState("");
+  const [departCommentaire, setDepartCommentaire] = useState("");
+  const entretienSignatureCanvasRef = useRef<HTMLCanvasElement>(null);
+  const entretienIsDrawing = useRef(false);
+  // Aperçu d'une signature déjà enregistrée (onglet historique)
+  const [signatureApercu, setSignatureApercu] = useState<string | null>(null);
 
   // ── Bouton "+ Nouvelle commande" (menu déroulant, extensible) ──
   const [showNouvelleMenu, setShowNouvelleMenu] = useState(false);
@@ -274,6 +314,15 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     return () => u();
   }, []);
 
+  // Interventions de maintenance (portes de quai, froid...) — voir type Entretien plus haut.
+  useEffect(() => {
+    const u = onValue(ref(db, "entretiens"), (snap) => {
+      const d = snap.val();
+      setEntretiens(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+    });
+    return () => u();
+  }, []);
+
   // Load IFCO palettes commands (commandes fournisseur)
   useEffect(() => {
     const u = onValue(ref(db, "ifco_palettes_commandes"), (snap) => {
@@ -332,6 +381,102 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
   async function marquerDeclarationFaite(id: string) {
     await update(ref(db, `ifco_declarations_entree/${id}`), { declare: true });
+  }
+
+  // ── Entretiens / interventions prestataires ──
+  async function creerEntretien() {
+    const prestataireFinal = entretienPrestataire === "Autre" ? entretienPrestataireAutre.trim() : entretienPrestataire;
+    if (!prestataireFinal) { setNotification({ type: "error", message: "✗ Indique le prestataire" }); return; }
+    if (!entretienMotif.trim()) { setNotification({ type: "error", message: "✗ Indique le motif de l'intervention" }); return; }
+    setEntretienEnCoursCreation(true);
+    try {
+      await push(ref(db, "entretiens"), {
+        prestataire: prestataireFinal,
+        motif: entretienMotif.trim(),
+        dateProgrammee: entretienDate ? new Date(entretienDate + "T12:00:00").toLocaleDateString("fr-FR") : "",
+        commentaire: entretienCommentaire.trim() || null,
+        statut: "programmé",
+        creePar: userName || "",
+        ts: Date.now(),
+      });
+      setNotification({ type: "success", message: "✓ Intervention programmée" });
+      setEntretienMotif(""); setEntretienCommentaire(""); setEntretienPrestataireAutre("");
+      setShowNouvelEntretien(false);
+    } catch {
+      setNotification({ type: "error", message: "✗ Erreur d'enregistrement" });
+    } finally {
+      setEntretienEnCoursCreation(false);
+    }
+  }
+
+  async function validerArriveeEntretien(e: Entretien) {
+    if (!window.confirm(`Confirmer l'arrivée de ${e.prestataire} ?`)) return;
+    const maintenant = new Date();
+    await update(ref(db, `entretiens/${e.id}`), {
+      statut: "en cours",
+      heureArrivee: `${maintenant.toLocaleDateString("fr-FR")} ${maintenant.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`,
+    });
+    setNotification({ type: "success", message: "✓ Arrivée validée" });
+  }
+
+  function ouvrirModalDepart(e: Entretien) {
+    setDepartModal(e);
+    setDepartTechnicienPrenom("");
+    setDepartCommentaire("");
+  }
+
+  // Reconstitue un timestamp à partir de "JJ/MM/AAAA HH:MM" (format écrit par
+  // validerArriveeEntretien ci-dessus) pour calculer la durée de l'intervention.
+  function parseHeureEntretien(s?: string): number | null {
+    if (!s) return null;
+    const [datePart, heurePart] = s.split(" ");
+    if (!datePart) return null;
+    const [dd, mm, yyyy] = datePart.split("/");
+    const [hh, min] = (heurePart || "0:0").split(":");
+    if (!dd || !mm || !yyyy) return null;
+    return new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10), parseInt(hh, 10) || 0, parseInt(min, 10) || 0).getTime();
+  }
+
+  function formatDureeEntretien(min?: number | null): string {
+    if (min == null) return "—";
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
+  }
+
+  async function validerDepartEntretien() {
+    if (!departModal) return;
+    if (!departTechnicienPrenom.trim()) { setNotification({ type: "error", message: "✗ Indique le prénom du technicien" }); return; }
+    const canvas = entretienSignatureCanvasRef.current;
+    const signatureBase64 = canvas ? canvas.toDataURL("image/png") : "";
+    const maintenant = new Date();
+    const heureDepart = `${maintenant.toLocaleDateString("fr-FR")} ${maintenant.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+    const tsArrivee = parseHeureEntretien(departModal.heureArrivee);
+    const dureeMinutes = tsArrivee != null ? Math.max(0, Math.round((maintenant.getTime() - tsArrivee) / 60000)) : null;
+    try {
+      await update(ref(db, `entretiens/${departModal.id}`), {
+        statut: "terminé",
+        heureDepart,
+        dureeMinutes,
+        technicienPrenom: departTechnicienPrenom.trim(),
+        signatureBase64,
+        commentaire: departCommentaire.trim() ? `${departModal.commentaire ? departModal.commentaire + " · " : ""}${departCommentaire.trim()}` : (departModal.commentaire || null),
+      });
+      setNotification({ type: "success", message: "✓ Départ validé" });
+      setDepartModal(null);
+    } catch {
+      setNotification({ type: "error", message: "✗ Erreur d'enregistrement" });
+    }
+  }
+
+  async function annulerEntretien(id: string) {
+    if (!window.confirm("Annuler cette intervention ?")) return;
+    await update(ref(db, `entretiens/${id}`), { statut: "annulé" });
+  }
+
+  async function supprimerEntretien(id: string) {
+    if (!window.confirm("Supprimer définitivement cette intervention ?")) return;
+    await remove(ref(db, `entretiens/${id}`));
   }
 
   // Pré-remplit les champs d'ajustement de stock avec la valeur actuelle quand on ouvre
@@ -1087,6 +1232,11 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     setNotification({ type: "success", message: "✓ Commande repassée en attente, arrivage réaffiché" });
   };
 
+  const entretiensActifsCount = entretiens.filter(e => e.statut === "programmé" || e.statut === "en cours").length;
+  const entretiensAffiches = entretiens
+    .filter(e => filtreEntretien === "en_cours" ? (e.statut === "programmé" || e.statut === "en cours") : (e.statut === "terminé" || e.statut === "annulé"))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
   return (
     <div id="presta-root" style={{ background: "linear-gradient(135deg, #f0f9f8 0%, #f9fbf8 100%)", minHeight: "100vh", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100vw" }}>
       <style>{styles}</style>
@@ -1242,6 +1392,25 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 }}
               >
                 📢 Déclarer IFCO
+              </button>
+
+              <button
+                onClick={() => setActiveTab("entretiens")}
+                style={{
+                  padding: "14px 22px",
+                  background: "white",
+                  color: "#8e44ad",
+                  border: "2px solid #8e44ad",
+                  borderRadius: "10px",
+                  cursor: "pointer",
+                  fontSize: "15px",
+                  fontWeight: "700",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                🔧 Entretiens{entretiensActifsCount > 0 ? ` (${entretiensActifsCount})` : ""}
               </button>
 
             </div>
@@ -2669,7 +2838,225 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             </div>
           </div>
         )}
+
+        {/* ENTRETIENS TAB */}
+        {activeTab === "entretiens" && (
+          <div style={{ display: "grid", gap: "20px" }}>
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`,
+            }}>
+              <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>🔧 Entretiens & interventions</h3>
+                  <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Portes de quai, froid, technicien... — programmation, validation entrepôt et historique compta.</p>
+                </div>
+                <button
+                  onClick={() => setShowNouvelEntretien(v => !v)}
+                  style={{ padding: "10px 18px", background: "#8e44ad", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+                >
+                  {showNouvelEntretien ? "✕ Fermer" : "➕ Programmer une intervention"}
+                </button>
+              </div>
+
+              {showNouvelEntretien && (
+                <div style={{ padding: 16, borderBottom: `1px solid ${COLORS.gray200}`, background: "#faf7fc" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Prestataire</label>
+                      <select value={entretienPrestataire} onChange={e => setEntretienPrestataire(e.target.value)} style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}>
+                        {PRESTATAIRES_ENTRETIEN_DEFAUT.map(p => <option key={p} value={p}>{p}</option>)}
+                        <option value="Autre">Autre...</option>
+                      </select>
+                      {entretienPrestataire === "Autre" && (
+                        <input value={entretienPrestataireAutre} onChange={e => setEntretienPrestataireAutre(e.target.value)} placeholder="Nom du prestataire" style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginTop: 8 }} />
+                      )}
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Date prévue</label>
+                      <input type="date" value={entretienDate} onChange={e => setEntretienDate(e.target.value)} style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                    </div>
+                  </div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Motif de l'intervention</label>
+                  <input value={entretienMotif} onChange={e => setEntretienMotif(e.target.value)} placeholder="Ex : Porte de quai 3 bloquée" style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginBottom: 12 }} />
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Commentaire (optionnel)</label>
+                  <textarea value={entretienCommentaire} onChange={e => setEntretienCommentaire(e.target.value)} rows={2} style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginBottom: 12, resize: "vertical" }} />
+                  <button
+                    onClick={creerEntretien}
+                    disabled={entretienEnCoursCreation}
+                    style={{ padding: "10px 20px", background: entretienEnCoursCreation ? COLORS.gray200 : "#8e44ad", color: entretienEnCoursCreation ? COLORS.gray600 : "#fff", border: "none", borderRadius: 8, cursor: entretienEnCoursCreation ? "default" : "pointer", fontSize: 13, fontWeight: 700 }}
+                  >
+                    {entretienEnCoursCreation ? "Enregistrement..." : "✓ Programmer"}
+                  </button>
+                </div>
+              )}
+
+              <div style={{ padding: "12px 16px", display: "flex", gap: 8 }}>
+                {(["en_cours", "historique"] as const).map(f => (
+                  <button key={f} onClick={() => setFiltreEntretien(f)} style={{
+                    padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filtreEntretien === f ? "#8e44ad" : COLORS.gray200}`,
+                    background: filtreEntretien === f ? "#f4ecf7" : "#fff", color: filtreEntretien === f ? "#8e44ad" : COLORS.gray600,
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}>
+                    {f === "en_cours" ? "📋 À venir / en cours" : "🕘 Historique (compta)"}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ padding: "0 16px 16px" }}>
+                {entretiensAffiches.length === 0 ? (
+                  <div style={{ textAlign: "center", color: COLORS.gray400, padding: "32px 20px" }}>Aucune intervention</div>
+                ) : filtreEntretien === "en_cours" ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {entretiensAffiches.map(e => (
+                      <div key={e.id} style={{ background: COLORS.gray100, border: `1px solid ${COLORS.gray200}`, borderLeft: `4px solid ${e.statut === "en cours" ? COLORS.tertiary : "#8e44ad"}`, borderRadius: 10, padding: "12px 14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>{e.prestataire} <span style={{ color: COLORS.gray400, fontWeight: 600 }}>· {e.dateProgrammee || "—"}</span></div>
+                            <div style={{ fontSize: 12, color: COLORS.gray600, marginTop: 2 }}>{e.motif}</div>
+                            {e.commentaire && <div style={{ fontSize: 11, color: COLORS.gray400, marginTop: 2 }}>📝 {e.commentaire}</div>}
+                            {e.heureArrivee && <div style={{ fontSize: 11, color: COLORS.tertiary, marginTop: 4, fontWeight: 700 }}>🕐 Arrivé à {e.heureArrivee.split(" ")[1] || e.heureArrivee}</div>}
+                          </div>
+                          <span style={{
+                            background: e.statut === "en cours" ? `${COLORS.tertiary}20` : "#f4ecf7",
+                            color: e.statut === "en cours" ? COLORS.tertiary : "#8e44ad",
+                            borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                          }}>
+                            {e.statut === "en cours" ? "🔧 En cours" : "📅 Programmé"}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {e.statut === "programmé" && (
+                            <button onClick={() => validerArriveeEntretien(e)} style={{ padding: "7px 14px", background: COLORS.primary, color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✅ Valider l'arrivée</button>
+                          )}
+                          {e.statut === "en cours" && (
+                            <button onClick={() => ouvrirModalDepart(e)} style={{ padding: "7px 14px", background: "#8e44ad", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🏁 Valider le départ</button>
+                          )}
+                          {e.statut === "programmé" && (
+                            <button onClick={() => annulerEntretien(e.id)} style={{ padding: "7px 14px", background: COLORS.gray200, color: COLORS.gray700, border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Annuler</button>
+                          )}
+                          <button onClick={() => supprimerEntretien(e.id)} style={{ padding: "7px 10px", background: COLORS.dangerLight, color: COLORS.danger, border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🗑️</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ textAlign: "left", color: "#888", fontSize: 10.5, textTransform: "uppercase", background: "#fafafa" }}>
+                          <th style={{ padding: "8px 10px" }}>Date</th>
+                          <th style={{ padding: "8px 10px" }}>Prestataire</th>
+                          <th style={{ padding: "8px 10px" }}>Motif</th>
+                          <th style={{ padding: "8px 10px" }}>Arrivée</th>
+                          <th style={{ padding: "8px 10px" }}>Départ</th>
+                          <th style={{ padding: "8px 10px" }}>Durée</th>
+                          <th style={{ padding: "8px 10px" }}>Technicien</th>
+                          <th style={{ padding: "8px 10px" }}>Signature</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {entretiensAffiches.map(e => (
+                          <tr key={e.id} style={{ borderTop: `1px solid ${COLORS.gray100}`, background: e.statut === "annulé" ? "#fafafa" : "#fff", opacity: e.statut === "annulé" ? 0.6 : 1 }}>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.dateProgrammee || "—"}</td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.prestataire}</td>
+                            <td style={{ padding: "8px 10px" }}>{e.motif}{e.statut === "annulé" ? " (annulé)" : ""}</td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.heureArrivee || "—"}</td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.heureDepart || "—"}</td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{formatDureeEntretien(e.dureeMinutes)}</b></td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.technicienPrenom || "—"}</td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                              {e.signatureBase64 ? (
+                                <button onClick={() => setSignatureApercu(e.signatureBase64!)} style={{ padding: "4px 10px", background: "#f4ecf7", color: "#8e44ad", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🖊 Voir</button>
+                              ) : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* MODAL VALIDATION DÉPART ENTRETIEN (prénom technicien + signature) */}
+      {departModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 520, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>🏁 Valider le départ — {departModal.prestataire}</h2>
+              <button onClick={() => setDepartModal(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: COLORS.gray600 }}>✕</button>
+            </div>
+            <p style={{ fontSize: 12, color: COLORS.gray600, marginTop: 0 }}>{departModal.motif}{departModal.heureArrivee ? ` · arrivé à ${departModal.heureArrivee}` : ""}</p>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Prénom du technicien</label>
+            <input value={departTechnicienPrenom} onChange={e => setDepartTechnicienPrenom(e.target.value)} placeholder="Ex : Fernand" style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, fontSize: 14, boxSizing: "border-box", marginBottom: 12 }} />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Commentaire (optionnel)</label>
+            <textarea value={departCommentaire} onChange={e => setDepartCommentaire(e.target.value)} rows={2} style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, fontSize: 13, boxSizing: "border-box", marginBottom: 12, resize: "vertical" }} />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Signature du technicien</label>
+            <div style={{ border: "2px dashed #d1d5db", borderRadius: 12, background: "#fafafa", marginBottom: 12, position: "relative" }}>
+              <canvas
+                ref={entretienSignatureCanvasRef}
+                width={472}
+                height={160}
+                style={{ display: "block", width: "100%", height: 160, borderRadius: 10, touchAction: "none", cursor: "crosshair" }}
+                onPointerDown={e => {
+                  entretienIsDrawing.current = true;
+                  const canvas = entretienSignatureCanvasRef.current!;
+                  const rect = canvas.getBoundingClientRect();
+                  const scaleX = canvas.width / rect.width;
+                  const scaleY = canvas.height / rect.height;
+                  const ctx = canvas.getContext("2d")!;
+                  ctx.beginPath();
+                  ctx.moveTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+                  canvas.setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={e => {
+                  if (!entretienIsDrawing.current) return;
+                  const canvas = entretienSignatureCanvasRef.current!;
+                  const rect = canvas.getBoundingClientRect();
+                  const scaleX = canvas.width / rect.width;
+                  const scaleY = canvas.height / rect.height;
+                  const ctx = canvas.getContext("2d")!;
+                  ctx.lineTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+                  ctx.strokeStyle = "#0a0a0a";
+                  ctx.lineWidth = 2.5;
+                  ctx.lineCap = "round";
+                  ctx.lineJoin = "round";
+                  ctx.stroke();
+                }}
+                onPointerUp={() => { entretienIsDrawing.current = false; }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => {
+                const canvas = entretienSignatureCanvasRef.current;
+                if (canvas) { const ctx = canvas.getContext("2d")!; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#fafafa"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+              }} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}`, background: COLORS.gray100, cursor: "pointer", fontSize: 13, fontWeight: 700, color: COLORS.gray600 }}>
+                🗑 Effacer
+              </button>
+              <button onClick={validerDepartEntretien} style={{ flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: "#8e44ad", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#fff" }}>
+                ✓ Valider le départ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* APERÇU SIGNATURE ENTRETIEN (historique) */}
+      {signatureApercu && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2100, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setSignatureApercu(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 16, maxWidth: 500, width: "100%" }} onClick={e => e.stopPropagation()}>
+            <img src={signatureApercu} alt="Signature" style={{ width: "100%", background: "#fafafa", borderRadius: 10 }} />
+            <button onClick={() => setSignatureApercu(null)} style={{ marginTop: 12, width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: COLORS.gray100, color: COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Fermer</button>
+          </div>
+        </div>
+      )}
 
       {/* POPUP EN ATTENTE IFCO */}
       {showPendingPopup && (() => {
