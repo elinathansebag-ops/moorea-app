@@ -652,44 +652,64 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
               L'import écrit dans la semaine affichée ci-dessus (les 2 vagues à la fois) — change de semaine avant d'importer si besoin.
             </p>
 
+            {/* 31/08/2026 — Légende des couleurs de ligne (demande d'Elinathan : "que ça donne
+                envie") : vert = déjà envoyé, ambre = quantités saisies mais pas encore envoyé. */}
+            <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 8, fontSize: 11, color: COLORS.gray600 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.primary, display: "inline-block" }} /> Déjà envoyé</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.amber, display: "inline-block" }} /> Rempli, pas encore envoyé</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.gray200, display: "inline-block" }} /> Pas encore rempli</span>
+            </div>
+
             {/* Tableau matrice fournisseur x produit */}
             <div style={{ overflowX: "auto", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, marginBottom: 16 }}>
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                 <thead>
-                  <tr style={{ background: COLORS.gray100 }}>
-                    <th style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", textAlign: "left", minWidth: 150, zIndex: 2 }}>Fournisseur</th>
+                  {/* 31/08/2026 — En-tête colorée (demande d'Elinathan : "que ça donne envie") : fond
+                      vert de la marque, texte blanc, pour que le tableau soit plus vivant. */}
+                  <tr style={{ background: COLORS.primary }}>
+                    <th style={{ position: "sticky", left: 0, background: COLORS.primary, color: "#fff", padding: "8px 10px", textAlign: "left", minWidth: 150, zIndex: 2 }}>Fournisseur</th>
                     {produits.map(p => (
-                      <th key={p.id} style={{ padding: "8px 6px", minWidth: 78, textAlign: "center", fontWeight: 700, whiteSpace: "nowrap" }} title={p.qteParColis ? `${p.qteParColis} — poids net ${p.poidsNetKg}kg / brut ${p.poidsBrutKg}kg par colis` : undefined}>
+                      <th key={p.id} style={{ padding: "8px 6px", minWidth: 78, textAlign: "center", fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }} title={p.qteParColis ? `${p.qteParColis} — poids net ${p.poidsNetKg}kg / brut ${p.poidsBrutKg}kg par colis` : undefined}>
                         {p.label}
-                        {p.poidsNetKg != null && <div style={{ fontSize: 9, fontWeight: 500, color: COLORS.gray400 }}>{p.poidsNetKg}kg / {p.poidsBrutKg}kg</div>}
+                        {p.poidsNetKg != null && <div style={{ fontSize: 9, fontWeight: 500, color: "rgba(255,255,255,0.75)" }}>{p.poidsNetKg}kg / {p.poidsBrutKg}kg</div>}
                       </th>
                     ))}
-                    <th style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "8px 10px", minWidth: TOTAL_WIDTH, textAlign: "center", fontWeight: 800, zIndex: 1, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>Total</th>
-                    <th style={{ position: "sticky", right: 0, background: COLORS.gray100, padding: "8px 10px", minWidth: ENVOI_WIDTH, textAlign: "center", zIndex: 1 }}>Envoi</th>
+                    <th style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primary, color: "#fff", padding: "8px 10px", minWidth: TOTAL_WIDTH, textAlign: "center", fontWeight: 800, zIndex: 1, boxShadow: "-2px 0 4px rgba(0,0,0,0.15)" }}>Total</th>
+                    <th style={{ position: "sticky", right: 0, background: COLORS.primary, color: "#fff", padding: "8px 10px", minWidth: ENVOI_WIDTH, textAlign: "center", zIndex: 1 }}>Envoi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {fournisseurs.map(f => {
+                  {fournisseurs.map((f, idx) => {
                     const cell = commandes[f.id] || {};
                     const envoye = cell.statutEnvoi === "envoyé";
+                    const aDesQuantites = totalLigne(f.id) > 0;
+                    // 31/08/2026 — Couleur de ligne selon l'état (demande d'Elinathan : "que ça
+                    // donne envie") : vert = déjà envoyé, ambre = rempli mais pas encore envoyé,
+                    // zébrure discrète sinon — pour repérer d'un coup d'œil ce qui reste à faire.
+                    const rowBg = envoye ? COLORS.primaryLight : aDesQuantites ? COLORS.amberLight : (idx % 2 === 0 ? "#fff" : COLORS.gray100);
+                    const accent = envoye ? COLORS.primary : aDesQuantites ? COLORS.amber : "transparent";
                     return (
-                      <tr key={f.id} style={{ borderTop: `1px solid ${COLORS.gray100}` }}>
-                        <td style={{ position: "sticky", left: 0, background: "#fff", padding: "8px 10px", fontWeight: 700, color: COLORS.gray700 }}>
+                      <tr key={f.id} style={{ borderTop: `1px solid ${COLORS.gray200}`, background: rowBg }}>
+                        <td style={{ position: "sticky", left: 0, background: rowBg, padding: "8px 10px 8px 8px", fontWeight: 700, color: COLORS.gray700, borderLeft: `4px solid ${accent}` }}>
                           {f.nom}
                           {f.transitaire && <div style={{ fontSize: 10, color: COLORS.gray400, fontWeight: 500 }}>via {f.transitaire}</div>}
                         </td>
-                        {produits.map(p => (
-                          <td key={p.id} style={{ padding: 4, textAlign: "center" }}>
-                            <input
-                              type="number"
-                              min={0}
-                              value={cell.quantites?.[p.id] ?? ""}
-                              onChange={e => setQuantite(f.id, p.id, e.target.value)}
-                              style={{ width: 56, padding: "5px 4px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12, textAlign: "center" }}
-                            />
-                          </td>
-                        ))}
-                        <td style={{ position: "sticky", right: ENVOI_WIDTH, background: "#fff", padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
+                        {produits.map(p => {
+                          const valeur = cell.quantites?.[p.id];
+                          const remplie = valeur != null && valeur !== 0;
+                          return (
+                            <td key={p.id} style={{ padding: 4, textAlign: "center" }}>
+                              <input
+                                type="number"
+                                min={0}
+                                value={valeur ?? ""}
+                                onChange={e => setQuantite(f.id, p.id, e.target.value)}
+                                style={{ width: 56, padding: "5px 4px", border: `1.5px solid ${remplie ? COLORS.primaryBorder : COLORS.gray200}`, background: remplie ? COLORS.primaryLight : "#fff", borderRadius: 6, fontSize: 12, textAlign: "center", fontWeight: remplie ? 700 : 400, color: remplie ? "#15803d" : COLORS.gray700 }}
+                              />
+                            </td>
+                          );
+                        })}
+                        <td style={{ position: "sticky", right: ENVOI_WIDTH, background: rowBg, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
                           {totalLigne(f.id) || "-"}
                           {totalLigne(f.id) > 0 && (
                             <div style={{ fontSize: 9, fontWeight: 600, color: COLORS.gray400 }}>
@@ -697,7 +717,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                             </div>
                           )}
                         </td>
-                        <td style={{ position: "sticky", right: 0, background: "#fff", padding: "8px 10px", textAlign: "center" }}>
+                        <td style={{ position: "sticky", right: 0, background: rowBg, padding: "8px 10px", textAlign: "center", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
                           {envoye ? (
                             <div style={{ fontSize: 10.5, color: "#15803d", fontWeight: 700 }}>
                               ✓ Envoyé<br />{cell.dateEnvoi}
@@ -719,32 +739,33 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                   })}
                 </tbody>
                 <tfoot>
-                  <tr style={{ borderTop: `2px solid ${COLORS.gray200}`, background: COLORS.gray100 }}>
-                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", fontWeight: 800, zIndex: 2 }}>Total (colis)</td>
+                  <tr style={{ borderTop: `2px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight }}>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.primaryLight, padding: "8px 10px", fontWeight: 800, color: COLORS.primary, zIndex: 2 }}>Total (colis)</td>
                     {produits.map(p => (
-                      <td key={p.id} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 800 }}>{totalColonne(p.id) || "-"}</td>
+                      <td key={p.id} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 800, color: COLORS.primary }}>{totalColonne(p.id) || "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primaryLight, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.primaryLight }} />
                   </tr>
                   {/* 31/08/2026 — Poids net/brut par produit (colonne) et total général, calculés
                       depuis le fichier de référence "poid hv.xlsx" (kg par colis) — utile pour la
-                      déclaration douane (DCP) au départ. */}
-                  <tr style={{ background: COLORS.gray100 }}>
-                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "4px 10px", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600, zIndex: 2 }}>Poids net (kg)</td>
+                      déclaration douane (DCP) au départ. Teintes différentes (bleu / ambre) pour
+                      distinguer ces 2 lignes de la ligne "Total (colis)" au-dessus. */}
+                  <tr style={{ background: COLORS.secondaryLight }}>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.secondaryLight, padding: "4px 10px", fontWeight: 700, fontSize: 10.5, color: COLORS.secondary, zIndex: 2 }}>Poids net (kg)</td>
                     {produits.map(p => (
-                      <td key={p.id} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600 }}>{poidsNetColonne(p.id) ? arrondi1(poidsNetColonne(p.id)) : "-"}</td>
+                      <td key={p.id} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.secondary }}>{poidsNetColonne(p.id) ? arrondi1(poidsNetColonne(p.id)) : "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.secondaryLight, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.secondary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.secondaryLight }} />
                   </tr>
-                  <tr style={{ background: COLORS.gray100 }}>
-                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "4px 10px 8px", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600, zIndex: 2 }}>Poids brut (kg)</td>
+                  <tr style={{ background: COLORS.amberLight }}>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.amberLight, padding: "4px 10px 8px", fontWeight: 700, fontSize: 10.5, color: "#b45309", zIndex: 2 }}>Poids brut (kg)</td>
                     {produits.map(p => (
-                      <td key={p.id} style={{ padding: "4px 6px 8px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600 }}>{poidsBrutColonne(p.id) ? arrondi1(poidsBrutColonne(p.id)) : "-"}</td>
+                      <td key={p.id} style={{ padding: "4px 6px 8px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: "#b45309" }}>{poidsBrutColonne(p.id) ? arrondi1(poidsBrutColonne(p.id)) : "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.amberLight, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: "#b45309", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.amberLight }} />
                   </tr>
                 </tfoot>
               </table>
