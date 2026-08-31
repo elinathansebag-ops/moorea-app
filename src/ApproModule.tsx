@@ -748,7 +748,11 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                           title="Corrige si la semaine devinée est fausse (format AAAA-Wss)"
                           style={{ width: 90, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
                         <span style={{ fontSize: 11, color: COLORS.gray400 }}>{item.nbLignes} ligne(s)</span>
-                        {item.colonnesNonReconnues.size > 0 && <span style={{ fontSize: 10.5, color: COLORS.amber }} title={Array.from(item.colonnesNonReconnues).join(", ")}>⚠️ {item.colonnesNonReconnues.size} colonne(s) non reconnue(s)</span>}
+                        {item.colonnesNonReconnues.size > 0 && (
+                          <span style={{ fontSize: 10.5, color: COLORS.amber }}>
+                            ⚠️ {item.colonnesNonReconnues.size} colonne(s) non reconnue(s) : {Array.from(item.colonnesNonReconnues).join(", ")}
+                          </span>
+                        )}
                         <button onClick={() => retirerFichierEnAttente(i)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✕</button>
                       </div>
                     ))}
