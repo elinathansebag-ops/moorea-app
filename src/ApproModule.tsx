@@ -110,6 +110,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   const [produits, setProduits] = useState<Produit[]>([]);
   const [commandes, setCommandes] = useState<Record<string, CommandeCell>>({}); // clé = fournisseurId
   const [envoiEnCours, setEnvoiEnCours] = useState<Record<string, boolean>>({});
+  const [envoiTousEnCours, setEnvoiTousEnCours] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   // 31/08/2026 — Mode test (demande d'Elinathan) : quand actif, TOUS les mails de commande
   // partent uniquement vers elinathan.sebag@moorea.fr (rien vers les vrais fournisseurs ni vers
@@ -481,18 +482,24 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
 
   const maxSerieStat = Math.max(1, ...serieStat.map(p => p.valeur));
 
-  async function envoyerCommande(f: Fournisseur) {
+  // silencieux = true quand appelé depuis "Tout envoyer" (envoyerTout ci-dessous) : pas de
+  // notification individuelle par fournisseur (sinon elles s'écrasent les unes les autres vu
+  // qu'il n'y a qu'un seul emplacement de notification) — envoyerTout affiche un seul résumé à
+  // la fin. Retourne { ok, message } pour que l'appelant sache si ça a marché.
+  async function envoyerCommande(f: Fournisseur, silencieux = false): Promise<{ ok: boolean; message: string }> {
     const cell = commandes[f.id] || {};
     const lignes = produits
       .map(p => ({ label: p.label, quantite: cell.quantites?.[p.id] || 0, poidsNetKg: p.poidsNetKg || 0, poidsBrutKg: p.poidsBrutKg || 0 }))
       .filter(l => l.quantite > 0);
     if (lignes.length === 0) {
-      notify("error", `✗ Aucune quantité saisie pour ${f.nom}`);
-      return;
+      const msg = `✗ Aucune quantité saisie pour ${f.nom}`;
+      if (!silencieux) notify("error", msg);
+      return { ok: false, message: msg };
     }
     if (!f.emails || f.emails.length === 0) {
-      notify("error", `✗ Aucun email configuré pour ${f.nom} — ajoute-le dans l'onglet Configuration`);
-      return;
+      const msg = `✗ Aucun email configuré pour ${f.nom} — ajoute-le dans l'onglet Configuration`;
+      if (!silencieux) notify("error", msg);
+      return { ok: false, message: msg };
     }
     setEnvoiEnCours(prev => ({ ...prev, [f.id]: true }));
     try {
@@ -528,11 +535,55 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
       });
       const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
       const prefixeTest = modeTest ? "🧪 [TEST — envoyé uniquement à toi] " : "";
-      notify("success", `${prefixeTest}📧 Commande envoyée à ${f.nom} (${data.accepted.join(", ")})${rejetes}`);
+      const msg = `${prefixeTest}📧 Commande envoyée à ${f.nom} (${data.accepted.join(", ")})${rejetes}`;
+      if (!silencieux) notify("success", msg);
+      return { ok: true, message: msg };
     } catch (err: any) {
-      notify("error", `❌ Erreur envoi ${f.nom} : ${err?.message || "erreur inconnue"}`);
+      const msg = `❌ Erreur envoi ${f.nom} : ${err?.message || "erreur inconnue"}`;
+      if (!silencieux) notify("error", msg);
+      return { ok: false, message: msg };
     } finally {
       setEnvoiEnCours(prev => ({ ...prev, [f.id]: false }));
+    }
+  }
+
+  // 31/08/2026 — "Tout envoyer" (demande d'Elinathan) : envoie d'un coup la commande de tous les
+  // fournisseurs qui ont des quantités saisies et pas déjà envoyées pour la semaine/vague
+  // affichée. Envoi séquentiel (un par un, pas en parallèle) pour rester raisonnable côté Gmail
+  // et pour que le résumé final compte bien chaque envoi individuellement.
+  async function envoyerTout() {
+    const cibles = fournisseurs.filter(f => totalLigne(f.id) > 0 && commandes[f.id]?.statutEnvoi !== "envoyé");
+    if (cibles.length === 0) {
+      notify("error", "✗ Rien à envoyer : aucune quantité saisie, ou tout est déjà envoyé pour cette semaine/vague");
+      return;
+    }
+    const sansEmail = cibles.filter(f => !f.emails || f.emails.length === 0);
+    const aEnvoyer = cibles.filter(f => f.emails && f.emails.length > 0);
+    if (aEnvoyer.length === 0) {
+      notify("error", `✗ Aucun des ${cibles.length} fournisseur(s) concerné(s) n'a d'email configuré`);
+      return;
+    }
+    const avertEmail = sansEmail.length > 0 ? `\n⚠️ ${sansEmail.length} fournisseur(s) ignoré(s) car sans email configuré : ${sansEmail.map(f => f.nom).join(", ")}` : "";
+    const avertTest = modeTest ? "\n🧪 Mode test actif : tout partira uniquement vers toi (elinathan.sebag@moorea.fr)." : "";
+    const confirme = window.confirm(
+      `Envoyer ${aEnvoyer.length} commande(s) d'un coup — ${VAGUES.find(v => v.id === vague)?.label}, semaine ${semaineKey} ?${avertEmail}${avertTest}`
+    );
+    if (!confirme) return;
+
+    setEnvoiTousEnCours(true);
+    let ok = 0;
+    const echecs: string[] = [];
+    for (const f of aEnvoyer) {
+      const res = await envoyerCommande(f, true);
+      if (res.ok) ok++; else echecs.push(f.nom);
+    }
+    setEnvoiTousEnCours(false);
+
+    const prefixeTest = modeTest ? "🧪 [TEST] " : "";
+    if (echecs.length === 0) {
+      notify("success", `${prefixeTest}✓ ${ok} commande(s) envoyée(s) avec succès`);
+    } else {
+      notify("error", `${prefixeTest}⚠️ ${ok} envoyée(s), ${echecs.length} échec(s) : ${echecs.join(", ")}`);
     }
   }
 
@@ -594,6 +645,10 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                   {importEnCours ? "⏳ Import..." : "📥 Importer le fichier Excel"}
                   <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={importerExcel} disabled={importEnCours} style={{ display: "none" }} />
                 </label>
+                <button onClick={envoyerTout} disabled={envoiTousEnCours} title="Envoie d'un coup la commande de tous les fournisseurs (de cette semaine/vague) qui ont des quantités saisies et pas déjà envoyées"
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: envoiTousEnCours ? COLORS.gray200 : COLORS.secondary, color: envoiTousEnCours ? COLORS.gray600 : "#fff", fontSize: 12.5, fontWeight: 700, cursor: envoiTousEnCours ? "default" : "pointer", whiteSpace: "nowrap" }}>
+                  {envoiTousEnCours ? "⏳ Envoi en cours..." : "📧 Tout envoyer"}
+                </button>
               </div>
             </div>
             <p style={{ fontSize: 11, color: COLORS.gray400, marginTop: -6, marginBottom: 12 }}>
@@ -664,14 +719,14 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                             <div style={{ fontSize: 10.5, color: "#15803d", fontWeight: 700 }}>
                               ✓ Envoyé<br />{cell.dateEnvoi}
                               <div>
-                                <button onClick={() => envoyerCommande(f)} disabled={envoiEnCours[f.id]} style={{ marginTop: 4, padding: "4px 8px", borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
+                                <button onClick={() => envoyerCommande(f)} disabled={envoiEnCours[f.id] || envoiTousEnCours} style={{ marginTop: 4, padding: "4px 8px", borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
                                   Renvoyer
                                 </button>
                               </div>
                             </div>
                           ) : (
-                            <button onClick={() => envoyerCommande(f)} disabled={envoiEnCours[f.id]}
-                              style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: envoiEnCours[f.id] ? COLORS.gray200 : COLORS.primary, color: envoiEnCours[f.id] ? COLORS.gray600 : "#fff", fontSize: 11.5, fontWeight: 700, cursor: envoiEnCours[f.id] ? "default" : "pointer", whiteSpace: "nowrap" }}>
+                            <button onClick={() => envoyerCommande(f)} disabled={envoiEnCours[f.id] || envoiTousEnCours}
+                              style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: (envoiEnCours[f.id] || envoiTousEnCours) ? COLORS.gray200 : COLORS.primary, color: (envoiEnCours[f.id] || envoiTousEnCours) ? COLORS.gray600 : "#fff", fontSize: 11.5, fontWeight: 700, cursor: (envoiEnCours[f.id] || envoiTousEnCours) ? "default" : "pointer", whiteSpace: "nowrap" }}>
                               {envoiEnCours[f.id] ? "Envoi..." : "📧 Envoyer"}
                             </button>
                           )}
