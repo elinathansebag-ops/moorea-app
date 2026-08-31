@@ -21,6 +21,7 @@ import { ReconditionnementModule } from "./ReconditionnementModule";
 import { PreparationModule } from "./PreparationModule";
 import { PortailReconditionneur } from "./PortailReconditionneur";
 import { DashboardModule } from "./DashboardModule";
+import { ApproModule } from "./ApproModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
 // passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
@@ -207,6 +208,7 @@ export default function App() {
   const [showStatt, setShowStatt] = useState(false);
   const [showPrestataires, setShowPrestataires] = useState(false);
   const [showReconditionnement, setShowReconditionnement] = useState(false);
+  const [showAppro, setShowAppro] = useState(false);
   // Préparation entrepôt — anciennement l'onglet "Demandes" de Reconditionnement, extrait en
   // module à part (voir src/PreparationModule.tsx) : c'est là que vivent les actions entrepôt
   // (marquer prêt/parti, valider les réajustements de stock, envoyer le récap quotidien).
@@ -2439,6 +2441,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     />;
   }
 
+  if (showAppro) {
+    return <ApproModule
+      onClose={() => { setShowAppro(false); setShowAccueil(true); }}
+      userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
+    />;
+  }
+
   if (showPreparation) {
     return <PreparationModule
       onClose={() => { setShowPreparation(false); setShowAccueil(true); }}
@@ -2572,6 +2581,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { icon: "🛒", label: "Statt", color: "#ea580c", badge: null, stat: "Ventes réelles + objectifs par période", action: () => { setShowAccueil(false); setShowStatt(true); } },
       { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
       { icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
+      { icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
     ];
 
     const leofreshBtns = [

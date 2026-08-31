@@ -21,6 +21,9 @@ export default async function handler(req, res) {
       entrepot: { email: 'entrepot@moorea.fr', pass: 'cara kcnl iddu atxu', label: 'Moorea Entrepôt' },
       elinathan: { email: 'elinathan.sebag@moorea.fr', pass: 'zkev xapy ygkw mjiy', label: 'Elinathan Sebag' },
       jordan: { email: 'jordan.jouanest@moorea.fr', pass: 'zupv znno urcy qoqy', label: 'Jordan Jouanest' },
+      // 31/08/2026 — Ajouté pour le module Appro (commandes fournisseurs Kenya/Tanzanie) :
+      // les mails de commande partent bien de la boîte de Jennifer, pas d'agreage@.
+      jennifer: { email: 'jennifer.martin@moorea.fr', pass: 'juya mfsk asep zrjy', label: 'Jennifer Martin' },
     };
     const compte = comptes[sender] || comptes.agreage;
 
