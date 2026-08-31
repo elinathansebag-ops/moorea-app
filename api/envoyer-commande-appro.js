@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { fournisseur, vagueLabel, semaineKey, dateDepart, numeroVol, lignes, cc = [] } = req.body;
+    const { fournisseur, vagueLabel, semaineKey, dateDepart, numeroVol, lignes, cc = [], modeTest = false, destinatairesReels = [] } = req.body;
 
     if (!fournisseur?.emails?.length) {
       return res.status(400).json({ error: "Aucun email fournisseur fourni" });
@@ -34,8 +34,15 @@ export default async function handler(req, res) {
       .join("");
     const total = lignes.reduce((s, l) => s + (l.quantite || 0), 0);
 
+    const banniereTest = modeTest
+      ? `<div style="background:#fffbeb;border:1.5px solid #fde3a8;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#b45309;">
+           🧪 MODE TEST — ce mail part uniquement vers toi. En réel, il partirait vers : ${destinatairesReels.join(", ") || "(aucune adresse configurée)"}
+         </div>`
+      : "";
+
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:560px;">
+        ${banniereTest}
         <h2 style="color:#16a34a;margin-bottom:4px;">Commande Moorea — ${fournisseur.nom}</h2>
         <p style="color:#4b5563;font-size:13px;margin-top:0;">
           Vague : <b>${vagueLabel || "-"}</b> · Semaine ${semaineKey || "-"}
@@ -71,7 +78,7 @@ export default async function handler(req, res) {
       from: "Jennifer Martin <jennifer.martin@moorea.fr>",
       to: fournisseur.emails.join(","),
       cc: cc.length > 0 ? cc.join(",") : undefined,
-      subject: `Commande Moorea — ${fournisseur.nom} — ${vagueLabel || ""} ${semaineKey || ""}`.trim(),
+      subject: `${modeTest ? "[TEST] " : ""}Commande Moorea — ${fournisseur.nom} — ${vagueLabel || ""} ${semaineKey || ""}`.trim(),
       html,
     });
 

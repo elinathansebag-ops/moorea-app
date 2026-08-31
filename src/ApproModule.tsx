@@ -99,6 +99,12 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   const [commandes, setCommandes] = useState<Record<string, CommandeCell>>({}); // clé = fournisseurId
   const [envoiEnCours, setEnvoiEnCours] = useState<Record<string, boolean>>({});
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  // 31/08/2026 — Mode test (demande d'Elinathan) : quand actif, TOUS les mails de commande
+  // partent uniquement vers elinathan.sebag@moorea.fr (rien vers les vrais fournisseurs ni vers
+  // le Cc habituel), pour valider le contenu avant un envoi réel. Partagé via Firebase pour que
+  // tout le monde voie le même état (éviter qu'un envoi réel parte par erreur si quelqu'un a
+  // laissé le mode test actif sans le voir).
+  const [modeTest, setModeTest] = useState(true);
 
   // Config fournisseurs/produits
   const [editFournisseur, setEditFournisseur] = useState<Fournisseur | null>(null);
@@ -131,7 +137,10 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
         update(ref(db, "appro/produits"), Object.fromEntries(PRODUITS_DEFAUT.map(p => [p.id, p])));
       }
     });
-    return () => { u1(); u2(); };
+    const u3 = onValue(ref(db, "appro/modeTest"), snap => {
+      setModeTest(snap.val() !== false); // par défaut (rien en base) : mode test actif, par sécurité
+    });
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   useEffect(() => {
@@ -173,17 +182,23 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     }
     setEnvoiEnCours(prev => ({ ...prev, [f.id]: true }));
     try {
+      // 31/08/2026 — Mode test : on redirige TOUT (to + cc) vers Elinathan, rien ne part vers
+      // les vraies adresses fournisseur ni vers le Cc habituel — voir le switch en Configuration.
+      const to = modeTest ? ["elinathan.sebag@moorea.fr"] : f.emails;
+      const cc = modeTest ? [] : CC_FIXE;
       const res = await fetch("/api/envoyer-commande-appro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fournisseur: { nom: f.nom, emails: f.emails, transitaire: cell.numeroVol ? f.transitaire : f.transitaire },
+          fournisseur: { nom: f.nom, emails: to, transitaire: f.transitaire },
+          destinatairesReels: f.emails,
+          modeTest,
           vagueLabel: VAGUES.find(v => v.id === vague)?.label,
           semaineKey,
           dateDepart: cell.dateDepart || "",
           numeroVol: cell.numeroVol || "",
           lignes,
-          cc: CC_FIXE,
+          cc,
         }),
       });
       const texte = await res.text();
@@ -198,7 +213,8 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
         envoyePar: userName,
       });
       const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
-      notify("success", `📧 Commande envoyée à ${f.nom} (${data.accepted.join(", ")})${rejetes}`);
+      const prefixeTest = modeTest ? "🧪 [TEST — envoyé uniquement à toi] " : "";
+      notify("success", `${prefixeTest}📧 Commande envoyée à ${f.nom} (${data.accepted.join(", ")})${rejetes}`);
     } catch (err: any) {
       notify("error", `❌ Erreur envoi ${f.nom} : ${err?.message || "erreur inconnue"}`);
     } finally {
@@ -350,6 +366,33 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
 
         {activeTab === "configuration" && (
           <div className="fade-up">
+            {/* 31/08/2026 — Switch mode test/réel (demande d'Elinathan) : à gauche, tout part
+                uniquement dans sa boîte mail (test avant envoi réel) ; à droite, les mails
+                partent vraiment aux fournisseurs (+ Cc habituel). État partagé via Firebase
+                (appro/modeTest) pour que toute l'équipe voie le même mode actif. */}
+            <div style={{ background: modeTest ? COLORS.amberLight : COLORS.primaryLight, border: `1.5px solid ${modeTest ? "#fde3a8" : COLORS.primaryBorder}`, borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: modeTest ? "#b45309" : COLORS.primary }}>
+                  {modeTest ? "🧪 Mode test actif" : "✅ Mode réel actif"}
+                </div>
+                <div style={{ fontSize: 11, color: COLORS.gray600, marginTop: 2 }}>
+                  {modeTest
+                    ? "Tous les mails de commande arrivent uniquement dans la boîte d'Elinathan (elinathan.sebag@moorea.fr) — rien ne part chez les fournisseurs."
+                    : "Les mails de commande partent vraiment chez les fournisseurs, avec le Cc habituel (hillel@leofresh.com, oumaima.ilhami@moorea.fr, elinathan.sebag@moorea.fr)."}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => update(ref(db, "appro"), { modeTest: !modeTest })}
+                title="Basculer entre mode test et mode réel"
+                style={{ position: "relative", width: 108, height: 34, borderRadius: 20, border: "none", cursor: "pointer", background: modeTest ? "#fde3a8" : COLORS.primaryBorder, flexShrink: 0 }}
+              >
+                <span style={{ position: "absolute", top: 3, left: modeTest ? 3 : 57, width: 48, height: 28, borderRadius: 16, background: modeTest ? "#f59e0b" : COLORS.primary, color: "#fff", fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", transition: "left 0.15s" }}>
+                  {modeTest ? "TEST" : "RÉEL"}
+                </span>
+              </button>
+            </div>
+
             <h3 style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700, marginBottom: 10 }}>Fournisseurs</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
               {fournisseurs.map(f => (
