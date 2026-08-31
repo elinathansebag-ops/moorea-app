@@ -484,7 +484,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   async function envoyerCommande(f: Fournisseur) {
     const cell = commandes[f.id] || {};
     const lignes = produits
-      .map(p => ({ label: p.label, quantite: cell.quantites?.[p.id] || 0 }))
+      .map(p => ({ label: p.label, quantite: cell.quantites?.[p.id] || 0, poidsNetKg: p.poidsNetKg || 0, poidsBrutKg: p.poidsBrutKg || 0 }))
       .filter(l => l.quantite > 0);
     if (lignes.length === 0) {
       notify("error", `✗ Aucune quantité saisie pour ${f.nom}`);

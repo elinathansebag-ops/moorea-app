@@ -29,10 +29,25 @@ export default async function handler(req, res) {
       ? new Date(dateDepart).toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
       : null;
 
+    // 31/08/2026 — Poids net/brut ajoutés au mail de commande (demande d'Elinathan), calculés à
+    // partir du poids par colis (poidsNetKg/poidsBrutKg, réf. "poid hv.xlsx") x quantité de colis
+    // — utile au fournisseur/transitaire pour la déclaration douane (DCP) au départ.
+    const arrondi1 = n => Math.round(n * 10) / 10;
     const lignesHtml = lignes
-      .map(l => `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">${l.label}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${l.quantite}</td></tr>`)
+      .map(l => {
+        const net = (l.poidsNetKg || 0) * l.quantite;
+        const brut = (l.poidsBrutKg || 0) * l.quantite;
+        return `<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">${l.label}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${l.quantite}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#4b5563;">${l.poidsNetKg ? arrondi1(net) + " kg" : "-"}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#4b5563;">${l.poidsBrutKg ? arrondi1(brut) + " kg" : "-"}</td>
+        </tr>`;
+      })
       .join("");
     const total = lignes.reduce((s, l) => s + (l.quantite || 0), 0);
+    const totalNet = lignes.reduce((s, l) => s + (l.poidsNetKg || 0) * l.quantite, 0);
+    const totalBrut = lignes.reduce((s, l) => s + (l.poidsBrutKg || 0) * l.quantite, 0);
 
     const banniereTest = modeTest
       ? `<div style="background:#fffbeb;border:1.5px solid #fde3a8;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#b45309;">
@@ -55,6 +70,8 @@ export default async function handler(req, res) {
             <tr style="background:#f9fafb;">
               <th style="padding:6px 10px;text-align:left;">Produit</th>
               <th style="padding:6px 10px;text-align:right;">Quantité</th>
+              <th style="padding:6px 10px;text-align:right;">Poids net</th>
+              <th style="padding:6px 10px;text-align:right;">Poids brut</th>
             </tr>
           </thead>
           <tbody>${lignesHtml}</tbody>
@@ -62,6 +79,8 @@ export default async function handler(req, res) {
             <tr>
               <td style="padding:8px 10px;font-weight:800;border-top:2px solid #e5e7eb;">Total</td>
               <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${total}</td>
+              <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${arrondi1(totalNet)} kg</td>
+              <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${arrondi1(totalBrut)} kg</td>
             </tr>
           </tfoot>
         </table>
