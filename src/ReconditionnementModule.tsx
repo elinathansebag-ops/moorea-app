@@ -848,6 +848,17 @@ export function ReconditionnementModule({ onClose, userName }: {
   // action physique d'entrepôt — donc le bouton revient ici, sur l'onglet "En cours", et est
   // retiré de Préparation. Logique identique à envoyerRecapDuJour dans PreparationModule.tsx.
   const [envoiRecapEnCours, setEnvoiRecapEnCours] = useState<Record<Depot, boolean>>({ nlt: false, andes: false });
+  // 28/08/2026 — Détail des demandes pas encore envoyées (voir bandeau ci-dessous) : replié par
+  // défaut, juste un compteur ; ce Set retient quels dépôts sont dépliés pour voir la liste et
+  // pouvoir en supprimer une avant l'envoi du récap.
+  const [detailEnvoiOuvert, setDetailEnvoiOuvert] = useState<Set<Depot>>(new Set());
+  const toggleDetailEnvoi = (dep: Depot) => {
+    setDetailEnvoiOuvert(prev => {
+      const next = new Set(prev);
+      if (next.has(dep)) next.delete(dep); else next.add(dep);
+      return next;
+    });
+  };
 
   async function envoyerRecapDuJour(dep: Depot) {
     setEnvoiRecapEnCours(prev => ({ ...prev, [dep]: true }));
@@ -1816,20 +1827,48 @@ export function ReconditionnementModule({ onClose, userName }: {
                 c'est une décision commerciale ("le lot du jour est prêt à partir au reconditionneur"),
                 pas une action physique d'entrepôt. */}
             {(["nlt", "andes"] as Depot[]).map(dep => {
-              const enAttenteRecap = demandes.filter(d => d.depot === dep && d.emailEnvoye === false).length;
+              const demandesEnAttenteEnvoi = demandes.filter(d => d.depot === dep && d.emailEnvoye === false);
+              const enAttenteRecap = demandesEnAttenteEnvoi.length;
               if (enAttenteRecap === 0) return null;
+              const detailOuvert = detailEnvoiOuvert.has(dep);
               return (
-                <div key={dep} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
-                    📧 {enAttenteRecap} demande{enAttenteRecap > 1 ? "s" : ""} {DEPOT_LABEL[dep]} pas encore envoyée{enAttenteRecap > 1 ? "s" : ""} au reconditionneur
-                  </span>
-                  <button
-                    onClick={() => envoyerRecapDuJour(dep)}
-                    disabled={envoiRecapEnCours[dep]}
-                    style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: envoiRecapEnCours[dep] ? COLORS.gray200 : COLORS.primary, color: envoiRecapEnCours[dep] ? COLORS.gray600 : "#fff", fontSize: 12, fontWeight: 700, cursor: envoiRecapEnCours[dep] ? "default" : "pointer" }}
-                  >
-                    {envoiRecapEnCours[dep] ? "Envoi..." : `Envoyer le récap à ${DEPOT_LABEL[dep]}`}
-                  </button>
+                <div key={dep} style={{ background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                    <span
+                      onClick={() => toggleDetailEnvoi(dep)}
+                      style={{ fontSize: 13, fontWeight: 700, color: "#92400e", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+                    >
+                      📧 {enAttenteRecap} demande{enAttenteRecap > 1 ? "s" : ""} {DEPOT_LABEL[dep]} pas encore envoyée{enAttenteRecap > 1 ? "s" : ""} au reconditionneur
+                      <span style={{ fontSize: 11, transform: detailOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                    </span>
+                    <button
+                      onClick={() => envoyerRecapDuJour(dep)}
+                      disabled={envoiRecapEnCours[dep]}
+                      style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: envoiRecapEnCours[dep] ? COLORS.gray200 : COLORS.primary, color: envoiRecapEnCours[dep] ? COLORS.gray600 : "#fff", fontSize: 12, fontWeight: 700, cursor: envoiRecapEnCours[dep] ? "default" : "pointer" }}
+                    >
+                      {envoiRecapEnCours[dep] ? "Envoi..." : `Envoyer le récap à ${DEPOT_LABEL[dep]}`}
+                    </button>
+                  </div>
+                  {detailOuvert && (
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {demandesEnAttenteEnvoi.map(d => (
+                        <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "#fff", border: "1px solid #fde3a8", borderRadius: 8, padding: "6px 10px" }}>
+                          <span style={{ fontSize: 12, color: "#92400e" }}>
+                            {d.numero && <b style={{ marginRight: 4 }}>{d.numero}</b>}
+                            {d.articleVrac} → {d.articleFini}
+                            <span style={{ color: "#b08a4a" }}> · {d.dateCreationFr}</span>
+                          </span>
+                          <button
+                            onClick={() => supprimerDemande(d.id)}
+                            title="Supprimer cette demande (pas encore envoyée)"
+                            style={{ padding: "4px 10px", borderRadius: 6, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+                          >
+                            🗑️ Supprimer
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
