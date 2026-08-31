@@ -28,7 +28,10 @@ const COLORS = {
 };
 
 type Fournisseur = { id: string; nom: string; transitaire: string; emails: string[] };
-type Produit = { id: string; label: string; ordre: number };
+// poidsNetKg / poidsBrutKg = poids d'UN colis (carton) de ce produit, en kg — donnés par
+// Elinathan le 31/08/2026 (fichier "poid hv.xlsx") pour calculer le poids total des commandes
+// (net + brut), utile pour la déclaration douane (DCP) au départ.
+type Produit = { id: string; label: string; ordre: number; qteParColis?: string; poidsNetKg?: number; poidsBrutKg?: number };
 type Vague = "weekend" | "midweek";
 
 // Confirmé par Elinathan (31/08/2026) : "Week-end" est la commande envoyée mercredi soir/jeudi
@@ -54,21 +57,21 @@ const FOURNISSEURS_DEFAUT: Fournisseur[] = [
 
 // Produits repris du tableau "appro process SEMAINE 36" envoyé par Elinathan.
 const PRODUITS_DEFAUT: Produit[] = [
-  { id: "hv250lidl", label: "HV 250G LIDL", ordre: 0 },
-  { id: "hv250", label: "HV 250G", ordre: 1 },
-  { id: "triplepack", label: "Triple Pack", ordre: 2 },
-  { id: "hv400", label: "HV 400", ordre: 3 },
-  { id: "hv500bags", label: "HV 500G Bags", ordre: 4 },
-  { id: "hv500", label: "HV 500G", ordre: 5 },
-  { id: "hv350", label: "HV 350G", ordre: 6 },
-  { id: "authentic", label: "Authentic", ordre: 7 },
-  { id: "excellence", label: "Excellence", ordre: 8 },
-  { id: "pg2kg", label: "PG Vrac 2kg", ordre: 9 },
-  { id: "pg250x12", label: "PG 250g x12", ordre: 10 },
-  { id: "pg150x6", label: "PG 150g x6", ordre: 11 },
-  { id: "sugar250x6", label: "Sugar Snap 250g x6", ordre: 12 },
-  { id: "sugar150x6", label: "Sugar Snap 150g x6", ordre: 13 },
-  { id: "petitpois", label: "Petit Pois", ordre: 14 },
+  { id: "hv250lidl", label: "HV 250G LIDL", ordre: 0, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "hv250", label: "HV 250G", ordre: 1, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "triplepack", label: "Triple Pack", ordre: 2, qteParColis: "200g par 8", poidsNetKg: 1.6, poidsBrutKg: 2 },
+  { id: "hv400", label: "HV 400", ordre: 3, qteParColis: "400g par 8", poidsNetKg: 3.2, poidsBrutKg: 3.6 },
+  { id: "hv500bags", label: "HV 500G Bags", ordre: 4, qteParColis: "500g par 6", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "hv500", label: "HV 500G", ordre: 5, qteParColis: "500g par 8", poidsNetKg: 4, poidsBrutKg: 4.4 },
+  { id: "hv350", label: "HV 350G", ordre: 6, qteParColis: "350g par 8", poidsNetKg: 2.8, poidsBrutKg: 3.2 },
+  { id: "authentic", label: "Authentic", ordre: 7, qteParColis: "Vrac", poidsNetKg: 2.7, poidsBrutKg: 3 },
+  { id: "excellence", label: "Excellence", ordre: 8, qteParColis: "Vrac", poidsNetKg: 2, poidsBrutKg: 2.3 },
+  { id: "pg2kg", label: "PG Vrac 2kg", ordre: 9, qteParColis: "Vrac", poidsNetKg: 2, poidsBrutKg: 2.3 },
+  { id: "pg250x12", label: "PG 250g x12", ordre: 10, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "pg150x6", label: "PG 150g x6", ordre: 11, qteParColis: "150g par 6", poidsNetKg: 0.912, poidsBrutKg: 1.2 },
+  { id: "sugar250x6", label: "Sugar Snap 250g x6", ordre: 12, qteParColis: "250g par 6", poidsNetKg: 1.5, poidsBrutKg: 1.8 },
+  { id: "sugar150x6", label: "Sugar Snap 150g x6", ordre: 13, qteParColis: "150g par 6", poidsNetKg: 0.9, poidsBrutKg: 1.2 },
+  { id: "petitpois", label: "Petit Pois", ordre: 14, qteParColis: "250g par 8", poidsNetKg: 2, poidsBrutKg: 2.3 },
 ];
 
 // Toujours en Cc, quel que soit le fournisseur (demande du 31/08/2026).
@@ -167,7 +170,29 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     const u2 = onValue(ref(db, "appro/produits"), snap => {
       const d = snap.val();
       if (d) {
-        setProduits((Object.values(d) as Produit[]).sort((a, b) => a.ordre - b.ordre));
+        // 31/08/2026 — Complète les poids (net/brut) manquants sur des produits déjà présents en
+        // base (créés avant l'ajout des poids), en les faisant correspondre par id au fichier de
+        // référence "poid hv.xlsx" — sans écraser un poids déjà saisi/corrigé manuellement.
+        const liste = (Object.values(d) as Produit[]);
+        // Chemins imbriqués ("id/champ") plutôt que des objets par id : "update" remplace
+        // entièrement la valeur à chaque clé du multi-path, donc patch[p.id] = {...} aurait
+        // écrasé id/label/ordre du produit existant — avec des clés en "id/champ", seuls les
+        // champs de poids sont touchés.
+        const patch: Record<string, any> = {};
+        const patchLocal: Record<string, Partial<Produit>> = {};
+        liste.forEach(p => {
+          if (p.poidsNetKg == null) {
+            const ref_ = PRODUITS_DEFAUT.find(pd => pd.id === p.id);
+            if (ref_) {
+              patch[`${p.id}/qteParColis`] = ref_.qteParColis;
+              patch[`${p.id}/poidsNetKg`] = ref_.poidsNetKg;
+              patch[`${p.id}/poidsBrutKg`] = ref_.poidsBrutKg;
+              patchLocal[p.id] = { qteParColis: ref_.qteParColis, poidsNetKg: ref_.poidsNetKg, poidsBrutKg: ref_.poidsBrutKg };
+            }
+          }
+        });
+        if (Object.keys(patch).length > 0) update(ref(db, "appro/produits"), patch);
+        setProduits(liste.map(p => ({ ...p, ...patchLocal[p.id] })).sort((a, b) => a.ordre - b.ordre));
       } else {
         setProduits(PRODUITS_DEFAUT);
         update(ref(db, "appro/produits"), Object.fromEntries(PRODUITS_DEFAUT.map(p => [p.id, p])));
@@ -210,6 +235,34 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     Object.values(commandes[fournisseurId]?.quantites || {}).reduce((s, v) => s + (v || 0), 0);
 
   const totalGeneral = useMemo(() => produits.reduce((s, p) => s + totalColonne(p.id), 0), [produits, commandes]);
+
+  // 31/08/2026 — Poids (net/brut) calculés à partir de la référence "poid hv.xlsx" (kg par
+  // colis x nombre de colis) — utile pour la déclaration douane (DCP) au départ.
+  const arrondi1 = (n: number) => Math.round(n * 10) / 10;
+  const poidsNetColonne = (produitId: string) => {
+    const p = produits.find(pp => pp.id === produitId);
+    return (p?.poidsNetKg || 0) * totalColonne(produitId);
+  };
+  const poidsBrutColonne = (produitId: string) => {
+    const p = produits.find(pp => pp.id === produitId);
+    return (p?.poidsBrutKg || 0) * totalColonne(produitId);
+  };
+  const poidsNetLigne = (fournisseurId: string) => {
+    const quantites = commandes[fournisseurId]?.quantites || {};
+    return Object.entries(quantites).reduce((s, [pid, qte]) => {
+      const p = produits.find(pp => pp.id === pid);
+      return s + (p?.poidsNetKg || 0) * (qte || 0);
+    }, 0);
+  };
+  const poidsBrutLigne = (fournisseurId: string) => {
+    const quantites = commandes[fournisseurId]?.quantites || {};
+    return Object.entries(quantites).reduce((s, [pid, qte]) => {
+      const p = produits.find(pp => pp.id === pid);
+      return s + (p?.poidsBrutKg || 0) * (qte || 0);
+    }, 0);
+  };
+  const poidsNetGlobal = useMemo(() => produits.reduce((s, p) => s + poidsNetColonne(p.id), 0), [produits, commandes]);
+  const poidsBrutGlobal = useMemo(() => produits.reduce((s, p) => s + poidsBrutColonne(p.id), 0), [produits, commandes]);
 
   // Alias pour les intitulés du fichier Excel qui ne correspondent pas exactement (une fois
   // normalisés) au libellé du produit dans l'app — ex : "HV bags 500g" (semaine paire) / "HV
@@ -554,7 +607,10 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                   <tr style={{ background: COLORS.gray100 }}>
                     <th style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", textAlign: "left", minWidth: 150, zIndex: 2 }}>Fournisseur</th>
                     {produits.map(p => (
-                      <th key={p.id} style={{ padding: "8px 6px", minWidth: 78, textAlign: "center", fontWeight: 700, whiteSpace: "nowrap" }}>{p.label}</th>
+                      <th key={p.id} style={{ padding: "8px 6px", minWidth: 78, textAlign: "center", fontWeight: 700, whiteSpace: "nowrap" }} title={p.qteParColis ? `${p.qteParColis} — poids net ${p.poidsNetKg}kg / brut ${p.poidsBrutKg}kg par colis` : undefined}>
+                        {p.label}
+                        {p.poidsNetKg != null && <div style={{ fontSize: 9, fontWeight: 500, color: COLORS.gray400 }}>{p.poidsNetKg}kg / {p.poidsBrutKg}kg</div>}
+                      </th>
                     ))}
                     <th style={{ padding: "8px 10px", minWidth: 200, textAlign: "left" }}>Logistique</th>
                     <th style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "8px 10px", minWidth: TOTAL_WIDTH, textAlign: "center", fontWeight: 800, zIndex: 1, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>Total</th>
@@ -595,7 +651,14 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                             </select>
                           </div>
                         </td>
-                        <td style={{ position: "sticky", right: ENVOI_WIDTH, background: "#fff", padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalLigne(f.id) || "-"}</td>
+                        <td style={{ position: "sticky", right: ENVOI_WIDTH, background: "#fff", padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
+                          {totalLigne(f.id) || "-"}
+                          {totalLigne(f.id) > 0 && (
+                            <div style={{ fontSize: 9, fontWeight: 600, color: COLORS.gray400 }}>
+                              {arrondi1(poidsNetLigne(f.id))}kg net<br />{arrondi1(poidsBrutLigne(f.id))}kg brut
+                            </div>
+                          )}
+                        </td>
                         <td style={{ position: "sticky", right: 0, background: "#fff", padding: "8px 10px", textAlign: "center" }}>
                           {envoye ? (
                             <div style={{ fontSize: 10.5, color: "#15803d", fontWeight: 700 }}>
@@ -619,7 +682,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: `2px solid ${COLORS.gray200}`, background: COLORS.gray100 }}>
-                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", fontWeight: 800, zIndex: 2 }}>Total</td>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", fontWeight: 800, zIndex: 2 }}>Total (colis)</td>
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 800 }}>{totalColonne(p.id) || "-"}</td>
                     ))}
@@ -627,11 +690,33 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                     <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
                     <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
                   </tr>
+                  {/* 31/08/2026 — Poids net/brut par produit (colonne) et total général, calculés
+                      depuis le fichier de référence "poid hv.xlsx" (kg par colis) — utile pour la
+                      déclaration douane (DCP) au départ. */}
+                  <tr style={{ background: COLORS.gray100 }}>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "4px 10px", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600, zIndex: 2 }}>Poids net (kg)</td>
+                    {produits.map(p => (
+                      <td key={p.id} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600 }}>{poidsNetColonne(p.id) ? arrondi1(poidsNetColonne(p.id)) : "-"}</td>
+                    ))}
+                    <td />
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
+                  </tr>
+                  <tr style={{ background: COLORS.gray100 }}>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "4px 10px 8px", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600, zIndex: 2 }}>Poids brut (kg)</td>
+                    {produits.map(p => (
+                      <td key={p.id} style={{ padding: "4px 6px 8px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600 }}>{poidsBrutColonne(p.id) ? arrondi1(poidsBrutColonne(p.id)) : "-"}</td>
+                    ))}
+                    <td />
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
+                  </tr>
                 </tfoot>
               </table>
             </div>
             <p style={{ fontSize: 11, color: COLORS.gray400 }}>
               Le mail de commande part de jennifer.martin@moorea.fr, en Cc à hillel@leofresh.com, oumaima.ilhami@moorea.fr et elinathan.sebag@moorea.fr.
+              <br />Sous chaque nom de produit : poids net / poids brut par colis (réf. "poid hv.xlsx"). Les 2 dernières lignes du tableau donnent le poids net et brut total par produit et pour toute la commande — utile pour la déclaration douane (DCP).
             </p>
           </div>
         )}
@@ -806,9 +891,17 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
             <h3 style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700, marginBottom: 10 }}>Produits</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
               {produits.map(p => (
-                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, padding: "8px 12px" }}>
+                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, padding: "8px 12px" }}>
                   <span style={{ fontSize: 13, color: COLORS.gray700 }}>{p.label}</span>
-                  <button onClick={() => supprimerProduit(p.id)} style={{ padding: "4px 10px", borderRadius: 6, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>🗑️</button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 10.5, color: COLORS.gray400 }}>Net (kg)</span>
+                    <input type="number" step="0.1" min={0} value={p.poidsNetKg ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { poidsNetKg: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                      style={{ width: 60, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
+                    <span style={{ fontSize: 10.5, color: COLORS.gray400 }}>Brut (kg)</span>
+                    <input type="number" step="0.1" min={0} value={p.poidsBrutKg ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { poidsBrutKg: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                      style={{ width: 60, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
+                    <button onClick={() => supprimerProduit(p.id)} style={{ padding: "4px 10px", borderRadius: 6, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>🗑️</button>
+                  </div>
                 </div>
               ))}
             </div>
