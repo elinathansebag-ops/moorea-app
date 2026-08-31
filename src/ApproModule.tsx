@@ -74,6 +74,12 @@ const PRODUITS_DEFAUT: Produit[] = [
 // Toujours en Cc, quel que soit le fournisseur (demande du 31/08/2026).
 const CC_FIXE = ["hillel@leofresh.com", "oumaima.ilhami@moorea.fr", "elinathan.sebag@moorea.fr"];
 
+// 31/08/2026 — Total et Envoi restent visibles (colonnes collées à droite) même quand on
+// scrolle horizontalement dans les nombreuses colonnes produits : avant, il fallait scroller
+// tout le tableau pour voir le bouton "Envoyer" ou le statut d'envoi.
+const TOTAL_WIDTH = 70;
+const ENVOI_WIDTH = 130;
+
 type CommandeCell = {
   quantites?: Record<string, number>;
   dateDepart?: string;
@@ -415,13 +421,13 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: COLORS.gray100 }}>
-                    <th style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", textAlign: "left", minWidth: 150, zIndex: 1 }}>Fournisseur</th>
+                    <th style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", textAlign: "left", minWidth: 150, zIndex: 2 }}>Fournisseur</th>
                     {produits.map(p => (
                       <th key={p.id} style={{ padding: "8px 6px", minWidth: 78, textAlign: "center", fontWeight: 700, whiteSpace: "nowrap" }}>{p.label}</th>
                     ))}
-                    <th style={{ padding: "8px 10px", minWidth: 70, textAlign: "center", fontWeight: 800 }}>Total</th>
                     <th style={{ padding: "8px 10px", minWidth: 200, textAlign: "left" }}>Logistique</th>
-                    <th style={{ padding: "8px 10px", minWidth: 130, textAlign: "center" }}>Envoi</th>
+                    <th style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "8px 10px", minWidth: TOTAL_WIDTH, textAlign: "center", fontWeight: 800, zIndex: 1, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>Total</th>
+                    <th style={{ position: "sticky", right: 0, background: COLORS.gray100, padding: "8px 10px", minWidth: ENVOI_WIDTH, textAlign: "center", zIndex: 1 }}>Envoi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -445,7 +451,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                             />
                           </td>
                         ))}
-                        <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary }}>{totalLigne(f.id) || "-"}</td>
                         <td style={{ padding: "6px 10px" }}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                             <input type="date" value={cell.dateDepart || ""} onChange={e => setChampCommande(f.id, "dateDepart", e.target.value)}
@@ -459,7 +464,8 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                             </select>
                           </div>
                         </td>
-                        <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                        <td style={{ position: "sticky", right: ENVOI_WIDTH, background: "#fff", padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalLigne(f.id) || "-"}</td>
+                        <td style={{ position: "sticky", right: 0, background: "#fff", padding: "8px 10px", textAlign: "center" }}>
                           {envoye ? (
                             <div style={{ fontSize: 10.5, color: "#15803d", fontWeight: 700 }}>
                               ✓ Envoyé<br />{cell.dateEnvoi}
@@ -482,13 +488,13 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: `2px solid ${COLORS.gray200}`, background: COLORS.gray100 }}>
-                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", fontWeight: 800 }}>Total</td>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.gray100, padding: "8px 10px", fontWeight: 800, zIndex: 2 }}>Total</td>
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 800 }}>{totalColonne(p.id) || "-"}</td>
                     ))}
-                    <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary }}>{totalGeneral || "-"}</td>
                     <td />
-                    <td />
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
                   </tr>
                 </tfoot>
               </table>
