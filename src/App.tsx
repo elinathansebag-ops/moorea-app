@@ -603,7 +603,14 @@ export default function App() {
     const colisADetruireFinal = ctrl.retourRecond?.colisADetruire != null && String(ctrl.retourRecond.colisADetruire).trim() !== ""
       ? parseInt(ctrl.retourRecond.colisADetruire) || 0
       : undefined;
-    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, ...(litige ? { litige } : {}), ...(colisADetruireFinal != null ? { colis_a_detruire: colisADetruireFinal } : {}), validatedAt: Date.now() });
+    // 28/08/2026 — Écrit explicitement l'écart de colis (reçu vs attendu) à la racine de
+    // l'arrivage, pour TOUS les types d'arrivages (pas seulement les retours de
+    // reconditionnement) : c'est ce champ que le bouton "📲 Prévenir écarts" (récap groupé, un
+    // seul message WhatsApp pour toute la journée) lit dans ArrivageModule.tsx, plutôt que de
+    // reparser le texte libre de rapport.observations.
+    const colisRecusFinal = typeof ctrl.colisRecus === "number" ? ctrl.colisRecus : (arrivage.quantite || 0);
+    const ecartColisFinal = colisRecusFinal - (arrivage.quantite || 0);
+    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, colisRecus: colisRecusFinal, ecartColis: ecartColisFinal, ...(litige ? { litige } : {}), ...(colisADetruireFinal != null ? { colis_a_detruire: colisADetruireFinal } : {}), validatedAt: Date.now() });
 
     // Si cet arrivage provient d'une commande de cartons, mettre à jour le statut de la commande
     if (arrivage.carton_commande_id && decision === "conforme") {

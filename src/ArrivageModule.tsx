@@ -322,14 +322,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     // peuvent partir avant que React n'ait eu le temps de désactiver le bouton (disabled={saving}
     // ne suffit pas toujours) — ce qui déclenchait parfois une double impression d'étiquette.
     if (saving) return;
-    // Écart de quantité sur un retour de reconditionnement : on ouvre directement l'alerte
-    // WhatsApp au moment de la validation, sans attendre que quelqu'un pense à cliquer sur le
-    // petit bouton "📲 Prévenir" à côté du champ colis — sinon ça passe trop facilement inaperçu.
-    // Appelé ici, avant tout `await`, pour rester dans le geste utilisateur (clic sur Valider) et
-    // éviter que le navigateur bloque l'ouverture de la fenêtre comme un pop-up indésirable.
-    if (isRetourRecond && hasEcartColis) {
-      alerterEcartWhatsApp();
-    }
+    // 28/08/2026 — Simplifié à la demande d'Elinathan : plus d'ouverture automatique d'une
+    // fenêtre WhatsApp par article validé (gênant quand on pointe plusieurs retours à la
+    // suite) — tous les écarts du jour sont désormais regroupés dans UN SEUL message, envoyé
+    // via le bouton "📲 Prévenir écarts" du bandeau du jour (voir alerterEcartsJourWhatsApp
+    // dans DateBlock plus bas).
     setSaving(true);
     // Pour un retour de reconditionnement, un écart de colis n'est PAS un litige : le tri fait
     // que le poids ne tombe jamais exactement sur un compte rond (ex: pas moyen de faire des
@@ -354,22 +351,6 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", raisonFinal, "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquette);
     setSaving(false);
     if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
-  };
-
-  // Message WhatsApp prévenant le commercial d'un écart de quantité au retour d'un
-  // reconditionnement — pas un litige, juste une info utile (le tri/le poids explique l'écart).
-  // Pas de numéro précis (comme le partage WhatsApp existant ailleurs dans l'app) : on ouvre le
-  // sélecteur de contact WhatsApp avec le message déjà rempli.
-  const alerterEcartWhatsApp = () => {
-    const msg = `📦 Écart quantité — retour reconditionnement
-${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""}
-${arrivage.origine ? `${arrivage.origine}` : ""}
-
-Demandé : ${colisAttendu} colis
-Reçu : ${colisRecusNum} colis (écart ${ecartColis > 0 ? "+" : ""}${ecartColis})
-
-_Écart lié au tri/poids, pas un souci qualité._`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   const statusColor = litige || (hasEcartColis && !isRetourRecond) ? "#dc2626" : (hasEcartColis && isRetourRecond) ? "#d97706" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
@@ -438,13 +419,6 @@ _Écart lié au tri/poids, pas un souci qualité._`;
             <span style={{ fontSize: 11, fontWeight: 700, color: isRetourRecond ? "#b45309" : (ecartColis < 0 ? "#dc2626" : "#d97706"), whiteSpace: "nowrap" }}>
               {ecartColis > 0 ? `+${ecartColis}` : `${ecartColis}`}
             </span>
-          )}
-          {isRetourRecond && hasEcartColis && (
-            <button type="button" onClick={alerterEcartWhatsApp}
-              title="Prévenir le commercial de l'écart par WhatsApp"
-              style={{ padding: "3px 9px", borderRadius: 7, border: "1.5px solid #25d366", background: "#25d36618", color: "#128c7e", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
-              📲 Prévenir
-            </button>
           )}
         </div>
         {isRetourRecond && (
@@ -636,7 +610,7 @@ _Écart lié au tri/poids, pas un souci qualité._`;
           Contrairement aux autres champs "produce" (DLC/poids/traça), on garde cette section pour
           un retour de reconditionnement : il y a bien un produit physique sur palette, qui doit
           repartir avec une étiquette portant le lot de CET arrivage (lot_interne/lot_fournisseur). */}
-      {!(isGoEmbal || isPaletteIFCO) && (
+      {true && (
         <>
           <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
@@ -2282,6 +2256,28 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
+  // ─── PRÉVENIR DES ÉCARTS DU JOUR (WhatsApp, UN SEUL message) ───
+  // 28/08/2026 — Remplace l'ancienne fenêtre WhatsApp qui s'ouvrait automatiquement à CHAQUE
+  // article validé avec un écart de colis (gênant quand on pointe plusieurs retours à la
+  // suite) : un seul bouton manuel, ici, qui regroupe tous les écarts de la journée (tous
+  // types d'arrivages confondus, pas seulement les retours de reconditionnement) dans UN SEUL
+  // message. Se base sur ecartColis/colisRecus, écrits sur chaque arrivage à sa validation
+  // (voir handleAgrement dans App.tsx).
+  const alerterEcartsJourWhatsApp = () => {
+    const tous = [...arrivages, ...(arrivagesArchives || [])];
+    const avecEcart = tous.filter((a: any) => (a.ecartColis || 0) !== 0);
+    if (!avecEcart.length) { alert(`Aucun écart de colis pour le ${date}.`); return; }
+
+    const lignes = avecEcart.map((a: any) => {
+      const e = a.ecartColis || 0;
+      const signe = e > 0 ? "+" : "";
+      return `• ${a.produit || "-"}${a.lot_interne ? ` · lot ${a.lot_interne}` : ""} — ${libelleGroupe(a) || a.fournisseur || "-"} : ${signe}${e} (reçu ${a.colisRecus ?? "-"}/${a.quantite ?? "-"})`;
+    });
+
+    const msg = `⚠️ ÉCARTS ARRIVAGES MOOREA - ${date}\n${avecEcart.length} écart${avecEcart.length > 1 ? "s" : ""}\n\n${lignes.join("\n")}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
   // Aperçu de traçabilité fournisseur : au lieu de générer un PDF (qui s'affichait dans le
   // lecteur PDF natif du navigateur — moche, avec sa barre d'outils/miniatures), on construit
   // directement une page HTML stylée façon Moorea, affichée dans l'iframe. L'impression se fait
@@ -2388,6 +2384,14 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               title={`Envoyer par WhatsApp le récap des arrivages du ${date}`}
               style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #25d366", background: "#f0fdf4", color: "#15803d", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
               📲 Récap WA
+            </button>
+            {/* Prévenir des écarts du jour — un seul message WhatsApp groupant tous les écarts
+                de colis de la journée (voir alerterEcartsJourWhatsApp ci-dessus). */}
+            <button
+              onClick={e => { e.stopPropagation(); alerterEcartsJourWhatsApp(); }}
+              title={`Envoyer par WhatsApp tous les écarts de colis du ${date} en un seul message`}
+              style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #d97706", background: "#fffbeb", color: "#b45309", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+              📲 Prévenir écarts
             </button>
             {/* Bouton scanner étiquette */}
             <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.4)", borderRadius: 10, padding: "8px 12px" }}>
