@@ -31,9 +31,12 @@ type Fournisseur = { id: string; nom: string; transitaire: string; emails: strin
 type Produit = { id: string; label: string; ordre: number };
 type Vague = "weekend" | "midweek";
 
-const VAGUES: { id: Vague; label: string }[] = [
-  { id: "weekend", label: "Week-end" },
-  { id: "midweek", label: "Mid-week" },
+// Confirmé par Elinathan (31/08/2026) : "Week-end" est la commande envoyée mercredi soir/jeudi
+// (pour une livraison le week-end), "Mid-week" celle envoyée samedi/dimanche (pour une
+// livraison en milieu de semaine) — précisé ici pour que ce ne soit pas ambigu dans l'app.
+const VAGUES: { id: Vague; label: string; envoi: string }[] = [
+  { id: "weekend", label: "Week-end", envoi: "envoyée mercredi soir / jeudi" },
+  { id: "midweek", label: "Mid-week", envoi: "envoyée samedi / dimanche" },
 ];
 
 // Fournisseurs et emails donnés par Elinathan le 31/08/2026 — modifiables ensuite dans
@@ -392,7 +395,10 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {VAGUES.map(v => (
-                  <button key={v.id} onClick={() => setVague(v.id)} style={{ padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${vague === v.id ? COLORS.secondary : COLORS.gray200}`, background: vague === v.id ? COLORS.secondaryLight : "#fff", color: vague === v.id ? COLORS.secondary : COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{v.label}</button>
+                  <button key={v.id} onClick={() => setVague(v.id)} title={v.envoi} style={{ padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${vague === v.id ? COLORS.secondary : COLORS.gray200}`, background: vague === v.id ? COLORS.secondaryLight : "#fff", color: vague === v.id ? COLORS.secondary : COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1.3 }}>
+                    <span>{v.label}</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 500, color: vague === v.id ? COLORS.secondary : COLORS.gray400 }}>{v.envoi}</span>
+                  </button>
                 ))}
                 <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: importEnCours ? COLORS.gray200 : COLORS.primary, color: importEnCours ? COLORS.gray600 : "#fff", fontSize: 12.5, fontWeight: 700, cursor: importEnCours ? "default" : "pointer", whiteSpace: "nowrap" }}>
                   {importEnCours ? "⏳ Import..." : "📥 Importer le fichier Excel"}
