@@ -681,7 +681,7 @@ export default function App() {
           const { get } = await import("firebase/database");
           const levelsSnap = await get(ref(db, "ifco_stock/levels"));
           const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
-          const newNlt = Math.max(0, (levels.nlt || 0) - caissesPleines);
+          const newNlt = (levels.nlt || 0) - caissesPleines;
           // Les caisses pleines qui reviennent ne rejoignent PAS directement le stock de
           // caisses vides Moorea : elles vont dans le bucket "pleines", en attente d'être
           // vidées manuellement (bouton "Vider" dans le module Prestataires) — c'est ce

@@ -921,7 +921,11 @@ export function ReconditionnementModule({ onClose, userName }: {
   // mouvement de stock (caisses vides envoyées à NLT), sans imprimer quoi que ce soit.
   async function pousserEnvoiPaletteIfco(caissesAEnvoyer: number, raison: string) {
     const now = new Date();
-    const newMoorea = Math.max(0, stockIfco.moorea - caissesAEnvoyer);
+    // 31/08/2026 — Plus de plafond à 0 ici (Math.max(0, ...) supprimé partout sur le stock
+    // IFCO/carton) : un stock qui tombait sous 0 était auparavant affiché comme 0, ce qui a
+    // fait disparaître un vrai écart de -425 caisses lors d'une erreur de saisie. Un stock
+    // négatif reste anormal mais doit rester VISIBLE pour être repéré et corrigé.
+    const newMoorea = stockIfco.moorea - caissesAEnvoyer;
     const newNlt = stockIfco.nlt + caissesAEnvoyer;
     await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
     await push(ref(db, "ifco_stock/movements"), {
@@ -1285,9 +1289,9 @@ export function ReconditionnementModule({ onClose, userName }: {
         // Annule l'envoi (Moorea → NLT, +caissesEnvoyees côté Moorea, vides) et le retour
         // (NLT → bucket "pleines", -caissesPleinesRecues sur ce bucket, PAS sur "moorea"
         // puisque les pleines ne rejoignent le stock vide qu'après un vidage manuel).
-        const newMoorea = Math.max(0, (levels.moorea || 0) + caissesEnvoyees);
-        const newNlt = Math.max(0, (levels.nlt || 0) - caissesEnvoyees + caissesPleinesRecues);
-        const newPleines = Math.max(0, (levels.pleines || 0) - caissesPleinesRecues);
+        const newMoorea = (levels.moorea || 0) + caissesEnvoyees;
+        const newNlt = (levels.nlt || 0) - caissesEnvoyees + caissesPleinesRecues;
+        const newPleines = (levels.pleines || 0) - caissesPleinesRecues;
         await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt, pleines: newPleines });
       }
       if (cartonsUtilises > 0) {
@@ -1443,8 +1447,8 @@ export function ReconditionnementModule({ onClose, userName }: {
           notify("error", `⚠️ Demande modifiée, mais la régénération du bon a échoué : ${errPdf?.message || "erreur inconnue"}`);
         }
         if (deltaCaisses !== 0) {
-          const newMoorea = Math.max(0, stockIfco.moorea - deltaCaisses);
-          const newNlt = Math.max(0, stockIfco.nlt + deltaCaisses);
+          const newMoorea = stockIfco.moorea - deltaCaisses;
+          const newNlt = stockIfco.nlt + deltaCaisses;
           await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
           await push(ref(db, "ifco_stock/movements"), {
             date: nowFr(), from: deltaCaisses > 0 ? "moorea" : "nlt", to: deltaCaisses > 0 ? "nlt" : "moorea", caisses: Math.abs(deltaCaisses),
@@ -1454,7 +1458,7 @@ export function ReconditionnementModule({ onClose, userName }: {
           });
         }
         if (deltaCartons !== 0) {
-          await update(ref(db, "stock_carton_andes"), { baby_blanc: Math.max(0, stockBabyBlancAndes - deltaCartons) });
+          await update(ref(db, "stock_carton_andes"), { baby_blanc: stockBabyBlancAndes - deltaCartons });
         }
         notify("success", "✏️ Demande modifiée");
         resetForm();
@@ -1528,7 +1532,7 @@ export function ReconditionnementModule({ onClose, userName }: {
         // le commentaire ci-dessus. Le type "envoi_reconditionneur" est gardé tel quel pour le
         // mouvement stocké (c'est juste un discriminant technique de sens de mouvement), mais son
         // libellé affiché dans l'historique est bien "Utilisation chez Andès", pas "Envoi".
-        await update(ref(db, "stock_carton_andes"), { baby_blanc: Math.max(0, stockBabyBlancAndes - cartons) });
+        await update(ref(db, "stock_carton_andes"), { baby_blanc: stockBabyBlancAndes - cartons });
         await push(ref(db, "reconditionnement_stock_mouvements"), {
           type: "envoi_reconditionneur", article: "carton_baby_blanc", depot, quantite: cartons, date: nowFr(), ts: now.getTime(),
           reconditionnement_demande_id: demandeId,
