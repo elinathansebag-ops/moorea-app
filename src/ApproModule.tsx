@@ -100,7 +100,7 @@ function getSemaineKey(offset = 0): string {
 }
 
 export function ApproModule({ onClose, userName }: { onClose: () => void; userName: string }) {
-  const [activeTab, setActiveTab] = useState<"commandes" | "configuration">("commandes");
+  const [activeTab, setActiveTab] = useState<"commandes" | "statistiques" | "configuration">("commandes");
   const [semaineOffset, setSemaineOffset] = useState(0);
   const [vague, setVague] = useState<Vague>("weekend");
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
@@ -125,6 +125,19 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   // le 1er = week-end, le 2e = mid-week — voir importerExcel plus bas.
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importEnCours, setImportEnCours] = useState(false);
+
+  // 31/08/2026 — Statistiques : "base de données" séparée de la "base de travail" (demande
+  // d'Elinathan). appro/historique reçoit l'import en masse des anciens fichiers Excel (3 mois
+  // de commandes passées) uniquement pour les stats — ça ne touche jamais appro/commandes (la
+  // semaine en cours dans l'onglet Commandes, qui sert à l'envoi réel des mails).
+  const [historique, setHistorique] = useState<Record<string, Record<Vague, Record<string, Record<string, number>>>>>({});
+  const historiqueFileInputRef = useRef<HTMLInputElement>(null);
+  const [importHistoriqueEnCours, setImportHistoriqueEnCours] = useState(false);
+  type FichierEnAttente = { fileName: string; semaineKey: string; nbLignes: number; parVague: Record<Vague, Record<string, Record<string, number>>>; nouveauxFournisseurs: Record<string, Fournisseur>; colonnesNonReconnues: Set<string> };
+  const [fichiersEnAttente, setFichiersEnAttente] = useState<FichierEnAttente[]>([]);
+  const [statDimension, setStatDimension] = useState<"produit" | "fournisseur">("produit");
+  const [statItemId, setStatItemId] = useState<string>("");
+  const [statVague, setStatVague] = useState<Vague | "toutes">("toutes");
 
   const semaineKey = getSemaineKey(semaineOffset);
 
@@ -173,6 +186,14 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     return () => u();
   }, [semaineKey, vague]);
 
+  // Charge tout l'historique (toutes les semaines déjà importées) pour les stats.
+  useEffect(() => {
+    const u = onValue(ref(db, "appro/historique"), snap => {
+      setHistorique(snap.val() || {});
+    });
+    return () => u();
+  }, []);
+
   const setQuantite = (fournisseurId: string, produitId: string, valeur: string) => {
     const n = valeur === "" ? undefined : Math.max(0, parseInt(valeur) || 0);
     update(ref(db, `appro/commandes/${semaineKey}/${vague}/${fournisseurId}/quantites`), { [produitId]: n ?? null });
@@ -203,73 +224,82 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   };
   const normaliser = (s: any) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  // Importe le fichier "appro process" tel qu'envoyé par Jennifer : 2 tableaux fournisseur x
-  // produit dans la même feuille (le 1er repéré = week-end, le 2e = mid-week), écrits dans la
-  // semaine ACTUELLEMENT AFFICHÉE (change la semaine avec les flèches ‹ › avant d'importer si ce
-  // n'est pas la bonne). Ne touche jamais aux quantités déjà saisies pour un fournisseur absent
-  // du fichier — seules les lignes présentes dans le fichier sont écrites/écrasées.
+  // Parse un fichier "appro process" (2 tableaux fournisseur x produit dans la même feuille, le
+  // 1er = week-end, le 2e = mid-week) — SANS rien écrire dans Firebase. Réutilisé par l'import
+  // de la semaine en cours (onglet Commandes, écrit dans appro/commandes) ET par l'import en
+  // masse de l'historique (onglet Statistiques, écrit dans appro/historique) — 31/08/2026.
+  async function parseFichierAppro(file: File) {
+    const XLSX = await import("xlsx");
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null }) as any[][];
+
+    const headerRows = rows
+      .map((r, i) => ({ i, r }))
+      .filter(({ r }) => normaliser(r?.[0]) === "fournisseur");
+    if (headerRows.length === 0) {
+      throw new Error(`Fichier non reconnu : aucune ligne d'en-tête "fournisseur" trouvée`);
+    }
+
+    const nouveauxFournisseurs: Record<string, Fournisseur> = {};
+    const parVague: Record<Vague, Record<string, Record<string, number>>> = { weekend: {}, midweek: {} };
+    const colonnesNonReconnues = new Set<string>();
+
+    headerRows.slice(0, 2).forEach(({ i: headerIdx, r: headerRow }, blocIndex) => {
+      const vagueId: Vague = blocIndex === 0 ? "weekend" : "midweek";
+      const colonnes: { col: number; produitId: string | null; label: string }[] = [];
+      for (let c = 2; c < headerRow.length; c++) {
+        const label = headerRow[c];
+        if (label == null || normaliser(label) === "total" || normaliser(label) === "") continue;
+        const n = normaliser(label);
+        const produitId = ALIAS_COLONNES[n] || produits.find(p => normaliser(p.label) === n)?.id || null;
+        if (!produitId) colonnesNonReconnues.add(String(label));
+        colonnes.push({ col: c, produitId, label: String(label) });
+      }
+      // Borne la lecture au prochain bloc "fournisseur" (ou à la fin de la feuille) — entre
+      // l'en-tête et les vraies lignes fournisseur, il y a souvent des lignes intercalaires
+      // vides ou juste des libellés ("date départ", "week end"/"mid week" en colonne B) : on
+      // les saute plutôt que de s'arrêter dessus, et on ne s'arrête vraiment qu'à la ligne
+      // "total" (fin du tableau) ou à l'en-tête suivant.
+      const finBloc = headerRows[blocIndex + 1]?.i ?? rows.length;
+      for (let r = headerIdx + 1; r < finBloc; r++) {
+        const nomCell = rows[r]?.[0];
+        const nomNorm = normaliser(nomCell);
+        if (nomNorm === "total" || nomNorm === "fournisseur") break;
+        if (!nomNorm) continue;
+        let fid = fournisseurs.find(f => f.id === nomNorm)?.id;
+        if (!fid) {
+          fid = nomNorm;
+          if (!fournisseurs.some(f => f.id === fid) && !nouveauxFournisseurs[fid]) {
+            nouveauxFournisseurs[fid] = { id: fid, nom: String(nomCell).trim(), transitaire: "", emails: [] };
+          }
+        }
+        const quantites: Record<string, number> = {};
+        colonnes.forEach(({ col, produitId }) => {
+          if (!produitId) return;
+          const v = rows[r]?.[col];
+          const n = typeof v === "number" ? v : parseInt(String(v ?? "").replace(/[^0-9]/g, "")) || 0;
+          if (n > 0) quantites[produitId] = n;
+        });
+        if (Object.keys(quantites).length > 0) parVague[vagueId][fid] = quantites;
+      }
+    });
+
+    const nbLignes = Object.values(parVague.weekend).length + Object.values(parVague.midweek).length;
+    return { parVague, nouveauxFournisseurs, colonnesNonReconnues, nbLignes };
+  }
+
+  // Importe le fichier "appro process" tel qu'envoyé par Jennifer, écrit dans la semaine
+  // ACTUELLEMENT AFFICHÉE (change la semaine avec les flèches ‹ › avant d'importer si ce n'est
+  // pas la bonne). Ne touche jamais aux quantités déjà saisies pour un fournisseur absent du
+  // fichier — seules les lignes présentes dans le fichier sont écrites/écrasées.
   async function importerExcel(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setImportEnCours(true);
     try {
-      const XLSX = await import("xlsx");
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null }) as any[][];
-
-      const headerRows = rows
-        .map((r, i) => ({ i, r }))
-        .filter(({ r }) => normaliser(r?.[0]) === "fournisseur");
-      if (headerRows.length === 0) {
-        notify("error", `✗ Fichier non reconnu : aucune ligne d'en-tête "fournisseur" trouvée`);
-        return;
-      }
-
-      const nouveauxFournisseurs: Record<string, Fournisseur> = {};
-      const parVague: Record<Vague, Record<string, Record<string, number>>> = { weekend: {}, midweek: {} };
-      let colonnesNonReconnues = new Set<string>();
-
-      headerRows.slice(0, 2).forEach(({ i: headerIdx, r: headerRow }, blocIndex) => {
-        const vagueId: Vague = blocIndex === 0 ? "weekend" : "midweek";
-        const colonnes: { col: number; produitId: string | null; label: string }[] = [];
-        for (let c = 2; c < headerRow.length; c++) {
-          const label = headerRow[c];
-          if (label == null || normaliser(label) === "total" || normaliser(label) === "") continue;
-          const n = normaliser(label);
-          const produitId = ALIAS_COLONNES[n] || produits.find(p => normaliser(p.label) === n)?.id || null;
-          if (!produitId) colonnesNonReconnues.add(String(label));
-          colonnes.push({ col: c, produitId, label: String(label) });
-        }
-        // Borne la lecture au prochain bloc "fournisseur" (ou à la fin de la feuille) — entre
-        // l'en-tête et les vraies lignes fournisseur, il y a souvent des lignes intercalaires
-        // vides ou juste des libellés ("date départ", "week end"/"mid week" en colonne B) : on
-        // les saute plutôt que de s'arrêter dessus, et on ne s'arrête vraiment qu'à la ligne
-        // "total" (fin du tableau) ou à l'en-tête suivant.
-        const finBloc = headerRows[blocIndex + 1]?.i ?? rows.length;
-        for (let r = headerIdx + 1; r < finBloc; r++) {
-          const nomCell = rows[r]?.[0];
-          const nomNorm = normaliser(nomCell);
-          if (nomNorm === "total" || nomNorm === "fournisseur") break;
-          if (!nomNorm) continue;
-          let fid = fournisseurs.find(f => f.id === nomNorm)?.id;
-          if (!fid) {
-            fid = nomNorm;
-            if (!fournisseurs.some(f => f.id === fid) && !nouveauxFournisseurs[fid]) {
-              nouveauxFournisseurs[fid] = { id: fid, nom: String(nomCell).trim(), transitaire: "", emails: [] };
-            }
-          }
-          const quantites: Record<string, number> = {};
-          colonnes.forEach(({ col, produitId }) => {
-            if (!produitId) return;
-            const v = rows[r]?.[col];
-            const n = typeof v === "number" ? v : parseInt(String(v ?? "").replace(/[^0-9]/g, "")) || 0;
-            if (n > 0) quantites[produitId] = n;
-          });
-          if (Object.keys(quantites).length > 0) parVague[vagueId][fid] = quantites;
-        }
-      });
+      const { parVague, nouveauxFournisseurs, colonnesNonReconnues } = await parseFichierAppro(file);
 
       if (Object.keys(nouveauxFournisseurs).length > 0) {
         await update(ref(db, "appro/fournisseurs"), nouveauxFournisseurs);
@@ -297,6 +327,106 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
+
+  // Devine la semaine ISO (ex: "2026-W36") à partir du nom du fichier ("appro process SEMAINE
+  // 36.xlsx" → semaine 36). Comme le nom de fichier ne contient pas l'année, on suppose l'année
+  // en cours SAUF si le numéro de semaine est supérieur à la semaine actuelle (dans ce cas le
+  // fichier vient forcément de l'année précédente) — cette hypothèse est correcte pour un import
+  // d'historique récent (quelques mois), et le numéro de semaine détecté reste modifiable avant
+  // confirmation dans l'aperçu (voir fichiersEnAttente).
+  function deviserSemaineDepuisNomFichier(nomFichier: string): string {
+    const m = nomFichier.match(/semaine\s*0*(\d{1,2})/i);
+    const semaineActuelle = getSemaineKey(0);
+    const [anneeActuelle, wActuelle] = semaineActuelle.split("-W").map(Number);
+    if (!m) return semaineActuelle;
+    const w = parseInt(m[1]);
+    const annee = w > wActuelle ? anneeActuelle - 1 : anneeActuelle;
+    return `${annee}-W${String(w).padStart(2, "0")}`;
+  }
+
+  // Sélection en masse de fichiers Excel historiques (onglet Statistiques) : chaque fichier est
+  // analysé et placé dans un aperçu (fichiersEnAttente) — RIEN n'est écrit dans Firebase tant que
+  // l'utilisateur n'a pas vérifié la semaine détectée pour chaque fichier et cliqué sur
+  // "Confirmer l'import".
+  async function selectionnerFichiersHistorique(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setImportHistoriqueEnCours(true);
+    const nouveaux: FichierEnAttente[] = [];
+    const erreurs: string[] = [];
+    for (const file of files) {
+      try {
+        const { parVague, nouveauxFournisseurs, colonnesNonReconnues, nbLignes } = await parseFichierAppro(file);
+        if (nbLignes === 0) { erreurs.push(`${file.name} : aucune ligne trouvée`); continue; }
+        nouveaux.push({ fileName: file.name, semaineKey: deviserSemaineDepuisNomFichier(file.name), nbLignes, parVague, nouveauxFournisseurs, colonnesNonReconnues });
+      } catch (err: any) {
+        erreurs.push(`${file.name} : ${err?.message || "fichier illisible"}`);
+      }
+    }
+    setFichiersEnAttente(prev => [...prev, ...nouveaux]);
+    if (erreurs.length > 0) notify("error", `⚠️ ${erreurs.length} fichier(s) ignoré(s) : ${erreurs.join(" · ")}`);
+    setImportHistoriqueEnCours(false);
+    if (historiqueFileInputRef.current) historiqueFileInputRef.current.value = "";
+  }
+
+  function retirerFichierEnAttente(index: number) {
+    setFichiersEnAttente(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function corrigerSemaineFichierEnAttente(index: number, semaineKeyCorrigee: string) {
+    setFichiersEnAttente(prev => prev.map((it, i) => (i === index ? { ...it, semaineKey: semaineKeyCorrigee } : it)));
+  }
+
+  async function confirmerImportHistorique() {
+    if (fichiersEnAttente.length === 0) return;
+    setImportHistoriqueEnCours(true);
+    try {
+      let totalLignes = 0;
+      const tousNouveauxFournisseurs: Record<string, Fournisseur> = {};
+      for (const item of fichiersEnAttente) {
+        for (const v of ["weekend", "midweek"] as Vague[]) {
+          for (const [fid, quantites] of Object.entries(item.parVague[v])) {
+            await update(ref(db, `appro/historique/${item.semaineKey}/${v}/${fid}/quantites`), quantites);
+            totalLignes++;
+          }
+        }
+        Object.assign(tousNouveauxFournisseurs, item.nouveauxFournisseurs);
+      }
+      if (Object.keys(tousNouveauxFournisseurs).length > 0) {
+        await update(ref(db, "appro/fournisseurs"), tousNouveauxFournisseurs);
+      }
+      notify("success", `✓ Historique importé : ${fichiersEnAttente.length} fichier(s), ${totalLignes} ligne(s) écrite(s) dans la base de données stats`);
+      setFichiersEnAttente([]);
+    } catch (err: any) {
+      notify("error", `❌ Erreur import historique : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      setImportHistoriqueEnCours(false);
+    }
+  }
+
+  // Série "evolution dans le temps" pour l'item sélectionné (produit ou fournisseur), triée
+  // chronologiquement (le tri alphabétique de "AAAA-Wss" correspond au tri chronologique).
+  const serieStat = useMemo(() => {
+    if (!statItemId) return [] as { semaine: string; valeur: number }[];
+    const semaines = Object.keys(historique).sort();
+    return semaines.map(sem => {
+      const vaguesAInclure: Vague[] = statVague === "toutes" ? ["weekend", "midweek"] : [statVague];
+      let valeur = 0;
+      for (const v of vaguesAInclure) {
+        const bloc = historique[sem]?.[v] || {};
+        if (statDimension === "fournisseur") {
+          valeur += Object.values(bloc[statItemId]?.quantites || {}).reduce((s, n) => s + (n || 0), 0);
+        } else {
+          for (const f of Object.values(bloc)) {
+            valeur += (f as any)?.quantites?.[statItemId] || 0;
+          }
+        }
+      }
+      return { semaine: sem, valeur };
+    }).filter(pt => pt.valeur > 0 || Object.keys(historique).length <= 20); // évite un graphe tout à 0 si trop de semaines vides, mais garde tout si peu de données
+  }, [historique, statDimension, statItemId, statVague]);
+
+  const maxSerieStat = Math.max(1, ...serieStat.map(p => p.valeur));
 
   async function envoyerCommande(f: Fournisseur) {
     const cell = commandes[f.id] || {};
@@ -387,6 +517,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "14px 12px 60px" }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
           <button onClick={() => setActiveTab("commandes")} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${activeTab === "commandes" ? COLORS.primary : COLORS.gray200}`, background: activeTab === "commandes" ? COLORS.primaryLight : "#fff", color: activeTab === "commandes" ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📋 Commandes</button>
+          <button onClick={() => setActiveTab("statistiques")} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${activeTab === "statistiques" ? COLORS.primary : COLORS.gray200}`, background: activeTab === "statistiques" ? COLORS.primaryLight : "#fff", color: activeTab === "statistiques" ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📊 Statistiques</button>
           <button onClick={() => setActiveTab("configuration")} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${activeTab === "configuration" ? COLORS.primary : COLORS.gray200}`, background: activeTab === "configuration" ? COLORS.primaryLight : "#fff", color: activeTab === "configuration" ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Configuration</button>
         </div>
 
@@ -502,6 +633,111 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
             <p style={{ fontSize: 11, color: COLORS.gray400 }}>
               Le mail de commande part de jennifer.martin@moorea.fr, en Cc à hillel@leofresh.com, oumaima.ilhami@moorea.fr et elinathan.sebag@moorea.fr.
             </p>
+          </div>
+        )}
+
+        {activeTab === "statistiques" && (
+          <div className="fade-up">
+            {/* 31/08/2026 — Base de données stats (appro/historique), séparée de la base de
+                travail (appro/commandes) : importer ici de vieux fichiers "appro process" ne
+                touche jamais aux commandes en cours dans l'onglet Commandes. */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700, marginBottom: 4 }}>📥 Importer l'historique (base de données)</h3>
+              <p style={{ fontSize: 11.5, color: COLORS.gray600, marginBottom: 10 }}>
+                Sélectionne d'un coup tous tes fichiers "appro process SEMAINE XX.xlsx" des 3 derniers mois — la semaine est devinée depuis le nom du fichier, vérifie-la dans l'aperçu avant de confirmer. Ça remplit uniquement la base de stats, jamais les commandes en cours.
+              </p>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, background: importHistoriqueEnCours ? COLORS.gray200 : COLORS.secondary, color: importHistoriqueEnCours ? COLORS.gray600 : "#fff", fontSize: 12.5, fontWeight: 700, cursor: importHistoriqueEnCours ? "default" : "pointer" }}>
+                {importHistoriqueEnCours ? "⏳ Analyse..." : "📂 Sélectionner les fichiers Excel"}
+                <input ref={historiqueFileInputRef} type="file" accept=".xlsx,.xls" multiple onChange={selectionnerFichiersHistorique} disabled={importHistoriqueEnCours} style={{ display: "none" }} />
+              </label>
+
+              {fichiersEnAttente.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700, marginBottom: 6 }}>{fichiersEnAttente.length} fichier(s) prêt(s) à importer — vérifie la semaine détectée :</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                    {fichiersEnAttente.map((item, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: COLORS.gray100, borderRadius: 8, padding: "8px 10px" }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.gray700, flex: 1, minWidth: 160 }}>{item.fileName}</span>
+                        <span style={{ fontSize: 11, color: COLORS.gray400 }}>Semaine :</span>
+                        <input type="text" value={item.semaineKey} onChange={e => corrigerSemaineFichierEnAttente(i, e.target.value)}
+                          title="Corrige si la semaine devinée est fausse (format AAAA-Wss)"
+                          style={{ width: 90, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
+                        <span style={{ fontSize: 11, color: COLORS.gray400 }}>{item.nbLignes} ligne(s)</span>
+                        {item.colonnesNonReconnues.size > 0 && <span style={{ fontSize: 10.5, color: COLORS.amber }} title={Array.from(item.colonnesNonReconnues).join(", ")}>⚠️ {item.colonnesNonReconnues.size} colonne(s) non reconnue(s)</span>}
+                        <button onClick={() => retirerFichierEnAttente(i)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={confirmerImportHistorique} disabled={importHistoriqueEnCours}
+                    style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: importHistoriqueEnCours ? COLORS.gray200 : COLORS.primary, color: importHistoriqueEnCours ? COLORS.gray600 : "#fff", fontSize: 13, fontWeight: 700, cursor: importHistoriqueEnCours ? "default" : "pointer" }}>
+                    {importHistoriqueEnCours ? "Import en cours..." : `✓ Confirmer l'import (${fichiersEnAttente.length} fichier${fichiersEnAttente.length > 1 ? "s" : ""})`}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px" }}>
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700, marginBottom: 10 }}>📈 Évolution dans le temps</h3>
+              {Object.keys(historique).length === 0 ? (
+                <p style={{ fontSize: 12.5, color: COLORS.gray400 }}>Aucune donnée importée pour l'instant — importe tes fichiers historiques ci-dessus pour voir apparaître les courbes ici.</p>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                    <select value={statDimension} onChange={e => { setStatDimension(e.target.value as "produit" | "fournisseur"); setStatItemId(""); }}
+                      style={{ padding: "7px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12.5 }}>
+                      <option value="produit">Par produit</option>
+                      <option value="fournisseur">Par fournisseur</option>
+                    </select>
+                    <select value={statItemId} onChange={e => setStatItemId(e.target.value)}
+                      style={{ padding: "7px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12.5, minWidth: 160 }}>
+                      <option value="">— Choisir {statDimension === "produit" ? "un produit" : "un fournisseur"} —</option>
+                      {(statDimension === "produit" ? produits : fournisseurs).map((it: any) => (
+                        <option key={it.id} value={it.id}>{statDimension === "produit" ? it.label : it.nom}</option>
+                      ))}
+                    </select>
+                    <select value={statVague} onChange={e => setStatVague(e.target.value as Vague | "toutes")}
+                      style={{ padding: "7px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12.5 }}>
+                      <option value="toutes">Toutes les vagues</option>
+                      <option value="weekend">Week-end</option>
+                      <option value="midweek">Mid-week</option>
+                    </select>
+                  </div>
+
+                  {!statItemId ? (
+                    <p style={{ fontSize: 12.5, color: COLORS.gray400 }}>Choisis {statDimension === "produit" ? "un produit" : "un fournisseur"} pour afficher son évolution.</p>
+                  ) : serieStat.length === 0 ? (
+                    <p style={{ fontSize: 12.5, color: COLORS.gray400 }}>Aucune donnée pour cette sélection.</p>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 160, overflowX: "auto", padding: "0 4px 4px" }}>
+                        {serieStat.map(pt => (
+                          <div key={pt.semaine} title={`${pt.semaine} : ${pt.valeur}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 34 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: COLORS.gray700, marginBottom: 2 }}>{pt.valeur || ""}</span>
+                            <div style={{ width: 20, height: Math.max(2, (pt.valeur / maxSerieStat) * 120), background: COLORS.primary, borderRadius: "4px 4px 0 0" }} />
+                            <span style={{ fontSize: 9, color: COLORS.gray400, marginTop: 4, whiteSpace: "nowrap", transform: "rotate(-40deg)", transformOrigin: "top right" }}>{pt.semaine.replace(/^\d{4}-/, "")}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ overflowX: "auto", marginTop: 24 }}>
+                        <table style={{ borderCollapse: "collapse", fontSize: 11.5 }}>
+                          <thead>
+                            <tr>
+                              {serieStat.map(pt => <th key={pt.semaine} style={{ padding: "4px 8px", borderBottom: `1px solid ${COLORS.gray200}`, color: COLORS.gray600, whiteSpace: "nowrap" }}>{pt.semaine}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              {serieStat.map(pt => <td key={pt.semaine} style={{ padding: "4px 8px", textAlign: "center", fontWeight: 700, color: COLORS.gray700 }}>{pt.valeur || "-"}</td>)}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
 
