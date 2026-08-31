@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { db, ref, onValue, update } from "./firebase";
 import { PageHeader, F } from "./shared";
 
@@ -110,6 +110,13 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   const [editFournisseur, setEditFournisseur] = useState<Fournisseur | null>(null);
   const [nouveauProduitLabel, setNouveauProduitLabel] = useState("");
 
+  // 31/08/2026 — Import direct du fichier Excel "appro process" de Jennifer (demande
+  // d'Elinathan : pas de saisie manuelle pour l'instant). Le fichier contient 2 tableaux
+  // fournisseur x produit dans la même feuille (repérés par leur ligne d'en-tête "fournisseur"),
+  // le 1er = week-end, le 2e = mid-week — voir importerExcel plus bas.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importEnCours, setImportEnCours] = useState(false);
+
   const semaineKey = getSemaineKey(semaineOffset);
 
   const notify = (type: "success" | "error", message: string) => {
@@ -173,6 +180,114 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     Object.values(commandes[fournisseurId]?.quantites || {}).reduce((s, v) => s + (v || 0), 0);
 
   const totalGeneral = useMemo(() => produits.reduce((s, p) => s + totalColonne(p.id), 0), [produits, commandes]);
+
+  // Alias pour les intitulés du fichier Excel qui ne correspondent pas exactement (une fois
+  // normalisés) au libellé du produit dans l'app — ex : "HV bags 500g" (semaine paire) / "HV
+  // 500g bags" (semaine impaire) tombent tous les deux sur le produit "hv500bags". Complète
+  // cette liste si Jennifer change l'intitulé d'une colonne dans son fichier.
+  const ALIAS_COLONNES: Record<string, string> = {
+    hvbags500g: "hv500bags",
+    hv500gbags: "hv500bags",
+    pg2kg: "pg2kg",
+    sugar250gx6: "sugar250x6",
+    sugar150gx6: "sugar150x6",
+  };
+  const normaliser = (s: any) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  // Importe le fichier "appro process" tel qu'envoyé par Jennifer : 2 tableaux fournisseur x
+  // produit dans la même feuille (le 1er repéré = week-end, le 2e = mid-week), écrits dans la
+  // semaine ACTUELLEMENT AFFICHÉE (change la semaine avec les flèches ‹ › avant d'importer si ce
+  // n'est pas la bonne). Ne touche jamais aux quantités déjà saisies pour un fournisseur absent
+  // du fichier — seules les lignes présentes dans le fichier sont écrites/écrasées.
+  async function importerExcel(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportEnCours(true);
+    try {
+      const XLSX = await import("xlsx");
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null }) as any[][];
+
+      const headerRows = rows
+        .map((r, i) => ({ i, r }))
+        .filter(({ r }) => normaliser(r?.[0]) === "fournisseur");
+      if (headerRows.length === 0) {
+        notify("error", `✗ Fichier non reconnu : aucune ligne d'en-tête "fournisseur" trouvée`);
+        return;
+      }
+
+      const nouveauxFournisseurs: Record<string, Fournisseur> = {};
+      const parVague: Record<Vague, Record<string, Record<string, number>>> = { weekend: {}, midweek: {} };
+      let colonnesNonReconnues = new Set<string>();
+
+      headerRows.slice(0, 2).forEach(({ i: headerIdx, r: headerRow }, blocIndex) => {
+        const vagueId: Vague = blocIndex === 0 ? "weekend" : "midweek";
+        const colonnes: { col: number; produitId: string | null; label: string }[] = [];
+        for (let c = 2; c < headerRow.length; c++) {
+          const label = headerRow[c];
+          if (label == null || normaliser(label) === "total" || normaliser(label) === "") continue;
+          const n = normaliser(label);
+          const produitId = ALIAS_COLONNES[n] || produits.find(p => normaliser(p.label) === n)?.id || null;
+          if (!produitId) colonnesNonReconnues.add(String(label));
+          colonnes.push({ col: c, produitId, label: String(label) });
+        }
+        // Borne la lecture au prochain bloc "fournisseur" (ou à la fin de la feuille) — entre
+        // l'en-tête et les vraies lignes fournisseur, il y a souvent des lignes intercalaires
+        // vides ou juste des libellés ("date départ", "week end"/"mid week" en colonne B) : on
+        // les saute plutôt que de s'arrêter dessus, et on ne s'arrête vraiment qu'à la ligne
+        // "total" (fin du tableau) ou à l'en-tête suivant.
+        const finBloc = headerRows[blocIndex + 1]?.i ?? rows.length;
+        for (let r = headerIdx + 1; r < finBloc; r++) {
+          const nomCell = rows[r]?.[0];
+          const nomNorm = normaliser(nomCell);
+          if (nomNorm === "total" || nomNorm === "fournisseur") break;
+          if (!nomNorm) continue;
+          let fid = fournisseurs.find(f => f.id === nomNorm)?.id;
+          if (!fid) {
+            fid = nomNorm;
+            if (!fournisseurs.some(f => f.id === fid) && !nouveauxFournisseurs[fid]) {
+              nouveauxFournisseurs[fid] = { id: fid, nom: String(nomCell).trim(), transitaire: "", emails: [] };
+            }
+          }
+          const quantites: Record<string, number> = {};
+          colonnes.forEach(({ col, produitId }) => {
+            if (!produitId) return;
+            const v = rows[r]?.[col];
+            const n = typeof v === "number" ? v : parseInt(String(v ?? "").replace(/[^0-9]/g, "")) || 0;
+            if (n > 0) quantites[produitId] = n;
+          });
+          if (Object.keys(quantites).length > 0) parVague[vagueId][fid] = quantites;
+        }
+      });
+
+      if (Object.keys(nouveauxFournisseurs).length > 0) {
+        await update(ref(db, "appro/fournisseurs"), nouveauxFournisseurs);
+      }
+
+      let nbLignes = 0;
+      for (const v of ["weekend", "midweek"] as Vague[]) {
+        for (const [fid, quantites] of Object.entries(parVague[v])) {
+          await update(ref(db, `appro/commandes/${semaineKey}/${v}/${fid}/quantites`), quantites);
+          nbLignes++;
+        }
+      }
+
+      if (nbLignes === 0) {
+        notify("error", "✗ Aucune ligne de commande trouvée dans le fichier");
+      } else {
+        const avert = colonnesNonReconnues.size > 0 ? ` — ⚠️ colonnes non reconnues ignorées : ${Array.from(colonnesNonReconnues).join(", ")}` : "";
+        const nouveaux = Object.keys(nouveauxFournisseurs).length > 0 ? ` (${Object.keys(nouveauxFournisseurs).length} nouveau(x) fournisseur créé(s), sans email — à compléter en Configuration)` : "";
+        notify("success", `✓ Fichier importé : ${nbLignes} ligne(s) écrite(s) pour la semaine ${semaineKey}${nouveaux}${avert}`);
+      }
+    } catch (err: any) {
+      notify("error", `❌ Erreur import : ${err?.message || "fichier illisible"}`);
+    } finally {
+      setImportEnCours(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   async function envoyerCommande(f: Fournisseur) {
     const cell = commandes[f.id] || {};
@@ -275,12 +390,19 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                 <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>Semaine {semaineKey}{semaineOffset === 0 ? " (en cours)" : ""}</span>
                 <button onClick={() => setSemaineOffset(o => o + 1)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: "pointer", fontWeight: 700 }}>›</button>
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {VAGUES.map(v => (
                   <button key={v.id} onClick={() => setVague(v.id)} style={{ padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${vague === v.id ? COLORS.secondary : COLORS.gray200}`, background: vague === v.id ? COLORS.secondaryLight : "#fff", color: vague === v.id ? COLORS.secondary : COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{v.label}</button>
                 ))}
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, background: importEnCours ? COLORS.gray200 : COLORS.primary, color: importEnCours ? COLORS.gray600 : "#fff", fontSize: 12.5, fontWeight: 700, cursor: importEnCours ? "default" : "pointer", whiteSpace: "nowrap" }}>
+                  {importEnCours ? "⏳ Import..." : "📥 Importer le fichier Excel"}
+                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={importerExcel} disabled={importEnCours} style={{ display: "none" }} />
+                </label>
               </div>
             </div>
+            <p style={{ fontSize: 11, color: COLORS.gray400, marginTop: -6, marginBottom: 12 }}>
+              L'import écrit dans la semaine affichée ci-dessus (les 2 vagues à la fois) — change de semaine avant d'importer si besoin.
+            </p>
 
             {/* Tableau matrice fournisseur x produit */}
             <div style={{ overflowX: "auto", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, marginBottom: 16 }}>
