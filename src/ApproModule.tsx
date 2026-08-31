@@ -122,7 +122,14 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     const u1 = onValue(ref(db, "appro/fournisseurs"), snap => {
       const d = snap.val();
       if (d) {
-        setFournisseurs(Object.values(d) as Fournisseur[]);
+        // Object.values(d) : Firebase ne stocke pas les tableaux vides (voir commentaire
+        // ci-dessus), donc emails/transitaire manquants sont remis à [] / "" ici.
+        const normalises = (Object.values(d) as any[]).map(f => ({
+          ...f,
+          emails: Array.isArray(f.emails) ? f.emails : [],
+          transitaire: f.transitaire || "",
+        })) as Fournisseur[];
+        setFournisseurs(normalises);
       } else {
         setFournisseurs(FOURNISSEURS_DEFAUT);
         update(ref(db, "appro/fournisseurs"), Object.fromEntries(FOURNISSEURS_DEFAUT.map(f => [f.id, f])));
@@ -406,7 +413,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                         <input type="text" value={editFournisseur.transitaire} onChange={e => setEditFournisseur({ ...editFournisseur, transitaire: e.target.value })} />
                       </F>
                       <F label="Emails (un par ligne)">
-                        <textarea value={editFournisseur.emails.join("\n")} onChange={e => setEditFournisseur({ ...editFournisseur, emails: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })} style={{ minHeight: 70, width: "100%", padding: 8, border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12, boxSizing: "border-box" }} />
+                        <textarea value={(editFournisseur.emails || []).join("\n")} onChange={e => setEditFournisseur({ ...editFournisseur, emails: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })} style={{ minHeight: 70, width: "100%", padding: 8, border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12, boxSizing: "border-box" }} />
                       </F>
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={sauverFournisseur} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontWeight: 700, cursor: "pointer" }}>✓ Enregistrer</button>
@@ -417,7 +424,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                       <div>
                         <div style={{ fontWeight: 700, color: COLORS.gray700 }}>{f.nom} {f.transitaire && <span style={{ fontWeight: 500, color: COLORS.gray400 }}>· via {f.transitaire}</span>}</div>
-                        <div style={{ fontSize: 11, color: COLORS.gray600 }}>{f.emails.length > 0 ? f.emails.join(", ") : <span style={{ color: COLORS.danger }}>Aucun email configuré</span>}</div>
+                        <div style={{ fontSize: 11, color: COLORS.gray600 }}>{(f.emails || []).length > 0 ? f.emails.join(", ") : <span style={{ color: COLORS.danger }}>Aucun email configuré</span>}</div>
                       </div>
                       <button onClick={() => setEditFournisseur(f)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>✏️ Modifier</button>
                     </div>
