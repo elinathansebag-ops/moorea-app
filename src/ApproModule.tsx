@@ -225,9 +225,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     update(ref(db, `appro/commandes/${semaineKey}/${vague}/${fournisseurId}/quantites`), { [produitId]: n ?? null });
   };
 
-  const setChampCommande = (fournisseurId: string, champ: keyof CommandeCell, valeur: string) => {
-    update(ref(db, `appro/commandes/${semaineKey}/${vague}/${fournisseurId}`), { [champ]: valeur });
-  };
 
   const totalColonne = (produitId: string) =>
     Object.values(commandes).reduce((s, c) => s + (c?.quantites?.[produitId] || 0), 0);
@@ -667,7 +664,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                         {p.poidsNetKg != null && <div style={{ fontSize: 9, fontWeight: 500, color: COLORS.gray400 }}>{p.poidsNetKg}kg / {p.poidsBrutKg}kg</div>}
                       </th>
                     ))}
-                    <th style={{ padding: "8px 10px", minWidth: 200, textAlign: "left" }}>Logistique</th>
                     <th style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "8px 10px", minWidth: TOTAL_WIDTH, textAlign: "center", fontWeight: 800, zIndex: 1, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>Total</th>
                     <th style={{ position: "sticky", right: 0, background: COLORS.gray100, padding: "8px 10px", minWidth: ENVOI_WIDTH, textAlign: "center", zIndex: 1 }}>Envoi</th>
                   </tr>
@@ -693,19 +689,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                             />
                           </td>
                         ))}
-                        <td style={{ padding: "6px 10px" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            <input type="date" value={cell.dateDepart || ""} onChange={e => setChampCommande(f.id, "dateDepart", e.target.value)}
-                              title="Date de départ prévue" style={{ padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11 }} />
-                            <input type="text" placeholder="N° vol / conteneur" value={cell.numeroVol || ""} onChange={e => setChampCommande(f.id, "numeroVol", e.target.value)}
-                              style={{ padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11 }} />
-                            <select value={cell.douane || "en attente"} onChange={e => setChampCommande(f.id, "douane", e.target.value)}
-                              style={{ padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11 }}>
-                              <option value="en attente">Douane : en attente</option>
-                              <option value="dédouané">Douane : dédouané</option>
-                            </select>
-                          </div>
-                        </td>
                         <td style={{ position: "sticky", right: ENVOI_WIDTH, background: "#fff", padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
                           {totalLigne(f.id) || "-"}
                           {totalLigne(f.id) > 0 && (
@@ -741,7 +724,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 800 }}>{totalColonne(p.id) || "-"}</td>
                     ))}
-                    <td />
                     <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
                     <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
                   </tr>
@@ -753,7 +735,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600 }}>{poidsNetColonne(p.id) ? arrondi1(poidsNetColonne(p.id)) : "-"}</td>
                     ))}
-                    <td />
                     <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
                     <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
                   </tr>
@@ -762,7 +743,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "4px 6px 8px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.gray600 }}>{poidsBrutColonne(p.id) ? arrondi1(poidsBrutColonne(p.id)) : "-"}</td>
                     ))}
-                    <td />
                     <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.gray100, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
                     <td style={{ position: "sticky", right: 0, background: COLORS.gray100 }} />
                   </tr>
