@@ -625,6 +625,37 @@ export default function App() {
       }
     }
 
+    // 31/08/2026 — Bug trouvé avec Elinathan : pointer une livraison de palettes IFCO (commandée
+    // depuis Prestataires, "ifco_palette_commande_id") marquait bien l'arrivage comme reçu, mais
+    // ne créditait JAMAIS le stock ifco_stock/levels.moorea — la commande passait "reçu" sans
+    // que les caisses n'apparaissent nulle part dans le stock. On crédite ici, avec la quantité
+    // réellement pointée (colisRecusFinal, pas la quantité commandée) pour rester cohérent avec
+    // le suivi d'écart déjà en place sur tous les arrivages.
+    if (arrivage.ifco_palette_commande_id && decision === "conforme") {
+      try {
+        await update(ref(db, `ifco_palettes_commandes/${arrivage.ifco_palette_commande_id}`), {
+          statut: "reçu" as const,
+          dateReception: now2.toISOString().split("T")[0],
+        });
+        if (colisRecusFinal > 0) {
+          const { get: getStock } = await import("firebase/database");
+          const levelsSnap = await getStock(ref(db, "ifco_stock/levels"));
+          const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
+          const newMoorea = (levels.moorea || 0) + colisRecusFinal;
+          await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea });
+          await push(ref(db, "ifco_stock/movements"), {
+            date: now2.toLocaleDateString("fr-FR"), from: "fournisseur", to: "moorea", caisses: colisRecusFinal,
+            raison: `Réception commande palettes IFCO #${arrivage.ifco_palette_commande_id}`,
+            ifco_palette_commande_id: arrivage.ifco_palette_commande_id,
+            user: user?.displayName || "Moorea", ts: Date.now(),
+          });
+        }
+        logActivite("Palette IFCO reçue", `Commande #${arrivage.ifco_palette_commande_id} validée · ${colisRecusFinal} caisses créditées au stock Moorea`);
+      } catch (error) {
+        console.error("Erreur lors de la mise à jour du stock palette IFCO:", error);
+      }
+    }
+
     // Retour d'une demande de reconditionnement (NLT/Andès) : pointé ici, dans "Pointer
     // arrivage", comme n'importe quelle livraison — plus de modale dédiée dans le module
     // Reconditionnement. On répercute le résultat sur la demande d'origine (statut "reçu" +
