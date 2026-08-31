@@ -678,6 +678,11 @@ export function ReconditionnementModule({ onClose, userName }: {
   // de nbColisAEntrer × qtePerColis.
   const [qtePerColis, setQtePerColis] = useState("");
   const [caissesIfcoEnvoyees, setCaissesIfcoEnvoyees] = useState("");
+  // 31/08/2026 — Ajouté à la demande d'Elinathan (le pré-remplissage automatique à 640 avait
+  // fait perdre 640 caisses IFCO sur une demande passion, qui ne part pourtant pas en IFCO) :
+  // le commercial doit désormais choisir explicitement Oui/Non, à chaque demande NLT, plutôt que
+  // de risquer d'oublier de corriger un champ pré-rempli. "" = pas encore choisi (bloque l'envoi).
+  const [emballageIfcoChoix, setEmballageIfcoChoix] = useState<"" | "oui" | "non">("");
   const [cartonsBabyBlancEnvoyes, setCartonsBabyBlancEnvoyes] = useState("");
   // Coché automatiquement dès que "IFCO" apparaît dans le nom de l'article à fabriquer (voir
   // l'effet ci-dessous), mais reste modifiable à la main si jamais le nom ne suffit pas.
@@ -802,14 +807,21 @@ export function ReconditionnementModule({ onClose, userName }: {
     })();
   }, []);
 
-  // 28/08/2026 — Simplifié à la demande d'Elinathan (le suivi manuel au cas par cas faisait
-  // dériver le stock IFCO, qui ne correspondait plus à la réalité) : l'envoi d'une palette IFCO
-  // (640 caisses) à NLT est désormais SYSTÉMATIQUE à chaque demande créée pour ce dépôt — plus
-  // de case à cocher. Le champ reste éditable pour corriger la quantité réelle si ce n'est pas
-  // une palette complète (ou 0 si vraiment aucune caisse n'est envoyée cette fois).
+  // 31/08/2026 — Remplace l'ancien pré-remplissage automatique à 640 (voir historique) par un
+  // choix Oui/Non obligatoire (case ci-dessous) : dès que "Oui" est choisi, on pré-remplit à 1
+  // palette complète (reste éditable) ; "Non" force 0. Rien n'est pré-rempli tant que le
+  // commercial n'a pas choisi explicitement.
   useEffect(() => {
     if (editDemandeId) return;
-    if (depot === "nlt") setCaissesIfcoEnvoyees(String(CAISSES_PAR_PALETTE));
+    if (emballageIfcoChoix === "oui") setCaissesIfcoEnvoyees(String(CAISSES_PAR_PALETTE));
+    else if (emballageIfcoChoix === "non") setCaissesIfcoEnvoyees("0");
+  }, [emballageIfcoChoix, editDemandeId]);
+
+  // Un changement de dépôt remet le choix Oui/Non à zéro pour une nouvelle demande — on ne
+  // reconduit jamais silencieusement le choix fait pour une autre demande.
+  useEffect(() => {
+    if (editDemandeId) return;
+    setEmballageIfcoChoix("");
   }, [depot, editDemandeId]);
 
   // Coche automatiquement "retour en IFCO" dès que "IFCO" apparaît dans le nom de l'article à
@@ -1110,6 +1122,7 @@ export function ReconditionnementModule({ onClose, userName }: {
     setNbColisAEntrer("");
     setQtePerColis("");
     setCaissesIfcoEnvoyees("");
+    setEmballageIfcoChoix("");
     setCartonsBabyBlancEnvoyes("");
     setRetourIfco(false);
     setCommentaireEan("");
@@ -1139,6 +1152,7 @@ export function ReconditionnementModule({ onClose, userName }: {
       setQtePerColis("");
     }
     setCaissesIfcoEnvoyees(d.caissesIfcoEnvoyees != null ? String(d.caissesIfcoEnvoyees) : "");
+    setEmballageIfcoChoix(d.caissesIfcoEnvoyees != null ? (d.caissesIfcoEnvoyees > 0 ? "oui" : "non") : "");
     // Reprend la valeur enregistrée sur la demande (choix éventuellement corrigé à la main) —
     // ne retombe sur la détection par le nom que pour d'anciennes demandes créées avant ce champ.
     setRetourIfco(d.retourEnIfco ?? /ifco/i.test(d.articleFini || ""));
@@ -1327,6 +1341,14 @@ export function ReconditionnementModule({ onClose, userName }: {
     }
     if (!transporteurId) {
       notify("error", "✗ Choisis un transporteur");
+      return;
+    }
+    // 31/08/2026 — Le choix Oui/Non "envoi de caisses IFCO" est obligatoire pour NLT (voir
+    // useEffect plus haut) : on bloque la création tant qu'il n'est pas fait, plutôt que de
+    // risquer un oubli silencieux comme celui qui a fait perdre 640 caisses sur une demande
+    // passion (qui ne part pourtant pas en IFCO).
+    if (depot === "nlt" && emballageIfcoChoix === "" && !editDemandeId) {
+      notify("error", "✗ Précise si cette demande envoie des caisses IFCO (Oui/Non)");
       return;
     }
     const transporteur = transporteurs.find(t => t.id === transporteurId);
@@ -2089,6 +2111,12 @@ export function ReconditionnementModule({ onClose, userName }: {
                         commercial, même une fois la demande passée "prêt" ou "parti". */}
                     {(d.statut === "prêt" || d.statut === "parti") && (
                       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                        {d.statut === "prêt" && (
+                          <button onClick={() => chargerPourEdition(d)} title="Corriger une information de cette demande (ex : quantité de caisses IFCO) sans annuler la préparation déjà faite par l'entrepôt"
+                            style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            ✏️ Corriger
+                          </button>
+                        )}
                         {d.nbPalettesDepart && (
                           <button onClick={() => reimprimerEtiquettesProduction(d)} title="Réimprimer les étiquettes de production (secours) — disparaît une fois le retour validé dans agréage"
                             style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid #ddd6c8", background: "#fff", color: "#8a6f2e", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
@@ -2212,19 +2240,38 @@ export function ReconditionnementModule({ onClose, userName }: {
               )}
 
               {depot === "nlt" && (
-                <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px" }}>
+                <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${emballageIfcoChoix === "" ? "#f59e0b" : COLORS.gray200}`, borderRadius: 10, padding: "8px 12px" }}>
                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>
-                    📦 Caisses IFCO envoyées avec cette demande
+                    📦 Envoi de caisses IFCO avec cette demande ? <span style={{ color: "#d97706" }}>*obligatoire</span>
                   </label>
-                  <input
-                    type="number"
-                    value={caissesIfcoEnvoyees}
-                    onChange={e => setCaissesIfcoEnvoyees(e.target.value)}
-                    style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
-                  />
-                  <p style={{ margin: "6px 0 0", fontSize: 10, color: COLORS.gray600 }}>
-                    Pré-rempli à {CAISSES_PAR_PALETTE} (1 palette) — corrige si ce n'est pas une palette complète, ou mets 0 si aucune caisse n'est envoyée cette fois.
-                  </p>
+                  <div style={{ display: "flex", gap: 8, marginBottom: emballageIfcoChoix === "oui" ? 8 : 0 }}>
+                    <button type="button" onClick={() => setEmballageIfcoChoix("oui")}
+                      style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${emballageIfcoChoix === "oui" ? COLORS.primary : COLORS.gray200}`, background: emballageIfcoChoix === "oui" ? COLORS.primaryLight : "#fff", color: emballageIfcoChoix === "oui" ? COLORS.primary : COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      ✓ Oui
+                    </button>
+                    <button type="button" onClick={() => setEmballageIfcoChoix("non")}
+                      style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${emballageIfcoChoix === "non" ? COLORS.gray600 : COLORS.gray200}`, background: emballageIfcoChoix === "non" ? COLORS.gray100 : "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      ✕ Non
+                    </button>
+                  </div>
+                  {emballageIfcoChoix === "" && (
+                    <p style={{ margin: "6px 0 0", fontSize: 10, color: "#b45309" }}>
+                      Choisis Oui ou Non — obligatoire pour créer la demande (ex : la passion repart dans son propre carton, réponds "Non").
+                    </p>
+                  )}
+                  {emballageIfcoChoix === "oui" && (
+                    <>
+                      <input
+                        type="number"
+                        value={caissesIfcoEnvoyees}
+                        onChange={e => setCaissesIfcoEnvoyees(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+                      />
+                      <p style={{ margin: "6px 0 0", fontSize: 10, color: COLORS.gray600 }}>
+                        Pré-rempli à {CAISSES_PAR_PALETTE} (1 palette) — corrige si ce n'est pas une palette complète.
+                      </p>
+                    </>
+                  )}
                   <p style={{ margin: "4px 0 0", fontSize: 10, color: COLORS.gray600 }}>
                     NLT : <b>{stockIfco.nlt}</b> · Moorea : <b>{stockIfco.moorea}</b> caisses IFCO
                   </p>
