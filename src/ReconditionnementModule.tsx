@@ -974,7 +974,11 @@ export function ReconditionnementModule({ onClose, userName }: {
   // fois utilisé.
   async function utiliserPdfEnAttente(entree: { id: string; nom: string; base64: string }) {
     setPdfFile({ nom: entree.nom, base64: entree.base64 });
-    setAfficherPdfsEnAttente(false);
+    // 01/09/2026 — Fix : on NE referme PLUS le panneau "Fichiers en attente" ici (l'ancien
+    // setAfficherPdfsEnAttente(false) donnait l'impression que les autres pages avaient disparu
+    // après avoir utilisé la 1ère — elles restaient en fait bien enregistrées dans Firebase,
+    // juste cachées par le panneau refermé). Il reste ouvert pour enchaîner facilement sur la
+    // page suivante quand on traite un import multi-pages.
     // 01/09/2026 — Utilisable aussi depuis "En cours" (voir plus bas) : on bascule sur "Nouvelle
     // demande" pour que le formulaire pré-rempli soit immédiatement visible, plutôt que de
     // rester sur "En cours" avec un formulaire rempli mais caché.
