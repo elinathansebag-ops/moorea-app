@@ -499,7 +499,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 
   function styleBloc(b: BlocTexte): string {
     const texte = (b.majuscule ? b.texte.toUpperCase() : b.texte).replace(/</g, "&lt;").replace(/\n/g, "<br/>");
-    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};font-family:${b.police || POLICE_DEFAUT};line-height:1.2;white-space:pre-wrap;max-width:${b.largeurPct ?? LARGEUR_PCT_DEFAUT}%;">${texte}</div>`;
+    // On fixe une vraie largeur (width), pas un simple max-width : avec un positionnement en
+    // "left" seul (pas de "right"), le navigateur calcule sinon la largeur de la zone d'après
+    // la distance jusqu'au bord droit de l'étiquette, ce qui plafonne la zone bien avant le
+    // pourcentage réglé par l'utilisateur et rend le réglage "Largeur" inopérant.
+    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};font-family:${b.police || POLICE_DEFAUT};line-height:1.2;white-space:pre-wrap;width:${b.largeurPct ?? LARGEUR_PCT_DEFAUT}%;">${texte}</div>`;
   }
 
   function genererHtmlBlocs(blocsAImprimer: BlocTexte[]) {
@@ -1152,7 +1156,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                         fontFamily: b.police || POLICE_DEFAUT,
                         lineHeight: 1.2,
                         whiteSpace: "pre-wrap",
-                        maxWidth: `${b.largeurPct ?? LARGEUR_PCT_DEFAUT}%`,
+                        // width (pas maxWidth) : avec "left" seul et pas de "right", un simple
+                        // max-width est plafonné par la distance jusqu'au bord droit de
+                        // l'étiquette (calcul "shrink-to-fit" du navigateur) et le curseur
+                        // "Largeur" n'a alors plus aucun effet passé un certain point.
+                        width: `${b.largeurPct ?? LARGEUR_PCT_DEFAUT}%`,
                         cursor: "grab",
                         outline: `1.5px dashed ${b.variable ? COLORS.variable : COLORS.primary}66`,
                         background: b.variable ? `${COLORS.variableLight}cc` : "transparent",
