@@ -11,6 +11,9 @@ import { PageHeader } from "./shared";
 // navigateur (donc n'importe quelle imprimante connectée à l'ordinateur utilisé, ou "Enregistrer
 // en PDF" proposé par ce même dialogue — pas besoin de passer par le PC dédié de l'imprimante
 // à étiquettes physiques).
+// 01/09/2026 (suite) — Ajout d'une page d'accueil listant toutes les étiquettes déjà créées,
+// avec un bouton par étiquette pour la dupliquer, la modifier ou la réimprimer directement,
+// et un bouton pour en créer une nouvelle.
 
 const COLORS = {
   primary: "#c8a84b",
@@ -48,9 +51,7 @@ type FormatSauvegarde = FormatEtiquette & { id: string; label: string };
 
 type LogoSauvegarde = { id: string; nom: string; url: string };
 
-type ModeleEtiquette = {
-  id: string;
-  nom: string;
+type EtatEtiquette = {
   largeurCm: number;
   hauteurCm: number;
   logoActif: boolean;
@@ -59,9 +60,16 @@ type ModeleEtiquette = {
   logoXPct: number;
   logoYPct: number;
   blocs: BlocTexte[];
+};
+
+type ModeleEtiquette = EtatEtiquette & {
+  id: string;
+  nom: string;
   updatedAt: number;
   depuisImpression?: boolean;
 };
+
+type Vue = "liste" | "editeur";
 
 const FORMATS_PREDEFINIS: (FormatEtiquette & { label: string })[] = [
   { label: "Palette reconditionnement (18 × 11 cm)", largeurCm: 18, hauteurCm: 11 },
@@ -82,6 +90,8 @@ function nouveauBloc(texte = "", align: Align = "center", xPct = 50, yPct = 50):
 }
 
 export function EtiquetteModule({ onClose }: { onClose: () => void }) {
+  const [vue, setVue] = useState<Vue>("liste");
+
   const [largeurCm, setLargeurCm] = useState(10);
   const [hauteurCm, setHauteurCm] = useState(15);
   const [formatChoisi, setFormatChoisi] = useState<string>("custom");
@@ -138,7 +148,6 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   const [nomModele, setNomModele] = useState("");
   const [showEnregistrerFormat, setShowEnregistrerFormat] = useState(false);
   const [showEnregistrerModele, setShowEnregistrerModele] = useState(false);
-  const [showChargerModele, setShowChargerModele] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
@@ -305,8 +314,25 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     notify("success", "🗑️ Format supprimé");
   }
 
-  function etatActuel() {
+  function etatActuel(): EtatEtiquette {
     return { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, blocs };
+  }
+
+  // Repart d'une étiquette vierge — page "Créer une nouvelle étiquette".
+  function nouvelleEtiquette() {
+    setLargeurCm(10);
+    setHauteurCm(15);
+    setFormatChoisi("custom");
+    setLogoActif(false);
+    setLogoUrl("");
+    setLogoNoirEtBlanc(false);
+    setLogoUrlNoir("");
+    setLogoXPct(50);
+    setLogoYPct(18);
+    setBlocs([nouveauBloc("PRODUIT", "center", 50, 50)]);
+    setNomModele("");
+    setShowEnregistrerModele(false);
+    setVue("editeur");
   }
 
   async function enregistrerModele() {
@@ -321,10 +347,10 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   // 01/09/2026 — Chaque impression enregistre automatiquement l'étiquette telle quelle dans la
   // liste des modèles (nom auto-généré), pour pouvoir la réimprimer plus tard ou repartir de son
   // format sans avoir à cliquer "Enregistrer" à chaque fois (demande d'Elinathan).
-  async function enregistrerHistoriqueImpression() {
-    const premierTexte = blocs.find((b) => b.texte.trim())?.texte.trim().slice(0, 30) || "Sans titre";
+  async function enregistrerHistoriqueImpression(etat: EtatEtiquette) {
+    const premierTexte = etat.blocs.find((b) => b.texte.trim())?.texte.trim().slice(0, 30) || "Sans titre";
     const date = new Date().toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    await push(ref(db, "etiquettes/modeles"), { nom: `${premierTexte} — ${date}`, ...etatActuel(), updatedAt: Date.now(), depuisImpression: true });
+    await push(ref(db, "etiquettes/modeles"), { nom: `${premierTexte} — ${date}`, ...etat, updatedAt: Date.now(), depuisImpression: true });
   }
 
   function chargerModele(m: ModeleEtiquette) {
@@ -337,8 +363,29 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setLogoXPct(m.logoXPct ?? 50);
     setLogoYPct(m.logoYPct ?? 18);
     setBlocs(m.blocs && m.blocs.length > 0 ? m.blocs.map((b) => ({ ...b, id: nouvelId(), xPct: b.xPct ?? 50, yPct: b.yPct ?? 50 })) : [nouveauBloc()]);
-    setShowChargerModele(false);
+    setNomModele(m.nom);
+    setVue("editeur");
     notify("success", `📂 "${m.nom}" chargé — modifie et réimprime, ou repars de ce format`);
+  }
+
+  // Duplique une étiquette déjà enregistrée : crée une copie indépendante dans Firebase (le
+  // fichier d'origine n'est pas touché) puis ouvre cette copie dans l'éditeur pour modification.
+  async function dupliquerModele(m: ModeleEtiquette) {
+    const nouveauNom = `Copie de ${m.nom}`;
+    const nouvelleRef = push(ref(db, "etiquettes/modeles"));
+    const donnees: EtatEtiquette = {
+      largeurCm: m.largeurCm,
+      hauteurCm: m.hauteurCm,
+      logoActif: m.logoActif,
+      logoUrl: m.logoUrl,
+      logoNoirEtBlanc: m.logoNoirEtBlanc,
+      logoXPct: m.logoXPct,
+      logoYPct: m.logoYPct,
+      blocs: m.blocs,
+    };
+    await update(nouvelleRef, { ...donnees, nom: nouveauNom, updatedAt: Date.now(), depuisImpression: false });
+    notify("success", `📄 "${nouveauNom}" dupliquée`);
+    chargerModele({ ...donnees, id: nouvelleRef.key || "", nom: nouveauNom, updatedAt: Date.now(), depuisImpression: false });
   }
 
   async function supprimerModele(id: string) {
@@ -351,23 +398,31 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};line-height:1.2;white-space:pre-wrap;max-width:92%;">${texte}</div>`;
   }
 
-  function genererHtmlBlocs() {
-    return blocs.filter((b) => b.texte.trim()).map(styleBloc).join("\n");
+  function genererHtmlBlocs(blocsAImprimer: BlocTexte[]) {
+    return blocsAImprimer.filter((b) => b.texte.trim()).map(styleBloc).join("\n");
   }
 
-  async function ouvrirApercuEtImprimer() {
+  // Construit l'aperçu HTML d'une étiquette à partir de n'importe quel état (l'étiquette en
+  // cours d'édition, ou une étiquette déjà enregistrée choisie depuis la liste) et lance
+  // l'impression via le dialogue du navigateur. Réutilisé par le bouton d'impression de
+  // l'éditeur et par le bouton "🖨️ Imprimer" de chaque étiquette dans la liste.
+  async function genererEtImprimer(etat: EtatEtiquette, apresImpression?: () => void) {
+    let logoUrlAImprimer = etat.logoUrl;
+    if (etat.logoActif && etat.logoNoirEtBlanc && etat.logoUrl) {
+      try { logoUrlAImprimer = await noircirImage(etat.logoUrl); } catch { /* garde l'original si la conversion échoue */ }
+    }
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Étiquette</title>
 <style>
-  @page { size: ${largeurCm}cm ${hauteurCm}cm; margin: 0; }
+  @page { size: ${etat.largeurCm}cm ${etat.hauteurCm}cm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; }
-  .etiquette { position: relative; width: ${largeurCm}cm; height: ${hauteurCm}cm; overflow: hidden; }
-  .logo { position: absolute; left: ${logoXPct}%; top: ${logoYPct}%; transform: translate(-50%, -50%); max-width: 90%; max-height: 3.5cm; object-fit: contain; }
+  .etiquette { position: relative; width: ${etat.largeurCm}cm; height: ${etat.hauteurCm}cm; overflow: hidden; }
+  .logo { position: absolute; left: ${etat.logoXPct}%; top: ${etat.logoYPct}%; transform: translate(-50%, -50%); max-width: 90%; max-height: 3.5cm; object-fit: contain; }
 </style>
 </head><body>
   <div class="etiquette">
-    ${logoActif && logoUrlAffichee ? `<img class="logo" src="${logoUrlAffichee}" />` : ""}
-    ${genererHtmlBlocs()}
+    ${etat.logoActif && logoUrlAImprimer ? `<img class="logo" src="${logoUrlAImprimer}" />` : ""}
+    ${genererHtmlBlocs(etat.blocs)}
   </div>
   <script>
     window.onload = function() {
@@ -380,12 +435,20 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     w.document.open();
     w.document.write(html);
     w.document.close();
-    enregistrerHistoriqueImpression().catch(() => {});
+    if (apresImpression) apresImpression();
+  }
+
+  function ouvrirApercuEtImprimer() {
+    genererEtImprimer(etatActuel(), () => { enregistrerHistoriqueImpression(etatActuel()).catch(() => {}); });
   }
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-      <PageHeader titre="🏷️ Étiquettes" onBack={onClose} onHome={onClose} />
+      <PageHeader
+        titre="🏷️ Étiquettes"
+        onBack={() => (vue === "editeur" ? setVue("liste") : onClose())}
+        onHome={onClose}
+      />
 
       {toast && (
         <div style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 900, background: toast.type === "success" ? COLORS.successLight : COLORS.dangerLight, color: toast.type === "success" ? COLORS.success : COLORS.danger, border: `1.5px solid ${toast.type === "success" ? COLORS.success : COLORS.danger}`, borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,.12)" }}>
@@ -393,9 +456,65 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {/* ── PAGE D'ACCUEIL — liste des étiquettes déjà créées ── */}
+      {vue === "liste" && (
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "20px 16px 100px" }}>
+          <button
+            onClick={nouvelleEtiquette}
+            style={{ width: "100%", padding: "16px", borderRadius: 14, border: "none", background: COLORS.dark, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", marginBottom: 22 }}
+          >
+            ➕ Créer une nouvelle étiquette
+          </button>
+
+          <h3 style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
+            Étiquettes déjà créées ({modeles.length})
+          </h3>
+
+          {modeles.length === 0 && (
+            <p style={{ fontSize: 12, color: COLORS.gray400, textAlign: "center", margin: "24px 0" }}>
+              Aucune étiquette pour l'instant — clique sur "Créer une nouvelle étiquette" pour commencer.
+            </p>
+          )}
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {modeles.map((m) => (
+              <div key={m.id} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>
+                  {m.depuisImpression && <span title="Enregistrée automatiquement lors d'une impression" style={{ marginRight: 4 }}>🖨️</span>}
+                  {m.nom}
+                </div>
+                <div style={{ fontSize: 10, color: COLORS.gray400, marginBottom: 10 }}>
+                  {m.largeurCm} × {m.hauteurCm} cm · {(m.blocs || []).length} ligne(s){m.logoActif && m.logoUrl ? " · avec logo" : ""}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <button onClick={() => dupliquerModele(m)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    📄 Dupliquer
+                  </button>
+                  <button onClick={() => chargerModele(m)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    ✏️ Modifier
+                  </button>
+                  <button onClick={() => genererEtImprimer(m)} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    🖨️ Imprimer
+                  </button>
+                  <button onClick={() => supprimerModele(m.id)} style={{ marginLeft: "auto", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: COLORS.dangerLight, color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    🗑
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── ÉDITEUR ── */}
+      {vue === "editeur" && (
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px 16px 100px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         {/* ── COLONNE ÉDITEUR ── */}
         <div>
+          <button onClick={() => setVue("liste")} style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 14 }}>
+            ← Retour à la liste des étiquettes
+          </button>
+
           {/* FORMAT */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 16 }}>
             <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>📐 Format</h3>
@@ -530,10 +649,10 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
             {blocs.length === 0 && <p style={{ fontSize: 12, color: COLORS.gray400, textAlign: "center", margin: "10px 0" }}>Aucune ligne — clique sur "+ Ligne"</p>}
           </div>
 
-          {/* MODÈLES */}
+          {/* MODÈLE */}
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <button onClick={() => setShowEnregistrerModele(true)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>💾 Enregistrer ce modèle</button>
-            <button onClick={() => setShowChargerModele(true)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📂 Charger un modèle ({modeles.length})</button>
+            <button onClick={() => setVue("liste")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📂 Voir toutes les étiquettes ({modeles.length})</button>
           </div>
 
           {showEnregistrerModele && (
@@ -604,34 +723,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               🖨️ Aperçu plein écran & imprimer
             </button>
             <p style={{ fontSize: 11, color: COLORS.gray600, marginTop: 8, textAlign: "center" }}>
-              Ouvre un aperçu à la taille réelle dans un nouvel onglet et lance l'impression — choisis l'imprimante connectée à cet ordinateur, ou "Enregistrer en PDF" dans la même fenêtre. L'étiquette est aussi enregistrée automatiquement dans "Charger un modèle" pour la retrouver plus tard.
+              Ouvre un aperçu à la taille réelle dans un nouvel onglet et lance l'impression — choisis l'imprimante connectée à cet ordinateur, ou "Enregistrer en PDF" dans la même fenêtre. L'étiquette est aussi enregistrée automatiquement dans la liste pour la retrouver plus tard.
             </p>
           </div>
         </div>
       </div>
-
-      {/* MODALE — CHARGER UN MODÈLE */}
-      {showChargerModele && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setShowChargerModele(false)}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "20px 22px", maxWidth: 420, width: "100%", maxHeight: "80vh", overflow: "auto", borderTop: `7px solid ${COLORS.primary}` }} onClick={(e) => e.stopPropagation()}>
-            <p style={{ fontSize: 15, fontWeight: 800, color: COLORS.gray700, margin: "0 0 4px" }}>📂 Charger un modèle</p>
-            <p style={{ fontSize: 11, color: COLORS.gray400, margin: "0 0 14px" }}>Réimprime une étiquette déjà faite, ou charge-la pour repartir de son format et la modifier.</p>
-            {modeles.length === 0 && <p style={{ fontSize: 12, color: COLORS.gray400, textAlign: "center" }}>Aucun modèle enregistré pour l'instant.</p>}
-            {modeles.map((m) => (
-              <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 4px", borderBottom: `1px solid ${COLORS.gray200}` }}>
-                <div style={{ flex: 1, cursor: "pointer" }} onClick={() => chargerModele(m)}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>
-                    {m.depuisImpression && <span title="Enregistré automatiquement lors d'une impression" style={{ marginRight: 4 }}>🖨️</span>}
-                    {m.nom}
-                  </div>
-                  <div style={{ fontSize: 10, color: COLORS.gray400 }}>{m.largeurCm} × {m.hauteurCm} cm · {(m.blocs || []).length} ligne(s)</div>
-                </div>
-                <button onClick={() => supprimerModele(m.id)} style={{ border: "none", background: "transparent", color: COLORS.danger, cursor: "pointer", fontSize: 14 }}>🗑</button>
-              </div>
-            ))}
-            <button onClick={() => setShowChargerModele(false)} style={{ width: "100%", marginTop: 14, padding: "10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Fermer</button>
-          </div>
-        </div>
       )}
     </div>
   );
