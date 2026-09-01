@@ -1419,13 +1419,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "20px" }}>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🏭 IFCO — Moorea</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#27ae60" }}>{stockLevels.moorea}</div>
-                <div style={{ fontSize: 10, color: "#aaa" }}>caisses</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#27ae60" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE)}</div>
+                <div style={{ fontSize: 10, color: "#aaa" }}>palette{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.moorea} caisses)</div>
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 IFCO — NLT</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6" }}>{stockLevels.nlt}</div>
-                <div style={{ fontSize: 10, color: "#aaa" }}>caisses</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE)}</div>
+                <div style={{ fontSize: 10, color: "#aaa" }}>palette{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.nlt} caisses)</div>
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Baby Blanc — Andes</div>
@@ -2480,18 +2480,18 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🏭 Moorea</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#27ae60" }}>{stockLevels.moorea}</div>
-                <div style={{ fontSize: 9, color: "#ccc" }}>caisses</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#27ae60" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE)}</div>
+                <div style={{ fontSize: 9, color: "#ccc" }}>palette{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.moorea} caisses)</div>
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 NLT</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#3b82f6" }}>{stockLevels.nlt}</div>
-                <div style={{ fontSize: 9, color: "#ccc" }}>caisses</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#3b82f6" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE)}</div>
+                <div style={{ fontSize: 9, color: "#ccc" }}>palette{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.nlt} caisses)</div>
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 En attente</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#f59e0b" }}>{stockLevels.transit}</div>
-                <div style={{ fontSize: 9, color: "#ccc" }}>caisses</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#f59e0b" }}>{Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE)}</div>
+                <div style={{ fontSize: 9, color: "#ccc" }}>palette{Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.transit} caisses)</div>
               </div>
             </div>
 
@@ -2556,7 +2556,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               </div>
               <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
                 <div>
-                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {stockLevels.moorea} caisses)</div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {formatCaisses(stockLevels.moorea)})</div>
                   <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <input type="text" value={raisonAjustMoorea} onChange={(e) => setRaisonAjustMoorea(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <button
@@ -2576,7 +2576,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   </button>
                 </div>
                 <div>
-                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🔄 IFCO — NLT (actuel : {stockLevels.nlt} caisses)</div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🔄 IFCO — NLT (actuel : {formatCaisses(stockLevels.nlt)})</div>
                   <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <input type="text" value={raisonAjustNlt} onChange={(e) => setRaisonAjustNlt(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <button
@@ -2620,7 +2620,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                       reçues au retour d'un reconditionnement, pas encore vidées. Pas affiché
                       sur le Dashboard — en pratique ces caisses sont vidées tous les 2 jours,
                       donc ce n'est utile qu'ici, pour le faire au moment voulu. */}
-                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🟢 IFCO — Pleines en attente ({stockLevels.pleines} caisse{stockLevels.pleines !== 1 ? "s" : ""})</div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🟢 IFCO — Pleines en attente ({formatCaisses(stockLevels.pleines || 0)})</div>
                   <p style={{ margin: "0 0 8px", fontSize: "11px", color: COLORS.gray600 }}>Vidées tous les 2 jours en pratique — rejoint le stock vide Moorea ci-dessus.</p>
                   <button
                     onClick={viderCaissesPleines}

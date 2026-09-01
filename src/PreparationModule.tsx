@@ -275,21 +275,52 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // Ne se déclenche QUE depuis validerPret() (saisie manuelle du nb de palettes) — pas depuis
   // marquerPretSansPalettes() (transport Moorea, pas de palette) ni depuis le flux groupé
   // "Tout marquer parti".
-  async function envoyerEtiquetteProductionPourImpressionPC(demande: Demande, paletteIndex: number, paletteTotal: number) {
-    const url = `${window.location.origin}${window.location.pathname}?recond=${demande.id}`;
-    await push(ref(db, "printQueue"), {
-      type: "etiquette_production",
-      reference: demande.numero || demande.id,
-      produit: demande.articleVrac,
-      depot: DEPOT_LABEL[demande.depot],
-      paletteIndex,
-      paletteTotal,
-      dateProd: new Date().toLocaleDateString("fr-FR"),
-      transporteur: demande.transporteurNom || "",
-      url,
-      status: "pending",
-      createdAt: Date.now(),
+  // 01/09/2026 — Remplace l'ancienne étiquette "production" (1 seul produit + QR code, à la
+  // demande d'Elinathan : trop pauvre en infos et pas adaptée à un départ groupé). La nouvelle
+  // étiquette est un manifest de départ : en-tête "MOOREA → <dépôt>", "Palette X/N", puis la
+  // liste de TOUT ce qui part dans ce départ (une ligne par article fini + une ligne caisses
+  // IFCO vides / cartons Andès si présent) avec une case à cocher à gauche de chaque ligne pour
+  // marquer à la main ce qui est chargé sur CETTE palette précise, et un total en bas. Une
+  // étiquette identique est imprimée pour chaque palette physique (paletteIndex 1..N) — appelée
+  // aussi bien pour une demande seule (validerPret) que pour un groupe (marquerToutPretPuisPartiGroupe).
+  async function envoyerEtiquettesManifestPourImpressionPC(depot: Depot, demandesGroupe: Demande[], grandes: number, demi: number) {
+    const totalPalettes = grandes + demi;
+    if (totalPalettes === 0) return;
+
+    const parArticle: Record<string, number> = {};
+    let totalIfco = 0;
+    let totalCartons = 0;
+    demandesGroupe.forEach(d => {
+      const qte = d.nbColisAEntrer ?? d.qteConditionnement ?? 0;
+      if (qte > 0) parArticle[d.articleFini] = (parArticle[d.articleFini] || 0) + qte;
+      if (d.caissesIfcoEnvoyees) totalIfco += d.caissesIfcoEnvoyees;
+      if (d.cartonsBabyBlancEnvoyes) totalCartons += d.cartonsBabyBlancEnvoyes;
     });
+    const lignes = Object.entries(parArticle).map(([label, quantite]) => ({ label, quantite, unite: "colis" }));
+    if (totalIfco > 0) lignes.push({ label: "Caisses IFCO vides", quantite: totalIfco, unite: "caisses" });
+    if (totalCartons > 0) lignes.push({ label: "Cartons Andès", quantite: totalCartons, unite: "cartons" });
+    if (lignes.length === 0) return;
+
+    const transporteur = demandesGroupe.find(d => d.transporteurNom)?.transporteurNom || "";
+    const dateProd = new Date().toLocaleDateString("fr-FR");
+
+    for (let i = 1; i <= totalPalettes; i++) {
+      try {
+        await push(ref(db, "printQueue"), {
+          type: "etiquette_manifest",
+          depot: DEPOT_LABEL[depot],
+          dateProd,
+          transporteur,
+          paletteIndex: i,
+          paletteTotal: totalPalettes,
+          lignes,
+          status: "pending",
+          createdAt: Date.now(),
+        });
+      } catch (e) {
+        console.error("Erreur envoi étiquette manifest", e);
+      }
+    }
   }
 
   async function validerPret() {
@@ -303,17 +334,10 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       entrepotPretDate: nowFr(),
       nbPalettesDepart: { grandes: g, demi: d },
     });
-    // Impression des étiquettes de production, une par palette
+    // Impression de l'étiquette manifest, une par palette
     const demandePourEtiquette = demandes.find(dd => dd.id === pretDemandeId);
     if (demandePourEtiquette) {
-      const totalPalettes = g + d;
-      for (let i = 1; i <= totalPalettes; i++) {
-        try {
-          await envoyerEtiquetteProductionPourImpressionPC(demandePourEtiquette, i, totalPalettes);
-        } catch (e) {
-          console.error("Erreur envoi étiquette production", e);
-        }
-      }
+      await envoyerEtiquettesManifestPourImpressionPC(demandePourEtiquette.depot, [demandePourEtiquette], g, d);
     }
     notify("success", "✅ Marqué prêt — en attente du transporteur");
     setPretDemandeId(null);
@@ -376,6 +400,13 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
         nbPalettesDepart: { grandes, demi },
         nbPalettesDepartGroupeId: groupeId,
       });
+    }
+    // 01/09/2026 — À la demande d'Elinathan : le départ groupé imprime maintenant lui aussi
+    // l'étiquette manifest (avant, seul validerPret() imprimait quelque chose) — une étiquette
+    // par palette, listant TOUT ce qui part dans ce groupe (toutes les demandes confondues).
+    const demandesGroupe = ids.map(id => demandes.find(d => d.id === id)).filter((d): d is Demande => !!d);
+    if (demandesGroupe.length > 0) {
+      await envoyerEtiquettesManifestPourImpressionPC(demandesGroupe[0].depot, demandesGroupe, grandes, demi);
     }
     notify("success", `🚚 ${ids.length} demande${ids.length > 1 ? "s" : ""} marquée${ids.length > 1 ? "s" : ""} partie${ids.length > 1 ? "s" : ""} — les retours apparaîtront dans « Pointer arrivage »`);
   }

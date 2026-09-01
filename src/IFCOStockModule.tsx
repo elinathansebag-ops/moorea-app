@@ -211,12 +211,10 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
       <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "20px", textAlign: "center" }}>
         <div style={{ fontSize: 32, marginBottom: 8 }}>{emoji}</div>
         <div style={{ fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 8 }}>{label}</div>
-        <div style={{ fontSize: 28, fontWeight: 800, color, marginBottom: 4 }}>{qty}</div>
-        <div style={{ fontSize: 11, color: "#aaa" }}>caisses</div>
+        <div style={{ fontSize: 28, fontWeight: 800, color, marginBottom: 4 }}>{palettes}</div>
+        <div style={{ fontSize: 11, color: "#aaa" }}>palette{palettes > 1 ? 's' : ''}</div>
         <div style={{ fontSize: 10, color: "#ccc", marginTop: 8, paddingTop: 8, borderTop: "1px solid #eee" }}>
-          {palettes > 0 && `${palettes} palette${palettes > 1 ? 's' : ''}`}
-          {palettes > 0 && caisseLoose > 0 && ` + ${caisseLoose} caisses`}
-          {palettes === 0 && `${caisseLoose} caisses`}
+          {qty} caisses{caisseLoose > 0 ? ` (dont ${caisseLoose} hors palette)` : ""}
         </div>
       </div>
     );
@@ -234,7 +232,7 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
             <span style={{ fontSize: 24 }}>⚠️</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: "#c0392b" }}>Stock bas à Moorea!</div>
-              <div style={{ fontSize: 12, color: "#a93226", marginTop: 4 }}>Seulement {stocks.moorea} palette(s) disponible(s). Prévoir un retour de NLT.</div>
+              <div style={{ fontSize: 12, color: "#a93226", marginTop: 4 }}>Seulement {Math.floor(stocks.moorea / CAISSES_PAR_PALETTE)} palette(s) disponible(s) ({stocks.moorea} caisses). Prévoir un retour de NLT.</div>
             </div>
           </div>
         </div>
@@ -264,7 +262,7 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
             {/* INFOS TOTALES */}
             <div style={{ background: "#f8fffe", border: "1.5px solid #a9dfbf", borderRadius: 16, padding: "20px", marginBottom: 24, textAlign: "center" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#1a6b3a", marginBottom: 12 }}>📊 Total en circulation</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: "#27ae60", marginBottom: 4 }}>{(stocks.moorea + stocks.transit + stocks.nlt).toLocaleString("fr-FR")}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: "#27ae60", marginBottom: 4 }}>{Math.floor((stocks.moorea + stocks.transit + stocks.nlt) / CAISSES_PAR_PALETTE).toLocaleString("fr-FR")} palette{Math.floor((stocks.moorea + stocks.transit + stocks.nlt) / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}</div>
               <div style={{ fontSize: 12, color: "#666" }}>{formatCaisses(stocks.moorea + stocks.transit + stocks.nlt)}</div>
             </div>
 

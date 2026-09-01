@@ -946,8 +946,8 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                 return (
                   <div key={k} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "16px", textAlign: "center" }}>
                     <div style={{ fontSize: 24, marginBottom: 8 }}>{label.split(' ')[0]}</div>
-                    <div style={{ fontSize: 28, fontWeight: 800, color, marginBottom: 4 }}>{qty}</div>
-                    <div style={{ fontSize: 10, color: "#ccc" }}>{palettes}p {loose>0 ? `+${loose}c` : ''}</div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color, marginBottom: 4 }}>{palettes}</div>
+                    <div style={{ fontSize: 10, color: "#ccc" }}>palette{palettes > 1 ? 's' : ''} ({qty} caisses{loose>0 ? `, dont ${loose} hors palette` : ''})</div>
                   </div>
                 );
               })}
