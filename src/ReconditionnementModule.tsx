@@ -1931,13 +1931,21 @@ export function ReconditionnementModule({ onClose, userName }: {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 8 }}>
               <div style={{ background: COLORS.secondaryLight, border: `1.5px solid #c8e8d4`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.secondary }}>IFCO Moorea</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.secondary }}>{Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 9, color: COLORS.secondary, opacity: 0.75 }}>palette{Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockIfco.moorea} caisses)</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.secondary }}>{Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) : stockIfco.moorea}</div>
+                <div style={{ fontSize: 9, color: COLORS.secondary, opacity: 0.75 }}>
+                  {Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 0
+                    ? `palette${Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockIfco.moorea % CAISSES_PAR_PALETTE > 0 ? ` + ${stockIfco.moorea % CAISSES_PAR_PALETTE} caisses` : ''}`
+                    : 'caisses'}
+                </div>
               </div>
               <div style={{ background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary }}>IFCO NLT</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 9, color: COLORS.primary, opacity: 0.75 }}>palette{Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockIfco.nlt} caisses)</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) : stockIfco.nlt}</div>
+                <div style={{ fontSize: 9, color: COLORS.primary, opacity: 0.75 }}>
+                  {Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 0
+                    ? `palette${Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockIfco.nlt % CAISSES_PAR_PALETTE > 0 ? ` + ${stockIfco.nlt % CAISSES_PAR_PALETTE} caisses` : ''}`
+                    : 'caisses'}
+                </div>
               </div>
               <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
@@ -2265,13 +2273,21 @@ export function ReconditionnementModule({ onClose, userName }: {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 8 }}>
               <div style={{ background: COLORS.secondaryLight, border: `1.5px solid #c8e8d4`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.secondary }}>IFCO Moorea</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.secondary }}>{Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 9, color: COLORS.secondary, opacity: 0.75 }}>palette{Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockIfco.moorea} caisses)</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.secondary }}>{Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) : stockIfco.moorea}</div>
+                <div style={{ fontSize: 9, color: COLORS.secondary, opacity: 0.75 }}>
+                  {Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 0
+                    ? `palette${Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockIfco.moorea % CAISSES_PAR_PALETTE > 0 ? ` + ${stockIfco.moorea % CAISSES_PAR_PALETTE} caisses` : ''}`
+                    : 'caisses'}
+                </div>
               </div>
               <div style={{ background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary }}>IFCO NLT</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 9, color: COLORS.primary, opacity: 0.75 }}>palette{Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockIfco.nlt} caisses)</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) : stockIfco.nlt}</div>
+                <div style={{ fontSize: 9, color: COLORS.primary, opacity: 0.75 }}>
+                  {Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 0
+                    ? `palette${Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockIfco.nlt % CAISSES_PAR_PALETTE > 0 ? ` + ${stockIfco.nlt % CAISSES_PAR_PALETTE} caisses` : ''}`
+                    : 'caisses'}
+                </div>
               </div>
               <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>

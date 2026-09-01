@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
 
@@ -154,6 +154,27 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   onScanHandled?: () => void;
 }) {
   const [demandes, setDemandes] = useState<Demande[]>([]);
+
+  // 01/09/2026 — Un départ groupé (marquerToutPretPuisPartiGroupe) écrit le même
+  // nbPalettesDepartGroupeId sur chaque demande du groupe : sans ça, le bouton "Réimprimer"
+  // apparaîtrait une fois par article au lieu d'une fois par départ. On ne garde que la
+  // première demande rencontrée de chaque groupe (une demande seule, sans groupe, compte
+  // toujours comme son propre départ).
+  const demandesAvecBoutonReimpression = useMemo(() => {
+    const groupesVus = new Set<string>();
+    const result = new Set<string>();
+    demandes.forEach(d => {
+      if (d.nbPalettesDepartGroupeId) {
+        if (!groupesVus.has(d.nbPalettesDepartGroupeId)) {
+          groupesVus.add(d.nbPalettesDepartGroupeId);
+          result.add(d.id);
+        }
+      } else {
+        result.add(d.id);
+      }
+    });
+    return result;
+  }, [demandes]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [filtreStatut, setFiltreStatut] = useState<"toutes" | Demande["statut"]>("toutes");
   // Accordéon par semaine des demandes — null = pas encore initialisé (la semaine la plus
@@ -806,13 +827,13 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                               <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic" }}>
                                                 📥 Retour à pointer dans « Pointer arrivage »
                                               </span>
-                                              {d.nbPalettesDepart && (
+                                              {d.nbPalettesDepart && demandesAvecBoutonReimpression.has(d.id) && (
                                                 <button
                                                   onClick={() => reimprimerEtiquetteManifest(d)}
                                                   style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                                                  title="Renvoie la même étiquette manifeste à l'impression (imprimante ratée, papier coincé...)"
+                                                  title={d.nbPalettesDepartGroupeId ? "Renvoie l'étiquette manifeste de tout le départ groupé à l'impression" : "Renvoie la même étiquette manifeste à l'impression (imprimante ratée, papier coincé...)"}
                                                 >
-                                                  🖨️ Réimprimer étiquette
+                                                  🖨️ Réimprimer étiquette{d.nbPalettesDepartGroupeId ? " (départ)" : ""}
                                                 </button>
                                               )}
                                             </>

@@ -713,8 +713,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const formatCaisses = (caisses: number): string => {
     const palettes = Math.floor(caisses / CAISSES_PAR_PALETTE);
     const caisseLoose = caisses % CAISSES_PAR_PALETTE;
-    if (caisseLoose === 0) return `${caisses} caisses (${palettes} palette${palettes > 1 ? 's' : ''})`;
-    return `${caisses} caisses (${palettes} palette${palettes > 1 ? 's' : ''} + ${caisseLoose} caisses)`;
+    if (palettes === 0) return `${caisses} caisses`;
+    if (caisseLoose === 0) return `${palettes} palette${palettes > 1 ? 's' : ''}`;
+    return `${palettes} palette${palettes > 1 ? 's' : ''} + ${caisseLoose} caisses`;
   };
 
   // Vide manuellement tout ou partie des caisses IFCO "pleines" reçues au retour d'un
@@ -1419,13 +1420,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "20px" }}>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🏭 IFCO — Moorea</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#27ae60" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 10, color: "#aaa" }}>palette{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.moorea} caisses)</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#27ae60" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) : stockLevels.moorea}</div>
+                <div style={{ fontSize: 10, color: "#aaa" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 0 ? `palette${Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockLevels.moorea % CAISSES_PAR_PALETTE > 0 ? ` + ${stockLevels.moorea % CAISSES_PAR_PALETTE} caisses` : ''}` : 'caisses'}</div>
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 IFCO — NLT</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 10, color: "#aaa" }}>palette{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.nlt} caisses)</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) : stockLevels.nlt}</div>
+                <div style={{ fontSize: 10, color: "#aaa" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 0 ? `palette${Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockLevels.nlt % CAISSES_PAR_PALETTE > 0 ? ` + ${stockLevels.nlt % CAISSES_PAR_PALETTE} caisses` : ''}` : 'caisses'}</div>
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Baby Blanc — Andes</div>
@@ -2480,18 +2481,18 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🏭 Moorea</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#27ae60" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 9, color: "#ccc" }}>palette{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.moorea} caisses)</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#27ae60" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) : stockLevels.moorea}</div>
+                <div style={{ fontSize: 9, color: "#ccc" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 0 ? `palette${Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockLevels.moorea % CAISSES_PAR_PALETTE > 0 ? ` + ${stockLevels.moorea % CAISSES_PAR_PALETTE} caisses` : ''}` : 'caisses'}</div>
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 NLT</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#3b82f6" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 9, color: "#ccc" }}>palette{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.nlt} caisses)</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#3b82f6" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) : stockLevels.nlt}</div>
+                <div style={{ fontSize: 9, color: "#ccc" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 0 ? `palette${Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockLevels.nlt % CAISSES_PAR_PALETTE > 0 ? ` + ${stockLevels.nlt % CAISSES_PAR_PALETTE} caisses` : ''}` : 'caisses'}</div>
               </div>
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 En attente</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#f59e0b" }}>{Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE)}</div>
-                <div style={{ fontSize: 9, color: "#ccc" }}>palette{Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE) > 1 ? 's' : ''} ({stockLevels.transit} caisses)</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#f59e0b" }}>{Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE) : stockLevels.transit}</div>
+                <div style={{ fontSize: 9, color: "#ccc" }}>{Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE) > 0 ? `palette${Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockLevels.transit % CAISSES_PAR_PALETTE > 0 ? ` + ${stockLevels.transit % CAISSES_PAR_PALETTE} caisses` : ''}` : 'caisses'}</div>
               </div>
             </div>
 
