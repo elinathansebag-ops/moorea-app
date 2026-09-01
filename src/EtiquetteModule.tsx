@@ -43,14 +43,29 @@ type BlocTexte = {
   align: Align;
   xPct: number;
   yPct: number;
+  // 01/09/2026 — Police de caractère du bloc (valeur CSS font-family) — avant, tout était en
+  // Arial fixe, pas de choix possible (demande d'Elinathan). Voir POLICES ci-dessous.
+  police?: string;
   // 01/09/2026 — Marque ce bloc comme "variable" pour la génération par lot (voir plus bas) :
-  // sa valeur affichée ici sert juste d'exemple/placeholder, elle sera remplacée par une valeur
-  // différente à chaque étiquette générée. Plusieurs blocs peuvent être variables en même temps
-  // (ex : nom de l'hôtel ET nom du service, positionnés indépendamment) — variableNom sert à les
-  // distinguer dans le panneau de génération par lot (demande d'Elinathan, 01/09/2026).
+  // sa valeur affichée ici sert juste d'exemple/placeholder, remplacée par une valeur différente
+  // à chaque étiquette générée. Un seul bloc à la fois est variable — le reste (comme le nom de
+  // l'hôtel) est un texte fixe normal, tapé directement, pas besoin de mécanisme spécial pour
+  // lui (simplifié le 01/09/2026 à la demande d'Elinathan : le système à plusieurs champs
+  // variables en même temps compliquait inutilement l'usage courant à un seul champ qui change).
   variable?: boolean;
-  variableNom?: string;
 };
+
+const POLICES = [
+  { label: "Arial", valeur: "Arial, Helvetica, sans-serif" },
+  { label: "Helvetica", valeur: "Helvetica, Arial, sans-serif" },
+  { label: "Times New Roman", valeur: "'Times New Roman', Times, serif" },
+  { label: "Georgia", valeur: "Georgia, 'Times New Roman', serif" },
+  { label: "Verdana", valeur: "Verdana, Geneva, sans-serif" },
+  { label: "Trebuchet MS", valeur: "'Trebuchet MS', sans-serif" },
+  { label: "Courier New", valeur: "'Courier New', Courier, monospace" },
+  { label: "Impact", valeur: "Impact, 'Arial Black', sans-serif" },
+];
+const POLICE_DEFAUT = POLICES[0].valeur;
 
 type FormatEtiquette = { largeurCm: number; hauteurCm: number };
 
@@ -96,7 +111,7 @@ function nouvelId() {
 }
 
 function nouveauBloc(texte = "", align: Align = "center", xPct = 50, yPct = 50): BlocTexte {
-  return { id: nouvelId(), texte, taillePt: 18, gras: true, italique: false, majuscule: false, align, xPct, yPct };
+  return { id: nouvelId(), texte, taillePt: 18, gras: true, italique: false, majuscule: false, align, xPct, yPct, police: POLICE_DEFAUT };
 }
 
 export function EtiquetteModule({ onClose }: { onClose: () => void }) {
@@ -183,17 +198,15 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   const [showEnregistrerModele, setShowEnregistrerModele] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
-  // 01/09/2026 — Génération par lot : une ou plusieurs lignes de texte peuvent être marquées
-  // "variable" (ex : le nom de l'hôtel ET le nom du service, chacun positionné où on veut sur
-  // l'étiquette). Chaque champ variable a sa propre liste de valeurs (une par ligne), stockée
-  // ici par id de bloc — la ligne N de chaque liste va ensemble (ligne 1 de "Service" + ligne 1
-  // de "Chambre" = une même étiquette). Une étiquette est générée ET ENREGISTRÉE séparément pour
-  // chaque ligne (nommée "Nom du client — valeur1 — valeur2..."), en plus d'être imprimée en un
-  // seul document d'un coup (demande d'Elinathan : pouvoir choisir où placer plusieurs champs
-  // différents, pas juste un seul).
+  // 01/09/2026 — Génération par lot : UNE seule ligne de texte peut être marquée "variable" à la
+  // fois (ex : le nom du service) — sa valeur change à chaque étiquette générée, à partir d'une
+  // liste (une valeur par ligne). Tout le reste (comme le nom de l'hôtel) est un texte fixe
+  // normal, tapé directement dans "✏️ Texte", sans mécanisme spécial. Chaque étiquette générée
+  // est enregistrée individuellement (nommée "Nom du client — valeur"), en plus d'être imprimée
+  // en un seul document d'un coup (simplifié le 01/09/2026 à la demande d'Elinathan : plusieurs
+  // champs variables en même temps compliquait inutilement l'usage courant).
   const [nomClientLot, setNomClientLot] = useState("");
-  const [valeursParVariable, setValeursParVariable] = useState<Record<string, string>>({});
-  const [nouveauChampNom, setNouveauChampNom] = useState("");
+  const [listeValeurs, setListeValeurs] = useState("");
 
   useEffect(() => {
     const u1 = onValue(ref(db, "etiquettes/formats"), (snap) => {
@@ -290,29 +303,10 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   function modifierBloc(id: string, patch: Partial<BlocTexte>) {
     setBlocs((b) => b.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
-  // Plusieurs blocs peuvent être "variable" en même temps (ex : nom de l'hôtel + nom du
-  // service), chacun positionné indépendamment sur l'étiquette — voir le panneau "Génération
-  // par lot" qui affiche un champ de valeurs par bloc variable.
+  // 01/09/2026 — Un seul bloc à la fois peut être "variable" (simplifié à la demande
+  // d'Elinathan) : cocher "Variable" sur une ligne décoche automatiquement toutes les autres.
   function toggleVariable(id: string, val: boolean) {
-    setBlocs((b) => b.map((x) => (x.id === id ? { ...x, variable: val } : x)));
-  }
-  function renommerVariable(id: string, nom: string) {
-    setBlocs((b) => b.map((x) => (x.id === id ? { ...x, variableNom: nom } : x)));
-  }
-
-  // 01/09/2026 — Raccourci depuis le panneau "Génération par lot" : crée directement une
-  // nouvelle ligne de texte DÉJÀ marquée variable et déjà nommée, prête à être glissée sur
-  // l'étiquette et redimensionnée — au lieu de devoir cliquer "+ Ligne", cocher "Variable" puis
-  // taper le nom en 3 étapes séparées (demande d'Elinathan : pouvoir ajouter facilement un 2e,
-  // 3e... champ, ex : nom de l'hôtel ET nom du service, chacun positionnable séparément).
-  function ajouterChampVariable() {
-    const nom = nouveauChampNom.trim();
-    if (!nom) { notify("error", "⚠️ Donne un nom à ce champ avant de l'ajouter (ex : Nom de l'hôtel)"); return; }
-    const yPct = Math.min(85, 15 + blocs.length * 15);
-    const nouveau: BlocTexte = { ...nouveauBloc(nom.toUpperCase(), "center", 50, yPct), variable: true, variableNom: nom };
-    setBlocs((b) => [...b, nouveau]);
-    setNouveauChampNom("");
-    notify("success", `✅ Champ "${nom}" ajouté — glisse-le sur l'étiquette pour le positionner, et règle sa taille dans "✏️ Texte"`);
+    setBlocs((b) => b.map((x) => ({ ...x, variable: x.id === id ? val : false })));
   }
   function supprimerBloc(id: string) {
     setBlocs((b) => b.filter((x) => x.id !== id));
@@ -482,7 +476,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 
   function styleBloc(b: BlocTexte): string {
     const texte = (b.majuscule ? b.texte.toUpperCase() : b.texte).replace(/</g, "&lt;").replace(/\n/g, "<br/>");
-    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};line-height:1.2;white-space:pre-wrap;max-width:92%;">${texte}</div>`;
+    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};font-family:${b.police || POLICE_DEFAUT};line-height:1.2;white-space:pre-wrap;max-width:92%;">${texte}</div>`;
   }
 
   function genererHtmlBlocs(blocsAImprimer: BlocTexte[]) {
@@ -529,43 +523,19 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     genererEtImprimer(etatActuel(), () => { enregistrerHistoriqueImpression(etatActuel()).catch(() => {}); });
   }
 
-  // 01/09/2026 — Combine les listes de valeurs de chaque bloc variable en lignes : la ligne N de
-  // chaque liste va ensemble (ligne 1 du champ "Service" + ligne 1 du champ "Chambre" = une même
-  // étiquette). Les listes n'ont pas besoin d'avoir exactement la même longueur (une ligne vide
-  // ou manquante donne juste un champ vide pour cette étiquette-là) ; une ligne entièrement vide
-  // sur tous les champs est ignorée (pas d'étiquette blanche générée).
-  function calculerLignesLot(blocsVariables: BlocTexte[]): Record<string, string>[] {
-    const listes = blocsVariables.map((b) => (valeursParVariable[b.id] || "").split("\n"));
-    const nbLignes = listes.reduce((max, l) => Math.max(max, l.length), 0);
-    const lignes: Record<string, string>[] = [];
-    for (let i = 0; i < nbLignes; i++) {
-      const ligne: Record<string, string> = {};
-      let toutVide = true;
-      blocsVariables.forEach((b, idx) => {
-        const v = (listes[idx][i] || "").trim();
-        ligne[b.id] = v;
-        if (v) toutVide = false;
-      });
-      if (!toutVide) lignes.push(ligne);
-    }
-    return lignes;
-  }
-
-  // 01/09/2026 — Génère une étiquette par ligne combinée (voir calculerLignesLot), en
-  // remplaçant à chaque fois le texte de CHAQUE bloc variable par sa valeur pour cette ligne —
-  // chaque champ variable garde la position/taille/style choisie individuellement dans
-  // l'éditeur (le reste — logo, texte fixe — ne change pas). Chaque étiquette est enregistrée
-  // individuellement dans la liste, nommée "Nom du client — valeur1 — valeur2...", pour pouvoir
-  // la retrouver, la modifier ou la réimprimer plus tard toute seule. Tout est aussi envoyé en
-  // un seul document à l'impression, une étiquette par page — demande d'Elinathan pour un
-  // client hôtel avec plusieurs champs à placer soi-même (ex : nom de l'hôtel + nom du service).
+  // 01/09/2026 — Génère une étiquette par valeur de la liste (une valeur par ligne), en
+  // remplaçant à chaque fois le texte du bloc variable par cette valeur — le bloc variable garde
+  // la position/taille/style choisie dans l'éditeur (le reste — logo, textes fixes — ne change
+  // pas). Chaque étiquette est enregistrée individuellement dans la liste, nommée "Nom du
+  // client — valeur", pour pouvoir la retrouver, la modifier ou la réimprimer plus tard toute
+  // seule. Tout est aussi envoyé en un seul document à l'impression, une étiquette par page.
   async function genererEtImprimerLot() {
     const clientNom = nomClientLot.trim();
     if (!clientNom) { notify("error", "⚠️ Indique le nom du client avant de générer le lot"); return; }
-    const blocsVariables = blocs.filter((b) => b.variable);
-    if (blocsVariables.length === 0) { notify("error", "⚠️ Coche \"🔀 Variable\" sur au moins une ligne de texte avant de générer le lot"); return; }
-    const lignes = calculerLignesLot(blocsVariables);
-    if (lignes.length === 0) { notify("error", "⚠️ Ajoute au moins une valeur (une ligne = une étiquette)"); return; }
+    const blocVariable = blocs.find((b) => b.variable);
+    if (!blocVariable) { notify("error", "⚠️ Coche \"🔀 Variable\" sur une ligne de texte avant de générer le lot"); return; }
+    const valeurs = listeValeurs.split("\n").map((v) => v.trim()).filter(Boolean);
+    if (valeurs.length === 0) { notify("error", "⚠️ Ajoute au moins une valeur (une ligne = une étiquette)"); return; }
 
     let logoUrlAImprimer = logoUrl;
     if (logoActif && logoNoirEtBlanc && logoUrl) {
@@ -573,12 +543,12 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     }
 
     const etiquettesHtml: string[] = [];
-    for (const ligne of lignes) {
-      // Chaque bloc variable devient un bloc fixe dans l'étiquette enregistrée (variable:
-      // false) — c'est désormais une étiquette concrète, pas un gabarit.
-      const blocsFinal = blocs.map((b) => (b.variable ? { ...b, texte: ligne[b.id] || "", variable: false } : b));
+    for (const valeur of valeurs) {
+      // Le bloc variable devient un bloc fixe dans l'étiquette enregistrée (variable: false)
+      // — c'est désormais une étiquette concrète, pas un gabarit.
+      const blocsFinal = blocs.map((b) => (b.id === blocVariable.id ? { ...b, texte: valeur, variable: false } : b));
       const donnees: EtatEtiquette = { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, logoTailleCm, blocs: blocsFinal };
-      const nomEtiquette = [clientNom, ...blocsVariables.map((b) => ligne[b.id]).filter(Boolean)].join(" — ");
+      const nomEtiquette = `${clientNom} — ${valeur}`;
       try {
         await push(ref(db, "etiquettes/modeles"), { nom: nomEtiquette, ...donnees, updatedAt: Date.now(), depuisImpression: false });
       } catch (err) {
@@ -590,7 +560,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   </div>`);
     }
 
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${clientNom} — Étiquettes (${lignes.length})</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${clientNom} — Étiquettes (${valeurs.length})</title>
 <style>
   @page { size: ${largeurCm}cm ${hauteurCm}cm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -612,7 +582,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     w.document.open();
     w.document.write(html);
     w.document.close();
-    notify("success", `✅ ${lignes.length} étiquette(s) créée(s) pour "${clientNom}" et envoyée(s) à l'impression`);
+    notify("success", `✅ ${valeurs.length} étiquette(s) créée(s) pour "${clientNom}" et envoyée(s) à l'impression`);
   }
 
   // 01/09/2026 — Regroupe la liste des étiquettes par client (déduit du nom : la partie avant
@@ -894,6 +864,16 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                       </button>
                     ))}
                   </div>
+                  <select
+                    value={b.police || POLICE_DEFAUT}
+                    onChange={(e) => modifierBloc(b.id, { police: e.target.value })}
+                    title="Police de caractère"
+                    style={{ fontSize: 11, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, background: "#fff" }}
+                  >
+                    {POLICES.map((p) => (
+                      <option key={p.valeur} value={p.valeur}>{p.label}</option>
+                    ))}
+                  </select>
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontWeight: b.gras ? 800 : 400 }}>
                     <input type="checkbox" checked={b.gras} onChange={(e) => modifierBloc(b.id, { gras: e.target.checked })} /> Gras
                   </label>
@@ -903,17 +883,9 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
                     <input type="checkbox" checked={b.majuscule} onChange={(e) => modifierBloc(b.id, { majuscule: e.target.checked })} /> MAJ.
                   </label>
-                  <label title="Cette ligne change à chaque étiquette générée par lot (ex : le nom du service, le nom de l'hôtel...)" style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", color: b.variable ? COLORS.primary : COLORS.gray600, fontWeight: b.variable ? 800 : 400 }}>
+                  <label title="Cette ligne change à chaque étiquette générée par lot (une seule ligne variable à la fois)" style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", color: b.variable ? COLORS.primary : COLORS.gray600, fontWeight: b.variable ? 800 : 400 }}>
                     <input type="checkbox" checked={!!b.variable} onChange={(e) => toggleVariable(b.id, e.target.checked)} /> 🔀 Variable
                   </label>
-                  {b.variable && (
-                    <input
-                      value={b.variableNom || ""}
-                      onChange={(e) => renommerVariable(b.id, e.target.value)}
-                      placeholder="Nom du champ (ex : Service)"
-                      style={{ fontSize: 11, padding: "4px 8px", border: `1.5px solid ${COLORS.primary}`, borderRadius: 6, width: 150 }}
-                    />
-                  )}
                   <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
                     <button onClick={() => deplacerBloc(b.id, -1)} disabled={i === 0} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.3 : 1, fontSize: 11 }}>↑</button>
                     <button onClick={() => deplacerBloc(b.id, 1)} disabled={i === blocs.length - 1} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: i === blocs.length - 1 ? "default" : "pointer", opacity: i === blocs.length - 1 ? 0.3 : 1, fontSize: 11 }}>↓</button>
@@ -928,35 +900,20 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
           {/* GÉNÉRATION PAR LOT */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 16 }}>
             <h3 style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🔀 Génération par lot</h3>
-            <p style={{ fontSize: 11.5, color: COLORS.gray600, margin: "0 0 8px", lineHeight: 1.4 }}>
-              Ajoute un champ (nom de l'hôtel, nom du service...) : il apparaît directement sur l'étiquette, à droite — glisse-le où tu veux, et règle sa taille dans "✏️ Texte" ci-dessus (curseur "Taille"). Ajoute-en autant que nécessaire.
-            </p>
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <input
-                value={nouveauChampNom}
-                onChange={(e) => setNouveauChampNom(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") ajouterChampVariable(); }}
-                placeholder="Nom du champ (ex : Nom de l'hôtel)"
-                style={{ flex: 1, padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
-              />
-              <button onClick={ajouterChampVariable} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                ➕ Ajouter le champ
-              </button>
-            </div>
             {(() => {
-              const blocsVariables = blocs.filter((b) => b.variable);
-              if (blocsVariables.length === 0) {
+              const blocVariable = blocs.find((b) => b.variable);
+              if (!blocVariable) {
                 return (
                   <p style={{ fontSize: 11.5, color: COLORS.gray400, margin: 0, lineHeight: 1.4 }}>
-                    Aucun champ pour l'instant — ajoute-en un ci-dessus (ou coche "🔀 Variable" directement sur une ligne de texte dans "✏️ Texte").
+                    Coche "🔀 Variable" sur une ligne de texte dans "✏️ Texte" ci-dessus (ex : le nom du service) — sa position et sa taille sur l'étiquette sont celles réglées là-bas.
                   </p>
                 );
               }
-              const nbEtiquettes = calculerLignesLot(blocsVariables).length;
+              const valeurs = listeValeurs.split("\n").map((v) => v.trim()).filter(Boolean);
               return (
                 <>
                   <p style={{ fontSize: 11.5, color: COLORS.gray600, margin: "0 0 8px", lineHeight: 1.4 }}>
-                    Une étiquette sera générée pour chaque ligne ci-dessous. La ligne 1 de chaque champ va ensemble (ligne 1 + ligne 1 = une étiquette), etc.
+                    Une étiquette sera générée pour chaque valeur ci-dessous, à la place de "{blocVariable.texte || "..."}".
                   </p>
                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Nom du client</label>
                   <input
@@ -965,22 +922,18 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     placeholder="Ex : Hôtel Waldorf"
                     style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 14 }}
                   />
-                  {blocsVariables.map((b) => (
-                    <div key={b.id} style={{ marginBottom: 12 }}>
-                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.primary, marginBottom: 4 }}>
-                        {b.variableNom || "Champ sans nom"} — une valeur par ligne{b.texte ? ` (remplace "${b.texte}")` : ""}
-                      </label>
-                      <textarea
-                        value={valeursParVariable[b.id] || ""}
-                        onChange={(e) => setValeursParVariable((v) => ({ ...v, [b.id]: e.target.value }))}
-                        placeholder={"Réception\nCuisine\nHousekeeping\nRestaurant\n..."}
-                        rows={5}
-                        style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical" }}
-                      />
-                    </div>
-                  ))}
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.primary, marginBottom: 4 }}>
+                    Une valeur par ligne
+                  </label>
+                  <textarea
+                    value={listeValeurs}
+                    onChange={(e) => setListeValeurs(e.target.value)}
+                    placeholder={"Réception\nCuisine\nHousekeeping\nRestaurant\n..."}
+                    rows={6}
+                    style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical", marginBottom: 14 }}
+                  />
                   <button onClick={genererEtImprimerLot} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: COLORS.dark, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
-                    🖨️ Générer et imprimer {nbEtiquettes > 0 ? `${nbEtiquettes} étiquette${nbEtiquettes > 1 ? "s" : ""}` : "les étiquettes"}
+                    🖨️ Générer et imprimer {valeurs.length > 0 ? `${valeurs.length} étiquette${valeurs.length > 1 ? "s" : ""}` : "les étiquettes"}
                   </button>
                 </>
               );
@@ -1051,6 +1004,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                       fontSize: `${b.taillePt}pt`,
                       fontWeight: b.gras ? 900 : 400,
                       fontStyle: b.italique ? "italic" : "normal",
+                      fontFamily: b.police || POLICE_DEFAUT,
                       lineHeight: 1.2,
                       whiteSpace: "pre-wrap",
                       maxWidth: "92%",
