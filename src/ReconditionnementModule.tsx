@@ -52,30 +52,34 @@ function formatCaisses(caisses: number): string {
 }
 
 // 02/09/2026 — Cartes de stock "IFCO Moorea / IFCO NLT / Carton Andès" (en_cours + nouvelle
-// demande) alignées visuellement sur le module Prestataires (onglet Calendrier IFCO) : même
-// carte blanche, même gros chiffre (nombre de palettes entières) avec le détail caisses/colis
-// en petit dessous — demande d'Elinathan pour que les deux modules se ressemblent au premier
-// coup d'œil, remplace l'ancienne cellule à taille de police unique.
+// demande) recopiées EXACTEMENT sur le module Prestataires (tableau de bord "Prestataires &
+// IFCO", pas l'onglet Calendrier) — demande d'Elinathan, une 1ère tentative avait pris le
+// mauvais modèle (celui du calendrier IFCO, avec le nombre de palettes en gros). Ici : le gros
+// chiffre est le total en CAISSES (donnée réellement stockée, sans ambiguïté), et le détail
+// "= X palette(s) + Y caisses" est en dessous, sur un fond teinté, comme dans Prestataires.
 function StockCardsIfco({ moorea, nlt, cartonAndes }: { moorea: number; nlt: number; cartonAndes: number }) {
-  const carte = (label: string, icone: string, caisses: number, couleur: string) => {
-    const palettes = Math.floor((caisses || 0) / CAISSES_PAR_PALETTE);
-    const reste = (caisses || 0) % CAISSES_PAR_PALETTE;
+  const carte = (label: string, total: number, couleur: string, bg: string) => {
+    const palettes = Math.floor((total || 0) / CAISSES_PAR_PALETTE);
+    const reste = (total || 0) % CAISSES_PAR_PALETTE;
     return (
-      <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>{icone} {label}</div>
-        <div style={{ fontSize: 24, fontWeight: 800, color: couleur }}>{palettes > 0 ? palettes : (caisses || 0)}</div>
-        <div style={{ fontSize: 9, color: "#ccc" }}>{palettes > 0 ? `palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisses` : ""}` : "caisses"}</div>
+      <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>{label}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: couleur }}>{total || 0}</div>
+        <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>caisses au total</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#3a3a3a", background: bg, borderRadius: 8, padding: "5px 8px" }}>
+          = {palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisse${reste > 1 ? "s" : ""}` : ""}` : `${total || 0} caisse${(total || 0) > 1 ? "s" : ""} (moins d'une palette)`}
+        </div>
       </div>
     );
   };
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12, marginBottom: 8 }}>
-      {carte("Moorea", "🏭", moorea, "#27ae60")}
-      {carte("NLT", "🔄", nlt, "#3b82f6")}
-      <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 8 }}>
+      {carte("🏭 IFCO — Moorea", moorea, "#27ae60", "#eafaf1")}
+      {carte("🔄 IFCO — NLT", nlt, "#3b82f6", "#eff6ff")}
+      <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Andès</div>
-        <div style={{ fontSize: 24, fontWeight: 800, color: "#b45309" }}>{cartonAndes || 0}</div>
-        <div style={{ fontSize: 9, color: "#ccc" }}>colis</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{cartonAndes || 0}</div>
+        <div style={{ fontSize: 11, color: "#999" }}>colis</div>
       </div>
     </div>
   );
