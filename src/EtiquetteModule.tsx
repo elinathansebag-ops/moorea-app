@@ -104,6 +104,14 @@ type EtatEtiquette = {
   // (max 3.5cm de haut, 90% de large), impossible à agrandir ou réduire (demande d'Elinathan).
   logoTailleCm: number;
   blocs: BlocTexte[];
+  // 01/09/2026 — Pivoter l'impression de 90° : pour certaines étiquettes/imprimantes à rouleau,
+  // le sens d'impression ne correspond pas au sens physique du rouleau et le texte sort de
+  // travers, sans qu'il y ait de réglage "Orientation" dans la boîte de dialogue d'impression du
+  // navigateur (celle-ci n'apparaît que pour les formats de papier standards comme A4/Letter, pas
+  // pour une taille personnalisée en cm). Ce réglage tourne la page imprimée de 90° pour
+  // compenser (demande d'Elinathan). Optionnel pour rester compatible avec les étiquettes déjà
+  // enregistrées (false si absent).
+  pivoter90?: boolean;
 };
 
 type ModeleEtiquette = EtatEtiquette & {
@@ -150,6 +158,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   const [logoYPct, setLogoYPct] = useState(18);
   const [logoTailleCm, setLogoTailleCm] = useState(3.5);
   const [blocs, setBlocs] = useState<BlocTexte[]>([nouveauBloc("PRODUIT", "center", 50, 50)]);
+  const [pivoter90, setPivoter90] = useState(false);
 
   // Glisser-déposer : id de l'élément en cours de déplacement ("__logo__" ou l'id d'un bloc),
   // et référence au conteneur de l'étiquette pour convertir la position de la souris/du doigt
@@ -407,7 +416,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   }
 
   function etatActuel(): EtatEtiquette {
-    return { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, logoTailleCm, blocs };
+    return { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, logoTailleCm, blocs, pivoter90 };
   }
 
   // Repart d'une étiquette vierge — page "Créer une nouvelle étiquette".
@@ -423,6 +432,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setLogoYPct(18);
     setLogoTailleCm(3.5);
     setBlocs([nouveauBloc("PRODUIT", "center", 50, 50)]);
+    setPivoter90(false);
     setNomModele("");
     setShowEnregistrerModele(false);
     setVue("editeur");
@@ -457,6 +467,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setLogoYPct(m.logoYPct ?? 18);
     setLogoTailleCm(m.logoTailleCm ?? 3.5);
     setBlocs(m.blocs && m.blocs.length > 0 ? m.blocs.map((b) => ({ ...b, id: nouvelId(), xPct: b.xPct ?? 50, yPct: b.yPct ?? 50 })) : [nouveauBloc()]);
+    setPivoter90(!!m.pivoter90);
     setNomModele(m.nom);
     setVue("editeur");
     notify("success", `📂 "${m.nom}" chargé — modifie et réimprime, ou repars de ce format`);
@@ -477,6 +488,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
       logoYPct: m.logoYPct,
       logoTailleCm: m.logoTailleCm ?? 3.5,
       blocs: m.blocs,
+      pivoter90: m.pivoter90,
     };
     await update(nouvelleRef, { ...donnees, nom: nouveauNom, updatedAt: Date.now(), depuisImpression: false });
     notify("success", `📄 "${nouveauNom}" dupliquée`);
@@ -525,19 +537,28 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     if (etat.logoActif && etat.logoNoirEtBlanc && etat.logoUrl) {
       try { logoUrlAImprimer = await noircirImage(etat.logoUrl); } catch { /* garde l'original si la conversion échoue */ }
     }
+    // Pivoter l'impression de 90° (voir commentaire sur "pivoter90" dans EtatEtiquette) : la
+    // page imprimée fait largeur/hauteur inversées, et l'étiquette (taille normale, non
+    // inversée) est positionnée en absolu et tournée dedans — pour ne pas perturber la mise en
+    // page (position "relative"/flux normal aurait pu faire déborder une page trop petite dans
+    // un sens, selon les navigateurs).
+    const pageLargeur = etat.pivoter90 ? etat.hauteurCm : etat.largeurCm;
+    const pageHauteur = etat.pivoter90 ? etat.largeurCm : etat.hauteurCm;
+    const transformEtiquette = etat.pivoter90 ? `transform: rotate(90deg) translate(0, -100%); transform-origin: top left;` : "";
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Étiquette</title>
 <style>
-  @page { size: ${etat.largeurCm}cm ${etat.hauteurCm}cm; margin: 0; }
+  @page { size: ${pageLargeur}cm ${pageHauteur}cm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; }
-  .etiquette { position: relative; width: ${etat.largeurCm}cm; height: ${etat.hauteurCm}cm; overflow: hidden; }
+  .page { position: relative; width: ${pageLargeur}cm; height: ${pageHauteur}cm; overflow: hidden; }
+  .etiquette { position: absolute; top: 0; left: 0; width: ${etat.largeurCm}cm; height: ${etat.hauteurCm}cm; overflow: hidden; ${transformEtiquette} }
   .logo { position: absolute; left: ${etat.logoXPct}%; top: ${etat.logoYPct}%; transform: translate(-50%, -50%); width: ${etat.logoTailleCm}cm; max-width: 92%; object-fit: contain; }
 </style>
 </head><body>
-  <div class="etiquette">
+  <div class="page"><div class="etiquette">
     ${etat.logoActif && logoUrlAImprimer ? `<img class="logo" src="${logoUrlAImprimer}" />` : ""}
     ${genererHtmlBlocs(etat.blocs)}
-  </div>
+  </div></div>
   <script>
     window.onload = function() {
       setTimeout(function() { window.print(); }, 300);
@@ -580,26 +601,31 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
       // Le bloc variable devient un bloc fixe dans l'étiquette enregistrée (variable: false)
       // — c'est désormais une étiquette concrète, pas un gabarit.
       const blocsFinal = blocs.map((b) => (b.id === blocVariable.id ? { ...b, texte: valeur, variable: false } : b));
-      const donnees: EtatEtiquette = { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, logoTailleCm, blocs: blocsFinal };
+      const donnees: EtatEtiquette = { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, logoTailleCm, blocs: blocsFinal, pivoter90 };
       const nomEtiquette = `${clientNom} — ${valeur}`;
       try {
         await push(ref(db, "etiquettes/modeles"), { nom: nomEtiquette, ...donnees, updatedAt: Date.now(), depuisImpression: false });
       } catch (err) {
         console.error("Erreur enregistrement étiquette du lot:", err);
       }
-      etiquettesHtml.push(`<div class="etiquette">
+      etiquettesHtml.push(`<div class="page"><div class="etiquette">
     ${logoActif && logoUrlAImprimer ? `<img class="logo" src="${logoUrlAImprimer}" />` : ""}
     ${genererHtmlBlocs(blocsFinal)}
-  </div>`);
+  </div></div>`);
     }
 
+    // Voir le commentaire équivalent dans genererEtImprimer() pour le pivotement 90°.
+    const pageLargeur = pivoter90 ? hauteurCm : largeurCm;
+    const pageHauteur = pivoter90 ? largeurCm : hauteurCm;
+    const transformEtiquette = pivoter90 ? `transform: rotate(90deg) translate(0, -100%); transform-origin: top left;` : "";
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${clientNom} — Étiquettes (${valeurs.length})</title>
 <style>
-  @page { size: ${largeurCm}cm ${hauteurCm}cm; margin: 0; }
+  @page { size: ${pageLargeur}cm ${pageHauteur}cm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; }
-  .etiquette { position: relative; width: ${largeurCm}cm; height: ${hauteurCm}cm; overflow: hidden; page-break-after: always; }
-  .etiquette:last-child { page-break-after: auto; }
+  .page { position: relative; width: ${pageLargeur}cm; height: ${pageHauteur}cm; overflow: hidden; page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .etiquette { position: absolute; top: 0; left: 0; width: ${largeurCm}cm; height: ${hauteurCm}cm; overflow: hidden; ${transformEtiquette} }
   .logo { position: absolute; left: ${logoXPct}%; top: ${logoYPct}%; transform: translate(-50%, -50%); width: ${logoTailleCm}cm; max-width: 92%; object-fit: contain; }
 </style>
 </head><body>
@@ -766,6 +792,24 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
             ← Retour à la liste des étiquettes
           </button>
 
+          {/* 01/09/2026 — Rappel en haut de l'éditeur : sous quel nom et dans quel dossier
+              (client) cette étiquette est enregistrée — avant, il fallait retourner à la liste
+              pour le savoir (demande d'Elinathan). Le "dossier" est déduit du nom, comme dans la
+              liste : la partie avant " — " (ex: "Hôtel Waldorf — Kitchen") ; sans " — ", elle
+              tombe dans "Autres étiquettes". */}
+          {nomModele.trim() ? (
+            <div style={{ background: COLORS.successLight, border: `1.5px solid ${COLORS.success}55`, borderRadius: 10, padding: "10px 12px", marginBottom: 14, fontSize: 12, lineHeight: 1.5 }}>
+              <div style={{ color: COLORS.success, fontWeight: 800 }}>💾 Enregistrée sous : "{nomModele}"</div>
+              <div style={{ color: COLORS.gray600 }}>
+                📁 Dossier : <strong>{nomModele.includes(" — ") ? (nomModele.split(" — ")[0].trim() || "Autres étiquettes") : "Autres étiquettes"}</strong>
+              </div>
+            </div>
+          ) : (
+            <div style={{ background: COLORS.gray100, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14, fontSize: 12, color: COLORS.gray600, lineHeight: 1.5 }}>
+              ⚠️ Pas encore enregistrée — donne-lui un nom avec "💾 Enregistrer ce modèle" en bas pour la retrouver plus tard. Astuce : un nom du type <strong>"Nom du client — Nom de l'étiquette"</strong> range automatiquement l'étiquette dans le dossier du client.
+            </div>
+          )}
+
           {/* FORMAT */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 16 }}>
             <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>📐 Format</h3>
@@ -810,6 +854,15 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
             )}
+            {/* 01/09/2026 — Pivoter l'impression de 90° : quand l'étiquette sort de travers sur
+                le rouleau (le sens d'impression ne correspond pas au sens physique du rouleau) —
+                la boîte de dialogue d'impression du navigateur n'offre pas de réglage
+                "Orientation" pour un format personnalisé en cm, contrairement aux formats
+                standards A4/Letter (demande d'Elinathan). */}
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: COLORS.gray600, marginTop: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={pivoter90} onChange={(e) => setPivoter90(e.target.checked)} />
+              🔄 Pivoter l'impression de 90° (si l'étiquette sort de travers sur ton rouleau)
+            </label>
           </div>
 
           {/* LOGO */}
