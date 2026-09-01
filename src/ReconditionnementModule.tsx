@@ -376,6 +376,37 @@ function StatutBadge({ statut }: { statut: Demande["statut"] }) {
   );
 }
 
+// 02/09/2026 — Même composant que PreparationModule.tsx (pas partagé entre les deux fichiers,
+// dupliqué à l'identique) : résumé compact des statuts d'un groupe de demandes (semaine ou
+// dépôt), affiché à côté du compteur même quand l'accordéon est FERMÉ — demande d'Elinathan.
+// "Terminé" = reçu uniquement ; le reste (en attente/prêt/parti) est regroupé en "en cours" ;
+// annulé à part.
+function ResumeStatutsGroupe({ demandes }: { demandes: Demande[] }) {
+  const nbRecu = demandes.filter(d => d.statut === "reçu").length;
+  const nbAnnule = demandes.filter(d => d.statut === "annulé").length;
+  const nbEnCours = demandes.length - nbRecu - nbAnnule;
+  if (demandes.length === 0) return null;
+  return (
+    <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+      {nbEnCours > 0 && (
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "2px 7px", whiteSpace: "nowrap" }}>
+          ⏳ {nbEnCours} en cours
+        </span>
+      )}
+      {nbRecu > 0 && (
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "#15803d", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: 10, padding: "2px 7px", whiteSpace: "nowrap" }}>
+          ✅ {nbRecu} terminée{nbRecu > 1 ? "s" : ""}
+        </span>
+      )}
+      {nbAnnule > 0 && (
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "2px 7px", whiteSpace: "nowrap" }}>
+          ✕ {nbAnnule} annulée{nbAnnule > 1 ? "s" : ""}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ─── GÉNÉRATION DU BON PROPRE (jsPDF) — remplace le scan Geslot comme document affiché/envoyé ───
 // Le scan Geslot original est illisible/pas homogène (photo/scan) : on ne le garde plus que
 // comme archive (pdfGeslotBase64), et on génère nous-mêmes un bon propre à partir des champs
@@ -2344,7 +2375,10 @@ export function ReconditionnementModule({ onClose, userName }: {
                             ({info.jours.length} jour{info.jours.length > 1 ? "s" : ""} · {totalDemandesSemaine} demande{totalDemandesSemaine > 1 ? "s" : ""})
                           </span>
                         </span>
-                        <span style={{ fontSize: 14, color: COLORS.primary, transform: ouverte ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <ResumeStatutsGroupe demandes={info.jours.flatMap(j => parJourDemandes[j])} />
+                          <span style={{ fontSize: 14, color: COLORS.primary, transform: ouverte ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                        </div>
                       </div>
                       {ouverte && (
                         <div style={{ padding: "12px 16px 4px", background: "#fafafa" }}>
@@ -2366,12 +2400,13 @@ export function ReconditionnementModule({ onClose, userName }: {
                                         <span style={{ fontSize: 12, fontWeight: 800, color: accentDepot }}>
                                           {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
                                         </span>
+                                        <ResumeStatutsGroupe demandes={demandesJourDepot} />
                                       </div>
                                     </div>
                                     {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
                                 {demandesJourDepot.map(d => (
-                  <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderLeft: `4px solid ${accentDepot}`, borderRadius: 12, padding: 16 }}>
+                  <div key={d.id} style={{ background: d.statut === "reçu" ? "#f0fdf4" : "#fff", border: `1.5px solid ${d.statut === "reçu" ? "#bbf7d0" : COLORS.gray200}`, borderLeft: `4px solid ${d.statut === "reçu" ? "#15803d" : accentDepot}`, borderRadius: 12, padding: 16, opacity: d.statut === "reçu" ? 0.85 : 1 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>

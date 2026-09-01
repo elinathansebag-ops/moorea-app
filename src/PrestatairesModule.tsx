@@ -635,7 +635,8 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   // Date/heure enregistrées = celles du moment où l'entrée est validée (pas de saisie manuelle
   // possible). Lieu de livraison : Moorea par défaut sans rien à saisir ; pvAutreLieu permet de
   // préciser un autre lieu pour les cas rares (voir toggle pvSaisieAutreLieu dans le formulaire).
-  async function enregistrerLivraisonPv(qte: number) {
+  async function enregistrerLivraisonPv(qte: number, cleRefArg?: string) {
+    const cleRef = cleRefArg ?? pvRef;
     if (!qte || qte <= 0) { setNotification({ type: "error", message: "✗ Indique une quantité valide" }); return; }
     const maintenant = new Date();
     const dateFr = maintenant.toLocaleDateString("fr-FR");
@@ -644,24 +645,29 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     await push(ref(db, "palettes_vierges_livraisons"), {
       date: dateFr,
       heure: heureFr,
-      ref: pvRef,
+      ref: cleRef,
       quantite: qte,
       timestamp: Date.now(),
       lieuLivraison: lieu,
     });
-    setNotification({ type: "success", message: `✓ ${qte} × ${REFS_PALETTES_VIERGES[pvRef]} enregistrée(s)${lieu !== LIEU_PV_DEFAUT ? ` — ${lieu}` : ""}` });
+    setNotification({ type: "success", message: `✓ ${qte} × ${REFS_PALETTES_VIERGES[cleRef]} enregistrée(s)${lieu !== LIEU_PV_DEFAUT ? ` — ${lieu}` : ""}` });
     setPvSaisieAutreLieu(false);
     setPvAutreLieu("");
   }
 
   // Bouton principal — 99% des cas : une pile complète, taille réglée dans Configuration.
-  async function ajouterPileComplete() {
-    const taille = taillesPilesPv[pvRef];
+  // 02/09/2026 — accepte maintenant la référence en paramètre (un gros bouton par référence,
+  // demande d'Elinathan : le chef d'entrepôt clique directement sans passer par une liste
+  // déroulante). pvRef reste utilisé par défaut pour la partie "hors pile" / "autre lieu".
+  async function ajouterPileComplete(cleRefArg?: string) {
+    const cleRef = cleRefArg ?? pvRef;
+    const taille = taillesPilesPv[cleRef];
     if (!taille || taille <= 0) {
       setNotification({ type: "error", message: "✗ Règle d'abord la taille d'une pile pour cette référence dans Configuration" });
       return;
     }
-    await enregistrerLivraisonPv(taille);
+    setPvRef(cleRef);
+    await enregistrerLivraisonPv(taille, cleRef);
   }
 
   // Cas rare — pile entamée/incomplète : quantité saisie à la main.
@@ -3679,26 +3685,27 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               <p style={{ margin: "0 0 16px", fontSize: 12, color: COLORS.gray400 }}>
                 La date et l'heure sont prises automatiquement.
               </p>
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Référence</label>
-                <select
-                  value={pvRef}
-                  onChange={(e) => setPvRef(e.target.value)}
-                  style={{ width: "100%", maxWidth: 380, padding: "9px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
-                >
-                  {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => (
-                    <option key={cle} value={cle}>{label}</option>
-                  ))}
-                </select>
+              {/* 02/09/2026 — Demande d'Elinathan : c'est le chef d'entrepôt qui utilise cette page,
+                  donc plus simple = un gros bouton par référence (au lieu d'une liste déroulante
+                  + un bouton). Un seul clic choisit la référence ET enregistre la pile complète. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 14 }}>
+                {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => {
+                  const taille = taillesPilesPv[cle];
+                  return (
+                    <button
+                      key={cle}
+                      onClick={() => ajouterPileComplete(cle)}
+                      disabled={!taille}
+                      style={{ padding: "22px 14px", borderRadius: 14, border: "none", background: taille ? "#92400e" : COLORS.gray200, color: taille ? "#fff" : COLORS.gray400, fontSize: 16, fontWeight: 800, cursor: taille ? "pointer" : "default", textAlign: "center", lineHeight: 1.4 }}
+                    >
+                      {label}
+                      <div style={{ fontSize: 13, fontWeight: 700, marginTop: 6, opacity: 0.9 }}>
+                        {taille ? `+ 1 pile (${taille} palettes)` : "⚠️ Taille non réglée"}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-
-              <button
-                onClick={ajouterPileComplete}
-                disabled={!taillesPilesPv[pvRef]}
-                style={{ width: "100%", maxWidth: 380, padding: "16px", borderRadius: 10, border: "none", background: taillesPilesPv[pvRef] ? "#92400e" : COLORS.gray200, color: taillesPilesPv[pvRef] ? "#fff" : COLORS.gray400, fontSize: 15, fontWeight: 800, cursor: taillesPilesPv[pvRef] ? "pointer" : "default" }}
-              >
-                {taillesPilesPv[pvRef] ? `+ 1 pile complète (${taillesPilesPv[pvRef]} palettes)` : "⚠️ Règle d'abord la taille de pile dans Configuration"}
-              </button>
 
               {!pvSaisieHorsPile ? (
                 <button

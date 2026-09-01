@@ -3407,6 +3407,38 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   utilisé) — celui du jour (dans chaque DateBlock) a été retiré pour la même raison. */}
               <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
             </div>
+            {(() => {
+              // 02/09/2026 — Demande d'Elinathan : en plus du pop-up (qui se ferme et peut être
+              // oublié), un bandeau permanent en haut de la liste des arrivages tant que les
+              // contrôles ne sont pas repassés — pas de bouton pour le fermer, il disparaît tout
+              // seul dès qu'un poids/une température est de nouveau relevé(e).
+              const SEUIL_3J_MS = 3 * 24 * 60 * 60 * 1000;
+              let dernierTemp = 0, dernierPoids = 0;
+              arrivages.forEach((a: any) => {
+                lireMesures(a?.temperatures).forEach((m: any) => { if (m.at > dernierTemp) dernierTemp = m.at; });
+                lireMesures(a?.poids_barquettes).forEach((m: any) => { if (m.at > dernierPoids) dernierPoids = m.at; });
+              });
+              const maintenant = Date.now();
+              const tempEnRetard = arrivages.length > 0 && (maintenant - dernierTemp) > SEUIL_3J_MS;
+              const poidsEnRetard = arrivages.length > 0 && (maintenant - dernierPoids) > SEUIL_3J_MS;
+              if (!tempEnRetard && !poidsEnRetard) return null;
+              const jours = (at: number) => Math.floor((maintenant - at) / 86400000);
+              return (
+                <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 12, padding: "12px 16px", marginBottom: 14, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: "#991b1b", fontFamily: "'Syne', sans-serif" }}>⚠️ Contrôles qualité en retard</p>
+                  {tempEnRetard && (
+                    <p style={{ margin: 0, fontSize: 12.5, color: "#7f1d1d" }}>
+                      🌡️ Aucune température relevée depuis {dernierTemp ? `${jours(dernierTemp)} jours (dernière le ${new Date(dernierTemp).toLocaleDateString("fr-FR")})` : "le début"}.
+                    </p>
+                  )}
+                  {poidsEnRetard && (
+                    <p style={{ margin: 0, fontSize: 12.5, color: "#7f1d1d" }}>
+                      ⚖️ Aucun poids de barquette relevé depuis {dernierPoids ? `${jours(dernierPoids)} jours (dernier le ${new Date(dernierPoids).toLocaleDateString("fr-FR")})` : "le début"}.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
             {showHistoMesures && (
               <HistoriqueMesures arrivages={arrivages} onClose={() => setShowHistoMesures(false)} />
             )}
