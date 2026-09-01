@@ -647,6 +647,10 @@ export function ReconditionnementModule({ onClose, userName }: {
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [filtreStatut, setFiltreStatut] = useState<"toutes" | Demande["statut"]>("toutes");
+  // Filtre du tableau "Détail production reconditionneur" (onglet Historique) — permet de ne
+  // voir que les demandes conditionnées en caisses IFCO (NLT, retourEnIfcoDemande) ou en carton
+  // baby blanc (le reste), plutôt que tout mélangé.
+  const [filtreEmballageProduction, setFiltreEmballageProduction] = useState<"tous" | "caisse" | "carton">("tous");
   // Accordéon par semaine de l'historique des reconditionnements terminés (onglet Historique) —
   // null = pas encore initialisé (la semaine la plus récente s'ouvrira automatiquement).
   const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
@@ -1779,11 +1783,17 @@ export function ReconditionnementModule({ onClose, userName }: {
   // demande "reçue" — colis reçus (cartons) et quantité conditionnée (ex : filets) pointés au
   // retour, pour l'attribution des coûts de reconditionnement (facturation) plutôt qu'un simple
   // total agrégé.
-  const productionReconditionneur = [...demandesTerminees].sort((a, b) => {
-    const ta = parseFrDate(a.retour?.date || a.dateCreationFr)?.getTime() || 0;
-    const tb = parseFrDate(b.retour?.date || b.dateCreationFr)?.getTime() || 0;
-    return tb - ta;
-  });
+  const productionReconditionneur = [...demandesTerminees]
+    .filter(d => {
+      if (filtreEmballageProduction === "tous") return true;
+      const enIfco = retourEnIfcoDemande(d);
+      return filtreEmballageProduction === "caisse" ? enIfco : !enIfco;
+    })
+    .sort((a, b) => {
+      const ta = parseFrDate(a.retour?.date || a.dateCreationFr)?.getTime() || 0;
+      const tb = parseFrDate(b.retour?.date || b.dateCreationFr)?.getTime() || 0;
+      return tb - ta;
+    });
 
   // Regroupement par jour du détail production reconditionneur, pour afficher un total
   // filets/kg + caisses IFCO par jour (demande du 28/08/2026) — sans changer l'ordre
@@ -2853,7 +2863,33 @@ export function ReconditionnementModule({ onClose, userName }: {
 
             {/* ── Détail de la production faite par le reconditionneur (colis reçus / quantité
                 conditionnée), une ligne par demande reçue — pour la facturation du reconditionneur. ── */}
-            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🧾 Détail production reconditionneur (pour facturation)</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🧾 Détail production reconditionneur (pour facturation)</p>
+              <div style={{ display: "flex", gap: 6 }}>
+                {([
+                  ["tous", "Tout"],
+                  ["caisse", "🧊 Caisse IFCO"],
+                  ["carton", "📦 Carton baby"],
+                ] as const).map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setFiltreEmballageProduction(val)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 20,
+                      border: `1.5px solid ${filtreEmballageProduction === val ? COLORS.primary : COLORS.gray200}`,
+                      background: filtreEmballageProduction === val ? COLORS.primary : "#fff",
+                      color: filtreEmballageProduction === val ? "#fff" : COLORS.gray700,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {productionReconditionneur.length === 0 ? (
               <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}`, marginBottom: 24 }}>
                 <p style={{ margin: 0, fontSize: 13 }}>Aucun retour pointé pour l'instant</p>
