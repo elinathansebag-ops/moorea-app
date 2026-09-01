@@ -57,7 +57,16 @@ type BlocTexte = {
   // lui (simplifié le 01/09/2026 à la demande d'Elinathan : le système à plusieurs champs
   // variables en même temps compliquait inutilement l'usage courant à un seul champ qui change).
   variable?: boolean;
+  // 01/09/2026 — Largeur de la zone de texte (en % de la largeur de l'étiquette), au-delà de
+  // laquelle le texte passe à la ligne — avant, fixée à 92% pour toutes les lignes sans réglage
+  // possible, ce qui forçait certains textes (ex : une valeur longue du champ variable) à
+  // passer sur plusieurs lignes même quand il y avait de la place en largeur sur l'étiquette
+  // (demande d'Elinathan : pouvoir élargir la cellule). Optionnel pour rester compatible avec
+  // les étiquettes déjà enregistrées (LARGEUR_PCT_DEFAUT ci-dessous si absent).
+  largeurPct?: number;
 };
+
+const LARGEUR_PCT_DEFAUT = 92;
 
 const POLICES = [
   { label: "Arial", valeur: "Arial, Helvetica, sans-serif" },
@@ -115,7 +124,7 @@ function nouvelId() {
 }
 
 function nouveauBloc(texte = "", align: Align = "center", xPct = 50, yPct = 50): BlocTexte {
-  return { id: nouvelId(), texte, taillePt: 18, gras: true, italique: false, majuscule: false, align, xPct, yPct, police: POLICE_DEFAUT };
+  return { id: nouvelId(), texte, taillePt: 18, gras: true, italique: false, majuscule: false, align, xPct, yPct, police: POLICE_DEFAUT, largeurPct: LARGEUR_PCT_DEFAUT };
 }
 
 export function EtiquetteModule({ onClose }: { onClose: () => void }) {
@@ -490,7 +499,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 
   function styleBloc(b: BlocTexte): string {
     const texte = (b.majuscule ? b.texte.toUpperCase() : b.texte).replace(/</g, "&lt;").replace(/\n/g, "<br/>");
-    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};font-family:${b.police || POLICE_DEFAUT};line-height:1.2;white-space:pre-wrap;max-width:92%;">${texte}</div>`;
+    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};font-family:${b.police || POLICE_DEFAUT};line-height:1.2;white-space:pre-wrap;max-width:${b.largeurPct ?? LARGEUR_PCT_DEFAUT}%;">${texte}</div>`;
   }
 
   function genererHtmlBlocs(blocsAImprimer: BlocTexte[]) {
@@ -891,6 +900,20 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     />
                     <input type="number" min={6} max={120} value={b.taillePt} onChange={(e) => modifierBloc(b.id, { taillePt: parseInt(e.target.value) || 12 })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
                   </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color: COLORS.gray600 }}>Largeur</span>
+                    <input
+                      type="range"
+                      min={10}
+                      max={100}
+                      value={b.largeurPct ?? LARGEUR_PCT_DEFAUT}
+                      onChange={(e) => modifierBloc(b.id, { largeurPct: parseInt(e.target.value) || LARGEUR_PCT_DEFAUT })}
+                      style={{ width: 70, accentColor: COLORS.primary }}
+                      title="Élargir la zone pour éviter que le texte passe à la ligne"
+                    />
+                    <input type="number" min={10} max={100} value={b.largeurPct ?? LARGEUR_PCT_DEFAUT} onChange={(e) => modifierBloc(b.id, { largeurPct: parseInt(e.target.value) || LARGEUR_PCT_DEFAUT })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                    <span style={{ fontSize: 10, color: COLORS.gray400 }}>%</span>
+                  </div>
                   <div style={{ display: "flex", gap: 2, background: COLORS.gray100, borderRadius: 6, padding: 2 }}>
                     {(["left", "center", "right"] as Align[]).map((a) => (
                       <button key={a} onClick={() => modifierBloc(b.id, { align: a })} title={a} style={{ width: 26, height: 24, borderRadius: 5, border: "none", cursor: "pointer", background: b.align === a ? COLORS.primary : "transparent", color: b.align === a ? "#fff" : COLORS.gray600, fontSize: 11, fontWeight: 700 }}>
@@ -962,6 +985,20 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                       title="Réduire/agrandir le texte"
                     />
                     <input type="number" min={6} max={120} value={blocVariable.taillePt} onChange={(e) => modifierBloc(blocVariable.id, { taillePt: parseInt(e.target.value) || 12 })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color: COLORS.gray600 }}>Largeur</span>
+                    <input
+                      type="range"
+                      min={10}
+                      max={100}
+                      value={blocVariable.largeurPct ?? LARGEUR_PCT_DEFAUT}
+                      onChange={(e) => modifierBloc(blocVariable.id, { largeurPct: parseInt(e.target.value) || LARGEUR_PCT_DEFAUT })}
+                      style={{ width: 70, accentColor: COLORS.variable }}
+                      title="Élargir la zone pour éviter que le texte passe à la ligne"
+                    />
+                    <input type="number" min={10} max={100} value={blocVariable.largeurPct ?? LARGEUR_PCT_DEFAUT} onChange={(e) => modifierBloc(blocVariable.id, { largeurPct: parseInt(e.target.value) || LARGEUR_PCT_DEFAUT })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                    <span style={{ fontSize: 10, color: COLORS.gray400 }}>%</span>
                   </div>
                   <div style={{ display: "flex", gap: 2, background: COLORS.gray100, borderRadius: 6, padding: 2 }}>
                     {(["left", "center", "right"] as Align[]).map((a) => (
@@ -1115,7 +1152,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                         fontFamily: b.police || POLICE_DEFAUT,
                         lineHeight: 1.2,
                         whiteSpace: "pre-wrap",
-                        maxWidth: "92%",
+                        maxWidth: `${b.largeurPct ?? LARGEUR_PCT_DEFAUT}%`,
                         cursor: "grab",
                         outline: `1.5px dashed ${b.variable ? COLORS.variable : COLORS.primary}66`,
                         background: b.variable ? `${COLORS.variableLight}cc` : "transparent",
