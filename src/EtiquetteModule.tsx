@@ -43,6 +43,11 @@ type BlocTexte = {
   align: Align;
   xPct: number;
   yPct: number;
+  // 01/09/2026 — Marque ce bloc comme "variable" pour la génération par lot (voir plus bas) :
+  // sa valeur affichée ici sert juste d'exemple/placeholder, elle sera remplacée par chaque
+  // ligne de la liste au moment de générer/imprimer le lot. Un seul bloc à la fois peut être
+  // marqué variable (voir toggleVariable).
+  variable?: boolean;
 };
 
 type FormatEtiquette = { largeurCm: number; hauteurCm: number };
@@ -150,6 +155,12 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   const [showEnregistrerModele, setShowEnregistrerModele] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
+  // 01/09/2026 — Génération par lot : une fois qu'une ligne de texte est marquée "variable"
+  // (ex : le nom du service pour un client hôtel), on liste ici toutes les valeurs (une par
+  // ligne — un nom de service, une chambre, etc.) et une étiquette est générée automatiquement
+  // pour chacune, dans un seul document imprimable d'un coup (demande d'Elinathan).
+  const [listeValeurs, setListeValeurs] = useState("");
+
   useEffect(() => {
     const u1 = onValue(ref(db, "etiquettes/formats"), (snap) => {
       const v = snap.val() || {};
@@ -244,6 +255,12 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   }
   function modifierBloc(id: string, patch: Partial<BlocTexte>) {
     setBlocs((b) => b.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }
+  // Un seul bloc "variable" à la fois (celui remplacé à chaque étiquette du lot) — cocher un
+  // bloc décoche automatiquement les autres, plus simple à comprendre qu'autoriser plusieurs
+  // variables en même temps.
+  function toggleVariable(id: string, val: boolean) {
+    setBlocs((b) => b.map((x) => ({ ...x, variable: x.id === id ? val : false })));
   }
   function supprimerBloc(id: string) {
     setBlocs((b) => b.filter((x) => x.id !== id));
@@ -442,6 +459,58 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     genererEtImprimer(etatActuel(), () => { enregistrerHistoriqueImpression(etatActuel()).catch(() => {}); });
   }
 
+  // 01/09/2026 — Génère une étiquette par ligne de "listeValeurs", en remplaçant à chaque fois
+  // le texte du bloc marqué "variable" par cette ligne (le reste — logo, nom du client, mise en
+  // page — ne change pas). Tout est imprimé en un seul document, une étiquette par page (même
+  // format/taille pour toutes), pour tout sortir d'un coup côté imprimante — demande
+  // d'Elinathan pour un client hôtel où chaque colis doit être réparti par service.
+  async function genererEtImprimerLot() {
+    const valeurs = listeValeurs.split("\n").map((v) => v.trim()).filter(Boolean);
+    if (valeurs.length === 0) { notify("error", "⚠️ Ajoute au moins une valeur (une ligne = une étiquette)"); return; }
+    const blocVariable = blocs.find((b) => b.variable);
+    if (!blocVariable) { notify("error", "⚠️ Coche \"🔀 Variable\" sur une ligne de texte avant de générer le lot"); return; }
+
+    let logoUrlAImprimer = logoUrl;
+    if (logoActif && logoNoirEtBlanc && logoUrl) {
+      try { logoUrlAImprimer = await noircirImage(logoUrl); } catch { /* garde l'original si la conversion échoue */ }
+    }
+
+    const etiquettesHtml = valeurs
+      .map((valeur) => {
+        const blocsAvecValeur = blocs.map((b) => (b.id === blocVariable.id ? { ...b, texte: valeur } : b));
+        return `<div class="etiquette">
+    ${logoActif && logoUrlAImprimer ? `<img class="logo" src="${logoUrlAImprimer}" />` : ""}
+    ${genererHtmlBlocs(blocsAvecValeur)}
+  </div>`;
+      })
+      .join("\n");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Étiquettes (${valeurs.length})</title>
+<style>
+  @page { size: ${largeurCm}cm ${hauteurCm}cm; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; }
+  .etiquette { position: relative; width: ${largeurCm}cm; height: ${hauteurCm}cm; overflow: hidden; page-break-after: always; }
+  .etiquette:last-child { page-break-after: auto; }
+  .logo { position: absolute; left: ${logoXPct}%; top: ${logoYPct}%; transform: translate(-50%, -50%); max-width: 90%; max-height: 3.5cm; object-fit: contain; }
+</style>
+</head><body>
+  ${etiquettesHtml}
+  <script>
+    window.onload = function() {
+      setTimeout(function() { window.print(); }, 300);
+    };
+  </script>
+</body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { notify("error", "⚠️ Le navigateur a bloqué l'ouverture de l'aperçu (pop-up)"); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    notify("success", `🖨️ ${valeurs.length} étiquette(s) envoyée(s) à l'impression`);
+    enregistrerHistoriqueImpression(etatActuel()).catch(() => {});
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <PageHeader
@@ -638,6 +707,9 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
                     <input type="checkbox" checked={b.majuscule} onChange={(e) => modifierBloc(b.id, { majuscule: e.target.checked })} /> MAJ.
                   </label>
+                  <label title="Cette ligne change à chaque étiquette générée par lot (ex : le nom du service)" style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", color: b.variable ? COLORS.primary : COLORS.gray600, fontWeight: b.variable ? 800 : 400 }}>
+                    <input type="checkbox" checked={!!b.variable} onChange={(e) => toggleVariable(b.id, e.target.checked)} /> 🔀 Variable
+                  </label>
                   <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
                     <button onClick={() => deplacerBloc(b.id, -1)} disabled={i === 0} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.3 : 1, fontSize: 11 }}>↑</button>
                     <button onClick={() => deplacerBloc(b.id, 1)} disabled={i === blocs.length - 1} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: i === blocs.length - 1 ? "default" : "pointer", opacity: i === blocs.length - 1 ? 0.3 : 1, fontSize: 11 }}>↓</button>
@@ -647,6 +719,39 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               </div>
             ))}
             {blocs.length === 0 && <p style={{ fontSize: 12, color: COLORS.gray400, textAlign: "center", margin: "10px 0" }}>Aucune ligne — clique sur "+ Ligne"</p>}
+          </div>
+
+          {/* GÉNÉRATION PAR LOT */}
+          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 16 }}>
+            <h3 style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🔀 Génération par lot</h3>
+            {(() => {
+              const blocVariableActuel = blocs.find((b) => b.variable);
+              const nbValeurs = listeValeurs.split("\n").map((v) => v.trim()).filter(Boolean).length;
+              if (!blocVariableActuel) {
+                return (
+                  <p style={{ fontSize: 11.5, color: COLORS.gray400, margin: 0, lineHeight: 1.4 }}>
+                    Coche "🔀 Variable" sur une ligne de texte ci-dessus (ex : le nom du service) pour générer automatiquement une étiquette par valeur — pratique pour un client avec plusieurs colis à répartir par service (réception, cuisine, housekeeping...).
+                  </p>
+                );
+              }
+              return (
+                <>
+                  <p style={{ fontSize: 11.5, color: COLORS.gray600, margin: "0 0 8px", lineHeight: 1.4 }}>
+                    Une étiquette sera générée pour chaque ligne ci-dessous, à la place de "<strong>{blocVariableActuel.texte || "…"}</strong>". Le reste (logo, texte fixe, mise en page) ne change pas.
+                  </p>
+                  <textarea
+                    value={listeValeurs}
+                    onChange={(e) => setListeValeurs(e.target.value)}
+                    placeholder={"Réception\nCuisine\nHousekeeping\nRestaurant\n..."}
+                    rows={6}
+                    style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10, resize: "vertical" }}
+                  />
+                  <button onClick={genererEtImprimerLot} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: COLORS.dark, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                    🖨️ Générer et imprimer {nbValeurs > 0 ? `${nbValeurs} étiquette${nbValeurs > 1 ? "s" : ""}` : "les étiquettes"}
+                  </button>
+                </>
+              );
+            })()}
           </div>
 
           {/* MODÈLE */}
