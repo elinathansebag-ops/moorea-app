@@ -18,6 +18,26 @@ const PALETTES_IFCO = {
   "BLL4314 (640 caisses)": { dims: "400×300mm", materiel: "BLL4314", caisses: 640, prixHT: 12.5 },
 };
 
+// 01/09/2026 — Palettes vierges (bois brut, pas les caisses IFCO réutilisables) : livrées
+// plusieurs fois par jour, à différents moments, en piles de quantité variable selon ce qui
+// reste chez le fournisseur — pas de bon de commande à passer, juste un pointage à chaque
+// arrivée. Facturé mensuellement sur la base de ce qui a été réellement reçu dans le mois
+// (demande d'Elinathan), d'où le récap mensuel par référence pour vérifier la facture.
+const REFS_PALETTES_VIERGES: Record<string, string> = {
+  demi: "Demi-palette",
+  europe: "Palette Europe (80×120)",
+  grande: "Grande palette carrée (100×120)",
+};
+
+type LivraisonPaletteVierge = {
+  id: string;
+  date: string; // "JJ/MM/AAAA"
+  heure: string; // "HH:MM"
+  ref: string; // clé de REFS_PALETTES_VIERGES
+  quantite: number;
+  timestamp: number;
+};
+
 // Les 2 seuls lieux de livraison possibles pour une commande de cartons. Andès est livré
 // directement chez le prestataire (pas chez Moorea) : pas d'agréage, confirmation par email
 // automatiquement envoyée au contact du site.
@@ -183,7 +203,7 @@ const COLORS = {
 
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges"
   >("dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
@@ -225,6 +245,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const entretienIsDrawing = useRef(false);
   // Aperçu d'une signature déjà enregistrée (onglet historique)
   const [signatureApercu, setSignatureApercu] = useState<string | null>(null);
+
+  // ── Palettes vierges (livraisons quotidiennes, voir REFS_PALETTES_VIERGES plus haut) ──
+  const [palettesViergeLivraisons, setPalettesViergeLivraisons] = useState<LivraisonPaletteVierge[]>([]);
+  const [pvRef, setPvRef] = useState(Object.keys(REFS_PALETTES_VIERGES)[0]);
+  const [pvQuantite, setPvQuantite] = useState("");
+  const moisActuelPv = `${String(new Date().getMonth() + 1).padStart(2, "0")}/${new Date().getFullYear()}`;
+  const [pvMoisChoisi, setPvMoisChoisi] = useState(moisActuelPv);
 
   // ── Bouton "+ Nouvelle commande" (menu déroulant, extensible) ──
   const [showNouvelleMenu, setShowNouvelleMenu] = useState(false);
@@ -323,6 +350,15 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     return () => u();
   }, []);
 
+  // Livraisons de palettes vierges (voir REFS_PALETTES_VIERGES plus haut).
+  useEffect(() => {
+    const u = onValue(ref(db, "palettes_vierges_livraisons"), (snap) => {
+      const d = snap.val();
+      setPalettesViergeLivraisons(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+    });
+    return () => u();
+  }, []);
+
   // Load IFCO palettes commands (commandes fournisseur)
   useEffect(() => {
     const u = onValue(ref(db, "ifco_palettes_commandes"), (snap) => {
@@ -381,6 +417,30 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
   async function marquerDeclarationFaite(id: string) {
     await update(ref(db, `ifco_declarations_entree/${id}`), { declare: true });
+  }
+
+  // ── Palettes vierges : pointage à chaque arrivée (pas de commande, juste un pointage) ──
+  async function ajouterLivraisonPaletteVierge() {
+    const qte = parseInt(pvQuantite);
+    if (!qte || qte <= 0) { setNotification({ type: "error", message: "✗ Indique une quantité valide" }); return; }
+    const maintenant = new Date();
+    const dateFr = maintenant.toLocaleDateString("fr-FR");
+    const heureFr = maintenant.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    await push(ref(db, "palettes_vierges_livraisons"), {
+      date: dateFr,
+      heure: heureFr,
+      ref: pvRef,
+      quantite: qte,
+      timestamp: Date.now(),
+    });
+    setPvQuantite("");
+    setNotification({ type: "success", message: `✓ ${qte} × ${REFS_PALETTES_VIERGES[pvRef]} enregistrée(s)` });
+  }
+
+  async function supprimerLivraisonPaletteVierge(id: string) {
+    if (!window.confirm("Supprimer cette entrée ?")) return;
+    await remove(ref(db, `palettes_vierges_livraisons/${id}`));
+    setNotification({ type: "success", message: "🗑️ Entrée supprimée" });
   }
 
   // ── Entretiens / interventions prestataires ──
@@ -1284,6 +1344,34 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     .filter(e => filtreEntretien === "en_cours" ? (e.statut === "programmé" || e.statut === "en cours") : (e.statut === "terminé" || e.statut === "annulé"))
     .sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
+  // ── Palettes vierges : livraisons du jour + récap mensuel par référence ──
+  const parseDateFrPv = (d: string) => {
+    const [j, m, a] = d.split("/").map(Number);
+    return new Date(a, (m || 1) - 1, j || 1);
+  };
+  const cleMoisPv = (d: string) => {
+    const dt = parseDateFrPv(d);
+    return `${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+  };
+  const aujourdHuiFrPv = new Date().toLocaleDateString("fr-FR");
+  const livraisonsAujourdhuiPv = palettesViergeLivraisons
+    .filter((l) => l.date === aujourdHuiFrPv)
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const moisDisponiblesPv = Array.from(new Set(palettesViergeLivraisons.map((l) => cleMoisPv(l.date))))
+    .sort((a, b) => {
+      const [ma, aa] = a.split("/").map(Number);
+      const [mb, ab] = b.split("/").map(Number);
+      return ab - aa || mb - ma;
+    });
+  if (!moisDisponiblesPv.includes(moisActuelPv)) moisDisponiblesPv.unshift(moisActuelPv);
+  const totauxMoisPv = Object.keys(REFS_PALETTES_VIERGES).reduce((acc, cle) => {
+    acc[cle] = palettesViergeLivraisons
+      .filter((l) => l.ref === cle && cleMoisPv(l.date) === pvMoisChoisi)
+      .reduce((s, l) => s + l.quantite, 0);
+    return acc;
+  }, {} as Record<string, number>);
+  const totalGeneralMoisPv = Object.values(totauxMoisPv).reduce((s, v) => s + v, 0);
+
   return (
     <div id="presta-root" style={{ background: "linear-gradient(135deg, #f0f9f8 0%, #f9fbf8 100%)", minHeight: "100vh", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100vw" }}>
       <style>{styles}</style>
@@ -1458,6 +1546,25 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 }}
               >
                 🔧 Entretiens{entretiensActifsCount > 0 ? ` (${entretiensActifsCount})` : ""}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("palettes-vierges")}
+                style={{
+                  padding: "14px 22px",
+                  background: "white",
+                  color: "#92400e",
+                  border: "2px solid #92400e",
+                  borderRadius: "10px",
+                  cursor: "pointer",
+                  fontSize: "15px",
+                  fontWeight: "700",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                🟫 Palettes vierges
               </button>
 
             </div>
@@ -3039,6 +3146,105 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     </table>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "palettes-vierges" && (
+          <div style={{ display: "grid", gap: "20px" }}>
+            {/* Pointage rapide — pas de bon de commande, juste enregistrer chaque pile reçue
+                au fil de la journée (voir REFS_PALETTES_VIERGES tout en haut du fichier). */}
+            <div style={{ background: "white", borderRadius: "16px", padding: "24px", border: "1.5px solid #e8e0d0" }}>
+              <h3 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: "700", color: COLORS.gray700 }}>🟫 Pointer une livraison</h3>
+              <p style={{ margin: "0 0 16px", fontSize: 12, color: COLORS.gray400 }}>
+                À chaque pile reçue, indique la référence et la quantité — la date et l'heure sont prises automatiquement.
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+                <div style={{ flex: "2 1 220px" }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Référence</label>
+                  <select
+                    value={pvRef}
+                    onChange={(e) => setPvRef(e.target.value)}
+                    style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
+                  >
+                    {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => (
+                      <option key={cle} value={cle}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ flex: "1 1 120px" }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Quantité</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={pvQuantite}
+                    onChange={(e) => setPvQuantite(e.target.value)}
+                    placeholder="Nb de palettes"
+                    style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+                  />
+                </div>
+                <button
+                  onClick={ajouterLivraisonPaletteVierge}
+                  style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "#92400e", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  + Enregistrer
+                </button>
+              </div>
+            </div>
+
+            {/* Livraisons du jour */}
+            <div style={{ background: "white", borderRadius: "16px", padding: "24px", border: "1.5px solid #e8e0d0" }}>
+              <h3 style={{ margin: "0 0 12px", fontSize: "16px", fontWeight: "700", color: COLORS.gray700 }}>
+                📅 Aujourd'hui ({livraisonsAujourdhuiPv.length})
+              </h3>
+              {livraisonsAujourdhuiPv.length === 0 ? (
+                <p style={{ fontSize: 12, color: COLORS.gray400, textAlign: "center", margin: "16px 0" }}>Aucune livraison pointée pour l'instant aujourd'hui.</p>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {livraisonsAujourdhuiPv.map((l) => (
+                    <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#fdf6ec", border: "1px solid #fde3a8", borderRadius: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#92400e", minWidth: 48 }}>{l.heure}</span>
+                      <span style={{ flex: 1, fontSize: 13, color: COLORS.gray700 }}>{REFS_PALETTES_VIERGES[l.ref] || l.ref}</span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: "#92400e" }}>× {l.quantite}</span>
+                      <button
+                        onClick={() => supprimerLivraisonPaletteVierge(l.id)}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${COLORS.danger}`, background: COLORS.dangerLight, color: COLORS.danger, cursor: "pointer", fontSize: 11 }}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Récap mensuel — pour vérifier la facture du fournisseur, basée sur ce qui a
+                réellement été reçu dans le mois. */}
+            <div style={{ background: "white", borderRadius: "16px", padding: "24px", border: "1.5px solid #e8e0d0" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700", color: COLORS.gray700 }}>🧾 Récap mensuel (vérification facture)</h3>
+                <select
+                  value={pvMoisChoisi}
+                  onChange={(e) => setPvMoisChoisi(e.target.value)}
+                  style={{ padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12, fontFamily: "inherit" }}
+                >
+                  {moisDisponiblesPv.map((cle) => (
+                    <option key={cle} value={cle}>{cle}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => (
+                  <div key={cle} style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: COLORS.gray100, borderRadius: 8 }}>
+                    <span style={{ fontSize: 13, color: COLORS.gray700 }}>{label}</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#92400e" }}>{totauxMoisPv[cle] || 0}</span>
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", background: "#fdf6ec", border: "1px solid #fde3a8", borderRadius: 8, marginTop: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#92400e" }}>Total du mois</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: "#92400e" }}>{totalGeneralMoisPv}</span>
+                </div>
               </div>
             </div>
           </div>
