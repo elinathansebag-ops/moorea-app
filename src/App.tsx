@@ -3539,10 +3539,27 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 if (!tousEnAttente.length) return;
                 if (!window.confirm(`Valider en masse les ${tousEnAttente.length} arrivage${tousEnAttente.length > 1 ? "s" : ""} en attente de la Semaine ${g.week} · ${g.year} ?\n\nAucune étiquette ne sera imprimée — c'est juste pour nettoyer les vieux arrivages qui traînent. Ces arrivages resteront marqués "validé en masse" pour rester identifiables.`)) return;
                 setValidatingSemaineNettoyage(key);
+                // 02/09/2026 — Bug trouvé avec Elinathan : sans try/catch ici, un seul arrivage en
+                // échec (ex : coupure réseau le temps du traitement) faisait planter toute la
+                // boucle — le bouton restait bloqué sur "Validation..." indéfiniment ET les
+                // arrivages suivants de la semaine n'étaient jamais traités. On continue
+                // maintenant sur les autres arrivages même si l'un d'eux échoue, et le bouton se
+                // réinitialise toujours (finally), avec un message clair s'il y a eu des échecs.
+                let nbEchecs = 0;
                 for (const a of tousEnAttente) {
-                  await handleAgrement(a, { qualite: 0, temperature: "ok", poids_mesure: "", observations: "Nettoyage en masse — vieil arrivage non contrôlé en détail, validé sans étiquette pour vider la liste d'attente." }, "conforme", "", "", "", null, true, true);
+                  try {
+                    await handleAgrement(a, { qualite: 0, temperature: "ok", poids_mesure: "", observations: "Nettoyage en masse — vieil arrivage non contrôlé en détail, validé sans étiquette pour vider la liste d'attente." }, "conforme", "", "", "", null, true, true);
+                  } catch (error) {
+                    console.error("Erreur validation en masse (nettoyage) sur l'arrivage", a?.id, error);
+                    nbEchecs++;
+                  }
                 }
                 setValidatingSemaineNettoyage(null);
+                if (nbEchecs > 0) {
+                  showToast(`⚠️ ${nbEchecs} arrivage${nbEchecs > 1 ? "s" : ""} n'${nbEchecs > 1 ? "ont" : "a"} pas pu être validé${nbEchecs > 1 ? "s" : ""} (réessaie)`, "error");
+                } else {
+                  showToast(`✅ Semaine ${g.week} · ${g.year} nettoyée (${tousEnAttente.length} validé${tousEnAttente.length > 1 ? "s" : ""})`);
+                }
               };
               return (
                 <>
