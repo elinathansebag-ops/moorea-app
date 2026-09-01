@@ -975,6 +975,10 @@ export function ReconditionnementModule({ onClose, userName }: {
   async function utiliserPdfEnAttente(entree: { id: string; nom: string; base64: string }) {
     setPdfFile({ nom: entree.nom, base64: entree.base64 });
     setAfficherPdfsEnAttente(false);
+    // 01/09/2026 — Utilisable aussi depuis "En cours" (voir plus bas) : on bascule sur "Nouvelle
+    // demande" pour que le formulaire pré-rempli soit immédiatement visible, plutôt que de
+    // rester sur "En cours" avec un formulaire rempli mais caché.
+    setActiveTab("nouvelle");
     await remove(ref(db, `reconditionnement_pdfs_en_attente/${entree.id}`));
     try {
       const reponse = await fetch(entree.base64);
@@ -1879,6 +1883,36 @@ export function ReconditionnementModule({ onClose, userName }: {
                 </div>
               );
             })}
+
+            {/* 01/09/2026 — À la demande d'Elinathan : les pages de PDF importées en masse
+                (voir "Importer un PDF multi-pages" dans Nouvelle demande) mais pas encore
+                rattachées à une demande ("dispatchées") sont maintenant visibles ici aussi, pas
+                seulement dans le formulaire de création — pour ne pas en perdre une en route. */}
+            {pdfsEnAttente.length > 0 && (
+              <div style={{ background: "#faf5ff", border: "1.5px solid #e9d8fd", borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed", marginBottom: 8 }}>
+                  📥 {pdfsEnAttente.length} document{pdfsEnAttente.length > 1 ? "s" : ""} importé{pdfsEnAttente.length > 1 ? "s" : ""} pas encore rattaché{pdfsEnAttente.length > 1 ? "s" : ""} à une demande
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {pdfsEnAttente.map(p => (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", background: "#fff", border: "1px solid #e9d8fd", borderRadius: 8, padding: "6px 10px" }}>
+                      <span style={{ fontSize: 12, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <button type="button" onClick={() => setPdfApercu({ titre: p.nom, base64: p.base64 })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e9d8fd", background: "#fff", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Aperçu
+                        </button>
+                        <button type="button" onClick={() => utiliserPdfEnAttente(p)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Utiliser
+                        </button>
+                        <button type="button" onClick={() => remove(ref(db, `reconditionnement_pdfs_en_attente/${p.id}`))} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #fca5a5", background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Suppr.
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
