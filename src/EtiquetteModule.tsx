@@ -172,6 +172,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 
   const [formatsPerso, setFormatsPerso] = useState<FormatSauvegarde[]>([]);
   const [modeles, setModeles] = useState<ModeleEtiquette[]>([]);
+  // 01/09/2026 — Accordéon de la liste des étiquettes : ouvert par client, puis par format à
+  // l'intérieur de chaque client (demande d'Elinathan, la liste devenant longue avec la
+  // génération par lot). Sections fermées par défaut.
+  const [clientsOuverts, setClientsOuverts] = useState<Set<string>>(new Set());
+  const [formatsOuverts, setFormatsOuverts] = useState<Set<string>>(new Set());
   const [nomFormatPerso, setNomFormatPerso] = useState("");
   const [nomModele, setNomModele] = useState("");
   const [showEnregistrerFormat, setShowEnregistrerFormat] = useState(false);
@@ -188,6 +193,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   // différents, pas juste un seul).
   const [nomClientLot, setNomClientLot] = useState("");
   const [valeursParVariable, setValeursParVariable] = useState<Record<string, string>>({});
+  const [nouveauChampNom, setNouveauChampNom] = useState("");
 
   useEffect(() => {
     const u1 = onValue(ref(db, "etiquettes/formats"), (snap) => {
@@ -292,6 +298,21 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   }
   function renommerVariable(id: string, nom: string) {
     setBlocs((b) => b.map((x) => (x.id === id ? { ...x, variableNom: nom } : x)));
+  }
+
+  // 01/09/2026 — Raccourci depuis le panneau "Génération par lot" : crée directement une
+  // nouvelle ligne de texte DÉJÀ marquée variable et déjà nommée, prête à être glissée sur
+  // l'étiquette et redimensionnée — au lieu de devoir cliquer "+ Ligne", cocher "Variable" puis
+  // taper le nom en 3 étapes séparées (demande d'Elinathan : pouvoir ajouter facilement un 2e,
+  // 3e... champ, ex : nom de l'hôtel ET nom du service, chacun positionnable séparément).
+  function ajouterChampVariable() {
+    const nom = nouveauChampNom.trim();
+    if (!nom) { notify("error", "⚠️ Donne un nom à ce champ avant de l'ajouter (ex : Nom de l'hôtel)"); return; }
+    const yPct = Math.min(85, 15 + blocs.length * 15);
+    const nouveau: BlocTexte = { ...nouveauBloc(nom.toUpperCase(), "center", 50, yPct), variable: true, variableNom: nom };
+    setBlocs((b) => [...b, nouveau]);
+    setNouveauChampNom("");
+    notify("success", `✅ Champ "${nom}" ajouté — glisse-le sur l'étiquette pour le positionner, et règle sa taille dans "✏️ Texte"`);
   }
   function supprimerBloc(id: string) {
     setBlocs((b) => b.filter((x) => x.id !== id));
@@ -444,6 +465,21 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     notify("success", "🗑️ Modèle supprimé");
   }
 
+  function toggleClient(client: string) {
+    setClientsOuverts((s) => {
+      const copie = new Set(s);
+      if (copie.has(client)) copie.delete(client); else copie.add(client);
+      return copie;
+    });
+  }
+  function toggleFormat(cle: string) {
+    setFormatsOuverts((s) => {
+      const copie = new Set(s);
+      if (copie.has(cle)) copie.delete(cle); else copie.add(cle);
+      return copie;
+    });
+  }
+
   function styleBloc(b: BlocTexte): string {
     const texte = (b.majuscule ? b.texte.toUpperCase() : b.texte).replace(/</g, "&lt;").replace(/\n/g, "<br/>");
     return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};line-height:1.2;white-space:pre-wrap;max-width:92%;">${texte}</div>`;
@@ -579,6 +615,24 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     notify("success", `✅ ${lignes.length} étiquette(s) créée(s) pour "${clientNom}" et envoyée(s) à l'impression`);
   }
 
+  // 01/09/2026 — Regroupe la liste des étiquettes par client (déduit du nom : la partie avant
+  // le premier " — ", comme posé par la génération par lot — "Hôtel Waldorf — Réception" donne
+  // le client "Hôtel Waldorf" ; un nom sans " — " tombe dans "Autres étiquettes") puis par
+  // format à l'intérieur de chaque client, pour un accordéon à deux niveaux plutôt qu'une liste
+  // plate qui devient vite longue (demande d'Elinathan).
+  const groupesEtiquettes = useMemo(() => {
+    const map: Record<string, Record<string, ModeleEtiquette[]>> = {};
+    modeles.forEach((m) => {
+      const client = m.nom.includes(" — ") ? (m.nom.split(" — ")[0].trim() || "Autres étiquettes") : "Autres étiquettes";
+      const format = `${m.largeurCm} × ${m.hauteurCm} cm`;
+      if (!map[client]) map[client] = {};
+      if (!map[client][format]) map[client][format] = [];
+      map[client][format].push(m);
+    });
+    return map;
+  }, [modeles]);
+  const clientsTries = Object.keys(groupesEtiquettes).sort((a, b) => (a === "Autres étiquettes" ? 1 : b === "Autres étiquettes" ? -1 : a.localeCompare(b)));
+
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <PageHeader
@@ -614,31 +668,71 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
           )}
 
           <div style={{ display: "grid", gap: 10 }}>
-            {modeles.map((m) => (
-              <div key={m.id} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>
-                  {m.depuisImpression && <span title="Enregistrée automatiquement lors d'une impression" style={{ marginRight: 4 }}>🖨️</span>}
-                  {m.nom}
+            {clientsTries.map((client) => {
+              const formats = groupesEtiquettes[client];
+              const totalClient = Object.values(formats).reduce((s, l) => s + l.length, 0);
+              const clientOuvert = clientsOuverts.has(client);
+              return (
+                <div key={client} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, overflow: "hidden" }}>
+                  <button
+                    onClick={() => toggleClient(client)}
+                    style={{ width: "100%", textAlign: "left", padding: "12px 14px", border: "none", background: "transparent", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>{client === "Autres étiquettes" ? "📁" : "🏨"} {client} ({totalClient})</span>
+                    <span style={{ fontSize: 15, color: COLORS.primary, transform: clientOuvert ? "rotate(90deg)" : "none", transition: "transform .15s", display: "inline-block" }}>›</span>
+                  </button>
+                  {clientOuvert && (
+                    <div style={{ padding: "0 14px 14px", display: "grid", gap: 8 }}>
+                      {Object.keys(formats).sort().map((format) => {
+                        const liste = formats[format];
+                        const cle = `${client}::${format}`;
+                        const formatOuvert = formatsOuverts.has(cle);
+                        return (
+                          <div key={format} style={{ border: `1px solid ${COLORS.gray200}`, borderRadius: 10, overflow: "hidden" }}>
+                            <button
+                              onClick={() => toggleFormat(cle)}
+                              style={{ width: "100%", textAlign: "left", padding: "9px 12px", border: "none", background: COLORS.gray100, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                            >
+                              <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700 }}>📐 {format} ({liste.length})</span>
+                              <span style={{ fontSize: 13, color: COLORS.primary, transform: formatOuvert ? "rotate(90deg)" : "none", transition: "transform .15s", display: "inline-block" }}>›</span>
+                            </button>
+                            {formatOuvert && (
+                              <div style={{ padding: 10, display: "grid", gap: 8 }}>
+                                {liste.map((m) => (
+                                  <div key={m.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: 12 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>
+                                      {m.depuisImpression && <span title="Enregistrée automatiquement lors d'une impression" style={{ marginRight: 4 }}>🖨️</span>}
+                                      {m.nom}
+                                    </div>
+                                    <div style={{ fontSize: 10, color: COLORS.gray400, marginBottom: 10 }}>
+                                      {(m.blocs || []).length} ligne(s){m.logoActif && m.logoUrl ? " · avec logo" : ""}
+                                    </div>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                      <button onClick={() => dupliquerModele(m)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                        📄 Dupliquer
+                                      </button>
+                                      <button onClick={() => chargerModele(m)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                        ✏️ Modifier
+                                      </button>
+                                      <button onClick={() => genererEtImprimer(m)} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                        🖨️ Imprimer
+                                      </button>
+                                      <button onClick={() => supprimerModele(m.id)} style={{ marginLeft: "auto", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: COLORS.dangerLight, color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                        🗑
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: 10, color: COLORS.gray400, marginBottom: 10 }}>
-                  {m.largeurCm} × {m.hauteurCm} cm · {(m.blocs || []).length} ligne(s){m.logoActif && m.logoUrl ? " · avec logo" : ""}
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  <button onClick={() => dupliquerModele(m)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                    📄 Dupliquer
-                  </button>
-                  <button onClick={() => chargerModele(m)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                    ✏️ Modifier
-                  </button>
-                  <button onClick={() => genererEtImprimer(m)} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                    🖨️ Imprimer
-                  </button>
-                  <button onClick={() => supprimerModele(m.id)} style={{ marginLeft: "auto", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: COLORS.dangerLight, color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                    🗑
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -834,12 +928,27 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
           {/* GÉNÉRATION PAR LOT */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 16 }}>
             <h3 style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🔀 Génération par lot</h3>
+            <p style={{ fontSize: 11.5, color: COLORS.gray600, margin: "0 0 8px", lineHeight: 1.4 }}>
+              Ajoute un champ (nom de l'hôtel, nom du service...) : il apparaît directement sur l'étiquette, à droite — glisse-le où tu veux, et règle sa taille dans "✏️ Texte" ci-dessus (curseur "Taille"). Ajoute-en autant que nécessaire.
+            </p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <input
+                value={nouveauChampNom}
+                onChange={(e) => setNouveauChampNom(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") ajouterChampVariable(); }}
+                placeholder="Nom du champ (ex : Nom de l'hôtel)"
+                style={{ flex: 1, padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
+              />
+              <button onClick={ajouterChampVariable} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                ➕ Ajouter le champ
+              </button>
+            </div>
             {(() => {
               const blocsVariables = blocs.filter((b) => b.variable);
               if (blocsVariables.length === 0) {
                 return (
                   <p style={{ fontSize: 11.5, color: COLORS.gray400, margin: 0, lineHeight: 1.4 }}>
-                    Coche "🔀 Variable" sur une ou plusieurs lignes de texte ci-dessus (ex : le nom de l'hôtel, le nom du service...), positionne-les où tu veux sur l'étiquette, puis remplis leurs valeurs ici — pratique pour un client avec plusieurs colis à répartir par service (réception, cuisine, housekeeping...).
+                    Aucun champ pour l'instant — ajoute-en un ci-dessus (ou coche "🔀 Variable" directement sur une ligne de texte dans "✏️ Texte").
                   </p>
                 );
               }
@@ -847,7 +956,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               return (
                 <>
                   <p style={{ fontSize: 11.5, color: COLORS.gray600, margin: "0 0 8px", lineHeight: 1.4 }}>
-                    Une étiquette sera générée pour chaque ligne ci-dessous. La ligne 1 de chaque champ va ensemble (ligne 1 + ligne 1 = une étiquette), etc. Chaque champ variable garde la position choisie dans l'aperçu.
+                    Une étiquette sera générée pour chaque ligne ci-dessous. La ligne 1 de chaque champ va ensemble (ligne 1 + ligne 1 = une étiquette), etc.
                   </p>
                   <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Nom du client</label>
                   <input
