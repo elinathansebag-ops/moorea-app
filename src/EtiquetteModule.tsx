@@ -44,6 +44,8 @@ type FormatEtiquette = { largeurCm: number; hauteurCm: number };
 
 type FormatSauvegarde = FormatEtiquette & { id: string; label: string };
 
+type LogoSauvegarde = { id: string; nom: string; url: string };
+
 type ModeleEtiquette = {
   id: string;
   nom: string;
@@ -51,6 +53,7 @@ type ModeleEtiquette = {
   hauteurCm: number;
   logoActif: boolean;
   logoUrl: string;
+  logoNoirEtBlanc: boolean;
   alignVertical: "top" | "center" | "bottom";
   blocs: BlocTexte[];
   updatedAt: number;
@@ -81,6 +84,10 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   const [logoActif, setLogoActif] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
+  const [logoNoirEtBlanc, setLogoNoirEtBlanc] = useState(false);
+  const [logoUrlNoir, setLogoUrlNoir] = useState("");
+  const [logoConversionEnCours, setLogoConversionEnCours] = useState(false);
+  const [logosSauvegardes, setLogosSauvegardes] = useState<LogoSauvegarde[]>([]);
   const [alignVertical, setAlignVertical] = useState<"top" | "center" | "bottom">("center");
   const [blocs, setBlocs] = useState<BlocTexte[]>([nouveauBloc("PRODUIT")]);
 
@@ -106,8 +113,58 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
           .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       );
     });
-    return () => { u1(); u2(); };
+    // 01/09/2026 — Bibliothèque de logos : un logo importé une fois reste disponible pour
+    // toutes les futures étiquettes (pas seulement dans un modèle enregistré), tant qu'on ne
+    // le supprime pas explicitement.
+    const u3 = onValue(ref(db, "etiquettes/logos"), (snap) => {
+      const v = snap.val() || {};
+      setLogosSauvegardes(Object.entries(v).map(([id, l]: any) => ({ id, ...l })));
+    });
+    return () => { u1(); u2(); u3(); };
   }, []);
+
+  // Convertit un logo en couleur en une version "silhouette noire" (même forme, alpha
+  // conservé, pixels visibles passés en noir) — utile car les imprimantes à étiquettes
+  // (thermiques) n'impriment qu'en noir, contrairement à l'aperçu écran qui affiche les
+  // couleurs d'origine.
+  async function noircirImage(url: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { reject(new Error("no canvas ctx")); return; }
+          ctx.drawImage(img, 0, 0);
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const d = imgData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] > 0) { d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; }
+          }
+          ctx.putImageData(imgData, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } catch (err) { reject(err); }
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  useEffect(() => {
+    if (!logoNoirEtBlanc || !logoUrl) { setLogoUrlNoir(""); return; }
+    let annule = false;
+    setLogoConversionEnCours(true);
+    noircirImage(logoUrl)
+      .then((dataUrl) => { if (!annule) setLogoUrlNoir(dataUrl); })
+      .catch(() => { if (!annule) setLogoUrlNoir(""); })
+      .finally(() => { if (!annule) setLogoConversionEnCours(false); });
+    return () => { annule = true; };
+  }, [logoNoirEtBlanc, logoUrl]);
+
+  const logoUrlAffichee = logoNoirEtBlanc && logoUrlNoir ? logoUrlNoir : logoUrl;
 
   function notify(type: "success" | "error", msg: string) {
     setToast({ msg, type });
@@ -168,7 +225,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
       if (data.success) {
         setLogoUrl(data.data.url);
         setLogoActif(true);
-        notify("success", "✅ Logo importé");
+        setLogoNoirEtBlanc(false);
+        // Reste dans la bibliothèque pour toutes les prochaines étiquettes, pas seulement
+        // celle-ci — pas besoin de re-uploader le même logo à chaque fois.
+        await push(ref(db, "etiquettes/logos"), { nom: file.name.replace(/\.[^.]+$/, ""), url: data.data.url });
+        notify("success", "✅ Logo importé et enregistré dans la bibliothèque");
       } else {
         notify("error", "❌ Échec de l'import du logo");
       }
@@ -177,6 +238,17 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     } finally {
       setLogoUploading(false);
     }
+  }
+
+  function choisirLogoBibliotheque(l: LogoSauvegarde) {
+    setLogoUrl(l.url);
+    setLogoActif(true);
+    setLogoNoirEtBlanc(false);
+  }
+
+  async function supprimerLogoBibliotheque(id: string) {
+    await remove(ref(db, `etiquettes/logos/${id}`));
+    notify("success", "🗑️ Logo supprimé de la bibliothèque");
   }
 
   async function enregistrerFormatPersonnalise() {
@@ -197,7 +269,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     if (blocs.length === 0) { notify("error", "⚠️ Ajoute au moins une ligne de texte"); return; }
     await push(ref(db, "etiquettes/modeles"), {
       nom: nomModele.trim(),
-      largeurCm, hauteurCm, logoActif, logoUrl, alignVertical, blocs,
+      largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, alignVertical, blocs,
       updatedAt: Date.now(),
     });
     notify("success", "💾 Modèle enregistré");
@@ -211,6 +283,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setFormatChoisi("custom");
     setLogoActif(m.logoActif);
     setLogoUrl(m.logoUrl || "");
+    setLogoNoirEtBlanc(!!m.logoNoirEtBlanc);
     setAlignVertical(m.alignVertical || "center");
     setBlocs(m.blocs && m.blocs.length > 0 ? m.blocs.map((b) => ({ ...b, id: nouvelId() })) : [nouveauBloc()]);
     setShowChargerModele(false);
@@ -244,7 +317,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 </style>
 </head><body>
   <div class="etiquette">
-    ${logoActif && logoUrl ? `<img class="logo" src="${logoUrl}" />` : ""}
+    ${logoActif && logoUrlAffichee ? `<img class="logo" src="${logoUrlAffichee}" />` : ""}
     ${genererHtmlBlocs()}
   </div>
   <script>
@@ -329,12 +402,35 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               </label>
             </div>
             {logoUrl && logoActif && (
-              <img src={logoUrl} alt="Logo" style={{ maxHeight: 60, maxWidth: "100%", display: "block", marginBottom: 10, borderRadius: 6, border: `1px solid ${COLORS.gray200}` }} />
+              <>
+                <img src={logoUrlAffichee || logoUrl} alt="Logo" style={{ maxHeight: 60, maxWidth: "100%", display: "block", marginBottom: 8, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: logoNoirEtBlanc ? "#f5f5f5" : "transparent" }} />
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: COLORS.gray600, marginBottom: 10, cursor: "pointer" }}>
+                  <input type="checkbox" checked={logoNoirEtBlanc} onChange={(e) => setLogoNoirEtBlanc(e.target.checked)} />
+                  🖨️ Convertir en noir (imprimante à étiquettes — impression thermique, pas de couleur)
+                  {logoConversionEnCours && " · conversion..."}
+                </label>
+              </>
             )}
             <label style={{ display: "inline-block", padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", color: COLORS.gray700 }}>
               {logoUploading ? "⏳ Import..." : logoUrl ? "🔄 Changer le logo" : "📤 Importer un logo"}
               <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
             </label>
+            {logosSauvegardes.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray600, margin: "0 0 6px" }}>Bibliothèque de logos (déjà importés) :</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {logosSauvegardes.map((l) => (
+                    <div key={l.id} style={{ position: "relative", border: `1.5px solid ${logoUrl === l.url ? COLORS.primary : COLORS.gray200}`, borderRadius: 8, padding: 4, cursor: "pointer" }} onClick={() => choisirLogoBibliotheque(l)} title={l.nom}>
+                      <img src={l.url} alt={l.nom} style={{ height: 34, maxWidth: 70, objectFit: "contain", display: "block" }} />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); supprimerLogoBibliotheque(l.id); }}
+                        style={{ position: "absolute", top: -6, right: -6, width: 16, height: 16, borderRadius: "50%", border: "none", background: COLORS.danger, color: "#fff", fontSize: 9, lineHeight: "16px", cursor: "pointer", padding: 0 }}
+                      >✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ALIGNEMENT VERTICAL GLOBAL */}
@@ -432,8 +528,8 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                   flexShrink: 0,
                 }}
               >
-                {logoActif && logoUrl && (
-                  <img src={logoUrl} alt="Logo" style={{ maxWidth: "100%", maxHeight: "3cm", objectFit: "contain", alignSelf: "center", marginBottom: "0.2cm" }} />
+                {logoActif && logoUrlAffichee && (
+                  <img src={logoUrlAffichee} alt="Logo" style={{ maxWidth: "100%", maxHeight: "3cm", objectFit: "contain", alignSelf: "center", marginBottom: "0.2cm" }} />
                 )}
                 {blocs.filter((b) => b.texte.trim()).map((b) => (
                   <div key={b.id} style={{ textAlign: b.align, fontSize: `${b.taillePt}pt`, fontWeight: b.gras ? 900 : 400, fontStyle: b.italique ? "italic" : "normal", lineHeight: 1.15, wordBreak: "break-word" }}>
