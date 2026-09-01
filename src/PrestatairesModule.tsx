@@ -1001,15 +1001,22 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             const lignesHtml = lignes
               .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? "s" : ""}</li>`)
               .join("");
-            const lienConfirmation = `${window.location.origin}/api/confirm-livraison?id=${commandeId}&type=carton`;
+            // Le lien mène désormais vers l'espace reconditionneur (PortailReconditionneur.tsx,
+            // ?portail=andes) où Andès a déjà tous ses récaps du jour (production, stocks,
+            // demandes de réajustement) — plutôt que vers l'ancien lien de confirmation à usage
+            // unique (api/confirm-livraison.js). La confirmation de réception s'y fait toujours
+            // en un geste (carte "Livraisons à confirmer"), avec exactement le même effet
+            // (statut "reçu", crédit du stock carton Baby Blanc) — voir
+            // PortailReconditionneur.tsx.
+            const lienPortail = `${window.location.origin}/?portail=andes`;
             const emailHtmlPresta = `
               <p>Bonjour,</p>
               <p>Une commande de cartons vous a été livrée (ou est prévue) à l'adresse suivante :</p>
               <p><strong>Lieu de livraison:</strong> ${lieuLivraison}</p>
               <p><strong>Date de livraison prévue:</strong> ${dateLivraison}</p>
               <ul>${lignesHtml}</ul>
-              <p>Merci de confirmer la bonne réception de cette commande en cliquant sur le lien ci-dessous :</p>
-              <p><a href="${lienConfirmation}" style="display:inline-block;padding:12px 20px;background:#27ae60;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">✓ J'ai bien reçu la commande</a></p>
+              <p>Merci de confirmer la bonne réception de cette commande depuis votre espace habituel, où vous retrouvez tous vos récaps :</p>
+              <p><a href="${lienPortail}" style="display:inline-block;padding:12px 20px;background:#27ae60;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">📋 Accéder à mon espace</a></p>
               <p>Merci !</p>
             `;
             const emailPrestaRes = await fetch("/api/send-email", {
