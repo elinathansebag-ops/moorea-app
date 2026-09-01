@@ -124,6 +124,13 @@ export default function App() {
   // plus de 3 jours (demande d'Elinathan) — calculé sur TOUS les arrivages (pas juste ceux en
   // attente), fermable, réévalué à chaque chargement de la liste des arrivages.
   const [alerteMesuresFermee, setAlerteMesuresFermee] = useState(false);
+  // 02/09/2026 — Demande d'Elinathan : bouton par semaine (sauf les 2 dernières) pour valider
+  // en masse les vieux arrivages "en attente" qui traînent, SANS imprimer d'étiquette — juste
+  // pour nettoyer/faire propre le compteur. Chaque arrivage validé ainsi est marqué
+  // `nettoyageMasse: true` (voir handleAgrement) pour rester visible/distinguable des agréages
+  // normaux. `validatingSemaineNettoyage` retient la clé de semaine en cours pour désactiver son
+  // bouton pendant le traitement (peut être long si beaucoup d'arrivages).
+  const [validatingSemaineNettoyage, setValidatingSemaineNettoyage] = useState<string | null>(null);
   const [gencodeArticles, setGencodeArticles] = useState<any[]>([]);
   const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "", date: "" });
   const [previewArr, setPreviewArr] = useState<any[] | null>(null);
@@ -591,7 +598,7 @@ export default function App() {
  
 
   // ─── HANDLERS ARRIVAGES ───
-  const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string, palettes?: number[] | null, sansEtiquette?: boolean) => {
+  const handleAgrement = async (arrivage: any, ctrl: any, decision: string, ncType: string, raison: string, pct: string, palettes?: number[] | null, sansEtiquette?: boolean, nettoyageMasse?: boolean) => {
     const now2 = new Date();
     const statut = decision === "conforme" ? "validé" : ncType;
     // DLC et n° de traçabilité fournisseur saisis (ou corrigés) sur la carte d'agréage rapide —
@@ -616,7 +623,7 @@ export default function App() {
     // reparser le texte libre de rapport.observations.
     const colisRecusFinal = typeof ctrl.colisRecus === "number" ? ctrl.colisRecus : (arrivage.quantite || 0);
     const ecartColisFinal = colisRecusFinal - (arrivage.quantite || 0);
-    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, colisRecus: colisRecusFinal, ecartColis: ecartColisFinal, ...(litige ? { litige } : {}), ...(colisADetruireFinal != null ? { colis_a_detruire: colisADetruireFinal } : {}), validatedAt: Date.now() });
+    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, colisRecus: colisRecusFinal, ecartColis: ecartColisFinal, ...(litige ? { litige } : {}), ...(colisADetruireFinal != null ? { colis_a_detruire: colisADetruireFinal } : {}), validatedAt: Date.now(), ...(nettoyageMasse ? { nettoyageMasse: true } : {}) });
 
     // Si cet arrivage provient d'une commande de cartons, mettre à jour le statut de la commande.
     // 01/09/2026 — Bug trouvé avec Elinathan : ce n'était fait que si decision === "conforme",
@@ -3523,16 +3530,31 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 return next;
               });
 
+              // 02/09/2026 — Bouton de nettoyage en masse (voir handleAgrement / nettoyageMasse) :
+              // disponible sur toutes les semaines SAUF les 2 plus récentes (orderedWeekKeys est
+              // trié du plus récent au plus ancien), pour vider proprement les vieux "en attente"
+              // qui traînent sans jamais imprimer d'étiquette pour ces vieux lots.
+              const handleValiderSemaineNettoyage = async (key: string, g: { week: number; year: number; dates: [string, any[]][] }) => {
+                const tousEnAttente = g.dates.flatMap(([, arr]) => arr.filter((a: any) => a.statut === "en attente"));
+                if (!tousEnAttente.length) return;
+                if (!window.confirm(`Valider en masse les ${tousEnAttente.length} arrivage${tousEnAttente.length > 1 ? "s" : ""} en attente de la Semaine ${g.week} · ${g.year} ?\n\nAucune étiquette ne sera imprimée — c'est juste pour nettoyer les vieux arrivages qui traînent. Ces arrivages resteront marqués "validé en masse" pour rester identifiables.`)) return;
+                setValidatingSemaineNettoyage(key);
+                for (const a of tousEnAttente) {
+                  await handleAgrement(a, { qualite: 0, temperature: "ok", poids_mesure: "", observations: "Nettoyage en masse — vieil arrivage non contrôlé en détail, validé sans étiquette pour vider la liste d'attente." }, "conforme", "", "", "", null, true, true);
+                }
+                setValidatingSemaineNettoyage(null);
+              };
               return (
                 <>
-                  {orderedWeekKeys.map(key => {
+                  {orderedWeekKeys.map((key, idxSemaine) => {
                     const g = weekGroups.get(key)!;
                     const isOpen = openWeeksArr.has(key);
                     const nbArrivages = g.dates.reduce((sum, [, arr]) => sum + arr.length, 0);
                     const nbEnAttenteSemaine = g.dates.reduce((sum, [, arr]) => sum + arr.filter((a: any) => a.statut === "en attente").length, 0);
+                    const peutNettoyer = idxSemaine >= 2 && nbEnAttenteSemaine > 0;
                     return (
                       <div key={key} style={{ marginBottom: 10 }}>
-                        <div onClick={() => toggleWeekArr(key)} style={{ cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#faf8f3", border: `1.5px solid ${nbEnAttenteSemaine > 0 ? "#fcd34d" : "#e8e0d0"}`, borderRadius: 10, marginBottom: isOpen ? 8 : 0 }}>
+                        <div onClick={() => toggleWeekArr(key)} style={{ cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#faf8f3", border: `1.5px solid ${nbEnAttenteSemaine > 0 ? "#fcd34d" : "#e8e0d0"}`, borderRadius: 10, marginBottom: isOpen ? 8 : 0, flexWrap: "wrap", gap: 8 }}>
                           <span style={{ fontWeight: 700, fontSize: 13, color: "#1a2e1a", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                             📅 Semaine {g.week} · {g.year}
                             <span style={{ fontWeight: 500, color: "#9ca3af", fontSize: 11 }}>
@@ -3548,7 +3570,19 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                               </span>
                             )}
                           </span>
-                          <span style={{ transition: "transform .15s", display: "inline-block", transform: `rotate(${isOpen ? 90 : 0}deg)`, color: "#c8a84b", fontSize: 16 }}>›</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {peutNettoyer && (
+                              <button
+                                onClick={e => { e.stopPropagation(); handleValiderSemaineNettoyage(key, g); }}
+                                disabled={validatingSemaineNettoyage === key}
+                                title="Valide tous les arrivages en attente de cette semaine sans imprimer d'étiquette — pour nettoyer les vieux lots qui traînent."
+                                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #93c5fd", background: validatingSemaineNettoyage === key ? "#e5e7eb" : "#eff6ff", color: validatingSemaineNettoyage === key ? "#9ca3af" : "#1d4ed8", fontSize: 11.5, fontWeight: 700, cursor: validatingSemaineNettoyage === key ? "default" : "pointer", whiteSpace: "nowrap" }}
+                              >
+                                {validatingSemaineNettoyage === key ? "⏳ Validation…" : "🧹 Tout valider (nettoyage)"}
+                              </button>
+                            )}
+                            <span style={{ transition: "transform .15s", display: "inline-block", transform: `rotate(${isOpen ? 90 : 0}deg)`, color: "#c8a84b", fontSize: 16 }}>›</span>
+                          </div>
                         </div>
                         {isOpen && g.dates.map(([date, arr]) => {
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");

@@ -1825,9 +1825,19 @@ export function PalettePublique({ id }: { id: string }) {
               <p style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800, color: "#1a2e1a" }}>{arrivage.produit}</p>
               <p style={{ margin: 0, fontSize: 14, color: "#6b7280" }}>{arrivage.fournisseur}</p>
             </div>
-            <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: arrivage.statut === "validé" ? "#f0fdf4" : arrivage.statut === "refusé" ? "#fef2f2" : "#fffbeb", color: borderColor, border: `1px solid ${borderColor}33` }}>
-              {arrivage.statut || "en attente"}
-            </span>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20, background: arrivage.statut === "validé" ? "#f0fdf4" : arrivage.statut === "refusé" ? "#fef2f2" : "#fffbeb", color: borderColor, border: `1px solid ${borderColor}33` }}>
+                {arrivage.statut || "en attente"}
+              </span>
+              {/* 02/09/2026 — Marque les arrivages validés via le bouton "🧹 Tout valider
+                  (nettoyage)" par semaine (demande d'Elinathan), pour rester identifiables et
+                  distinguer ce nettoyage en masse d'un agréage normal. */}
+              {arrivage.nettoyageMasse && (
+                <span style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 8px", borderRadius: 20, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd" }}>
+                  🧹 Validé en masse (nettoyage)
+                </span>
+              )}
+            </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[
@@ -2082,6 +2092,11 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
           </p>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+          {a.nettoyageMasse && (
+            <span title="Validé via le bouton de nettoyage en masse par semaine, sans étiquette" style={{ fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 20, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd" }}>
+              🧹 Nettoyage
+            </span>
+          )}
           <BadgeArrivage status={a.statut} />
           <span style={{ fontSize: 14, color: "#c8a84b", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
         </div>
