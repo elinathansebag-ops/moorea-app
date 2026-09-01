@@ -1197,6 +1197,45 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     if (arrivageLie && arrivageLie.statut !== "validé") {
       await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "annulé" });
     }
+
+    // Prévient par email les destinataires concernés que la commande est annulée
+    // (Go-Embal systématiquement, + le prestataire si la livraison était directe chez lui).
+    try {
+      const cmd = commandes.find((c) => c.id === id);
+      if (cmd) {
+        const lignesHtml = cmd.lignes
+          .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? "s" : ""}</li>`)
+          .join("");
+        const emailHtml = `
+          <p>Bonjour,</p>
+          <p>La commande de cartons ci-dessous a été <strong>annulée</strong> :</p>
+          <p><strong>Numéro de commande:</strong> ${id}</p>
+          <p><strong>Date de livraison prévue:</strong> ${cmd.dateLivraisonPrevue}</p>
+          <p><strong>Lieu de livraison:</strong> ${cmd.lieuLivraison}</p>
+          <h3>Détails de la commande annulée:</h3>
+          <ul>${lignesHtml}</ul>
+          <p>Merci de ne pas y donner suite. Pour toute question, contactez Moorea directement.</p>
+        `;
+        const destinataires = ["contact@go-embal.fr"];
+        if (cmd.horsSite && cmd.emailPresta) {
+          destinataires.push(...cmd.emailPresta.split(",").map((e) => e.trim()).filter(Boolean));
+        }
+        const emailRes = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subject: `Commande annulée - Cartons #${id}`,
+            html: emailHtml,
+            to: destinataires,
+            sender: "elinathan",
+          }),
+        });
+        if (!emailRes.ok) throw new Error(`Erreur ${emailRes.status}`);
+      }
+    } catch (emailError) {
+      console.error("Erreur lors de l'envoi de l'email d'annulation:", emailError);
+    }
+
     setNotification({ type: "success", message: "✓ Commande de cartons annulée" });
   };
 
