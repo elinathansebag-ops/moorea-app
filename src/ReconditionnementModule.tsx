@@ -723,6 +723,10 @@ export function ReconditionnementModule({ onClose, userName }: {
   const [nvContact, setNvContact] = useState("");
   const [nvTelephone, setNvTelephone] = useState("");
   const [nvEmail, setNvEmail] = useState("");
+  // 01/09/2026 — Modification d'un transporteur existant (corriger une erreur de saisie comme
+  // un email mal tapé) : réutilise le même formulaire du haut plutôt que d'en avoir un séparé —
+  // quand un id est défini ici, "Ajouter" devient "Enregistrer" et met à jour ce transporteur.
+  const [transporteurEnEdition, setTransporteurEnEdition] = useState<string | null>(null);
 
   // Stock IFCO — RÉUTILISE le même tracker que le module Prestataires (chemin Firebase
   // "ifco_stock/levels", { moorea, transit, nlt }) : c'est le stock réel de caisses IFCO par
@@ -1551,18 +1555,42 @@ export function ReconditionnementModule({ onClose, userName }: {
 
   async function ajouterTransporteur() {
     if (!nvNom.trim()) { notify("error", "✗ Indique un nom"); return; }
-    await push(ref(db, "reconditionnement_transporteurs"), {
+    const champs = {
       nom: nvNom.trim(),
       contact: nvContact.trim() || undefined,
       telephone: nvTelephone.trim() || undefined,
       email: nvEmail.trim() || undefined,
-    });
+    };
+    if (transporteurEnEdition) {
+      // update() plutôt que set() implicite d'un push : évite d'écraser un éventuel champ non
+      // repris dans ce formulaire si la structure évolue plus tard (même logique que pour
+      // appro/produits, voir ApproModule.tsx).
+      await update(ref(db, `reconditionnement_transporteurs/${transporteurEnEdition}`), champs);
+      notify("success", "✅ Transporteur modifié");
+      setTransporteurEnEdition(null);
+    } else {
+      await push(ref(db, "reconditionnement_transporteurs"), champs);
+      notify("success", "✅ Transporteur ajouté");
+    }
     setNvNom(""); setNvContact(""); setNvTelephone(""); setNvEmail("");
-    notify("success", "✅ Transporteur ajouté");
+  }
+
+  function modifierTransporteur(t: Transporteur) {
+    setTransporteurEnEdition(t.id);
+    setNvNom(t.nom || "");
+    setNvContact(t.contact || "");
+    setNvTelephone(t.telephone || "");
+    setNvEmail(t.email || "");
+  }
+
+  function annulerEditionTransporteur() {
+    setTransporteurEnEdition(null);
+    setNvNom(""); setNvContact(""); setNvTelephone(""); setNvEmail("");
   }
 
   async function supprimerTransporteur(id: string) {
     await remove(ref(db, `reconditionnement_transporteurs/${id}`));
+    if (transporteurEnEdition === id) annulerEditionTransporteur();
   }
 
   const demandesFiltrees = demandes.filter(d => filtreStatut === "toutes" || d.statut === filtreStatut);
@@ -2946,23 +2974,35 @@ export function ReconditionnementModule({ onClose, userName }: {
                 <input type="text" value={nvTelephone} onChange={e => setNvTelephone(e.target.value)} placeholder="Téléphone" style={{ padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
                 <input type="text" value={nvEmail} onChange={e => setNvEmail(e.target.value)} placeholder="Email" style={{ padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
               </div>
-              <button onClick={ajouterTransporteur} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                + Ajouter
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={ajouterTransporteur} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: transporteurEnEdition ? COLORS.secondary : COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  {transporteurEnEdition ? "💾 Enregistrer" : "+ Ajouter"}
+                </button>
+                {transporteurEnEdition && (
+                  <button onClick={annulerEditionTransporteur} style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    Annuler
+                  </button>
+                )}
+              </div>
 
               <div style={{ marginTop: 16 }}>
                 {transporteurs.length === 0 ? (
                   <p style={{ fontSize: 12, color: "#999" }}>Aucun transporteur pour l'instant.</p>
                 ) : (
                   transporteurs.map(t => (
-                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${COLORS.gray100}` }}>
+                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${COLORS.gray100}`, background: transporteurEnEdition === t.id ? COLORS.primaryLight : "transparent" }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>{t.nom}</div>
                         <div style={{ fontSize: 11, color: "#888" }}>{[t.contact, t.telephone, t.email].filter(Boolean).join(" · ")}</div>
                       </div>
-                      <button onClick={() => supprimerTransporteur(t.id)} style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        Supprimer
-                      </button>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <button onClick={() => modifierTransporteur(t)} style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${COLORS.primary}`, background: "#fff", color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          ✏️ Modifier
+                        </button>
+                        <button onClick={() => supprimerTransporteur(t.id)} style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                          Supprimer
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
