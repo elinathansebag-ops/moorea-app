@@ -155,15 +155,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const [retourQte, setRetourQte] = useState<string>(arrivage.qteConditionnementAttendue != null ? String(arrivage.qteConditionnementAttendue) : "");
   const [retourGrandes, setRetourGrandes] = useState<string>("");
   const [retourDemi, setRetourDemi] = useState<string>("");
-  // 01/09/2026 — Elinathan : si une demande de reconditionnement part en caisses IFCO
-  // (retourEnIfco), elle revient FORCÉMENT en caisses IFCO — ce n'est jamais optionnel. Le champ
-  // reste néanmoins toujours saisi à la main ici (pas de pré-remplissage automatique — demande
-  // explicite d'Elinathan : ce chiffre n'a rien à faire dans Arrivage tant qu'il n'est pas
-  // pointé physiquement), mais la validation reste bloquante s'il est laissé vide (voir
-  // handleValider ci-dessous) : avant, un champ vide passait la validation en silence, et on ne
-  // le découvrait qu'après coup avec l'avertissement "aucune caisse IFCO pleine saisie au
-  // retour" — trop tard, l'info réelle du retour est perdue.
-  const [retourCaissesIfco, setRetourCaissesIfco] = useState<string>("");
+  // 01/09/2026 — Elinathan : pas de champ séparé pour les "caisses IFCO pleines" — pour un
+  // article qui revient en caisses IFCO (retourEnIfco), un colis EST une caisse IFCO pleine, un
+  // pour un. Le nombre de caisses pleines reçues est donc directement le nombre de colis reçus
+  // (déjà saisi dans "📦 Colis" ci-dessous) : pas question de le refaire saisir une deuxième fois
+  // dans un champ à part, ni de le comparer à un nombre "envoyé" qui n'a rien à voir (voir
+  // colisRecusNum plus bas, utilisé directement dans handleValider).
   // Colis contenant les pièces écartées au tri (jamais 100% récupérable) — reviennent avec le
   // lot reconditionné, à détruire plutôt qu'à remettre en stock.
   const [retourColisADetruire, setRetourColisADetruire] = useState<string>("");
@@ -279,16 +276,6 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const ecartColis = colisRecusNum - colisAttendu;
   const hasEcartColis = colisRecus !== "" && ecartColis !== 0;
 
-  // Écart caisses IFCO pleines vs. envoyées à l'origine (ex: 100 envoyées, 99 pleines reçues car
-  // la qualité ne permettait pas de faire le dernier colis) — purement informatif : la caisse
-  // manquante reste vide chez NLT (voir handleAgrement dans App.tsx, qui ne déduit du stock "nlt"
-  // que le nombre de caisses PLEINES réellement saisi ici, jamais le nombre envoyé).
-  // caissesIfcoEnvoyees à 0 n'est PAS une vraie référence (voir commentaire au-dessus, sur le
-  // useState de retourCaissesIfco) : on ne compare/affiche l'écart que si un nombre réellement
-  // envoyé (> 0) a été suivi pour cette demande.
-  const caissesIfcoEnvoyees = arrivage.caissesIfcoEnvoyees > 0 ? arrivage.caissesIfcoEnvoyees : null;
-  const ecartCaissesIfco = caissesIfcoEnvoyees != null ? (parseInt(retourCaissesIfco) || 0) - caissesIfcoEnvoyees : 0;
-  const hasEcartCaissesIfco = caissesIfcoEnvoyees != null && retourCaissesIfco !== "" && ecartCaissesIfco !== 0;
 
   // ─── Palettes pour l'étiquette imprimée automatiquement à la validation ───
   // Par défaut : 1 palette avec la totalité des colis. Si l'agréeur répartit sur plusieurs
@@ -333,14 +320,6 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     // peuvent partir avant que React n'ait eu le temps de désactiver le bouton (disabled={saving}
     // ne suffit pas toujours) — ce qui déclenchait parfois une double impression d'étiquette.
     if (saving) return;
-    // Un retour en caisses IFCO (retourEnIfco) l'est FORCÉMENT — pas d'exception possible. Le
-    // champ est pré-rempli par défaut (voir useState ci-dessus), mais si l'agréeur l'a vidé à la
-    // main on bloque la validation plutôt que de laisser passer un retour dont on ne saura plus
-    // jamais combien de caisses IFCO pleines sont réellement revenues.
-    if (isRetourRecond && retourEnIfco && retourCaissesIfco.trim() === "") {
-      alert("Indique le nombre de caisses IFCO pleines reçues (0 si vraiment aucune) : ce retour part forcément en caisses IFCO puisqu'il l'était au départ.");
-      return;
-    }
     // 28/08/2026 — Simplifié à la demande d'Elinathan : plus d'ouverture automatique d'une
     // fenêtre WhatsApp par article validé (gênant quand on pointe plusieurs retours à la
     // suite) — tous les écarts du jour sont désormais regroupés dans UN SEUL message, envoyé
@@ -362,7 +341,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     const tracaPropre = tracaList.map(t => t.trim()).filter(Boolean);
     const ctrl: any = { qualite, temperature: tempOk ? "ok" : "ko", poids_mesure: poidsOk ? "ok" : "ko", poids_brut: poidsBrut, poids_net: poidsNet, observations: obs, dlc, lot_fournisseur: tracaPropre.join(", "), lot_fournisseur_liste: tracaPropre, colisRecus: colisRecusNum };
     if (isRetourRecond) {
-      ctrl.retourRecond = { qteConditionnement: retourQte, grandes: retourGrandes, demi: retourDemi, caissesIfco: retourCaissesIfco, colisADetruire: retourColisADetruire };
+      // Un colis reçu EST une caisse IFCO pleine, un pour un, quand l'article revient en caisses
+      // IFCO (retourEnIfco) — on reprend directement colisRecusNum (déjà saisi dans "📦 Colis"
+      // ci-dessus), jamais une resaisie séparée : chaque caisse coûte cher, pas question de
+      // risquer un écart de saisie entre deux champs qui doivent de toute façon être identiques.
+      ctrl.retourRecond = { qteConditionnement: retourQte, grandes: retourGrandes, demi: retourDemi, caissesIfco: retourEnIfco ? String(colisRecusNum) : "", colisADetruire: retourColisADetruire };
     }
     const raisonFinal = hasEcartColis
       ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})`
@@ -483,19 +466,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               </div>
             )}
             {retourEnIfco && (
-              <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: hasEcartCaissesIfco ? "#fffbeb" : "#f9fafb", border: `1.5px solid ${hasEcartCaissesIfco ? "#fde3a8" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>
-                  📦 Caisses IFCO pleines{caissesIfcoEnvoyees != null ? ` (sur ${caissesIfcoEnvoyees} envoyées)` : ""}
-                </span>
-                <input type="number" min="0" inputMode="numeric" value={retourCaissesIfco} onChange={e => setRetourCaissesIfco(e.target.value)}
-                  style={{ width: "100%", padding: "4px 6px", border: `1.5px solid ${hasEcartCaissesIfco ? "#fde3a8" : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, outline: "none", color: hasEcartCaissesIfco ? "#b45309" : "#1a2e1a", boxSizing: "border-box" }} />
-                {hasEcartCaissesIfco && (
-                  <span style={{ fontSize: 10.5, color: "#b45309", fontWeight: 600, lineHeight: 1.3 }}>
-                    {ecartCaissesIfco < 0
-                      ? `${Math.abs(ecartCaissesIfco)} caisse${Math.abs(ecartCaissesIfco) > 1 ? "s" : ""} reste${Math.abs(ecartCaissesIfco) > 1 ? "nt" : ""} vide${Math.abs(ecartCaissesIfco) > 1 ? "s" : ""} chez NLT (pas une perte)`
-                      : `⚠️ ${ecartCaissesIfco} de plus que prévu, vérifie la saisie`}
-                  </span>
-                )}
+              // Pas de champ séparé : un colis reçu EST une caisse IFCO pleine (un pour un) pour
+              // un article qui revient en caisses IFCO — le nombre vient directement du champ
+              // "📦 Colis" ci-dessous, jamais d'une deuxième saisie qui pourrait diverger.
+              <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px", justifyContent: "center" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Caisses IFCO pleines</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a" }}>{colisRecusNum} <span style={{ fontSize: 10.5, fontWeight: 600, color: "#6b7280" }}>(= colis reçus)</span></span>
               </div>
             )}
             {/* Colis avec les pièces écartées au tri — reviennent avec le lot, jamais 100%
