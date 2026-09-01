@@ -202,6 +202,14 @@ export default function App() {
   const [openFournisseurs, setOpenFournisseurs] = useState<Set<string>>(new Set());
   const [editRapport, setEditRapport] = useState<any | null>(null);
   const [user, setUser] = useState<any | null>(undefined);
+  // 02/09/2026 — Demande d'Elinathan : après un rafraîchissement de la page, un module ouvert
+  // apparaissait souvent "vide" (aucune donnée) le temps que tous les listeners Firebase se
+  // reconnectent et reçoivent leur première réponse — il fallait refermer/rouvrir le module
+  // pour que ça s'affiche. On attend maintenant que la connexion à la base soit effective
+  // (".info/connected", + une petite marge pour laisser le temps aux listeners de recevoir
+  // leurs premières données juste après la reconnexion) avant d'afficher le contenu de
+  // l'application, avec un message de chargement clair entre-temps — plutôt qu'un module vide.
+  const [rtdbPret, setRtdbPret] = useState(false);
   const [showAccueil, setShowAccueil] = useState(true);
   const [showLitiges, setShowLitiges] = useState(false);
   const [showRecherche, setShowRecherche] = useState(false);
@@ -237,6 +245,19 @@ export default function App() {
   const [adminTab, setAdminTab] = useState<"activite" | "reglages">("activite");
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [rackModePlacementAdmin, setRackModePlacementAdmin] = useState<"manuel" | "scan">("manuel");
+  useEffect(() => {
+    // ".info/connected" passe à true dès que le SDK a une connexion active au serveur — c'est
+    // à ce moment-là que tous les listeners "onValue" ouverts juste après le chargement de la
+    // page reçoivent (quasi) en même temps leur première réponse. Les 500ms de marge laissent
+    // ce court instant se terminer avant d'afficher le contenu, pour éviter d'afficher un module
+    // avec des listes encore vides.
+    const unsub = onValue(ref(db, ".info/connected"), snap => {
+      if (snap.val() === true) {
+        setTimeout(() => setRtdbPret(true), 500);
+      }
+    });
+    return () => unsub();
+  }, []);
   useEffect(() => {
     const unsub = onValue(ref(db, "activity_log"), snap => {
       const data = snap.val();
@@ -2353,6 +2374,17 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         Se connecter avec Google
       </button>
       <p style={{ marginTop: 16, fontSize: 12, color: "rgba(255,255,255,0.3)" }}>Accès réservé aux comptes @moorea.fr</p>
+    </div>
+  );
+
+  // 02/09/2026 — Voir le commentaire sur rtdbPret plus haut : on attend que la connexion à la
+  // base soit établie (donc que les listeners aient reçu leurs premières données) avant
+  // d'afficher un module — sinon il pouvait sembler "vide" une fraction de seconde après un
+  // rafraîchissement, ce qui donnait l'impression qu'il fallait le refermer/rouvrir.
+  if (!rtdbPret) return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0a0a", gap: 16 }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #c8a84b", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontFamily: "'Syne', sans-serif" }}>⏳ Chargement des données…</p>
     </div>
   );
 
