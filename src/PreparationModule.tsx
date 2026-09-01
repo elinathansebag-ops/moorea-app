@@ -411,6 +411,23 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     notify("success", `🚚 ${ids.length} demande${ids.length > 1 ? "s" : ""} marquée${ids.length > 1 ? "s" : ""} partie${ids.length > 1 ? "s" : ""} — les retours apparaîtront dans « Pointer arrivage »`);
   }
 
+  // 01/09/2026 — Bouton "Réimprimer" sur les départs déjà partis (demande d'Elinathan) : si
+  // l'imprimante a raté ou le papier s'est coincé, on renvoie exactement les mêmes étiquettes
+  // manifest (même dépôt, mêmes palettes X/N, même liste) sans re-marquer quoi que ce soit.
+  // Pour un départ groupé, on retrouve toutes les demandes du même groupe via
+  // nbPalettesDepartGroupeId pour reconstituer le manifeste complet du départ.
+  async function reimprimerEtiquetteManifest(demande: Demande) {
+    if (!demande.nbPalettesDepart) {
+      notify("error", "❌ Pas de nombre de palettes enregistré pour ce départ — impossible de réimprimer");
+      return;
+    }
+    const groupe = demande.nbPalettesDepartGroupeId
+      ? demandes.filter(d => d.nbPalettesDepartGroupeId === demande.nbPalettesDepartGroupeId)
+      : [demande];
+    await envoyerEtiquettesManifestPourImpressionPC(demande.depot, groupe, demande.nbPalettesDepart.grandes, demande.nbPalettesDepart.demi);
+    notify("success", "🖨️ Étiquette(s) renvoyée(s) à l'impression");
+  }
+
   // ─── VALIDATION PAR SCAN DU QR CODE DU BON ───
   // App.tsx ouvre ce module avec scanDemandeId quand l'app a été chargée via l'URL du QR
   // (?recond=<id>). Le 1er scan (statut "en attente") ouvre la modale "Marquer prêt". Le 2e scan
@@ -785,9 +802,20 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                             </button>
                                           )}
                                           {d.statut === "parti" && (
-                                            <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic" }}>
-                                              📥 Retour à pointer dans « Pointer arrivage »
-                                            </span>
+                                            <>
+                                              <span style={{ fontSize: 11, color: COLORS.gray600, fontStyle: "italic" }}>
+                                                📥 Retour à pointer dans « Pointer arrivage »
+                                              </span>
+                                              {d.nbPalettesDepart && (
+                                                <button
+                                                  onClick={() => reimprimerEtiquetteManifest(d)}
+                                                  style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                                                  title="Renvoie la même étiquette manifeste à l'impression (imprimante ratée, papier coincé...)"
+                                                >
+                                                  🖨️ Réimprimer étiquette
+                                                </button>
+                                              )}
+                                            </>
                                           )}
                                         </div>
                                       </div>
