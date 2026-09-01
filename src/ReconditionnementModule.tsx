@@ -1901,7 +1901,15 @@ export function ReconditionnementModule({ onClose, userName }: {
                 désormais ici (et non plus depuis la création d'une demande) que se déclare
                 l'envoi physique d'une palette IFCO Moorea → NLT. Réutilise
                 pousserEnvoiPaletteIfco (même tracker de stock que "Nouvelle demande" et le
-                module Prestataires). */}
+                module Prestataires).
+                01/09/2026 — À la demande d'Elinathan : cet envoi doit aussi apparaître comme une
+                carte dans Préparation entrepôt (avant, seul le stock bougeait, sans aucune trace
+                visible côté entrepôt). On crée donc en plus un enregistrement dans
+                reconditionnement_demandes, directement au statut "parti" (l'envoi est immédiat,
+                pas de préparation à valider), avec un numéro préfixé "PAL" (au lieu de "RC") pour
+                le distinguer d'une vraie demande de reconditionnement au premier coup d'œil. Le
+                nombre de palettes est déduit du nombre de caisses (640 caisses = 1 palette,
+                CAISSES_PAR_PALETTE) — arrondi au plus proche, au moins 1. */}
             <div style={{ marginBottom: 14 }}>
               <button
                 type="button"
@@ -1915,7 +1923,34 @@ export function ReconditionnementModule({ onClose, userName }: {
                   }
                   if (!window.confirm(`Confirmer l'envoi de ${qte} caisses IFCO (Moorea → NLT) ?`)) return;
                   await pousserEnvoiPaletteIfco(qte, "Envoi manuel de palette IFCO à NLT");
-                  notify("success", `📦 ${qte} caisses IFCO envoyées à NLT`);
+
+                  const now = new Date();
+                  const aa = String(now.getFullYear()).slice(-2);
+                  const mm = String(now.getMonth() + 1).padStart(2, "0");
+                  const jj = String(now.getDate()).padStart(2, "0");
+                  const prefixeJour = `PAL${aa}${mm}${jj}`;
+                  const dejaAujourdhui = demandes.filter(d => d.numero?.startsWith(prefixeJour)).length;
+                  const numero = `${prefixeJour}-${String(dejaAujourdhui + 1).padStart(2, "0")}`;
+                  const nbGrandes = Math.max(1, Math.round(qte / CAISSES_PAR_PALETTE));
+                  await push(ref(db, "reconditionnement_demandes"), {
+                    numero,
+                    dateCreation: now.toISOString(),
+                    dateCreationFr: nowFr(),
+                    creePar: userName || "Moorea",
+                    depot: "nlt",
+                    articleVrac: "Palette IFCO vide",
+                    articleFini: "NLT",
+                    caissesIfcoEnvoyees: qte,
+                    retourEnIfco: false,
+                    statut: "parti",
+                    entrepotPretPar: userName || "Moorea",
+                    entrepotPretDate: nowFr(),
+                    nbPalettesDepart: { grandes: nbGrandes, demi: 0 },
+                    departDate: nowFr(),
+                    ts: now.getTime(),
+                  });
+
+                  notify("success", `📦 ${qte} caisses IFCO envoyées à NLT (${numero})`);
                 }}
                 style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
               >
