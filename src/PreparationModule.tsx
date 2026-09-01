@@ -128,18 +128,53 @@ function retourEnIfcoDemande(d: Demande): boolean {
   return d.depot === "nlt" && (d.retourEnIfco ?? /ifco/i.test(d.articleFini || ""));
 }
 
+// 02/09/2026 — Couleurs revues à la demande d'Elinathan : "reçu" (vraiment terminé/validé) était
+// en gris neutre, moins visible que "parti" (encore en cours de route) qui lui était en vert —
+// on inversait donc visuellement ce qui est fini et ce qui ne l'est pas. "reçu" est maintenant en
+// vert franc (le seul statut vraiment terminé), "parti" passe en indigo (encore en cours).
 function StatutBadge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<Demande["statut"], { bg: string; color: string; label: string }> = {
     "en attente": { bg: "#fffbeb", color: "#b45309", label: "🕐 En attente entrepôt" },
     "prêt": { bg: "#eff6ff", color: "#1d4ed8", label: "📦 Prêt — attend transporteur" },
-    "parti": { bg: "#eafaf1", color: "#1a6b3a", label: "🚚 Parti chez le reconditionneur" },
-    "reçu": { bg: "#f3f4f6", color: "#374151", label: "✅ Reçu — reconditionné" },
+    "parti": { bg: "#eef2ff", color: "#4338ca", label: "🚚 Parti chez le reconditionneur" },
+    "reçu": { bg: "#dcfce7", color: "#15803d", label: "✅ Reçu — terminé" },
     "annulé": { bg: "#fef2f2", color: "#b91c1c", label: "✕ Annulé" },
   };
   const s = map[statut];
   return (
     <span style={{ background: s.bg, color: s.color, borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, display: "inline-block" }}>
       {s.label}
+    </span>
+  );
+}
+
+// 02/09/2026 — Résumé compact des statuts d'un groupe de demandes (semaine ou dépôt), affiché
+// à côté du compteur même quand l'accordéon est FERMÉ — demande d'Elinathan : avant, un groupe
+// fermé n'affichait qu'un total ("5 demandes"), impossible de savoir si c'était déjà traité ou
+// encore en attente sans l'ouvrir. "Terminé" = reçu uniquement ; le reste (en attente/prêt/parti)
+// est regroupé en "en cours" ; annulé à part.
+function ResumeStatutsGroupe({ demandes }: { demandes: Demande[] }) {
+  const nbRecu = demandes.filter(d => d.statut === "reçu").length;
+  const nbAnnule = demandes.filter(d => d.statut === "annulé").length;
+  const nbEnCours = demandes.length - nbRecu - nbAnnule;
+  if (demandes.length === 0) return null;
+  return (
+    <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+      {nbEnCours > 0 && (
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "2px 7px", whiteSpace: "nowrap" }}>
+          ⏳ {nbEnCours} en cours
+        </span>
+      )}
+      {nbRecu > 0 && (
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "#15803d", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: 10, padding: "2px 7px", whiteSpace: "nowrap" }}>
+          ✅ {nbRecu} terminée{nbRecu > 1 ? "s" : ""}
+        </span>
+      )}
+      {nbAnnule > 0 && (
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "2px 7px", whiteSpace: "nowrap" }}>
+          ✕ {nbAnnule} annulée{nbAnnule > 1 ? "s" : ""}
+        </span>
+      )}
     </span>
   );
 }
@@ -648,14 +683,17 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
               const totalDemandesSemaine = info.jours.reduce((s, j) => s + parJourDemandes[j].length, 0);
               return (
                 <div key={cleSemaine} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
-                  <div onClick={() => toggleSemaineDemandes(cleSemaine)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
+                  <div onClick={() => toggleSemaineDemandes(cleSemaine)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
                       📅 {info.label}{" "}
                       <span style={{ color: "#999", fontWeight: 600 }}>
                         ({info.jours.length} jour{info.jours.length > 1 ? "s" : ""} · {totalDemandesSemaine} demande{totalDemandesSemaine > 1 ? "s" : ""})
                       </span>
                     </span>
-                    <span style={{ fontSize: 14, color: COLORS.primary, transform: ouverte ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <ResumeStatutsGroupe demandes={info.jours.flatMap(j => parJourDemandes[j])} />
+                      <span style={{ fontSize: 14, color: COLORS.primary, transform: ouverte ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                    </div>
                   </div>
                   {ouverte && (
                     <div style={{ padding: "12px 16px 4px", background: "#fafafa" }}>
@@ -674,12 +712,13 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                             return (
                               <div key={dep} style={{ marginBottom: 10, background: `${accentDepot}0d`, border: `1px solid ${accentDepot}33`, borderRadius: 10, padding: 8 }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0 }}>
-                                  <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                                  <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexWrap: "wrap" }}>
                                     <span style={{ fontSize: 12, color: accentDepot, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
                                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: accentDepot, display: "inline-block" }} />
                                     <span style={{ fontSize: 12, fontWeight: 800, color: accentDepot }}>
                                       {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
                                     </span>
+                                    <ResumeStatutsGroupe demandes={demandesJourDepot} />
                                   </div>
                                   {aEnvoyerDuGroupe.length > 1 && (
                                     <button
@@ -697,7 +736,11 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                 {depotOuvert && (
                                   <div style={{ display: "grid", gap: 12 }}>
                                     {demandesJourDepot.map(d => (
-                                      <div key={d.id} style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderLeft: `4px solid ${accentDepot}`, borderRadius: 12, padding: 16 }}>
+                                      // 02/09/2026 — Demande d'Elinathan : même carte ouverte, une demande "reçu"
+                                      // (vraiment terminée) doit se distinguer du reste (en attente/prêt/parti) sans
+                                      // avoir à lire le badge — fond vert pâle + bord vert plutôt que la même carte
+                                      // blanche neutre pour tous les statuts.
+                                      <div key={d.id} style={{ background: d.statut === "reçu" ? "#f0fdf4" : "#fff", border: `1.5px solid ${d.statut === "reçu" ? "#bbf7d0" : COLORS.gray200}`, borderLeft: `4px solid ${d.statut === "reçu" ? "#15803d" : accentDepot}`, borderRadius: 12, padding: 16, opacity: d.statut === "reçu" ? 0.85 : 1 }}>
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                                           <div>
                                             <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>

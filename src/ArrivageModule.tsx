@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import emailjs from "@emailjs/browser";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
@@ -2518,7 +2519,14 @@ export function HistoriqueMesures({ arrivages, onClose }: { arrivages: any[]; on
   const unite = type === "poids" ? "g" : "°C";
   const champStyle = { padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 9, fontSize: 13, outline: "none", boxSizing: "border-box" as const, fontFamily: "'DM Sans', sans-serif" };
 
-  return (
+  // 02/09/2026 — Rendu via un portail (document.body) plutôt qu'à sa place dans l'arbre React :
+  // le parent (page "Pointer arrivage") a une animation CSS ("fade-up") qui applique un
+  // transform, ce qui transforme silencieusement ce transform en conteneur de référence pour
+  // tout position:fixed à l'intérieur — du coup ce plein-écran ne couvrait plus vraiment tout
+  // l'écran ni son propre bandeau "← Retour", qui restait invisible/inatteignable sous l'en-tête
+  // fixe de la page (bug remonté par Elinathan : "rien pour sortir"). Un portail vers document.body
+  // sort complètement de ce piège et redonne un vrai plein-écran, au-dessus de tout.
+  return createPortal(
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: "#f5f3ee", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", borderBottom: "3px solid #c8a84b", flexShrink: 0 }}>
         <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}>← Retour</button>
@@ -2581,6 +2589,7 @@ export function HistoriqueMesures({ arrivages, onClose }: { arrivages: any[]; on
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

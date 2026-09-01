@@ -8,7 +8,7 @@ import RetoursModule from "./RetoursModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
 import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F } from "./shared";
-import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
+import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
 import { RHApp } from "./RHApp";
 import { EtiquetteModule } from "./EtiquetteModule";
@@ -120,6 +120,10 @@ export default function App() {
   const [arrivages, setArrivages] = useState<any[]>([]);
   // Panneau plein écran listant tous les poids de barquettes et températures relevés.
   const [showHistoMesures, setShowHistoMesures] = useState(false);
+  // 02/09/2026 — Popup d'alerte si aucune température / aucun poids de barquette relevé depuis
+  // plus de 3 jours (demande d'Elinathan) — calculé sur TOUS les arrivages (pas juste ceux en
+  // attente), fermable, réévalué à chaque chargement de la liste des arrivages.
+  const [alerteMesuresFermee, setAlerteMesuresFermee] = useState(false);
   const [gencodeArticles, setGencodeArticles] = useState<any[]>([]);
   const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "", date: "" });
   const [previewArr, setPreviewArr] = useState<any[] | null>(null);
@@ -3165,13 +3169,47 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
       <PageHeader
         titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
-        onBack={vue === "form" ? () => setVue("historique" as any) : () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }}
-        onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); }}
+        onBack={vue === "form" ? () => setVue("historique" as any) : () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
+        onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
       />
 
       <div className="content-wrap">
         {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
+            {(() => {
+              const SEUIL_3J_MS = 3 * 24 * 60 * 60 * 1000;
+              let dernierTemp = 0, dernierPoids = 0;
+              arrivages.forEach((a: any) => {
+                lireMesures(a?.temperatures).forEach((m: any) => { if (m.at > dernierTemp) dernierTemp = m.at; });
+                lireMesures(a?.poids_barquettes).forEach((m: any) => { if (m.at > dernierPoids) dernierPoids = m.at; });
+              });
+              const maintenant = Date.now();
+              const tempEnRetard = arrivages.length > 0 && (maintenant - dernierTemp) > SEUIL_3J_MS;
+              const poidsEnRetard = arrivages.length > 0 && (maintenant - dernierPoids) > SEUIL_3J_MS;
+              if (alerteMesuresFermee || (!tempEnRetard && !poidsEnRetard)) return null;
+              const jours = (at: number) => Math.floor((maintenant - at) / 86400000);
+              return (
+                <div style={{ position: "fixed", inset: 0, zIndex: 3800, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setAlerteMesuresFermee(true)}>
+                  <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 440, boxShadow: "0 24px 60px rgba(0,0,0,0.3)", padding: "22px 22px 18px" }}>
+                    <p style={{ margin: "0 0 12px", fontWeight: 800, fontSize: 16, color: "#991b1b", fontFamily: "'Syne', sans-serif" }}>⚠️ Contrôles qualité en retard</p>
+                    {tempEnRetard && (
+                      <p style={{ margin: "0 0 8px", fontSize: 13, color: "#374151" }}>
+                        🌡️ Aucune température relevée depuis {dernierTemp ? `${jours(dernierTemp)} jours (dernière le ${new Date(dernierTemp).toLocaleDateString("fr-FR")})` : "le début"}.
+                      </p>
+                    )}
+                    {poidsEnRetard && (
+                      <p style={{ margin: "0 0 8px", fontSize: 13, color: "#374151" }}>
+                        ⚖️ Aucun poids de barquette relevé depuis {dernierPoids ? `${jours(dernierPoids)} jours (dernier le ${new Date(dernierPoids).toLocaleDateString("fr-FR")})` : "le début"}.
+                      </p>
+                    )}
+                    <p style={{ margin: "10px 0 16px", fontSize: 12, color: "#9ca3af" }}>Pense à relever ces contrôles sur les prochains arrivages.</p>
+                    <button onClick={() => setAlerteMesuresFermee(true)} style={{ width: "100%", padding: "11px", background: "#1a2e1a", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                      J'ai compris →
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
             {doublonsGroupes && (
               <div style={{ position: "fixed", inset: 0, zIndex: 3500, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
                 <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 560, maxHeight: "88vh", boxShadow: "0 24px 60px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", overflow: "hidden" }}>

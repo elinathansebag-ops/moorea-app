@@ -353,12 +353,15 @@ const LIEU_LABEL_IFCO: Record<string, string> = {
   envoi: "Envoi client", client: "Retour client", transit: "Transit",
 };
 
+// 02/09/2026 — Couleurs revues (même correction que PreparationModule.tsx) : "reçu" (vraiment
+// terminé) était en gris neutre, moins visible que "parti" (encore en cours) qui lui était en
+// vert — ça inversait visuellement ce qui est fini et ce qui ne l'est pas.
 function StatutBadge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<Demande["statut"], { bg: string; color: string; label: string }> = {
     "en attente": { bg: "#fffbeb", color: "#b45309", label: "🕐 En attente entrepôt" },
     "prêt": { bg: "#eff6ff", color: "#1d4ed8", label: "📦 Prêt — attend transporteur" },
-    "parti": { bg: "#eafaf1", color: "#1a6b3a", label: "🚚 Parti chez le reconditionneur" },
-    "reçu": { bg: "#f3f4f6", color: "#374151", label: "✅ Reçu — reconditionné" },
+    "parti": { bg: "#eef2ff", color: "#4338ca", label: "🚚 Parti chez le reconditionneur" },
+    "reçu": { bg: "#dcfce7", color: "#15803d", label: "✅ Reçu — terminé" },
     "annulé": { bg: "#fef2f2", color: "#b91c1c", label: "✕ Annulé" },
   };
   const s = map[statut];

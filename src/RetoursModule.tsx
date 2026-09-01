@@ -442,6 +442,17 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "entrepot_rattache", client: d.client, bl: d.bl, transporteur: d.transporteur || "", dateLiv: d.dateLiv || "", commercial: d.commercial || "", comment: d.comment || modalData.comment || "", products: modalData.products || [], statut: "nouveau", commentPrep: "" };
     const r = await push(ref(db, "retours"), fiche);
     await update(ref(db, "retours_entrepot/" + modalData.id), { rattache: true, clientRattache: d.client, blRattache: d.bl });
+  }
+
+  // 02/09/2026 — Demande d'Elinathan : certaines fiches "à rattacher" n'ont en fait aucune
+  // commande à rattacher (client non identifiable, retour isolé...) et restaient coincées dans
+  // cet onglet indéfiniment — seul choix avant : les rattacher "en dur" à une commande (via
+  // submitRattach, qui crée une vraie fiche retours/ liée à un client/BL) ou les jeter à la
+  // corbeille (perte de traçabilité). Ce bouton archive la fiche telle quelle, sans créer de
+  // fiche "retours" liée à aucun client/BL — elle sort juste du compteur "À rattacher".
+  async function archiverSansRattachement(id: string) {
+    if (!window.confirm("Archiver cette fiche sans la rattacher à une commande ?")) return;
+    await update(ref(db, "retours_entrepot/" + id), { rattache: true, archiveSansCommande: true, archiveDate: new Date().toLocaleDateString("fr-FR") });
     setModal(""); setModalData(null);
   }
 
@@ -799,8 +810,9 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                     );
                   })}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button style={BTN("#fef3c7", "#b45309")} onClick={() => { setModal("rattach"); setModalData(r); }}>🔗 Rattacher à une commande</button>
+                  <button style={BTN("#e0e7ff", "#4338ca")} onClick={() => archiverSansRattachement(r.id!)} title="Classer cette fiche sans la lier à une commande">📦 Archiver</button>
                   <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "8px 12px" }} onClick={() => { setModal("delete"); setModalData({ type: "ent", id: r.id, numero: r.numero }); }}>🗑</button>
                 </div>
               </div>
