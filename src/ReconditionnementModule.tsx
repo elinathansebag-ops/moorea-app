@@ -642,7 +642,7 @@ export function ReconditionnementModule({ onClose, userName }: {
   onClose: () => void;
   userName?: string;
 }) {
-  const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "configuration">("en_cours");
+  const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "suivi_ifco" | "configuration">("en_cours");
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -740,6 +740,11 @@ export function ReconditionnementModule({ onClose, userName }: {
   // chez Moorea) — alimenté automatiquement par creerDemande() et, pour les retours, par la
   // validation de l'arrivage correspondant dans App.tsx (handleAgrement).
   const [mouvements, setMouvements] = useState<Mouvement[]>([]);
+  // Journal complet ifco_stock/movements (voir onglet "📊 Suivi IFCO") — trié chronologiquement
+  // (ts croissant) pour pouvoir rejouer les mouvements dans l'ordre et reconstituer le stock
+  // théorique jour par jour.
+  const [ifcoStockMovements, setIfcoStockMovements] = useState<any[]>([]);
+  const [suiviIfcoMoisChoisi, setSuiviIfcoMoisChoisi] = useState<string>("");
 
   // 28/08/2026 — Fichiers issus du découpage d'un PDF Geslot multi-pages (voir
   // importerPdfMultiPages), en attente d'être rattachés à une demande via "Utiliser" dans le
@@ -774,11 +779,22 @@ export function ReconditionnementModule({ onClose, userName }: {
       const d = snap.val();
       setMouvements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
+    // Journal complet des mouvements de caisses IFCO (tracker partagé avec le module
+    // Prestataires) — sert à reconstituer, jour par jour, le stock théorique après chaque
+    // mouvement (voir l'onglet "📊 Suivi IFCO" plus bas). Contrairement à
+    // reconditionnement_stock_mouvements (qui ne garde que les envois/retours liés à une
+    // demande), celui-ci contient TOUT ce qui touche au stock IFCO (commandes reçues,
+    // transferts manuels, vidages de caisses pleines...), donc c'est la seule source fiable
+    // pour reconstituer un stock théorique exact à une date donnée.
+    const u9 = onValue(ref(db, "ifco_stock/movements"), snap => {
+      const d = snap.val();
+      setIfcoStockMovements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.ts || 0) - (b.ts || 0)) : []);
+    });
     const u8 = onValue(ref(db, "reconditionnement_pdfs_en_attente"), snap => {
       const d = snap.val();
       setPdfsEnAttente(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.ts || 0) - (b.ts || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
@@ -1812,6 +1828,108 @@ export function ReconditionnementModule({ onClose, userName }: {
     });
   };
 
+  // ══════════════════════════════════════════════════════════════
+  // ── SUIVI IFCO — détail de tous les mouvements + stock reconstitué jour par jour ──
+  // (demande d'Elinathan, 01/09/2026 : "chaque caisse coûte cher, on n'a pas le droit à
+  // l'erreur" — donc un suivi très détaillé, pas juste des totaux globaux.)
+  // ══════════════════════════════════════════════════════════════
+  const jourKeyFromTs = (ts: number): string => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const jourKeyToFr = (cle: string): string => {
+    const [aaaa, mm, dd] = cle.split("-");
+    return `${dd}/${mm}/${aaaa}`;
+  };
+  const moisDeCle = (cle: string): string => {
+    const [aaaa, mm] = cle.split("-");
+    return `${mm}/${aaaa}`;
+  };
+
+  // Table de correspondance demande ↔ numéro/article, pour rattacher chaque mouvement IFCO à sa
+  // demande d'origine dans le tableau détaillé (reconditionnement_demande_id est présent sur les
+  // mouvements de retour depuis le début, mais seulement depuis peu sur les envois — un mouvement
+  // sans id retrouvé reste affiché quand même, juste sans le lien vers la demande).
+  const demandeParId: Record<string, Demande> = {};
+  demandes.forEach(d => { demandeParId[d.id] = d; });
+
+  // Ne garder que les mouvements liés au reconditionnement (envoi Moorea→NLT et retour NLT→Pleines
+  // taggés "Reconditionnement —" dans leur raison, voir pousserEnvoiPaletteIfco ci-dessus et le
+  // retour côté App.tsx) — le reste (commandes IFCO reçues, transferts manuels, vidages...) n'est
+  // pas un mouvement de reconditionnement mais compte quand même dans le stock reconstitué plus bas.
+  const mouvementsRecondIfco = ifcoStockMovements.filter((m: any) => String(m.raison || "").startsWith("Reconditionnement"));
+
+  // ── Reconstitution du stock (Moorea / NLT / Pleines) fin de journée, en rejouant TOUS les
+  // mouvements ifco_stock/movements dans l'ordre chronologique (déjà trié ts croissant à la
+  // lecture) — pas seulement ceux du reconditionnement, pour un stock théorique exact. ──
+  const stockParJour: Record<string, { moorea: number; nlt: number; pleines: number }> = {};
+  {
+    let moorea = 0, nlt = 0, pleines = 0;
+    const buckets: Record<string, number> = {};
+    ifcoStockMovements.forEach((m: any) => {
+      const caisses = m.caisses || 0;
+      if (m.from === "moorea") moorea -= caisses; else if (m.from === "nlt") nlt -= caisses; else if (m.from === "pleines") pleines -= caisses;
+      if (m.to === "moorea") moorea += caisses; else if (m.to === "nlt") nlt += caisses; else if (m.to === "pleines") pleines += caisses;
+      const cle = jourKeyFromTs(m.ts || 0);
+      stockParJour[cle] = { moorea, nlt, pleines };
+    });
+  }
+
+  // ── Envoyé / reçu par jour (mouvements de reconditionnement uniquement) + cumul "resté là-bas" ──
+  const envoyeParJour: Record<string, number> = {};
+  const recuParJour: Record<string, number> = {};
+  mouvementsRecondIfco.forEach((m: any) => {
+    const cle = jourKeyFromTs(m.ts || 0);
+    if (m.from === "moorea" && m.to === "nlt") envoyeParJour[cle] = (envoyeParJour[cle] || 0) + (m.caisses || 0);
+    else if (m.from === "nlt" && m.to === "pleines") recuParJour[cle] = (recuParJour[cle] || 0) + (m.caisses || 0);
+  });
+
+  // ── Production reçue par jour (uniquement dépôt NLT, seul concerné par les caisses IFCO —
+  // Andès reconditionne dans des cartons BABY BLANC, pas des caisses IFCO). ──
+  const prodParJour: Record<string, number> = {};
+  demandes.forEach(d => {
+    if (d.depot !== "nlt" || !d.retour?.date) return;
+    const date = parseFrDate(d.retour.date);
+    if (!date) return;
+    const cle = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const qte = d.retour.qteConditionnementRecue ?? d.retour.nbColisRecus ?? 0;
+    prodParJour[cle] = (prodParJour[cle] || 0) + qte;
+  });
+
+  // ── Table finale, un jour = une ligne, toutes sources fusionnées + cumul "resté là-bas" ──
+  const tousLesJoursCles = Array.from(new Set([
+    ...Object.keys(stockParJour), ...Object.keys(envoyeParJour), ...Object.keys(recuParJour), ...Object.keys(prodParJour),
+  ])).sort();
+  let cumulResteLaBas = 0;
+  const dernierStockConnu = { moorea: 0, nlt: 0, pleines: 0 };
+  const suiviIfcoParJour = tousLesJoursCles.map(cle => {
+    cumulResteLaBas += (envoyeParJour[cle] || 0) - (recuParJour[cle] || 0);
+    if (stockParJour[cle]) Object.assign(dernierStockConnu, stockParJour[cle]);
+    return {
+      cle,
+      dateFr: jourKeyToFr(cle),
+      envoye: envoyeParJour[cle] || 0,
+      recu: recuParJour[cle] || 0,
+      resteLaBasCumule: cumulResteLaBas,
+      prod: prodParJour[cle] || 0,
+      stockMoorea: dernierStockConnu.moorea,
+      stockNlt: dernierStockConnu.nlt,
+      stockPleines: dernierStockConnu.pleines,
+    };
+  }).reverse(); // le plus récent en premier
+
+  const moisDisponiblesSuiviIfco = Array.from(new Set(tousLesJoursCles.map(moisDeCle))).sort().reverse();
+  const suiviIfcoMoisEffectif = suiviIfcoMoisChoisi || moisDisponiblesSuiviIfco[0] || "";
+  const suiviIfcoJoursAffiches = suiviIfcoParJour.filter(j => moisDeCle(j.cle) === suiviIfcoMoisEffectif);
+
+  // ── Détail mouvement par mouvement (envois + retours de reconditionnement), le plus récent en
+  // premier, avec le lien vers la demande d'origine quand on le retrouve. ──
+  const suiviIfcoMouvementsDetail = [...mouvementsRecondIfco].reverse().map((m: any) => {
+    const d = m.reconditionnement_demande_id ? demandeParId[m.reconditionnement_demande_id] : null;
+    const sens: "envoye" | "recu" = m.from === "moorea" ? "envoye" : "recu";
+    return { ...m, demande: d, sens };
+  });
+
   return (
     <div id="recond-root" style={{ minHeight: "100vh", background: COLORS.gray100, overflowX: "hidden", maxWidth: "100vw" }}>
       <style>{styles}</style>
@@ -1847,6 +1965,7 @@ export function ReconditionnementModule({ onClose, userName }: {
             { key: "en_cours", label: "📋 En cours" },
             { key: "nouvelle", label: "➕ Nouvelle demande" },
             { key: "historique", label: "🕘 Historique" },
+            { key: "suivi_ifco", label: "📊 Suivi IFCO" },
             { key: "configuration", label: "⚙️ Configuration" },
           ].map(t => (
             <button
@@ -2938,6 +3057,93 @@ export function ReconditionnementModule({ onClose, userName }: {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── SUIVI IFCO — détail complet de tous les mouvements + stock reconstitué jour par
+            jour (demande d'Elinathan : "chaque caisse coûte cher, pas le droit à l'erreur"). ── */}
+        {activeTab === "suivi_ifco" && (
+          <div style={{ display: "grid", gap: 20 }}>
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>📅 Stock IFCO jour par jour</h3>
+                <select
+                  value={suiviIfcoMoisEffectif}
+                  onChange={e => setSuiviIfcoMoisChoisi(e.target.value)}
+                  style={{ padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}
+                >
+                  {moisDisponiblesSuiviIfco.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <p style={{ margin: "0 0 16px", fontSize: 12, color: COLORS.gray400 }}>
+                "Envoyé"/"Reçu" = caisses IFCO liées à un reconditionnement ce jour-là. "Resté là-bas (cumulé)" = total, depuis le début, des caisses envoyées à NLT jamais revenues pleines (elles y sont toujours, vides). "Stock (fin de journée)" reconstitue le stock réel après le dernier mouvement du jour, tous mouvements confondus.
+              </p>
+              {suiviIfcoJoursAffiches.length === 0 ? (
+                <div style={{ textAlign: "center", color: COLORS.gray400, padding: "24px 0", fontSize: 13 }}>Aucun mouvement IFCO ce mois-ci.</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ background: COLORS.gray100, borderBottom: `2px solid ${COLORS.gray200}` }}>
+                      {["Date", "Envoyé", "Reçu", "Resté là-bas (cumulé)", "Prod. NLT reçue (filets)", "Stock Moorea", "Stock NLT", "Stock Pleines"].map(h => (
+                        <th key={h} style={{ padding: "10px 8px", textAlign: "left", color: COLORS.gray700, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {suiviIfcoJoursAffiches.map(j => (
+                        <tr key={j.cle} style={{ borderBottom: `1px solid ${COLORS.gray100}` }}>
+                          <td style={{ padding: "8px", fontWeight: 700, color: COLORS.gray700 }}>{j.dateFr}</td>
+                          <td style={{ padding: "8px", textAlign: "center", color: j.envoye > 0 ? "#b45309" : COLORS.gray400 }}>{j.envoye > 0 ? `−${j.envoye}` : "—"}</td>
+                          <td style={{ padding: "8px", textAlign: "center", color: j.recu > 0 ? COLORS.secondary : COLORS.gray400, fontWeight: 700 }}>{j.recu > 0 ? `+${j.recu}` : "—"}</td>
+                          <td style={{ padding: "8px", textAlign: "center", fontWeight: 700, color: j.resteLaBasCumule > 0 ? "#b45309" : COLORS.gray600 }}>{j.resteLaBasCumule}</td>
+                          <td style={{ padding: "8px", textAlign: "center", color: COLORS.gray700 }}>{j.prod > 0 ? j.prod : "—"}</td>
+                          <td style={{ padding: "8px", textAlign: "center" }}>{j.stockMoorea}</td>
+                          <td style={{ padding: "8px", textAlign: "center" }}>{j.stockNlt}</td>
+                          <td style={{ padding: "8px", textAlign: "center" }}>{j.stockPleines}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>🔎 Détail de chaque mouvement</h3>
+              <p style={{ margin: "0 0 16px", fontSize: 12, color: COLORS.gray400 }}>
+                Chaque envoi de caisses vides vers un reconditionneur et chaque retour de caisses pleines, un par un — le plus récent en premier.
+              </p>
+              {suiviIfcoMouvementsDetail.length === 0 ? (
+                <div style={{ textAlign: "center", color: COLORS.gray400, padding: "24px 0", fontSize: 13 }}>Aucun mouvement IFCO enregistré.</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ background: COLORS.gray100, borderBottom: `2px solid ${COLORS.gray200}` }}>
+                      {["Date", "Sens", "Quantité", "Demande", "Dépôt", "Raison"].map(h => (
+                        <th key={h} style={{ padding: "10px 8px", textAlign: "left", color: COLORS.gray700, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {suiviIfcoMouvementsDetail.map((m: any) => (
+                        <tr key={m.id} style={{ borderBottom: `1px solid ${COLORS.gray100}` }}>
+                          <td style={{ padding: "8px", color: COLORS.gray600, whiteSpace: "nowrap" }}>{m.date}</td>
+                          <td style={{ padding: "8px" }}>
+                            <span style={{ background: m.sens === "envoye" ? COLORS.amberLight : COLORS.secondaryLight, color: m.sens === "envoye" ? "#b45309" : COLORS.secondary, borderRadius: 8, padding: "3px 8px", fontSize: 11, fontWeight: 700, display: "inline-block" }}>
+                              {m.sens === "envoye" ? "→ Envoyé à NLT" : "← Reçu plein"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "8px", textAlign: "center", fontWeight: 800, color: m.sens === "envoye" ? "#b45309" : COLORS.secondary }}>
+                            {m.sens === "envoye" ? "−" : "+"}{m.caisses}
+                          </td>
+                          <td style={{ padding: "8px", color: COLORS.gray700, fontWeight: 700 }}>{m.demande?.numero || (m.reconditionnement_demande_id ? "—" : "(non rattaché)")}</td>
+                          <td style={{ padding: "8px", color: COLORS.gray600 }}>{m.demande?.articleFini || "—"}</td>
+                          <td style={{ padding: "8px", color: COLORS.gray400, fontSize: 11 }}>{m.raison}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
