@@ -749,7 +749,12 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                           </div>
                                         )}
                                         {(d.statut === "parti" || d.statut === "reçu") && d.departDate && (
-                                          <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>Parti le {d.departDate}</div>
+                                          <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                                            Parti le {d.departDate}
+                                            {d.nbPalettesDepart
+                                              ? ` — ${d.nbPalettesDepart.grandes} grande(s) + ${d.nbPalettesDepart.demi} demi-palette(s) déclarée(s)`
+                                              : " — transport assuré par Moorea, pas de palette à indiquer"}
+                                          </div>
                                         )}
                                         {d.statut === "reçu" && d.retour && (
                                           <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
