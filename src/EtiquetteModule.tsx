@@ -64,9 +64,15 @@ type BlocTexte = {
   // (demande d'Elinathan : pouvoir élargir la cellule). Optionnel pour rester compatible avec
   // les étiquettes déjà enregistrées (LARGEUR_PCT_DEFAUT ci-dessous si absent).
   largeurPct?: number;
+  // 01/09/2026 — Interligne du bloc (multiplicateur, ex: 1.2 = 120% de la taille de police),
+  // utile quand le texte passe sur plusieurs lignes (valeur variable longue) — avant, fixé à
+  // 1.2 partout sans réglage possible. Optionnel pour rester compatible avec les étiquettes
+  // déjà enregistrées (INTERLIGNE_DEFAUT ci-dessous si absent).
+  interligne?: number;
 };
 
 const LARGEUR_PCT_DEFAUT = 92;
+const INTERLIGNE_DEFAUT = 1.2;
 
 const POLICES = [
   { label: "Arial", valeur: "Arial, Helvetica, sans-serif" },
@@ -503,7 +509,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     // "left" seul (pas de "right"), le navigateur calcule sinon la largeur de la zone d'après
     // la distance jusqu'au bord droit de l'étiquette, ce qui plafonne la zone bien avant le
     // pourcentage réglé par l'utilisateur et rend le réglage "Largeur" inopérant.
-    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};font-family:${b.police || POLICE_DEFAUT};line-height:1.2;white-space:pre-wrap;width:${b.largeurPct ?? LARGEUR_PCT_DEFAUT}%;">${texte}</div>`;
+    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};font-family:${b.police || POLICE_DEFAUT};line-height:${b.interligne ?? INTERLIGNE_DEFAUT};white-space:pre-wrap;width:${b.largeurPct ?? LARGEUR_PCT_DEFAUT}%;">${texte}</div>`;
   }
 
   function genererHtmlBlocs(blocsAImprimer: BlocTexte[]) {
@@ -918,6 +924,20 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     <input type="number" min={10} max={100} value={b.largeurPct ?? LARGEUR_PCT_DEFAUT} onChange={(e) => modifierBloc(b.id, { largeurPct: parseInt(e.target.value) || LARGEUR_PCT_DEFAUT })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
                     <span style={{ fontSize: 10, color: COLORS.gray400 }}>%</span>
                   </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color: COLORS.gray600 }}>Interligne</span>
+                    <input
+                      type="range"
+                      min={0.8}
+                      max={2}
+                      step={0.05}
+                      value={b.interligne ?? INTERLIGNE_DEFAUT}
+                      onChange={(e) => modifierBloc(b.id, { interligne: parseFloat(e.target.value) || INTERLIGNE_DEFAUT })}
+                      style={{ width: 70, accentColor: COLORS.primary }}
+                      title="Espace entre les lignes quand le texte passe sur plusieurs lignes"
+                    />
+                    <input type="number" min={0.8} max={2} step={0.05} value={b.interligne ?? INTERLIGNE_DEFAUT} onChange={(e) => modifierBloc(b.id, { interligne: parseFloat(e.target.value) || INTERLIGNE_DEFAUT })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                  </div>
                   <div style={{ display: "flex", gap: 2, background: COLORS.gray100, borderRadius: 6, padding: 2 }}>
                     {(["left", "center", "right"] as Align[]).map((a) => (
                       <button key={a} onClick={() => modifierBloc(b.id, { align: a })} title={a} style={{ width: 26, height: 24, borderRadius: 5, border: "none", cursor: "pointer", background: b.align === a ? COLORS.primary : "transparent", color: b.align === a ? "#fff" : COLORS.gray600, fontSize: 11, fontWeight: 700 }}>
@@ -1003,6 +1023,20 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     />
                     <input type="number" min={10} max={100} value={blocVariable.largeurPct ?? LARGEUR_PCT_DEFAUT} onChange={(e) => modifierBloc(blocVariable.id, { largeurPct: parseInt(e.target.value) || LARGEUR_PCT_DEFAUT })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
                     <span style={{ fontSize: 10, color: COLORS.gray400 }}>%</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color: COLORS.gray600 }}>Interligne</span>
+                    <input
+                      type="range"
+                      min={0.8}
+                      max={2}
+                      step={0.05}
+                      value={blocVariable.interligne ?? INTERLIGNE_DEFAUT}
+                      onChange={(e) => modifierBloc(blocVariable.id, { interligne: parseFloat(e.target.value) || INTERLIGNE_DEFAUT })}
+                      style={{ width: 70, accentColor: COLORS.variable }}
+                      title="Espace entre les lignes quand le texte passe sur plusieurs lignes"
+                    />
+                    <input type="number" min={0.8} max={2} step={0.05} value={blocVariable.interligne ?? INTERLIGNE_DEFAUT} onChange={(e) => modifierBloc(blocVariable.id, { interligne: parseFloat(e.target.value) || INTERLIGNE_DEFAUT })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
                   </div>
                   <div style={{ display: "flex", gap: 2, background: COLORS.gray100, borderRadius: 6, padding: 2 }}>
                     {(["left", "center", "right"] as Align[]).map((a) => (
@@ -1154,7 +1188,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                         fontWeight: b.gras ? 900 : 400,
                         fontStyle: b.italique ? "italic" : "normal",
                         fontFamily: b.police || POLICE_DEFAUT,
-                        lineHeight: 1.2,
+                        lineHeight: b.interligne ?? INTERLIGNE_DEFAUT,
                         whiteSpace: "pre-wrap",
                         // width (pas maxWidth) : avec "left" seul et pas de "right", un simple
                         // max-width est plafonné par la distance jusqu'au bord droit de
