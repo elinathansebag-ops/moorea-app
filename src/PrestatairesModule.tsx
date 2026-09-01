@@ -297,6 +297,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [stockMovements, setStockMovements] = useState<any[]>([]);
   // Stock carton "BABY BLANC" livré chez Andes (suivi manuel, distinct du stock IFCO)
   const [stockCartonAndes, setStockCartonAndes] = useState(0);
+  // 02/09/2026 — Petit surlignage temporaire quand on arrive sur la section "Ajuster les
+  // stocks" via le raccourci "⚖️ Stock IFCO", pour bien montrer où on a atterri.
+  const [surligneStockIfco, setSurligneStockIfco] = useState(false);
   const [ajustStockMoorea, setAjustStockMoorea] = useState("");
   const [ajustStockNlt, setAjustStockNlt] = useState("");
   const [ajustStockAndes, setAjustStockAndes] = useState("");
@@ -2956,9 +2959,22 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             </div>
 
             {/* BOUTONS ACTIONS */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 24 }}>
               <button onClick={() => setShowPalettesForm(true)} style={{ padding: "12px", borderRadius: 10, border: "2px solid #27ae60", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#27ae60" }}>⚡ Déclarer</button>
               <button onClick={() => setShowEntreeForm(true)} style={{ padding: "12px", borderRadius: 10, border: "2px solid #f59e0b", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>📦 Entrée IFCO</button>
+              {/* 02/09/2026 — Demande d'Elinathan : raccourci direct vers la section "Ajuster les
+                  stocks" plus bas dans cet onglet (voir #stock-ifco-ajustement) — elle ne
+                  voulait pas avoir à chercher/scroller pour la trouver. */}
+              <button
+                onClick={() => {
+                  document.getElementById("stock-ifco-ajustement")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  setSurligneStockIfco(true);
+                  setTimeout(() => setSurligneStockIfco(false), 2000);
+                }}
+                style={{ padding: "12px", borderRadius: 10, border: "2px solid #3b82f6", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#3b82f6" }}
+              >
+                ⚖️ Stock IFCO
+              </button>
             </div>
 
             {/* Le calendrier unifié (cartons + palettes IFCO + déclarations) est désormais sur le Dashboard */}
@@ -2966,13 +2982,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             {/* 02/09/2026 — Demande d'Elinathan : déplacé depuis l'onglet Configuration (elle le
                 loupait tout le temps là-bas) — renommé "IFCO" pour bien le distinguer maintenant
                 qu'il est ici, dans l'onglet Déclarer IFCO où on tombe naturellement dessus. */}
-            <div style={{
+            <div id="stock-ifco-ajustement" style={{
               background: "white",
               borderRadius: "12px",
               overflow: "hidden",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              boxShadow: surligneStockIfco ? "0 0 0 3px #3b82f6" : "0 2px 8px rgba(0,0,0,0.05)",
               border: `1px solid ${COLORS.gray200}`,
-              marginBottom: 24
+              marginBottom: 24,
+              transition: "box-shadow 0.3s"
             }}>
               <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>🏭 IFCO — Ajuster les stocks</h3>
