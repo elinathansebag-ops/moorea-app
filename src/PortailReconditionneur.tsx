@@ -311,6 +311,15 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       running = avant;
     }
   }
+  // 01/09/2026 — Caisses IFCO parties de NLT (statut "parti") mais pas encore reçues/agréées
+  // par Moorea : tant que l'arrivage retour n'a pas été pointé et validé conforme côté Moorea
+  // (voir handleAgrement dans App.tsx), le stock NLT affiché ci-dessus ne bouge pas, alors que
+  // ces caisses sont déjà physiquement sur la route. Affiché ici pour que le presta comprenne
+  // pourquoi son stock ne baisse pas tout de suite quand il déclare un départ (demande
+  // d'Elinathan, après avoir constaté que le stock NLT ne baissait pas au départ).
+  const demandesEnAttenteAgreage = depot === "nlt" ? demandes.filter(d => d.statut === "parti") : [];
+  const caissesEnAttenteAgreage = demandesEnAttenteAgreage.reduce((s, d) => s + (d.caissesIfcoEnvoyees || 0), 0);
+
   // Un jour peut avoir un mouvement de caisses (retour confirmé) sans avoir de demande CRÉÉE ce
   // jour-là (ex : demande créée lundi, presta confirme "Repartie" le mercredi) — on fusionne donc
   // les jours des demandes et ceux du grand livre caisses pour ne rien perdre à l'affichage.
@@ -519,6 +528,27 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
             {reajustements.filter(r => r.statut !== "en attente").slice(0, 3).map(r => (
               <div key={r.id} style={{ fontSize: 11.5, color: r.statut === "validé" ? "#15803d" : "#b91c1c", marginTop: 8 }}>
                 {r.statut === "validé" ? "✅" : "❌"} {r.statut === "validé" ? "Validé" : "Refusé"} — proposition {r.quantiteProposee} le {r.date}
+              </div>
+            ))}
+          </Card>
+        )}
+
+        {depot === "nlt" && demandesEnAttenteAgreage.length > 0 && (
+          <Card style={{ background: "#fffbeb", borderColor: "#fde68a" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 6 }}>
+              🚚 Caisses en attente d'agréage chez Moorea
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.ink, marginBottom: 6 }}>
+              {caissesEnAttenteAgreage} caisse{caissesEnAttenteAgreage > 1 ? "s" : ""}
+            </div>
+            <div style={{ fontSize: 11.5, color: "#92400e", lineHeight: 1.4 }}>
+              {demandesEnAttenteAgreage.length} production{demandesEnAttenteAgreage.length > 1 ? "s" : ""} déjà partie{demandesEnAttenteAgreage.length > 1 ? "s" : ""}, pas encore reçue{demandesEnAttenteAgreage.length > 1 ? "s" : ""} par Moorea — elles restent comptées dans votre stock ci-dessus tant que l'arrivage n'est pas pointé, et seront déduites automatiquement dès qu'il sera déclaré conforme à l'agréage.
+            </div>
+            {demandesEnAttenteAgreage.map(d => (
+              <div key={d.id} style={{ fontSize: 11.5, color: COLORS.ink, marginTop: 8, paddingTop: 8, borderTop: "1px solid #fde68a" }}>
+                <strong>{d.numero || d.id}</strong> — {d.articleFini || d.articleVrac || "—"}
+                {d.caissesIfcoEnvoyees ? ` · ${d.caissesIfcoEnvoyees} caisses` : ""}
+                {d.departDate ? ` · parti le ${d.departDate}` : ""}
               </div>
             ))}
           </Card>
