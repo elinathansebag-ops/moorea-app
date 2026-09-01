@@ -155,6 +155,14 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const [retourQte, setRetourQte] = useState<string>(arrivage.qteConditionnementAttendue != null ? String(arrivage.qteConditionnementAttendue) : "");
   const [retourGrandes, setRetourGrandes] = useState<string>("");
   const [retourDemi, setRetourDemi] = useState<string>("");
+  // 01/09/2026 — Elinathan : si une demande de reconditionnement part en caisses IFCO
+  // (retourEnIfco), elle revient FORCÉMENT en caisses IFCO — ce n'est jamais optionnel. Le champ
+  // reste néanmoins toujours saisi à la main ici (pas de pré-remplissage automatique — demande
+  // explicite d'Elinathan : ce chiffre n'a rien à faire dans Arrivage tant qu'il n'est pas
+  // pointé physiquement), mais la validation reste bloquante s'il est laissé vide (voir
+  // handleValider ci-dessous) : avant, un champ vide passait la validation en silence, et on ne
+  // le découvrait qu'après coup avec l'avertissement "aucune caisse IFCO pleine saisie au
+  // retour" — trop tard, l'info réelle du retour est perdue.
   const [retourCaissesIfco, setRetourCaissesIfco] = useState<string>("");
   // Colis contenant les pièces écartées au tri (jamais 100% récupérable) — reviennent avec le
   // lot reconditionné, à détruire plutôt qu'à remettre en stock.
@@ -275,7 +283,10 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   // la qualité ne permettait pas de faire le dernier colis) — purement informatif : la caisse
   // manquante reste vide chez NLT (voir handleAgrement dans App.tsx, qui ne déduit du stock "nlt"
   // que le nombre de caisses PLEINES réellement saisi ici, jamais le nombre envoyé).
-  const caissesIfcoEnvoyees = arrivage.caissesIfcoEnvoyees;
+  // caissesIfcoEnvoyees à 0 n'est PAS une vraie référence (voir commentaire au-dessus, sur le
+  // useState de retourCaissesIfco) : on ne compare/affiche l'écart que si un nombre réellement
+  // envoyé (> 0) a été suivi pour cette demande.
+  const caissesIfcoEnvoyees = arrivage.caissesIfcoEnvoyees > 0 ? arrivage.caissesIfcoEnvoyees : null;
   const ecartCaissesIfco = caissesIfcoEnvoyees != null ? (parseInt(retourCaissesIfco) || 0) - caissesIfcoEnvoyees : 0;
   const hasEcartCaissesIfco = caissesIfcoEnvoyees != null && retourCaissesIfco !== "" && ecartCaissesIfco !== 0;
 
@@ -322,6 +333,14 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     // peuvent partir avant que React n'ait eu le temps de désactiver le bouton (disabled={saving}
     // ne suffit pas toujours) — ce qui déclenchait parfois une double impression d'étiquette.
     if (saving) return;
+    // Un retour en caisses IFCO (retourEnIfco) l'est FORCÉMENT — pas d'exception possible. Le
+    // champ est pré-rempli par défaut (voir useState ci-dessus), mais si l'agréeur l'a vidé à la
+    // main on bloque la validation plutôt que de laisser passer un retour dont on ne saura plus
+    // jamais combien de caisses IFCO pleines sont réellement revenues.
+    if (isRetourRecond && retourEnIfco && retourCaissesIfco.trim() === "") {
+      alert("Indique le nombre de caisses IFCO pleines reçues (0 si vraiment aucune) : ce retour part forcément en caisses IFCO puisqu'il l'était au départ.");
+      return;
+    }
     // 28/08/2026 — Simplifié à la demande d'Elinathan : plus d'ouverture automatique d'une
     // fenêtre WhatsApp par article validé (gênant quand on pointe plusieurs retours à la
     // suite) — tous les écarts du jour sont désormais regroupés dans UN SEUL message, envoyé
