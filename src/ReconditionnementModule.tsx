@@ -51,6 +51,17 @@ function formatCaisses(caisses: number): string {
   return `${palettes} palette${palettes > 1 ? "s" : ""} (${caisses || 0} caisses${reste > 0 ? `, dont ${reste} hors palette` : ""})`;
 }
 
+// Texte des petites cellules "IFCO Moorea / IFCO NLT" (en_cours + nouvelle demande) — une seule
+// ligne, une seule taille de police : le reste hors palette (ex: 142 caisses) compte tout autant
+// que le nombre de palettes entières, donc pas de gros chiffre + petite légende comme avant
+// (demande d'Elinathan, 01/09/2026).
+function celluleStockIfco(caisses: number): string {
+  const palettes = Math.floor((caisses || 0) / CAISSES_PAR_PALETTE);
+  const reste = (caisses || 0) % CAISSES_PAR_PALETTE;
+  if (palettes > 0) return `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisses` : ""}`;
+  return `${caisses || 0} caisses`;
+}
+
 type Depot = "nlt" | "andes";
 
 type NbPalettes = { grandes: number; demi: number };
@@ -93,6 +104,10 @@ type Demande = {
   // afficher ou non la case "Caisses IFCO pleines" (plus fiable qu'une simple détection du nom
   // à ce moment-là, puisque décidée une fois pour toutes à la création de la demande).
   retourEnIfco?: boolean;
+  // Masque cette demande des tableaux de facturation (Détail par transporteur / Détail
+  // production reconditionneur, onglet Historique) sans toucher à la demande elle-même ni au
+  // stock — juste un "ne pas facturer cette ligne", réversible (demande d'Elinathan, 01/09/2026).
+  excluFacturation?: boolean;
   // Commentaire libre (ex : EAN à utiliser) saisi à la création, transmis à la fois à l'entrepôt
   // Moorea et au reconditionneur — imprimé dans les deux zones du bon.
   commentaireEan?: string;
@@ -295,6 +310,29 @@ function normaliserLot(brut: string): string {
 function retourEnIfcoDemande(d: Demande): boolean {
   return d.depot === "nlt" && (d.retourEnIfco ?? /ifco/i.test(d.articleFini || ""));
 }
+
+// Classe UN mouvement ifco_stock/movements (quel que soit son origine) pour l'afficher dans
+// "Suivi IFCO → Détail de chaque mouvement" — commandes fournisseur validées à l'agréage,
+// déclarations clients, vidages manuels, ajustements de stock à la main, retours clients, et
+// bien sûr les envois/retours de reconditionnement (demande d'Elinathan, 01/09/2026 : TOUT
+// mouvement IFCO doit apparaître ici, pas seulement le reconditionnement).
+function classifierMouvementIfco(m: any): { icone: string; label: string; bg: string; color: string; signe: "+" | "-" | "→" } {
+  const raison = String(m.raison || "");
+  if (raison.startsWith("Reconditionnement — retour")) return { icone: "📥", label: "Retour caisses pleines (reconditionnement)", bg: COLORS.secondaryLight, color: COLORS.secondary, signe: "+" };
+  if (raison.startsWith("Reconditionnement — annulation")) return { icone: "↺", label: "Annulation retour (re-pointage)", bg: COLORS.amberLight, color: "#b45309", signe: "→" };
+  if (raison.startsWith("Reconditionnement")) return { icone: "📤", label: "Envoi vers reconditionneur", bg: COLORS.amberLight, color: "#b45309", signe: "-" };
+  if (m.from === "fournisseur") return { icone: "📦", label: "Réception commande IFCO (validée à l'agréage)", bg: COLORS.secondaryLight, color: COLORS.secondary, signe: "+" };
+  if (m.to === "envoi") return { icone: "📤", label: "Déclaration client (sortie)", bg: COLORS.dangerLight, color: COLORS.danger, signe: "-" };
+  if (m.from === "pleines" && m.to === "moorea") return { icone: "🔄", label: "Vidage manuel des caisses pleines", bg: COLORS.primaryLight, color: COLORS.primary, signe: "→" };
+  if (m.from === "client") return { icone: "↩️", label: "Retour client", bg: COLORS.secondaryLight, color: COLORS.secondary, signe: "+" };
+  return { icone: "✋", label: raison || "Ajustement manuel de stock", bg: COLORS.gray100, color: COLORS.gray700, signe: "→" };
+}
+
+// Libellés français des emplacements possibles pour from/to d'un mouvement ifco_stock/movements.
+const LIEU_LABEL_IFCO: Record<string, string> = {
+  moorea: "Moorea (vide)", nlt: "NLT", pleines: "Pleines", fournisseur: "Fournisseur IFCO",
+  envoi: "Envoi client", client: "Retour client", transit: "Transit",
+};
 
 function StatutBadge({ statut }: { statut: Demande["statut"] }) {
   const map: Record<Demande["statut"], { bg: string; color: string; label: string }> = {
@@ -651,6 +689,30 @@ export function ReconditionnementModule({ onClose, userName }: {
   // voir que les demandes conditionnées en caisses IFCO (NLT, retourEnIfcoDemande) ou en carton
   // baby blanc (le reste), plutôt que tout mélangé.
   const [filtreEmballageProduction, setFiltreEmballageProduction] = useState<"tous" | "caisse" | "carton">("tous");
+  // Accordéon par jour du tableau "Détail production reconditionneur" (onglet Historique) —
+  // même principe que semainesOuvertes : le jour le plus récent s'ouvre automatiquement, le
+  // reste reste fermé pour ne pas noyer la page.
+  const [joursProductionOuverts, setJoursProductionOuverts] = useState<Set<string> | null>(null);
+  // Affiche ou non, dans chaque tableau de facturation, les lignes qu'on a exclues
+  // (excluFacturation) — masquées par défaut pour ne garder que ce qui doit vraiment être
+  // facturé, mais toujours récupérables d'un clic.
+  const [afficherExcluesProduction, setAfficherExcluesProduction] = useState(false);
+  const [afficherExcluesTransporteur, setAfficherExcluesTransporteur] = useState(false);
+  // Édition en ligne des palettes parties/revenues, directement depuis le tableau "Détail par
+  // transporteur" (facturation) — évite de rouvrir toute la demande pour corriger un chiffre.
+  const [ligneTransporteurEnEdition, setLigneTransporteurEnEdition] = useState<string | null>(null);
+  const [editPalettesDepart, setEditPalettesDepart] = useState({ grandes: "", demi: "" });
+  const [editPalettesRetour, setEditPalettesRetour] = useState({ grandes: "", demi: "" });
+  const demarrerEditionPalettesTransporteur = (d: Demande) => {
+    setLigneTransporteurEnEdition(d.id);
+    setEditPalettesDepart({ grandes: String(d.nbPalettesDepart?.grandes || 0), demi: String(d.nbPalettesDepart?.demi || 0) });
+    setEditPalettesRetour({ grandes: String(d.retour?.nbPalettes?.grandes || 0), demi: String(d.retour?.nbPalettes?.demi || 0) });
+  };
+  const enregistrerEditionPalettesTransporteur = async (d: Demande) => {
+    await corrigerPalettesTransporteur(d.id, "depart", { grandes: parseInt(editPalettesDepart.grandes) || 0, demi: parseInt(editPalettesDepart.demi) || 0 });
+    await corrigerPalettesTransporteur(d.id, "retour", { grandes: parseInt(editPalettesRetour.grandes) || 0, demi: parseInt(editPalettesRetour.demi) || 0 });
+    setLigneTransporteurEnEdition(null);
+  };
   // Accordéon par semaine de l'historique des reconditionnements terminés (onglet Historique) —
   // null = pas encore initialisé (la semaine la plus récente s'ouvrira automatiquement).
   const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
@@ -1613,7 +1675,32 @@ export function ReconditionnementModule({ onClose, userName }: {
     if (transporteurEnEdition === id) annulerEditionTransporteur();
   }
 
-  const demandesFiltrees = demandes.filter(d => filtreStatut === "toutes" || d.statut === filtreStatut);
+  // Masque/démasque une ligne des tableaux de facturation (transporteur ou production) — ne
+  // touche ni au stock ni à la demande elle-même, juste un drapeau réversible.
+  async function toggleExclusionFacturation(id: string, exclure: boolean) {
+    await update(ref(db, `reconditionnement_demandes/${id}`), { excluFacturation: exclure });
+  }
+
+  // Corrige directement depuis le tableau "Détail par transporteur" le nombre de palettes
+  // parties et/ou revenues d'un trajet, sans repasser par toute la demande.
+  async function corrigerPalettesTransporteur(id: string, champ: "depart" | "retour", palettes: NbPalettes) {
+    if (champ === "depart") {
+      await update(ref(db, `reconditionnement_demandes/${id}`), { nbPalettesDepart: palettes });
+    } else {
+      const { get } = await import("firebase/database");
+      const snap = await get(ref(db, `reconditionnement_demandes/${id}/retour`));
+      const retourActuel = snap.val() || {};
+      await update(ref(db, `reconditionnement_demandes/${id}`), { retour: { ...retourActuel, nbPalettes: palettes } });
+    }
+  }
+
+  // La barre de filtre statut (Toutes/En attente/Prêt/Parti/Reçu/Annulé) n'a d'intérêt que s'il y
+  // a au moins une demande "en attente" d'être envoyée — sinon elle ne fait qu'encombrer l'écran
+  // "En cours" pour rien (demande d'Elinathan, 01/09/2026). Si elle est masquée, on ignore aussi
+  // le filtre choisi précédemment pour ne pas rester bloqué sur une vue vide.
+  const yADesDemandesEnAttenteIfco = demandes.some(d => d.statut === "en attente");
+  const filtreStatutEffectif = yADesDemandesEnAttenteIfco ? filtreStatut : "toutes";
+  const demandesFiltrees = demandes.filter(d => filtreStatutEffectif === "toutes" || d.statut === filtreStatutEffectif);
 
   // Tous les lots connus (arrivages, stock, historique reconditionnement), pour la saisie
   // assistée du champ Lot du formulaire.
@@ -1625,13 +1712,6 @@ export function ReconditionnementModule({ onClose, userName }: {
     ].filter(Boolean).map(String)
   ));
 
-  // ── Stats simples pour facturation (affichées dans l'onglet Historique) ──
-  const statsParDepot: Record<string, { qteConditionnementRecue: number; nbDemandes: number }> = { nlt: { qteConditionnementRecue: 0, nbDemandes: 0 }, andes: { qteConditionnementRecue: 0, nbDemandes: 0 } };
-  demandes.forEach(d => {
-    if (d.statut === "annulé") return;
-    statsParDepot[d.depot].nbDemandes += 1;
-    if (d.retour?.qteConditionnementRecue) statsParDepot[d.depot].qteConditionnementRecue += d.retour.qteConditionnementRecue;
-  });
 
   // Caisses IFCO déjà comptées dans le stock "NLT" (ifco_stock/levels.nlt) mais rattachées à une
   // demande pas encore "prête"/"partie" — le stock global les inclut dès la création de la
@@ -1784,6 +1864,7 @@ export function ReconditionnementModule({ onClose, userName }: {
   // retour, pour l'attribution des coûts de reconditionnement (facturation) plutôt qu'un simple
   // total agrégé.
   const productionReconditionneur = [...demandesTerminees]
+    .filter(d => afficherExcluesProduction || !d.excluFacturation)
     .filter(d => {
       if (filtreEmballageProduction === "tous") return true;
       const enIfco = retourEnIfcoDemande(d);
@@ -1809,13 +1890,28 @@ export function ReconditionnementModule({ onClose, userName }: {
     (a, b) => (parseFrDate(b)?.getTime() || 0) - (parseFrDate(a)?.getTime() || 0)
   );
 
+  // Le jour le plus récent s'ouvre automatiquement dès que les données arrivent ; ensuite
+  // l'utilisateur garde le contrôle (ouvrir/fermer librement) sans qu'on lui réimpose l'état.
+  useEffect(() => {
+    if (joursProductionOuverts === null && joursProductionTries.length > 0) {
+      setJoursProductionOuverts(new Set([joursProductionTries[0]]));
+    }
+  }, [joursProductionTries.length]);
+  const toggleJourProduction = (jourStr: string) => {
+    setJoursProductionOuverts(prev => {
+      const next = new Set(prev || []);
+      if (next.has(jourStr)) next.delete(jourStr); else next.add(jourStr);
+      return next;
+    });
+  };
+
   // ── Détail par transporteur, jour par jour : combien de palettes sont parties de Moorea vers
   // le reconditionneur, combien sont revenues, et le n° de lot de l'article concerné — pour
   // pouvoir attribuer les coûts de transport plus tard (une ligne par trajet, pas juste un
   // total). Reprend toutes les demandes non annulées (pas seulement celles déjà "reçu") : une
   // demande "prêt"/"parti" a bien un trajet aller à facturer même si le retour n'est pas encore
   // pointé.
-  const demandesAvecTransporteur = demandes.filter(d => d.statut !== "annulé" && d.transporteurNom);
+  const demandesAvecTransporteur = demandes.filter(d => d.statut !== "annulé" && d.transporteurNom && (afficherExcluesTransporteur || !d.excluFacturation));
   const parTransporteur: Record<string, Demande[]> = {};
   demandesAvecTransporteur.forEach(d => {
     const nom = d.transporteurNom!;
@@ -1869,19 +1965,24 @@ export function ReconditionnementModule({ onClose, userName }: {
   // pas un mouvement de reconditionnement mais compte quand même dans le stock reconstitué plus bas.
   const mouvementsRecondIfco = ifcoStockMovements.filter((m: any) => String(m.raison || "").startsWith("Reconditionnement"));
 
-  // ── Reconstitution du stock (Moorea / NLT / Pleines) fin de journée, en rejouant TOUS les
-  // mouvements ifco_stock/movements dans l'ordre chronologique (déjà trié ts croissant à la
-  // lecture) — pas seulement ceux du reconditionnement, pour un stock théorique exact. ──
+  // ── Reconstitution du stock (Moorea / NLT / Pleines), en rejouant TOUS les mouvements
+  // ifco_stock/movements dans l'ordre chronologique (déjà trié ts croissant à la lecture) — pas
+  // seulement ceux du reconditionnement, pour un stock théorique exact. On garde ici à la fois
+  // le solde fin de journée (stockParJour, pour le tableau récap) ET le solde juste après
+  // CHAQUE mouvement un par un (stockApresChaqueMouvement, même boucle — jamais recalculé deux
+  // fois séparément, pour être sûr que les deux tableaux restent cohérents entre eux ; demande
+  // d'Elinathan, 01/09/2026 : "chaque caisse coûte cher, pas le droit à l'erreur"). ──
   const stockParJour: Record<string, { moorea: number; nlt: number; pleines: number }> = {};
+  const stockApresChaqueMouvement: { moorea: number; nlt: number; pleines: number }[] = [];
   {
     let moorea = 0, nlt = 0, pleines = 0;
-    const buckets: Record<string, number> = {};
     ifcoStockMovements.forEach((m: any) => {
       const caisses = m.caisses || 0;
       if (m.from === "moorea") moorea -= caisses; else if (m.from === "nlt") nlt -= caisses; else if (m.from === "pleines") pleines -= caisses;
       if (m.to === "moorea") moorea += caisses; else if (m.to === "nlt") nlt += caisses; else if (m.to === "pleines") pleines += caisses;
       const cle = jourKeyFromTs(m.ts || 0);
       stockParJour[cle] = { moorea, nlt, pleines };
+      stockApresChaqueMouvement.push({ moorea, nlt, pleines });
     });
   }
 
@@ -1932,13 +2033,15 @@ export function ReconditionnementModule({ onClose, userName }: {
   const suiviIfcoMoisEffectif = suiviIfcoMoisChoisi || moisDisponiblesSuiviIfco[0] || "";
   const suiviIfcoJoursAffiches = suiviIfcoParJour.filter(j => moisDeCle(j.cle) === suiviIfcoMoisEffectif);
 
-  // ── Détail mouvement par mouvement (envois + retours de reconditionnement), le plus récent en
-  // premier, avec le lien vers la demande d'origine quand on le retrouve. ──
-  const suiviIfcoMouvementsDetail = [...mouvementsRecondIfco].reverse().map((m: any) => {
+  // ── Détail mouvement par mouvement : ABSOLUMENT TOUS les mouvements IFCO, pas seulement ceux
+  // du reconditionnement — commandes fournisseur validées à l'agréage, déclarations clients,
+  // vidages manuels, ajustements de stock rentrés à la main, retours clients, envois/retours
+  // de reconditionnement... avec le stock (Moorea / NLT / Pleines) juste après CE mouvement,
+  // ligne par ligne (demande d'Elinathan, 01/09/2026). Le plus récent en premier.
+  const suiviIfcoMouvementsDetail = ifcoStockMovements.map((m: any, i: number) => {
     const d = m.reconditionnement_demande_id ? demandeParId[m.reconditionnement_demande_id] : null;
-    const sens: "envoye" | "recu" = m.from === "moorea" ? "envoye" : "recu";
-    return { ...m, demande: d, sens };
-  });
+    return { ...m, demande: d, classif: classifierMouvementIfco(m), stockApres: stockApresChaqueMouvement[i] };
+  }).reverse();
 
   return (
     <div id="recond-root" style={{ minHeight: "100vh", background: COLORS.gray100, overflowX: "hidden", maxWidth: "100vw" }}>
@@ -2088,25 +2191,15 @@ export function ReconditionnementModule({ onClose, userName }: {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 8 }}>
               <div style={{ background: COLORS.secondaryLight, border: `1.5px solid #c8e8d4`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.secondary }}>IFCO Moorea</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.secondary }}>{Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) : stockIfco.moorea}</div>
-                <div style={{ fontSize: 9, color: COLORS.secondary, opacity: 0.75 }}>
-                  {Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 0
-                    ? `palette${Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockIfco.moorea % CAISSES_PAR_PALETTE > 0 ? ` + ${stockIfco.moorea % CAISSES_PAR_PALETTE} caisses` : ''}`
-                    : 'caisses'}
-                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.secondary }}>{celluleStockIfco(stockIfco.moorea)}</div>
               </div>
               <div style={{ background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary }}>IFCO NLT</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) : stockIfco.nlt}</div>
-                <div style={{ fontSize: 9, color: COLORS.primary, opacity: 0.75 }}>
-                  {Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 0
-                    ? `palette${Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockIfco.nlt % CAISSES_PAR_PALETTE > 0 ? ` + ${stockIfco.nlt % CAISSES_PAR_PALETTE} caisses` : ''}`
-                    : 'caisses'}
-                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.primary }}>{celluleStockIfco(stockIfco.nlt)}</div>
               </div>
               <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes} colis</div>
               </div>
             </div>
 
@@ -2171,22 +2264,25 @@ export function ReconditionnementModule({ onClose, userName }: {
               </button>
             </div>
 
-            {/* Filtre statut */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
-              {(["toutes", "en attente", "prêt", "parti", "reçu", "annulé"] as const).map(s => (
-                <button
-                  key={s}
-                  onClick={() => setFiltreStatut(s)}
-                  style={{
-                    padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${filtreStatut === s ? COLORS.primary : COLORS.gray200}`,
-                    background: filtreStatut === s ? COLORS.primaryLight : "#fff", color: filtreStatut === s ? COLORS.primary : COLORS.gray600,
-                    fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-                  }}
-                >
-                  {s === "toutes" ? "Toutes" : s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-              ))}
-            </div>
+            {/* Filtre statut — seulement s'il y a au moins une demande "en attente" d'être
+                envoyée, sinon il n'y a rien d'utile à filtrer (demande d'Elinathan, 01/09/2026). */}
+            {yADesDemandesEnAttenteIfco && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
+                {(["toutes", "en attente", "prêt", "parti", "reçu", "annulé"] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setFiltreStatut(s)}
+                    style={{
+                      padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${filtreStatutEffectif === s ? COLORS.primary : COLORS.gray200}`,
+                      background: filtreStatutEffectif === s ? COLORS.primaryLight : "#fff", color: filtreStatutEffectif === s ? COLORS.primary : COLORS.gray600,
+                      fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {s === "toutes" ? "Toutes" : s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {demandesFiltrees.length === 0 ? (
               <div style={{ textAlign: "center", color: "#aaa", padding: "40px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}` }}>
@@ -2430,25 +2526,15 @@ export function ReconditionnementModule({ onClose, userName }: {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 8 }}>
               <div style={{ background: COLORS.secondaryLight, border: `1.5px solid #c8e8d4`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.secondary }}>IFCO Moorea</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.secondary }}>{Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) : stockIfco.moorea}</div>
-                <div style={{ fontSize: 9, color: COLORS.secondary, opacity: 0.75 }}>
-                  {Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 0
-                    ? `palette${Math.floor(stockIfco.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockIfco.moorea % CAISSES_PAR_PALETTE > 0 ? ` + ${stockIfco.moorea % CAISSES_PAR_PALETTE} caisses` : ''}`
-                    : 'caisses'}
-                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.secondary }}>{celluleStockIfco(stockIfco.moorea)}</div>
               </div>
               <div style={{ background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary }}>IFCO NLT</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.primary }}>{Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) : stockIfco.nlt}</div>
-                <div style={{ fontSize: 9, color: COLORS.primary, opacity: 0.75 }}>
-                  {Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 0
-                    ? `palette${Math.floor(stockIfco.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockIfco.nlt % CAISSES_PAR_PALETTE > 0 ? ` + ${stockIfco.nlt % CAISSES_PAR_PALETTE} caisses` : ''}`
-                    : 'caisses'}
-                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.primary }}>{celluleStockIfco(stockIfco.nlt)}</div>
               </div>
               <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes} colis</div>
               </div>
             </div>
 
@@ -2888,6 +2974,12 @@ export function ReconditionnementModule({ onClose, userName }: {
                     {label}
                   </button>
                 ))}
+                <button
+                  onClick={() => setAfficherExcluesProduction(v => !v)}
+                  style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  {afficherExcluesProduction ? "🙈 Masquer les exclues" : "👁 Voir les exclues"}
+                </button>
               </div>
             </div>
             {productionReconditionneur.length === 0 ? (
@@ -2895,70 +2987,97 @@ export function ReconditionnementModule({ onClose, userName }: {
                 <p style={{ margin: 0, fontSize: 13 }}>Aucun retour pointé pour l'instant</p>
               </div>
             ) : (
-              <div style={{ marginBottom: 24, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden", overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ textAlign: "left", color: "#888", fontSize: 10.5, textTransform: "uppercase", background: "#fafafa" }}>
-                      <th style={{ padding: "8px 10px" }}>Date reçu</th>
-                      <th style={{ padding: "8px 10px" }}>Reconditionneur</th>
-                      <th style={{ padding: "8px 10px" }}>Article / Lot</th>
-                      <th style={{ padding: "8px 10px" }}>Colis reçus (cartons)</th>
-                      <th style={{ padding: "8px 10px" }}>Qté conditionnée (filets NLT / kg Andès)</th>
-                      <th style={{ padding: "8px 10px" }}>Caisses IFCO pleines reçues</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {joursProductionTries.map(jourStr => {
-                      const lignesJour = parJourProduction[jourStr];
-                      const totalFiletsNlt = lignesJour.filter(d => d.depot === "nlt").reduce((s, d) => s + (d.retour?.qteConditionnementRecue || 0), 0);
-                      const totalKgAndes = lignesJour.filter(d => d.depot === "andes").reduce((s, d) => s + (d.retour?.qteConditionnementRecue || 0), 0);
-                      const totalCaisses = lignesJour.reduce((s, d) => s + (d.retour?.caissesIfcoPleinesRecues || 0), 0);
-                      const totalQteParts: string[] = [];
-                      if (totalFiletsNlt > 0) totalQteParts.push(`${totalFiletsNlt} filet${totalFiletsNlt > 1 ? "s" : ""}`);
-                      if (totalKgAndes > 0) totalQteParts.push(`${totalKgAndes} kg`);
-                      return (
-                        <Fragment key={jourStr}>
-                          {lignesJour.map(d => (
-                            <tr key={d.id} style={{ borderTop: `1px solid ${COLORS.gray100}`, background: "#fff" }}>
-                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{d.retour?.date || d.dateCreationFr || "—"}</td>
-                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{DEPOT_LABEL[d.depot]}</td>
-                              <td style={{ padding: "8px 10px" }}>
-                                {d.numero && <span style={{ color: COLORS.primary, fontWeight: 700 }}>{d.numero}</span>}
-                                {" "}{d.articleFini}{d.lot ? ` · lot ${d.lot}` : ""}
-                              </td>
-                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.nbColisRecus ?? "—"}</b></td>
-                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{d.retour?.qteConditionnementRecue != null ? `${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : "—"}</b></td>
-                              <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
-                                {d.retour?.caissesIfcoPleinesRecues != null ? (
-                                  <b>{d.retour.caissesIfcoPleinesRecues}</b>
-                                ) : retourEnIfcoDemande(d) ? (
-                                  <span style={{ color: COLORS.danger, fontWeight: 700 }}>⚠️ non saisi</span>
-                                ) : "—"}
-                              </td>
-                            </tr>
-                          ))}
-                          <tr style={{ borderTop: `1.5px solid ${COLORS.gray200}`, background: COLORS.gray100 }}>
-                            <td colSpan={4} style={{ padding: "8px 10px", fontSize: 11.5, fontWeight: 800, color: COLORS.gray700, textAlign: "right" }}>
-                              Total {jourStr} :
-                            </td>
-                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap", fontSize: 11.5, fontWeight: 800, color: COLORS.gray700 }}>
-                              {totalQteParts.length > 0 ? totalQteParts.join(" + ") : "—"}
-                            </td>
-                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap", fontSize: 11.5, fontWeight: 800, color: COLORS.gray700 }}>
-                              {totalCaisses > 0 ? `${totalCaisses} caisse${totalCaisses > 1 ? "s" : ""}` : "—"}
-                            </td>
-                          </tr>
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div style={{ marginBottom: 24 }}>
+                {joursProductionTries.map(jourStr => {
+                  const lignesJour = parJourProduction[jourStr];
+                  // Le poids en kg d'Andès n'a pas de sens à additionner (colis fixes de 2kg,
+                  // seul le nombre de colis compte pour la facturation) — demande d'Elinathan,
+                  // 01/09/2026 : on ne garde le total conditionné qu'en filets NLT.
+                  const totalFiletsNlt = lignesJour.filter(d => d.depot === "nlt").reduce((s, d) => s + (d.retour?.qteConditionnementRecue || 0), 0);
+                  const totalColisAndes = lignesJour.filter(d => d.depot === "andes").reduce((s, d) => s + (d.retour?.nbColisRecus || 0), 0);
+                  const totalCaisses = lignesJour.reduce((s, d) => s + (d.retour?.caissesIfcoPleinesRecues || 0), 0);
+                  const totalQteParts: string[] = [];
+                  if (totalFiletsNlt > 0) totalQteParts.push(`${totalFiletsNlt} filet${totalFiletsNlt > 1 ? "s" : ""}`);
+                  if (totalColisAndes > 0) totalQteParts.push(`${totalColisAndes} colis Andès`);
+                  const ouvert = joursProductionOuverts?.has(jourStr) ?? false;
+                  return (
+                    <div key={jourStr} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
+                      <div onClick={() => toggleJourProduction(jourStr)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
+                          📅 {jourStr}{" "}
+                          <span style={{ color: "#999", fontWeight: 600 }}>
+                            ({lignesJour.length} ligne{lignesJour.length > 1 ? "s" : ""}{totalQteParts.length > 0 ? ` · ${totalQteParts.join(" + ")}` : ""}{totalCaisses > 0 ? ` · ${totalCaisses} caisse${totalCaisses > 1 ? "s" : ""} IFCO` : ""})
+                          </span>
+                        </span>
+                        <span style={{ fontSize: 14, color: COLORS.primary, transform: ouvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
+                      </div>
+                      {ouvert && (
+                        <div style={{ padding: "0 16px 12px", background: "#fafafa", overflowX: "auto" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginTop: 4 }}>
+                            <thead>
+                              <tr style={{ textAlign: "left", color: "#888", fontSize: 10.5, textTransform: "uppercase" }}>
+                                <th style={{ padding: "6px 4px" }}>Date reçu</th>
+                                <th style={{ padding: "6px 4px" }}>Reconditionneur</th>
+                                <th style={{ padding: "6px 4px" }}>Article / Lot</th>
+                                <th style={{ padding: "6px 4px" }}>Colis reçus (cartons)</th>
+                                <th style={{ padding: "6px 4px" }}>Qté conditionnée (filets NLT)</th>
+                                <th style={{ padding: "6px 4px" }}>Caisses IFCO pleines reçues</th>
+                                <th style={{ padding: "6px 4px" }}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lignesJour.map(d => (
+                                <tr key={d.id} style={{ borderTop: `1px solid ${COLORS.gray100}`, opacity: d.excluFacturation ? 0.5 : 1 }}>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{d.retour?.date || d.dateCreationFr || "—"}</td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{DEPOT_LABEL[d.depot]}</td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    {d.numero && <span style={{ color: COLORS.primary, fontWeight: 700 }}>{d.numero}</span>}
+                                    {" "}{d.articleFini}{d.lot ? ` · lot ${d.lot}` : ""}
+                                    {d.excluFacturation && <span style={{ marginLeft: 6, fontSize: 10, color: COLORS.danger, fontWeight: 700 }}>(exclue)</span>}
+                                  </td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}><b>{d.retour?.nbColisRecus ?? "—"}</b></td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                                    <b>{d.depot === "nlt" && d.retour?.qteConditionnementRecue != null ? `${d.retour.qteConditionnementRecue} ${UNITE_QTE.nlt}` : "—"}</b>
+                                  </td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                                    {d.retour?.caissesIfcoPleinesRecues != null ? (
+                                      <b>{d.retour.caissesIfcoPleinesRecues}</b>
+                                    ) : retourEnIfcoDemande(d) ? (
+                                      <span style={{ color: COLORS.danger, fontWeight: 700 }}>⚠️ non saisi</span>
+                                    ) : "—"}
+                                  </td>
+                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                                    <button
+                                      onClick={() => toggleExclusionFacturation(d.id, !d.excluFacturation)}
+                                      title={d.excluFacturation ? "Réafficher cette ligne dans la facturation" : "Exclure cette ligne de la facturation"}
+                                      style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${d.excluFacturation ? COLORS.secondary : COLORS.gray200}`, background: "#fff", color: d.excluFacturation ? COLORS.secondary : COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}
+                                    >
+                                      {d.excluFacturation ? "↺ Réafficher" : "✕ Exclure"}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
             {/* ── Détail par transporteur (palettes parties/revenues + lot) — pour l'attribution
                 des coûts de transport, une ligne par trajet plutôt qu'un simple total. ── */}
-            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🚚 Détail par transporteur (pour facturation)</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🚚 Détail par transporteur (pour facturation)</p>
+              <button
+                onClick={() => setAfficherExcluesTransporteur(v => !v)}
+                style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+              >
+                {afficherExcluesTransporteur ? "🙈 Masquer les exclues" : "👁 Voir les exclues"}
+              </button>
+            </div>
             {transporteursTries.length === 0 ? (
               <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}`, marginBottom: 24 }}>
                 <p style={{ margin: 0, fontSize: 13 }}>Aucune demande avec transporteur pour l'instant</p>
@@ -3007,22 +3126,63 @@ export function ReconditionnementModule({ onClose, userName }: {
                                 <th style={{ padding: "6px 4px" }}>Palettes parties</th>
                                 <th style={{ padding: "6px 4px" }}>Palettes revenues</th>
                                 <th style={{ padding: "6px 4px" }}>Statut</th>
+                                <th style={{ padding: "6px 4px" }}></th>
                               </tr>
                             </thead>
                             <tbody>
-                              {lignes.map(d => (
-                                <tr key={d.id} style={{ borderTop: `1px solid ${COLORS.gray100}` }}>
-                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{d.departDate || d.dateCreationFr || "—"}</td>
-                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
-                                    {d.numero && <span style={{ color: COLORS.primary, fontWeight: 700 }}>{d.numero}</span>}
-                                    {d.lot ? ` · lot ${d.lot}` : ""}
-                                  </td>
-                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{DEPOT_LABEL[d.depot]}</td>
-                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{formatPalettes(d.nbPalettesDepart)}</td>
-                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{formatPalettes(d.retour?.nbPalettes)}</td>
-                                  <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}><StatutBadge statut={d.statut} /></td>
-                                </tr>
-                              ))}
+                              {lignes.map(d => {
+                                const enEdition = ligneTransporteurEnEdition === d.id;
+                                return (
+                                  <tr key={d.id} style={{ borderTop: `1px solid ${COLORS.gray100}`, opacity: d.excluFacturation ? 0.5 : 1 }}>
+                                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{d.departDate || d.dateCreationFr || "—"}</td>
+                                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                                      {d.numero && <span style={{ color: COLORS.primary, fontWeight: 700 }}>{d.numero}</span>}
+                                      {d.lot ? ` · lot ${d.lot}` : ""}
+                                      {d.excluFacturation && <span style={{ marginLeft: 6, fontSize: 10, color: COLORS.danger, fontWeight: 700 }}>(exclue)</span>}
+                                    </td>
+                                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{DEPOT_LABEL[d.depot]}</td>
+                                    {enEdition ? (
+                                      <>
+                                        <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                                          <input type="number" min="0" value={editPalettesDepart.grandes} onChange={e => setEditPalettesDepart(v => ({ ...v, grandes: e.target.value }))} placeholder="Grandes" style={{ width: 50, padding: "2px 4px", border: `1px solid ${COLORS.gray200}`, borderRadius: 5, fontSize: 11 }} />
+                                          {" + "}
+                                          <input type="number" min="0" value={editPalettesDepart.demi} onChange={e => setEditPalettesDepart(v => ({ ...v, demi: e.target.value }))} placeholder="Demi" style={{ width: 50, padding: "2px 4px", border: `1px solid ${COLORS.gray200}`, borderRadius: 5, fontSize: 11 }} />
+                                        </td>
+                                        <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                                          <input type="number" min="0" value={editPalettesRetour.grandes} onChange={e => setEditPalettesRetour(v => ({ ...v, grandes: e.target.value }))} placeholder="Grandes" style={{ width: 50, padding: "2px 4px", border: `1px solid ${COLORS.gray200}`, borderRadius: 5, fontSize: 11 }} />
+                                          {" + "}
+                                          <input type="number" min="0" value={editPalettesRetour.demi} onChange={e => setEditPalettesRetour(v => ({ ...v, demi: e.target.value }))} placeholder="Demi" style={{ width: 50, padding: "2px 4px", border: `1px solid ${COLORS.gray200}`, borderRadius: 5, fontSize: 11 }} />
+                                        </td>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{formatPalettes(d.nbPalettesDepart)}</td>
+                                        <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{formatPalettes(d.retour?.nbPalettes)}</td>
+                                      </>
+                                    )}
+                                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}><StatutBadge statut={d.statut} /></td>
+                                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
+                                      {enEdition ? (
+                                        <div style={{ display: "flex", gap: 4 }}>
+                                          <button onClick={() => enregistrerEditionPalettesTransporteur(d)} style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>✓ OK</button>
+                                          <button onClick={() => setLigneTransporteurEnEdition(null)} style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: "flex", gap: 4 }}>
+                                          <button onClick={() => demarrerEditionPalettesTransporteur(d)} title="Corriger les palettes" style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>✏️</button>
+                                          <button
+                                            onClick={() => toggleExclusionFacturation(d.id, !d.excluFacturation)}
+                                            title={d.excluFacturation ? "Réafficher cette ligne dans la facturation" : "Exclure cette ligne de la facturation"}
+                                            style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${d.excluFacturation ? COLORS.secondary : COLORS.gray200}`, background: "#fff", color: d.excluFacturation ? COLORS.secondary : COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}
+                                          >
+                                            {d.excluFacturation ? "↺" : "✕"}
+                                          </button>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -3033,66 +3193,6 @@ export function ReconditionnementModule({ onClose, userName }: {
               </div>
             )}
 
-            {/* ── Par reconditionneur — anciennement affiché dans l'onglet "Demandes", déplacé
-                ici avec le reste des statistiques de facturation. ── */}
-            <div style={{ marginBottom: 24, background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 16 }}>
-              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>📊 Par reconditionneur</p>
-              <div style={{ fontSize: 12, color: COLORS.gray600, padding: "4px 0" }}>NLT — {statsParDepot.nlt.nbDemandes} demande(s), {statsParDepot.nlt.qteConditionnementRecue} {UNITE_QTE.nlt} reconditionnés reçus</div>
-              <div style={{ fontSize: 12, color: COLORS.gray600, padding: "4px 0" }}>Andès — {statsParDepot.andes.nbDemandes} demande(s), {statsParDepot.andes.qteConditionnementRecue} {UNITE_QTE.andes} reconditionnés reçus</div>
-            </div>
-
-            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>📦 Mouvements de stock (colis / caisses)</p>
-            {mouvements.length === 0 ? (
-              <div style={{ textAlign: "center", color: "#aaa", padding: "40px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}` }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>🕘</div>
-                <p style={{ margin: 0, fontSize: 13 }}>Aucun mouvement enregistré pour l'instant</p>
-              </div>
-            ) : (
-              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                {mouvements.map((m, i) => {
-                  const estEnvoi = m.type === "envoi_reconditionneur";
-                  // Les cartons BABY BLANC ne sont jamais physiquement envoyés depuis Moorea —
-                  // ils sont déjà en stock chez Andès ; cette ligne ne fait que consommer une
-                  // partie de ce stock existant, contrairement à l'IFCO qui part réellement par
-                  // palette. Le libellé doit donc être différent pour ne pas induire en erreur.
-                  const estCarton = m.article === "carton_baby_blanc";
-                  const libelleArticle = m.article === "ifco_vide" ? "Caisses IFCO vides"
-                    : estCarton ? "Cartons BABY BLANC"
-                    : "Caisses IFCO pleines";
-                  const libelleAction = estCarton ? "Utilisation chez Andès (déjà en stock là-bas)" : (estEnvoi ? "Envoi vers le reconditionneur" : "Retour chez Moorea");
-                  return (
-                    <div
-                      key={m.id}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12, padding: "14px 20px",
-                        borderBottom: i < mouvements.length - 1 ? `1px solid ${COLORS.gray100}` : "none",
-                      }}
-                    >
-                      <div style={{
-                        width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-                        background: estCarton ? COLORS.amberLight : (estEnvoi ? COLORS.amberLight : COLORS.secondaryLight),
-                      }}>
-                        {estCarton ? "🧺" : (estEnvoi ? "📤" : "📥")}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>
-                          {libelleAction} — {libelleArticle}
-                        </div>
-                        <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
-                          {m.date}{m.depot ? ` · ${DEPOT_LABEL[m.depot]}` : ""}
-                        </div>
-                      </div>
-                      <div style={{
-                        fontSize: 14, fontWeight: 800, flexShrink: 0,
-                        color: estEnvoi ? "#b45309" : COLORS.secondary,
-                      }}>
-                        {estEnvoi ? "−" : "+"}{m.quantite}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         )}
 
@@ -3146,7 +3246,7 @@ export function ReconditionnementModule({ onClose, userName }: {
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
               <h3 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>🔎 Détail de chaque mouvement</h3>
               <p style={{ margin: "0 0 16px", fontSize: 12, color: COLORS.gray400 }}>
-                Chaque envoi de caisses vides vers un reconditionneur et chaque retour de caisses pleines, un par un — le plus récent en premier.
+                Absolument tout ce qui bouge le stock de caisses IFCO, un par un, le plus récent en premier : réceptions fournisseur validées à l'agréage, déclarations clients, vidages manuels, ajustements de stock rentrés à la main, retours clients, et les envois/retours de reconditionnement — avec le stock de chaque emplacement juste après ce mouvement précis.
               </p>
               {suiviIfcoMouvementsDetail.length === 0 ? (
                 <div style={{ textAlign: "center", color: COLORS.gray400, padding: "24px 0", fontSize: 13 }}>Aucun mouvement IFCO enregistré.</div>
@@ -3154,7 +3254,7 @@ export function ReconditionnementModule({ onClose, userName }: {
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead><tr style={{ background: COLORS.gray100, borderBottom: `2px solid ${COLORS.gray200}` }}>
-                      {["Date", "Sens", "Quantité", "Demande", "Dépôt", "Raison"].map(h => (
+                      {["Date", "Type", "De → Vers", "Quantité", "Demande", "Raison", "Moorea", "NLT", "Pleines"].map(h => (
                         <th key={h} style={{ padding: "10px 8px", textAlign: "left", color: COLORS.gray700, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
                       ))}
                     </tr></thead>
@@ -3163,16 +3263,21 @@ export function ReconditionnementModule({ onClose, userName }: {
                         <tr key={m.id} style={{ borderBottom: `1px solid ${COLORS.gray100}` }}>
                           <td style={{ padding: "8px", color: COLORS.gray600, whiteSpace: "nowrap" }}>{m.date}</td>
                           <td style={{ padding: "8px" }}>
-                            <span style={{ background: m.sens === "envoye" ? COLORS.amberLight : COLORS.secondaryLight, color: m.sens === "envoye" ? "#b45309" : COLORS.secondary, borderRadius: 8, padding: "3px 8px", fontSize: 11, fontWeight: 700, display: "inline-block" }}>
-                              {m.sens === "envoye" ? "→ Envoyé à NLT" : "← Reçu plein"}
+                            <span style={{ background: m.classif.bg, color: m.classif.color, borderRadius: 8, padding: "3px 8px", fontSize: 11, fontWeight: 700, display: "inline-block", whiteSpace: "nowrap" }}>
+                              {m.classif.icone} {m.classif.label}
                             </span>
                           </td>
-                          <td style={{ padding: "8px", textAlign: "center", fontWeight: 800, color: m.sens === "envoye" ? "#b45309" : COLORS.secondary }}>
-                            {m.sens === "envoye" ? "−" : "+"}{m.caisses}
+                          <td style={{ padding: "8px", color: COLORS.gray600, whiteSpace: "nowrap" }}>
+                            {(LIEU_LABEL_IFCO[m.from] || m.from || "—")} → {(LIEU_LABEL_IFCO[m.to] || m.to || "—")}
                           </td>
-                          <td style={{ padding: "8px", color: COLORS.gray700, fontWeight: 700 }}>{m.demande?.numero || (m.reconditionnement_demande_id ? "—" : "(non rattaché)")}</td>
-                          <td style={{ padding: "8px", color: COLORS.gray600 }}>{m.demande?.articleFini || "—"}</td>
+                          <td style={{ padding: "8px", textAlign: "center", fontWeight: 800, color: m.classif.color }}>
+                            {m.classif.signe === "→" ? "" : m.classif.signe}{m.caisses}
+                          </td>
+                          <td style={{ padding: "8px", color: COLORS.gray700, fontWeight: 700 }}>{m.demande?.numero || "—"}</td>
                           <td style={{ padding: "8px", color: COLORS.gray400, fontSize: 11 }}>{m.raison}</td>
+                          <td style={{ padding: "8px", textAlign: "center", color: COLORS.gray600 }}>{m.stockApres?.moorea ?? "—"}</td>
+                          <td style={{ padding: "8px", textAlign: "center", color: COLORS.gray600 }}>{m.stockApres?.nlt ?? "—"}</td>
+                          <td style={{ padding: "8px", textAlign: "center", color: COLORS.gray600 }}>{m.stockApres?.pleines ?? "—"}</td>
                         </tr>
                       ))}
                     </tbody>
