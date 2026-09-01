@@ -203,7 +203,7 @@ const COLORS = {
 
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges"
   >("dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
@@ -324,6 +324,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   // RetoursModule.tsx / validerControle) — pense-bête affiché en bandeau tant que non traité.
   const [declarationsEntree, setDeclarationsEntree] = useState<any[]>([]);
 
+  // Détail ligne à ligne des déclarations IFCO envoyées (client, BL, quantité, date) — voir
+  // enregistrerLignesDeclareesIfco : contrairement à ifco_attente (supprimé une fois le client
+  // traité) et ifco_histo (ne garde que des compteurs globaux), ce chemin garde tout, en continu,
+  // pour permettre les stats par client / par mois demandées par Elinathan (01/09/2026).
+  const [declarationsLignes, setDeclarationsLignes] = useState<any[]>([]);
+  const [statsClientChoisi, setStatsClientChoisi] = useState<string>("");
+  const [statsMoisChoisi, setStatsMoisChoisi] = useState<string>("");
+
   const ifcoFileRef = useRef<HTMLInputElement>(null);
 
   const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -427,8 +435,36 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       const d = snap.val();
       setDeclarationsEntree(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u8(); u9(); };
+    const u10 = onValue(ref(db, "ifco_declarations_lignes"), snap => {
+      const d = snap.val();
+      setDeclarationsLignes(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u8(); u9(); u10(); };
   }, []);
+
+  // Persiste, pour chaque déclaration IFCO réellement envoyée, le détail ligne à ligne
+  // (client / BL / quantité / date de livraison) dans un historique qui n'est JAMAIS
+  // supprimé — contrairement à ifco_attente. C'est ce qui alimente l'onglet "📊 Stats par
+  // client" (voir plus bas), puisqu'avant rien ne gardait ce détail au-delà du traitement.
+  async function enregistrerLignesDeclareesIfco(rows: any[], fichier: string) {
+    if (!rows.length) return;
+    try {
+      await push(ref(db, "ifco_declarations_lignes"), {
+        fichier: fichier || "inconnu",
+        date: new Date().toLocaleDateString("fr-FR"),
+        ts: Date.now(),
+        user: userName || "Moorea",
+        lignes: rows.map((r: any) => ({
+          client: r["_CLIENT"] || "",
+          bl: r["BON DE LIVRAISON"] || "",
+          quantite: parseInt(r["QUANTITE"]) || 0,
+          dateLivraison: r["DATE DE LIVRAISON"] || "",
+        })),
+      });
+    } catch (err: any) {
+      console.error("Erreur enregistrement détail déclaration IFCO:", err);
+    }
+  }
 
   async function marquerDeclarationFaite(id: string) {
     await update(ref(db, `ifco_declarations_entree/${id}`), { declare: true });
@@ -755,6 +791,15 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   }
 
   function doSendIfco() {
+    // Synergie stock / déclaration : le nombre de caisses à déduire du stock Moorea est
+    // pré-rempli avec la somme réelle des QUANTITE des lignes sélectionnées (celles qu'on est
+    // en train de déclarer à IFCO), au lieu de partir d'un champ vide que l'utilisateur retape
+    // à la main — avant ça, rien ne garantissait que le nombre tapé corresponde aux lignes
+    // effectivement envoyées, donc le stock pouvait dériver silencieusement de ce qui est déclaré.
+    // Le champ reste modifiable pour les cas particuliers (caisses envoyées hors déclaration Geslot...).
+    const sel = allRows.filter((_, i) => selected[i]);
+    const totalCalcule = sel.reduce((s: number, r: any) => s + (parseInt(r['QUANTITE']) || 0), 0);
+    setPalettesQte(totalCalcule > 0 ? String(totalCalcule) : "");
     setShowPalettesForm(true);
   }
 
@@ -799,6 +844,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       const name = getIfcoExportName();
       downloadIfcoCSV(name, csv);
       addHisto('envoi', sel.length, name, sel);
+      enregistrerLignesDeclareesIfco(sel, name);
 
       const palettes = Math.floor(qte / CAISSES_PAR_PALETTE);
       const loose = qte % CAISSES_PAR_PALETTE;
@@ -1386,6 +1432,33 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     setNotification({ type: "success", message: "✓ Commande repassée en attente, arrivage réaffiché" });
   };
 
+  // ── Stats IFCO par client (à partir de declarationsLignes) ──
+  // Reconstruit un mois "MM/AAAA" à partir de la date de livraison (souvent JJ/MM/AAAA,
+  // parfois JJ.MM.AAAA) — retombe sur la date de la déclaration elle-même si absente/invalide.
+  function moisDeLigne(ligne: any, dateDeclaration: string): string {
+    const brut = ligne.dateLivraison || dateDeclaration || "";
+    const sep = brut.includes("/") ? "/" : brut.includes(".") ? "." : null;
+    if (!sep) return "";
+    const parts = brut.split(sep);
+    if (parts.length < 3) return "";
+    const mm = parts[1], aaaa = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+    return mm && aaaa ? `${mm}/${aaaa}` : "";
+  }
+  const statsParClientEtMois: Record<string, Record<string, { colis: number; bls: Set<string> }>> = {};
+  declarationsLignes.forEach((batch: any) => {
+    (batch.lignes || []).forEach((l: any) => {
+      const client = l.client || "(client inconnu)";
+      const mois = moisDeLigne(l, batch.date);
+      if (!mois) return;
+      if (!statsParClientEtMois[client]) statsParClientEtMois[client] = {};
+      if (!statsParClientEtMois[client][mois]) statsParClientEtMois[client][mois] = { colis: 0, bls: new Set() };
+      statsParClientEtMois[client][mois].colis += l.quantite || 0;
+      if (l.bl) statsParClientEtMois[client][mois].bls.add(l.bl);
+    });
+  });
+  const clientsStatsListe = Object.keys(statsParClientEtMois).sort((a, b) => a.localeCompare(b));
+  const moisStatsListe = [...new Set(Object.values(statsParClientEtMois).flatMap(m => Object.keys(m)))].sort().reverse();
+
   const entretiensActifsCount = entretiens.filter(e => e.statut === "programmé" || e.statut === "en cours").length;
   const entretiensAffiches = entretiens
     .filter(e => filtreEntretien === "en_cours" ? (e.statut === "programmé" || e.statut === "en cours") : (e.statut === "terminé" || e.statut === "annulé"))
@@ -1668,6 +1741,12 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                   >
                     🔄 {histo.length} déclaration{histo.length !== 1 ? "s" : ""} IFCO{pendingClients.length > 0 ? ` · ⏳ ${pendingClients.length} en attente` : ""}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("ifco-stats")}
+                    style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    📊 Stats par client
                   </button>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -2753,6 +2832,68 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
           </div>
         )}
 
+        {/* STATS IFCO PAR CLIENT — construites à partir de declarationsLignes (voir
+            enregistrerLignesDeclareesIfco), le seul endroit où le détail ligne à ligne des
+            déclarations est conservé durablement (ifco_attente est supprimé une fois traité,
+            ifco_histo ne garde que des compteurs globaux). */}
+        {activeTab === "ifco-stats" && (
+          <div>
+            <button
+              onClick={() => setActiveTab("ifco-histo")}
+              style={{ marginBottom: 16, background: "none", border: "none", color: "#1a6b3a", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0 }}
+            >
+              ← Retour à Déclarer IFCO
+            </button>
+
+            {declarationsLignes.length === 0 ? (
+              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "32px", textAlign: "center", color: "#aaa" }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
+                <p style={{ margin: 0, fontSize: 13 }}>
+                  Pas encore de détail par client — il se remplit automatiquement à chaque déclaration IFCO envoyée à partir de maintenant.
+                  <br />Les déclarations envoyées avant cette mise à jour ne sont pas dans ce récap (le détail ligne à ligne n'était pas conservé avant).
+                </p>
+              </div>
+            ) : (
+              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "24px" }}>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                  <select value={statsClientChoisi} onChange={e => setStatsClientChoisi(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 12, fontWeight: 700 }}>
+                    <option value="">Tous les clients</option>
+                    {clientsStatsListe.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select value={statsMoisChoisi} onChange={e => setStatsMoisChoisi(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 12, fontWeight: 700 }}>
+                    <option value="">Tous les mois</option>
+                    {moisStatsListe.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ background: "#f8fffe", borderBottom: "2px solid #e8e0d0" }}>
+                      {["Client", "Mois", "Colis IFCO déclarés", "BL distincts"].map(h => <th key={h} style={{ padding: "12px 10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {clientsStatsListe
+                        .filter(c => !statsClientChoisi || c === statsClientChoisi)
+                        .flatMap(client =>
+                          Object.entries(statsParClientEtMois[client])
+                            .filter(([mois]) => !statsMoisChoisi || mois === statsMoisChoisi)
+                            .sort(([a], [b]) => b.localeCompare(a))
+                            .map(([mois, v]) => (
+                              <tr key={`${client}-${mois}`} style={{ borderBottom: "1px solid #f4f4f4" }}>
+                                <td style={{ padding: "10px", fontWeight: 700, color: "#2c3e50" }}>{client}</td>
+                                <td style={{ padding: "10px", color: "#666" }}>{mois}</td>
+                                <td style={{ padding: "10px", fontWeight: 700, textAlign: "center", color: "#27ae60" }}>{v.colis}</td>
+                                <td style={{ padding: "10px", textAlign: "center", color: "#666" }}>{v.bls.size}</td>
+                              </tr>
+                            ))
+                        )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* IFCO — CLIENTS */}
         {activeTab === "configuration" && (
           <div style={{ display: "grid", gap: "20px" }}>
@@ -3593,6 +3734,21 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   = {Math.floor(parseInt(palettesQte) / 640)} palette(s) + {parseInt(palettesQte) % 640} caisses
                 </div>
               )}
+              {(() => {
+                // Total réellement déclaré (lignes cochées) — sert à vérifier que la quantité
+                // saisie ci-dessus correspond bien à ce qui part vers IFCO.
+                const totalDeclare = allRows.filter((_, i) => selected[i]).reduce((s: number, r: any) => s + (parseInt(r['QUANTITE']) || 0), 0);
+                if (totalDeclare <= 0) return null;
+                const qteSaisie = parseInt(palettesQte) || 0;
+                const ecart = qteSaisie - totalDeclare;
+                return (
+                  <div style={{ fontSize: 11, marginTop: 6, padding: "8px", borderRadius: 6, border: `1px solid ${ecart === 0 ? "#d4edda" : "#f5c6cb"}`, background: ecart === 0 ? "#f8fffe" : "#fdedec", color: ecart === 0 ? "#1a6b3a" : "#c0392b" }}>
+                    {ecart === 0
+                      ? `✓ Correspond aux ${totalDeclare} colis des lignes déclarées à IFCO`
+                      : `⚠️ Les lignes déclarées à IFCO totalisent ${totalDeclare} colis (écart de ${ecart > 0 ? "+" : ""}${ecart})`}
+                  </div>
+                );
+              })()}
             </div>
 
             <div style={{ background: "#f8fffe", border: "1.5px solid #d4edda", borderRadius: 10, padding: "12px", marginBottom: 20, fontSize: 12, color: "#1a6b3a" }}>
