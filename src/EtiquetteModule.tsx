@@ -64,6 +64,9 @@ type EtatEtiquette = {
   logoNoirEtBlanc: boolean;
   logoXPct: number;
   logoYPct: number;
+  // 01/09/2026 — Taille du logo réglable (largeur en cm) — avant, la taille était fixe
+  // (max 3.5cm de haut, 90% de large), impossible à agrandir ou réduire (demande d'Elinathan).
+  logoTailleCm: number;
   blocs: BlocTexte[];
 };
 
@@ -109,6 +112,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   const [logosSauvegardes, setLogosSauvegardes] = useState<LogoSauvegarde[]>([]);
   const [logoXPct, setLogoXPct] = useState(50);
   const [logoYPct, setLogoYPct] = useState(18);
+  const [logoTailleCm, setLogoTailleCm] = useState(3.5);
   const [blocs, setBlocs] = useState<BlocTexte[]>([nouveauBloc("PRODUIT", "center", 50, 50)]);
 
   // Glisser-déposer : id de l'élément en cours de déplacement ("__logo__" ou l'id d'un bloc),
@@ -157,8 +161,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 
   // 01/09/2026 — Génération par lot : une fois qu'une ligne de texte est marquée "variable"
   // (ex : le nom du service pour un client hôtel), on liste ici toutes les valeurs (une par
-  // ligne — un nom de service, une chambre, etc.) et une étiquette est générée automatiquement
-  // pour chacune, dans un seul document imprimable d'un coup (demande d'Elinathan).
+  // ligne — un nom de service, une chambre, etc.) et une étiquette est générée ET ENREGISTRÉE
+  // séparément pour chacune (nommée "Nom du client — valeur"), en plus d'être imprimée en un
+  // seul document d'un coup — pour pouvoir retrouver, modifier ou réimprimer chaque étiquette
+  // individuellement depuis la liste plus tard (demande d'Elinathan).
+  const [nomClientLot, setNomClientLot] = useState("");
   const [listeValeurs, setListeValeurs] = useState("");
 
   useEffect(() => {
@@ -332,7 +339,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   }
 
   function etatActuel(): EtatEtiquette {
-    return { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, blocs };
+    return { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, logoTailleCm, blocs };
   }
 
   // Repart d'une étiquette vierge — page "Créer une nouvelle étiquette".
@@ -346,6 +353,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setLogoUrlNoir("");
     setLogoXPct(50);
     setLogoYPct(18);
+    setLogoTailleCm(3.5);
     setBlocs([nouveauBloc("PRODUIT", "center", 50, 50)]);
     setNomModele("");
     setShowEnregistrerModele(false);
@@ -379,6 +387,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setLogoNoirEtBlanc(!!m.logoNoirEtBlanc);
     setLogoXPct(m.logoXPct ?? 50);
     setLogoYPct(m.logoYPct ?? 18);
+    setLogoTailleCm(m.logoTailleCm ?? 3.5);
     setBlocs(m.blocs && m.blocs.length > 0 ? m.blocs.map((b) => ({ ...b, id: nouvelId(), xPct: b.xPct ?? 50, yPct: b.yPct ?? 50 })) : [nouveauBloc()]);
     setNomModele(m.nom);
     setVue("editeur");
@@ -398,6 +407,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
       logoNoirEtBlanc: m.logoNoirEtBlanc,
       logoXPct: m.logoXPct,
       logoYPct: m.logoYPct,
+      logoTailleCm: m.logoTailleCm ?? 3.5,
       blocs: m.blocs,
     };
     await update(nouvelleRef, { ...donnees, nom: nouveauNom, updatedAt: Date.now(), depuisImpression: false });
@@ -434,7 +444,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; }
   .etiquette { position: relative; width: ${etat.largeurCm}cm; height: ${etat.hauteurCm}cm; overflow: hidden; }
-  .logo { position: absolute; left: ${etat.logoXPct}%; top: ${etat.logoYPct}%; transform: translate(-50%, -50%); max-width: 90%; max-height: 3.5cm; object-fit: contain; }
+  .logo { position: absolute; left: ${etat.logoXPct}%; top: ${etat.logoYPct}%; transform: translate(-50%, -50%); width: ${etat.logoTailleCm}cm; max-width: 92%; object-fit: contain; }
 </style>
 </head><body>
   <div class="etiquette">
@@ -460,11 +470,15 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   }
 
   // 01/09/2026 — Génère une étiquette par ligne de "listeValeurs", en remplaçant à chaque fois
-  // le texte du bloc marqué "variable" par cette ligne (le reste — logo, nom du client, mise en
-  // page — ne change pas). Tout est imprimé en un seul document, une étiquette par page (même
-  // format/taille pour toutes), pour tout sortir d'un coup côté imprimante — demande
-  // d'Elinathan pour un client hôtel où chaque colis doit être réparti par service.
+  // le texte du bloc marqué "variable" par cette ligne (le reste — logo, nom fixe, mise en page
+  // — ne change pas). Chaque étiquette est enregistrée individuellement dans la liste, nommée
+  // "Nom du client — valeur", pour pouvoir la retrouver, la modifier ou la réimprimer plus tard
+  // toute seule — pas seulement imprimée à la volée. Tout est aussi envoyé en un seul document
+  // à l'impression, une étiquette par page — demande d'Elinathan pour un client hôtel où chaque
+  // colis doit être réparti par service.
   async function genererEtImprimerLot() {
+    const clientNom = nomClientLot.trim();
+    if (!clientNom) { notify("error", "⚠️ Indique le nom du client avant de générer le lot"); return; }
     const valeurs = listeValeurs.split("\n").map((v) => v.trim()).filter(Boolean);
     if (valeurs.length === 0) { notify("error", "⚠️ Ajoute au moins une valeur (une ligne = une étiquette)"); return; }
     const blocVariable = blocs.find((b) => b.variable);
@@ -475,27 +489,34 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
       try { logoUrlAImprimer = await noircirImage(logoUrl); } catch { /* garde l'original si la conversion échoue */ }
     }
 
-    const etiquettesHtml = valeurs
-      .map((valeur) => {
-        const blocsAvecValeur = blocs.map((b) => (b.id === blocVariable.id ? { ...b, texte: valeur } : b));
-        return `<div class="etiquette">
+    const etiquettesHtml: string[] = [];
+    for (const valeur of valeurs) {
+      // Le bloc variable devient un bloc fixe dans l'étiquette enregistrée (variable: false) —
+      // c'est désormais une étiquette concrète pour ce service précis, pas un gabarit.
+      const blocsFinal = blocs.map((b) => (b.id === blocVariable.id ? { ...b, texte: valeur, variable: false } : b));
+      const donnees: EtatEtiquette = { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, logoTailleCm, blocs: blocsFinal };
+      try {
+        await push(ref(db, "etiquettes/modeles"), { nom: `${clientNom} — ${valeur}`, ...donnees, updatedAt: Date.now(), depuisImpression: false });
+      } catch (err) {
+        console.error("Erreur enregistrement étiquette du lot:", err);
+      }
+      etiquettesHtml.push(`<div class="etiquette">
     ${logoActif && logoUrlAImprimer ? `<img class="logo" src="${logoUrlAImprimer}" />` : ""}
-    ${genererHtmlBlocs(blocsAvecValeur)}
-  </div>`;
-      })
-      .join("\n");
+    ${genererHtmlBlocs(blocsFinal)}
+  </div>`);
+    }
 
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Étiquettes (${valeurs.length})</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${clientNom} — Étiquettes (${valeurs.length})</title>
 <style>
   @page { size: ${largeurCm}cm ${hauteurCm}cm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; }
   .etiquette { position: relative; width: ${largeurCm}cm; height: ${hauteurCm}cm; overflow: hidden; page-break-after: always; }
   .etiquette:last-child { page-break-after: auto; }
-  .logo { position: absolute; left: ${logoXPct}%; top: ${logoYPct}%; transform: translate(-50%, -50%); max-width: 90%; max-height: 3.5cm; object-fit: contain; }
+  .logo { position: absolute; left: ${logoXPct}%; top: ${logoYPct}%; transform: translate(-50%, -50%); width: ${logoTailleCm}cm; max-width: 92%; object-fit: contain; }
 </style>
 </head><body>
-  ${etiquettesHtml}
+  ${etiquettesHtml.join("\n")}
   <script>
     window.onload = function() {
       setTimeout(function() { window.print(); }, 300);
@@ -507,8 +528,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     w.document.open();
     w.document.write(html);
     w.document.close();
-    notify("success", `🖨️ ${valeurs.length} étiquette(s) envoyée(s) à l'impression`);
-    enregistrerHistoriqueImpression(etatActuel()).catch(() => {});
+    notify("success", `✅ ${valeurs.length} étiquette(s) créée(s) pour "${clientNom}" et envoyée(s) à l'impression`);
   }
 
   return (
@@ -647,6 +667,31 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                   🖨️ Convertir en noir (imprimante à étiquettes — impression thermique, pas de couleur)
                   {logoConversionEnCours && " · conversion..."}
                 </label>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray600 }}>Taille du logo</span>
+                    <span style={{ fontSize: 11, color: COLORS.gray600 }}>{logoTailleCm.toFixed(1)} cm</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={Math.max(largeurCm, hauteurCm)}
+                      step={0.1}
+                      value={logoTailleCm}
+                      onChange={(e) => setLogoTailleCm(parseFloat(e.target.value) || 0.5)}
+                      style={{ flex: 1, accentColor: COLORS.primary }}
+                    />
+                    <input
+                      type="number"
+                      min={0.5}
+                      step={0.1}
+                      value={logoTailleCm}
+                      onChange={(e) => setLogoTailleCm(parseFloat(e.target.value) || 0.5)}
+                      style={{ width: 56, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }}
+                    />
+                  </div>
+                </div>
               </>
             )}
             <label style={{ display: "inline-block", padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", color: COLORS.gray700 }}>
@@ -689,6 +734,15 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <span style={{ fontSize: 10, color: COLORS.gray600 }}>Taille</span>
+                    <input
+                      type="range"
+                      min={6}
+                      max={120}
+                      value={b.taillePt}
+                      onChange={(e) => modifierBloc(b.id, { taillePt: parseInt(e.target.value) || 12 })}
+                      style={{ width: 70, accentColor: COLORS.primary }}
+                      title="Réduire/agrandir le texte"
+                    />
                     <input type="number" min={6} max={120} value={b.taillePt} onChange={(e) => modifierBloc(b.id, { taillePt: parseInt(e.target.value) || 12 })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
                   </div>
                   <div style={{ display: "flex", gap: 2, background: COLORS.gray100, borderRadius: 6, padding: 2 }}>
@@ -794,7 +848,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     src={logoUrlAffichee}
                     alt="Logo"
                     onPointerDown={(e) => { e.preventDefault(); draggingRef.current = "__logo__"; }}
-                    style={{ position: "absolute", left: `${logoXPct}%`, top: `${logoYPct}%`, transform: "translate(-50%,-50%)", maxWidth: "90%", maxHeight: "3.5cm", objectFit: "contain", cursor: "grab", outline: `1.5px dashed ${COLORS.primary}66`, touchAction: "none" }}
+                    style={{ position: "absolute", left: `${logoXPct}%`, top: `${logoYPct}%`, transform: "translate(-50%,-50%)", width: `${logoTailleCm}cm`, maxWidth: "92%", objectFit: "contain", cursor: "grab", outline: `1.5px dashed ${COLORS.primary}66`, touchAction: "none" }}
                   />
                 )}
                 {blocs.filter((b) => b.texte.trim()).map((b) => (
