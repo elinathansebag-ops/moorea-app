@@ -275,6 +275,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const colisRecusNum = colisRecus === "" ? colisAttendu : parseInt(colisRecus) || 0;
   const ecartColis = colisRecusNum - colisAttendu;
   const hasEcartColis = colisRecus !== "" && ecartColis !== 0;
+  // Pour un retour de reconditionnement, un écart de colis (poids/tri) n'est jamais un litige à
+  // lui seul — seul "⚠️ Problème" coché en fait un ; pour un arrivage normal (fournisseur), un
+  // écart de colis reste un litige comme avant. Même règle que dans handleValider ci-dessous
+  // (utilisée là pour la soumission, ici pour l'affichage bouton/message).
+  const hasLitige = isRetourRecond ? litige : (litige || hasEcartColis);
 
 
   // ─── Palettes pour l'étiquette imprimée automatiquement à la validation ───
@@ -614,7 +619,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               </div>
             </div>
           </div>
-          {(litige || hasEcartColis) && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
+          {/* Pour un retour de reconditionnement, un écart de colis (sans "⚠️ Problème" coché)
+              n'est pas un litige — voir hasLitige plus haut — donc pas de rapport à détailler ;
+              il sera juste repris automatiquement dans le récap "📲 Prévenir écarts" du jour. */}
+          {hasLitige && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
+          {!hasLitige && hasEcartColis && isRetourRecond && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#b45309", fontStyle: "italic" }}>L'écart sera repris dans "📲 Prévenir écarts" (WhatsApp) — pas de rapport de litige.</p>}
         </>
       )}
 
@@ -681,8 +690,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           </button>
         </div>
       ) : (
-        <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : (litige || hasEcartColis) ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-          {saving ? "..." : (litige || hasEcartColis) ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
+        <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : hasLitige ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
+          {saving ? "..." : hasLitige ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
         </button>
       )}
       {showReport && (
@@ -2390,30 +2399,10 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
               🖨 Traçabilité
             </button>
-            {/* Récap WhatsApp de l'état des arrivages de ce jour */}
-            <button
-              onClick={e => { e.stopPropagation(); recapWhatsAppJour(); }}
-              title={`Envoyer par WhatsApp le récap des arrivages du ${date}`}
-              style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #25d366", background: "#f0fdf4", color: "#15803d", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-              📲 Récap WA
-            </button>
-            {/* Prévenir des écarts du jour — un seul message WhatsApp groupant tous les écarts
-                de colis de la journée (voir alerterEcartsJourWhatsApp ci-dessus). */}
-            <button
-              onClick={e => { e.stopPropagation(); alerterEcartsJourWhatsApp(); }}
-              title={`Envoyer par WhatsApp tous les écarts de colis du ${date} en un seul message`}
-              style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #d97706", background: "#fffbeb", color: "#b45309", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-              📲 Prévenir écarts
-            </button>
-            {/* Bouton scanner étiquette */}
-            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.4)", borderRadius: 10, padding: "8px 12px" }}>
-              <span style={{ fontSize: 14, flexShrink: 0 }}>🔍</span>
-              <p style={{ margin: 0, fontSize: 11, color: "#93c5fd", flex: 1 }}>Scanner une étiquette</p>
-              <input type="file" accept="image/*" id={scanInputId} style={{ display: "none" }} onChange={e => { onScan(e, arrivages); e.target.value = ""; }} />
-              <label htmlFor={scanInputId} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "'Syne', sans-serif", flexShrink: 0 }}>
-                📷 Scanner
-              </label>
-            </div>
+            {/* 02/09/2026 — "Récap WA", "Prévenir écarts" et "Scanner une étiquette" retirés de la
+                barre d'actions du jour à la demande d'Elinathan (jamais utilisés) — les fonctions
+                (recapWhatsAppJour, alerterEcartsJourWhatsApp, onScan/scanInputId) restent en place
+                dans le code, juste masquées/non appelées ici, au cas où on voudrait les remettre. */}
           </div>
           {/* Fournisseurs - en attente + traités regroupés */}
           {allFourn.map(f => (

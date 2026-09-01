@@ -3365,35 +3365,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1d4ed8", whiteSpace: "nowrap" }}>
                 🌡 Historique
               </button>
-              <button onClick={() => {
-                const today = new Date().toLocaleDateString("fr-FR");
-                const byFourn: Record<string, any[]> = {};
-                arrivages.forEach((a: any) => { if (!byFourn[a.fournisseur]) byFourn[a.fournisseur] = []; byFourn[a.fournisseur].push(a); });
-                const lines: string[] = [];
-                Object.entries(byFourn).forEach(([fourn, arts]) => {
-                  const hasRefus = arts.some((a: any) => a.statut === "refusé");
-                  const hasReserve = arts.some((a: any) => a.statut === "sous réserve");
-                  const allValides = arts.every((a: any) => a.statut === "validé");
-                  const allAttente = arts.every((a: any) => a.statut === "en attente");
-                  if (hasRefus) {
-                    const refus = arts.filter((a: any) => a.statut === "refusé");
-                    refus.forEach((a: any) => lines.push(`❌ ${fourn} - Refus · Lot ${a.lot_interne || "-"} · ${a.produit || ""} · ${a.quantite || "-"} colis`));
-                  } else if (hasReserve) {
-                    const reserves = arts.filter((a: any) => a.statut === "sous réserve");
-                    reserves.forEach((a: any) => lines.push(`⚠️ ${fourn} - Réserve · Lot ${a.lot_interne || "-"} · ${a.produit || ""} · ${a.quantite || "-"} colis`));
-                  } else if (allValides) {
-                    lines.push(`✅ ${fourn}`);
-                  } else if (allAttente) {
-                    lines.push(`📦 ${fourn} - Pas encore reçu`);
-                  } else {
-                    lines.push(`⏳ ${fourn} - En cours`);
-                  }
-                });
-                const msg = `ARRIVAGES MOOREA - ${today}\n\n${lines.join("\n")}`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
-              }} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #25d366", background: "#f0fdf4", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#15803d", whiteSpace: "nowrap" }}>
-                📲 Récap WA
-              </button>
+              {/* 02/09/2026 — Bouton "📲 Récap WA" global retiré à la demande d'Elinathan (jamais
+                  utilisé) — celui du jour (dans chaque DateBlock) a été retiré pour la même raison. */}
               <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
             </div>
             {showHistoMesures && (
