@@ -793,6 +793,14 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                   <p style={{ fontSize: 11.5, color: COLORS.gray600, margin: "0 0 8px", lineHeight: 1.4 }}>
                     Une étiquette sera générée pour chaque ligne ci-dessous, à la place de "<strong>{blocVariableActuel.texte || "…"}</strong>". Le reste (logo, texte fixe, mise en page) ne change pas.
                   </p>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Nom du client</label>
+                  <input
+                    value={nomClientLot}
+                    onChange={(e) => setNomClientLot(e.target.value)}
+                    placeholder="Ex : Hôtel Waldorf"
+                    style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 10 }}
+                  />
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Une valeur par ligne (ex : un service par ligne)</label>
                   <textarea
                     value={listeValeurs}
                     onChange={(e) => setListeValeurs(e.target.value)}
