@@ -673,7 +673,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                         onClick={() => setGroupeOuvertPour(groupeOuvertPour === jourStr ? null : jourStr)}
                         style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                       >
-                        📦 Prévenir plusieurs prêts ({pretesDuJour.length})
+                        📣 Prévenir le transporteur ({pretesDuJour.length})
                       </button>
                     )}
                   </div>
@@ -759,7 +759,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                               onClick={() => setRepartieOuvertPour(repartieOuvertPour === d.id ? null : d.id)}
                               style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: COLORS.ink, color: COLORS.gold, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                             >
-                              🚚 Repartie
+                              📣 Prévenir le transporteur
                             </button>
                           )}
                           <button

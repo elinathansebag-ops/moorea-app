@@ -239,12 +239,54 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
     },
   });
 
-  // Prévient l'entrepôt qu'il y a une prod prête à aller chercher — best effort, ne bloque pas
-  // la confirmation si l'envoi échoue.
+  const ref = demande.numero || id;
+  const ecartHtml = ecart ? `<li><strong>⚠️ Écart vs prévu :</strong> ${ecart > 0 ? "+" : ""}${ecart}</li>` : "";
+  const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
+
+  // 01/09/2026 — Prévient D'ABORD directement le transporteur (pas seulement Moorea en
+  // interne), si son email est renseigné dans l'annuaire (Reconditionnement > Configuration >
+  // Transporteurs) — demande d'Elinathan : jusqu'ici seul Moorea était prévenu, à charge pour
+  // Jordan/Elinathan d'appeler ou d'écrire eux-mêmes au transporteur. On garde le résultat pour
+  // que le mail interne à Moorea (ci-dessous) confirme si le transporteur a bien été prévenu ou
+  // non. Best effort, ne bloque jamais la confirmation.
+  let transporteurPrevenu = false;
+  let transporteurEmailUtilise = "";
   try {
-    const ref = demande.numero || id;
-    const ecartHtml = ecart ? `<li><strong>⚠️ Écart vs prévu :</strong> ${ecart > 0 ? "+" : ""}${ecart}</li>` : "";
-    const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
+    if (demande.transporteurId) {
+      const transpSnap = await adminDb.ref(`reconditionnement_transporteurs/${demande.transporteurId}`).once("value");
+      const transp = transpSnap.val();
+      if (transp?.email) {
+        await creerMailer().sendMail({
+          from: "Moorea Agréage <agreage@moorea.fr>",
+          to: transp.email,
+          subject: `🚚 Demande d'enlèvement — ${DEPOT_LABEL[depot]} (${ref})`,
+          html: `
+            <p>🚚 Bonjour${transp.contact ? ` ${transp.contact}` : ""},</p>
+            <p>Le reconditionnement chez <strong>${DEPOT_LABEL[depot]}</strong> est prêt — merci de passer le récupérer dès que possible.</p>
+            <ul>
+              <li><strong>Référence :</strong> ${ref}</li>
+              <li><strong>Article :</strong> ${demande.articleFini || demande.articleVrac || "—"}</li>
+              <li><strong>Quantité prête :</strong> ${quantite} colis</li>
+              ${palettesHtml}
+              ${commentaire ? `<li><strong>Commentaire :</strong> ${commentaire}</li>` : ""}
+            </ul>
+            <p>Merci,<br/>Moorea Agréage</p>`,
+        });
+        transporteurPrevenu = true;
+        transporteurEmailUtilise = transp.email;
+      }
+    }
+  } catch (emailErr) {
+    console.error("Erreur envoi email transporteur (portail):", emailErr);
+  }
+
+  // Prévient l'entrepôt (Jordan/Elinathan) qu'il y a une prod prête à aller chercher, et
+  // confirme si la demande d'enlèvement a bien été envoyée au transporteur (ça arrive) ou non
+  // (à faire soi-même) — best effort, ne bloque pas la confirmation si l'envoi échoue.
+  try {
+    const statutTransporteurHtml = transporteurPrevenu
+      ? `<p style="margin-top:10px;padding:10px 14px;background:#eafaf1;border:1px solid #a9dfbf;border-radius:8px;">✅ La demande d'enlèvement a été envoyée au transporteur (${transporteurEmailUtilise}) — ça arrive.</p>`
+      : `<p style="margin-top:10px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">⚠️ Transporteur non prévenu automatiquement (pas d'email enregistré pour lui) — à contacter directement.</p>`;
     await creerMailer().sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
       to: PROD_PRETE_EMAILS.join(","),
@@ -259,7 +301,8 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
           ${transporteur ? `<li><strong>Transporteur :</strong> ${transporteur}</li>` : ""}
           ${palettesHtml}
           ${commentaire ? `<li><strong>Commentaire :</strong> ${commentaire}</li>` : ""}
-        </ul>`,
+        </ul>
+        ${statutTransporteurHtml}`,
     });
   } catch (emailErr) {
     console.error("Erreur envoi email prod prête (portail):", emailErr);
@@ -308,14 +351,62 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
         parti: { confirme: true, date, transporteur, ...(nbPalettes ? { nbPalettes } : {}) },
       },
     });
-    traitees.push({ id, demande, quantite, ecart, transporteur });
+    traitees.push({ id, demande, quantite, ecart, transporteur, transporteurId: demande.transporteurId || null });
   }
 
   if (traitees.length === 0) {
     throw Object.assign(new Error("Aucune demande valide trouvée"), { statusCode: 404 });
   }
 
-  // Un seul mail groupé — best effort, ne bloque pas la confirmation si l'envoi échoue.
+  const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
+  const creneauHtml = creneauReste
+    ? `<p style="margin-top:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">🕒 <strong>Reste à venir :</strong> le reste de la production sera prêt ${creneauReste}.</p>`
+    : "";
+
+  // 01/09/2026 — Même principe que confirmerRepartie : prévient D'ABORD directement chaque
+  // transporteur concerné (un mail par transporteur, listant uniquement SES références), pour
+  // que le mail interne Moorea (ci-dessous) confirme ensuite qui a bien été prévenu. Best
+  // effort, ne bloque jamais la confirmation.
+  const transporteursPrevenusNoms = [];
+  try {
+    const parTransporteur = new Map();
+    for (const t of traitees) {
+      if (!t.transporteurId) continue;
+      if (!parTransporteur.has(t.transporteurId)) parTransporteur.set(t.transporteurId, []);
+      parTransporteur.get(t.transporteurId).push(t);
+    }
+    for (const [transporteurId, items] of parTransporteur) {
+      const transpSnap = await adminDb.ref(`reconditionnement_transporteurs/${transporteurId}`).once("value");
+      const transp = transpSnap.val();
+      if (!transp?.email) continue;
+      const lignesHtmlTransp = items.map(t => {
+        const ref = t.demande.numero || t.id;
+        return `<li><strong>${ref}</strong> — ${t.demande.articleFini || t.demande.articleVrac || "—"} : ${t.quantite} colis</li>`;
+      }).join("");
+      await creerMailer().sendMail({
+        from: "Moorea Agréage <agreage@moorea.fr>",
+        to: transp.email,
+        subject: `🚚 Demande d'enlèvement — ${DEPOT_LABEL[depot]} (${items.length} référence${items.length > 1 ? "s" : ""})`,
+        html: `
+          <p>🚚 Bonjour${transp.contact ? ` ${transp.contact}` : ""},</p>
+          <p>Le reconditionnement chez <strong>${DEPOT_LABEL[depot]}</strong> est prêt — merci de passer le récupérer dès que possible.</p>
+          <ul>${lignesHtmlTransp}</ul>
+          <ul>
+            ${palettesHtml}
+            ${commentaire ? `<li><strong>Commentaire :</strong> ${commentaire}</li>` : ""}
+          </ul>
+          ${creneauReste ? `<p style="margin-top:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">🕒 Le reste de la production sera prêt ${creneauReste}.</p>` : ""}
+          <p>Merci,<br/>Moorea Agréage</p>`,
+      });
+      transporteursPrevenusNoms.push(items[0].transporteur !== "-" ? items[0].transporteur : transp.nom);
+    }
+  } catch (emailErr) {
+    console.error("Erreur envoi email transporteur groupé (portail):", emailErr);
+  }
+
+  // Un seul mail groupé pour Moorea (Jordan/Elinathan) — confirme aussi si la demande
+  // d'enlèvement a bien été envoyée au(x) transporteur(s) concerné(s) ou non (à faire soi-même).
+  // Best effort, ne bloque pas la confirmation si l'envoi échoue.
   try {
     const lignesHtml = traitees.map(t => {
       const ref = t.demande.numero || t.id;
@@ -323,10 +414,9 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
       return `<li><strong>${ref}</strong> — ${t.demande.articleFini || t.demande.articleVrac || "—"} : ${t.quantite} colis${ecartHtml}</li>`;
     }).join("");
     const transporteursUniques = [...new Set(traitees.map(t => t.transporteur).filter(t => t && t !== "-"))];
-    const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
-    const creneauHtml = creneauReste
-      ? `<p style="margin-top:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">🕒 <strong>Reste à venir :</strong> le reste de la production sera prêt ${creneauReste}.</p>`
-      : "";
+    const statutTransporteurHtml = transporteursPrevenusNoms.length > 0
+      ? `<p style="margin-top:10px;padding:10px 14px;background:#eafaf1;border:1px solid #a9dfbf;border-radius:8px;">✅ La demande d'enlèvement a été envoyée à ${transporteursPrevenusNoms.join(", ")} — ça arrive.</p>`
+      : `<p style="margin-top:10px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">⚠️ Transporteur${transporteursUniques.length > 1 ? "s" : ""} non prévenu${transporteursUniques.length > 1 ? "s" : ""} automatiquement (pas d'email enregistré) — à contacter directement.</p>`;
     await creerMailer().sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
       to: PROD_PRETE_EMAILS.join(","),
@@ -339,7 +429,8 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
           ${palettesHtml}
           ${commentaire ? `<li><strong>Commentaire :</strong> ${commentaire}</li>` : ""}
         </ul>
-        ${creneauHtml}`,
+        ${creneauHtml}
+        ${statutTransporteurHtml}`,
     });
   } catch (emailErr) {
     console.error("Erreur envoi email prod prête groupée (portail):", emailErr);
