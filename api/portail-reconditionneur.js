@@ -202,6 +202,34 @@ async function handleGet(res, depot) {
   return res.status(200).json({ demandes, stock: typeof stockVal === "number" ? stockVal : 0, reajustements, mouvements, mouvementsAuto, cartonsEnAttente });
 }
 
+// 02/09/2026 — Elinathan a remonté que la quantité déclarée ici par le presta ("Repartie", avec
+// une quantité différente du prévisionnel) n'apparaissait PAS à jour côté "Pointer arrivage" :
+// l'arrivage attendu est en fait souvent créé AVANT ce geste (dès que Moorea marque la demande
+// "parti" côté Préparation entrepôt — voir marquerPartiSilencieux dans PreparationModule.tsx),
+// avec la quantité prévisionnelle (nbColisAEntrer) comme seule valeur disponible à ce moment-là.
+// Quand le presta déclare ensuite sa quantité réelle via le portail, rien ne venait mettre à jour
+// cet arrivage déjà créé — l'entrepôt continuait donc de voir l'ancien prévisionnel. Ce best-effort
+// (même principe que la synchro "carton_commande_id" plus bas) retrouve l'arrivage lié et corrige
+// sa quantité si un exemplaire "en attente" existe déjà.
+async function syncArrivageQuantiteDeclaree(adminDb, demandeId, quantiteDeclaree, quantitePrevue) {
+  try {
+    const arrSnap = await adminDb.ref("arrivages").orderByChild("reconditionnement_demande_id").equalTo(demandeId).once("value");
+    const arrData = arrSnap.val();
+    if (!arrData) return;
+    const ecartPresta = quantitePrevue != null ? quantiteDeclaree - quantitePrevue : null;
+    for (const [arrId, a] of Object.entries(arrData)) {
+      if (!a || a.statut !== "en attente") continue; // déjà pointé : on ne touche plus à rien
+      await adminDb.ref(`arrivages/${arrId}`).update({
+        quantite: quantiteDeclaree,
+        quantiteDeclareePresta: quantiteDeclaree,
+        ecartPresta,
+      });
+    }
+  } catch (err) {
+    console.error("Erreur synchro quantité déclarée vers arrivage lié (portail):", err);
+  }
+}
+
 // Un seul geste côté presta ("Repartie" sur le portail) = une seule écriture Firebase et un seul
 // mail à l'entrepôt/Jordan/Elinathan — avant, "prod prête" et "c'est parti" étaient deux actions
 // séparées avec chacune son mail ; fusionnées ici pour ne plus en envoyer deux d'affilée pour le
@@ -238,6 +266,7 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
       parti: { confirme: true, date, transporteur: transporteur || "-", ...(nbPalettes ? { nbPalettes } : {}) },
     },
   });
+  await syncArrivageQuantiteDeclaree(adminDb, id, quantite, attendu);
 
   const ref = demande.numero || id;
   // 01/09/2026 — Ligne "Quantité" reformulée pour dire explicitement si la quantité déclarée
@@ -261,6 +290,11 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
   let transporteurPrevenu = false;
   let transporteurEmailUtilise = "";
   let transporteurRaisonEchec = "";
+  // 02/09/2026 — Quand le "transporteur" choisi est Moorea elle-même (l'entrepôt vient
+  // récupérer directement, pas de vrai transporteur externe), il n'y a jamais eu — et n'y
+  // aura jamais — d'email à envoyer : ce n'est pas une erreur à signaler, juste un cas normal.
+  // On ne tente donc rien et on n'affiche aucun message (ni succès ni "non prévenu").
+  let transporteurEstMoorea = false;
   try {
     if (!demande.transporteurId) {
       transporteurRaisonEchec = "aucun transporteur n'est associé à cette demande (vérifie qu'un transporteur a bien été sélectionné à la création de la demande, dans Reconditionnement)";
@@ -269,6 +303,8 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
       const transp = transpSnap.val();
       if (!transp) {
         transporteurRaisonEchec = "le transporteur associé à cette demande n'existe plus dans l'annuaire (Reconditionnement > Configuration > Transporteurs)";
+      } else if ((transp.nom || "").trim().toLowerCase() === "moorea") {
+        transporteurEstMoorea = true;
       } else if (!transp.email) {
         transporteurRaisonEchec = `aucun email enregistré pour ${transp.nom || "ce transporteur"} (à ajouter dans Reconditionnement > Configuration > Transporteurs)`;
       } else {
@@ -302,7 +338,9 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
   // confirme si la demande d'enlèvement a bien été envoyée au transporteur (ça arrive) ou non,
   // avec la raison précise — best effort, ne bloque pas la confirmation si l'envoi échoue.
   try {
-    const statutTransporteurHtml = transporteurPrevenu
+    const statutTransporteurHtml = transporteurEstMoorea
+      ? ""
+      : transporteurPrevenu
       ? `<p style="margin-top:10px;padding:10px 14px;background:#eafaf1;border:1px solid #a9dfbf;border-radius:8px;">✅ La demande d'enlèvement a été envoyée au transporteur (${transporteurEmailUtilise}) — ça arrive.</p>`
       : `<p style="margin-top:10px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">⚠️ Transporteur non prévenu automatiquement : ${transporteurRaisonEchec || "raison inconnue"} — à contacter directement.</p>`;
     await creerMailer().sendMail({
@@ -369,6 +407,7 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
         parti: { confirme: true, date, transporteur, ...(nbPalettes ? { nbPalettes } : {}) },
       },
     });
+    await syncArrivageQuantiteDeclaree(adminDb, id, quantite, attendu);
     traitees.push({ id, demande, quantite, ecart, transporteur, transporteurId: demande.transporteurId || null });
   }
 
@@ -407,6 +446,12 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
       const refs = items.map(t => t.demande.numero || t.id).join(", ");
       if (!transp) {
         transporteursNonPrevenusRaisons.push(`${refs} : transporteur introuvable dans l'annuaire`);
+        continue;
+      }
+      // 02/09/2026 — Moorea elle-même vient récupérer : jamais d'email à envoyer, ce n'est pas
+      // une erreur (voir même logique dans handleConfirmerRepartie ci-dessus). On ignore ce
+      // groupe silencieusement, sans l'ajouter ni aux prévenus ni aux non-prévenus.
+      if ((transp.nom || "").trim().toLowerCase() === "moorea") {
         continue;
       }
       if (!transp.email) {
@@ -458,9 +503,15 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
       return `<li><strong>${ref}</strong>${t.demande.lot ? ` (lot ${t.demande.lot})` : ""} — ${t.demande.articleFini || t.demande.articleVrac || "—"} : ${t.quantite} colis${quantiteInfo}</li>`;
     }).join("");
     const transporteursUniques = [...new Set(traitees.map(t => t.transporteur).filter(t => t && t !== "-"))];
+    // 02/09/2026 — Si tout était géré par Moorea elle-même (aucun vrai transporteur externe
+    // concerné), transporteursPrevenusNoms ET transporteursNonPrevenusRaisons restent tous les
+    // deux vides (voir la boucle ci-dessus) : rien à signaler, donc aucun encart plutôt que le
+    // faux "non prévenu automatiquement" d'avant.
     const statutTransporteurHtml = transporteursPrevenusNoms.length > 0
       ? `<p style="margin-top:10px;padding:10px 14px;background:#eafaf1;border:1px solid #a9dfbf;border-radius:8px;">✅ La demande d'enlèvement a été envoyée à ${transporteursPrevenusNoms.join(", ")} — ça arrive.${transporteursNonPrevenusRaisons.length > 0 ? `<br/>⚠️ Sauf : ${transporteursNonPrevenusRaisons.join(" · ")} — à contacter directement.` : ""}</p>`
-      : `<p style="margin-top:10px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">⚠️ Transporteur${transporteursUniques.length > 1 ? "s" : ""} non prévenu${transporteursUniques.length > 1 ? "s" : ""} automatiquement${transporteursNonPrevenusRaisons.length > 0 ? ` : ${transporteursNonPrevenusRaisons.join(" · ")}` : ""} — à contacter directement.</p>`;
+      : transporteursNonPrevenusRaisons.length > 0
+      ? `<p style="margin-top:10px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">⚠️ Transporteur${transporteursUniques.length > 1 ? "s" : ""} non prévenu${transporteursUniques.length > 1 ? "s" : ""} automatiquement : ${transporteursNonPrevenusRaisons.join(" · ")} — à contacter directement.</p>`
+      : "";
     await creerMailer().sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
       to: PROD_PRETE_EMAILS.join(","),
