@@ -51,15 +51,34 @@ function formatCaisses(caisses: number): string {
   return `${palettes} palette${palettes > 1 ? "s" : ""} (${caisses || 0} caisses${reste > 0 ? `, dont ${reste} hors palette` : ""})`;
 }
 
-// Texte des petites cellules "IFCO Moorea / IFCO NLT" (en_cours + nouvelle demande) — une seule
-// ligne, une seule taille de police : le reste hors palette (ex: 142 caisses) compte tout autant
-// que le nombre de palettes entières, donc pas de gros chiffre + petite légende comme avant
-// (demande d'Elinathan, 01/09/2026).
-function celluleStockIfco(caisses: number): string {
-  const palettes = Math.floor((caisses || 0) / CAISSES_PAR_PALETTE);
-  const reste = (caisses || 0) % CAISSES_PAR_PALETTE;
-  if (palettes > 0) return `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisses` : ""}`;
-  return `${caisses || 0} caisses`;
+// 02/09/2026 — Cartes de stock "IFCO Moorea / IFCO NLT / Carton Andès" (en_cours + nouvelle
+// demande) alignées visuellement sur le module Prestataires (onglet Calendrier IFCO) : même
+// carte blanche, même gros chiffre (nombre de palettes entières) avec le détail caisses/colis
+// en petit dessous — demande d'Elinathan pour que les deux modules se ressemblent au premier
+// coup d'œil, remplace l'ancienne cellule à taille de police unique.
+function StockCardsIfco({ moorea, nlt, cartonAndes }: { moorea: number; nlt: number; cartonAndes: number }) {
+  const carte = (label: string, icone: string, caisses: number, couleur: string) => {
+    const palettes = Math.floor((caisses || 0) / CAISSES_PAR_PALETTE);
+    const reste = (caisses || 0) % CAISSES_PAR_PALETTE;
+    return (
+      <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>{icone} {label}</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: couleur }}>{palettes > 0 ? palettes : (caisses || 0)}</div>
+        <div style={{ fontSize: 9, color: "#ccc" }}>{palettes > 0 ? `palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisses` : ""}` : "caisses"}</div>
+      </div>
+    );
+  };
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12, marginBottom: 8 }}>
+      {carte("Moorea", "🏭", moorea, "#27ae60")}
+      {carte("NLT", "🔄", nlt, "#3b82f6")}
+      <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px", textAlign: "center" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Andès</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: "#b45309" }}>{cartonAndes || 0}</div>
+        <div style={{ fontSize: 9, color: "#ccc" }}>colis</div>
+      </div>
+    </div>
+  );
 }
 
 type Depot = "nlt" | "andes";
@@ -684,7 +703,6 @@ export function ReconditionnementModule({ onClose, userName }: {
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [filtreStatut, setFiltreStatut] = useState<"toutes" | Demande["statut"]>("toutes");
   // Filtre du tableau "Détail production reconditionneur" (onglet Historique) — permet de ne
   // voir que les demandes conditionnées en caisses IFCO (NLT, retourEnIfcoDemande) ou en carton
   // baby blanc (le reste), plutôt que tout mélangé.
@@ -1254,14 +1272,54 @@ export function ReconditionnementModule({ onClose, userName }: {
   // Suppression définitive — pour "en attente", "prêt" ou "parti" (pas pour "reçu", déjà
   // clôturée). Si un arrivage retour a été créé (cas "parti", pas encore pointé), on le
   // supprime aussi pour ne pas laisser une carte fantôme dans « Pointer arrivage ».
-  async function supprimerDemande(id: string) {
+  // 01/09/2026 — Une demande "en attente"/"prêt"/"parti" a déjà pu faire bouger du stock réel
+  // dès sa création (caisses IFCO vides envoyées à NLT et/ou cartons baby blanc consommés chez
+  // Andès, voir creerDemande plus haut) — la supprimer sans corriger ce stock le laissait
+  // décalé pour toujours de ce qu'elle avait déjà consommé/envoyé. On repart des valeurs
+  // enregistrées sur la demande elle-même (source la plus sûre) pour annuler ce mouvement,
+  // avec une ligne de mouvement dédiée pour garder une trace ("chaque caisse coûte cher, pas
+  // le droit à l'erreur"). Le retour (caisses IFCO pleines reçues) n'a jamais lieu pour ces
+  // 3 statuts (il n'existe qu'une fois "reçu", voir supprimerDemandeTerminee ci-dessous), donc
+  // rien à annuler de ce côté ici.
+  async function supprimerDemande(d: Demande) {
     if (!window.confirm("Supprimer définitivement cette demande de reconditionnement ?")) return;
-    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
-    if (arrivageLie) {
-      await remove(ref(db, `arrivages/${arrivageLie.id}`));
+    try {
+      const { get } = await import("firebase/database");
+      const caissesEnvoyees = d.depot === "nlt" ? (d.caissesIfcoEnvoyees || 0) : 0;
+      const cartonsUtilises = d.depot === "andes" ? (d.cartonsBabyBlancEnvoyes || 0) : 0;
+
+      if (caissesEnvoyees > 0) {
+        const levelsSnap = await get(ref(db, "ifco_stock/levels"));
+        const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
+        const newMoorea = (levels.moorea || 0) + caissesEnvoyees;
+        const newNlt = (levels.nlt || 0) - caissesEnvoyees;
+        await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+        await push(ref(db, "ifco_stock/movements"), {
+          date: nowFr(),
+          from: "nlt",
+          to: "moorea",
+          caisses: caissesEnvoyees,
+          raison: `Reconditionnement — annulation suppression de ${d.numero || d.id}`,
+          reconditionnement_demande_id: d.id,
+          user: userName || "Moorea",
+          ts: Date.now(),
+        });
+      }
+      if (cartonsUtilises > 0) {
+        const stockSnap = await get(ref(db, "stock_carton_andes"));
+        const stock = stockSnap.val() || {};
+        await update(ref(db, "stock_carton_andes"), { baby_blanc: (stock.baby_blanc || 0) + cartonsUtilises });
+      }
+
+      const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === d.id);
+      if (arrivageLie) {
+        await remove(ref(db, `arrivages/${arrivageLie.id}`));
+      }
+      await remove(ref(db, `reconditionnement_demandes/${d.id}`));
+      notify("success", caissesEnvoyees > 0 || cartonsUtilises > 0 ? "🗑️ Demande supprimée — stock remis à jour en conséquence" : "🗑️ Demande supprimée");
+    } catch (err: any) {
+      notify("error", `❌ Erreur lors de la suppression : ${err?.message || "erreur inconnue"}`);
     }
-    await remove(ref(db, `reconditionnement_demandes/${id}`));
-    notify("success", "🗑️ Demande supprimée");
   }
 
   // 27/08/2026 — Repris depuis Préparation entrepôt (retiré là-bas, voir plus haut) : remettre
@@ -1698,9 +1756,14 @@ export function ReconditionnementModule({ onClose, userName }: {
   // a au moins une demande "en attente" d'être envoyée — sinon elle ne fait qu'encombrer l'écran
   // "En cours" pour rien (demande d'Elinathan, 01/09/2026). Si elle est masquée, on ignore aussi
   // le filtre choisi précédemment pour ne pas rester bloqué sur une vue vide.
-  const yADesDemandesEnAttenteIfco = demandes.some(d => d.statut === "en attente");
-  const filtreStatutEffectif = yADesDemandesEnAttenteIfco ? filtreStatut : "toutes";
-  const demandesFiltrees = demandes.filter(d => filtreStatutEffectif === "toutes" || d.statut === filtreStatutEffectif);
+  // Plus de barre de filtre statut séparée : les demandes sont toutes affichées, groupées par
+  // semaine/jour/dépôt (accordéon, comme dans Agréage), avec le statut de chaque demande visible
+  // directement sur sa carte via StatutBadge — demande d'Elinathan, 01/09/2026 ("mets comme dans
+  // arrivage le statut des reconditionnements dans les accordéons").
+  const demandesFiltrees = demandes;
+  // Le bouton d'envoi rapide de palette IFCO à NLT ne sert que s'il y a un bon NLT en attente
+  // d'être envoyé — sinon il n'a pas lieu d'être affiché.
+  const yABonsNltEnAttente = demandes.some(d => d.depot === "nlt" && d.statut === "en attente");
 
   // Tous les lots connus (arrivages, stock, historique reconditionnement), pour la saisie
   // assistée du champ Lot du formulaire.
@@ -1819,7 +1882,7 @@ export function ReconditionnementModule({ onClose, userName }: {
       setSemainesOuvertesDemandes(new Set());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtreStatut, demandesFiltrees.length]);
+  }, [demandesFiltrees.length]);
   const toggleSemaineDemandes = (cle: string) => {
     setSemainesOuvertesDemandes(prev => {
       const next = new Set(prev || []);
@@ -2142,7 +2205,7 @@ export function ReconditionnementModule({ onClose, userName }: {
                             <span style={{ color: "#b08a4a" }}> · {d.dateCreationFr}</span>
                           </span>
                           <button
-                            onClick={() => supprimerDemande(d.id)}
+                            onClick={() => supprimerDemande(d)}
                             title="Supprimer cette demande (pas encore envoyée)"
                             style={{ padding: "4px 10px", borderRadius: 6, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
                           >
@@ -2188,20 +2251,7 @@ export function ReconditionnementModule({ onClose, userName }: {
 
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 8 }}>
-              <div style={{ background: COLORS.secondaryLight, border: `1.5px solid #c8e8d4`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.secondary }}>IFCO Moorea</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.secondary }}>{celluleStockIfco(stockIfco.moorea)}</div>
-              </div>
-              <div style={{ background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary }}>IFCO NLT</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.primary }}>{celluleStockIfco(stockIfco.nlt)}</div>
-              </div>
-              <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes} colis</div>
-              </div>
-            </div>
+            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} />
 
             {/* 31/08/2026 — Bouton global, indépendant de toute demande précise : c'est
                 désormais ici (et non plus depuis la création d'une demande) que se déclare
@@ -2215,7 +2265,10 @@ export function ReconditionnementModule({ onClose, userName }: {
                 pas de préparation à valider), avec un numéro préfixé "PAL" (au lieu de "RC") pour
                 le distinguer d'une vraie demande de reconditionnement au premier coup d'œil. Le
                 nombre de palettes est déduit du nombre de caisses (640 caisses = 1 palette,
-                CAISSES_PAR_PALETTE) — arrondi au plus proche, au moins 1. */}
+                CAISSES_PAR_PALETTE) — arrondi au plus proche, au moins 1.
+                01/09/2026 — À la demande d'Elinathan : n'a de sens que s'il y a un bon NLT en
+                attente d'être envoyé, sinon le bouton n'a pas lieu d'être affiché. */}
+            {yABonsNltEnAttente && (
             <div style={{ marginBottom: 14 }}>
               <button
                 type="button"
@@ -2263,25 +2316,6 @@ export function ReconditionnementModule({ onClose, userName }: {
                 📦 Envoyer une palette IFCO à NLT
               </button>
             </div>
-
-            {/* Filtre statut — seulement s'il y a au moins une demande "en attente" d'être
-                envoyée, sinon il n'y a rien d'utile à filtrer (demande d'Elinathan, 01/09/2026). */}
-            {yADesDemandesEnAttenteIfco && (
-              <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
-                {(["toutes", "en attente", "prêt", "parti", "reçu", "annulé"] as const).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setFiltreStatut(s)}
-                    style={{
-                      padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${filtreStatutEffectif === s ? COLORS.primary : COLORS.gray200}`,
-                      background: filtreStatutEffectif === s ? COLORS.primaryLight : "#fff", color: filtreStatutEffectif === s ? COLORS.primary : COLORS.gray600,
-                      fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-                    }}
-                  >
-                    {s === "toutes" ? "Toutes" : s.charAt(0).toUpperCase() + s.slice(1)}
-                  </button>
-                ))}
-              </div>
             )}
 
             {demandesFiltrees.length === 0 ? (
@@ -2453,7 +2487,7 @@ export function ReconditionnementModule({ onClose, userName }: {
                         <button onClick={() => chargerPourEdition(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           ✏️ Modifier
                         </button>
-                        <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        <button onClick={() => supprimerDemande(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           🗑️ Supprimer
                         </button>
                         <button onClick={() => annulerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
@@ -2486,7 +2520,7 @@ export function ReconditionnementModule({ onClose, userName }: {
                         <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           ↩️ Revenir à « en attente »
                         </button>
-                        <button onClick={() => supprimerDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        <button onClick={() => supprimerDemande(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           🗑️ Supprimer
                         </button>
                       </div>
@@ -2523,20 +2557,7 @@ export function ReconditionnementModule({ onClose, userName }: {
             )}
 
             {/* Stock, en couleur pâle pour repérer chaque compteur d'un coup d'œil */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 8 }}>
-              <div style={{ background: COLORS.secondaryLight, border: `1.5px solid #c8e8d4`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.secondary }}>IFCO Moorea</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.secondary }}>{celluleStockIfco(stockIfco.moorea)}</div>
-              </div>
-              <div style={{ background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.primary }}>IFCO NLT</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.primary }}>{celluleStockIfco(stockIfco.nlt)}</div>
-              </div>
-              <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "8px 10px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309" }}>Carton Andès</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#b45309" }}>{stockBabyBlancAndes} colis</div>
-              </div>
-            </div>
+            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} />
 
             {/* Bon Geslot + envoi palette IFCO, côte à côte en haut — les deux actions rapides */}
             <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap", alignItems: "stretch" }}>
