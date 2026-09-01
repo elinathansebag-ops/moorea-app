@@ -575,12 +575,16 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   });
   const semainesTrieesDemandes = Object.entries(parSemaineDemandes).sort((a, b) => b[1].tri - a[1].tri);
 
+  // 02/09/2026 — Demande d'Elinathan : une semaine entièrement "terminée" (tout reçu/annulé,
+  // badge vert uniquement) reste maintenant fermée par défaut — inutile de l'ouvrir
+  // automatiquement puisqu'il n'y a plus rien à traiter dedans. On ouvre la plus récente qui a
+  // encore au moins une demande "en cours".
   useEffect(() => {
-    if (semainesTrieesDemandes.length > 0) {
-      setSemainesOuvertesDemandes(new Set([semainesTrieesDemandes[0][0]]));
-    } else {
-      setSemainesOuvertesDemandes(new Set());
-    }
+    const semaineACtraiter = semainesTrieesDemandes.find(([, info]) => {
+      const tousDeLaSemaine = info.jours.flatMap((j: string) => parJourDemandes[j] || []);
+      return tousDeLaSemaine.some((d: any) => d.statut !== "reçu" && d.statut !== "annulé");
+    });
+    setSemainesOuvertesDemandes(new Set(semaineACtraiter ? [semaineACtraiter[0]] : []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtreStatut, demandesFiltrees.length]);
   const toggleSemaineDemandes = (cle: string) => {
@@ -593,12 +597,17 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
 
   // Sous-accordéon par dépôt (NLT / Andès) à l'intérieur de chaque jour.
   const [depotsFermesDemandes, setDepotsFermesDemandes] = useState<Set<string>>(new Set());
-  const toggleDepotDemandes = (cle: string) => {
-    setDepotsFermesDemandes(prev => {
-      const next = new Set(prev);
-      if (next.has(cle)) next.delete(cle); else next.add(cle);
-      return next;
-    });
+  // 02/09/2026 — Voir le même Set dans ReconditionnementModule.tsx (copié à l'identique) :
+  // retient les groupes dépôt "terminés" rouverts manuellement malgré leur statut.
+  const [depotsForcesOuvertsDemandes, setDepotsForcesOuvertsDemandes] = useState<Set<string>>(new Set());
+  const toggleDepotDemandes = (cle: string, ouvertActuellement: boolean) => {
+    if (ouvertActuellement) {
+      setDepotsFermesDemandes(prev => new Set(prev).add(cle));
+      setDepotsForcesOuvertsDemandes(prev => { const next = new Set(prev); next.delete(cle); return next; });
+    } else {
+      setDepotsForcesOuvertsDemandes(prev => new Set(prev).add(cle));
+      setDepotsFermesDemandes(prev => { const next = new Set(prev); next.delete(cle); return next; });
+    }
   };
 
   return (
@@ -704,15 +713,16 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                             const demandesJourDepot = parJourDemandes[jourStr].filter(d => d.depot === dep);
                             if (demandesJourDepot.length === 0) return null;
                             const cleDepot = `${jourStr}::${dep}`;
-                            const depotOuvert = !depotsFermesDemandes.has(cleDepot);
+                            const estGroupeTermineDepot = demandesJourDepot.every(d => d.statut === "reçu" || d.statut === "annulé");
+                            const depotOuvert = depotsForcesOuvertsDemandes.has(cleDepot) ? true : depotsFermesDemandes.has(cleDepot) ? false : !estGroupeTermineDepot;
                             const accentDepot = DEPOT_ACCENT[dep];
                             // "Tout marquer parti" couvre les demandes déjà "prêt" ET celles encore
                             // "en attente" — un seul bouton, un seul total de palettes demandé.
                             const aEnvoyerDuGroupe = demandesJourDepot.filter(d => d.statut === "prêt" || d.statut === "en attente");
                             return (
                               <div key={dep} style={{ marginBottom: 10, background: `${accentDepot}0d`, border: `1px solid ${accentDepot}33`, borderRadius: 10, padding: 8 }}>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0 }}>
-                                  <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexWrap: "wrap" }}>
+                                <div onClick={() => toggleDepotDemandes(cleDepot, depotOuvert)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0, cursor: "pointer" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                     <span style={{ fontSize: 12, color: accentDepot, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
                                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: accentDepot, display: "inline-block" }} />
                                     <span style={{ fontSize: 12, fontWeight: 800, color: accentDepot }}>
@@ -722,7 +732,8 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                   </div>
                                   {aEnvoyerDuGroupe.length > 1 && (
                                     <button
-                                      onClick={() => {
+                                      onClick={e => {
+                                        e.stopPropagation();
                                         setGroupePartiIds(aEnvoyerDuGroupe.map(d => d.id));
                                         setGroupePartiGrandes("");
                                         setGroupePartiDemi("");

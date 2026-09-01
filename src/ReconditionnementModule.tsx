@@ -1910,15 +1910,18 @@ export function ReconditionnementModule({ onClose, userName }: {
   });
   const semainesTrieesDemandes = Object.entries(parSemaineDemandes).sort((a, b) => b[1].tri - a[1].tri);
 
-  // La semaine la plus récente s'ouvre automatiquement ; ensuite l'utilisateur garde le
-  // contrôle. Ré-ouvre aussi la plus récente si le filtre change et referme les autres, pour
-  // ne pas se retrouver avec un accordéon resté fermé sur un statut qu'on ne regarde plus.
+  // La semaine la plus récente qui a encore des demandes "en cours" s'ouvre automatiquement ;
+  // ensuite l'utilisateur garde le contrôle. Ré-évalue aussi si le filtre change et referme les
+  // autres, pour ne pas se retrouver avec un accordéon resté fermé sur un statut qu'on ne
+  // regarde plus. 02/09/2026 — Demande d'Elinathan : une semaine entièrement "terminée" (tout
+  // reçu/annulé, badge vert uniquement) reste maintenant fermée par défaut — inutile de
+  // l'ouvrir automatiquement puisqu'il n'y a plus rien à traiter dedans.
   useEffect(() => {
-    if (semainesTrieesDemandes.length > 0) {
-      setSemainesOuvertesDemandes(new Set([semainesTrieesDemandes[0][0]]));
-    } else {
-      setSemainesOuvertesDemandes(new Set());
-    }
+    const semaineACtraiter = semainesTrieesDemandes.find(([, info]) => {
+      const tousDeLaSemaine = info.jours.flatMap((j: string) => parJourDemandes[j] || []);
+      return tousDeLaSemaine.some((d: any) => d.statut !== "reçu" && d.statut !== "annulé");
+    });
+    setSemainesOuvertesDemandes(new Set(semaineACtraiter ? [semaineACtraiter[0]] : []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demandesFiltrees.length]);
   const toggleSemaineDemandes = (cle: string) => {
@@ -1934,12 +1937,19 @@ export function ReconditionnementModule({ onClose, userName }: {
   // liste. Fermé = présent dans le Set (par défaut tout est ouvert, sans avoir à initialiser
   // une clé par jour × dépôt à l'avance).
   const [depotsFermesDemandes, setDepotsFermesDemandes] = useState<Set<string>>(new Set());
-  const toggleDepotDemandes = (cle: string) => {
-    setDepotsFermesDemandes(prev => {
-      const next = new Set(prev);
-      if (next.has(cle)) next.delete(cle); else next.add(cle);
-      return next;
-    });
+  // 02/09/2026 — Demande d'Elinathan : un groupe dépôt entièrement "terminé" (tout reçu/annulé)
+  // doit rester fermé par défaut, mais l'utilisateur doit pouvoir l'ouvrir manuellement quand
+  // même — d'où ce deuxième Set qui retient les groupes rouverts "de force" malgré leur statut
+  // terminé (voir depotOuvert plus bas, calculé à partir des deux Sets + du statut du groupe).
+  const [depotsForcesOuvertsDemandes, setDepotsForcesOuvertsDemandes] = useState<Set<string>>(new Set());
+  const toggleDepotDemandes = (cle: string, ouvertActuellement: boolean) => {
+    if (ouvertActuellement) {
+      setDepotsFermesDemandes(prev => new Set(prev).add(cle));
+      setDepotsForcesOuvertsDemandes(prev => { const next = new Set(prev); next.delete(cle); return next; });
+    } else {
+      setDepotsForcesOuvertsDemandes(prev => new Set(prev).add(cle));
+      setDepotsFermesDemandes(prev => { const next = new Set(prev); next.delete(cle); return next; });
+    }
   };
   // Referme automatiquement l'accordéon prestataire (NLT / Andès) des jours différents
   // d'aujourd'hui — un reconditionnement qui n'est pas du jour n'a pas besoin de rester déplié
@@ -2389,12 +2399,13 @@ export function ReconditionnementModule({ onClose, userName }: {
                                 const demandesJourDepot = parJourDemandes[jourStr].filter(d => d.depot === dep);
                                 if (demandesJourDepot.length === 0) return null;
                                 const cleDepot = `${jourStr}::${dep}`;
-                                const depotOuvert = !depotsFermesDemandes.has(cleDepot);
+                                const estGroupeTermineDepot = demandesJourDepot.every(d => d.statut === "reçu" || d.statut === "annulé");
+                                const depotOuvert = depotsForcesOuvertsDemandes.has(cleDepot) ? true : depotsFermesDemandes.has(cleDepot) ? false : !estGroupeTermineDepot;
                                 const accentDepot = DEPOT_ACCENT[dep];
                                 return (
                                   <div key={dep} style={{ marginBottom: 10, background: `${accentDepot}0d`, border: `1px solid ${accentDepot}33`, borderRadius: 10, padding: 8 }}>
-                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0 }}>
-                                      <div onClick={() => toggleDepotDemandes(cleDepot)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                                    <div onClick={() => toggleDepotDemandes(cleDepot, depotOuvert)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0, cursor: "pointer" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                         <span style={{ fontSize: 12, color: accentDepot, transform: depotOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
                                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: accentDepot, display: "inline-block" }} />
                                         <span style={{ fontSize: 12, fontWeight: 800, color: accentDepot }}>
