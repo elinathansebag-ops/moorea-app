@@ -36,7 +36,13 @@ type LivraisonPaletteVierge = {
   ref: string; // clé de REFS_PALETTES_VIERGES
   quantite: number;
   timestamp: number;
+  lieuLivraison: string; // "Moorea" par défaut (voir LIEU_PV_DEFAUT) — champ libre si différent
 };
+
+// Lieu de livraison par défaut pour les palettes vierges — quasiment toutes livrées chez
+// Moorea, donc on ne demande rien tant que c'est le cas ; un champ discret permet de préciser
+// un autre lieu pour les cas rares (voir pvAutreLieu / pvSaisieAutreLieu).
+const LIEU_PV_DEFAUT = "Moorea";
 
 // Les 2 seuls lieux de livraison possibles pour une commande de cartons. Andès est livré
 // directement chez le prestataire (pas chez Moorea) : pas d'agréage, confirmation par email
@@ -259,12 +265,18 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [taillesPilesPv, setTaillesPilesPv] = useState<Record<string, number>>({});
   const [tailleSaisiePv, setTailleSaisiePv] = useState<Record<string, string>>({});
   const [pvSaisieHorsPile, setPvSaisieHorsPile] = useState(false);
+  const [pvSaisieAutreLieu, setPvSaisieAutreLieu] = useState(false);
+  const [pvAutreLieu, setPvAutreLieu] = useState("");
 
-  // ── Bouton "+ Nouvelle commande" (menu déroulant, extensible) ──
+  // ── Bouton "+ Nouvelle entrée" (menu déroulant, extensible) ──
+  // Renommé "Nouvelle commande" → "Nouvelle entrée" car les palettes vierges n'ont pas de bon
+  // de commande — c'est un simple pointage à l'arrivée (voir REFS_PALETTES_VIERGES) — donc
+  // "commande" ne convenait plus pour toutes les options du menu.
   const [showNouvelleMenu, setShowNouvelleMenu] = useState(false);
   const nouvelleCommandeOptions: { key: string; label: string; action: () => void }[] = [
     { key: "cartons", label: "📦 Cartons", action: () => setActiveTab("nouvelle-carton") },
     { key: "palettes-ifco", label: "🟦 Palettes IFCO", action: () => setActiveTab("nouvelle-palette") },
+    { key: "palette-vierge", label: "🟫 Palette vierge", action: () => setActiveTab("palettes-vierges") },
   ];
 
   // ══════════════════════════════════════════════════════════════
@@ -471,19 +483,26 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   }
 
   // ── Palettes vierges : pointage à chaque arrivée (pas de commande, juste un pointage) ──
+  // Date/heure enregistrées = celles du moment où l'entrée est validée (pas de saisie manuelle
+  // possible). Lieu de livraison : Moorea par défaut sans rien à saisir ; pvAutreLieu permet de
+  // préciser un autre lieu pour les cas rares (voir toggle pvSaisieAutreLieu dans le formulaire).
   async function enregistrerLivraisonPv(qte: number) {
     if (!qte || qte <= 0) { setNotification({ type: "error", message: "✗ Indique une quantité valide" }); return; }
     const maintenant = new Date();
     const dateFr = maintenant.toLocaleDateString("fr-FR");
     const heureFr = maintenant.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    const lieu = pvSaisieAutreLieu && pvAutreLieu.trim() ? pvAutreLieu.trim() : LIEU_PV_DEFAUT;
     await push(ref(db, "palettes_vierges_livraisons"), {
       date: dateFr,
       heure: heureFr,
       ref: pvRef,
       quantite: qte,
       timestamp: Date.now(),
+      lieuLivraison: lieu,
     });
-    setNotification({ type: "success", message: `✓ ${qte} × ${REFS_PALETTES_VIERGES[pvRef]} enregistrée(s)` });
+    setNotification({ type: "success", message: `✓ ${qte} × ${REFS_PALETTES_VIERGES[pvRef]} enregistrée(s)${lieu !== LIEU_PV_DEFAUT ? ` — ${lieu}` : ""}` });
+    setPvSaisieAutreLieu(false);
+    setPvAutreLieu("");
   }
 
   // Bouton principal — 99% des cas : une pile complète, taille réglée dans Configuration.
@@ -1590,7 +1609,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     gap: "8px",
                   }}
                 >
-                  ➕ Nouvelle commande {showNouvelleMenu ? "▲" : "▼"}
+                  ➕ Nouvelle entrée {showNouvelleMenu ? "▲" : "▼"}
                 </button>
                 {showNouvelleMenu && (
                   <div style={{
@@ -3444,6 +3463,35 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   </button>
                 </div>
               )}
+
+              {/* Lieu de livraison : Moorea par défaut, quasiment toujours le cas — pas de champ
+                  affiché tant qu'on ne précise pas un autre lieu. */}
+              {!pvSaisieAutreLieu ? (
+                <button
+                  onClick={() => setPvSaisieAutreLieu(true)}
+                  style={{ display: "block", marginTop: 8, background: "transparent", border: "none", color: COLORS.gray400, fontSize: 11, textDecoration: "underline", cursor: "pointer", padding: 0 }}
+                >
+                  📍 Livré à {LIEU_PV_DEFAUT} — changer le lieu ?
+                </button>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end", marginTop: 8 }}>
+                  <div style={{ flex: "1 1 200px" }}>
+                    <label style={{ display: "block", fontSize: 10, color: COLORS.gray400, marginBottom: 4 }}>Lieu de livraison</label>
+                    <input
+                      value={pvAutreLieu}
+                      onChange={(e) => setPvAutreLieu(e.target.value)}
+                      placeholder={`Ex : NLT (laisser vide = ${LIEU_PV_DEFAUT})`}
+                      style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12, boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => { setPvSaisieAutreLieu(false); setPvAutreLieu(""); }}
+                    style={{ padding: "8px 10px", borderRadius: 8, border: "none", background: "transparent", color: COLORS.gray400, fontSize: 12, cursor: "pointer" }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Livraisons du jour */}
@@ -3458,7 +3506,12 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   {livraisonsAujourdhuiPv.map((l) => (
                     <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#fdf6ec", border: "1px solid #fde3a8", borderRadius: 10 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#92400e", minWidth: 48 }}>{l.heure}</span>
-                      <span style={{ flex: 1, fontSize: 13, color: COLORS.gray700 }}>{REFS_PALETTES_VIERGES[l.ref] || l.ref}</span>
+                      <span style={{ flex: 1, fontSize: 13, color: COLORS.gray700 }}>
+                        {REFS_PALETTES_VIERGES[l.ref] || l.ref}
+                        {l.lieuLivraison && l.lieuLivraison !== LIEU_PV_DEFAUT && (
+                          <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.gray400 }}>📍 {l.lieuLivraison}</span>
+                        )}
+                      </span>
                       <span style={{ fontSize: 14, fontWeight: 800, color: "#92400e" }}>× {l.quantite}</span>
                       <button
                         onClick={() => supprimerLivraisonPaletteVierge(l.id)}
