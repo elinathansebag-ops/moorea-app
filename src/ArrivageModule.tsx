@@ -364,6 +364,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           <PillArr>📦 {arrivage.quantite} {arrivage.unite}</PillArr>
           {arrivage.lot_interne && <PillArr>🔖 {arrivage.lot_interne}</PillArr>}
           {arrivage.origine && <PillArr>🌍 {arrivage.origine}</PillArr>}
+          {arrivage.ecartPresta ? (
+            <span style={{ fontSize: 10, background: "#fffbeb", color: "#92400e", border: "1px solid #fde3a8", padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>
+              ⚠️ écart presta {arrivage.ecartPresta > 0 ? "+" : ""}{arrivage.ecartPresta}
+            </span>
+          ) : null}
         </div>
         {/* Actions de l'en-tête, en colonne : le scan d'étiquette se place sous le bouton
             "Contrôler gencode" plutôt que dans la ligne des champs de saisie. */}
@@ -396,6 +401,18 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
             <textarea value={retourCommentaire} onChange={e => setRetourCommentaire(e.target.value)} rows={2} placeholder="Commentaire sur le problème…"
               style={{ width: "100%", marginTop: 6, padding: "8px 10px", border: "1.5px solid #fca5a5", borderRadius: 8, fontSize: 12, boxSizing: "border-box", resize: "vertical" }} />
           )}
+          {/* 01/09/2026 — Si le reconditionneur a déclaré, depuis son espace en ligne, une
+              quantité différente de ce qui était prévu (voir Préparation), on l'affiche ici
+              clairement — demandée vs déclarée — pour que l'entrepôt soit au courant de l'écart
+              avant de pointer le retour (demande d'Elinathan). "quantité" ci-dessus (colonnes
+              "Colis") reprend déjà la quantité déclarée par le presta comme attendu. */}
+          {arrivage.ecartPresta ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: "#fffbeb", border: "1.5px solid #fde3a8", borderRadius: 8, padding: "6px 10px", marginTop: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#92400e" }}>
+                ⚠️ Le reconditionneur a déclaré {arrivage.quantiteDeclareePresta} colis, alors que {arrivage.quantiteDemandeeInitiale ?? "-"} étaient demandés — écart {arrivage.ecartPresta > 0 ? "+" : ""}{arrivage.ecartPresta}
+              </span>
+            </div>
+          ) : null}
         </div>
       )}
 
