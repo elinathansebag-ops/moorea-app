@@ -190,6 +190,13 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   const [groupePartiIds, setGroupePartiIds] = useState<string[] | null>(null);
   const [groupePartiGrandes, setGroupePartiGrandes] = useState("");
   const [groupePartiDemi, setGroupePartiDemi] = useState("");
+  // 01/09/2026 — Si le reconditionneur a déclaré une quantité différente de ce qui était prévu
+  // (retourPresta.ecart != 0, vu depuis son espace en ligne), on ne marque plus "parti"
+  // directement : on ouvre cette modale pour que l'entrepôt VOIE l'écart et VALIDE explicitement
+  // quelle quantité utiliser pour l'arrivage attendu, avant de confirmer le départ (demande
+  // d'Elinathan : "un message ou un système pour voir et valider combien on a demandé et combien
+  // on a reçu").
+  const [confirmEcartId, setConfirmEcartId] = useState<string | null>(null);
   // Aperçu PDF (bon de prépa ou scan Geslot) dans une modale avec iframe, plutôt qu'un lien
   // <a target="_blank"> vers une data:URI — Chrome bloque/redirige la navigation top-level
   // vers un data: URL, alors qu'un iframe src="data:..." affiché dans la page fonctionne.
@@ -375,6 +382,14 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     // Le retour n'est plus pointé depuis une modale ici : on crée l'arrivage attendu
     // correspondant, comme n'importe quelle livraison, pour qu'il apparaisse directement dans
     // "Pointer arrivage" côté entrepôt.
+    // 01/09/2026 — Si le reconditionneur a déclaré une quantité (retourPresta.quantiteDeclaree,
+    // saisie depuis son espace en ligne) différente de ce qui était prévu (nbColisAEntrer), c'est
+    // la quantité DÉCLARÉE qui est utilisée comme "quantité attendue" de l'arrivage (plus fiable
+    // que le prévisionnel initial) — et les deux nombres + l'écart sont conservés sur l'arrivage
+    // pour que "Pointer arrivage" puisse afficher la comparaison (demande d'Elinathan).
+    const quantitePrevue = typeof demande?.nbColisAEntrer === "number" ? demande.nbColisAEntrer : null;
+    const quantiteDeclareePresta = typeof demande?.retourPresta?.quantiteDeclaree === "number" ? demande.retourPresta.quantiteDeclaree : null;
+    const quantiteArrivage = quantiteDeclareePresta != null ? quantiteDeclareePresta : (quantitePrevue ?? 0);
     if (demande) {
       try {
         await push(ref(db, "arrivages"), {
@@ -384,7 +399,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           variete: demande.articleVrac,
           lot_interne: demande.lot || demande.numero || demande.id,
           lot_fournisseur: demande.origineLotFournisseur || "",
-          quantite: demande.nbColisAEntrer ?? 0,
+          quantite: quantiteArrivage,
           unite: "colis",
           date: new Date().toLocaleDateString("fr-FR"),
           statut: "en attente",
@@ -396,6 +411,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           origine: `${DEPOT_LABEL[demande.depot]}${demande.transporteurNom ? ` · ${demande.transporteurNom}` : ""}`,
           transporteurNom: demande.transporteurNom || null,
           retour_en_ifco: demande.retourEnIfco ?? false,
+          quantiteDemandeeInitiale: quantitePrevue,
+          quantiteDeclareePresta,
+          ecartPresta: quantitePrevue != null && quantiteDeclareePresta != null ? quantiteDeclareePresta - quantitePrevue : null,
         });
       } catch (err) {
         console.error("Erreur création arrivage retour reconditionnement:", err);
@@ -403,9 +421,21 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     }
   }
 
-  async function marquerParti(id: string) {
+  // Exécute réellement "marquer parti" (après, le cas échéant, validation de l'écart via la
+  // modale confirmEcartId) — séparé de marquerParti() pour que le scan QR et le bouton direct
+  // passent par la même vérification d'écart avant d'arriver ici.
+  async function procederMarquerParti(id: string) {
     await marquerPartiSilencieux(id);
     notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
+  }
+
+  async function marquerParti(id: string) {
+    const demande = demandes.find(d => d.id === id);
+    if (demande?.retourPresta?.ecart) {
+      setConfirmEcartId(id);
+      return;
+    }
+    await procederMarquerParti(id);
   }
 
   // Version "tout d'un coup, peu importe le statut" : couvre à la fois les demandes déjà "prêt"
@@ -768,10 +798,16 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                         )}
 
                                         {d.retourPresta?.confirme && (
-                                          <div style={{ fontSize: 11.5, color: "#15803d", background: COLORS.secondaryLight, border: "1.5px solid #bbf7d0", borderRadius: 8, padding: "6px 10px", marginTop: 6 }}>
+                                          <div style={{
+                                            fontSize: 11.5,
+                                            color: d.retourPresta.ecart ? "#92400e" : "#15803d",
+                                            background: d.retourPresta.ecart ? COLORS.amberLight : COLORS.secondaryLight,
+                                            border: `1.5px solid ${d.retourPresta.ecart ? "#fde3a8" : "#bbf7d0"}`,
+                                            borderRadius: 8, padding: "6px 10px", marginTop: 6,
+                                          }}>
                                             📦 {DEPOT_LABEL[d.depot]} a signalé la prod prête le {d.retourPresta.date} depuis son espace en ligne
                                             {d.retourPresta.quantiteDeclaree != null ? ` — ${d.retourPresta.quantiteDeclaree} colis déclarés` : ""}
-                                            {d.retourPresta.ecart ? ` · ⚠️ écart de ${d.retourPresta.ecart > 0 ? "+" : ""}${d.retourPresta.ecart} vs prévu` : ""}
+                                            {d.retourPresta.ecart ? ` · ⚠️ écart de ${d.retourPresta.ecart > 0 ? "+" : ""}${d.retourPresta.ecart} vs prévu (${d.nbColisAEntrer ?? "-"}) — à voir/valider en cliquant "Marquer parti"` : ""}
                                             {d.retourPresta.commentaire ? ` · "${d.retourPresta.commentaire}"` : ""}
                                           </div>
                                         )}
@@ -900,6 +936,20 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                 {groupePartiIds.length} demande{groupePartiIds.length > 1 ? "s" : ""} — total de palettes chargées (pas de détail par demande)
               </p>
             </div>
+            {(() => {
+              const demandesAvecEcart = groupePartiIds.map(id => demandes.find(d => d.id === id)).filter((d): d is Demande => !!d && !!d.retourPresta?.ecart);
+              if (demandesAvecEcart.length === 0) return null;
+              return (
+                <div style={{ background: COLORS.amberLight, border: `1.5px solid #fde3a8`, borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
+                  <p style={{ fontSize: 11.5, fontWeight: 800, color: "#92400e", margin: "0 0 6px" }}>⚠️ Écart annoncé par le reconditionneur — à vérifier avant de valider :</p>
+                  {demandesAvecEcart.map(d => (
+                    <p key={d.id} style={{ fontSize: 11.5, color: "#92400e", margin: "2px 0" }}>
+                      {d.numero || d.id} : {d.retourPresta!.quantiteDeclaree} colis déclarés (prévu {d.nbColisAEntrer ?? "-"}, écart {d.retourPresta!.ecart! > 0 ? "+" : ""}{d.retourPresta!.ecart})
+                    </p>
+                  ))}
+                </div>
+              );
+            })()}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes</label>
@@ -927,6 +977,59 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           </div>
         </div>
       )}
+
+      {/* MODALE — Écart déclaré par le reconditionneur, à voir et valider avant "Marquer parti" */}
+      {confirmEcartId && (() => {
+        const d = demandes.find(dd => dd.id === confirmEcartId);
+        if (!d) { setConfirmEcartId(null); return null; }
+        const prevu = d.nbColisAEntrer ?? null;
+        const declare = d.retourPresta?.quantiteDeclaree ?? null;
+        const ecart = d.retourPresta?.ecart ?? null;
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 420, width: "100%", borderTop: `7px solid ${COLORS.amber}` }}>
+              <div style={{ textAlign: "center", marginBottom: 16 }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>⚠️</div>
+                <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Quantité différente de prévu</p>
+                <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                  {DEPOT_LABEL[d.depot]} a annoncé {ecart != null && ecart > 0 ? "plus" : "moins"} de colis que prévu pour {d.numero || d.id}.
+                </p>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+                <div style={{ background: COLORS.gray100, borderRadius: 10, padding: "10px 12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>DEMANDÉ (prévu)</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.gray700 }}>{prevu ?? "-"}</div>
+                </div>
+                <div style={{ background: COLORS.amberLight, border: "1.5px solid #fde3a8", borderRadius: 10, padding: "10px 12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#92400e", marginBottom: 4 }}>REÇU (déclaré par le presta)</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#92400e" }}>{declare ?? "-"}</div>
+                </div>
+              </div>
+              {ecart != null && (
+                <p style={{ textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "#92400e", margin: "0 0 16px" }}>
+                  Écart : {ecart > 0 ? "+" : ""}{ecart} colis
+                </p>
+              )}
+              <p style={{ fontSize: 11.5, color: "#666", margin: "0 0 16px", lineHeight: 1.4 }}>
+                En confirmant, l'arrivage attendu dans « Pointer arrivage » sera créé avec {declare ?? prevu ?? 0} colis (la quantité déclarée par le reconditionneur).
+              </p>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setConfirmEcartId(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                <button
+                  onClick={async () => {
+                    const idAConfirmer = confirmEcartId;
+                    setConfirmEcartId(null);
+                    await procederMarquerParti(idAConfirmer);
+                  }}
+                  style={{ flex: 2, background: COLORS.amber, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  ✓ Confirmer le départ avec {declare ?? prevu ?? 0} colis
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MODALE — Aperçu PDF (bon Geslot ou bon de prépa) */}
       {pdfApercu && (

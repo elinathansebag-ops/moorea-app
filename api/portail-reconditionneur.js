@@ -281,6 +281,7 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
             <p>Le reconditionnement chez <strong>${DEPOT_LABEL[depot]}</strong> est prêt — merci de passer le récupérer dès que possible.</p>
             <ul>
               <li><strong>Référence :</strong> ${ref}</li>
+              ${demande.lot ? `<li><strong>N° de lot :</strong> ${demande.lot}</li>` : ""}
               <li><strong>Article :</strong> ${demande.articleFini || demande.articleVrac || "—"}</li>
               <li><strong>Quantité prête :</strong> ${quantite} colis</li>
               ${palettesHtml}
@@ -312,6 +313,7 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
         <p>📦 <strong>${DEPOT_LABEL[depot]}</strong> a signalé une production prête, à aller chercher.</p>
         <ul>
           <li><strong>Référence :</strong> ${ref}</li>
+          ${demande.lot ? `<li><strong>N° de lot :</strong> ${demande.lot}</li>` : ""}
           <li><strong>Article :</strong> ${demande.articleFini || demande.articleVrac || "—"}</li>
           ${quantiteHtml}
           ${transporteur ? `<li><strong>Transporteur :</strong> ${transporteur}</li>` : ""}
@@ -413,7 +415,7 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
       }
       const lignesHtmlTransp = items.map(t => {
         const ref = t.demande.numero || t.id;
-        return `<li><strong>${ref}</strong> — ${t.demande.articleFini || t.demande.articleVrac || "—"} : ${t.quantite} colis</li>`;
+        return `<li><strong>${ref}</strong>${t.demande.lot ? ` (lot ${t.demande.lot})` : ""} — ${t.demande.articleFini || t.demande.articleVrac || "—"} : ${t.quantite} colis</li>`;
       }).join("");
       try {
         await creerMailer().sendMail({
@@ -453,7 +455,7 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
         : t.ecart
           ? ` — ⚠️ quantité changée (écart de ${t.ecart > 0 ? "+" : ""}${t.ecart} vs prévu)`
           : "";
-      return `<li><strong>${ref}</strong> — ${t.demande.articleFini || t.demande.articleVrac || "—"} : ${t.quantite} colis${quantiteInfo}</li>`;
+      return `<li><strong>${ref}</strong>${t.demande.lot ? ` (lot ${t.demande.lot})` : ""} — ${t.demande.articleFini || t.demande.articleVrac || "—"} : ${t.quantite} colis${quantiteInfo}</li>`;
     }).join("");
     const transporteursUniques = [...new Set(traitees.map(t => t.transporteur).filter(t => t && t !== "-"))];
     const statutTransporteurHtml = transporteursPrevenusNoms.length > 0
