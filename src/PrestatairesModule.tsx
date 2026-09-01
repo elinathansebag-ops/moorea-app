@@ -352,6 +352,17 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [rapprochementsIfco, setRapprochementsIfco] = useState<any[]>([]);
   const [soldeMyIfcoSaisi, setSoldeMyIfcoSaisi] = useState("");
 
+  // Stock caisses pleines "physique" (demande d'Elinathan, 01/09/2026) : au lieu du compteur
+  // interne ifco_stock/levels.pleines (juste les retours de reconditionnement en attente de
+  // vidage), on va chercher le vrai comptage d'inventaire (base Firestore "moorea-stock",
+  // séparée de la base moorea-qualite) et on additionne tous les articles dont le nom contient
+  // "IFCO" — c'est la photo physique réelle du stock, plus fiable pour comparer à myifco-online.com.
+  const [inventairesIfcoDispo, setInventairesIfcoDispo] = useState<any[]>([]);
+  const [inventaireIfcoChoisi, setInventaireIfcoChoisi] = useState<string>("");
+  const [stockPleinesInventaire, setStockPleinesInventaire] = useState<number | null>(null);
+  const [detailArticlesIfcoInventaire, setDetailArticlesIfcoInventaire] = useState<any[]>([]);
+  const [inventaireIfcoChargement, setInventaireIfcoChargement] = useState(false);
+
   const ifcoFileRef = useRef<HTMLInputElement>(null);
 
   const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -494,14 +505,106 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     await update(ref(db, `ifco_declarations_entree/${id}`), { declare: true });
   }
 
-  // Enregistre un rapprochement : stock théorique app (moorea+nlt+pleines, déjà net de tout
-  // l'historique) comparé au solde que tu lis sur myifco-online.com. Garde aussi le cumul des
-  // commandes reçues et des sorties déclarées (mouvements "fournisseur→moorea" et "moorea→envoi"
-  // dans ifco_stock/movements) pour t'aider à comprendre d'où vient un écart si il y en a un.
+  // Config du projet Firebase "moorea-stock" (séparé de moorea-qualite) — même config que
+  // celle utilisée par StockApp.tsx pour l'inventaire GMS/Prestige (base Firestore "stocks" /
+  // "comptages"). On la réutilise ici en lecture seule pour aller chercher le comptage physique
+  // des articles IFCO (demande d'Elinathan, 01/09/2026).
+  async function getStockFirestoreDb() {
+    const { initializeApp, getApps } = await import("firebase/app");
+    const { getFirestore } = await import("firebase/firestore");
+    const stockCfg = {
+      apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8",
+      authDomain: "moorea-stock.firebaseapp.com",
+      projectId: "moorea-stock",
+      storageBucket: "moorea-stock.firebasestorage.app",
+      messagingSenderId: "639598259840",
+      appId: "1:639598259840:web:ff3c048f9aac1b99f40065",
+    };
+    const existing = getApps().find((a: any) => a.name === "moorea-stock");
+    const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
+    return getFirestore(stockApp);
+  }
+
+  // Liste les inventaires clôturés (les seuls fiables — un inventaire non clôturé peut encore
+  // changer), les plus récents en premier, avec un repère "mercredi" puisque le rapprochement
+  // se fait chaque mercredi.
+  async function chargerInventairesCloturesIfco() {
+    try {
+      const fdb = await getStockFirestoreDb();
+      const { collection, getDocs } = await import("firebase/firestore");
+      const snap = await getDocs(collection(fdb, "stocks"));
+      const docs: any[] = [];
+      snap.forEach((d: any) => {
+        const data = d.data();
+        if (data.cloture) {
+          const jour = data.date ? new Date(data.date).getDay() : null;
+          docs.push({ id: d.id, dateLabel: data.dateLabel, date: data.date, articles: data.articles || [], estMercredi: jour === 3 });
+        }
+      });
+      docs.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+      setInventairesIfcoDispo(docs);
+      // Sélection par défaut : le mercredi clôturé le plus récent, sinon le plus récent tout court.
+      const defaut = docs.find(d => d.estMercredi) || docs[0];
+      if (defaut) setInventaireIfcoChoisi(defaut.id);
+    } catch (err: any) {
+      console.error("Erreur chargement inventaires clôturés IFCO:", err);
+    }
+  }
+
+  // Pour l'inventaire clôturé choisi, additionne le "compté" de tous les articles dont le nom
+  // contient "IFCO" (insensible à la casse), toutes équipes confondues (GMS + Prestige) — les
+  // comptages réels sont dans une collection séparée ("comptages"), pas dans le doc "stocks".
+  async function chargerCaissesIfcoPourInventaire(importId: string, articlesInventaire: any[]) {
+    setInventaireIfcoChargement(true);
+    try {
+      const fdb = await getStockFirestoreDb();
+      const { doc, getDoc } = await import("firebase/firestore");
+      const articlesIfco = articlesInventaire.filter((a: any) => /ifco/i.test(String(a.article || "")));
+      let total = 0;
+      const detail: any[] = [];
+      for (const team of ["GMS", "PRESTIGE"]) {
+        const snap = await getDoc(doc(fdb, "comptages", importId + "_" + team));
+        const compt = snap.exists() ? ((snap.data() as any).data || {}) : {};
+        articlesIfco.filter((a: any) => a.equipe === team).forEach((a: any) => {
+          const d = compt[a.article];
+          const c = d !== undefined && d !== null ? (typeof d === "object" ? d.c : d) : null;
+          if (c === null || c === undefined) { detail.push({ article: a.article, equipe: team, compte: null }); return; }
+          total += c;
+          detail.push({ article: a.article, equipe: team, compte: c });
+        });
+      }
+      setStockPleinesInventaire(total);
+      setDetailArticlesIfcoInventaire(detail);
+    } catch (err: any) {
+      console.error("Erreur calcul caisses IFCO depuis inventaire:", err);
+      setStockPleinesInventaire(null);
+      setDetailArticlesIfcoInventaire([]);
+    } finally {
+      setInventaireIfcoChargement(false);
+    }
+  }
+
+  useEffect(() => {
+    chargerInventairesCloturesIfco();
+  }, []);
+
+  useEffect(() => {
+    if (!inventaireIfcoChoisi) return;
+    const inv = inventairesIfcoDispo.find(d => d.id === inventaireIfcoChoisi);
+    if (inv) chargerCaissesIfcoPourInventaire(inv.id, inv.articles);
+  }, [inventaireIfcoChoisi, inventairesIfcoDispo]);
+
+  // Enregistre un rapprochement : stock théorique app (moorea vide + nlt + caisses pleines
+  // comptées physiquement à l'inventaire) comparé au solde que tu lis sur myifco-online.com.
+  // Garde aussi le cumul des commandes reçues et des sorties déclarées (mouvements
+  // "fournisseur→moorea" et "moorea→envoi" dans ifco_stock/movements) pour t'aider à comprendre
+  // d'où vient un écart si il y en a un, et l'inventaire physique utilisé pour la trace.
   async function enregistrerRapprochementIfco() {
     const solde = parseInt(soldeMyIfcoSaisi);
     if (isNaN(solde) || solde < 0) { setNotification({ type: "error", message: "✗ Indique le solde lu sur myIFCO" }); return; }
-    const stockTheorique = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockLevels.pleines || 0);
+    if (stockPleinesInventaire === null) { setNotification({ type: "error", message: "✗ Choisis d'abord un inventaire clôturé pour le comptage des caisses pleines" }); return; }
+    const inv = inventairesIfcoDispo.find(d => d.id === inventaireIfcoChoisi);
+    const stockTheorique = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + stockPleinesInventaire;
     const cumulCommande = stockMovements.filter((m: any) => m.from === "fournisseur").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
     const cumulSorties = stockMovements.filter((m: any) => m.to === "envoi").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
     try {
@@ -512,6 +615,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         stockMoorea: stockLevels.moorea || 0,
         stockNlt: stockLevels.nlt || 0,
         stockPleines: stockLevels.pleines || 0,
+        stockPleinesInventaire,
+        inventaireId: inventaireIfcoChoisi,
+        inventaireDate: inv?.dateLabel || "",
         stockTheorique,
         cumulCommande,
         cumulSorties,
@@ -1522,7 +1628,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const moisStatsListe = [...new Set(Object.values(statsParClientEtMois).flatMap(m => Object.keys(m)))].sort().reverse();
 
   // ── Rapprochement myIFCO : totaux vivants (recalculés à chaque rendu, avant même d'enregistrer) ──
-  const stockTheoriqueActuelIfco = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockLevels.pleines || 0);
+  const stockTheoriqueActuelIfco = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockPleinesInventaire ?? (stockLevels.pleines || 0));
   const cumulCommandeActuelIfco = stockMovements.filter((m: any) => m.from === "fournisseur").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
   const cumulSortiesActuelIfco = stockMovements.filter((m: any) => m.to === "envoi").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
 
@@ -2964,13 +3070,33 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "24px" }}>
               <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800, color: "#1a6b3a" }}>⚖️ Stock théorique actuel</h3>
               <p style={{ margin: "0 0 16px", fontSize: 12, color: "#999" }}>
-                Moorea (vide) + NLT + caisses pleines en attente — c'est ce nombre qui devrait correspondre au solde affiché sur myifco-online.com.
+                Moorea (vide) + NLT + caisses pleines comptées à l'inventaire — c'est ce nombre qui devrait correspondre au solde affiché sur myifco-online.com, une fois toutes les déclarations à jour (déclarées à leur date de livraison).
               </p>
+
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#1a6b3a", marginBottom: 6 }}>Inventaire clôturé de référence</label>
+              <select
+                value={inventaireIfcoChoisi}
+                onChange={e => setInventaireIfcoChoisi(e.target.value)}
+                style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #a8d5b5", borderRadius: 10, fontSize: 13, fontWeight: 700, marginBottom: 6, boxSizing: "border-box" }}
+              >
+                {inventairesIfcoDispo.length === 0 && <option value="">Aucun inventaire clôturé trouvé</option>}
+                {inventairesIfcoDispo.map(d => (
+                  <option key={d.id} value={d.id}>{d.estMercredi ? "📅 " : ""}{d.dateLabel}{d.estMercredi ? " (mercredi)" : ""}</option>
+                ))}
+              </select>
+              <p style={{ margin: "0 0 16px", fontSize: 11, color: "#999" }}>
+                On additionne, dans cet inventaire, le compté (GMS + Prestige) de tous les articles dont le nom contient "IFCO".
+                {inventaireIfcoChargement && " Calcul en cours…"}
+                {!inventaireIfcoChargement && detailArticlesIfcoInventaire.some(d => d.compte === null) && (
+                  <span style={{ color: "#c0392b", fontWeight: 700 }}> ⚠️ {detailArticlesIfcoInventaire.filter(d => d.compte === null).length} article(s) IFCO non compté(s) dans cet inventaire — le total ci-dessous les ignore.</span>
+                )}
+              </p>
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 }}>
                 {[
-                  ["Moorea", stockLevels.moorea || 0, "#27ae60"],
+                  ["Moorea (vide)", stockLevels.moorea || 0, "#27ae60"],
                   ["NLT", stockLevels.nlt || 0, "#3b82f6"],
-                  ["Pleines", stockLevels.pleines || 0, "#ca8a04"],
+                  ["Pleines (inventaire)", stockPleinesInventaire ?? "—", "#ca8a04"],
                 ].map(([label, val, color]: any) => (
                   <div key={label} style={{ background: "#f8fffe", border: "1px solid #e8e0d0", borderRadius: 10, padding: "12px", textAlign: "center" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#666" }}>{label}</div>
@@ -2982,6 +3108,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                   <div style={{ fontSize: 22, fontWeight: 800, color: "#92400e" }}>{stockTheoriqueActuelIfco}</div>
                 </div>
               </div>
+              <p style={{ margin: "-8px 0 16px", fontSize: 11, color: "#bbb" }}>
+                (Pleines en attente de vidage, compteur interne : {stockLevels.pleines || 0} — différent du comptage d'inventaire ci-dessus, non utilisé dans le total)
+              </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 20, fontSize: 12, color: "#666" }}>
                 <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px" }}>
                   📥 Cumul commandé (reçu depuis IFCO, tout historique) : <strong>{cumulCommandeActuelIfco}</strong>
@@ -3030,12 +3159,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead><tr style={{ background: "#f8fffe", borderBottom: "2px solid #e8e0d0" }}>
-                      {["Date", "Stock théorique", "Solde myIFCO", "Écart", "Cumul commandé", "Cumul sorties"].map(h => <th key={h} style={{ padding: "10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
+                      {["Date", "Inventaire utilisé", "Pleines (inventaire)", "Stock théorique", "Solde myIFCO", "Écart", "Cumul commandé", "Cumul sorties"].map(h => <th key={h} style={{ padding: "10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {rapprochementsIfco.map((r) => (
                         <tr key={r.id} style={{ borderBottom: "1px solid #f4f4f4" }}>
                           <td style={{ padding: "10px", color: "#666" }}>{r.date}</td>
+                          <td style={{ padding: "10px", color: "#666" }}>{r.inventaireDate || "—"}</td>
+                          <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.stockPleinesInventaire ?? r.stockPleines ?? "—"}</td>
                           <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.stockTheorique}</td>
                           <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.soldeMyIfco}</td>
                           <td style={{ padding: "10px", fontWeight: 800, textAlign: "center", color: r.ecart === 0 ? "#1e8449" : "#c0392b" }}>
