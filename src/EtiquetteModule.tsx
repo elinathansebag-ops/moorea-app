@@ -27,6 +27,10 @@ const COLORS = {
   dangerLight: "#fef2f2",
   success: "#27ae60",
   successLight: "#eafaf1",
+  // 01/09/2026 (v2) — Couleur dédiée au champ variable, distincte de "primary" (zones de texte
+  // fixes) pour bien montrer visuellement que c'est un système à part.
+  variable: "#2563eb",
+  variableLight: "#eff6ff",
 };
 
 const IMGBB_KEY = "06c9cef29906bf8f060e882ed5540240";
@@ -303,10 +307,20 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   function modifierBloc(id: string, patch: Partial<BlocTexte>) {
     setBlocs((b) => b.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
-  // 01/09/2026 — Un seul bloc à la fois peut être "variable" (simplifié à la demande
-  // d'Elinathan) : cocher "Variable" sur une ligne décoche automatiquement toutes les autres.
-  function toggleVariable(id: string, val: boolean) {
-    setBlocs((b) => b.map((x) => ({ ...x, variable: x.id === id ? val : false })));
+  // 01/09/2026 (v2) — Le champ variable est désormais un système à part, distinct des zones de
+  // texte fixes (demande d'Elinathan : "mets le nom de l'hôtel comme une zone de texte et ajoute
+  // un système de variable indépendant"). Il reste stocké dans le même tableau `blocs` (pour ne
+  // pas casser l'impression / l'enregistrement des modèles existants, qui savent déjà gérer un
+  // bloc avec `variable: true`), mais il est ajouté/retiré/affiché depuis son propre panneau
+  // "🔀 Champ variable", séparé du panneau "✏️ Texte" — jamais via une case à cocher mélangée aux
+  // lignes de texte classiques. Un seul champ variable à la fois.
+  function ajouterVariable() {
+    if (blocs.some((b) => b.variable)) { notify("error", "⚠️ Il y a déjà un champ variable — modifie-le ou supprime-le avant d'en ajouter un autre"); return; }
+    const yPct = Math.min(85, 20 + blocs.length * 15);
+    setBlocs((b) => [...b, { ...nouveauBloc("VALEUR", "center", 50, yPct), variable: true }]);
+  }
+  function supprimerVariable(id: string) {
+    setBlocs((b) => b.filter((x) => x.id !== id));
   }
   function supprimerBloc(id: string) {
     setBlocs((b) => b.filter((x) => x.id !== id));
@@ -603,6 +617,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   }, [modeles]);
   const clientsTries = Object.keys(groupesEtiquettes).sort((a, b) => (a === "Autres étiquettes" ? 1 : b === "Autres étiquettes" ? -1 : a.localeCompare(b)));
 
+  // 01/09/2026 (v2) — Séparation zones fixes / champ variable pour l'affichage : voir le
+  // commentaire sur ajouterVariable() plus haut.
+  const blocsFixes = blocs.filter((b) => !b.variable);
+  const blocVariable = blocs.find((b) => b.variable);
+
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
       <PageHeader
@@ -834,7 +853,10 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>✏️ Texte</h3>
               <button onClick={ajouterBloc} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Ligne</button>
             </div>
-            {blocs.map((b, i) => (
+            <p style={{ fontSize: 11, color: COLORS.gray600, margin: "0 0 10px", lineHeight: 1.4, background: COLORS.gray100, borderRadius: 8, padding: "8px 10px" }}>
+              Zones de texte fixes (ex : le nom de l'hôtel) — le même texte sur toutes les étiquettes. Chaque ligne se place et se dimensionne indépendamment (glisse-la sur l'aperçu à droite). Le champ qui change à chaque étiquette (génération par lot) se gère séparément, dans le panneau "🔀 Champ variable" ci-dessous.
+            </p>
+            {blocsFixes.map((b, i) => (
               <div key={b.id} style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: 10, marginBottom: 8 }}>
                 <textarea
                   value={b.texte}
@@ -883,18 +905,82 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
                     <input type="checkbox" checked={b.majuscule} onChange={(e) => modifierBloc(b.id, { majuscule: e.target.checked })} /> MAJ.
                   </label>
-                  <label title="Cette ligne change à chaque étiquette générée par lot (une seule ligne variable à la fois)" style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", color: b.variable ? COLORS.primary : COLORS.gray600, fontWeight: b.variable ? 800 : 400 }}>
-                    <input type="checkbox" checked={!!b.variable} onChange={(e) => toggleVariable(b.id, e.target.checked)} /> 🔀 Variable
-                  </label>
                   <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
                     <button onClick={() => deplacerBloc(b.id, -1)} disabled={i === 0} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.3 : 1, fontSize: 11 }}>↑</button>
-                    <button onClick={() => deplacerBloc(b.id, 1)} disabled={i === blocs.length - 1} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: i === blocs.length - 1 ? "default" : "pointer", opacity: i === blocs.length - 1 ? 0.3 : 1, fontSize: 11 }}>↓</button>
+                    <button onClick={() => deplacerBloc(b.id, 1)} disabled={i === blocsFixes.length - 1} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: i === blocsFixes.length - 1 ? "default" : "pointer", opacity: i === blocsFixes.length - 1 ? 0.3 : 1, fontSize: 11 }}>↓</button>
                     <button onClick={() => supprimerBloc(b.id)} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.danger}`, background: COLORS.dangerLight, color: COLORS.danger, cursor: "pointer", fontSize: 11 }}>🗑</button>
                   </div>
                 </div>
               </div>
             ))}
-            {blocs.length === 0 && <p style={{ fontSize: 12, color: COLORS.gray400, textAlign: "center", margin: "10px 0" }}>Aucune ligne — clique sur "+ Ligne"</p>}
+            {blocsFixes.length === 0 && <p style={{ fontSize: 12, color: COLORS.gray400, textAlign: "center", margin: "10px 0" }}>Aucune ligne — clique sur "+ Ligne"</p>}
+          </div>
+
+          {/* CHAMP VARIABLE — système indépendant des zones de texte fixes ci-dessus */}
+          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.variable}55`, borderRadius: 14, padding: 16, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: COLORS.variable }}>🔀 Champ variable</h3>
+              {!blocVariable && (
+                <button onClick={ajouterVariable} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: COLORS.variable, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>➕ Ajouter la variable</button>
+              )}
+            </div>
+            {!blocVariable ? (
+              <p style={{ fontSize: 11.5, color: COLORS.gray400, margin: 0, lineHeight: 1.4 }}>
+                Ce champ change de valeur à chaque étiquette générée par lot (ex : le nom du service). Il est totalement indépendant des zones de texte fixes ci-dessus — sa propre position, sa propre taille.
+              </p>
+            ) : (
+              <div style={{ border: `1.5px solid ${COLORS.variable}`, background: `${COLORS.variableLight}`, borderRadius: 10, padding: 10 }}>
+                <textarea
+                  value={blocVariable.texte}
+                  onChange={(e) => modifierBloc(blocVariable.id, { texte: e.target.value })}
+                  placeholder="Texte d'exemple (ex : Réception)..."
+                  rows={2}
+                  style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8, resize: "vertical" }}
+                />
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 10, color: COLORS.gray600 }}>Taille</span>
+                    <input
+                      type="range"
+                      min={6}
+                      max={120}
+                      value={blocVariable.taillePt}
+                      onChange={(e) => modifierBloc(blocVariable.id, { taillePt: parseInt(e.target.value) || 12 })}
+                      style={{ width: 70, accentColor: COLORS.variable }}
+                      title="Réduire/agrandir le texte"
+                    />
+                    <input type="number" min={6} max={120} value={blocVariable.taillePt} onChange={(e) => modifierBloc(blocVariable.id, { taillePt: parseInt(e.target.value) || 12 })} style={{ width: 52, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 2, background: COLORS.gray100, borderRadius: 6, padding: 2 }}>
+                    {(["left", "center", "right"] as Align[]).map((a) => (
+                      <button key={a} onClick={() => modifierBloc(blocVariable.id, { align: a })} title={a} style={{ width: 26, height: 24, borderRadius: 5, border: "none", cursor: "pointer", background: blocVariable.align === a ? COLORS.variable : "transparent", color: blocVariable.align === a ? "#fff" : COLORS.gray600, fontSize: 11, fontWeight: 700 }}>
+                        {a === "left" ? "⬅" : a === "center" ? "↔" : "➡"}
+                      </button>
+                    ))}
+                  </div>
+                  <select
+                    value={blocVariable.police || POLICE_DEFAUT}
+                    onChange={(e) => modifierBloc(blocVariable.id, { police: e.target.value })}
+                    title="Police de caractère"
+                    style={{ fontSize: 11, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, background: "#fff" }}
+                  >
+                    {POLICES.map((p) => (
+                      <option key={p.valeur} value={p.valeur}>{p.label}</option>
+                    ))}
+                  </select>
+                  <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontWeight: blocVariable.gras ? 800 : 400 }}>
+                    <input type="checkbox" checked={blocVariable.gras} onChange={(e) => modifierBloc(blocVariable.id, { gras: e.target.checked })} /> Gras
+                  </label>
+                  <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontStyle: blocVariable.italique ? "italic" : "normal" }}>
+                    <input type="checkbox" checked={blocVariable.italique} onChange={(e) => modifierBloc(blocVariable.id, { italique: e.target.checked })} /> Italique
+                  </label>
+                  <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
+                    <input type="checkbox" checked={blocVariable.majuscule} onChange={(e) => modifierBloc(blocVariable.id, { majuscule: e.target.checked })} /> MAJ.
+                  </label>
+                  <button onClick={() => supprimerVariable(blocVariable.id)} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 6, border: `1px solid ${COLORS.danger}`, background: COLORS.dangerLight, color: COLORS.danger, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🗑 Retirer</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* GÉNÉRATION PAR LOT */}
@@ -905,7 +991,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               if (!blocVariable) {
                 return (
                   <p style={{ fontSize: 11.5, color: COLORS.gray400, margin: 0, lineHeight: 1.4 }}>
-                    Coche "🔀 Variable" sur une ligne de texte dans "✏️ Texte" ci-dessus (ex : le nom du service) — sa position et sa taille sur l'étiquette sont celles réglées là-bas.
+                    Aucun champ variable pour l'instant — clique "➕ Ajouter la variable" dans le panneau "🔀 Champ variable" ci-dessus.
                   </p>
                 );
               }
@@ -1009,11 +1095,16 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                       whiteSpace: "pre-wrap",
                       maxWidth: "92%",
                       cursor: "grab",
-                      outline: `1.5px dashed ${COLORS.primary}66`,
+                      outline: `1.5px dashed ${b.variable ? COLORS.variable : COLORS.primary}66`,
+                      background: b.variable ? `${COLORS.variableLight}cc` : "transparent",
                       padding: 2,
                       touchAction: "none",
                     }}
+                    title={b.variable ? "Champ variable" : undefined}
                   >
+                    {b.variable && (
+                      <span style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 800, color: COLORS.variable, whiteSpace: "nowrap" }}>🔀 VARIABLE</span>
+                    )}
                     {b.majuscule ? b.texte.toUpperCase() : b.texte}
                   </div>
                 ))}
