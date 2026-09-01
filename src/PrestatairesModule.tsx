@@ -1735,25 +1735,6 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 🔧 Entretiens{entretiensActifsCount > 0 ? ` (${entretiensActifsCount})` : ""}
               </button>
 
-              <button
-                onClick={() => setActiveTab("palettes-vierges")}
-                style={{
-                  padding: "14px 22px",
-                  background: "white",
-                  color: "#92400e",
-                  border: "2px solid #92400e",
-                  borderRadius: "10px",
-                  cursor: "pointer",
-                  fontSize: "15px",
-                  fontWeight: "700",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
-              >
-                🟫 Palettes vierges
-              </button>
-
             </div>
 
             {/* STOCKS — IFCO Moorea, IFCO NLT, Carton Baby Blanc (Andes) */}
