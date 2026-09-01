@@ -209,7 +209,7 @@ const COLORS = {
 
 export function PrestatairesModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges"
   >("dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
@@ -344,6 +344,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [statsClientChoisi, setStatsClientChoisi] = useState<string>("");
   const [statsMoisChoisi, setStatsMoisChoisi] = useState<string>("");
 
+  // Rapprochement hebdomadaire stock physique / solde myIFCO (demande d'Elinathan, 01/09/2026) :
+  // le stock théorique app (moorea + nlt + pleines) est déjà, en temps réel, le solde net de
+  // toutes les entrées (commandes reçues, retours clients) et sorties (déclarations envoyées) —
+  // voir enregistrerRapprochementIfco. Ça doit correspondre à ce qu'IFCO affiche de son côté sur
+  // myifco-online.com : ce module sert juste à comparer les deux et à garder une trace.
+  const [rapprochementsIfco, setRapprochementsIfco] = useState<any[]>([]);
+  const [soldeMyIfcoSaisi, setSoldeMyIfcoSaisi] = useState("");
+
   const ifcoFileRef = useRef<HTMLInputElement>(null);
 
   const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -451,7 +459,11 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       const d = snap.val();
       setDeclarationsLignes(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u8(); u9(); u10(); };
+    const u11 = onValue(ref(db, "ifco_rapprochements"), snap => {
+      const d = snap.val();
+      setRapprochementsIfco(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u8(); u9(); u10(); u11(); };
   }, []);
 
   // Persiste, pour chaque déclaration IFCO réellement envoyée, le détail ligne à ligne
@@ -480,6 +492,37 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
 
   async function marquerDeclarationFaite(id: string) {
     await update(ref(db, `ifco_declarations_entree/${id}`), { declare: true });
+  }
+
+  // Enregistre un rapprochement : stock théorique app (moorea+nlt+pleines, déjà net de tout
+  // l'historique) comparé au solde que tu lis sur myifco-online.com. Garde aussi le cumul des
+  // commandes reçues et des sorties déclarées (mouvements "fournisseur→moorea" et "moorea→envoi"
+  // dans ifco_stock/movements) pour t'aider à comprendre d'où vient un écart si il y en a un.
+  async function enregistrerRapprochementIfco() {
+    const solde = parseInt(soldeMyIfcoSaisi);
+    if (isNaN(solde) || solde < 0) { setNotification({ type: "error", message: "✗ Indique le solde lu sur myIFCO" }); return; }
+    const stockTheorique = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockLevels.pleines || 0);
+    const cumulCommande = stockMovements.filter((m: any) => m.from === "fournisseur").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
+    const cumulSorties = stockMovements.filter((m: any) => m.to === "envoi").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
+    try {
+      await push(ref(db, "ifco_rapprochements"), {
+        date: new Date().toLocaleDateString("fr-FR"),
+        ts: Date.now(),
+        user: userName || "Moorea",
+        stockMoorea: stockLevels.moorea || 0,
+        stockNlt: stockLevels.nlt || 0,
+        stockPleines: stockLevels.pleines || 0,
+        stockTheorique,
+        cumulCommande,
+        cumulSorties,
+        soldeMyIfco: solde,
+        ecart: stockTheorique - solde,
+      });
+      setNotification({ type: "success", message: "✓ Rapprochement enregistré" });
+      setSoldeMyIfcoSaisi("");
+    } catch (err: any) {
+      setNotification({ type: "error", message: `✗ Erreur : ${err.message}` });
+    }
   }
 
   // ── Palettes vierges : pointage à chaque arrivée (pas de commande, juste un pointage) ──
@@ -1478,6 +1521,11 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const clientsStatsListe = Object.keys(statsParClientEtMois).sort((a, b) => a.localeCompare(b));
   const moisStatsListe = [...new Set(Object.values(statsParClientEtMois).flatMap(m => Object.keys(m)))].sort().reverse();
 
+  // ── Rapprochement myIFCO : totaux vivants (recalculés à chaque rendu, avant même d'enregistrer) ──
+  const stockTheoriqueActuelIfco = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockLevels.pleines || 0);
+  const cumulCommandeActuelIfco = stockMovements.filter((m: any) => m.from === "fournisseur").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
+  const cumulSortiesActuelIfco = stockMovements.filter((m: any) => m.to === "envoi").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
+
   const entretiensActifsCount = entretiens.filter(e => e.statut === "programmé" || e.statut === "en cours").length;
   const entretiensAffiches = entretiens
     .filter(e => filtreEntretien === "en_cours" ? (e.statut === "programmé" || e.statut === "en cours") : (e.statut === "terminé" || e.statut === "annulé"))
@@ -1766,6 +1814,12 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                     style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                   >
                     📊 Stats par client
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("ifco-rapprochement")}
+                    style={{ background: "rgba(255,255,255,0.18)", color: "#fff", border: "none", borderRadius: 20, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ⚖️ Rapprochement myIFCO
                   </button>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -2910,6 +2964,111 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* RAPPROCHEMENT myIFCO — stock théorique app vs solde IFCO, à faire chaque semaine
+            (demande d'Elinathan, 01/09/2026). Le stock théorique (moorea+nlt+pleines) est déjà,
+            en temps réel, le net de tout l'historique (commandes reçues, retours clients,
+            sorties déclarées) — voir enregistrerRapprochementIfco. */}
+        {activeTab === "ifco-rapprochement" && (
+          <div style={{ display: "grid", gap: 20 }}>
+            <button
+              onClick={() => setActiveTab("ifco-histo")}
+              style={{ background: "none", border: "none", color: "#1a6b3a", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0 }}
+            >
+              ← Retour à Déclarer IFCO
+            </button>
+
+            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "24px" }}>
+              <h3 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800, color: "#1a6b3a" }}>⚖️ Stock théorique actuel</h3>
+              <p style={{ margin: "0 0 16px", fontSize: 12, color: "#999" }}>
+                Moorea (vide) + NLT + caisses pleines en attente — c'est ce nombre qui devrait correspondre au solde affiché sur myifco-online.com.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 }}>
+                {[
+                  ["Moorea", stockLevels.moorea || 0, "#27ae60"],
+                  ["NLT", stockLevels.nlt || 0, "#3b82f6"],
+                  ["Pleines", stockLevels.pleines || 0, "#ca8a04"],
+                ].map(([label, val, color]: any) => (
+                  <div key={label} style={{ background: "#f8fffe", border: "1px solid #e8e0d0", borderRadius: 10, padding: "12px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#666" }}>{label}</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color }}>{val}</div>
+                  </div>
+                ))}
+                <div style={{ background: "#fdf6ec", border: "1.5px solid #fde3a8", borderRadius: 10, padding: "12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e" }}>Total théorique</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: "#92400e" }}>{stockTheoriqueActuelIfco}</div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 20, fontSize: 12, color: "#666" }}>
+                <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px" }}>
+                  📥 Cumul commandé (reçu depuis IFCO, tout historique) : <strong>{cumulCommandeActuelIfco}</strong>
+                </div>
+                <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px" }}>
+                  📤 Cumul déclaré en sortie (tout historique) : <strong>{cumulSortiesActuelIfco}</strong>
+                </div>
+              </div>
+
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#1a6b3a", marginBottom: 6 }}>Solde lu sur myifco-online.com aujourd'hui</label>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <input
+                  type="number"
+                  min="0"
+                  value={soldeMyIfcoSaisi}
+                  onChange={e => setSoldeMyIfcoSaisi(e.target.value)}
+                  placeholder="Ex : 1420"
+                  style={{ flex: "1 1 160px", padding: "10px 12px", border: "1.5px solid #a8d5b5", borderRadius: 10, fontSize: 14, fontWeight: 700, boxSizing: "border-box" }}
+                />
+                <button
+                  onClick={enregistrerRapprochementIfco}
+                  style={{ padding: "10px 20px", background: "#27ae60", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  ✓ Enregistrer le rapprochement
+                </button>
+              </div>
+              {soldeMyIfcoSaisi && !isNaN(parseInt(soldeMyIfcoSaisi)) && (
+                (() => {
+                  const ecart = stockTheoriqueActuelIfco - parseInt(soldeMyIfcoSaisi);
+                  return (
+                    <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: ecart === 0 ? "#eafaf1" : "#fdedec", color: ecart === 0 ? "#1e8449" : "#c0392b" }}>
+                      {ecart === 0 ? "✓ Aucun écart" : `⚠️ Écart de ${ecart > 0 ? "+" : ""}${ecart} caisse${Math.abs(ecart) > 1 ? "s" : ""} (${ecart > 0 ? "stock app supérieur" : "stock app inférieur"} au solde myIFCO)`}
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+
+            <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "24px" }}>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 800, color: "#1a6b3a" }}>📋 Historique des rapprochements ({rapprochementsIfco.length})</h3>
+              {rapprochementsIfco.length === 0 ? (
+                <div style={{ textAlign: "center", color: "#aaa", padding: "24px 0" }}>
+                  <p style={{ margin: 0, fontSize: 13 }}>Pas encore de rapprochement enregistré.</p>
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ background: "#f8fffe", borderBottom: "2px solid #e8e0d0" }}>
+                      {["Date", "Stock théorique", "Solde myIFCO", "Écart", "Cumul commandé", "Cumul sorties"].map(h => <th key={h} style={{ padding: "10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {rapprochementsIfco.map((r) => (
+                        <tr key={r.id} style={{ borderBottom: "1px solid #f4f4f4" }}>
+                          <td style={{ padding: "10px", color: "#666" }}>{r.date}</td>
+                          <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.stockTheorique}</td>
+                          <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.soldeMyIfco}</td>
+                          <td style={{ padding: "10px", fontWeight: 800, textAlign: "center", color: r.ecart === 0 ? "#1e8449" : "#c0392b" }}>
+                            {r.ecart > 0 ? "+" : ""}{r.ecart}
+                          </td>
+                          <td style={{ padding: "10px", textAlign: "center", color: "#666" }}>{r.cumulCommande}</td>
+                          <td style={{ padding: "10px", textAlign: "center", color: "#666" }}>{r.cumulSorties}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
