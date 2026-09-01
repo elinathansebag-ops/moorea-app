@@ -614,14 +614,20 @@ export default function App() {
     const ecartColisFinal = colisRecusFinal - (arrivage.quantite || 0);
     await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, colisRecus: colisRecusFinal, ecartColis: ecartColisFinal, ...(litige ? { litige } : {}), ...(colisADetruireFinal != null ? { colis_a_detruire: colisADetruireFinal } : {}), validatedAt: Date.now() });
 
-    // Si cet arrivage provient d'une commande de cartons, mettre à jour le statut de la commande
-    if (arrivage.carton_commande_id && decision === "conforme") {
+    // Si cet arrivage provient d'une commande de cartons, mettre à jour le statut de la commande.
+    // 01/09/2026 — Bug trouvé avec Elinathan : ce n'était fait que si decision === "conforme",
+    // or un simple écart de colis (même minime) passe automatiquement l'arrivage en
+    // "non_conforme" (voir hasLitige dans ArrivageModule.tsx) — la commande restait alors
+    // coincée sur "commandé" dans Prestataires, alors que le carton avait bel et bien été reçu
+    // et pointé ici. La conformité (litige ou non) ne doit pas conditionner si la commande est
+    // marquée reçue — seulement si le décompte de colis, lui, correspondait exactement.
+    if (arrivage.carton_commande_id) {
       try {
         await update(ref(db, `prestataires_cartons/${arrivage.carton_commande_id}`), {
           statut: "reçu" as const,
           dateReception: now2.toISOString().split("T")[0]
         });
-        logActivite("Carton reçu", `Commande #${arrivage.carton_commande_id} validée`);
+        logActivite("Carton reçu", `Commande #${arrivage.carton_commande_id} validée${decision !== "conforme" ? " (avec écart signalé)" : ""}`);
       } catch (error) {
         console.error("Erreur lors de la mise à jour du statut carton:", error);
       }
@@ -633,7 +639,15 @@ export default function App() {
     // que les caisses n'apparaissent nulle part dans le stock. On crédite ici, avec la quantité
     // réellement pointée (colisRecusFinal, pas la quantité commandée) pour rester cohérent avec
     // le suivi d'écart déjà en place sur tous les arrivages.
-    if (arrivage.ifco_palette_commande_id && decision === "conforme") {
+    // 01/09/2026 — Deuxième bug du même genre trouvé avec Elinathan : la condition
+    // `decision === "conforme"` empêchait TOUT ça (statut "reçu" ET crédit stock) dès qu'il y
+    // avait le moindre écart de colis, puisqu'un écart passe automatiquement l'arrivage en
+    // "non_conforme" (voir hasLitige dans ArrivageModule.tsx) — même un écart d'une seule
+    // caisse. Résultat : la commande restait bloquée sur "Commandé" dans Prestataires alors que
+    // la palette avait bien été validée à l'agréage. On ne conditionne plus ça à la conformité —
+    // seule la quantité réellement reçue (colisRecusFinal) compte, la non-conformité éventuelle
+    // reste visible ailleurs (statut "sous réserve" de l'arrivage, litige).
+    if (arrivage.ifco_palette_commande_id) {
       try {
         await update(ref(db, `ifco_palettes_commandes/${arrivage.ifco_palette_commande_id}`), {
           statut: "reçu" as const,
@@ -652,7 +666,7 @@ export default function App() {
             user: user?.displayName || "Moorea", ts: Date.now(),
           });
         }
-        logActivite("Palette IFCO reçue", `Commande #${arrivage.ifco_palette_commande_id} validée · ${colisRecusFinal} caisses créditées au stock Moorea`);
+        logActivite("Palette IFCO reçue", `Commande #${arrivage.ifco_palette_commande_id} validée · ${colisRecusFinal} caisses créditées au stock Moorea${decision !== "conforme" ? " (avec écart signalé)" : ""}`);
       } catch (error) {
         console.error("Erreur lors de la mise à jour du stock palette IFCO:", error);
       }
@@ -3431,9 +3445,17 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               // Regroupe les jours par semaine ISO, en accordéons (fermés par défaut, même la
               // semaine la plus récente), comme dans le module Stock — chaque jour ouvre ensuite
               // son propre accordéon avec les fournisseurs (DateBlock/FournisseurBlock, inchangés).
+              // 02/09/2026 — Un arrivage créé avec une date au format ISO ("2026-08-25" au lieu de
+              // "25/08/2026", ex : anciennes commandes cartons Go-Embal créées avant la conversion
+              // en fr-FR) faisait échouer le split("/") et retombait sur new Date(0), donc "Semaine
+              // 1 · 1970" tout en haut de la liste — repéré par Elinathan. On accepte maintenant les
+              // deux formats plutôt que de silencieusement mal grouper une date pourtant valide.
               const parseDateFr = (d: string): Date => {
-                const p = d.split("/");
-                return p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : new Date(0);
+                const slash = d.split("/");
+                if (slash.length === 3) return new Date(+slash[2], +slash[1] - 1, +slash[0]);
+                const dash = d.split("-");
+                if (dash.length === 3 && dash[0].length === 4) return new Date(+dash[0], +dash[1] - 1, +dash[2]);
+                return new Date(0);
               };
               const getISOWeek = (date: Date): { week: number; year: number } => {
                 const dt = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
