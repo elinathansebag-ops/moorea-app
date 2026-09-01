@@ -1417,21 +1417,34 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
             </div>
 
             {/* STOCKS — IFCO Moorea, IFCO NLT, Carton Baby Blanc (Andes) */}
+            {/* 01/09/2026 — Refonte de l'affichage (demande d'Elinathan : le détail "palette + X
+                caisses" était en tout petit texte gris clair, difficile à lire/comprendre). Le
+                grand chiffre est maintenant le total en CAISSES (la donnée réellement stockée et
+                sans ambiguïté), et le détail "= X palette(s) + Y caisses" passe en dessous dans
+                un texte bien plus grand et lisible, sur fond légèrement teinté pour bien le
+                détacher visuellement. */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "20px" }}>
-              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🏭 IFCO — Moorea</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#27ae60" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) : stockLevels.moorea}</div>
-                <div style={{ fontSize: 10, color: "#aaa" }}>{Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 0 ? `palette${Math.floor(stockLevels.moorea / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockLevels.moorea % CAISSES_PAR_PALETTE > 0 ? ` + ${stockLevels.moorea % CAISSES_PAR_PALETTE} caisses` : ''}` : 'caisses'}</div>
-              </div>
-              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>🔄 IFCO — NLT</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#3b82f6" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 0 ? Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) : stockLevels.nlt}</div>
-                <div style={{ fontSize: 10, color: "#aaa" }}>{Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 0 ? `palette${Math.floor(stockLevels.nlt / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockLevels.nlt % CAISSES_PAR_PALETTE > 0 ? ` + ${stockLevels.nlt % CAISSES_PAR_PALETTE} caisses` : ''}` : 'caisses'}</div>
-              </div>
+              {([
+                { label: "🏭 IFCO — Moorea", total: stockLevels.moorea, color: "#27ae60", bg: "#eafaf1" },
+                { label: "🔄 IFCO — NLT", total: stockLevels.nlt, color: "#3b82f6", bg: "#eff6ff" },
+              ]).map(({ label, total, color, bg }) => {
+                const palettes = Math.floor(total / CAISSES_PAR_PALETTE);
+                const reste = total % CAISSES_PAR_PALETTE;
+                return (
+                  <div key={label} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>{label}</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color }}>{total}</div>
+                    <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>caisses au total</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#3a3a3a", background: bg, borderRadius: 8, padding: "5px 8px" }}>
+                      = {palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisse${reste > 1 ? "s" : ""}` : ""}` : `${total} caisse${total > 1 ? "s" : ""} (moins d'une palette)`}
+                    </div>
+                  </div>
+                );
+              })}
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Baby Blanc — Andes</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{stockCartonAndes}</div>
-                <div style={{ fontSize: 10, color: "#aaa" }}>cartons</div>
+                <div style={{ fontSize: 11, color: "#999" }}>cartons</div>
               </div>
             </div>
             {/* Le compteur "IFCO pleines" existe toujours en interne (séparé du stock vide
