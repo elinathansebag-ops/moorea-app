@@ -252,6 +252,13 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [pvQuantite, setPvQuantite] = useState("");
   const moisActuelPv = `${String(new Date().getMonth() + 1).padStart(2, "0")}/${new Date().getFullYear()}`;
   const [pvMoisChoisi, setPvMoisChoisi] = useState(moisActuelPv);
+  // 01/09/2026 — 99% du temps une pile COMPLÈTE arrive (nombre fixe de palettes par pile,
+  // réglé une fois pour toutes dans Configuration) : le bouton principal ajoute directement
+  // cette quantité en un clic, et un lien plus discret permet de saisir un nombre différent
+  // pour les cas rares (pile entamée/incomplète) — demande d'Elinathan.
+  const [taillesPilesPv, setTaillesPilesPv] = useState<Record<string, number>>({});
+  const [tailleSaisiePv, setTailleSaisiePv] = useState<Record<string, string>>({});
+  const [pvSaisieHorsPile, setPvSaisieHorsPile] = useState(false);
 
   // ── Bouton "+ Nouvelle commande" (menu déroulant, extensible) ──
   const [showNouvelleMenu, setShowNouvelleMenu] = useState(false);
@@ -359,6 +366,14 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     return () => u();
   }, []);
 
+  // Taille d'une pile complète par référence (réglée dans Configuration).
+  useEffect(() => {
+    const u = onValue(ref(db, "parametres/palettes_vierges_taille_pile"), (snap) => {
+      setTaillesPilesPv(snap.val() || {});
+    });
+    return () => u();
+  }, []);
+
   // Load IFCO palettes commands (commandes fournisseur)
   useEffect(() => {
     const u = onValue(ref(db, "ifco_palettes_commandes"), (snap) => {
@@ -420,8 +435,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   }
 
   // ── Palettes vierges : pointage à chaque arrivée (pas de commande, juste un pointage) ──
-  async function ajouterLivraisonPaletteVierge() {
-    const qte = parseInt(pvQuantite);
+  async function enregistrerLivraisonPv(qte: number) {
     if (!qte || qte <= 0) { setNotification({ type: "error", message: "✗ Indique une quantité valide" }); return; }
     const maintenant = new Date();
     const dateFr = maintenant.toLocaleDateString("fr-FR");
@@ -433,8 +447,25 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       quantite: qte,
       timestamp: Date.now(),
     });
-    setPvQuantite("");
     setNotification({ type: "success", message: `✓ ${qte} × ${REFS_PALETTES_VIERGES[pvRef]} enregistrée(s)` });
+  }
+
+  // Bouton principal — 99% des cas : une pile complète, taille réglée dans Configuration.
+  async function ajouterPileComplete() {
+    const taille = taillesPilesPv[pvRef];
+    if (!taille || taille <= 0) {
+      setNotification({ type: "error", message: "✗ Règle d'abord la taille d'une pile pour cette référence dans Configuration" });
+      return;
+    }
+    await enregistrerLivraisonPv(taille);
+  }
+
+  // Cas rare — pile entamée/incomplète : quantité saisie à la main.
+  async function ajouterLivraisonPaletteVierge() {
+    const qte = parseInt(pvQuantite);
+    await enregistrerLivraisonPv(qte);
+    setPvQuantite("");
+    setPvSaisieHorsPile(false);
   }
 
   async function supprimerLivraisonPaletteVierge(id: string) {
@@ -546,8 +577,24 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       setAjustStockMoorea(String(stockLevels.moorea));
       setAjustStockNlt(String(stockLevels.nlt));
       setAjustStockAndes(String(stockCartonAndes));
+      setTailleSaisiePv(
+        Object.keys(REFS_PALETTES_VIERGES).reduce((acc, cle) => {
+          acc[cle] = taillesPilesPv[cle] != null ? String(taillesPilesPv[cle]) : "";
+          return acc;
+        }, {} as Record<string, string>)
+      );
     }
   }, [activeTab]);
+
+  async function enregistrerTaillesPilesPv() {
+    const nouvelles: Record<string, number> = {};
+    for (const cle of Object.keys(REFS_PALETTES_VIERGES)) {
+      const v = parseInt(tailleSaisiePv[cle]);
+      if (v > 0) nouvelles[cle] = v;
+    }
+    await update(ref(db, "parametres/palettes_vierges_taille_pile"), nouvelles);
+    setNotification({ type: "success", message: "✓ Tailles de pile enregistrées" });
+  }
 
   function saveIfcoClients(map: ClientMap) {
     setIfcoClients(map);
@@ -2709,6 +2756,44 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {/* IFCO — CLIENTS */}
         {activeTab === "configuration" && (
           <div style={{ display: "grid", gap: "20px" }}>
+            {/* Taille d'une pile complète de palettes vierges, par référence — utilisé par le
+                bouton principal "+ 1 pile complète" de l'onglet Palettes vierges. */}
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`
+            }}>
+              <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
+                <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>🟫 Palettes vierges — taille d'une pile</h3>
+                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Combien de palettes contient une pile complète, pour chaque référence — utilisé par le bouton "+ 1 pile complète".</p>
+              </div>
+              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+                {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => (
+                  <div key={cle}>
+                    <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>{label}</div>
+                    <input
+                      type="number"
+                      min={1}
+                      value={tailleSaisiePv[cle] ?? ""}
+                      onChange={(e) => setTailleSaisiePv((s) => ({ ...s, [cle]: e.target.value }))}
+                      placeholder="Nb de palettes par pile"
+                      style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: "0 16px 16px" }}>
+                <button
+                  onClick={enregistrerTaillesPilesPv}
+                  style={{ padding: "8px 14px", background: "#92400e", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                >
+                  Enregistrer les tailles de pile
+                </button>
+              </div>
+            </div>
+
             {/* Ajustement manuel des stocks — pour corriger les écarts */}
             <div style={{
               background: "white",
@@ -3154,43 +3239,70 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         {activeTab === "palettes-vierges" && (
           <div style={{ display: "grid", gap: "20px" }}>
             {/* Pointage rapide — pas de bon de commande, juste enregistrer chaque pile reçue
-                au fil de la journée (voir REFS_PALETTES_VIERGES tout en haut du fichier). */}
+                au fil de la journée (voir REFS_PALETTES_VIERGES tout en haut du fichier).
+                99% du temps c'est une pile COMPLÈTE (taille fixe réglée dans Configuration) :
+                le bouton principal l'ajoute en un clic ; la saisie d'un nombre différent (pile
+                entamée) reste possible mais discrète, pour les cas rares. */}
             <div style={{ background: "white", borderRadius: "16px", padding: "24px", border: "1.5px solid #e8e0d0" }}>
               <h3 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: "700", color: COLORS.gray700 }}>🟫 Pointer une livraison</h3>
               <p style={{ margin: "0 0 16px", fontSize: 12, color: COLORS.gray400 }}>
-                À chaque pile reçue, indique la référence et la quantité — la date et l'heure sont prises automatiquement.
+                La date et l'heure sont prises automatiquement.
               </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
-                <div style={{ flex: "2 1 220px" }}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Référence</label>
-                  <select
-                    value={pvRef}
-                    onChange={(e) => setPvRef(e.target.value)}
-                    style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
-                  >
-                    {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => (
-                      <option key={cle} value={cle}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ flex: "1 1 120px" }}>
-                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Quantité</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={pvQuantite}
-                    onChange={(e) => setPvQuantite(e.target.value)}
-                    placeholder="Nb de palettes"
-                    style={{ width: "100%", padding: "9px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
-                  />
-                </div>
-                <button
-                  onClick={ajouterLivraisonPaletteVierge}
-                  style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "#92400e", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Référence</label>
+                <select
+                  value={pvRef}
+                  onChange={(e) => setPvRef(e.target.value)}
+                  style={{ width: "100%", maxWidth: 380, padding: "9px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }}
                 >
-                  + Enregistrer
-                </button>
+                  {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => (
+                    <option key={cle} value={cle}>{label}</option>
+                  ))}
+                </select>
               </div>
+
+              <button
+                onClick={ajouterPileComplete}
+                disabled={!taillesPilesPv[pvRef]}
+                style={{ width: "100%", maxWidth: 380, padding: "16px", borderRadius: 10, border: "none", background: taillesPilesPv[pvRef] ? "#92400e" : COLORS.gray200, color: taillesPilesPv[pvRef] ? "#fff" : COLORS.gray400, fontSize: 15, fontWeight: 800, cursor: taillesPilesPv[pvRef] ? "pointer" : "default" }}
+              >
+                {taillesPilesPv[pvRef] ? `+ 1 pile complète (${taillesPilesPv[pvRef]} palettes)` : "⚠️ Règle d'abord la taille de pile dans Configuration"}
+              </button>
+
+              {!pvSaisieHorsPile ? (
+                <button
+                  onClick={() => setPvSaisieHorsPile(true)}
+                  style={{ display: "block", marginTop: 10, background: "transparent", border: "none", color: COLORS.gray400, fontSize: 11, textDecoration: "underline", cursor: "pointer", padding: 0 }}
+                >
+                  + Ajouter un nombre en dehors d'une pile (pile entamée)
+                </button>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end", marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.gray200}` }}>
+                  <div style={{ flex: "1 1 140px" }}>
+                    <label style={{ display: "block", fontSize: 10, color: COLORS.gray400, marginBottom: 4 }}>Nombre de palettes (hors pile)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={pvQuantite}
+                      onChange={(e) => setPvQuantite(e.target.value)}
+                      placeholder="Nb de palettes"
+                      style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12, boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <button
+                    onClick={ajouterLivraisonPaletteVierge}
+                    style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Enregistrer
+                  </button>
+                  <button
+                    onClick={() => { setPvSaisieHorsPile(false); setPvQuantite(""); }}
+                    style={{ padding: "8px 10px", borderRadius: 8, border: "none", background: "transparent", color: COLORS.gray400, fontSize: 12, cursor: "pointer" }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Livraisons du jour */}
