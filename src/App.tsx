@@ -2572,6 +2572,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
       { icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       { icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
+      { icon: "🏷️", label: "Étiquettes", color: "#c8a84b", badge: null, stat: "Créer & imprimer une étiquette", action: () => { setShowAccueil(false); setShowEtiquettes(true); } },
     ];
 
     const leofreshBtns = [
