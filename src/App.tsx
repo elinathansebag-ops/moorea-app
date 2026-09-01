@@ -11,7 +11,7 @@ import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID,
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
 import { RHApp } from "./RHApp";
-// import { EtiquettesModule } from "./EtiquettesModule"; // TEMP: fichier manquant sur GitHub — désactivé pour débloquer le build
+import { EtiquetteModule } from "./EtiquetteModule";
 import { QrCodeDashboard } from "./QrCodeDashboard";
 import { YukonApp } from "./YukonApp";
 import { RackModule } from "./RackModule";
@@ -2389,17 +2389,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showEtiquettes) {
-    // TEMP: EtiquettesModule.tsx manquant sur GitHub — à réintégrer dès qu'on le retrouve
-    return (
-      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
-        <PageHeader titre="🏷️ Étiquettes" onBack={() => { setShowEtiquettes(false); setShowAccueil(true); }} onHome={() => { setShowEtiquettes(false); setShowAccueil(true); }} />
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, minHeight: "calc(100vh - 52px)" }}>
-          <p style={{ fontSize: 40, marginBottom: 12 }}>🏷️</p>
-          <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 8, textAlign: "center" }}>Module Étiquettes temporairement indisponible</p>
-          <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", maxWidth: 360 }}>Le fichier source a été perdu — il doit être retrouvé et réintégré.</p>
-        </div>
-      </div>
-    );
+    return <EtiquetteModule onClose={() => { setShowEtiquettes(false); setShowAccueil(true); }} />;
   }
 
   if (showRH) {
