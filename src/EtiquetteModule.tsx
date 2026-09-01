@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
 
@@ -38,6 +38,8 @@ type BlocTexte = {
   italique: boolean;
   majuscule: boolean;
   align: Align;
+  xPct: number;
+  yPct: number;
 };
 
 type FormatEtiquette = { largeurCm: number; hauteurCm: number };
@@ -54,9 +56,11 @@ type ModeleEtiquette = {
   logoActif: boolean;
   logoUrl: string;
   logoNoirEtBlanc: boolean;
-  alignVertical: "top" | "center" | "bottom";
+  logoXPct: number;
+  logoYPct: number;
   blocs: BlocTexte[];
   updatedAt: number;
+  depuisImpression?: boolean;
 };
 
 const FORMATS_PREDEFINIS: (FormatEtiquette & { label: string })[] = [
@@ -73,8 +77,8 @@ function nouvelId() {
   return `b${Date.now()}${uid}`;
 }
 
-function nouveauBloc(texte = "", align: Align = "center"): BlocTexte {
-  return { id: nouvelId(), texte, taillePt: 18, gras: true, italique: false, majuscule: false, align };
+function nouveauBloc(texte = "", align: Align = "center", xPct = 50, yPct = 50): BlocTexte {
+  return { id: nouvelId(), texte, taillePt: 18, gras: true, italique: false, majuscule: false, align, xPct, yPct };
 }
 
 export function EtiquetteModule({ onClose }: { onClose: () => void }) {
@@ -88,8 +92,45 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   const [logoUrlNoir, setLogoUrlNoir] = useState("");
   const [logoConversionEnCours, setLogoConversionEnCours] = useState(false);
   const [logosSauvegardes, setLogosSauvegardes] = useState<LogoSauvegarde[]>([]);
-  const [alignVertical, setAlignVertical] = useState<"top" | "center" | "bottom">("center");
-  const [blocs, setBlocs] = useState<BlocTexte[]>([nouveauBloc("PRODUIT")]);
+  const [logoXPct, setLogoXPct] = useState(50);
+  const [logoYPct, setLogoYPct] = useState(18);
+  const [blocs, setBlocs] = useState<BlocTexte[]>([nouveauBloc("PRODUIT", "center", 50, 50)]);
+
+  // Glisser-déposer : id de l'élément en cours de déplacement ("__logo__" ou l'id d'un bloc),
+  // et référence au conteneur de l'étiquette pour convertir la position de la souris/du doigt
+  // en pourcentage de la largeur/hauteur de l'étiquette (indépendant du zoom de l'aperçu).
+  const draggingRef = useRef<string | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function calculerPct(clientX: number, clientY: number) {
+      const el = previewRef.current;
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const x = Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100));
+      const y = Math.min(100, Math.max(0, ((clientY - rect.top) / rect.height) * 100));
+      return { x, y };
+    }
+    function onMove(e: PointerEvent) {
+      const id = draggingRef.current;
+      if (!id) return;
+      const pos = calculerPct(e.clientX, e.clientY);
+      if (!pos) return;
+      if (id === "__logo__") {
+        setLogoXPct(pos.x);
+        setLogoYPct(pos.y);
+      } else {
+        setBlocs((b) => b.map((x) => (x.id === id ? { ...x, xPct: pos.x, yPct: pos.y } : x)));
+      }
+    }
+    function onUp() { draggingRef.current = null; }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, []);
 
   const [formatsPerso, setFormatsPerso] = useState<FormatSauvegarde[]>([]);
   const [modeles, setModeles] = useState<ModeleEtiquette[]>([]);
@@ -190,7 +231,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   }
 
   function ajouterBloc() {
-    setBlocs((b) => [...b, nouveauBloc("")]);
+    setBlocs((b) => [...b, nouveauBloc("", "center", 50, Math.min(90, 20 + b.length * 12))]);
   }
   function modifierBloc(id: string, patch: Partial<BlocTexte>) {
     setBlocs((b) => b.map((x) => (x.id === id ? { ...x, ...patch } : x)));
@@ -264,17 +305,26 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     notify("success", "🗑️ Format supprimé");
   }
 
+  function etatActuel() {
+    return { largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, logoXPct, logoYPct, blocs };
+  }
+
   async function enregistrerModele() {
     if (!nomModele.trim()) { notify("error", "⚠️ Donne un nom à ce modèle"); return; }
     if (blocs.length === 0) { notify("error", "⚠️ Ajoute au moins une ligne de texte"); return; }
-    await push(ref(db, "etiquettes/modeles"), {
-      nom: nomModele.trim(),
-      largeurCm, hauteurCm, logoActif, logoUrl, logoNoirEtBlanc, alignVertical, blocs,
-      updatedAt: Date.now(),
-    });
+    await push(ref(db, "etiquettes/modeles"), { nom: nomModele.trim(), ...etatActuel(), updatedAt: Date.now(), depuisImpression: false });
     notify("success", "💾 Modèle enregistré");
     setNomModele("");
     setShowEnregistrerModele(false);
+  }
+
+  // 01/09/2026 — Chaque impression enregistre automatiquement l'étiquette telle quelle dans la
+  // liste des modèles (nom auto-généré), pour pouvoir la réimprimer plus tard ou repartir de son
+  // format sans avoir à cliquer "Enregistrer" à chaque fois (demande d'Elinathan).
+  async function enregistrerHistoriqueImpression() {
+    const premierTexte = blocs.find((b) => b.texte.trim())?.texte.trim().slice(0, 30) || "Sans titre";
+    const date = new Date().toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    await push(ref(db, "etiquettes/modeles"), { nom: `${premierTexte} — ${date}`, ...etatActuel(), updatedAt: Date.now(), depuisImpression: true });
   }
 
   function chargerModele(m: ModeleEtiquette) {
@@ -284,10 +334,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setLogoActif(m.logoActif);
     setLogoUrl(m.logoUrl || "");
     setLogoNoirEtBlanc(!!m.logoNoirEtBlanc);
-    setAlignVertical(m.alignVertical || "center");
-    setBlocs(m.blocs && m.blocs.length > 0 ? m.blocs.map((b) => ({ ...b, id: nouvelId() })) : [nouveauBloc()]);
+    setLogoXPct(m.logoXPct ?? 50);
+    setLogoYPct(m.logoYPct ?? 18);
+    setBlocs(m.blocs && m.blocs.length > 0 ? m.blocs.map((b) => ({ ...b, id: nouvelId(), xPct: b.xPct ?? 50, yPct: b.yPct ?? 50 })) : [nouveauBloc()]);
     setShowChargerModele(false);
-    notify("success", `📂 Modèle "${m.nom}" chargé`);
+    notify("success", `📂 "${m.nom}" chargé — modifie et réimprime, ou repars de ce format`);
   }
 
   async function supprimerModele(id: string) {
@@ -295,25 +346,23 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     notify("success", "🗑️ Modèle supprimé");
   }
 
-  function genererHtmlBlocs() {
-    return blocs
-      .filter((b) => b.texte.trim())
-      .map((b) => {
-        const texte = b.majuscule ? b.texte.toUpperCase() : b.texte;
-        return `<div style="text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};line-height:1.15;word-break:break-word;">${texte.replace(/</g, "&lt;")}</div>`;
-      })
-      .join("\n");
+  function styleBloc(b: BlocTexte): string {
+    const texte = (b.majuscule ? b.texte.toUpperCase() : b.texte).replace(/</g, "&lt;").replace(/\n/g, "<br/>");
+    return `<div style="position:absolute;left:${b.xPct}%;top:${b.yPct}%;transform:translate(-50%,-50%);text-align:${b.align};font-size:${b.taillePt}pt;font-weight:${b.gras ? 900 : 400};font-style:${b.italique ? "italic" : "normal"};line-height:1.2;white-space:pre-wrap;max-width:92%;">${texte}</div>`;
   }
 
-  function ouvrirApercuEtImprimer() {
-    const justify = alignVertical === "top" ? "flex-start" : alignVertical === "bottom" ? "flex-end" : "center";
+  function genererHtmlBlocs() {
+    return blocs.filter((b) => b.texte.trim()).map(styleBloc).join("\n");
+  }
+
+  async function ouvrirApercuEtImprimer() {
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Étiquette</title>
 <style>
   @page { size: ${largeurCm}cm ${hauteurCm}cm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; }
-  .etiquette { width: ${largeurCm}cm; height: ${hauteurCm}cm; padding: 0.4cm; display: flex; flex-direction: column; justify-content: ${justify}; gap: 0.15cm; overflow: hidden; }
-  .logo { max-width: 100%; max-height: 3cm; object-fit: contain; margin-bottom: 0.2cm; align-self: center; }
+  .etiquette { position: relative; width: ${largeurCm}cm; height: ${hauteurCm}cm; overflow: hidden; }
+  .logo { position: absolute; left: ${logoXPct}%; top: ${logoYPct}%; transform: translate(-50%, -50%); max-width: 90%; max-height: 3.5cm; object-fit: contain; }
 </style>
 </head><body>
   <div class="etiquette">
@@ -331,6 +380,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     w.document.open();
     w.document.write(html);
     w.document.close();
+    enregistrerHistoriqueImpression().catch(() => {});
   }
 
   return (
@@ -433,18 +483,6 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
             )}
           </div>
 
-          {/* ALIGNEMENT VERTICAL GLOBAL */}
-          <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 16 }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>↕️ Position verticale du contenu</h3>
-            <div style={{ display: "flex", gap: 8 }}>
-              {(["top", "center", "bottom"] as const).map((v) => (
-                <button key={v} onClick={() => setAlignVertical(v)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: `1.5px solid ${alignVertical === v ? COLORS.primary : COLORS.gray200}`, background: alignVertical === v ? COLORS.primary : "#fff", color: alignVertical === v ? "#fff" : COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                  {v === "top" ? "Haut" : v === "center" ? "Centre" : "Bas"}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* BLOCS DE TEXTE */}
           <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 16, marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -510,29 +548,53 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
         {/* ── COLONNE APERÇU ── */}
         <div>
           <div style={{ position: "sticky", top: 66 }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>👁️ Aperçu (échelle réelle)</h3>
+            <h3 style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>👁️ Aperçu — glisse les éléments pour les positionner</h3>
+            <p style={{ fontSize: 11, color: COLORS.gray400, margin: "0 0 10px" }}>Clique-glisse le logo ou une ligne de texte directement sur l'étiquette pour la déplacer.</p>
             <div style={{ background: "#e8e0d0", borderRadius: 14, padding: 20, display: "flex", justifyContent: "center", overflow: "auto", marginBottom: 16 }}>
               <div
+                ref={previewRef}
                 style={{
+                  position: "relative",
                   width: `${largeurCm}cm`,
                   height: `${hauteurCm}cm`,
                   background: "#fff",
                   boxShadow: "0 4px 14px rgba(0,0,0,.15)",
-                  padding: "0.4cm",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: alignVertical === "top" ? "flex-start" : alignVertical === "bottom" ? "flex-end" : "center",
-                  gap: "0.15cm",
                   overflow: "hidden",
                   boxSizing: "border-box",
                   flexShrink: 0,
+                  touchAction: "none",
                 }}
               >
                 {logoActif && logoUrlAffichee && (
-                  <img src={logoUrlAffichee} alt="Logo" style={{ maxWidth: "100%", maxHeight: "3cm", objectFit: "contain", alignSelf: "center", marginBottom: "0.2cm" }} />
+                  <img
+                    src={logoUrlAffichee}
+                    alt="Logo"
+                    onPointerDown={(e) => { e.preventDefault(); draggingRef.current = "__logo__"; }}
+                    style={{ position: "absolute", left: `${logoXPct}%`, top: `${logoYPct}%`, transform: "translate(-50%,-50%)", maxWidth: "90%", maxHeight: "3.5cm", objectFit: "contain", cursor: "grab", outline: `1.5px dashed ${COLORS.primary}66`, touchAction: "none" }}
+                  />
                 )}
                 {blocs.filter((b) => b.texte.trim()).map((b) => (
-                  <div key={b.id} style={{ textAlign: b.align, fontSize: `${b.taillePt}pt`, fontWeight: b.gras ? 900 : 400, fontStyle: b.italique ? "italic" : "normal", lineHeight: 1.15, wordBreak: "break-word" }}>
+                  <div
+                    key={b.id}
+                    onPointerDown={(e) => { e.preventDefault(); draggingRef.current = b.id; }}
+                    style={{
+                      position: "absolute",
+                      left: `${b.xPct}%`,
+                      top: `${b.yPct}%`,
+                      transform: "translate(-50%,-50%)",
+                      textAlign: b.align,
+                      fontSize: `${b.taillePt}pt`,
+                      fontWeight: b.gras ? 900 : 400,
+                      fontStyle: b.italique ? "italic" : "normal",
+                      lineHeight: 1.2,
+                      whiteSpace: "pre-wrap",
+                      maxWidth: "92%",
+                      cursor: "grab",
+                      outline: `1.5px dashed ${COLORS.primary}66`,
+                      padding: 2,
+                      touchAction: "none",
+                    }}
+                  >
                     {b.majuscule ? b.texte.toUpperCase() : b.texte}
                   </div>
                 ))}
@@ -542,7 +604,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               🖨️ Aperçu plein écran & imprimer
             </button>
             <p style={{ fontSize: 11, color: COLORS.gray600, marginTop: 8, textAlign: "center" }}>
-              Ouvre un aperçu à la taille réelle dans un nouvel onglet et lance l'impression — choisis l'imprimante connectée à cet ordinateur, ou "Enregistrer en PDF" dans la même fenêtre.
+              Ouvre un aperçu à la taille réelle dans un nouvel onglet et lance l'impression — choisis l'imprimante connectée à cet ordinateur, ou "Enregistrer en PDF" dans la même fenêtre. L'étiquette est aussi enregistrée automatiquement dans "Charger un modèle" pour la retrouver plus tard.
             </p>
           </div>
         </div>
@@ -552,12 +614,16 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
       {showChargerModele && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setShowChargerModele(false)}>
           <div style={{ background: "#fff", borderRadius: 18, padding: "20px 22px", maxWidth: 420, width: "100%", maxHeight: "80vh", overflow: "auto", borderTop: `7px solid ${COLORS.primary}` }} onClick={(e) => e.stopPropagation()}>
-            <p style={{ fontSize: 15, fontWeight: 800, color: COLORS.gray700, margin: "0 0 14px" }}>📂 Charger un modèle</p>
+            <p style={{ fontSize: 15, fontWeight: 800, color: COLORS.gray700, margin: "0 0 4px" }}>📂 Charger un modèle</p>
+            <p style={{ fontSize: 11, color: COLORS.gray400, margin: "0 0 14px" }}>Réimprime une étiquette déjà faite, ou charge-la pour repartir de son format et la modifier.</p>
             {modeles.length === 0 && <p style={{ fontSize: 12, color: COLORS.gray400, textAlign: "center" }}>Aucun modèle enregistré pour l'instant.</p>}
             {modeles.map((m) => (
               <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 4px", borderBottom: `1px solid ${COLORS.gray200}` }}>
                 <div style={{ flex: 1, cursor: "pointer" }} onClick={() => chargerModele(m)}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>{m.nom}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>
+                    {m.depuisImpression && <span title="Enregistré automatiquement lors d'une impression" style={{ marginRight: 4 }}>🖨️</span>}
+                    {m.nom}
+                  </div>
                   <div style={{ fontSize: 10, color: COLORS.gray400 }}>{m.largeurCm} × {m.hauteurCm} cm · {(m.blocs || []).length} ligne(s)</div>
                 </div>
                 <button onClick={() => supprimerModele(m.id)} style={{ border: "none", background: "transparent", color: COLORS.danger, cursor: "pointer", fontSize: 14 }}>🗑</button>
