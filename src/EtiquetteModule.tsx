@@ -621,6 +621,18 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   // commentaire sur ajouterVariable() plus haut.
   const blocsFixes = blocs.filter((b) => !b.variable);
   const blocVariable = blocs.find((b) => b.variable);
+  // 01/09/2026 (v3) — Le champ variable affichait toujours son texte d'exemple court ("VALEUR")
+  // dans l'aperçu, même quand les vraies valeurs de la liste (ex : "Kitchen Tasting table") sont
+  // bien plus longues et passent sur 2-3 lignes une fois imprimées — l'utilisateur positionnait
+  // donc le champ en pensant que ça tenait, puis découvrait un chevauchement avec les zones
+  // fixes seulement à l'impression (bug remonté par Elinathan : "ça va toujours pas"). On affiche
+  // maintenant la valeur RÉELLE la plus longue de la liste comme texte d'aperçu du champ
+  // variable, pour que le chevauchement (s'il y en a) soit visible et corrigeable directement en
+  // le glissant/redimensionnant, avant impression.
+  const valeursLotApercu = listeValeurs.split("\n").map((v) => v.trim()).filter(Boolean);
+  const exempleValeurLot = valeursLotApercu.length > 0
+    ? valeursLotApercu.reduce((plusLongue, v) => (v.length > plusLongue.length ? v : plusLongue), valeursLotApercu[0])
+    : null;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
@@ -1016,8 +1028,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     onChange={(e) => setListeValeurs(e.target.value)}
                     placeholder={"Réception\nCuisine\nHousekeeping\nRestaurant\n..."}
                     rows={6}
-                    style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical", marginBottom: 14 }}
+                    style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical", marginBottom: 8 }}
                   />
+                  <p style={{ fontSize: 11, color: COLORS.gray600, margin: "0 0 14px", lineHeight: 1.4, background: COLORS.gray100, borderRadius: 8, padding: "8px 10px" }}>
+                    💡 Dès qu'il y a des valeurs ci-dessus, l'aperçu à droite affiche la <b>plus longue</b> d'entre elles à la place de "{blocVariable.texte || "..."}", pour que tu voies si elle passe sur plusieurs lignes et chevauche une autre zone — repositionne/redimensionne le champ variable (ou réduis sa taille de police) jusqu'à ce que ça tienne, avant d'imprimer.
+                  </p>
                   <button onClick={genererEtImprimerLot} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: COLORS.dark, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
                     🖨️ Générer et imprimer {valeurs.length > 0 ? `${valeurs.length} étiquette${valeurs.length > 1 ? "s" : ""}` : "les étiquettes"}
                   </button>
@@ -1077,37 +1092,45 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     style={{ position: "absolute", left: `${logoXPct}%`, top: `${logoYPct}%`, transform: "translate(-50%,-50%)", width: `${logoTailleCm}cm`, maxWidth: "92%", objectFit: "contain", cursor: "grab", outline: `1.5px dashed ${COLORS.primary}66`, touchAction: "none" }}
                   />
                 )}
-                {blocs.filter((b) => b.texte.trim()).map((b) => (
-                  <div
-                    key={b.id}
-                    onPointerDown={(e) => { e.preventDefault(); draggingRef.current = b.id; }}
-                    style={{
-                      position: "absolute",
-                      left: `${b.xPct}%`,
-                      top: `${b.yPct}%`,
-                      transform: "translate(-50%,-50%)",
-                      textAlign: b.align,
-                      fontSize: `${b.taillePt}pt`,
-                      fontWeight: b.gras ? 900 : 400,
-                      fontStyle: b.italique ? "italic" : "normal",
-                      fontFamily: b.police || POLICE_DEFAUT,
-                      lineHeight: 1.2,
-                      whiteSpace: "pre-wrap",
-                      maxWidth: "92%",
-                      cursor: "grab",
-                      outline: `1.5px dashed ${b.variable ? COLORS.variable : COLORS.primary}66`,
-                      background: b.variable ? `${COLORS.variableLight}cc` : "transparent",
-                      padding: 2,
-                      touchAction: "none",
-                    }}
-                    title={b.variable ? "Champ variable" : undefined}
-                  >
-                    {b.variable && (
-                      <span style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 800, color: COLORS.variable, whiteSpace: "nowrap" }}>🔀 VARIABLE</span>
-                    )}
-                    {b.majuscule ? b.texte.toUpperCase() : b.texte}
-                  </div>
-                ))}
+                {blocs.filter((b) => b.texte.trim()).map((b) => {
+                  // Pour le champ variable, on affiche la valeur RÉELLE la plus longue de la
+                  // liste du lot (si elle existe) plutôt que le texte d'exemple générique — pour
+                  // voir tout de suite si une valeur longue chevauche une autre zone, au lieu de
+                  // le découvrir seulement à l'impression (voir commentaire sur
+                  // exempleValeurLot plus haut).
+                  const texteAffiche = b.variable && exempleValeurLot ? exempleValeurLot : b.texte;
+                  return (
+                    <div
+                      key={b.id}
+                      onPointerDown={(e) => { e.preventDefault(); draggingRef.current = b.id; }}
+                      style={{
+                        position: "absolute",
+                        left: `${b.xPct}%`,
+                        top: `${b.yPct}%`,
+                        transform: "translate(-50%,-50%)",
+                        textAlign: b.align,
+                        fontSize: `${b.taillePt}pt`,
+                        fontWeight: b.gras ? 900 : 400,
+                        fontStyle: b.italique ? "italic" : "normal",
+                        fontFamily: b.police || POLICE_DEFAUT,
+                        lineHeight: 1.2,
+                        whiteSpace: "pre-wrap",
+                        maxWidth: "92%",
+                        cursor: "grab",
+                        outline: `1.5px dashed ${b.variable ? COLORS.variable : COLORS.primary}66`,
+                        background: b.variable ? `${COLORS.variableLight}cc` : "transparent",
+                        padding: 2,
+                        touchAction: "none",
+                      }}
+                      title={b.variable ? "Champ variable" : undefined}
+                    >
+                      {b.variable && (
+                        <span style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: 8, fontWeight: 800, color: COLORS.variable, whiteSpace: "nowrap" }}>🔀 VARIABLE{exempleValeurLot ? " (exemple réel)" : ""}</span>
+                      )}
+                      {b.majuscule ? texteAffiche.toUpperCase() : texteAffiche}
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <button onClick={ouvrirApercuEtImprimer} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: COLORS.dark, color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
