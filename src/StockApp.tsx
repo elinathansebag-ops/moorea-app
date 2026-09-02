@@ -975,7 +975,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             <button class="btn btn-sm" onclick="sOptimiserOrdre()" title="Analyse les sessions précédentes pour optimiser l'ordre de comptage">🧠 Optimiser ordre</button>
           </div>
           <div class="tbl-wrap">
-            <table><thead><tr><th>Article</th><th>Famille</th><th>Équipe</th></tr></thead>
+            <table><thead><tr><th>Article</th><th>Famille</th><th>Équipe</th><th>IFCO</th></tr></thead>
             <tbody id="s-cfg-body"></tbody></table>
           </div>
         </div>
@@ -1096,6 +1096,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let fusionSelected: string[] = [];
       let histoCache: any[] = [];
       let _byArticle: any = null;
+      // 02/09/2026 — Demande d'Elinathan : le rapprochement myIFCO (module Prestataires) devait
+      // jusqu'ici deviner quels articles sont conditionnés en caisses IFCO en cherchant "IFCO"
+      // dans le nom de l'article — peu fiable ("Pleines (inventaire)" pouvait rater ou compter
+      // en trop des articles). On remplace par un réglage explicite, coché ici une fois pour
+      // toutes par article, même mécanisme de sauvegarde que _byArticle/overrides ci-dessus.
+      let _ifcoByArticle: any = {};
       // Champ actif visé par "↑ Utiliser" — sur window comme les autres variables de la
       // calculatrice ci-dessus, et pour la même raison : StockApp se démonte/remonte à chaque
       // sortie/entrée du module Stock, ce qui recrée cette fermeture (closure) à chaque fois.
@@ -1215,6 +1221,21 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         }
       };
       await loadOverrides();
+
+      // Load réglages IFCO (config/ifco_overrides, même mécanisme que loadOverrides ci-dessus)
+      const loadIfcoOverrides = async () => {
+        try {
+          const snap = await getDoc(doc(db, "config", "ifco_overrides"));
+          if (snap.exists()) {
+            const ov = (snap.data() as any).data || {};
+            _ifcoByArticle = {};
+            Object.entries(ov).forEach(([art, v]) => { _ifcoByArticle[art.toLowerCase().trim()] = !!v; });
+          }
+        } catch {
+          toast("⚠️ Impossible de charger les réglages IFCO");
+        }
+      };
+      await loadIfcoOverrides();
 
       // Pages
       (window as any).sShowPage = (p: string) => {
@@ -2444,8 +2465,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           return true;
         });
         const isGMSfn = (a: any) => getEq(a) === "GMS";
+        const isIfcoFn = (a: any) => !!_ifcoByArticle?.[a.article?.toLowerCase().trim()];
         tbody.innerHTML = rows.map(a => {
           const isGMS = isGMSfn(a);
+          const isIfco = isIfcoFn(a);
           const enc = encodeURIComponent(a.article);
           const selected = fusionSelected.includes(a.article);
           const bg = selected ? "background:#fffbf0;border-left:3px solid #c8a84b" : "";
@@ -2454,7 +2477,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const gmsStyle = `padding:5px 14px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;${isGMS ? "background:#c8a84b;color:#0a0a0a" : "background:transparent;color:#bbb"}`;
           const presStyle = `padding:5px 14px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;${!isGMS ? "background:#0ea5e9;color:#fff" : "background:transparent;color:#bbb"}`;
           const toggleHtml = fusionMode ? "" : `<div style="display:inline-flex;border:1.5px solid #e8e0d0;border-radius:20px;overflow:hidden" onclick="event.stopPropagation()"><button data-enc="${enc}" onclick="sToggleEquipe(this.dataset.enc,true)" style="${gmsStyle}">GMS</button><button data-enc="${enc}" onclick="sToggleEquipe(this.dataset.enc,false)" style="${presStyle}">Prestige</button></div>`;
-          return `<tr style="${bg};${cursor}" ${onclick}><td style="font-weight:500">${a.article}${selected ? ' <span style="font-size:10px;color:#c8a84b;font-weight:700">✓</span>' : ""}<br><span style="font-size:11px;color:#6b7280">${a.famille}</span></td><td>${a.famille}</td><td>${toggleHtml}</td></tr>`;
+          const ifcoHtml = fusionMode ? "" : `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11.5px;color:${isIfco ? "#1a6b3a" : "#9ca3af"};font-weight:${isIfco ? 700 : 500}" onclick="event.stopPropagation()"><input type="checkbox" data-enc="${enc}" ${isIfco ? "checked" : ""} onchange="sToggleIfco(this.dataset.enc,this.checked)" style="width:16px;height:16px;accent-color:#1a6b3a;cursor:pointer"/>Caisse IFCO</label>`;
+          return `<tr style="${bg};${cursor}" ${onclick}><td style="font-weight:500">${a.article}${selected ? ' <span style="font-size:10px;color:#c8a84b;font-weight:700">✓</span>' : ""}<br><span style="font-size:11px;color:#6b7280">${a.famille}</span></td><td>${a.famille}</td><td>${toggleHtml}</td><td>${ifcoHtml}</td></tr>`;
         }).join("");
       };
       (window as any).sRenderConfig = sRenderConfig;
@@ -2475,6 +2499,19 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           toast(article.split(" ").slice(0, 3).join(" ") + " → " + newEquipe);
         } catch { toast("Erreur sauvegarde"); }
         sRenderConfig();
+      };
+
+      (window as any).sToggleIfco = async (enc: string, checked: boolean) => {
+        const article = decodeURIComponent(enc);
+        if (!_ifcoByArticle) _ifcoByArticle = {};
+        _ifcoByArticle[article.toLowerCase().trim()] = checked;
+        try {
+          const snap = await getDoc(doc(db, "config", "ifco_overrides"));
+          const ov = snap.exists() ? (snap.data() as any).data || {} : {};
+          ov[article] = checked;
+          await setDoc(doc(db, "config", "ifco_overrides"), { data: ov });
+          toast(article.split(" ").slice(0, 3).join(" ") + (checked ? " → caisse IFCO" : " → retiré d'IFCO"));
+        } catch { toast("Erreur sauvegarde IFCO"); }
       };
 
       // Fusion (simplifié)
@@ -2898,7 +2935,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };

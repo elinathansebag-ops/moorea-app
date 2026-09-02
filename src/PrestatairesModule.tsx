@@ -358,8 +358,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   // Stock caisses pleines "physique" (demande d'Elinathan, 01/09/2026) : au lieu du compteur
   // interne ifco_stock/levels.pleines (juste les retours de reconditionnement en attente de
   // vidage), on va chercher le vrai comptage d'inventaire (base Firestore "moorea-stock",
-  // séparée de la base moorea-qualite) et on additionne tous les articles dont le nom contient
-  // "IFCO" — c'est la photo physique réelle du stock, plus fiable pour comparer à myifco-online.com.
+  // séparée de la base moorea-qualite) et on additionne tous les articles cochés « Caisse IFCO »
+  // (réglage explicite, voir Stock → Configuration) — c'est la photo physique réelle du stock,
+  // plus fiable pour comparer à myifco-online.com.
   const [inventairesIfcoDispo, setInventairesIfcoDispo] = useState<any[]>([]);
   const [inventaireIfcoChoisi, setInventaireIfcoChoisi] = useState<string>("");
   const [stockPleinesInventaire, setStockPleinesInventaire] = useState<number | null>(null);
@@ -554,15 +555,27 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     }
   }
 
-  // Pour l'inventaire clôturé choisi, additionne le "compté" de tous les articles dont le nom
-  // contient "IFCO" (insensible à la casse), toutes équipes confondues (GMS + Prestige) — les
-  // comptages réels sont dans une collection séparée ("comptages"), pas dans le doc "stocks".
+  // Pour l'inventaire clôturé choisi, additionne le "compté" de tous les articles cochés
+  // "Caisse IFCO" dans Stock → Configuration (réglage explicite par article, config/ifco_overrides
+  // côté Firestore moorea-stock), toutes équipes confondues (GMS + Prestige) — les comptages
+  // réels sont dans une collection séparée ("comptages"), pas dans le doc "stocks".
+  // 02/09/2026 — Remplace l'ancien filtre par nom (regex "IFCO" dans le libellé article, peu
+  // fiable) à la demande d'Elinathan : voir sToggleIfco/loadIfcoOverrides dans StockApp.tsx.
   async function chargerCaissesIfcoPourInventaire(importId: string, articlesInventaire: any[]) {
     setInventaireIfcoChargement(true);
     try {
       const fdb = await getStockFirestoreDb();
       const { doc, getDoc } = await import("firebase/firestore");
-      const articlesIfco = articlesInventaire.filter((a: any) => /ifco/i.test(String(a.article || "")));
+      const ifcoSnap = await getDoc(doc(fdb, "config", "ifco_overrides"));
+      const ifcoFlags: Record<string, boolean> = ifcoSnap.exists() ? (ifcoSnap.data() as any).data || {} : {};
+      const estIfco = (nomArticle: string) => !!ifcoFlags[String(nomArticle || "").toLowerCase().trim()];
+      let articlesIfco = articlesInventaire.filter((a: any) => estIfco(a.article));
+      // Filet de sécurité tant que la case n'a pas encore été cochée pour tous les articles
+      // concernés : si aucun réglage explicite n'existe encore, on retombe sur l'ancien filtre
+      // par nom plutôt que de retourner un stock à 0 (mieux vaut une approximation qu'un vide).
+      if (Object.keys(ifcoFlags).length === 0) {
+        articlesIfco = articlesInventaire.filter((a: any) => /ifco/i.test(String(a.article || "")));
+      }
       let total = 0;
       const detail: any[] = [];
       for (const team of ["GMS", "PRESTIGE"]) {
@@ -3310,7 +3323,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 ))}
               </select>
               <p style={{ margin: "0 0 16px", fontSize: 11, color: "#999" }}>
-                On additionne, dans cet inventaire, le compté (GMS + Prestige) de tous les articles dont le nom contient "IFCO".
+                On additionne, dans cet inventaire, le compté (GMS + Prestige) de tous les articles cochés « Caisse IFCO » dans Stock → Configuration.
                 {inventaireIfcoChargement && " Calcul en cours…"}
                 {!inventaireIfcoChargement && detailArticlesIfcoInventaire.some(d => d.compte === null) && (
                   <span style={{ color: "#c0392b", fontWeight: 700 }}> ⚠️ {detailArticlesIfcoInventaire.filter(d => d.compte === null).length} article(s) IFCO non compté(s) dans cet inventaire — le total ci-dessous les ignore.</span>

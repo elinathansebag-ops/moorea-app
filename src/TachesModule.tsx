@@ -24,6 +24,7 @@ interface Tache {
   fait: boolean;
   ts: number;
   completedAt?: number | null;
+  commentaire?: string;
   sousTaches?: Record<string, { titre: string; fait: boolean; completedAt?: number | null; ts: number }>;
 }
 
@@ -53,25 +54,44 @@ export function TachesModule({ onClose, userEmail, userName }: { onClose: () => 
   const [filtre, setFiltre] = useState<"actives" | "terminees">("actives");
   const [confetti, setConfetti] = useState<{ id: number; left: number; emoji: string; delay: number }[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  // Brouillon local des commentaires — permet de taper sans réécrire dans Firebase à chaque
+  // frappe (l'enregistrement se fait au blur du champ, voir enregistrerCommentaire ci-dessous).
+  const [commentaireEdit, setCommentaireEdit] = useState<Record<string, string>>({});
   const confettiIdRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cle = cleUtilisateur(userEmail || "");
 
+  // Toute écriture Firebase qui échoue (le plus souvent : règles de sécurité qui refusent le
+  // chemin "taches_perso" tant qu'il n'a pas été autorisé côté console Firebase) doit être
+  // visible — avant, l'erreur restait une promesse rejetée silencieuse et le bouton "Ajouter"
+  // semblait ne rien faire du tout.
+  function signalerErreur(action: string, err: any) {
+    console.error(`Erreur ${action}:`, err);
+    setErreur(`✗ Impossible de ${action} : ${err?.message || "erreur inconnue"}`);
+    setTimeout(() => setErreur(null), 6000);
+  }
+
   useEffect(() => {
-    const u = onValue(ref(db, `taches_perso/${cle}`), snap => {
-      const data = snap.val() || {};
-      const liste: Tache[] = Object.entries(data).map(([id, v]: any) => ({
-        id,
-        titre: v.titre || "",
-        fait: !!v.fait,
-        ts: v.ts || 0,
-        completedAt: v.completedAt ?? null,
-        sousTaches: v.sousTaches || undefined,
-      }));
-      liste.sort((a, b) => a.ts - b.ts);
-      setTaches(liste);
-    });
+    const u = onValue(
+      ref(db, `taches_perso/${cle}`),
+      snap => {
+        const data = snap.val() || {};
+        const liste: Tache[] = Object.entries(data).map(([id, v]: any) => ({
+          id,
+          titre: v.titre || "",
+          fait: !!v.fait,
+          ts: v.ts || 0,
+          completedAt: v.completedAt ?? null,
+          commentaire: v.commentaire || "",
+          sousTaches: v.sousTaches || undefined,
+        }));
+        liste.sort((a, b) => a.ts - b.ts);
+        setTaches(liste);
+      },
+      err => signalerErreur("charger tes tâches", err)
+    );
     return () => u();
   }, [cle]);
 
@@ -111,40 +131,76 @@ export function TachesModule({ onClose, userEmail, userName }: { onClose: () => 
   async function ajouterTache() {
     const titre = nouvelleTache.trim();
     if (!titre) return;
-    await push(ref(db, `taches_perso/${cle}`), { titre, fait: false, ts: Date.now() });
-    setNouvelleTache("");
+    try {
+      await push(ref(db, `taches_perso/${cle}`), { titre, fait: false, ts: Date.now() });
+      setNouvelleTache("");
+    } catch (err) {
+      signalerErreur("ajouter la tâche", err);
+    }
   }
 
   async function supprimerTache(id: string) {
     if (!window.confirm("Supprimer cette tâche (et ses sous-tâches) ?")) return;
-    await remove(ref(db, `taches_perso/${cle}/${id}`));
+    try {
+      await remove(ref(db, `taches_perso/${cle}/${id}`));
+    } catch (err) {
+      signalerErreur("supprimer la tâche", err);
+    }
   }
 
   async function toggleTache(t: Tache) {
     const nouvelEtat = !t.fait;
-    await update(ref(db, `taches_perso/${cle}/${t.id}`), { fait: nouvelEtat, completedAt: nouvelEtat ? Date.now() : null });
-    if (nouvelEtat) { celebrer(); afficherToast(`🎉 « ${t.titre} » terminée !`); }
+    try {
+      await update(ref(db, `taches_perso/${cle}/${t.id}`), { fait: nouvelEtat, completedAt: nouvelEtat ? Date.now() : null });
+      if (nouvelEtat) { celebrer(); afficherToast(`🎉 « ${t.titre} » terminée !`); }
+    } catch (err) {
+      signalerErreur("mettre à jour la tâche", err);
+    }
   }
 
   async function ajouterSousTache(tacheId: string) {
     const titre = (nouvelleSousTache[tacheId] || "").trim();
     if (!titre) return;
-    await push(ref(db, `taches_perso/${cle}/${tacheId}/sousTaches`), { titre, fait: false, ts: Date.now() });
-    setNouvelleSousTache(s => ({ ...s, [tacheId]: "" }));
+    try {
+      await push(ref(db, `taches_perso/${cle}/${tacheId}/sousTaches`), { titre, fait: false, ts: Date.now() });
+      setNouvelleSousTache(s => ({ ...s, [tacheId]: "" }));
+    } catch (err) {
+      signalerErreur("ajouter la sous-tâche", err);
+    }
   }
 
   async function toggleSousTache(t: Tache, subId: string) {
     const sous = t.sousTaches?.[subId];
     if (!sous) return;
     const nouvelEtat = !sous.fait;
-    await update(ref(db, `taches_perso/${cle}/${t.id}/sousTaches/${subId}`), { fait: nouvelEtat, completedAt: nouvelEtat ? Date.now() : null });
-    const seraTermine = Object.entries(t.sousTaches || {}).every(([id, s]) => (id === subId ? nouvelEtat : s.fait));
-    if (nouvelEtat && seraTermine) { celebrer(true); afficherToast(`🎉 « ${t.titre} » terminée !`); }
-    else if (nouvelEtat) { celebrer(); }
+    try {
+      await update(ref(db, `taches_perso/${cle}/${t.id}/sousTaches/${subId}`), { fait: nouvelEtat, completedAt: nouvelEtat ? Date.now() : null });
+      const seraTermine = Object.entries(t.sousTaches || {}).every(([id, s]) => (id === subId ? nouvelEtat : s.fait));
+      if (nouvelEtat && seraTermine) { celebrer(true); afficherToast(`🎉 « ${t.titre} » terminée !`); }
+      else if (nouvelEtat) { celebrer(); }
+    } catch (err) {
+      signalerErreur("mettre à jour la sous-tâche", err);
+    }
   }
 
   async function supprimerSousTache(tacheId: string, subId: string) {
-    await remove(ref(db, `taches_perso/${cle}/${tacheId}/sousTaches/${subId}`));
+    try {
+      await remove(ref(db, `taches_perso/${cle}/${tacheId}/sousTaches/${subId}`));
+    } catch (err) {
+      signalerErreur("supprimer la sous-tâche", err);
+    }
+  }
+
+  // Enregistre le commentaire au blur du champ (pas à chaque frappe) — si le texte n'a pas
+  // changé depuis la valeur déjà en base, on n'écrit rien pour rien.
+  async function enregistrerCommentaire(t: Tache) {
+    const brouillon = commentaireEdit[t.id];
+    if (brouillon === undefined || brouillon === (t.commentaire || "")) return;
+    try {
+      await update(ref(db, `taches_perso/${cle}/${t.id}`), { commentaire: brouillon });
+    } catch (err) {
+      signalerErreur("enregistrer le commentaire", err);
+    }
   }
 
   // ── Stats motivantes : progression du jour + streak de jours actifs ──
@@ -221,6 +277,12 @@ export function TachesModule({ onClose, userEmail, userName }: { onClose: () => 
       )}
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 16px 90px" }}>
+
+        {erreur && (
+          <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 14, color: "#b91c1c", fontSize: 12.5, fontWeight: 700 }}>
+            {erreur}
+          </div>
+        )}
 
         {/* BANDEAU MOTIVATION */}
         <div style={{ background: "linear-gradient(135deg, #fef9e6, #fff)", border: "1.5px solid #f5deae", borderRadius: 18, padding: "18px 18px", marginBottom: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
@@ -344,6 +406,16 @@ export function TachesModule({ onClose, userEmail, userName }: { onClose: () => 
                   />
                   <button onClick={() => ajouterSousTache(t.id)} style={{ padding: "0 12px", borderRadius: 8, border: "1.5px solid #f3e8c8", background: "#fef9e6", color: "#a16207", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>+</button>
                 </div>
+
+                {/* COMMENTAIRE — zone de texte libre, enregistrée quand on quitte le champ */}
+                <textarea
+                  value={commentaireEdit[t.id] ?? t.commentaire ?? ""}
+                  onChange={e => setCommentaireEdit(c => ({ ...c, [t.id]: e.target.value }))}
+                  onBlur={() => enregistrerCommentaire(t)}
+                  placeholder="💬 Note, contexte, lien…"
+                  rows={2}
+                  style={{ marginTop: 10, fontSize: 12.5, padding: "8px 10px", borderRadius: 8, resize: "vertical", color: "#6b7280", background: "#fafafa" }}
+                />
               </div>
             );
           })}
