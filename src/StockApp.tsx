@@ -970,10 +970,15 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
             <button class="pill active" id="s-cf-tous" onclick="sSetCF('tous')">Tous</button>
             <button class="pill" id="s-cf-gms" onclick="sSetCF('GMS')">GMS</button>
             <button class="pill" id="s-cf-prestige" onclick="sSetCF('PRESTIGE')">Prestige</button>
+            <span style="width:1px;height:20px;background:#e8e0d0;margin:0 2px"></span>
+            <button class="pill active" id="s-cf-ifco-tous" onclick="sSetIfcoF('tous')">Tous</button>
+            <button class="pill" id="s-cf-ifco-oui" onclick="sSetIfcoF('oui')" style="color:#1a6b3a">☑️ IFCO cochés</button>
+            <button class="pill" id="s-cf-ifco-non" onclick="sSetIfcoF('non')" style="color:#9ca3af">☐ Non cochés</button>
             <input class="search-input" id="s-cfg-srch" placeholder="🔍 Rechercher..." oninput="sRenderConfig()" style="max-width:200px"/>
             <button class="btn btn-sm" id="s-btn-fusion-mode" onclick="sToggleFusionMode()">🔗 Fusionner</button>
             <button class="btn btn-sm" onclick="sOptimiserOrdre()" title="Analyse les sessions précédentes pour optimiser l'ordre de comptage">🧠 Optimiser ordre</button>
           </div>
+          <div id="s-cfg-ifco-count" style="font-size:12px;color:#6b7280;margin:-4px 0 10px"></div>
           <div class="tbl-wrap">
             <table><thead><tr><th>Article</th><th>Famille</th><th>Équipe</th><th>IFCO</th></tr></thead>
             <tbody id="s-cfg-body"></tbody></table>
@@ -1084,6 +1089,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       };
       let ecartFilter = "tous";
       let cfFilter = "tous";
+      let ifcoFilter = "tous";
       let cfgUnlocked = false;
       let comptageTimeout: any = null;
       // Calculatrice : variables GLOBALES (attachées à window) pour persister entre les clics
@@ -2446,6 +2452,12 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         sRenderConfig();
       };
 
+      (window as any).sSetIfcoF = (f: string) => {
+        ifcoFilter = f;
+        ["tous", "oui", "non"].forEach(t => { const el = document.getElementById("s-cf-ifco-" + t); if (el) el.classList.toggle("active", f === t); });
+        sRenderConfig();
+      };
+
       const sRenderConfig = () => {
         const q = (document.getElementById("s-cfg-srch") as HTMLInputElement)?.value.toLowerCase() || "";
         const tbody = document.getElementById("s-cfg-body");
@@ -2458,14 +2470,21 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           equipe: _byArticle?.[a.article?.toLowerCase().trim()] || a.equipe || "PRESTIGE"
         })) : catArticles;
         const getEq = (a: any) => _byArticle?.[a.article?.toLowerCase().trim()] || a.equipe || "PRESTIGE";
+        const isIfcoFn = (a: any) => !!_ifcoByArticle?.[a.article?.toLowerCase().trim()];
         let rows = source.filter((a: any) => {
           if (q && !a.article.toLowerCase().includes(q)) return false;
           if (cfFilter === "GMS" && getEq(a) !== "GMS") return false;
           if (cfFilter === "PRESTIGE" && getEq(a) !== "PRESTIGE") return false;
+          if (ifcoFilter === "oui" && !isIfcoFn(a)) return false;
+          if (ifcoFilter === "non" && isIfcoFn(a)) return false;
           return true;
         });
+        const cptEl = document.getElementById("s-cfg-ifco-count");
+        if (cptEl) {
+          const nbIfco = source.filter((a: any) => isIfcoFn(a)).length;
+          cptEl.textContent = `☑️ ${nbIfco} article${nbIfco > 1 ? "s" : ""} coché${nbIfco > 1 ? "s" : ""} « Caisse IFCO » sur ${source.length}`;
+        }
         const isGMSfn = (a: any) => getEq(a) === "GMS";
-        const isIfcoFn = (a: any) => !!_ifcoByArticle?.[a.article?.toLowerCase().trim()];
         tbody.innerHTML = rows.map(a => {
           const isGMS = isGMSfn(a);
           const isIfco = isIfcoFn(a);
