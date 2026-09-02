@@ -597,6 +597,41 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     if (inv) chargerCaissesIfcoPourInventaire(inv.id, inv.articles);
   }, [inventaireIfcoChoisi, inventairesIfcoDispo]);
 
+  // ── Cumul des déclarations clients IFCO à soustraire du stock théorique ──
+  // Les caisses déjà déclarées/envoyées aux clients ne doivent plus compter dans le stock
+  // théorique (vide + pleines), sinon on les compte deux fois. On se cale sur la DATE DE
+  // L'INVENTAIRE choisi (pas "aujourd'hui"), pour que le rapprochement reste juste même fait
+  // le jeudi matin avec l'inventaire clôturé la veille, mercredi (demande d'Elinathan, 01/09/2026).
+  function parseDateLivraisonLigne(brut: string): Date | null {
+    if (!brut) return null;
+    const sep = brut.includes("/") ? "/" : brut.includes(".") ? "." : null;
+    if (!sep) return null;
+    const parts = brut.split(sep);
+    if (parts.length < 3) return null;
+    const jj = parseInt(parts[0], 10), mm = parseInt(parts[1], 10);
+    let aaaaStr = (parts[2] || "").trim();
+    if (aaaaStr.length === 2) aaaaStr = `20${aaaaStr}`;
+    const aaaa = parseInt(aaaaStr, 10);
+    if (!jj || !mm || !aaaa) return null;
+    const d = new Date(aaaa, mm - 1, jj);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const inventaireIfcoActuel = inventairesIfcoDispo.find(d => d.id === inventaireIfcoChoisi);
+  const dateCoupureIfco = inventaireIfcoActuel?.date ? new Date(inventaireIfcoActuel.date) : null;
+  let cumulDeclareLivraisonJusquaInventaire = 0;
+  if (dateCoupureIfco) {
+    // Fin de journée du jour de clôture, pour inclure les déclarations faites CE jour-là.
+    const finJourCoupure = new Date(dateCoupureIfco.getFullYear(), dateCoupureIfco.getMonth(), dateCoupureIfco.getDate(), 23, 59, 59, 999);
+    declarationsLignes.forEach((batch: any) => {
+      (batch.lignes || []).forEach((l: any) => {
+        const dateLigne = parseDateLivraisonLigne(l.dateLivraison) || parseDateLivraisonLigne(batch.date);
+        if (dateLigne && dateLigne.getTime() <= finJourCoupure.getTime()) {
+          cumulDeclareLivraisonJusquaInventaire += l.quantite || 0;
+        }
+      });
+    });
+  }
+
   // Enregistre un rapprochement : stock théorique app (moorea vide + nlt + caisses pleines
   // comptées physiquement à l'inventaire) comparé au solde que tu lis sur myifco-online.com.
   // Garde aussi le cumul des commandes reçues et des sorties déclarées (mouvements
@@ -607,7 +642,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     if (isNaN(solde) || solde < 0) { setNotification({ type: "error", message: "✗ Indique le solde lu sur myIFCO" }); return; }
     if (stockPleinesInventaire === null) { setNotification({ type: "error", message: "✗ Choisis d'abord un inventaire clôturé pour le comptage des caisses pleines" }); return; }
     const inv = inventairesIfcoDispo.find(d => d.id === inventaireIfcoChoisi);
-    const stockTheorique = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + stockPleinesInventaire;
+    const stockTheorique = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + stockPleinesInventaire - cumulDeclareLivraisonJusquaInventaire;
     const cumulCommande = stockMovements.filter((m: any) => m.from === "fournisseur").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
     const cumulSorties = stockMovements.filter((m: any) => m.to === "envoi").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
     try {
@@ -621,6 +656,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         stockPleinesInventaire,
         inventaireId: inventaireIfcoChoisi,
         inventaireDate: inv?.dateLabel || "",
+        cumulDeclareLivraison: cumulDeclareLivraisonJusquaInventaire,
         stockTheorique,
         cumulCommande,
         cumulSorties,
@@ -1637,7 +1673,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const moisStatsListe = [...new Set(Object.values(statsParClientEtMois).flatMap(m => Object.keys(m)))].sort().reverse();
 
   // ── Rapprochement myIFCO : totaux vivants (recalculés à chaque rendu, avant même d'enregistrer) ──
-  const stockTheoriqueActuelIfco = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockPleinesInventaire ?? (stockLevels.pleines || 0));
+  const stockTheoriqueActuelIfco = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockPleinesInventaire ?? (stockLevels.pleines || 0)) - cumulDeclareLivraisonJusquaInventaire;
   const cumulCommandeActuelIfco = stockMovements.filter((m: any) => m.from === "fournisseur").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
   const cumulSortiesActuelIfco = stockMovements.filter((m: any) => m.to === "envoi").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
 
@@ -1849,6 +1885,29 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 }}
               >
                 🔧 Entretiens{entretiensActifsCount > 0 ? ` (${entretiensActifsCount})` : ""}
+              </button>
+
+              {/* 02/09/2026 — Demande d'Elinathan : le point de stock hebdomadaire (rapprochement
+                  myIFCO) était noyé dans un petit bouton-pilule au milieu de l'en-tête du
+                  calendrier, difficile à repérer. Remonté ici, au même niveau que les autres
+                  actions principales, pour qu'il saute aux yeux dès l'ouverture de l'onglet. */}
+              <button
+                onClick={() => setActiveTab("ifco-rapprochement")}
+                style={{
+                  padding: "14px 22px",
+                  background: "white",
+                  color: "#2563eb",
+                  border: "2px solid #2563eb",
+                  borderRadius: "10px",
+                  cursor: "pointer",
+                  fontSize: "15px",
+                  fontWeight: "700",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                ⚖️ Point de stock IFCO
               </button>
 
             </div>
@@ -3284,6 +3343,10 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px" }}>
                   📤 Cumul déclaré en sortie (tout historique) : <strong>{cumulSortiesActuelIfco}</strong>
                 </div>
+                <div style={{ background: "#fdf2f2", borderRadius: 8, padding: "10px 12px", border: "1px solid #f7d7d7" }}>
+                  🧾 Déclarations clients déjà soustraites{dateCoupureIfco ? ` (jusqu'au ${dateCoupureIfco.toLocaleDateString("fr-FR")})` : ""} : <strong>{cumulDeclareLivraisonJusquaInventaire}</strong>
+                  {!dateCoupureIfco && <span style={{ display: "block", color: "#c0392b", fontWeight: 700, marginTop: 2 }}>⚠️ Choisis un inventaire clôturé ci-dessus pour que ce calcul soit correct</span>}
+                </div>
               </div>
 
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#1a6b3a", marginBottom: 6 }}>Solde lu sur myifco-online.com aujourd'hui</label>
@@ -3325,7 +3388,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead><tr style={{ background: "#f8fffe", borderBottom: "2px solid #e8e0d0" }}>
-                      {["Date", "Inventaire utilisé", "Pleines (inventaire)", "Stock théorique", "Solde myIFCO", "Écart", "Cumul commandé", "Cumul sorties"].map(h => <th key={h} style={{ padding: "10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
+                      {["Date", "Inventaire utilisé", "Pleines (inventaire)", "Déclarations soustraites", "Stock théorique", "Solde myIFCO", "Écart", "Cumul commandé", "Cumul sorties"].map(h => <th key={h} style={{ padding: "10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {rapprochementsIfco.map((r) => (
@@ -3333,6 +3396,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                           <td style={{ padding: "10px", color: "#666" }}>{r.date}</td>
                           <td style={{ padding: "10px", color: "#666" }}>{r.inventaireDate || "—"}</td>
                           <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.stockPleinesInventaire ?? r.stockPleines ?? "—"}</td>
+                          <td style={{ padding: "10px", textAlign: "center", color: "#c0392b" }}>{r.cumulDeclareLivraison ?? "—"}</td>
                           <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.stockTheorique}</td>
                           <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.soldeMyIfco}</td>
                           <td style={{ padding: "10px", fontWeight: 800, textAlign: "center", color: r.ecart === 0 ? "#1e8449" : "#c0392b" }}>
