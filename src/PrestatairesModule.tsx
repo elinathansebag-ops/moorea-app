@@ -567,7 +567,12 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
       const fdb = await getStockFirestoreDb();
       const { doc, getDoc } = await import("firebase/firestore");
       const ifcoSnap = await getDoc(doc(fdb, "config", "ifco_overrides"));
-      const ifcoFlags: Record<string, boolean> = ifcoSnap.exists() ? (ifcoSnap.data() as any).data || {} : {};
+      const ifcoRaw: Record<string, boolean> = ifcoSnap.exists() ? (ifcoSnap.data() as any).data || {} : {};
+      // Les clés sont enregistrées avec la casse d'origine de l'article (voir sToggleIfco dans
+      // StockApp.tsx) : on normalise ici en minuscule pour que la recherche ci-dessous matche,
+      // comme le fait déjà loadOverrides() pour config/overrides.
+      const ifcoFlags: Record<string, boolean> = {};
+      Object.entries(ifcoRaw).forEach(([k, v]) => { ifcoFlags[k.toLowerCase().trim()] = !!v; });
       const estIfco = (nomArticle: string) => !!ifcoFlags[String(nomArticle || "").toLowerCase().trim()];
       let articlesIfco = articlesInventaire.filter((a: any) => estIfco(a.article));
       // Filet de sécurité tant que la case n'a pas encore été cochée pour tous les articles
