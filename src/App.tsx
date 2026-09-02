@@ -565,6 +565,11 @@ export default function App() {
     // Espace reconditionneur public — voir déclaration de portailDepot plus haut.
     const portail = params.get("portail");
     if (portail === "nlt" || portail === "andes") setPortailDepot(portail);
+    // 02/09/2026 — Demande d'Elinathan : accès direct au module Tâches via ?taches=1, pour
+    // pouvoir le mettre en favori/onglet à part sur son ordinateur, sans repasser par l'accueil
+    // et le reste de l'appli à chaque fois (connexion @moorea.fr toujours requise, elle reste
+    // mémorisée par le navigateur — voir setPersistence dans firebase.ts).
+    if (params.get("taches") === "1") { setShowAccueil(false); setShowTaches(true); }
   }, []);
   // Une fois connecté et les données chargées, ouvre directement la signature du bon de retour
   // si un rapport est déjà lié à cet arrivage, sinon ouvre l'écran Stock Refus pour en créer un.
