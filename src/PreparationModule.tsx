@@ -885,16 +885,35 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                             Supprimer/Annuler/Revenir à "en attente" sont retirés d'ici — ce sont des
                                             décisions commerciales, elles vivent uniquement dans Reconditionnement. */}
                                         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                                          {/* 02/09/2026 — Demande d'Elinathan : même déclenché depuis UNE seule carte, la
+                                              déclaration du nombre de palettes doit couvrir TOUTES les demandes encore en
+                                              attente/prêt du même dépôt ce jour-là (mêmes règles que "Tout marquer parti"
+                                              groupé ci-dessus) — sinon chaque demande imprime sa propre étiquette avec un seul
+                                              article et une numérotation de palette qui repart à 1, au lieu d'un manifeste
+                                              unique listant tout ce qui part pour ce reconditionneur avec une numérotation
+                                              continue (1/N, 2/N...). */}
                                           {d.statut === "en attente" && (
                                             <button
-                                              onClick={() => (d.transporteurNom && /moorea/i.test(d.transporteurNom)) ? marquerPretSansPalettes(d.id) : ouvrirModalePret(d.id)}
+                                              onClick={() => {
+                                                if (d.transporteurNom && /moorea/i.test(d.transporteurNom)) { marquerPretSansPalettes(d.id); return; }
+                                                setGroupePartiIds(aEnvoyerDuGroupe.map(dd => dd.id));
+                                                setGroupePartiGrandes("");
+                                                setGroupePartiDemi("");
+                                              }}
                                               style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                                             >
                                               ✓ Marquer prêt
                                             </button>
                                           )}
                                           {d.statut === "prêt" && (
-                                            <button onClick={() => marquerParti(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                                            <button
+                                              onClick={() => {
+                                                setGroupePartiIds(aEnvoyerDuGroupe.map(dd => dd.id));
+                                                setGroupePartiGrandes("");
+                                                setGroupePartiDemi("");
+                                              }}
+                                              style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                                            >
                                               🚚 Marquer parti
                                             </button>
                                           )}
