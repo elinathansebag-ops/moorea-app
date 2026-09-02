@@ -14,6 +14,7 @@ import { RHApp } from "./RHApp";
 import { EtiquetteModule } from "./EtiquetteModule";
 import { QrCodeDashboard } from "./QrCodeDashboard";
 import { YukonApp } from "./YukonApp";
+import { TachesModule } from "./TachesModule";
 import { RackModule } from "./RackModule";
 import { StattModule } from "./StattModule";
 import { PrestatairesModule } from "./PrestatairesModule";
@@ -214,6 +215,7 @@ export default function App() {
   const [showLitiges, setShowLitiges] = useState(false);
   const [showRecherche, setShowRecherche] = useState(false);
   const [showYukon, setShowYukon] = useState(false);
+  const [showTaches, setShowTaches] = useState(false);
   const [showRH, setShowRH] = useState(false);
   const [showEtiquettes, setShowEtiquettes] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
@@ -2465,6 +2467,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
 
+  if (showTaches) {
+    return <TachesModule onClose={() => { setShowTaches(false); setShowAccueil(true); }} userEmail={user?.email || ""} userName={user?.displayName || ""} />;
+  }
+
   if (showRack) {
     return <RackModule autoOpenConfig={rackAutoConfig} onClose={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />;
   }
@@ -2638,6 +2644,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowGencode(true); } },
       { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
       { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowYukon(true); } },
+      { icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowTaches(true); } },
     ];
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
