@@ -629,21 +629,26 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     const d = new Date(aaaa, mm - 1, jj);
     return isNaN(d.getTime()) ? null : d;
   }
+  // 02/09/2026 — Demande d'Elinathan : ne plus soustraire les déclarations clients du stock
+  // théorique (ça compliquait le nombre sans qu'il corresponde à ce qu'il compare à myIFCO).
+  // À la place, un simple contrôle : la dernière déclaration envoyée couvre-t-elle bien jusqu'au
+  // lendemain (J+1) de la date de l'inventaire choisi ? On déclare en journée de livraison, donc
+  // pour qu'un inventaire du mercredi soit "à jour", il faut au moins une déclaration envoyée
+  // jusqu'au jeudi inclus.
   const inventaireIfcoActuel = inventairesIfcoDispo.find(d => d.id === inventaireIfcoChoisi);
-  const dateCoupureIfco = inventaireIfcoActuel?.date ? new Date(inventaireIfcoActuel.date) : null;
-  let cumulDeclareLivraisonJusquaInventaire = 0;
-  if (dateCoupureIfco) {
-    // Fin de journée du jour de clôture, pour inclure les déclarations faites CE jour-là.
-    const finJourCoupure = new Date(dateCoupureIfco.getFullYear(), dateCoupureIfco.getMonth(), dateCoupureIfco.getDate(), 23, 59, 59, 999);
-    declarationsLignes.forEach((batch: any) => {
-      (batch.lignes || []).forEach((l: any) => {
-        const dateLigne = parseDateLivraisonLigne(l.dateLivraison) || parseDateLivraisonLigne(batch.date);
-        if (dateLigne && dateLigne.getTime() <= finJourCoupure.getTime()) {
-          cumulDeclareLivraisonJusquaInventaire += l.quantite || 0;
-        }
-      });
-    });
-  }
+  const dateCoupureAttendueIfco = inventaireIfcoActuel?.date
+    ? (() => { const d = new Date(inventaireIfcoActuel.date); d.setDate(d.getDate() + 1); return d; })()
+    : null;
+  let derniereDeclarationDate: Date | null = null;
+  declarationsLignes.forEach((batch: any) => {
+    const dateBatch = parseDateLivraisonLigne(batch.date);
+    if (dateBatch && (!derniereDeclarationDate || dateBatch.getTime() > derniereDeclarationDate.getTime())) {
+      derniereDeclarationDate = dateBatch;
+    }
+  });
+  const declarationsAJourIfco = dateCoupureAttendueIfco && derniereDeclarationDate
+    ? derniereDeclarationDate.getTime() >= new Date(dateCoupureAttendueIfco.getFullYear(), dateCoupureAttendueIfco.getMonth(), dateCoupureAttendueIfco.getDate()).getTime()
+    : null; // null = pas assez d'info pour se prononcer
 
   // Enregistre un rapprochement : stock théorique app (moorea vide + nlt + caisses pleines
   // comptées physiquement à l'inventaire) comparé au solde que tu lis sur myifco-online.com.
@@ -655,7 +660,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
     if (isNaN(solde) || solde < 0) { setNotification({ type: "error", message: "✗ Indique le solde lu sur myIFCO" }); return; }
     if (stockPleinesInventaire === null) { setNotification({ type: "error", message: "✗ Choisis d'abord un inventaire clôturé pour le comptage des caisses pleines" }); return; }
     const inv = inventairesIfcoDispo.find(d => d.id === inventaireIfcoChoisi);
-    const stockTheorique = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + stockPleinesInventaire - cumulDeclareLivraisonJusquaInventaire;
+    const stockTheorique = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + stockPleinesInventaire;
     const cumulCommande = stockMovements.filter((m: any) => m.from === "fournisseur").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
     const cumulSorties = stockMovements.filter((m: any) => m.to === "envoi").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
     try {
@@ -669,7 +674,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
         stockPleinesInventaire,
         inventaireId: inventaireIfcoChoisi,
         inventaireDate: inv?.dateLabel || "",
-        cumulDeclareLivraison: cumulDeclareLivraisonJusquaInventaire,
+        declarationsAJour: declarationsAJourIfco,
         stockTheorique,
         cumulCommande,
         cumulSorties,
@@ -1685,10 +1690,8 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const clientsStatsListe = Object.keys(statsParClientEtMois).sort((a, b) => a.localeCompare(b));
   const moisStatsListe = [...new Set(Object.values(statsParClientEtMois).flatMap(m => Object.keys(m)))].sort().reverse();
 
-  // ── Rapprochement myIFCO : totaux vivants (recalculés à chaque rendu, avant même d'enregistrer) ──
-  const stockTheoriqueActuelIfco = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockPleinesInventaire ?? (stockLevels.pleines || 0)) - cumulDeclareLivraisonJusquaInventaire;
-  const cumulCommandeActuelIfco = stockMovements.filter((m: any) => m.from === "fournisseur").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
-  const cumulSortiesActuelIfco = stockMovements.filter((m: any) => m.to === "envoi").reduce((s: number, m: any) => s + (m.caisses || 0), 0);
+  // ── Rapprochement myIFCO : total vivant (recalculé à chaque rendu, avant même d'enregistrer) ──
+  const stockTheoriqueActuelIfco = (stockLevels.moorea || 0) + (stockLevels.nlt || 0) + (stockPleinesInventaire ?? (stockLevels.pleines || 0));
 
   const entretiensActifsCount = entretiens.filter(e => e.statut === "programmé" || e.statut === "en cours").length;
   const entretiensAffiches = entretiens
@@ -3349,18 +3352,24 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               <p style={{ margin: "-8px 0 16px", fontSize: 11, color: "#bbb" }}>
                 (Pleines en attente de vidage, compteur interne : {stockLevels.pleines || 0} — différent du comptage d'inventaire ci-dessus, non utilisé dans le total)
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 20, fontSize: 12, color: "#666" }}>
-                <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px" }}>
-                  📥 Cumul commandé (reçu depuis IFCO, tout historique) : <strong>{cumulCommandeActuelIfco}</strong>
+
+              {/* 02/09/2026 — Demande d'Elinathan : remplace les 3 cumuls (commandé / sorti /
+                  déclarations soustraites) par un simple contrôle "les déclarations sont-elles à
+                  jour ?" — on déclare en journée de livraison, donc pour qu'un inventaire du
+                  mercredi soit fiable il faut une déclaration envoyée au moins jusqu'au jeudi (J+1). */}
+              {dateCoupureAttendueIfco && (
+                <div style={{
+                  background: declarationsAJourIfco === true ? "#eafaf1" : declarationsAJourIfco === false ? "#fdedec" : "#f8f8f8",
+                  border: `1.5px solid ${declarationsAJourIfco === true ? "#a8e0be" : declarationsAJourIfco === false ? "#f5c6c2" : "#e5e5e5"}`,
+                  borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 12.5,
+                  color: declarationsAJourIfco === true ? "#1e8449" : declarationsAJourIfco === false ? "#c0392b" : "#888",
+                  fontWeight: 700,
+                }}>
+                  {declarationsAJourIfco === true && `✅ Déclarations à jour — dernière déclaration envoyée le ${derniereDeclarationDate!.toLocaleDateString("fr-FR")} (il fallait au moins jusqu'au ${dateCoupureAttendueIfco.toLocaleDateString("fr-FR")}, J+1 de l'inventaire)`}
+                  {declarationsAJourIfco === false && `⚠️ Déclarations pas à jour — dernière déclaration envoyée le ${derniereDeclarationDate ? derniereDeclarationDate.toLocaleDateString("fr-FR") : "jamais"}, alors qu'il en faudrait au moins jusqu'au ${dateCoupureAttendueIfco.toLocaleDateString("fr-FR")} (J+1 de l'inventaire) — le rapprochement risque d'être faussé.`}
+                  {declarationsAJourIfco === null && "Aucune déclaration enregistrée pour l'instant — impossible de vérifier si elles sont à jour."}
                 </div>
-                <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px" }}>
-                  📤 Cumul déclaré en sortie (tout historique) : <strong>{cumulSortiesActuelIfco}</strong>
-                </div>
-                <div style={{ background: "#fdf2f2", borderRadius: 8, padding: "10px 12px", border: "1px solid #f7d7d7" }}>
-                  🧾 Déclarations clients déjà soustraites{dateCoupureIfco ? ` (jusqu'au ${dateCoupureIfco.toLocaleDateString("fr-FR")})` : ""} : <strong>{cumulDeclareLivraisonJusquaInventaire}</strong>
-                  {!dateCoupureIfco && <span style={{ display: "block", color: "#c0392b", fontWeight: 700, marginTop: 2 }}>⚠️ Choisis un inventaire clôturé ci-dessus pour que ce calcul soit correct</span>}
-                </div>
-              </div>
+              )}
 
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#1a6b3a", marginBottom: 6 }}>Solde lu sur myifco-online.com aujourd'hui</label>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -3401,7 +3410,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead><tr style={{ background: "#f8fffe", borderBottom: "2px solid #e8e0d0" }}>
-                      {["Date", "Inventaire utilisé", "Pleines (inventaire)", "Déclarations soustraites", "Stock théorique", "Solde myIFCO", "Écart", "Cumul commandé", "Cumul sorties"].map(h => <th key={h} style={{ padding: "10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
+                      {["Date", "Inventaire utilisé", "Pleines (inventaire)", "Déclarations à jour", "Stock théorique", "Solde myIFCO", "Écart", "Cumul commandé", "Cumul sorties"].map(h => <th key={h} style={{ padding: "10px", textAlign: "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {rapprochementsIfco.map((r) => (
@@ -3409,7 +3418,9 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                           <td style={{ padding: "10px", color: "#666" }}>{r.date}</td>
                           <td style={{ padding: "10px", color: "#666" }}>{r.inventaireDate || "—"}</td>
                           <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.stockPleinesInventaire ?? r.stockPleines ?? "—"}</td>
-                          <td style={{ padding: "10px", textAlign: "center", color: "#c0392b" }}>{r.cumulDeclareLivraison ?? "—"}</td>
+                          <td style={{ padding: "10px", textAlign: "center" }}>
+                            {r.declarationsAJour === true ? <span style={{ color: "#1e8449", fontWeight: 700 }}>✅</span> : r.declarationsAJour === false ? <span style={{ color: "#c0392b", fontWeight: 700 }}>⚠️</span> : "—"}
+                          </td>
                           <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.stockTheorique}</td>
                           <td style={{ padding: "10px", fontWeight: 700, textAlign: "center" }}>{r.soldeMyIfco}</td>
                           <td style={{ padding: "10px", fontWeight: 800, textAlign: "center", color: r.ecart === 0 ? "#1e8449" : "#c0392b" }}>
