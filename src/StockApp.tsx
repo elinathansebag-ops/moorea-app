@@ -889,6 +889,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         <div class="progress-bg"><div class="progress-bar" id="s-prog" style="width:0%"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input class="search-input" id="s-srch" placeholder="🔍 Rechercher..." style="min-width:160px"/>
+          <button class="pill active" id="s-cpt-ifco-tous" onclick="sSetComptageIfcoF('tous')">Tous</button>
+          <button class="pill" id="s-cpt-ifco-oui" onclick="sSetComptageIfcoF('oui')" style="color:#1a6b3a">☑️ IFCO</button>
+          <button class="pill" id="s-cpt-ifco-non" onclick="sSetComptageIfcoF('non')" style="color:#9ca3af">Non IFCO</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
           <button class="btn btn-sm btn-gold" onclick="sScannerPaletteComplete()">📷 Scanner une palette complète</button>
@@ -1090,6 +1093,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       let ecartFilter = "tous";
       let cfFilter = "tous";
       let ifcoFilter = "tous";
+      let comptageIfcoFilter = "tous";
       let cfgUnlocked = false;
       let comptageTimeout: any = null;
       // Calculatrice : variables GLOBALES (attachées à window) pour persister entre les clics
@@ -1914,11 +1918,21 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         if (pct > 0) getDmitriMotivation(pct);
       };
 
+      (window as any).sSetComptageIfcoF = (f: string) => {
+        comptageIfcoFilter = f;
+        ["tous", "oui", "non"].forEach(t => { const el = document.getElementById("s-cpt-ifco-" + t); if (el) el.classList.toggle("active", f === t); });
+        sRenderTable();
+      };
+
+      const isIfcoArticle = (article: string) => !!_ifcoByArticle?.[article?.toLowerCase().trim()];
+
       const sRenderTable = () => {
         const srchEl = document.getElementById("s-srch") as HTMLInputElement;
         const q = srchEl ? srchEl.value.toLowerCase().trim() : "";
         const rows = articles.filter(a => {
           if (!a || !a.article) return false;
+          if (comptageIfcoFilter === "oui" && !isIfcoArticle(a.article)) return false;
+          if (comptageIfcoFilter === "non" && isIfcoArticle(a.article)) return false;
           if (!q) return true;
           return (a.article + " " + (a.famille || "")).toLowerCase().includes(q);
         });
@@ -1950,8 +1964,9 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
           const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, qty]: any) => `lot ${l} · ${qty} col.`).join(" | ") : (a.lots?.join(" ") || "");
           let artLabel = a.article;
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
+          const ifcoBadge = isIfcoArticle(a.article) ? `<br><span style="font-size:10px;color:#1a6b3a;font-weight:700">☑️ Caisse IFCO</span>` : "";
           html += `<tr data-id="${a.id}">
-            <td style="font-weight:500">${artLabel}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
+            <td style="font-weight:500">${artLabel}${ifcoBadge}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
             <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>
@@ -2954,7 +2969,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
     return () => {
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sSetIfcoF","sSetComptageIfcoF","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
