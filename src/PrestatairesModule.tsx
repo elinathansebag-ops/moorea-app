@@ -366,6 +366,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
   const [stockPleinesInventaire, setStockPleinesInventaire] = useState<number | null>(null);
   const [detailArticlesIfcoInventaire, setDetailArticlesIfcoInventaire] = useState<any[]>([]);
   const [inventaireIfcoChargement, setInventaireIfcoChargement] = useState(false);
+  const [detailIfcoOuvert, setDetailIfcoOuvert] = useState(false);
 
   const ifcoFileRef = useRef<HTMLInputElement>(null);
 
@@ -3357,6 +3358,38 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
               <p style={{ margin: "-8px 0 16px", fontSize: 11, color: "#bbb" }}>
                 (Pleines en attente de vidage, compteur interne : {stockLevels.pleines || 0} — différent du comptage d'inventaire ci-dessus, non utilisé dans le total)
               </p>
+
+              {/* 02/09/2026 — Demande d'Elinathan : détail article par article de ce qui compose
+                  le total "Pleines (inventaire)", pour pouvoir vérifier/auditer d'où vient le
+                  chiffre plutôt que d'avoir juste un total agrégé. */}
+              {detailArticlesIfcoInventaire.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <button
+                    onClick={() => setDetailIfcoOuvert(o => !o)}
+                    style={{ background: "none", border: "none", color: "#1a6b3a", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: detailIfcoOuvert ? 10 : 0 }}
+                  >
+                    {detailIfcoOuvert ? "▾" : "▸"} Détail des {detailArticlesIfcoInventaire.length} caisse{detailArticlesIfcoInventaire.length > 1 ? "s" : ""} IFCO comptée{detailArticlesIfcoInventaire.length > 1 ? "s" : ""} (par article)
+                  </button>
+                  {detailIfcoOuvert && (
+                    <div style={{ overflowX: "auto", border: "1px solid #e8e0d0", borderRadius: 10 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead><tr style={{ background: "#f8fffe", borderBottom: "2px solid #e8e0d0" }}>
+                          {["Article", "Équipe", "Compté"].map(h => <th key={h} style={{ padding: "8px 10px", textAlign: h === "Compté" ? "right" : "left", color: "#1a6b3a", fontWeight: 700 }}>{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {[...detailArticlesIfcoInventaire].sort((a, b) => (b.compte ?? -1) - (a.compte ?? -1)).map((d, i) => (
+                            <tr key={i} style={{ borderBottom: "1px solid #f4f4f4" }}>
+                              <td style={{ padding: "7px 10px" }}>{d.article}</td>
+                              <td style={{ padding: "7px 10px", color: "#666" }}>{d.equipe}</td>
+                              <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: d.compte === null ? "#c0392b" : "#1a6b3a" }}>{d.compte === null ? "non compté" : d.compte}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 02/09/2026 — Demande d'Elinathan : remplace les 3 cumuls (commandé / sorti /
                   déclarations soustraites) par un simple contrôle "les déclarations sont-elles à
