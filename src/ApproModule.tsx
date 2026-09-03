@@ -477,17 +477,37 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     setFichiersEnAttente(prev => prev.map((it, i) => (i === index ? { ...it, semaineKey: semaineKeyCorrigee } : it)));
   }
 
+  // 03/09/2026 — Demande d'Elinathan : l'import "apparaissait" juste après confirmation mais
+  // disparaissait au rafraîchissement de la page, signe que l'écriture Firebase ne se faisait pas
+  // vraiment (ou pas là où on la relit ensuite) — le message "✓ importé" mentait donc. Deux
+  // changements : (1) chaque écriture a désormais son propre try/catch pour ne jamais avaler une
+  // erreur silencieusement au milieu de la boucle, (2) une relecture fraîche depuis Firebase
+  // (get(), pas le cache local) juste après l'écriture confirme que les données sont vraiment là
+  // avant d'afficher "✓ importé" — sinon on affiche un vrai message d'erreur avec le détail.
   async function confirmerImportHistorique() {
     if (fichiersEnAttente.length === 0) return;
     setImportHistoriqueEnCours(true);
     try {
+      const { get } = await import("firebase/database");
       let totalLignes = 0;
+      const echecs: string[] = [];
+      const semainesEcrites = new Set<string>();
       const tousNouveauxFournisseurs: Record<string, Fournisseur> = {};
       for (const item of fichiersEnAttente) {
+        const semaineKeyItem = item.semaineKey.trim();
+        if (!/^\d{4}-W\d{2}$/.test(semaineKeyItem)) {
+          echecs.push(`${item.fileName} : semaine "${semaineKeyItem}" invalide (format attendu AAAA-Wss, ex. 2026-W36) — fichier ignoré`);
+          continue;
+        }
         for (const v of ["weekend", "midweek"] as Vague[]) {
           for (const [fid, quantites] of Object.entries(item.parVague[v])) {
-            await update(ref(db, `appro/historique/${item.semaineKey}/${v}/${fid}/quantites`), quantites);
-            totalLignes++;
+            try {
+              await update(ref(db, `appro/historique/${semaineKeyItem}/${v}/${fid}/quantites`), quantites);
+              totalLignes++;
+              semainesEcrites.add(semaineKeyItem);
+            } catch (err: any) {
+              echecs.push(`${item.fileName} (${v}, ${fid}) : ${err?.message || "erreur inconnue"}`);
+            }
           }
         }
         Object.assign(tousNouveauxFournisseurs, item.nouveauxFournisseurs);
@@ -495,7 +515,25 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
       if (Object.keys(tousNouveauxFournisseurs).length > 0) {
         await update(ref(db, "appro/fournisseurs"), tousNouveauxFournisseurs);
       }
-      notify("success", `✓ Historique importé : ${fichiersEnAttente.length} fichier(s), ${totalLignes} ligne(s) écrite(s) dans la base de données stats`);
+
+      // Relecture fraîche (get(), pas le listener onValue déjà en mémoire) pour vérifier que
+      // Firebase a VRAIMENT gardé ce qu'on vient d'écrire, avant d'annoncer un succès.
+      let lignesConfirmees = 0;
+      for (const sem of semainesEcrites) {
+        const snap = await get(ref(db, `appro/historique/${sem}`));
+        const val = snap.val() || {};
+        for (const v of ["weekend", "midweek"] as Vague[]) {
+          lignesConfirmees += Object.keys(val[v] || {}).length;
+        }
+      }
+
+      if (totalLignes > 0 && lignesConfirmees === 0) {
+        notify("error", `❌ L'import semblait fonctionner mais rien n'est resté enregistré côté Firebase (relecture à 0 ligne) — probablement un problème de droits d'écriture sur "appro/historique". Ne réessaie pas dans l'immédiat, dis-le-moi pour qu'on regarde les règles Firebase.`);
+      } else if (echecs.length > 0) {
+        notify("error", `⚠️ Import partiel : ${lignesConfirmees} ligne(s) confirmée(s) en base, ${echecs.length} échec(s) — ${echecs.slice(0, 3).join(" · ")}${echecs.length > 3 ? "…" : ""}`);
+      } else {
+        notify("success", `✓ Historique importé et vérifié : ${fichiersEnAttente.length} fichier(s), ${lignesConfirmees} ligne(s) confirmée(s) dans la base de données stats`);
+      }
       setFichiersEnAttente([]);
     } catch (err: any) {
       notify("error", `❌ Erreur import historique : ${err?.message || "erreur inconnue"}`);
