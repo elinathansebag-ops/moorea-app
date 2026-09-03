@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import emailjs from "@emailjs/browser";
@@ -712,6 +712,203 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   );
 }
 
+// ─── Pointage GROUPÉ des retours de reconditionnement (NLT / Andès) ───
+// 03/09/2026 — Demande d'Elinathan : le pointage carte-par-carte ("plusieurs origines,
+// plusieurs réf") est devenu ingérable dès qu'une livraison NLT contient plusieurs demandes.
+// Remplace la liste de ProduitRow (une carte par demande) par UNE SEULE carte listant toutes
+// les réf/lots attendus du groupe, avec une case "reçu" par ligne, un total de palettes pour
+// toute la livraison, et l'envoi automatique (WhatsApp) d'un récap avec les écarts une fois
+// validé. Le détail fin (température, poids, litige qualité...) n'est plus saisi ici : ce
+// pointage groupé se concentre sur "combien reçu vs attendu", ce qui est le vrai besoin au quai.
+// 03/09/2026 (v2) — Elinathan a demandé un vrai TABLEAU plutôt que des mini-cartes : une ligne
+// par référence attendue (article + lot), avec une ou plusieurs "cases" de quantité par ligne
+// (bouton "+ palette" pour en ajouter, comme la quantité attendue peut arriver répartie sur
+// plusieurs palettes physiques) — chaque case remplie imprime sa propre étiquette palette à la
+// validation, exactement via le même mécanisme que la répartition multi-palettes déjà utilisée
+// sur les arrivages normaux (voir repartitionPalettes dans ProduitRow). Une fois "Valider tout"
+// cliqué, un popup s'ouvre avec le récap des écarts et un message WhatsApp déjà rédigé, à
+// envoyer d'un clic (plus d'ouverture automatique de fenêtre, on laisse relire avant).
+function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceInfo }: { groupe: string; produits: any[]; onValidate: any; date: string; paletteAnnonceInfo: { grandes: number; demi: number } | null }) {
+  const [cases, setCases] = useState<Record<string, string[]>>({});
+  const [problemes, setProblemes] = useState<Record<string, boolean>>({});
+  const [commentaires, setCommentaires] = useState<Record<string, string>>({});
+  const [sansEtiquette, setSansEtiquette] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [recap, setRecap] = useState<null | { lignes: { produit: string; lot: string; attendu: number; recu: number; ecart: number }[]; message: string; totalEcart: number }>(null);
+
+  const getCases = (id: string): string[] => (cases[id] && cases[id].length ? cases[id] : [""]);
+  const setCase = (id: string, idx: number, val: string) => setCases(prev => {
+    const arr = [...getCases(id)];
+    arr[idx] = val;
+    return { ...prev, [id]: arr };
+  });
+  const ajouterCase = (id: string) => setCases(prev => ({ ...prev, [id]: [...getCases(id), ""] }));
+  const retirerCase = (id: string, idx: number) => setCases(prev => {
+    const arr = getCases(id).filter((_, i) => i !== idx);
+    return { ...prev, [id]: arr.length ? arr : [""] };
+  });
+
+  const rows = produits.map((a: any) => {
+    const attendu = a.quantite || 0;
+    const casesArr = getCases(a.id);
+    const valeurs = casesArr.map(c => c.trim());
+    const toutesVides = valeurs.every(v => v === "");
+    const recu = toutesVides ? attendu : valeurs.reduce((s, v) => s + (parseInt(v) || 0), 0);
+    return { a, attendu, recu, ecart: recu - attendu, casesArr };
+  });
+  const totalAttendu = rows.reduce((s, r) => s + r.attendu, 0);
+  const totalRecu = rows.reduce((s, r) => s + r.recu, 0);
+  const totalEcart = totalRecu - totalAttendu;
+
+  const validerTout = async () => {
+    if (saving || !rows.length) return;
+    setSaving(true);
+    const recapLignes: { produit: string; lot: string; attendu: number; recu: number; ecart: number }[] = [];
+    try {
+      for (const { a, attendu, recu, ecart, casesArr } of rows) {
+        const litige = !!problemes[a.id];
+        const retourEnIfco = a.retour_en_ifco === true || (a.retour_en_ifco == null && a.depot === "nlt" && /ifco/i.test(String(a.produit || "")));
+        // Une case remplie = une palette = une étiquette à l'impression (repris tel quel par
+        // handleAgrement dans App.tsx, même logique que "repartitionPalettes" sur un arrivage
+        // normal). Cases toutes vides → une seule étiquette avec le total reçu (comportement par
+        // défaut, comme avant).
+        const valeursNum = casesArr.map(c => parseInt(c.trim()) || 0).filter(v => v > 0);
+        const palettesArr = valeursNum.length ? valeursNum : [recu];
+        const ctrl: any = {
+          qualite: 3, temperature: "ok", poids_mesure: "ok", poids_brut: "", poids_net: "",
+          observations: `Colis reçus : ${recu}/${attendu}${palettesArr.length > 1 ? ` (${palettesArr.length} palettes)` : ""}`,
+          dlc: a.dlc || "", lot_fournisseur: a.lot_fournisseur || "", lot_fournisseur_liste: a.lot_fournisseur_liste || [],
+          colisRecus: recu,
+          retourRecond: { qteConditionnement: a.qteConditionnementAttendue ?? "", grandes: "", demi: "", caissesIfco: retourEnIfco ? String(recu) : "", colisADetruire: "" },
+        };
+        const raison = ecart !== 0
+          ? `Écart colis : ${ecart > 0 ? "+" : ""}${ecart} (reçu ${recu}/${attendu})`
+          : (litige ? (commentaires[a.id]?.trim() || "Problème signalé au retour") : "");
+        await onValidate(a, ctrl, litige ? "non_conforme" : "conforme", litige ? "sous réserve" : "", raison, "", palettesArr, sansEtiquette);
+        recapLignes.push({ produit: a.produit, lot: a.lot_interne, attendu, recu, ecart });
+      }
+      const lignesMsg = recapLignes.map(r => `${r.ecart !== 0 ? "⚠️" : "✅"} ${r.produit || "-"}${r.lot ? ` · lot ${r.lot}` : ""} — reçu ${r.recu}/${r.attendu}${r.ecart !== 0 ? ` (${r.ecart > 0 ? "+" : ""}${r.ecart})` : ""}`);
+      const message = `POINTAGE ${groupe} - ${date}\nTotal reçu : ${totalRecu}/${totalAttendu}${totalEcart !== 0 ? ` — écart ${totalEcart > 0 ? "+" : ""}${totalEcart}` : ""}\n\n${lignesMsg.join("\n")}`;
+      setRecap({ lignes: recapLignes, message, totalEcart });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "14px 16px", marginBottom: 8 }}>
+      <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#6b7280" }}>📋 Pointage groupé — {rows.length} réf. attendue{rows.length > 1 ? "s" : ""}</p>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+          <thead>
+            <tr style={{ textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>
+              <th style={{ padding: "4px 8px" }}>Article</th>
+              <th style={{ padding: "4px 8px" }}>Lot</th>
+              <th style={{ padding: "4px 8px", textAlign: "right" }}>Attendu</th>
+              <th style={{ padding: "4px 8px" }}>Quantités reçues (1 case = 1 palette)</th>
+              <th style={{ padding: "4px 8px", textAlign: "right" }}>Total</th>
+              <th style={{ padding: "4px 8px" }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ a, attendu, recu, ecart, casesArr }) => (
+              <Fragment key={a.id}>
+                <tr style={{ background: "#fff", borderTop: "6px solid #f9fafb" }}>
+                  <td style={{ padding: "8px", verticalAlign: "top", borderRadius: "10px 0 0 10px" }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{a.produit}{a.variete ? ` · ${a.variete}` : ""}</p>
+                    {a.fournisseur_origine && <span style={{ fontSize: 11, color: "#6b7280" }}>🌍 {a.fournisseur_origine}</span>}
+                  </td>
+                  <td style={{ padding: "8px", verticalAlign: "top", fontSize: 12, color: "#6b7280" }}>
+                    {a.lot_interne || "-"}{a.lot_fournisseur ? <><br /><span style={{ fontSize: 10.5 }}>📋 {a.lot_fournisseur}</span></> : null}
+                  </td>
+                  <td style={{ padding: "8px", verticalAlign: "top", textAlign: "right", fontWeight: 700, fontSize: 13, color: "#6b7280" }}>{attendu}</td>
+                  <td style={{ padding: "8px", verticalAlign: "top" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                      {casesArr.map((val, idx) => (
+                        <span key={idx} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                          <input type="number" min="0" inputMode="numeric" value={val} placeholder={casesArr.length === 1 ? String(attendu) : "0"}
+                            onChange={e => setCase(a.id, idx, e.target.value)}
+                            style={{ width: 58, padding: "5px 6px", border: `1.5px solid ${ecart !== 0 ? "#fde3a8" : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: ecart !== 0 ? "#b45309" : "#1a2e1a" }} />
+                          {casesArr.length > 1 && (
+                            <button onClick={() => retirerCase(a.id, idx)} title="Retirer cette case" style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>×</button>
+                          )}
+                        </span>
+                      ))}
+                      <button onClick={() => ajouterCase(a.id)} title="Ajouter une case (une palette de plus pour cette réf.)"
+                        style={{ padding: "4px 8px", borderRadius: 7, border: "1.5px dashed #d1d5db", background: "#fff", color: "#6b7280", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        + palette
+                      </button>
+                    </div>
+                  </td>
+                  <td style={{ padding: "8px", verticalAlign: "top", textAlign: "right", fontWeight: 700, fontSize: 13, color: ecart !== 0 ? "#b45309" : "#16a34a" }}>
+                    {recu}{ecart !== 0 ? ` (${ecart > 0 ? "+" : ""}${ecart})` : ""}
+                  </td>
+                  <td style={{ padding: "8px", verticalAlign: "top", borderRadius: "0 10px 10px 0" }}>
+                    <button onClick={() => setProblemes(prev => ({ ...prev, [a.id]: !prev[a.id] }))}
+                      style={{ padding: "4px 8px", borderRadius: 7, border: `1.5px solid ${problemes[a.id] ? "#dc2626" : "#e5e7eb"}`, background: problemes[a.id] ? "#dc262618" : "#fff", color: problemes[a.id] ? "#dc2626" : "#9ca3af", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      ⚠️
+                    </button>
+                  </td>
+                </tr>
+                {problemes[a.id] && (
+                  <tr style={{ background: "#fff" }}>
+                    <td colSpan={6} style={{ padding: "0 8px 8px" }}>
+                      <input value={commentaires[a.id] || ""} onChange={e => setCommentaires(prev => ({ ...prev, [a.id]: e.target.value }))} placeholder="Commentaire sur le problème…"
+                        style={{ width: "100%", padding: "6px 8px", border: "1.5px solid #fca5a5", borderRadius: 7, fontSize: 12, boxSizing: "border-box" }} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 10, paddingTop: 10, borderTop: "1px solid #e5e7eb" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: totalEcart !== 0 ? "#b45309" : "#16a34a" }}>
+          Total reçu {totalRecu}/{totalAttendu}{totalEcart !== 0 ? ` (${totalEcart > 0 ? "+" : ""}${totalEcart})` : ""}
+        </span>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#9ca3af", cursor: "pointer" }}>
+          <input type="checkbox" checked={sansEtiquette} onChange={e => setSansEtiquette(e.target.checked)} style={{ width: "auto", margin: 0 }} />
+          Sans étiquette (cas rare)
+        </label>
+        <button onClick={validerTout} disabled={saving} style={{ marginLeft: "auto", padding: "9px 18px", borderRadius: 9, border: "none", background: saving ? "#ccc" : "#27ae60", color: "#fff", fontWeight: 700, fontSize: 13, cursor: saving ? "default" : "pointer" }}>
+          {saving ? "Validation…" : "✓ Valider tout l'arrivage"}
+        </button>
+      </div>
+
+      {recap && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 22, maxWidth: 480, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+            <p style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>
+              {recap.totalEcart !== 0 ? "⚠️ Pointage terminé — écarts détectés" : "✅ Pointage terminé — tout conforme"}
+            </p>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "#6b7280" }}>Étiquettes envoyées à l'impression. Voici le récap à envoyer :</p>
+            <div style={{ display: "grid", gap: 4, marginBottom: 12 }}>
+              {recap.lignes.map((r, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, padding: "5px 8px", background: r.ecart !== 0 ? "#fffbeb" : "#f0fdf4", borderRadius: 7 }}>
+                  <span>{r.produit}{r.lot ? ` · ${r.lot}` : ""}</span>
+                  <span style={{ fontWeight: 700, color: r.ecart !== 0 ? "#b45309" : "#16a34a" }}>{r.recu}/{r.attendu}{r.ecart !== 0 ? ` (${r.ecart > 0 ? "+" : ""}${r.ecart})` : ""}</span>
+                </div>
+              ))}
+            </div>
+            <textarea readOnly value={recap.message} rows={6}
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "monospace", boxSizing: "border-box", marginBottom: 12, resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setRecap(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                Fermer
+              </button>
+              <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(recap.message)}`, "_blank"); setRecap(null); }}
+                style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                📲 Envoyer par WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById }: any) {
   const [open, setOpen] = useState(false);
   const nbTraites = traites.length;
@@ -804,7 +1001,9 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
               )}
             </div>
           )}
-          {produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} />)}
+          {isRetourRecondGroupe && produits.length > 0
+            ? <PointageGroupeNLT groupe={fournisseur} produits={produits} onValidate={onValidate} date={date} paletteAnnonceInfo={paletteAnnonceInfo} />
+            : produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} />)}
           {nbTraites > 0 && (
             <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>📁 Traités · {nbTraites}</p>
