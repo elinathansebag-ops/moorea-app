@@ -120,6 +120,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   const [commandes, setCommandes] = useState<Record<string, CommandeCell>>({}); // clé = fournisseurId
   const [envoiEnCours, setEnvoiEnCours] = useState<Record<string, boolean>>({});
   const [envoiTousEnCours, setEnvoiTousEnCours] = useState(false);
+  const [viderEnCours, setViderEnCours] = useState(false);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   // 31/08/2026 — Mode test (demande d'Elinathan) : quand actif, TOUS les mails de commande
   // partent uniquement vers elinathan.sebag@moorea.fr (rien vers les vrais fournisseurs ni vers
@@ -188,18 +189,33 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
         // entièrement la valeur à chaque clé du multi-path, donc patch[p.id] = {...} aurait
         // écrasé id/label/ordre du produit existant — avec des clés en "id/champ", seuls les
         // champs de poids sont touchés.
+        // 03/09/2026 — Même logique pour labelEn et ddmJours (champs ajoutés après coup eux
+        // aussi) : sans ça, les produits déjà en base restaient sans traduction anglaise et sans
+        // DDM dans les mails de commande ("ya pas les dlc" — DDM manquante, nom pas traduit),
+        // car seul poidsNetKg/poidsBrutKg était complété automatiquement.
         const patch: Record<string, any> = {};
         const patchLocal: Record<string, Partial<Produit>> = {};
         liste.forEach(p => {
+          const ref_ = PRODUITS_DEFAUT.find(pd => pd.id === p.id);
+          if (!ref_) return;
+          const champPatch: Partial<Produit> = {};
           if (p.poidsNetKg == null) {
-            const ref_ = PRODUITS_DEFAUT.find(pd => pd.id === p.id);
-            if (ref_) {
-              patch[`${p.id}/qteParColis`] = ref_.qteParColis;
-              patch[`${p.id}/poidsNetKg`] = ref_.poidsNetKg;
-              patch[`${p.id}/poidsBrutKg`] = ref_.poidsBrutKg;
-              patchLocal[p.id] = { qteParColis: ref_.qteParColis, poidsNetKg: ref_.poidsNetKg, poidsBrutKg: ref_.poidsBrutKg };
-            }
+            patch[`${p.id}/qteParColis`] = ref_.qteParColis;
+            patch[`${p.id}/poidsNetKg`] = ref_.poidsNetKg;
+            patch[`${p.id}/poidsBrutKg`] = ref_.poidsBrutKg;
+            champPatch.qteParColis = ref_.qteParColis;
+            champPatch.poidsNetKg = ref_.poidsNetKg;
+            champPatch.poidsBrutKg = ref_.poidsBrutKg;
           }
+          if (p.labelEn == null && ref_.labelEn != null) {
+            patch[`${p.id}/labelEn`] = ref_.labelEn;
+            champPatch.labelEn = ref_.labelEn;
+          }
+          if (p.ddmJours == null && ref_.ddmJours != null) {
+            patch[`${p.id}/ddmJours`] = ref_.ddmJours;
+            champPatch.ddmJours = ref_.ddmJours;
+          }
+          if (Object.keys(champPatch).length > 0) patchLocal[p.id] = champPatch;
         });
         if (Object.keys(patch).length > 0) update(ref(db, "appro/produits"), patch);
         setProduits(liste.map(p => ({ ...p, ...patchLocal[p.id] })).sort((a, b) => a.ordre - b.ordre));
@@ -697,6 +713,34 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     }
   }
 
+  // 03/09/2026 — "Vider le tableau" (demande d'Elinathan) : vide toutes les cases (quantités) du
+  // tableau fournisseur × produit pour la semaine/vague actuellement affichée. Réinitialise aussi
+  // le statut d'envoi (statutEnvoi/dateEnvoi/envoyePar) par cohérence avec le comportement de
+  // ré-import Excel : une fois les cases vidées, il n'y a plus rien de "déjà envoyé" à garder.
+  async function viderTableau() {
+    const cibles = fournisseurs.filter(f => totalLigne(f.id) > 0 || commandes[f.id]?.statutEnvoi === "envoyé");
+    if (cibles.length === 0) {
+      notify("error", "✗ Le tableau est déjà vide pour cette semaine/vague");
+      return;
+    }
+    const confirme = window.confirm(
+      `Vider toutes les cases du tableau — ${VAGUES.find(v => v.id === vague)?.label}, semaine ${semaineKey} ?\n\nCeci efface les quantités saisies pour ${cibles.length} fournisseur(s) et ne peut pas être annulé.`
+    );
+    if (!confirme) return;
+
+    setViderEnCours(true);
+    try {
+      for (const f of cibles) {
+        await update(ref(db, `appro/commandes/${semaineKey}/${vague}/${f.id}`), { quantites: null, statutEnvoi: null, dateEnvoi: null, envoyePar: null });
+      }
+      notify("success", `✓ Tableau vidé (${cibles.length} fournisseur(s))`);
+    } catch (err: any) {
+      notify("error", `✗ Erreur en vidant le tableau : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      setViderEnCours(false);
+    }
+  }
+
   // ── Configuration : fournisseurs ──
   const sauverFournisseur = async () => {
     if (!editFournisseur) return;
@@ -758,6 +802,10 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                 <button onClick={envoyerTout} disabled={envoiTousEnCours} title="Envoie d'un coup la commande de tous les fournisseurs (de cette semaine/vague) qui ont des quantités saisies et pas déjà envoyées"
                   style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: envoiTousEnCours ? COLORS.gray200 : COLORS.secondary, color: envoiTousEnCours ? COLORS.gray600 : "#fff", fontSize: 12.5, fontWeight: 700, cursor: envoiTousEnCours ? "default" : "pointer", whiteSpace: "nowrap" }}>
                   {envoiTousEnCours ? "⏳ Envoi en cours..." : "📧 Tout envoyer"}
+                </button>
+                <button onClick={viderTableau} disabled={viderEnCours} title="Vide toutes les cases (quantités) du tableau pour cette semaine/vague"
+                  style={{ padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: viderEnCours ? COLORS.gray200 : "#fff", color: viderEnCours ? COLORS.gray600 : COLORS.danger, fontSize: 12.5, fontWeight: 700, cursor: viderEnCours ? "default" : "pointer", whiteSpace: "nowrap" }}>
+                  {viderEnCours ? "⏳ Vidage..." : "🗑️ Vider le tableau"}
                 </button>
               </div>
             </div>
