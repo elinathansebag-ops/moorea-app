@@ -262,33 +262,56 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     return ref;
   }
 
-  // 03/09/2026 — Scrollbar horizontale dupliquée en haut ET en bas du tableau matrice (demande
-  // d'Elinathan) : tableScrollRef = le tableau lui-même (sa scrollbar native fait déjà "en bas"),
-  // tableScrollTopRef = une barre fine juste au-dessus, synchronisée avec lui dans les 2 sens.
+  // 03/09/2026 — Date de départ à afficher dans le mail (demande d'Elinathan) : le champ
+  // cell.dateDepart n'est jamais renseigné par aucune UI (champ mort, voir calculerDateDdm
+  // ci-dessus qui calcule déjà tout sans lui) — on calcule donc directement la date de départ.
+  // Correction du même jour (précision d'Elinathan, remplace la 1ère version basée sur la
+  // semaine affichée) : c'est TOUJOURS le premier samedi APRÈS l'envoi du mail pour Week-end, et
+  // le premier mardi APRÈS l'envoi du mail pour Mid-week — donc calculé à partir d'aujourd'hui
+  // (le jour de l'envoi), pas de la semaine/vague affichée à l'écran.
+  function prochainJourDeLaSemaine(jourCible: number): Date {
+    // jourCible : 0 = dimanche, 1 = lundi, ..., 6 = samedi (comme Date.getDay()).
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    let diff = (jourCible - d.getDay() + 7) % 7;
+    if (diff === 0) diff = 7; // "d'après" = strictement après aujourd'hui, jamais le jour même
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+  function calculerDateDepart(v: Vague): Date {
+    return prochainJourDeLaSemaine(v === "weekend" ? 6 : 2); // 6 = samedi, 2 = mardi
+  }
+
+  // 03/09/2026 — Navigation horizontale du tableau matrice repensée comme dans RackModule
+  // (demande d'Elinathan "arrange les curseurs pour naviguer... comme dans rayonnage rack") :
+  // au lieu de la fine barre de scroll dupliquée en haut, un vrai curseur (slider) épais façon
+  // "rack-scrub" + des flèches ‹ › en dégradé sur les bords quand du contenu est caché.
   const tableScrollRef = useRef<HTMLDivElement>(null);
-  const tableScrollTopRef = useRef<HTMLDivElement>(null);
-  const [tableScrollWidth, setTableScrollWidth] = useState(0);
-  const syncingScrollRef = useRef(false);
-  const syncScrollFromTable = () => {
-    if (syncingScrollRef.current) return;
-    syncingScrollRef.current = true;
-    if (tableScrollTopRef.current && tableScrollRef.current) tableScrollTopRef.current.scrollLeft = tableScrollRef.current.scrollLeft;
-    syncingScrollRef.current = false;
-  };
-  const syncScrollFromTop = () => {
-    if (syncingScrollRef.current) return;
-    syncingScrollRef.current = true;
-    if (tableScrollRef.current && tableScrollTopRef.current) tableScrollRef.current.scrollLeft = tableScrollTopRef.current.scrollLeft;
-    syncingScrollRef.current = false;
-  };
+  const [tableScrollLeft, setTableScrollLeft] = useState(0);
+  const [tableMaxScroll, setTableMaxScroll] = useState(0);
+  const [canScrollTableLeft, setCanScrollTableLeft] = useState(false);
+  const [canScrollTableRight, setCanScrollTableRight] = useState(false);
   useEffect(() => {
     const el = tableScrollRef.current;
     if (!el) return;
-    const mesurer = () => setTableScrollWidth(el.scrollWidth);
-    mesurer();
-    const ro = new ResizeObserver(mesurer);
+    const checkScroll = () => {
+      setCanScrollTableLeft(el.scrollLeft > 4);
+      setCanScrollTableRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+      setTableScrollLeft(el.scrollLeft);
+      setTableMaxScroll(Math.max(0, el.scrollWidth - el.clientWidth));
+    };
+    checkScroll();
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    window.addEventListener("resize", checkScroll);
+    const ro = new ResizeObserver(checkScroll);
     ro.observe(el);
-    return () => ro.disconnect();
+    const t = setTimeout(checkScroll, 200); // re-check après layout final
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
+      ro.disconnect();
+      clearTimeout(t);
+    };
   }, [produits, fournisseurs, commandes]);
 
   // Charge tout l'historique (toutes les semaines déjà importées) pour les stats.
@@ -633,6 +656,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
       // les vraies adresses fournisseur ni vers le Cc habituel — voir le switch en Configuration.
       const to = modeTest ? ["elinathan.sebag@moorea.fr"] : f.emails;
       const cc = modeTest ? [] : CC_FIXE;
+      const dateDepartLabel = calculerDateDepart(vague).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
       const res = await fetch("/api/envoyer-commande-appro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -642,7 +666,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
           modeTest,
           vagueLabel: VAGUES.find(v => v.id === vague)?.label,
           semaineKey,
-          dateDepart: cell.dateDepart || "",
+          dateDepartLabel,
           numeroVol: cell.numeroVol || "",
           lignes,
           cc,
@@ -826,15 +850,20 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                 chaque produit — plus de réglage global ici, la date envoyée dans le mail est
                 calculée précisément pour chaque ligne. */}
 
-            {/* Tableau matrice fournisseur x produit — barre de défilement horizontale dupliquée
-                en haut du tableau (demande d'Elinathan, 03/09/2026) : avant, avec beaucoup de
-                colonnes produits, il fallait scroller tout en bas du tableau pour trouver la
-                barre — maintenant il y en a une juste au-dessus aussi, synchronisée avec celle du
-                bas (native, en overflow du tableau lui-même). */}
-            <div ref={tableScrollTopRef} onScroll={syncScrollFromTop} style={{ overflowX: "auto", overflowY: "hidden", marginBottom: 2 }}>
-              <div style={{ width: tableScrollWidth, height: 1 }} />
-            </div>
-            <div ref={tableScrollRef} onScroll={syncScrollFromTable} style={{ overflowX: "auto", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, marginBottom: 16 }}>
+            {/* Tableau matrice fournisseur x produit — navigation horizontale façon RackModule
+                (demande d'Elinathan, 03/09/2026 : "arrange les curseurs pour naviguer... comme
+                dans rayonnage rack") : flèches en dégradé sur les bords quand du contenu est
+                caché à gauche/droite, + un vrai curseur (slider épais, facile à saisir à la
+                souris/au doigt) sous le tableau pour défiler d'un coup dans les colonnes. */}
+            <style>{`
+              @keyframes rackScrollHint{0%,100%{opacity:.35}50%{opacity:1}}
+              .appro-scrub{ -webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:999px; background:${COLORS.gray200}; outline:none; cursor:pointer; margin:0; }
+              .appro-scrub::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:${COLORS.primary}; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
+              .appro-scrub::-moz-range-thumb{ width:20px; height:20px; border-radius:50%; background:${COLORS.primary}; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
+              .appro-scrub::-moz-range-track{ background:${COLORS.gray200}; height:6px; border-radius:999px; }
+            `}</style>
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <div ref={tableScrollRef} style={{ overflowX: "auto", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12 }}>
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                 <thead>
                   {/* 31/08/2026 — En-tête colorée (demande d'Elinathan : "que ça donne envie") : fond
@@ -942,7 +971,39 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                   </tr>
                 </tfoot>
               </table>
+              </div>
+              {canScrollTableLeft && (
+                <div style={{ position: "absolute", left: 1, top: 1, bottom: 1, width: 34, borderRadius: "10px 0 0 10px", background: "linear-gradient(90deg, rgba(255,255,255,0.98), rgba(255,255,255,0))", pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: COLORS.primary, marginLeft: 3, animation: "rackScrollHint 1.4s ease-in-out infinite" }}>‹</span>
+                </div>
+              )}
+              {canScrollTableRight && (
+                <div style={{ position: "absolute", right: 1, top: 1, bottom: 1, width: 34, borderRadius: "0 10px 10px 0", background: "linear-gradient(270deg, rgba(255,255,255,0.98), rgba(255,255,255,0))", pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: COLORS.primary, marginRight: 3, animation: "rackScrollHint 1.4s ease-in-out infinite" }}>›</span>
+                </div>
+              )}
             </div>
+            {/* Curseur de défilement horizontal — permet de se déplacer d'un coup dans les
+                colonnes produits sans avoir à scroller finement (même principe que dans le
+                module Rayonnage/Rack). */}
+            {tableMaxScroll > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, padding: "0 4px" }}>
+                <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 800, flexShrink: 0 }}>◂</span>
+                <input
+                  type="range"
+                  className="appro-scrub"
+                  min={0}
+                  max={tableMaxScroll}
+                  value={tableScrollLeft}
+                  onChange={e => {
+                    const v = Number(e.target.value);
+                    setTableScrollLeft(v);
+                    if (tableScrollRef.current) tableScrollRef.current.scrollLeft = v;
+                  }}
+                />
+                <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 800, flexShrink: 0 }}>▸</span>
+              </div>
+            )}
             <p style={{ fontSize: 11, color: COLORS.gray400 }}>
               Le mail de commande part de jennifer.martin@moorea.fr, en Cc à hillel@leofresh.com, oumaima.ilhami@moorea.fr et elinathan.sebag@moorea.fr.
               <br />Sous chaque nom de produit : poids net / poids brut par colis (réf. "poid hv.xlsx"). Les 2 dernières lignes du tableau donnent le poids net et brut total par produit et pour toute la commande — utile pour la déclaration douane (DCP).
