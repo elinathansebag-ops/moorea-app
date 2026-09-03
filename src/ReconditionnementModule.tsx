@@ -772,6 +772,11 @@ export function ReconditionnementModule({ onClose, userName }: {
   // Accordéon par semaine de l'historique des reconditionnements terminés (onglet Historique) —
   // null = pas encore initialisé (la semaine la plus récente s'ouvrira automatiquement).
   const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string> | null>(null);
+  // 03/09/2026 — Recherche par lot dans l'historique reconditionnement (demande d'Elinathan) :
+  // filtre demandesTerminees par numéro de lot avant le regroupement par jour/semaine, et déplie
+  // automatiquement toutes les semaines pendant la recherche (sinon un vieux lot resterait
+  // invisible dans une semaine repliée).
+  const [rechercheHistoriqueLot, setRechercheHistoriqueLot] = useState("");
   // Accordéon par transporteur du détail "palettes parties / revenues" (onglet Historique,
   // pour l'attribution des coûts de transport) — fermé par défaut pour chacun.
   const [transporteursOuverts, setTransporteursOuverts] = useState<Set<string>>(new Set());
@@ -1825,7 +1830,9 @@ export function ReconditionnementModule({ onClose, userName }: {
 
   // ── Historique des reconditionnements terminés (statut "reçu"), regroupés par jour puis
   // par semaine — avec toujours la semaine la plus récente ouverte par défaut.
-  const demandesTerminees = demandes.filter(d => d.statut === "reçu");
+  const demandesTerminees = demandes
+    .filter(d => d.statut === "reçu")
+    .filter(d => !rechercheHistoriqueLot.trim() || (d.lot || "").toLowerCase().includes(rechercheHistoriqueLot.trim().toLowerCase()));
   const parseFrDate = (s?: string): Date | null => {
     if (!s) return null;
     const [dd, mm, yyyy] = s.split(" ")[0].split("/");
@@ -2924,15 +2931,31 @@ export function ReconditionnementModule({ onClose, userName }: {
             </div>
 
             {/* ── Reconditionnements terminés, par jour, regroupés en accordéon par semaine ── */}
-            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>✅ Reconditionnements terminés</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>✅ Reconditionnements terminés</p>
+              {/* 03/09/2026 — Recherche par lot (demande d'Elinathan) : filtre la liste ci-dessous
+                  et déplie automatiquement toutes les semaines pour ne rien manquer. */}
+              <div style={{ position: "relative", width: 220, maxWidth: "100%" }}>
+                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: COLORS.gray400, pointerEvents: "none" }}>🔍</span>
+                <input type="text" value={rechercheHistoriqueLot} onChange={e => setRechercheHistoriqueLot(e.target.value)}
+                  placeholder="Rechercher un lot..."
+                  style={{ width: "100%", padding: "7px 28px 7px 28px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12, boxSizing: "border-box" }} />
+                {rechercheHistoriqueLot && (
+                  <button onClick={() => setRechercheHistoriqueLot("")} title="Effacer"
+                    style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: "none", background: "none", color: COLORS.gray400, fontSize: 14, fontWeight: 700, cursor: "pointer", padding: 2 }}>✕</button>
+                )}
+              </div>
+            </div>
             {semainesTriees.length === 0 ? (
               <div style={{ textAlign: "center", color: "#aaa", padding: "30px 0", background: "#fff", borderRadius: 12, border: `1.5px solid ${COLORS.gray200}`, marginBottom: 24 }}>
-                <p style={{ margin: 0, fontSize: 13 }}>Aucun reconditionnement terminé pour l'instant</p>
+                <p style={{ margin: 0, fontSize: 13 }}>
+                  {rechercheHistoriqueLot.trim() ? `Aucun reconditionnement terminé trouvé pour le lot "${rechercheHistoriqueLot.trim()}"` : "Aucun reconditionnement terminé pour l'instant"}
+                </p>
               </div>
             ) : (
               <div style={{ marginBottom: 24 }}>
                 {semainesTriees.map(([cleSemaine, info]) => {
-                  const ouverte = semainesOuvertes?.has(cleSemaine) ?? false;
+                  const ouverte = rechercheHistoriqueLot.trim() ? true : (semainesOuvertes?.has(cleSemaine) ?? false);
                   const totalDemandes = info.jours.reduce((s, j) => s + parJour[j].length, 0);
                   return (
                     <div key={cleSemaine} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
@@ -2963,6 +2986,7 @@ export function ReconditionnementModule({ onClose, userName }: {
                                   </div>
                                   <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>
                                     {DEPOT_LABEL[d.depot]}
+                                    {d.lot ? ` · Lot ${d.lot}` : ""}
                                     {d.retour?.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisses IFCO pleines` : (retourEnIfcoDemande(d) ? " · ⚠️ pas de caisse IFCO saisie" : "")}
                                   </div>
                                   {(() => {
