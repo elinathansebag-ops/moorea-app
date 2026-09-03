@@ -34,7 +34,13 @@ type Fournisseur = { id: string; nom: string; transitaire: string; emails: strin
 // labelEn = nom du produit en anglais, utilisé dans le mail envoyé aux fournisseurs (demande
 // d'Elinathan du 03/09/2026 : tout ce qui part chez le fournisseur doit être en anglais).
 // Valeur par défaut = traduction fournie ci-dessous, modifiable dans Configuration.
-type Produit = { id: string; label: string; labelEn?: string; ordre: number; qteParColis?: string; poidsNetKg?: number; poidsBrutKg?: number };
+// ddmJours = nombre de jours de DDM (durée de vie/durabilité minimale) à demander pour ce
+// produit — vide/undefined = produit non en barquette, pas de DDM à indiquer (demande
+// d'Elinathan du 03/09/2026). Pas un nombre de jours après le départ : la date affichée dans le
+// mail se calcule à partir du LUNDI suivant pour la vague Week-end, ou du MERCREDI suivant pour
+// la vague Mid-week (jour où l'arrivage est généralement compté), + ce nombre de jours — voir
+// calculerDateDdm plus bas.
+type Produit = { id: string; label: string; labelEn?: string; ordre: number; qteParColis?: string; poidsNetKg?: number; poidsBrutKg?: number; ddmJours?: number | null };
 type Vague = "weekend" | "midweek";
 
 // Confirmé par Elinathan (31/08/2026) : "Week-end" est la commande envoyée mercredi soir/jeudi
@@ -60,21 +66,21 @@ const FOURNISSEURS_DEFAUT: Fournisseur[] = [
 
 // Produits repris du tableau "appro process SEMAINE 36" envoyé par Elinathan.
 const PRODUITS_DEFAUT: Produit[] = [
-  { id: "hv250lidl", label: "HV 250G LIDL", labelEn: "Green Beans 250g LIDL", ordre: 0, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
-  { id: "hv250", label: "HV 250G", labelEn: "Green Beans 250g", ordre: 1, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "hv250lidl", label: "HV 250G LIDL", labelEn: "Green Beans 250g LIDL", ordre: 0, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4, ddmJours: 23 },
+  { id: "hv250", label: "HV 250G", labelEn: "Green Beans 250g", ordre: 1, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4, ddmJours: 23 },
   { id: "triplepack", label: "Triple Pack", labelEn: "Triple Pack", ordre: 2, qteParColis: "200g par 8", poidsNetKg: 1.6, poidsBrutKg: 2 },
-  { id: "hv400", label: "HV 400", labelEn: "Green Beans 400g", ordre: 3, qteParColis: "400g par 8", poidsNetKg: 3.2, poidsBrutKg: 3.6 },
-  { id: "hv500bags", label: "HV 500G Bags", labelEn: "Green Beans 500g Bags", ordre: 4, qteParColis: "500g par 6", poidsNetKg: 3, poidsBrutKg: 3.4 },
-  { id: "hv500", label: "HV 500G", labelEn: "Green Beans 500g", ordre: 5, qteParColis: "500g par 8", poidsNetKg: 4, poidsBrutKg: 4.4 },
-  { id: "hv350", label: "HV 350G", labelEn: "Green Beans 350g", ordre: 6, qteParColis: "350g par 8", poidsNetKg: 2.8, poidsBrutKg: 3.2 },
+  { id: "hv400", label: "HV 400", labelEn: "Green Beans 400g", ordre: 3, qteParColis: "400g par 8", poidsNetKg: 3.2, poidsBrutKg: 3.6, ddmJours: 23 },
+  { id: "hv500bags", label: "HV 500G Bags", labelEn: "Green Beans 500g Bags", ordre: 4, qteParColis: "500g par 6", poidsNetKg: 3, poidsBrutKg: 3.4, ddmJours: 23 },
+  { id: "hv500", label: "HV 500G", labelEn: "Green Beans 500g", ordre: 5, qteParColis: "500g par 8", poidsNetKg: 4, poidsBrutKg: 4.4, ddmJours: 23 },
+  { id: "hv350", label: "HV 350G", labelEn: "Green Beans 350g", ordre: 6, qteParColis: "350g par 8", poidsNetKg: 2.8, poidsBrutKg: 3.2, ddmJours: 23 },
   { id: "authentic", label: "Authentic", labelEn: "Authentic", ordre: 7, qteParColis: "Vrac", poidsNetKg: 2.7, poidsBrutKg: 3 },
   { id: "excellence", label: "Excellence", labelEn: "Excellence", ordre: 8, qteParColis: "Vrac", poidsNetKg: 2, poidsBrutKg: 2.3 },
   { id: "pg2kg", label: "PG Vrac 2kg", labelEn: "Fine Beans Bulk 2kg", ordre: 9, qteParColis: "Vrac", poidsNetKg: 2, poidsBrutKg: 2.3 },
-  { id: "pg250x12", label: "PG 250g x12", labelEn: "Fine Beans 250g x12", ordre: 10, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
-  { id: "pg150x6", label: "PG 150g x6", labelEn: "Fine Beans 150g x6", ordre: 11, qteParColis: "150g par 6", poidsNetKg: 0.912, poidsBrutKg: 1.2 },
-  { id: "sugar250x6", label: "Sugar Snap 250g x6", labelEn: "Sugar Snap 250g x6", ordre: 12, qteParColis: "250g par 6", poidsNetKg: 1.5, poidsBrutKg: 1.8 },
-  { id: "sugar150x6", label: "Sugar Snap 150g x6", labelEn: "Sugar Snap 150g x6", ordre: 13, qteParColis: "150g par 6", poidsNetKg: 0.9, poidsBrutKg: 1.2 },
-  { id: "petitpois", label: "Petit Pois", labelEn: "Garden Peas", ordre: 14, qteParColis: "250g par 8", poidsNetKg: 2, poidsBrutKg: 2.3 },
+  { id: "pg250x12", label: "PG 250g x12", labelEn: "Fine Beans 250g x12", ordre: 10, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4, ddmJours: 23 },
+  { id: "pg150x6", label: "PG 150g x6", labelEn: "Fine Beans 150g x6", ordre: 11, qteParColis: "150g par 6", poidsNetKg: 0.912, poidsBrutKg: 1.2, ddmJours: 23 },
+  { id: "sugar250x6", label: "Sugar Snap 250g x6", labelEn: "Sugar Snap 250g x6", ordre: 12, qteParColis: "250g par 6", poidsNetKg: 1.5, poidsBrutKg: 1.8, ddmJours: 23 },
+  { id: "sugar150x6", label: "Sugar Snap 150g x6", labelEn: "Sugar Snap 150g x6", ordre: 13, qteParColis: "150g par 6", poidsNetKg: 0.9, poidsBrutKg: 1.2, ddmJours: 23 },
+  { id: "petitpois", label: "Petit Pois", labelEn: "Garden Peas", ordre: 14, qteParColis: "250g par 8", poidsNetKg: 2, poidsBrutKg: 2.3, ddmJours: 15 },
 ];
 
 // Toujours en Cc, quel que soit le fournisseur (demande du 31/08/2026).
@@ -215,16 +221,30 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     return () => u();
   }, [semaineKey, vague]);
 
-  // 03/09/2026 — DDM (durée de vie minimale/date de durabilité minimale) demandée au fournisseur,
-  // exprimée en nombre de jours après le départ — demande d'Elinathan : 99% du temps c'est 23
-  // jours, mais on en demande parfois plus (ex. période de Noël), donc c'est réglable par
-  // semaine/vague plutôt que codé en dur. Stocké sous une clé "_reglages" dans le même noeud que
-  // les commandes par fournisseur (elle n'entre jamais en collision, aucun fournisseur ne
-  // s'appelle "_reglages", et fournisseurs.map ne lit que les vrais id de fournisseurs).
-  const ddmJours = (commandes as any)?.["_reglages"]?.ddmJours ?? 23;
-  const setDdmJours = (n: number) => {
-    update(ref(db, `appro/commandes/${semaineKey}/${vague}/_reglages`), { ddmJours: n });
-  };
+  // 03/09/2026 — DDM (durée de durabilité minimale) : demande précisée par Elinathan après
+  // discussion — ce n'est PAS "X jours après le départ" tout court. La date à indiquer se calcule
+  // à partir du jour où l'arrivage est généralement compté (le LUNDI suivant pour la vague
+  // Week-end, le MERCREDI suivant pour la vague Mid-week), + le nombre de jours de DDM propre à
+  // chaque produit (23 jours pour la plupart des HV/PG/Sugar Snap, 15 pour Petit Pois, rien pour
+  // les produits pas en barquette — voir ddmJours sur Produit, réglable dans Configuration).
+  // "Suivant" = le prochain lundi/mercredi à partir du lundi de la semaine affichée (semaineOffset
+  // + 1 semaine), puisque Week-end part mercredi soir/jeudi et Mid-week samedi/dimanche : dans les
+  // deux cas, le lundi (resp. mercredi) qui suit tombe forcément dans la semaine suivante.
+  function lundiDeLaSemaine(offset: number): Date {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + offset * 7);
+    const jour = d.getDay(); // 0=dimanche..6=samedi
+    const diffVersLundi = jour === 0 ? -6 : 1 - jour;
+    d.setDate(d.getDate() + diffVersLundi);
+    return d;
+  }
+  function calculerDateDdm(v: Vague, joursDdm: number): Date {
+    const ref = lundiDeLaSemaine(semaineOffset);
+    ref.setDate(ref.getDate() + (v === "weekend" ? 7 : 9)); // +7 = lundi suivant, +9 = mercredi suivant
+    ref.setDate(ref.getDate() + joursDdm);
+    return ref;
+  }
 
   // 03/09/2026 — Scrollbar horizontale dupliquée en haut ET en bas du tableau matrice (demande
   // d'Elinathan) : tableScrollRef = le tableau lui-même (sa scrollbar native fait déjà "en bas"),
@@ -573,7 +593,13 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   async function envoyerCommande(f: Fournisseur, silencieux = false): Promise<{ ok: boolean; message: string }> {
     const cell = commandes[f.id] || {};
     const lignes = produits
-      .map(p => ({ label: p.labelEn || p.label, quantite: cell.quantites?.[p.id] || 0, poidsNetKg: p.poidsNetKg || 0, poidsBrutKg: p.poidsBrutKg || 0 }))
+      .map(p => ({
+        label: p.labelEn || p.label,
+        quantite: cell.quantites?.[p.id] || 0,
+        poidsNetKg: p.poidsNetKg || 0,
+        poidsBrutKg: p.poidsBrutKg || 0,
+        ddmDate: p.ddmJours ? calculerDateDdm(vague, p.ddmJours).toISOString() : null,
+      }))
       .filter(l => l.quantite > 0);
     if (lignes.length === 0) {
       const msg = `✗ Aucune quantité saisie pour ${f.nom}`;
@@ -602,7 +628,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
           semaineKey,
           dateDepart: cell.dateDepart || "",
           numeroVol: cell.numeroVol || "",
-          ddmJours,
           lignes,
           cc,
         }),
@@ -748,19 +773,10 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
               <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.gray200, display: "inline-block" }} /> Pas encore rempli</span>
             </div>
 
-            {/* 03/09/2026 — DDM (date de durabilité minimale) demandée au fournisseur, en nombre de
-                jours après le départ — envoyée dans chaque mail de commande. 23 jours par défaut
-                (99% des cas), réglable ici pour les périodes où on en demande plus (ex. Noël). */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 12, flexWrap: "wrap" }}>
-              <span style={{ fontWeight: 700, color: COLORS.gray700 }}>📅 DDM demandée :</span>
-              <input
-                type="number" min={1}
-                value={ddmJours}
-                onChange={e => setDdmJours(Math.max(1, parseInt(e.target.value) || 23))}
-                style={{ width: 55, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, textAlign: "center", fontWeight: 700 }}
-              />
-              <span style={{ color: COLORS.gray400 }}>jours après le départ (23 par défaut — augmente-le pour les périodes comme Noël). Inclus dans chaque mail de commande.</span>
-            </div>
+            {/* 03/09/2026 — DDM calculée automatiquement par produit (voir ddmJours sur chaque
+                Produit, réglable dans Configuration) : lundi/mercredi suivant + N jours propres à
+                chaque produit — plus de réglage global ici, la date envoyée dans le mail est
+                calculée précisément pour chaque ligne. */}
 
             {/* Tableau matrice fournisseur x produit — barre de défilement horizontale dupliquée
                 en haut du tableau (demande d'Elinathan, 03/09/2026) : avant, avec beaucoup de
@@ -1072,6 +1088,9 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                     <span style={{ fontSize: 10.5, color: COLORS.gray400 }}>Brut (kg)</span>
                     <input type="number" step="0.1" min={0} value={p.poidsBrutKg ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { poidsBrutKg: e.target.value === "" ? null : parseFloat(e.target.value) })}
                       style={{ width: 60, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
+                    <span style={{ fontSize: 10.5, color: COLORS.gray400 }} title="Jours de DDM après le lundi (Week-end) ou mercredi (Mid-week) suivant. Vide = produit pas en barquette, pas de DDM.">DDM (j)</span>
+                    <input type="number" min={0} placeholder="—" value={p.ddmJours ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { ddmJours: e.target.value === "" ? null : parseInt(e.target.value) })}
+                      style={{ width: 45, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
                     <button onClick={() => supprimerProduit(p.id)} style={{ padding: "4px 10px", borderRadius: 6, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>🗑️</button>
                   </div>
                 </div>

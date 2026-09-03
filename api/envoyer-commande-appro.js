@@ -9,9 +9,10 @@ export const config = { runtime: "nodejs" };
 // SDK client, authentifié) — ce endpoint ne fait qu'envoyer l'email, il ne touche pas à Firebase.
 // 03/09/2026 — Demande d'Elinathan : tout ce qui part chez le fournisseur doit être en anglais
 // (les fournisseurs sont au Kenya/Tanzanie/etc., pas francophones) — le mail entier (sujet, corps,
-// noms de produits via labelEn côté client) est donc désormais rédigé en anglais. Ajout aussi de
-// la DDM (durée de vie minimale / date de durabilité minimale) demandée, en nombre de jours après
-// le départ — 23 jours dans 99% des cas, mais réglable côté client (ex. période de Noël).
+// noms de produits via labelEn côté client) est donc désormais rédigé en anglais.
+// La DDM (durée de durabilité minimale) est maintenant une DATE PRÉCISE calculée côté client
+// (voir calculerDateDdm dans ApproModule.tsx) et fournie par ligne (l.ddmDate, ISO ou null) —
+// ce endpoint se contente de l'afficher, il ne recalcule rien.
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -21,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { fournisseur, vagueLabel, semaineKey, dateDepart, numeroVol, ddmJours, lignes, cc = [], modeTest = false, destinatairesReels = [] } = req.body;
+    const { fournisseur, vagueLabel, semaineKey, dateDepart, numeroVol, lignes, cc = [], modeTest = false, destinatairesReels = [] } = req.body;
 
     if (!fournisseur?.emails?.length) {
       return res.status(400).json({ error: "Aucun email fournisseur fourni" });
@@ -38,15 +39,22 @@ export default async function handler(req, res) {
     // partir du poids par colis (poidsNetKg/poidsBrutKg, réf. "poid hv.xlsx") x quantité de colis
     // — utile au fournisseur/transitaire pour la déclaration douane (DCP) au départ.
     const arrondi1 = n => Math.round(n * 10) / 10;
+    // 03/09/2026 — Date DDM à afficher par ligne (déjà calculée côté client, voir plus haut) :
+    // formatée en anglais, jour/mois/année en toutes lettres pour éviter toute ambiguïté
+    // JJ/MM vs MM/JJ avec un fournisseur non francophone.
+    const formatDdm = iso => iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+    const uneLigneADdm = lignes.some(l => l.ddmDate);
     const lignesHtml = lignes
       .map(l => {
         const net = (l.poidsNetKg || 0) * l.quantite;
         const brut = (l.poidsBrutKg || 0) * l.quantite;
+        const ddmFmt = formatDdm(l.ddmDate);
         return `<tr>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">${l.label}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${l.quantite}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#4b5563;">${l.poidsNetKg ? arrondi1(net) + " kg" : "-"}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#4b5563;">${l.poidsBrutKg ? arrondi1(brut) + " kg" : "-"}</td>
+          ${uneLigneADdm ? `<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#b45309;font-weight:700;">${ddmFmt || "-"}</td>` : ""}
         </tr>`;
       })
       .join("");
@@ -60,12 +68,8 @@ export default async function handler(req, res) {
          </div>`
       : "";
 
-    const ddmHtml = ddmJours
-      ? `<br/>Requested shelf life (DDM): minimum <b>${ddmJours} days</b> after departure`
-      : "";
-
     const html = `
-      <div style="font-family:Arial,sans-serif;max-width:560px;">
+      <div style="font-family:Arial,sans-serif;max-width:600px;">
         ${banniereTest}
         <h2 style="color:#16a34a;margin-bottom:4px;">Moorea Order — ${fournisseur.nom}</h2>
         <p style="color:#4b5563;font-size:13px;margin-top:0;">
@@ -73,7 +77,6 @@ export default async function handler(req, res) {
           ${dateDepartEn ? `<br/>Requested departure: <b>${dateDepartEn}</b>` : ""}
           ${numeroVol ? `<br/>Flight / container: <b>${numeroVol}</b>` : ""}
           ${fournisseur.transitaire ? `<br/>Freight forwarder: <b>${fournisseur.transitaire}</b>` : ""}
-          ${ddmHtml}
         </p>
         <table style="border-collapse:collapse;width:100%;margin-top:10px;">
           <thead>
@@ -82,6 +85,7 @@ export default async function handler(req, res) {
               <th style="padding:6px 10px;text-align:right;">Quantity</th>
               <th style="padding:6px 10px;text-align:right;">Net weight</th>
               <th style="padding:6px 10px;text-align:right;">Gross weight</th>
+              ${uneLigneADdm ? `<th style="padding:6px 10px;text-align:right;">DDM to print</th>` : ""}
             </tr>
           </thead>
           <tbody>${lignesHtml}</tbody>
@@ -91,10 +95,11 @@ export default async function handler(req, res) {
               <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${total}</td>
               <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${arrondi1(totalNet)} kg</td>
               <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${arrondi1(totalBrut)} kg</td>
+              ${uneLigneADdm ? `<td style="border-top:2px solid #e5e7eb;"></td>` : ""}
             </tr>
           </tfoot>
         </table>
-        ${ddmJours ? `<p style="color:#4b5563;font-size:11px;margin-top:14px;">DDM = minimum best-before / consumption date. Please ensure at least ${ddmJours} days of shelf life remain, counted from the departure date above.</p>` : ""}
+        ${uneLigneADdm ? `<p style="color:#4b5563;font-size:11px;margin-top:14px;">DDM = minimum best-before / consumption date. Please print the date shown in the "DDM to print" column on the corresponding punnets/packaging.</p>` : ""}
         <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Please confirm receipt of this order.</p>
       </div>
     `;
