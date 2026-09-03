@@ -84,7 +84,7 @@ export default async function handler(req, res) {
           <thead>
             <tr style="background:#f9fafb;">
               <th style="padding:6px 10px;text-align:left;">Product</th>
-              ${uneLigneADdm ? `<th style="padding:6px 10px;text-align:right;">DDM to print</th>` : ""}
+              ${uneLigneADdm ? `<th style="padding:6px 10px;text-align:right;">Date</th>` : ""}
               <th style="padding:6px 10px;text-align:right;">Quantity</th>
               <th style="padding:6px 10px;text-align:right;">Net weight</th>
               <th style="padding:6px 10px;text-align:right;">Gross weight</th>
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
             </tr>
           </tfoot>
         </table>
-        ${uneLigneADdm ? `<p style="color:#4b5563;font-size:11px;margin-top:14px;">DDM = minimum best-before / consumption date. Please print the date shown in the "DDM to print" column on the corresponding punnets/packaging.</p>` : ""}
+        ${uneLigneADdm ? `<p style="color:#4b5563;font-size:11px;margin-top:14px;">DDM = minimum best-before / consumption date. Please print the date shown in the "Date" column on the corresponding punnets/packaging.</p>` : ""}
         <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Please confirm receipt of this order.</p>
       </div>
     `;
