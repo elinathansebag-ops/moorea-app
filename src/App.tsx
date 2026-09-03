@@ -2643,10 +2643,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { icon: "📦", label: "Stock", color: "#0891b2", badge: null, stat: "GMS & Prestige", action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
     ];
 
-    const row2 = [
+    // 03/09/2026 — Demande d'Elinathan : les 2 premières lignes (row1 + row2Entrepot) sont des
+    // actions d'entrepôt (quai/manutention), la dernière (row2Bureau) des actions de bureau
+    // (suivi administratif/commercial) — on les sépare visuellement avec un sous-titre dédié.
+    const row2Entrepot = [
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
+    ];
+
+    const row2Bureau = [
       { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
       { icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       { icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
@@ -2791,11 +2797,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             </div>
           )}
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 12 }}>
+          <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🏭 Entrepôt</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
             {row1.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+            {row2Entrepot.map((b, i) => <CardCarré key={i} {...b} />)}
+          </div>
+          <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🗂️ Bureau</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-            {row2.map((b, i) => <CardCarré key={i} {...b} />)}
+            {row2Bureau.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
         </div>
       </div>
