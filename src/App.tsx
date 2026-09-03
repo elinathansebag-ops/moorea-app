@@ -2647,14 +2647,17 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
       { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
-      { icon: "🛒", label: "Statt", color: "#ea580c", badge: null, stat: "Ventes réelles + objectifs par période", action: () => { setShowAccueil(false); setShowStatt(true); } },
       { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
       { icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       { icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
-      { icon: "🏷️", label: "Étiquettes", color: "#c8a84b", badge: null, stat: "Créer & imprimer une étiquette", action: () => { setShowAccueil(false); setShowEtiquettes(true); } },
     ];
 
+    // 03/09/2026 — Demande d'Elinathan : Étiquettes et Statt déménagés ici, dans le tiroir
+    // "🍋 Leofresh" (repliable), moins utilisés au quotidien que les modules de la grille
+    // principale ci-dessus.
     const leofreshBtns = [
+      { icon: "🏷️", label: "Étiquettes", color: "#c8a84b", stat: "Créer & imprimer une étiquette", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
+      { icon: "🛒", label: "Statt", color: "#ea580c", stat: "Ventes réelles + objectifs par période", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowStatt(true); } },
       { icon: "📚", label: "Catalogue", color: "#27ae60", stat: "Base articles Moorea", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowCatalogue(true); } },
       { icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowDashboard(true); } },
       { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowGencode(true); } },
