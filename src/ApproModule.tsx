@@ -289,10 +289,12 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   // Pois, rien pour les produits pas en barquette — voir ddmJours sur Produit, réglable dans
   // Configuration). Simplifié le 03/09 à la demande d'Elinathan : plus de jour de référence
   // intermédiaire (lundi/mercredi "qui suit") — la DDM est directement la date de départ
-  // (calculerDateDepart ci-dessus) + le nombre de jours de DDM du produit.
+  // (calculerDateDepart ci-dessus) + le nombre de jours de DDM du produit. Précision du même
+  // jour : pour une commande Week-end, on ajoute 1 jour de plus que le chiffre saisi dans
+  // Configuration (Mid-week reste exactement le chiffre saisi).
   function calculerDateDdm(v: Vague, joursDdm: number): Date {
     const ref = calculerDateDepart(v);
-    ref.setDate(ref.getDate() + joursDdm);
+    ref.setDate(ref.getDate() + joursDdm + (v === "weekend" ? 1 : 0));
     return ref;
   }
 
