@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { fournisseur, vagueLabel, semaineKey, dateDepart, numeroVol, lignes, cc = [], modeTest = false, destinatairesReels = [] } = req.body;
+    const { fournisseur, vagueLabel, semaineKey, dateDepartLabel, numeroVol, lignes, cc = [], modeTest = false, destinatairesReels = [] } = req.body;
 
     if (!fournisseur?.emails?.length) {
       return res.status(400).json({ error: "Aucun email fournisseur fourni" });
@@ -31,9 +31,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Aucune ligne de commande" });
     }
 
-    const dateDepartEn = dateDepart
-      ? new Date(dateDepart).toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
-      : null;
+    // 03/09/2026 — La date de départ est désormais calculée côté client (calculerDateDepart dans
+    // ApproModule.tsx, à partir de la semaine/vague affichée — le champ dateDepart brut n'a
+    // jamais été renseigné par aucune UI) et fournie déjà formatée en anglais (ex. "Wed 9 Sep
+    // (evening) – Thu 10 Sep") — ce endpoint se contente de l'afficher telle quelle.
+    const dateDepartEn = dateDepartLabel || null;
 
     // 31/08/2026 — Poids net/brut ajoutés au mail de commande (demande d'Elinathan), calculés à
     // partir du poids par colis (poidsNetKg/poidsBrutKg, réf. "poid hv.xlsx") x quantité de colis
@@ -51,10 +53,10 @@ export default async function handler(req, res) {
         const ddmFmt = formatDdm(l.ddmDate);
         return `<tr>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">${l.label}</td>
+          ${uneLigneADdm ? `<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#b45309;font-weight:700;">${ddmFmt || "-"}</td>` : ""}
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;">${l.quantite}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#4b5563;">${l.poidsNetKg ? arrondi1(net) + " kg" : "-"}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#4b5563;">${l.poidsBrutKg ? arrondi1(brut) + " kg" : "-"}</td>
-          ${uneLigneADdm ? `<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;color:#b45309;font-weight:700;">${ddmFmt || "-"}</td>` : ""}
         </tr>`;
       })
       .join("");
@@ -82,20 +84,20 @@ export default async function handler(req, res) {
           <thead>
             <tr style="background:#f9fafb;">
               <th style="padding:6px 10px;text-align:left;">Product</th>
+              ${uneLigneADdm ? `<th style="padding:6px 10px;text-align:right;">DDM to print</th>` : ""}
               <th style="padding:6px 10px;text-align:right;">Quantity</th>
               <th style="padding:6px 10px;text-align:right;">Net weight</th>
               <th style="padding:6px 10px;text-align:right;">Gross weight</th>
-              ${uneLigneADdm ? `<th style="padding:6px 10px;text-align:right;">DDM to print</th>` : ""}
             </tr>
           </thead>
           <tbody>${lignesHtml}</tbody>
           <tfoot>
             <tr>
               <td style="padding:8px 10px;font-weight:800;border-top:2px solid #e5e7eb;">Total</td>
+              ${uneLigneADdm ? `<td style="border-top:2px solid #e5e7eb;"></td>` : ""}
               <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${total}</td>
               <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${arrondi1(totalNet)} kg</td>
               <td style="padding:8px 10px;font-weight:800;text-align:right;border-top:2px solid #e5e7eb;">${arrondi1(totalBrut)} kg</td>
-              ${uneLigneADdm ? `<td style="border-top:2px solid #e5e7eb;"></td>` : ""}
             </tr>
           </tfoot>
         </table>
