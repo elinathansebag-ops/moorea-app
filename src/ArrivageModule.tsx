@@ -2293,6 +2293,34 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
+  // ─── RÉCAP WHATSAPP NLT DU JOUR ───
+  // 03/09/2026 — Demande d'Elinathan, en remplacement du "Récap WA" général retiré le 02/09
+  // (celui-là listait TOUS les fournisseurs du jour, jugé jamais utilisé tel quel) : un récap
+  // limité aux seuls retours de reconditionnement NLT du jour ("je veux juste qu'il me fasse un
+  // recap de tout les arrivage nlt"), un par ligne avec son statut.
+  const recapWhatsAppJourNlt = () => {
+    const tousNlt = [...arrivages, ...(arrivagesArchives || [])].filter((a: any) => a.depot === "nlt" && a.reconditionnement_demande_id);
+    if (!tousNlt.length) { alert(`Aucun arrivage NLT pour le ${date}.`); return; }
+
+    const lignes = tousNlt.map((a: any) => {
+      const statutIcone = a.statut === "refusé" ? "❌" : a.statut === "sous réserve" ? "⚠️" : a.statut === "validé" ? "✅" : "📦";
+      const statutLabel = a.statut === "refusé" ? "Refus" : a.statut === "sous réserve" ? "Réserve" : a.statut === "validé" ? "Validé" : "En attente";
+      return `${statutIcone} ${a.produit || "-"}${a.lot_interne ? ` · lot ${a.lot_interne}` : ""} — ${statutLabel}${a.quantite ? ` · ${a.quantite} colis` : ""}`;
+    });
+
+    const n = (s: string) => tousNlt.filter((a: any) => a.statut === s).length;
+    const synthese = [
+      `${tousNlt.length} article${tousNlt.length > 1 ? "s" : ""}`,
+      n("validé") ? `${n("validé")} validé${n("validé") > 1 ? "s" : ""}` : "",
+      n("sous réserve") ? `${n("sous réserve")} en réserve` : "",
+      n("refusé") ? `${n("refusé")} refusé${n("refusé") > 1 ? "s" : ""}` : "",
+      n("en attente") ? `${n("en attente")} en attente` : "",
+    ].filter(Boolean).join(" · ");
+
+    const msg = `ARRIVAGES NLT MOOREA - ${date}\n${synthese}\n\n${lignes.join("\n")}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
   // ─── PRÉVENIR DES ÉCARTS DU JOUR (WhatsApp, UN SEUL message) ───
   // 28/08/2026 — Remplace l'ancienne fenêtre WhatsApp qui s'ouvrait automatiquement à CHAQUE
   // article validé avec un écart de colis (gênant quand on pointe plusieurs retours à la
@@ -2415,10 +2443,22 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
               🖨 Traçabilité
             </button>
-            {/* 02/09/2026 — "Récap WA", "Prévenir écarts" et "Scanner une étiquette" retirés de la
-                barre d'actions du jour à la demande d'Elinathan (jamais utilisés) — les fonctions
-                (recapWhatsAppJour, alerterEcartsJourWhatsApp, onScan/scanInputId) restent en place
-                dans le code, juste masquées/non appelées ici, au cas où on voudrait les remettre. */}
+            {/* 02/09/2026 — "Récap WA" (général), "Prévenir écarts" et "Scanner une étiquette"
+                retirés de la barre d'actions du jour à la demande d'Elinathan (jamais utilisés) —
+                les fonctions (recapWhatsAppJour, alerterEcartsJourWhatsApp, onScan/scanInputId)
+                restent en place dans le code, juste masquées/non appelées ici, au cas où on
+                voudrait les remettre.
+                03/09/2026 — Remis, mais sous une forme différente (recapWhatsAppJourNlt ci-dessus,
+                limité aux retours NLT du jour) : Elinathan ne voulait pas le récap général ni
+                l'alerte écarts, juste un récap WhatsApp des arrivages NLT. */}
+            {allFourn.some(f => /^NLT/.test(f)) && (
+              <button
+                onClick={e => { e.stopPropagation(); recapWhatsAppJourNlt(); }}
+                title="Envoyer sur WhatsApp un récap des arrivages NLT du jour"
+                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #25d366", background: "#f0fdf4", color: "#15803d", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                📲 Récap WA NLT
+              </button>
+            )}
           </div>
           {/* Fournisseurs - en attente + traités regroupés */}
           {allFourn.map(f => (

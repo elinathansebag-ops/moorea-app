@@ -809,7 +809,15 @@ export default function App() {
         } else {
           await envoyerEtiquettePourImpressionPC(arrivageMaj);
         }
-      } catch {}
+      } catch (err) {
+        // 03/09/2026 — Ce catch avalait toute erreur en silence (aucun log, aucun message) :
+        // la validation semblait réussie ("✅ Validé") alors que l'étiquette n'était jamais
+        // vraiment mise en file d'impression, sans que personne ne puisse s'en rendre compte
+        // (signalé par Elinathan : "ya plus d'étiquette qui sorte NLT après la validation").
+        // On log l'erreur réelle et on prévient clairement que l'impression a échoué.
+        console.error("Erreur envoi étiquette à l'impression PC:", err);
+        showToast("⚠️ Validé mais étiquette NON envoyée à l'impression — réessaie ou préviens Elinathan", "error");
+      }
     }
   };
 
