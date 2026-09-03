@@ -262,38 +262,12 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     return () => u();
   }, [semaineKey, vague]);
 
-  // 03/09/2026 — DDM (durée de durabilité minimale) : demande précisée par Elinathan après
-  // discussion — ce n'est PAS "X jours après le départ" tout court. La date à indiquer se calcule
-  // à partir du jour où l'arrivage est généralement compté (le LUNDI suivant pour la vague
-  // Week-end, le MERCREDI suivant pour la vague Mid-week), + le nombre de jours de DDM propre à
-  // chaque produit (23 jours pour la plupart des HV/PG/Sugar Snap, 15 pour Petit Pois, rien pour
-  // les produits pas en barquette — voir ddmJours sur Produit, réglable dans Configuration).
-  // "Suivant" = le prochain lundi/mercredi à partir du lundi de la semaine affichée (semaineOffset
-  // + 1 semaine), puisque Week-end part mercredi soir/jeudi et Mid-week samedi/dimanche : dans les
-  // deux cas, le lundi (resp. mercredi) qui suit tombe forcément dans la semaine suivante.
-  function lundiDeLaSemaine(offset: number): Date {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + offset * 7);
-    const jour = d.getDay(); // 0=dimanche..6=samedi
-    const diffVersLundi = jour === 0 ? -6 : 1 - jour;
-    d.setDate(d.getDate() + diffVersLundi);
-    return d;
-  }
-  function calculerDateDdm(v: Vague, joursDdm: number): Date {
-    const ref = lundiDeLaSemaine(semaineOffset);
-    ref.setDate(ref.getDate() + (v === "weekend" ? 7 : 9)); // +7 = lundi suivant, +9 = mercredi suivant
-    ref.setDate(ref.getDate() + joursDdm);
-    return ref;
-  }
-
   // 03/09/2026 — Date de départ à afficher dans le mail (demande d'Elinathan) : le champ
-  // cell.dateDepart n'est jamais renseigné par aucune UI (champ mort, voir calculerDateDdm
-  // ci-dessus qui calcule déjà tout sans lui) — on calcule donc directement la date de départ.
-  // Correction du même jour (précision d'Elinathan, remplace la 1ère version basée sur la
-  // semaine affichée) : c'est TOUJOURS le premier samedi APRÈS l'envoi du mail pour Week-end, et
-  // le premier mardi APRÈS l'envoi du mail pour Mid-week — donc calculé à partir d'aujourd'hui
-  // (le jour de l'envoi), pas de la semaine/vague affichée à l'écran.
+  // cell.dateDepart n'est jamais renseigné par aucune UI (champ mort) — on calcule donc
+  // directement la date de départ. Précision d'Elinathan : c'est TOUJOURS le premier samedi
+  // APRÈS l'envoi du mail pour Week-end, et le premier mardi APRÈS l'envoi du mail pour Mid-week
+  // — donc calculé à partir d'aujourd'hui (le jour de l'envoi), pas de la semaine/vague affichée
+  // à l'écran (semaineOffset ne sert qu'à savoir où écrire les quantités en base).
   function prochainJourDeLaSemaine(jourCible: number): Date {
     // jourCible : 0 = dimanche, 1 = lundi, ..., 6 = samedi (comme Date.getDay()).
     const d = new Date();
@@ -305,6 +279,21 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   }
   function calculerDateDepart(v: Vague): Date {
     return prochainJourDeLaSemaine(v === "weekend" ? 6 : 2); // 6 = samedi, 2 = mardi
+  }
+
+  // 03/09/2026 — DDM (durée de durabilité minimale) : demande précisée par Elinathan après
+  // discussion — ce n'est PAS "X jours après le départ" tout court. La date à indiquer se calcule
+  // à partir du jour où l'arrivage est généralement compté (le LUNDI qui suit le départ pour la
+  // vague Week-end, le MERCREDI qui suit le départ pour la vague Mid-week), + le nombre de jours
+  // de DDM propre à chaque produit (23 jours pour la plupart des HV/PG/Sugar Snap, 15 pour Petit
+  // Pois, rien pour les produits pas en barquette — voir ddmJours sur Produit, réglable dans
+  // Configuration). Simplifié le 03/09 à la demande d'Elinathan : plus de jour de référence
+  // intermédiaire (lundi/mercredi "qui suit") — la DDM est directement la date de départ
+  // (calculerDateDepart ci-dessus) + le nombre de jours de DDM du produit.
+  function calculerDateDdm(v: Vague, joursDdm: number): Date {
+    const ref = calculerDateDepart(v);
+    ref.setDate(ref.getDate() + joursDdm);
+    return ref;
   }
 
   // 03/09/2026 — Navigation horizontale du tableau matrice repensée comme dans RackModule
