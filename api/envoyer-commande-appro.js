@@ -7,6 +7,11 @@ export const config = { runtime: "nodejs" };
 // avec les mêmes 3 adresses en Cc quel que soit le fournisseur. Le client (ApproModule.tsx) a
 // déjà toutes les données nécessaires (il les lit et les écrit directement dans Firebase via le
 // SDK client, authentifié) — ce endpoint ne fait qu'envoyer l'email, il ne touche pas à Firebase.
+// 03/09/2026 — Demande d'Elinathan : tout ce qui part chez le fournisseur doit être en anglais
+// (les fournisseurs sont au Kenya/Tanzanie/etc., pas francophones) — le mail entier (sujet, corps,
+// noms de produits via labelEn côté client) est donc désormais rédigé en anglais. Ajout aussi de
+// la DDM (durée de vie minimale / date de durabilité minimale) demandée, en nombre de jours après
+// le départ — 23 jours dans 99% des cas, mais réglable côté client (ex. période de Noël).
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -16,7 +21,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { fournisseur, vagueLabel, semaineKey, dateDepart, numeroVol, lignes, cc = [], modeTest = false, destinatairesReels = [] } = req.body;
+    const { fournisseur, vagueLabel, semaineKey, dateDepart, numeroVol, ddmJours, lignes, cc = [], modeTest = false, destinatairesReels = [] } = req.body;
 
     if (!fournisseur?.emails?.length) {
       return res.status(400).json({ error: "Aucun email fournisseur fourni" });
@@ -25,8 +30,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Aucune ligne de commande" });
     }
 
-    const dateDepartFr = dateDepart
-      ? new Date(dateDepart).toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+    const dateDepartEn = dateDepart
+      ? new Date(dateDepart).toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
       : null;
 
     // 31/08/2026 — Poids net/brut ajoutés au mail de commande (demande d'Elinathan), calculés à
@@ -51,27 +56,32 @@ export default async function handler(req, res) {
 
     const banniereTest = modeTest
       ? `<div style="background:#fffbeb;border:1.5px solid #fde3a8;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#b45309;">
-           🧪 MODE TEST — ce mail part uniquement vers toi. En réel, il partirait vers : ${destinatairesReels.join(", ") || "(aucune adresse configurée)"}
+           🧪 TEST MODE — this email is sent only to you. In production it would go to: ${destinatairesReels.join(", ") || "(no address configured)"}
          </div>`
+      : "";
+
+    const ddmHtml = ddmJours
+      ? `<br/>Requested shelf life (DDM): minimum <b>${ddmJours} days</b> after departure`
       : "";
 
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:560px;">
         ${banniereTest}
-        <h2 style="color:#16a34a;margin-bottom:4px;">Commande Moorea — ${fournisseur.nom}</h2>
+        <h2 style="color:#16a34a;margin-bottom:4px;">Moorea Order — ${fournisseur.nom}</h2>
         <p style="color:#4b5563;font-size:13px;margin-top:0;">
-          Vague : <b>${vagueLabel || "-"}</b> · Semaine ${semaineKey || "-"}
-          ${dateDepartFr ? `<br/>Départ souhaité : <b>${dateDepartFr}</b>` : ""}
-          ${numeroVol ? `<br/>Vol / conteneur : <b>${numeroVol}</b>` : ""}
-          ${fournisseur.transitaire ? `<br/>Transitaire : <b>${fournisseur.transitaire}</b>` : ""}
+          Wave: <b>${vagueLabel || "-"}</b> · Week ${semaineKey || "-"}
+          ${dateDepartEn ? `<br/>Requested departure: <b>${dateDepartEn}</b>` : ""}
+          ${numeroVol ? `<br/>Flight / container: <b>${numeroVol}</b>` : ""}
+          ${fournisseur.transitaire ? `<br/>Freight forwarder: <b>${fournisseur.transitaire}</b>` : ""}
+          ${ddmHtml}
         </p>
         <table style="border-collapse:collapse;width:100%;margin-top:10px;">
           <thead>
             <tr style="background:#f9fafb;">
-              <th style="padding:6px 10px;text-align:left;">Produit</th>
-              <th style="padding:6px 10px;text-align:right;">Quantité</th>
-              <th style="padding:6px 10px;text-align:right;">Poids net</th>
-              <th style="padding:6px 10px;text-align:right;">Poids brut</th>
+              <th style="padding:6px 10px;text-align:left;">Product</th>
+              <th style="padding:6px 10px;text-align:right;">Quantity</th>
+              <th style="padding:6px 10px;text-align:right;">Net weight</th>
+              <th style="padding:6px 10px;text-align:right;">Gross weight</th>
             </tr>
           </thead>
           <tbody>${lignesHtml}</tbody>
@@ -84,7 +94,8 @@ export default async function handler(req, res) {
             </tr>
           </tfoot>
         </table>
-        <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Merci de confirmer la bonne réception de cette commande.</p>
+        ${ddmJours ? `<p style="color:#4b5563;font-size:11px;margin-top:14px;">DDM = minimum best-before / consumption date. Please ensure at least ${ddmJours} days of shelf life remain, counted from the departure date above.</p>` : ""}
+        <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Please confirm receipt of this order.</p>
       </div>
     `;
 
@@ -97,7 +108,7 @@ export default async function handler(req, res) {
       from: "Jennifer Martin <jennifer.martin@moorea.fr>",
       to: fournisseur.emails.join(","),
       cc: cc.length > 0 ? cc.join(",") : undefined,
-      subject: `${modeTest ? "[TEST] " : ""}Commande Moorea — ${fournisseur.nom} — ${vagueLabel || ""} ${semaineKey || ""}`.trim(),
+      subject: `${modeTest ? "[TEST] " : ""}Moorea Order — ${fournisseur.nom} — ${vagueLabel || ""} ${semaineKey || ""}`.trim(),
       html,
     });
 

@@ -31,7 +31,10 @@ type Fournisseur = { id: string; nom: string; transitaire: string; emails: strin
 // poidsNetKg / poidsBrutKg = poids d'UN colis (carton) de ce produit, en kg — donnés par
 // Elinathan le 31/08/2026 (fichier "poid hv.xlsx") pour calculer le poids total des commandes
 // (net + brut), utile pour la déclaration douane (DCP) au départ.
-type Produit = { id: string; label: string; ordre: number; qteParColis?: string; poidsNetKg?: number; poidsBrutKg?: number };
+// labelEn = nom du produit en anglais, utilisé dans le mail envoyé aux fournisseurs (demande
+// d'Elinathan du 03/09/2026 : tout ce qui part chez le fournisseur doit être en anglais).
+// Valeur par défaut = traduction fournie ci-dessous, modifiable dans Configuration.
+type Produit = { id: string; label: string; labelEn?: string; ordre: number; qteParColis?: string; poidsNetKg?: number; poidsBrutKg?: number };
 type Vague = "weekend" | "midweek";
 
 // Confirmé par Elinathan (31/08/2026) : "Week-end" est la commande envoyée mercredi soir/jeudi
@@ -57,21 +60,21 @@ const FOURNISSEURS_DEFAUT: Fournisseur[] = [
 
 // Produits repris du tableau "appro process SEMAINE 36" envoyé par Elinathan.
 const PRODUITS_DEFAUT: Produit[] = [
-  { id: "hv250lidl", label: "HV 250G LIDL", ordre: 0, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
-  { id: "hv250", label: "HV 250G", ordre: 1, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
-  { id: "triplepack", label: "Triple Pack", ordre: 2, qteParColis: "200g par 8", poidsNetKg: 1.6, poidsBrutKg: 2 },
-  { id: "hv400", label: "HV 400", ordre: 3, qteParColis: "400g par 8", poidsNetKg: 3.2, poidsBrutKg: 3.6 },
-  { id: "hv500bags", label: "HV 500G Bags", ordre: 4, qteParColis: "500g par 6", poidsNetKg: 3, poidsBrutKg: 3.4 },
-  { id: "hv500", label: "HV 500G", ordre: 5, qteParColis: "500g par 8", poidsNetKg: 4, poidsBrutKg: 4.4 },
-  { id: "hv350", label: "HV 350G", ordre: 6, qteParColis: "350g par 8", poidsNetKg: 2.8, poidsBrutKg: 3.2 },
-  { id: "authentic", label: "Authentic", ordre: 7, qteParColis: "Vrac", poidsNetKg: 2.7, poidsBrutKg: 3 },
-  { id: "excellence", label: "Excellence", ordre: 8, qteParColis: "Vrac", poidsNetKg: 2, poidsBrutKg: 2.3 },
-  { id: "pg2kg", label: "PG Vrac 2kg", ordre: 9, qteParColis: "Vrac", poidsNetKg: 2, poidsBrutKg: 2.3 },
-  { id: "pg250x12", label: "PG 250g x12", ordre: 10, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
-  { id: "pg150x6", label: "PG 150g x6", ordre: 11, qteParColis: "150g par 6", poidsNetKg: 0.912, poidsBrutKg: 1.2 },
-  { id: "sugar250x6", label: "Sugar Snap 250g x6", ordre: 12, qteParColis: "250g par 6", poidsNetKg: 1.5, poidsBrutKg: 1.8 },
-  { id: "sugar150x6", label: "Sugar Snap 150g x6", ordre: 13, qteParColis: "150g par 6", poidsNetKg: 0.9, poidsBrutKg: 1.2 },
-  { id: "petitpois", label: "Petit Pois", ordre: 14, qteParColis: "250g par 8", poidsNetKg: 2, poidsBrutKg: 2.3 },
+  { id: "hv250lidl", label: "HV 250G LIDL", labelEn: "Green Beans 250g LIDL", ordre: 0, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "hv250", label: "HV 250G", labelEn: "Green Beans 250g", ordre: 1, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "triplepack", label: "Triple Pack", labelEn: "Triple Pack", ordre: 2, qteParColis: "200g par 8", poidsNetKg: 1.6, poidsBrutKg: 2 },
+  { id: "hv400", label: "HV 400", labelEn: "Green Beans 400g", ordre: 3, qteParColis: "400g par 8", poidsNetKg: 3.2, poidsBrutKg: 3.6 },
+  { id: "hv500bags", label: "HV 500G Bags", labelEn: "Green Beans 500g Bags", ordre: 4, qteParColis: "500g par 6", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "hv500", label: "HV 500G", labelEn: "Green Beans 500g", ordre: 5, qteParColis: "500g par 8", poidsNetKg: 4, poidsBrutKg: 4.4 },
+  { id: "hv350", label: "HV 350G", labelEn: "Green Beans 350g", ordre: 6, qteParColis: "350g par 8", poidsNetKg: 2.8, poidsBrutKg: 3.2 },
+  { id: "authentic", label: "Authentic", labelEn: "Authentic", ordre: 7, qteParColis: "Vrac", poidsNetKg: 2.7, poidsBrutKg: 3 },
+  { id: "excellence", label: "Excellence", labelEn: "Excellence", ordre: 8, qteParColis: "Vrac", poidsNetKg: 2, poidsBrutKg: 2.3 },
+  { id: "pg2kg", label: "PG Vrac 2kg", labelEn: "Fine Beans Bulk 2kg", ordre: 9, qteParColis: "Vrac", poidsNetKg: 2, poidsBrutKg: 2.3 },
+  { id: "pg250x12", label: "PG 250g x12", labelEn: "Fine Beans 250g x12", ordre: 10, qteParColis: "250g par 12", poidsNetKg: 3, poidsBrutKg: 3.4 },
+  { id: "pg150x6", label: "PG 150g x6", labelEn: "Fine Beans 150g x6", ordre: 11, qteParColis: "150g par 6", poidsNetKg: 0.912, poidsBrutKg: 1.2 },
+  { id: "sugar250x6", label: "Sugar Snap 250g x6", labelEn: "Sugar Snap 250g x6", ordre: 12, qteParColis: "250g par 6", poidsNetKg: 1.5, poidsBrutKg: 1.8 },
+  { id: "sugar150x6", label: "Sugar Snap 150g x6", labelEn: "Sugar Snap 150g x6", ordre: 13, qteParColis: "150g par 6", poidsNetKg: 0.9, poidsBrutKg: 1.2 },
+  { id: "petitpois", label: "Petit Pois", labelEn: "Garden Peas", ordre: 14, qteParColis: "250g par 8", poidsNetKg: 2, poidsBrutKg: 2.3 },
 ];
 
 // Toujours en Cc, quel que soit le fournisseur (demande du 31/08/2026).
@@ -211,6 +214,46 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
     });
     return () => u();
   }, [semaineKey, vague]);
+
+  // 03/09/2026 — DDM (durée de vie minimale/date de durabilité minimale) demandée au fournisseur,
+  // exprimée en nombre de jours après le départ — demande d'Elinathan : 99% du temps c'est 23
+  // jours, mais on en demande parfois plus (ex. période de Noël), donc c'est réglable par
+  // semaine/vague plutôt que codé en dur. Stocké sous une clé "_reglages" dans le même noeud que
+  // les commandes par fournisseur (elle n'entre jamais en collision, aucun fournisseur ne
+  // s'appelle "_reglages", et fournisseurs.map ne lit que les vrais id de fournisseurs).
+  const ddmJours = (commandes as any)?.["_reglages"]?.ddmJours ?? 23;
+  const setDdmJours = (n: number) => {
+    update(ref(db, `appro/commandes/${semaineKey}/${vague}/_reglages`), { ddmJours: n });
+  };
+
+  // 03/09/2026 — Scrollbar horizontale dupliquée en haut ET en bas du tableau matrice (demande
+  // d'Elinathan) : tableScrollRef = le tableau lui-même (sa scrollbar native fait déjà "en bas"),
+  // tableScrollTopRef = une barre fine juste au-dessus, synchronisée avec lui dans les 2 sens.
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const tableScrollTopRef = useRef<HTMLDivElement>(null);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const syncingScrollRef = useRef(false);
+  const syncScrollFromTable = () => {
+    if (syncingScrollRef.current) return;
+    syncingScrollRef.current = true;
+    if (tableScrollTopRef.current && tableScrollRef.current) tableScrollTopRef.current.scrollLeft = tableScrollRef.current.scrollLeft;
+    syncingScrollRef.current = false;
+  };
+  const syncScrollFromTop = () => {
+    if (syncingScrollRef.current) return;
+    syncingScrollRef.current = true;
+    if (tableScrollRef.current && tableScrollTopRef.current) tableScrollRef.current.scrollLeft = tableScrollTopRef.current.scrollLeft;
+    syncingScrollRef.current = false;
+  };
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    const mesurer = () => setTableScrollWidth(el.scrollWidth);
+    mesurer();
+    const ro = new ResizeObserver(mesurer);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [produits, fournisseurs, commandes]);
 
   // Charge tout l'historique (toutes les semaines déjà importées) pour les stats.
   useEffect(() => {
@@ -486,7 +529,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   async function envoyerCommande(f: Fournisseur, silencieux = false): Promise<{ ok: boolean; message: string }> {
     const cell = commandes[f.id] || {};
     const lignes = produits
-      .map(p => ({ label: p.label, quantite: cell.quantites?.[p.id] || 0, poidsNetKg: p.poidsNetKg || 0, poidsBrutKg: p.poidsBrutKg || 0 }))
+      .map(p => ({ label: p.labelEn || p.label, quantite: cell.quantites?.[p.id] || 0, poidsNetKg: p.poidsNetKg || 0, poidsBrutKg: p.poidsBrutKg || 0 }))
       .filter(l => l.quantite > 0);
     if (lignes.length === 0) {
       const msg = `✗ Aucune quantité saisie pour ${f.nom}`;
@@ -515,6 +558,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
           semaineKey,
           dateDepart: cell.dateDepart || "",
           numeroVol: cell.numeroVol || "",
+          ddmJours,
           lignes,
           cc,
         }),
@@ -660,8 +704,29 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
               <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.gray200, display: "inline-block" }} /> Pas encore rempli</span>
             </div>
 
-            {/* Tableau matrice fournisseur x produit */}
-            <div style={{ overflowX: "auto", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, marginBottom: 16 }}>
+            {/* 03/09/2026 — DDM (date de durabilité minimale) demandée au fournisseur, en nombre de
+                jours après le départ — envoyée dans chaque mail de commande. 23 jours par défaut
+                (99% des cas), réglable ici pour les périodes où on en demande plus (ex. Noël). */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 12, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 700, color: COLORS.gray700 }}>📅 DDM demandée :</span>
+              <input
+                type="number" min={1}
+                value={ddmJours}
+                onChange={e => setDdmJours(Math.max(1, parseInt(e.target.value) || 23))}
+                style={{ width: 55, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, textAlign: "center", fontWeight: 700 }}
+              />
+              <span style={{ color: COLORS.gray400 }}>jours après le départ (23 par défaut — augmente-le pour les périodes comme Noël). Inclus dans chaque mail de commande.</span>
+            </div>
+
+            {/* Tableau matrice fournisseur x produit — barre de défilement horizontale dupliquée
+                en haut du tableau (demande d'Elinathan, 03/09/2026) : avant, avec beaucoup de
+                colonnes produits, il fallait scroller tout en bas du tableau pour trouver la
+                barre — maintenant il y en a une juste au-dessus aussi, synchronisée avec celle du
+                bas (native, en overflow du tableau lui-même). */}
+            <div ref={tableScrollTopRef} onScroll={syncScrollFromTop} style={{ overflowX: "auto", overflowY: "hidden", marginBottom: 2 }}>
+              <div style={{ width: tableScrollWidth, height: 1 }} />
+            </div>
+            <div ref={tableScrollRef} onScroll={syncScrollFromTable} style={{ overflowX: "auto", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, marginBottom: 16 }}>
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                 <thead>
                   {/* 31/08/2026 — En-tête colorée (demande d'Elinathan : "que ça donne envie") : fond
@@ -953,7 +1018,10 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
               {produits.map(p => (
                 <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, padding: "8px 12px" }}>
                   <span style={{ fontSize: 13, color: COLORS.gray700 }}>{p.label}</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10.5, color: COLORS.gray400 }}>Nom EN</span>
+                    <input type="text" placeholder={p.label} value={p.labelEn ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { labelEn: e.target.value || null })}
+                      style={{ width: 130, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5 }} />
                     <span style={{ fontSize: 10.5, color: COLORS.gray400 }}>Net (kg)</span>
                     <input type="number" step="0.1" min={0} value={p.poidsNetKg ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { poidsNetKg: e.target.value === "" ? null : parseFloat(e.target.value) })}
                       style={{ width: 60, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
