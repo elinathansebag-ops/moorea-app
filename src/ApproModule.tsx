@@ -862,6 +862,28 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
               .appro-scrub::-moz-range-thumb{ width:20px; height:20px; border-radius:50%; background:${COLORS.primary}; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
               .appro-scrub::-moz-range-track{ background:${COLORS.gray200}; height:6px; border-radius:999px; }
             `}</style>
+            {/* 03/09/2026 — Curseur de défilement déplacé EN HAUT du tableau (demande d'Elinathan :
+                "un curseur en haut avec une petite boule pour bouger dans le tableau") — permet de
+                se déplacer d'un coup dans les colonnes produits sans avoir à scroller finement en
+                bas du tableau (même principe que dans le module Rayonnage/Rack). */}
+            {tableMaxScroll > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "0 4px" }}>
+                <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 800, flexShrink: 0 }}>◂</span>
+                <input
+                  type="range"
+                  className="appro-scrub"
+                  min={0}
+                  max={tableMaxScroll}
+                  value={tableScrollLeft}
+                  onChange={e => {
+                    const v = Number(e.target.value);
+                    setTableScrollLeft(v);
+                    if (tableScrollRef.current) tableScrollRef.current.scrollLeft = v;
+                  }}
+                />
+                <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 800, flexShrink: 0 }}>▸</span>
+              </div>
+            )}
             <div style={{ position: "relative", marginBottom: 8 }}>
               <div ref={tableScrollRef} style={{ overflowX: "auto", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12 }}>
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
@@ -878,6 +900,34 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                     ))}
                     <th style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primary, color: "#fff", padding: "8px 10px", minWidth: TOTAL_WIDTH, textAlign: "center", fontWeight: 800, zIndex: 1, boxShadow: "-2px 0 4px rgba(0,0,0,0.15)" }}>Total</th>
                     <th style={{ position: "sticky", right: 0, background: COLORS.primary, color: "#fff", padding: "8px 10px", minWidth: ENVOI_WIDTH, textAlign: "center", zIndex: 1 }}>Envoi</th>
+                  </tr>
+                  {/* 03/09/2026 — Totaux par article dupliqués juste sous l'en-tête (demande
+                      d'Elinathan : "les totaux par article en haut aussi") : avant, il fallait
+                      scroller tout en bas du tableau pour les voir — mêmes lignes qu'en pied de
+                      tableau (tfoot plus bas), gardées aussi en bas pour qui préfère les voir là. */}
+                  <tr style={{ borderTop: `2px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight }}>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.primaryLight, padding: "8px 10px", fontWeight: 800, color: COLORS.primary, zIndex: 2 }}>Total (colis)</td>
+                    {produits.map(p => (
+                      <td key={p.id} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 800, color: COLORS.primary }}>{totalColonne(p.id) || "-"}</td>
+                    ))}
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primaryLight, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.primaryLight }} />
+                  </tr>
+                  <tr style={{ background: COLORS.secondaryLight }}>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.secondaryLight, padding: "4px 10px", fontWeight: 700, fontSize: 10.5, color: COLORS.secondary, zIndex: 2 }}>Poids net (kg)</td>
+                    {produits.map(p => (
+                      <td key={p.id} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.secondary }}>{poidsNetColonne(p.id) ? arrondi1(poidsNetColonne(p.id)) : "-"}</td>
+                    ))}
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.secondaryLight, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.secondary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.secondaryLight }} />
+                  </tr>
+                  <tr style={{ background: COLORS.amberLight }}>
+                    <td style={{ position: "sticky", left: 0, background: COLORS.amberLight, padding: "4px 10px 8px", fontWeight: 700, fontSize: 10.5, color: "#b45309", zIndex: 2 }}>Poids brut (kg)</td>
+                    {produits.map(p => (
+                      <td key={p.id} style={{ padding: "4px 6px 8px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: "#b45309" }}>{poidsBrutColonne(p.id) ? arrondi1(poidsBrutColonne(p.id)) : "-"}</td>
+                    ))}
+                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.amberLight, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: "#b45309", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
+                    <td style={{ position: "sticky", right: 0, background: COLORS.amberLight }} />
                   </tr>
                 </thead>
                 <tbody>
@@ -983,27 +1033,6 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                 </div>
               )}
             </div>
-            {/* Curseur de défilement horizontal — permet de se déplacer d'un coup dans les
-                colonnes produits sans avoir à scroller finement (même principe que dans le
-                module Rayonnage/Rack). */}
-            {tableMaxScroll > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, padding: "0 4px" }}>
-                <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 800, flexShrink: 0 }}>◂</span>
-                <input
-                  type="range"
-                  className="appro-scrub"
-                  min={0}
-                  max={tableMaxScroll}
-                  value={tableScrollLeft}
-                  onChange={e => {
-                    const v = Number(e.target.value);
-                    setTableScrollLeft(v);
-                    if (tableScrollRef.current) tableScrollRef.current.scrollLeft = v;
-                  }}
-                />
-                <span style={{ fontSize: 13, color: COLORS.primary, fontWeight: 800, flexShrink: 0 }}>▸</span>
-              </div>
-            )}
             <p style={{ fontSize: 11, color: COLORS.gray400 }}>
               Le mail de commande part de jennifer.martin@moorea.fr, en Cc à hillel@leofresh.com, oumaima.ilhami@moorea.fr et elinathan.sebag@moorea.fr.
               <br />Sous chaque nom de produit : poids net / poids brut par colis (réf. "poid hv.xlsx"). Les 2 dernières lignes du tableau donnent le poids net et brut total par produit et pour toute la commande — utile pour la déclaration douane (DCP).
