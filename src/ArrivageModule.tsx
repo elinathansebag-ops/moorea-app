@@ -977,7 +977,11 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
               nombre de palettes saisi à la validation restent individuels à chaque arrivage. */}
           {paletteAnnonceInfo && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, background: "#fffbf0", border: "1.5px solid #f3e3b8", borderRadius: 10, padding: "8px 12px", marginBottom: 10 }}>
-              {!editionPalettesAnnoncees ? (
+              {/* 03/09/2026 — Quand rien n'a encore été annoncé (0 grande + 0 demi, aucune
+                  correction manuelle), on affiche directement les cases de saisie vides plutôt
+                  que le texte "0 grande + 0 demi" (demande d'Elinathan) — pas besoin de cliquer
+                  "Modifier" en premier pour renseigner un premier total. */}
+              {!editionPalettesAnnoncees && (paletteAnnonceInfo.grandes > 0 || paletteAnnonceInfo.demi > 0) ? (
                 <>
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6f2e" }}>
                     🎫 Palettes annoncées{paletteAnnonceInfo.source === "manuel" ? " (corrigé)" : ""} : {paletteAnnonceInfo.grandes} grande{paletteAnnonceInfo.grandes > 1 ? "s" : ""} + {paletteAnnonceInfo.demi} demi
@@ -991,12 +995,15 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
                 </>
               ) : (
                 <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", width: "100%" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6f2e", whiteSpace: "nowrap" }}>🎫 Palettes annoncées</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#8a6f2e" }}>Grandes</span>
-                  <input type="number" value={ediGrandes} onChange={e => setEdiGrandes(e.target.value)} style={{ width: 56, padding: "5px 7px", border: "1.5px solid #e8d9a8", borderRadius: 6, fontSize: 12 }} />
+                  <input type="number" placeholder="0" value={ediGrandes} onChange={e => setEdiGrandes(e.target.value)} style={{ width: 56, padding: "5px 7px", border: "1.5px solid #e8d9a8", borderRadius: 6, fontSize: 12 }} />
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#8a6f2e" }}>Demi</span>
-                  <input type="number" value={ediDemi} onChange={e => setEdiDemi(e.target.value)} style={{ width: 56, padding: "5px 7px", border: "1.5px solid #e8d9a8", borderRadius: 6, fontSize: 12 }} />
+                  <input type="number" placeholder="0" value={ediDemi} onChange={e => setEdiDemi(e.target.value)} style={{ width: 56, padding: "5px 7px", border: "1.5px solid #e8d9a8", borderRadius: 6, fontSize: 12 }} />
                   <button onClick={validerPalettesAnnoncees} style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#c8a84b", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓ Valider</button>
-                  <button onClick={() => setEditionPalettesAnnoncees(false)} style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e8d9a8", background: "#fff", color: "#8a6f2e", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                  {editionPalettesAnnoncees && (
+                    <button onClick={() => setEditionPalettesAnnoncees(false)} style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e8d9a8", background: "#fff", color: "#8a6f2e", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                  )}
                 </div>
               )}
             </div>
@@ -2644,17 +2651,11 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
                 les fonctions (recapWhatsAppJour, alerterEcartsJourWhatsApp, onScan/scanInputId)
                 restent en place dans le code, juste masquées/non appelées ici, au cas où on
                 voudrait les remettre.
-                03/09/2026 — Remis, mais sous une forme différente (recapWhatsAppJourNlt ci-dessus,
-                limité aux retours NLT du jour) : Elinathan ne voulait pas le récap général ni
-                l'alerte écarts, juste un récap WhatsApp des arrivages NLT. */}
-            {allFourn.some(f => /^NLT/.test(f)) && (
-              <button
-                onClick={e => { e.stopPropagation(); recapWhatsAppJourNlt(); }}
-                title="Envoyer sur WhatsApp un récap des arrivages NLT du jour"
-                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #25d366", background: "#f0fdf4", color: "#15803d", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-                📲 Récap WA NLT
-              </button>
-            )}
+                03/09/2026 — "📲 Récap WA NLT" (recapWhatsAppJourNlt) retiré à son tour : il faisait
+                doublon avec le popup de récap/écarts qui s'ouvre maintenant automatiquement à la
+                fin du pointage groupé NLT/Andès (PointageGroupeNLT, bouton "✓ Valider tout
+                l'arrivage" → popup → "📲 Envoyer par WhatsApp"). La fonction recapWhatsAppJourNlt
+                reste définie plus haut, juste non appelée ici. */}
           </div>
           {/* Fournisseurs - en attente + traités regroupés */}
           {allFourn.map(f => (
