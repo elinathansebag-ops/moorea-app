@@ -2626,15 +2626,12 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
         <div style={{ background: "#1a2e1a", borderRadius: "0 0 14px 14px", padding: "10px 14px 14px", marginBottom: 8 }}>
           {/* Barre d'actions */}
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            {/* Bouton Tout valider */}
-            {arrivages.some((a: any) => a.statut === "en attente") && (
-              <button
-                onClick={e => { e.stopPropagation(); handleValiderTout(); }}
-                disabled={validatingAll}
-                style={{ flex: 1, padding: "9px 14px", borderRadius: 10, border: "none", background: validatingAll ? "rgba(39,174,96,0.4)" : "linear-gradient(135deg, #27ae60, #1e8449)", color: "#fff", cursor: validatingAll ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                {validatingAll ? "⏳ Validation..." : `✅ Tout valider (${arrivages.filter((a: any) => a.statut === "en attente").length})`}
-              </button>
-            )}
+            {/* 03/09/2026 — Bouton "✅ Tout valider (nettoyage en masse)" retiré à la demande
+                d'Elinathan : validait tous les arrivages en attente du jour d'un coup sans passer
+                par un vrai pointage (chaque arrivage doit être pointé individuellement, ou via le
+                pointage groupé NLT/Andès dédié — voir PointageGroupeNLT plus haut). La fonction
+                handleValiderTout n'est plus appelée nulle part mais reste définie ci-dessous, au
+                cas où ce nettoyage redevienne utile un jour. */}
             {/* Bouton imprimer traçabilité fournisseur du jour */}
             <button
               onClick={e => { e.stopPropagation(); telechargerTracabilite(); }}
