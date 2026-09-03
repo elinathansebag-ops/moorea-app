@@ -132,6 +132,31 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
   // Config fournisseurs/produits
   const [editFournisseur, setEditFournisseur] = useState<Fournisseur | null>(null);
   const [nouveauProduitLabel, setNouveauProduitLabel] = useState("");
+  // 03/09/2026 — Les champs produit (Nom EN, Net/Brut, DDM) écrivaient sur Firebase à CHAQUE
+  // frappe, sans état local tampon : le listener onValue("appro/produits") pouvait alors renvoyer
+  // un ancien instantané pendant la frappe (ou croiser l'écriture du backfill automatique
+  // labelEn/ddmJours ci-dessus) et effacer ce qui venait d'être tapé — signalé par Elinathan :
+  // "quand je passe une ddm à 9 ça la supprime". On tamponne maintenant la saisie localement et on
+  // n'écrit sur Firebase qu'au blur (quand le champ perd le focus), ce qui élimine cette course.
+  const [produitDraft, setProduitDraft] = useState<Record<string, Partial<Record<"labelEn" | "poidsNetKg" | "poidsBrutKg" | "ddmJours", string>>>>({});
+  const draftValue = (id: string, champ: "labelEn" | "poidsNetKg" | "poidsBrutKg" | "ddmJours", valeurActuelle: any): string => {
+    const v = produitDraft[id]?.[champ];
+    return v !== undefined ? v : (valeurActuelle ?? "");
+  };
+  const setDraft = (id: string, champ: "labelEn" | "poidsNetKg" | "poidsBrutKg" | "ddmJours", val: string) => {
+    setProduitDraft(prev => ({ ...prev, [id]: { ...prev[id], [champ]: val } }));
+  };
+  const commitDraft = (id: string, champ: "labelEn" | "poidsNetKg" | "poidsBrutKg" | "ddmJours", parser: (s: string) => any) => {
+    const val = produitDraft[id]?.[champ];
+    if (val === undefined) return;
+    update(ref(db, `appro/produits/${id}`), { [champ]: val.trim() === "" ? null : parser(val) });
+    setProduitDraft(prev => {
+      if (!prev[id]) return prev;
+      const champs = { ...prev[id] };
+      delete champs[champ];
+      return { ...prev, [id]: champs };
+    });
+  };
 
   // 31/08/2026 — Import direct du fichier Excel "appro process" de Jennifer (demande
   // d'Elinathan : pas de saisie manuelle pour l'instant). Le fichier contient 2 tableaux
@@ -1218,16 +1243,24 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
                   <span style={{ fontSize: 13, color: COLORS.gray700 }}>{p.label}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 10.5, color: COLORS.gray400 }}>Nom EN</span>
-                    <input type="text" placeholder={p.label} value={p.labelEn ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { labelEn: e.target.value || null })}
+                    <input type="text" placeholder={p.label} value={draftValue(p.id, "labelEn", p.labelEn)}
+                      onChange={e => setDraft(p.id, "labelEn", e.target.value)}
+                      onBlur={() => commitDraft(p.id, "labelEn", v => v)}
                       style={{ width: 130, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5 }} />
                     <span style={{ fontSize: 10.5, color: COLORS.gray400 }}>Net (kg)</span>
-                    <input type="number" step="0.1" min={0} value={p.poidsNetKg ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { poidsNetKg: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                    <input type="number" step="0.1" min={0} value={draftValue(p.id, "poidsNetKg", p.poidsNetKg)}
+                      onChange={e => setDraft(p.id, "poidsNetKg", e.target.value)}
+                      onBlur={() => commitDraft(p.id, "poidsNetKg", parseFloat)}
                       style={{ width: 60, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
                     <span style={{ fontSize: 10.5, color: COLORS.gray400 }}>Brut (kg)</span>
-                    <input type="number" step="0.1" min={0} value={p.poidsBrutKg ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { poidsBrutKg: e.target.value === "" ? null : parseFloat(e.target.value) })}
+                    <input type="number" step="0.1" min={0} value={draftValue(p.id, "poidsBrutKg", p.poidsBrutKg)}
+                      onChange={e => setDraft(p.id, "poidsBrutKg", e.target.value)}
+                      onBlur={() => commitDraft(p.id, "poidsBrutKg", parseFloat)}
                       style={{ width: 60, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
                     <span style={{ fontSize: 10.5, color: COLORS.gray400 }} title="Jours de DDM après le lundi (Week-end) ou mercredi (Mid-week) suivant. Vide = produit pas en barquette, pas de DDM.">DDM (j)</span>
-                    <input type="number" min={0} placeholder="—" value={p.ddmJours ?? ""} onChange={e => update(ref(db, `appro/produits/${p.id}`), { ddmJours: e.target.value === "" ? null : parseInt(e.target.value) })}
+                    <input type="number" min={0} placeholder="—" value={draftValue(p.id, "ddmJours", p.ddmJours)}
+                      onChange={e => setDraft(p.id, "ddmJours", e.target.value)}
+                      onBlur={() => commitDraft(p.id, "ddmJours", v => parseInt(v))}
                       style={{ width: 45, padding: "4px 6px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 11.5, textAlign: "center" }} />
                     <button onClick={() => supprimerProduit(p.id)} style={{ padding: "4px 10px", borderRadius: 6, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>🗑️</button>
                   </div>
