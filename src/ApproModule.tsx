@@ -662,7 +662,11 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
         quantite: cell.quantites?.[p.id] || 0,
         poidsNetKg: p.poidsNetKg || 0,
         poidsBrutKg: p.poidsBrutKg || 0,
-        ddmDate: p.ddmJours ? calculerDateDdm(vague, p.ddmJours).toISOString() : null,
+        // 03/09/2026 — Test explicite "!= null" plutôt que la simple troncature JS (`p.ddmJours ?
+        // ...`) : avec un simple test de vérité, une DDM à 0 jour (0 est "faux" en JS) était
+        // traitée comme "pas de DDM" — silencieusement absente du mail — alors que 0 est une
+        // vraie valeur saisie, pas un champ vide.
+        ddmDate: p.ddmJours != null ? calculerDateDdm(vague, p.ddmJours).toISOString() : null,
       }))
       .filter(l => l.quantite > 0);
     if (lignes.length === 0) {
