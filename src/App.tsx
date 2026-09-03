@@ -660,7 +660,7 @@ export default function App() {
     // coincée sur "commandé" dans Prestataires, alors que le carton avait bel et bien été reçu
     // et pointé ici. La conformité (litige ou non) ne doit pas conditionner si la commande est
     // marquée reçue — seulement si le décompte de colis, lui, correspondait exactement.
-    if (arrivage.carton_commande_id) {
+    if (arrivage.carton_commande_id && !arrivage.test) {
       try {
         await update(ref(db, `prestataires_cartons/${arrivage.carton_commande_id}`), {
           statut: "reçu" as const,
@@ -686,7 +686,7 @@ export default function App() {
     // la palette avait bien été validée à l'agréage. On ne conditionne plus ça à la conformité —
     // seule la quantité réellement reçue (colisRecusFinal) compte, la non-conformité éventuelle
     // reste visible ailleurs (statut "sous réserve" de l'arrivage, litige).
-    if (arrivage.ifco_palette_commande_id) {
+    if (arrivage.ifco_palette_commande_id && !arrivage.test) {
       try {
         await update(ref(db, `ifco_palettes_commandes/${arrivage.ifco_palette_commande_id}`), {
           statut: "reçu" as const,
@@ -763,7 +763,10 @@ export default function App() {
           console.error("Erreur auto-validation retourPresta à l'agréage:", error);
         }
 
-        if (caissesPleines > 0) {
+        // 03/09/2026 — Garde-fou "jeu de test" (Configuration → Reconditionnement) : les
+        // arrivages tagués test:true ne doivent JAMAIS toucher le vrai stock de caisses IFCO,
+        // même si un champ caissesIfco s'y retrouve par erreur — on saute ce bloc entièrement.
+        if (caissesPleines > 0 && !arrivage.test) {
           const { get } = await import("firebase/database");
           const levelsSnap = await get(ref(db, "ifco_stock/levels"));
           const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
@@ -799,7 +802,7 @@ export default function App() {
     // "🎫 Palettes" de la carte d'agréage), on imprime une étiquette par palette avec le bon
     // nombre de colis ; sinon une seule étiquette avec la quantité totale. Exception rare (~5%) :
     // "sansEtiquette" coché sur la carte saute complètement cette impression automatique.
-    if (decision === "conforme" && !sansEtiquette) {
+    if (decision === "conforme" && !sansEtiquette && !arrivage.test) {
       try {
         const arrivageMaj = { ...arrivage, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal };
         if (palettes && palettes.length > 1) {

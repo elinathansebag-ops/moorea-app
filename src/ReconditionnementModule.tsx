@@ -1506,6 +1506,71 @@ export function ReconditionnementModule({ onClose, userName }: {
     }
   }
 
+  // ─── Jeu de test "Pointage groupé" (Configuration) ───
+  // 03/09/2026 — Demande d'Elinathan : pouvoir tester le nouveau pointage groupé NLT (voir
+  // ArrivageModule.tsx, "Pointer arrivage") sans passer par le circuit réel d'une demande
+  // (qui, lui, consomme du vrai stock de caisses IFCO/cartons à la création et au retour).
+  // On écrit donc DIRECTEMENT des enregistrements reconditionnement_demandes (statut "parti")
+  // + arrivages liés, exactement dans la forme que produit marquerPartiSilencieux
+  // (PreparationModule.tsx) en temps normal — mais avec retourEnIfco/retour_en_ifco forcés à
+  // false et test:true sur les deux, pour que handleAgrement (App.tsx) saute tout mouvement de
+  // stock réel (voir le garde-fou `!arrivage.test` ajouté là-bas) et pour pouvoir les retrouver
+  // et les supprimer d'un coup ensuite.
+  async function creerJeuDeTest() {
+    if (!window.confirm("Créer un jeu de test (plusieurs retours NLT fictifs, plusieurs origines/lots) ? Aucun impact sur le stock réel — voir le garde-fou `test`.")) return;
+    const dateFr = nowFr();
+    const nowIso = new Date().toISOString();
+    const lignesTest = [
+      { produit: "[TEST] Ananas Filet 900g", origine: "Kenya", lotFournisseur: "KE-0421", qte: 48 },
+      { produit: "[TEST] Ananas Filet 900g", origine: "Tanzanie", lotFournisseur: "TZ-1187", qte: 32 },
+      { produit: "[TEST] Mangue Filet 1kg", origine: "Kenya", lotFournisseur: "KE-0433", qte: 60 },
+      { produit: "[TEST] Passion Barquette 200g", origine: "Ouganda", lotFournisseur: "UG-0299", qte: 24 },
+    ];
+    try {
+      for (let i = 0; i < lignesTest.length; i++) {
+        const l = lignesTest[i];
+        const lotInterne = `TEST-LOT-${Date.now().toString().slice(-6)}-${i + 1}`;
+        const demandeRef = await push(ref(db, "reconditionnement_demandes"), {
+          numero: `TEST-${Date.now()}-${i}`,
+          dateCreation: nowIso, dateCreationFr: dateFr, creePar: userName || "Test",
+          depot: "nlt", articleVrac: l.produit.replace("[TEST] ", ""), lot: lotInterne,
+          origineFournisseur: l.origine, origineLotFournisseur: l.lotFournisseur,
+          articleFini: l.produit, nbColisAEntrer: l.qte, qteConditionnement: l.qte,
+          retourEnIfco: false, transporteurNom: "Test", statut: "parti", departDate: dateFr,
+          test: true,
+        });
+        await push(ref(db, "arrivages"), {
+          fournisseur: "Reconditionnement", fournisseur_origine: l.origine,
+          produit: l.produit, variete: "", lot_interne: lotInterne, lot_fournisseur: l.lotFournisseur,
+          quantite: l.qte, unite: "colis", date: dateFr, statut: "en attente", depot: "nlt",
+          reconditionnement_demande_id: demandeRef.key,
+          qteConditionnementAttendue: l.qte, caissesIfcoEnvoyees: 0,
+          origine: "NLT · Test", transporteurNom: "Test", retour_en_ifco: false,
+          test: true,
+        });
+      }
+      notify("success", "🧪 Jeu de test créé — va dans Arrivage → « Pointer arrivage », bloc « NLT (reconditionnement) » du jour. Aucun stock réel touché.");
+    } catch (err: any) {
+      notify("error", `❌ Erreur : ${err.message}`);
+    }
+  }
+
+  async function supprimerJeuDeTest() {
+    const idsDemandes = demandes.filter((d: any) => d.test).map(d => d.id);
+    const idsArrivages = arrivagesData.filter((a: any) => a.test).map((a: any) => a.id);
+    if (!idsDemandes.length && !idsArrivages.length) { notify("error", "Aucune donnée de test à supprimer."); return; }
+    if (!window.confirm(`Supprimer ${idsDemandes.length} demande(s) et ${idsArrivages.length} arrivage(s) de test ? Ces données n'ont touché aucun stock réel, la suppression est donc directe.`)) return;
+    try {
+      await Promise.all([
+        ...idsDemandes.map(id => remove(ref(db, `reconditionnement_demandes/${id}`))),
+        ...idsArrivages.map(id => remove(ref(db, `arrivages/${id}`))),
+      ]);
+      notify("success", `🗑️ ${idsDemandes.length} demande(s) et ${idsArrivages.length} arrivage(s) de test supprimés.`);
+    } catch (err: any) {
+      notify("error", `❌ Erreur : ${err.message}`);
+    }
+  }
+
   async function creerDemande() {
     if (!depot) {
       notify("error", "✗ Choisis un dépôt");
@@ -3451,6 +3516,25 @@ export function ReconditionnementModule({ onClose, userName }: {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+
+            {/* ── Créer un jeu de test — sert à voir comment se comporte le pointage groupé NLT
+                (plusieurs origines/lots dans un même bloc) sans passer par le circuit réel d'une
+                demande, donc sans toucher au stock IFCO/cartons. Les demandes et arrivages créés
+                sont tagués test:true, faciles à supprimer d'un coup avec le bouton juste en dessous. ── */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>🧪 Jeu de test — pointage groupé NLT</p>
+              <p style={{ margin: "0 0 12px", fontSize: 11.5, color: COLORS.gray600 }}>
+                Crée 4 fausses lignes de retour NLT (origines et lots différents, quantités variées) directement dans « Pointer arrivage », pour tester le nouveau pointage groupé. Aucun stock réel (IFCO, cartons) n'est touché.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" onClick={creerJeuDeTest} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  🧪 Créer le jeu de test
+                </button>
+                <button type="button" onClick={supprimerJeuDeTest} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  🗑️ Supprimer les données de test
+                </button>
               </div>
             </div>
 
