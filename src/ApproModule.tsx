@@ -403,6 +403,12 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
       for (const v of ["weekend", "midweek"] as Vague[]) {
         for (const [fid, quantites] of Object.entries(parVague[v])) {
           await update(ref(db, `appro/commandes/${semaineKey}/${v}/${fid}/quantites`), quantites);
+          // 03/09/2026 — Demande d'Elinathan : un ré-import (quantités corrigées) doit remettre le
+          // fournisseur en "pas encore envoyé", sinon le tableau reste marqué "✓ Envoyé" avec les
+          // quantités de l'ancien fichier alors que le fournisseur n'a jamais reçu les nouvelles —
+          // elle a raison de s'en ficher de savoir qu'un ancien envoi a eu lieu si les chiffres ont
+          // changé depuis : ce qui compte, c'est d'envoyer CE tableau-ci.
+          await update(ref(db, `appro/commandes/${semaineKey}/${v}/${fid}`), { statutEnvoi: null, dateEnvoi: null, envoyePar: null });
           nbLignes++;
         }
       }
