@@ -190,6 +190,13 @@ export default function App() {
     return new Set([key]);
   });
   const [histSearchArr, setHistSearchArr] = useState("");
+  // 03/09/2026 — Aperçu/impression de la traçabilité fournisseur depuis "Historique arrivages"
+  // (demande d'Elinathan : le bouton existait déjà par jour dans "Pointer arrivage", elle le
+  // veut aussi ici) — même gabarit HTML que telechargerTracabilite dans ArrivageModule.tsx,
+  // mais sur les arrivages actuellement affichés (donc filtrés par la recherche en cours) plutôt
+  // que sur un seul jour.
+  const [pdfApercuTracaHist, setPdfApercuTracaHist] = useState<string | null>(null);
+  const pdfApercuTracaHistIframeRef = useRef<HTMLIFrameElement>(null);
   const [searchDate, setSearchDate] = useState("");
   const [searchText, setSearchText] = useState("");
   const [filterDecision, setFilterDecision] = useState("");
@@ -3718,7 +3725,60 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             <p style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>
               📁 Historique · {arrivages.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length} arrivages
             </p>
-            <input value={histSearchArr} onChange={e=>setHistSearchArr(e.target.value)} placeholder="🔍 Produit, fournisseur, lot..." style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", marginBottom: 14, boxSizing: "border-box" as const }} />
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <input value={histSearchArr} onChange={e=>setHistSearchArr(e.target.value)} placeholder="🔍 Produit, fournisseur, lot..." style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
+              <button
+                onClick={() => {
+                  const tous = arrivages
+                    .filter(a => a.date !== new Date().toLocaleDateString("fr-FR"))
+                    .filter(a => !histSearchArr || `${a.produit} ${a.fournisseur} ${a.lot_interne}`.toLowerCase().includes(histSearchArr.toLowerCase()))
+                    .filter((a: any) => a.lot_fournisseur);
+                  if (!tous.length) { showToast("Aucun article avec un n° de lot fournisseur dans cette liste.", "error"); return; }
+                  const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                  const rows = tous.map((a: any, i: number) => {
+                    const poidsBrut = a.rapport?.poids_brut || "-";
+                    const poidsNet = a.rapport?.poids_net || "-";
+                    const controle = (poidsBrut !== "-" || poidsNet !== "-") ? `⚖️ Brut: ${esc(poidsBrut)} kg | 🥬 Net: ${esc(poidsNet)} kg` : "-";
+                    return `
+                    <tr style="background:${i % 2 === 0 ? "#faf8f3" : "#fff"}">
+                      <td>${esc(a.date || "-")}</td>
+                      <td>${esc(a.fournisseur || "-")}</td>
+                      <td>${esc(a.produit || "-")}</td>
+                      <td style="white-space:nowrap">${esc(a.lot_interne || "-")}</td>
+                      <td>${esc(a.lot_fournisseur || "-")}</td>
+                      <td style="white-space:nowrap">${esc(a.quantite ?? "-")} ${esc((a.unite || "").toUpperCase())}</td>
+                      <td>${controle}</td>
+                    </tr>`;
+                  }).join("");
+                  const sousTitre = histSearchArr ? `Historique — recherche "${esc(histSearchArr)}"` : "Historique — tous les arrivages";
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Traçabilité — Historique</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',Arial,sans-serif;background:#fff;color:#1a2e1a}
+  .header{background:#0a0a0a;padding:18px 26px;display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid #c8a84b}
+  .header h1{color:#c8a84b;font-size:20px;letter-spacing:1.5px;font-family:'Syne',Arial,sans-serif}
+  .header span{color:rgba(255,255,255,0.75);font-size:12.5px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;padding:10px 26px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:#8a6f2e;border-bottom:2px solid #c8a84b;background:#fffbf0}
+  td{padding:9px 26px;font-size:13px;border-bottom:1px solid #f0ece0;vertical-align:top}
+  .footer{padding:14px 26px;font-size:11px;color:#9ca3af;text-align:center}
+  @media print{ @page{margin:10mm} .header{-webkit-print-color-adjust:exact;print-color-adjust:exact} th{-webkit-print-color-adjust:exact;print-color-adjust:exact} }
+</style></head>
+<body>
+  <div class="header"><h1>MOOREA</h1><span>${sousTitre}</span></div>
+  <table>
+    <thead><tr><th>Date</th><th>Fournisseur</th><th>Article</th><th>Lot Moorea</th><th>N° traçabilité</th><th>Qté</th><th>Contrôle poids</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p class="footer">${tous.length} article${tous.length > 1 ? "s" : ""} · Généré par Moorea</p>
+</body></html>`;
+                  setPdfApercuTracaHist(html);
+                }}
+                title="Imprimer les n° de traçabilité fournisseur des arrivages affichés"
+                style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                🖨 Traçabilité
+              </button>
+            </div>
             {arrivages
               .filter(a => a.date !== new Date().toLocaleDateString("fr-FR"))
               .filter(a => !histSearchArr || `${a.produit} ${a.fournisseur} ${a.lot_interne}`.toLowerCase().includes(histSearchArr.toLowerCase()))
@@ -3743,6 +3803,22 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 <p style={{ margin: 0, fontWeight: 700, color: "#6b7280", fontFamily: "'Syne', sans-serif" }}>Aucun arrivage dans l'historique</p>
               </div>
             )}
+          </div>
+        )}
+
+        {pdfApercuTracaHist && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "#f5f3ee", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", borderBottom: "3px solid #c8a84b", flexShrink: 0 }}>
+              <button onClick={() => setPdfApercuTracaHist(null)} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}>
+                ← Retour
+              </button>
+              <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 13 }}>📄 Traçabilité — Historique</span>
+              <button onClick={() => { try { pdfApercuTracaHistIframeRef.current?.contentWindow?.print(); } catch {} }}
+                style={{ padding: "6px 14px", borderRadius: 9, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                🖨️ Imprimer
+              </button>
+            </div>
+            <iframe ref={pdfApercuTracaHistIframeRef} srcDoc={pdfApercuTracaHist || ""} style={{ flex: 1, border: "none", background: "#fff" }} />
           </div>
         )}
 
@@ -4325,6 +4401,76 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               </button>
               <button onClick={() => { setShowStats(!showStats); setShowFilters(false); }} style={{ padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${showStats ? "#c8a84b" : "#e5e7eb"}`, background: showStats ? "#faf8f0" : "#fff", cursor: "pointer", fontSize: 13, color: showStats ? "#8a6f2e" : "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>
                 📊 Stats
+              </button>
+              {/* 03/09/2026 — Demande d'Elinathan : le bouton "🖨 Traçabilité" (déjà présent par
+                  jour dans "Pointer arrivage" et sur "Historique arrivages") manquait ici, sur
+                  "Rapports qualité" — l'écran "historique" que tu utilises vraiment au quotidien.
+                  Reprend les mêmes filtres actifs (recherche, fournisseur, produit, dates,
+                  conforme/réserve/refus) que la liste de rapports affichée juste en dessous. */}
+              <button
+                onClick={() => {
+                  const parseDateTraca = (dateStr: string) => {
+                    if (!dateStr) return null;
+                    const [d, m, y] = dateStr.split("/");
+                    return new Date(`${y}-${m}-${d}`);
+                  };
+                  const rapportsFiltres = rapports.filter(r => {
+                    const matchText = !searchText ||
+                      r.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
+                      r.fournisseur?.toLowerCase().includes(searchText.toLowerCase()) ||
+                      r.lotMoorea?.toLowerCase().includes(searchText.toLowerCase()) ||
+                      r.agreeur?.toLowerCase().includes(searchText.toLowerCase());
+                    const matchDecision = !filterDecision || r.decision === filterDecision;
+                    const matchFournisseur = !filterFournisseur || r.fournisseur === filterFournisseur;
+                    const matchProduit = !filterProduit || r.produit === filterProduit;
+                    const rDate = parseDateTraca(r.date);
+                    const matchDebut = !filterDateDebut || (rDate && rDate >= new Date(filterDateDebut));
+                    const matchFin = !filterDateFin || (rDate && rDate <= new Date(filterDateFin));
+                    return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin;
+                  }).filter(r => r.lotFournisseur);
+                  if (!rapportsFiltres.length) { showToast("Aucun rapport avec un n° de traçabilité fournisseur dans cette liste.", "error"); return; }
+                  const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                  const rows = rapportsFiltres.map((r: any, i: number) => {
+                    const arrivageLie = arrivages.find((a: any) => a.id === r.arrivage_id);
+                    const qte = arrivageLie ? `${arrivageLie.quantite ?? "-"} ${(arrivageLie.unite || "").toUpperCase()}` : "-";
+                    const controle = (r.poids_brut || r.poids_net) ? `⚖️ Brut: ${esc(r.poids_brut || "-")} kg | 🥬 Net: ${esc(r.poids_net || "-")} kg` : "-";
+                    return `
+                    <tr style="background:${i % 2 === 0 ? "#faf8f3" : "#fff"}">
+                      <td>${esc(r.date || "-")}</td>
+                      <td>${esc(r.fournisseur || "-")}</td>
+                      <td>${esc(r.produit || "-")}</td>
+                      <td style="white-space:nowrap">${esc(r.lotMoorea || "-")}</td>
+                      <td>${esc(r.lotFournisseur || "-")}</td>
+                      <td style="white-space:nowrap">${qte}</td>
+                      <td>${controle}</td>
+                    </tr>`;
+                  }).join("");
+                  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Traçabilité — Rapports</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',Arial,sans-serif;background:#fff;color:#1a2e1a}
+  .header{background:#0a0a0a;padding:18px 26px;display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid #c8a84b}
+  .header h1{color:#c8a84b;font-size:20px;letter-spacing:1.5px;font-family:'Syne',Arial,sans-serif}
+  .header span{color:rgba(255,255,255,0.75);font-size:12.5px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;padding:10px 26px;font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:#8a6f2e;border-bottom:2px solid #c8a84b;background:#fffbf0}
+  td{padding:9px 26px;font-size:13px;border-bottom:1px solid #f0ece0;vertical-align:top}
+  .footer{padding:14px 26px;font-size:11px;color:#9ca3af;text-align:center}
+  @media print{ @page{margin:10mm} .header{-webkit-print-color-adjust:exact;print-color-adjust:exact} th{-webkit-print-color-adjust:exact;print-color-adjust:exact} }
+</style></head>
+<body>
+  <div class="header"><h1>MOOREA</h1><span>Traçabilité fournisseur — Rapports${searchText ? ` (recherche "${esc(searchText)}")` : ""}</span></div>
+  <table>
+    <thead><tr><th>Date</th><th>Fournisseur</th><th>Article</th><th>Lot Moorea</th><th>N° traçabilité</th><th>Qté</th><th>Contrôle poids</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p class="footer">${rapportsFiltres.length} article${rapportsFiltres.length > 1 ? "s" : ""} · Généré par Moorea</p>
+</body></html>`;
+                  setPdfApercuTracaHist(html);
+                }}
+                title="Imprimer les n° de traçabilité fournisseur des rapports affichés"
+                style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #c8a84b", background: "#fffbf0", cursor: "pointer", fontSize: 13, color: "#8a6f2e", fontWeight: 700, whiteSpace: "nowrap" }}>
+                🖨 Traçabilité
               </button>
             </div>
             {showFilters && (
