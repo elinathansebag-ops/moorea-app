@@ -468,6 +468,24 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     }
   }
 
+  // 04/09/2026 — Ajouté ici aussi (existait déjà côté Reconditionnement) à la demande
+  // d'Elinathan : pouvoir corriger directement depuis Préparation une demande "parti" dont
+  // l'arrivage attendu n'a jamais été créé (cas RC260904-06), sans devoir changer d'écran.
+  // Ne défait QUE le départ : la demande repasse à "prêt" en gardant les palettes déjà
+  // saisies, prête à être revalidée avec "🚚 Marquer parti" (qui recréera l'arrivage).
+  async function repasserAPret(id: string) {
+    if (!window.confirm("Repasser cette demande de « parti » à « prêt » ? Le retour attendu dans « Pointer arrivage » sera annulé, mais le nombre de palettes déjà saisi est conservé.")) return;
+    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
+    if (arrivageLie) {
+      await remove(ref(db, `arrivages/${arrivageLie.id}`));
+    }
+    await update(ref(db, `reconditionnement_demandes/${id}`), {
+      statut: "prêt",
+      departDate: null,
+    });
+    notify("success", "↩️ Demande repassée à « prêt »");
+  }
+
   async function marquerParti(id: string) {
     await marquerPartiSilencieux(id);
     notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
@@ -948,6 +966,18 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                                   title={d.nbPalettesDepartGroupeId ? "Renvoie l'étiquette manifeste de tout le départ groupé à l'impression" : "Renvoie la même étiquette manifeste à l'impression (imprimante ratée, papier coincé...)"}
                                                 >
                                                   🖨️ Réimprimer étiquette{d.nbPalettesDepartGroupeId ? " (départ)" : ""}
+                                                </button>
+                                              )}
+                                              {/* 04/09/2026 — Secours si l'arrivage attendu ne s'est jamais créé (voir le
+                                                  toast d'erreur ajouté dans marquerPartiSilencieux) : repasse à "prêt" pour
+                                                  pouvoir recliquer "Marquer parti" et recréer l'arrivage proprement. */}
+                                              {!arrivagesData.some(a => a.reconditionnement_demande_id === d.id) && (
+                                                <button
+                                                  onClick={() => repasserAPret(d.id)}
+                                                  style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: "#fff", color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                                                  title="Aucun arrivage trouvé pour ce départ — repasse la demande à « prêt » pour pouvoir la re-marquer « parti » et recréer l'arrivage"
+                                                >
+                                                  ↩️ Repasser à « prêt » (arrivage manquant)
                                                 </button>
                                               )}
                                             </>
