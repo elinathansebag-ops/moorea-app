@@ -456,7 +456,14 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           ecartPresta: quantitePrevue != null && quantiteDeclareePresta != null ? quantiteDeclareePresta - quantitePrevue : null,
         });
       } catch (err) {
+        // 04/09/2026 — Avant, cette erreur restait invisible (juste en console) : une demande
+        // passait "parti" avec succès (l'update juste au-dessus) mais l'arrivage attendu, lui,
+        // ne se créait pas si ce push échouait (coupure réseau, etc.) — trouvé avec Elinathan sur
+        // RC260904-06 (parti mais jamais apparu dans "Pointer arrivage"). Un toast d'erreur
+        // permet maintenant de le voir tout de suite et de corriger : "↩️ Repasser à « prêt »"
+        // (Reconditionnement) puis "Marquer parti" à nouveau recrée l'arrivage proprement.
         console.error("Erreur création arrivage retour reconditionnement:", err);
+        notify("error", `❌ "${demande.numero || demande.id}" marqué parti mais l'arrivage attendu n'a pas pu être créé (${err instanceof Error ? err.message : "erreur"}) — repasse-le à « prêt » puis reclique « parti » pour réessayer.`);
       }
     }
   }
