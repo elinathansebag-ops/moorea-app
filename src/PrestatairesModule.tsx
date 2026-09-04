@@ -2111,7 +2111,7 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                         {selectedCartons.map((c) => (
                           <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#fff", borderRadius: 6, marginBottom: 6, border: "1px solid #eaf4fb" }}>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "#2c3e50" }}>{c.lignes.map((l) => `${l.nbPalettes} × ${l.type}`).join(" + ")}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#2c3e50" }}>{(c.lignes || []).length > 0 ? c.lignes.map((l) => `${l.nbPalettes} × ${l.type}`).join(" + ") : "⚠️ Détail des lignes manquant"}</div>
                               <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>{c.creneau} · {c.lieuLivraison}</div>
                             </div>
                             <span style={{ background: "#eaf4fb", color: "#1a5276", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
@@ -2189,7 +2189,12 @@ export function PrestatairesModule({ onClose, userName }: { onClose: () => void;
                           📅 {new Date(cmd.dateLivraisonPrevue).toLocaleDateString("fr-FR")} · {cmd.creneau}
                         </div>
                         <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "4px" }}>
-                          {cmd.lignes.map(l => `${l.nbPalettes} × ${l.type}`).join(" + ")}
+                          {/* 04/09/2026 — Garde-fou : une commande sans "lignes" (ancienne donnée
+                              malformée dans Firebase, ou écriture partielle) faisait planter tout
+                              l'écran "Cartons" avec un "Cannot read properties of undefined
+                              (reading 'map')" — un seul document abîmé rendait TOUTE la liste
+                              inaccessible, y compris pour créer une nouvelle commande derrière. */}
+                          {(cmd.lignes || []).length > 0 ? cmd.lignes.map(l => `${l.nbPalettes} × ${l.type}`).join(" + ") : "⚠️ Détail des lignes manquant"}
                         </div>
                         {cmd.horsSite && (
                           <div style={{ fontSize: "11px", color: COLORS.gray600, marginTop: "4px" }}>
