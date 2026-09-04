@@ -417,22 +417,20 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               ⚠️ écart presta {arrivage.ecartPresta > 0 ? "+" : ""}{arrivage.ecartPresta}
             </span>
           ) : null}
-        </div>
-        {/* Actions de l'en-tête, en colonne : le scan d'étiquette se place sous le bouton
-            "Contrôler gencode" plutôt que dans la ligne des champs de saisie. */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0, alignItems: "flex-end" }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => { setDateReportIso(frToIso(arrivage.date)); setShowReport(true); }} title="Reporter à une autre date"
-              style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
-            {!isSimple && matchedGencode && (
-              <button onClick={() => setShowGencodeScan(true)} style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷️ Contrôler gencode</button>
-            )}
-          </div>
+          {/* 04/09/2026 — À côté du nom plutôt que dans la colonne d'actions à droite, à la
+              demande d'Elinathan. */}
           {!isSimple && (
             <button onClick={() => setShowScanEtiquette(true)}
               style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
               📷 Scanner l'étiquette
             </button>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <button onClick={() => { setDateReportIso(frToIso(arrivage.date)); setShowReport(true); }} title="Reporter à une autre date"
+            style={{ background: "transparent", border: "1px solid #e8e0d0", color: "#6b7280", borderRadius: 8, padding: "3px 7px", cursor: "pointer", fontSize: 11 }}>📅</button>
+          {!isSimple && matchedGencode && (
+            <button onClick={() => setShowGencodeScan(true)} style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷️ Contrôler gencode</button>
           )}
         </div>
       </div>
@@ -570,22 +568,22 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
                 style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
               />
             </div>
-            <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <div style={{ flex: "0 1 110px", minWidth: 90, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 10px" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>⚖️ Poids brut (kg)</span>
               <input type="number" inputMode="decimal" step="0.1" min="0"
                 value={poidsBrut}
                 placeholder="0"
                 onChange={e => setPoidsBrut(e.target.value)}
-                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+                style={{ width: "100%", minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" as const }}
               />
             </div>
-            <div style={{ flex: 1, minWidth: 150, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <div style={{ flex: "0 1 110px", minWidth: 90, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 10px" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🥬 Poids net (kg)</span>
               <input type="number" inputMode="decimal" step="0.1" min="0"
                 value={poidsNet}
                 placeholder="0"
                 onChange={e => setPoidsNet(e.target.value)}
-                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+                style={{ width: "100%", minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a", boxSizing: "border-box" as const }}
               />
             </div>
           </>
@@ -660,27 +658,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           {scanEtiquetteMsg && <p style={{ margin: "0 0 6px", fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>✓ {scanEtiquetteMsg}</p>}
           {showScanEtiquette && <ScannerQR onScan={handleScanEtiquette} onClose={() => setShowScanEtiquette(false)} />}
 
-          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr auto", gap: "0 12px", alignItems: "center", marginBottom: 8 }}>
-            <div>
-              <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.5px" }}>👁 Qualité</p>
-              <div style={{ display: "flex", gap: 4 }}>{[1,2,3,4,5].map(n => <NoteBtnArr key={n} n={n} selected={qualite} onChange={setQualite} />)}</div>
-            </div>
-            <div>
-              <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>🌡 Temp.</p>
-              <div style={{ display: "flex", gap: 5 }}>
-                {[{v:true,l:"✓ Ok",c:"#27ae60"},{v:false,l:"✗ Non",c:"#dc2626"}].map(o => (
-                  <button key={String(o.v)} onClick={() => setTempOk(o.v)} style={{ padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: tempOk===o.v ? 700 : 400, border: `1.5px solid ${tempOk===o.v ? o.c : "#e5e7eb"}`, background: tempOk===o.v ? o.c+"18" : "#fff", color: tempOk===o.v ? o.c : "#9ca3af" }}>{o.l}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>⚖️ Poids</p>
-              <div style={{ display: "flex", gap: 5 }}>
-                {[{v:true,l:"✓ Ok",c:"#27ae60"},{v:false,l:"✗ Non",c:"#dc2626"}].map(o => (
-                  <button key={String(o.v)} onClick={() => setPoidsOk(o.v)} style={{ padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: poidsOk===o.v ? 700 : 400, border: `1.5px solid ${poidsOk===o.v ? o.c : "#e5e7eb"}`, background: poidsOk===o.v ? o.c+"18" : "#fff", color: poidsOk===o.v ? o.c : "#9ca3af" }}>{o.l}</button>
-                ))}
-              </div>
-            </div>
+          {/* 04/09/2026 — Qualité (1-5) et Temp./Poids Ok-Non retirés de cette carte à la demande
+              d'Elinathan (pas besoin sur un arrivage normal) : ne reste que Litige. qualite/tempOk/
+              poidsOk restent en state à leur valeur par défaut (0/true/true) — inoffensif, juste
+              plus rien pour les modifier ici. */}
+          <div style={{ display: "flex", marginBottom: 8 }}>
             <div>
               <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>⚠️ Litige</p>
               <div style={{ display: "flex", gap: 5 }}>
