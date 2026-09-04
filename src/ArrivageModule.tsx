@@ -424,14 +424,9 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               ⚠️ écart presta {arrivage.ecartPresta > 0 ? "+" : ""}{arrivage.ecartPresta}
             </span>
           ) : null}
-          {/* 04/09/2026 — À côté du nom plutôt que dans la colonne d'actions à droite, à la
-              demande d'Elinathan. */}
-          {!isSimple && (
-            <button onClick={() => setShowScanEtiquette(true)}
-              style={{ background: "#eff6ff", border: "1px solid #3b82f6", color: "#3b82f6", borderRadius: 8, padding: "3px 9px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-              📷 Scanner l'étiquette
-            </button>
-          )}
+          {/* 04/09/2026 — Bouton "Scanner l'étiquette" retiré de la carte à la demande
+              d'Elinathan. showScanEtiquette/handleScanEtiquette restent en place (inoffensifs,
+              simplement plus rien pour les déclencher ici). */}
         </div>
         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
           <button onClick={() => { setDateReportIso(frToIso(arrivage.date)); setShowReport(true); }} title="Reporter à une autre date"
@@ -578,13 +573,24 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         )}
         {!isSimple && (
           <>
-            <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
-              <input type="date"
-                value={dlc}
-                onChange={e => setDlc(e.target.value)}
-                style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
-              />
+            {/* 04/09/2026 — Températures déplacées ici (à la place de DLC, qui descend d'une
+                ligne, à côté de Traça four./Poids barquettes) et en cases compactes côte à côte
+                avec un "+", comme les cases palette — demande d'Elinathan. */}
+            <div style={{ flex: "0 1 140px", minWidth: 110, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 10px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🌡️ Températures (°C){temperatures.length > 0 ? ` (${temperatures.length})` : ""}</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5, alignItems: "center" }}>
+                {temperatures.map((m, idx) => (
+                  <div key={idx} style={{ position: "relative" }}>
+                    <input type="number" inputMode="decimal" step="0.1" value={m.valeur} placeholder="0"
+                      onChange={e => modifierMesure(setTemperatures, idx, e.target.value)}
+                      style={{ width: 50, padding: "6px 4px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                    <button onClick={() => retirerMesure(setTemperatures, idx)} title="Retirer cette mesure"
+                      style={{ position: "absolute", top: -7, right: -7, width: 16, height: 16, borderRadius: "50%", border: "none", background: "#dc2626", color: "#fff", fontSize: 9, lineHeight: "16px", padding: 0, cursor: "pointer" }}>✕</button>
+                  </div>
+                ))}
+                <button onClick={() => ajouterMesure(setTemperatures)} title="Ajouter une température"
+                  style={{ width: 28, height: 28, borderRadius: "50%", border: "1.5px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 14, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, padding: 0 }}>+</button>
+              </div>
             </div>
             <div style={{ flex: "0 1 110px", minWidth: 90, display: "flex", flexDirection: "column", gap: 3, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 10px" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>⚖️ Poids brut (kg)</span>
@@ -638,8 +644,18 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           </div>
         )}
 
+        {!isSimple && (
+          <div style={{ flex: 1, minWidth: 150, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📅 DLC</span>
+            <input type="date"
+              value={dlc}
+              onChange={e => setDlc(e.target.value)}
+              style={{ flex: 1, minWidth: 0, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 12, fontWeight: 700, outline: "none", color: "#1a2e1a" }}
+            />
+          </div>
+        )}
+
         {!isSimple && [
-          { cle: "temp", titre: "🌡️ Températures (°C)", liste: temperatures, setter: setTemperatures, step: "0.1", min: undefined, libelle: "une température" },
           { cle: "poids", titre: "⚖️ Poids barquettes (g)", liste: poidsBarquettes, setter: setPoidsBarquettes, step: "1", min: "0", libelle: "un poids" },
         ].map(sec => (
           <div key={sec.cle} style={{ flex: 1, minWidth: 210, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
@@ -676,20 +692,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           {scanEtiquetteMsg && <p style={{ margin: "0 0 6px", fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>✓ {scanEtiquetteMsg}</p>}
           {showScanEtiquette && <ScannerQR onScan={handleScanEtiquette} onClose={() => setShowScanEtiquette(false)} />}
 
-          {/* 04/09/2026 — Qualité (1-5) et Temp./Poids Ok-Non retirés de cette carte à la demande
-              d'Elinathan (pas besoin sur un arrivage normal) : ne reste que Litige. qualite/tempOk/
-              poidsOk restent en state à leur valeur par défaut (0/true/true) — inoffensif, juste
-              plus rien pour les modifier ici. */}
-          <div style={{ display: "flex", marginBottom: 8 }}>
-            <div>
-              <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>⚠️ Litige</p>
-              <div style={{ display: "flex", gap: 5 }}>
-                {[{v:false,l:"✓ Non",c:"#27ae60"},{v:true,l:"✗ Oui",c:"#dc2626"}].map(o => (
-                  <button key={String(o.v)} onClick={() => setLitige(o.v)} style={{ padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: litige===o.v ? 700 : 400, border: `1.5px solid ${litige===o.v ? o.c : "#e5e7eb"}`, background: litige===o.v ? o.c+"18" : "#fff", color: litige===o.v ? o.c : "#9ca3af" }}>{o.l}</button>
-                ))}
-              </div>
-            </div>
-          </div>
+          {/* 04/09/2026 — Qualité (1-5), Temp./Poids Ok-Non, et le toggle "⚠️ Litige" Non/Oui
+              sont retirés de cette carte à la demande d'Elinathan : qualite/tempOk/poidsOk/litige
+              restent en state à leur valeur par défaut (0/true/true/false), rien pour les modifier
+              ici — le litige se déclenche désormais directement via le bouton "🚩 Litige" à côté de
+              "Valider" tout en bas (voir handleValider(forcerLitige)). */}
           {/* Pour un retour de reconditionnement, un écart de colis (sans "⚠️ Problème" coché)
               n'est pas un litige — voir hasLitige plus haut — donc pas de rapport à détailler ;
               il sera juste repris automatiquement dans le récap "📲 Prévenir écarts" du jour. */}
@@ -2012,16 +2019,36 @@ export function PalettePublique({ id }: { id: string }) {
 
         // Essai 2 : via le SDK normal (utilise la session déjà authentifiée)
         const { db: dbImport } = await import("./firebase");
-        const { ref: fbRef, get } = await import("firebase/database");
+        const { ref: fbRef, get, query, orderByChild, equalTo } = await import("firebase/database");
         const snap = await get(fbRef(dbImport, `arrivages/${id}`));
         if (snap.exists()) {
           setArrivage({ ...snap.val(), id });
         } else {
-          // Fallback: cherche par lot_interne
-          const allSnap = await get(fbRef(dbImport, "arrivages"));
-          if (allSnap.exists()) {
-            const all = Object.entries(allSnap.val()).map(([k, v]: any) => ({ ...v, id: k }));
-            const found = all.find((a: any) => a.lot_interne === id);
+          // 04/09/2026 — L'arrivage peut avoir été déplacé vers "arrivages_archives" (archivage
+          // des arrivages traités de plus de 3 semaines, même clé/id conservée) : on le cherche
+          // là directement par id avant de retomber sur un scan, pour qu'une étiquette/QR sur une
+          // vieille palette reste toujours consultable.
+          const snapArch = await get(fbRef(dbImport, `arrivages_archives/${id}`));
+          if (snapArch.exists()) {
+            setArrivage({ ...snapArch.val(), id });
+          } else {
+            // Fallback: cherche par lot_interne, d'abord dans les arrivages récents...
+            const allSnap = await get(fbRef(dbImport, "arrivages"));
+            let found: any = null;
+            if (allSnap.exists()) {
+              const all = Object.entries(allSnap.val()).map(([k, v]: any) => ({ ...v, id: k }));
+              found = all.find((a: any) => a.lot_interne === id);
+            }
+            if (!found) {
+              // ...puis dans les archives, via une requête ciblée (pas de téléchargement du
+              // nœud entier — c'est justement ce qu'on veut éviter avec l'archivage).
+              const archQuery = query(fbRef(dbImport, "arrivages_archives"), orderByChild("lot_interne"), equalTo(id));
+              const archSnap = await get(archQuery);
+              if (archSnap.exists()) {
+                const vals = Object.entries(archSnap.val()).map(([k, v]: any) => ({ ...v, id: k }));
+                found = vals[0] || null;
+              }
+            }
             if (found) setArrivage(found);
           }
         }

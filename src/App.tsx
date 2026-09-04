@@ -1,7 +1,7 @@
 // ✅ TEST MODIFICATION - Vérification que GitHub Desktop reçoit et publie les changements correctement 🚀
 // Cette ligne a été ajoutée pour tester le workflow de publication
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import jsPDF from "jspdf";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import RetoursModule from "./RetoursModule";
@@ -119,6 +119,71 @@ export default function App() {
   // ─── STATES ARRIVAGES ───
   const [pageMode, setPageMode] = useState<"qualite" | "arrivages" | "historique_arr" | "stats_arr" | "saisie_arr">("arrivages");
   const [arrivages, setArrivages] = useState<any[]>([]);
+  // 04/09/2026 — Archivage des arrivages anciens : "arrivages" grossissait sans fin (rien n'en
+  // sortait jamais), ce qui ralentissait énormément le chargement de "Pointer arrivage" — trouvé
+  // avec Elinathan en creusant pourquoi le chargement était devenu "hyper long". On déplace donc
+  // désormais les arrivages déjà traités et vieux de plus de 3 semaines vers un nœud séparé
+  // "arrivages_archives" (même clé/id conservée, pour rester trouvable) — mais TOUJOURS
+  // consultable : "arrivages_archives" n'est chargé qu'à la demande (paresseux), uniquement quand
+  // l'Historique ou les Rapports (avec stats) sont ouverts, jamais au démarrage de l'app.
+  const [arrivagesArchivesData, setArrivagesArchivesData] = useState<any[]>([]);
+  const archivesChargeesRef = useRef(false);
+  const chargerArchivesArrivages = () => {
+    if (archivesChargeesRef.current) return;
+    archivesChargeesRef.current = true;
+    onValue(ref(db, "arrivages_archives"), snap => {
+      const data = snap.val();
+      setArrivagesArchivesData(data ? Object.entries(data).map(([id, v]: [string, any]) => ({ ...v, id })) : []);
+    });
+  };
+  // Vue fusionnée (récent + archives) — seulement pour l'Historique et les stats Rapports, qui
+  // doivent rester consultables sur tout l'historique ; le reste de l'app (dashboard, Pointer
+  // arrivage, litiges en cours...) continue à utiliser "arrivages" seul (récent, rapide).
+  const arrivagesAvecArchives = useMemo(
+    () => arrivagesArchivesData.length ? [...arrivages, ...arrivagesArchivesData] : arrivages,
+    [arrivages, arrivagesArchivesData]
+  );
+  const ARCHIVAGE_APRES_JOURS = 21;
+  const [archivageBusy, setArchivageBusy] = useState(false);
+  const archiverAnciensArrivages = async () => {
+    if (archivageBusy) return;
+    const parseDateArr = (d: string): Date => {
+      const slash = (d || "").split("/");
+      if (slash.length === 3) return new Date(+slash[2], +slash[1] - 1, +slash[0]);
+      const dash = (d || "").split("-");
+      if (dash.length === 3 && dash[0].length === 4) return new Date(+dash[0], +dash[1] - 1, +dash[2]);
+      return new Date(0);
+    };
+    const limite = Date.now() - ARCHIVAGE_APRES_JOURS * 24 * 60 * 60 * 1000;
+    // Sécurité : on n'archive jamais un litige encore ouvert, ni un refus pas encore signé/
+    // récupéré/détruit — ces cas doivent rester visibles dans les tableaux de bord "en cours"
+    // (qui ne regardent que "arrivages", pas les archives) tant qu'ils ne sont pas clôturés,
+    // même si l'arrivage a plus de 3 semaines.
+    const aArchiver = arrivages.filter(a => {
+      if (!a.statut || a.statut === "en attente") return false;
+      if (a.litige && a.litige.statut === "ouvert") return false;
+      if ((a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee) return false;
+      const t = parseDateArr(a.date).getTime();
+      return t > 0 && t < limite;
+    });
+    if (!aArchiver.length) { showToast("Rien à archiver pour le moment"); return; }
+    setArchivageBusy(true);
+    try {
+      const updates: Record<string, any> = {};
+      for (const a of aArchiver) {
+        const { id, ...data } = a;
+        updates[`arrivages_archives/${id}`] = { ...data, archived_at: Date.now() };
+        updates[`arrivages/${id}`] = null;
+      }
+      await update(ref(db), updates);
+      showToast(`✅ ${aArchiver.length} arrivage(s) archivé(s) — toujours consultables dans l'Historique`);
+    } catch (err) {
+      console.error("Erreur archivage arrivages:", err);
+      showToast("❌ Erreur lors de l'archivage", "error");
+    } finally {
+      setArchivageBusy(false);
+    }
+  };
   // Panneau plein écran listant tous les poids de barquettes et températures relevés.
   const [showHistoMesures, setShowHistoMesures] = useState(false);
   // 02/09/2026 — Popup d'alerte si aucune température / aucun poids de barquette relevé depuis
@@ -439,6 +504,13 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+
+  // Charge "arrivages_archives" seulement quand on ouvre l'Historique arrivages ou les Rapports
+  // (où les stats regardent tout l'historique) — jamais au démarrage, pour ne pas retomber dans
+  // le problème de lenteur qu'on vient de corriger.
+  useEffect(() => {
+    if (pageMode === "historique_arr" || vue === "historique") chargerArchivesArrivages();
+  }, [pageMode, vue]);
 
   // ─── ÉTAT DU RELAIS D'IMPRESSION (PC) ───
   // Le PC envoie un signal de vie ("printRelayStatus/lastSeen") toutes les 15s tant que
@@ -3408,6 +3480,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block" }} />
                 🖨️ Imprimante PC : {printRelayOnline === null ? "..." : printRelayOnline ? "en ligne" : "hors ligne"}
               </span>
+              {/* 04/09/2026 — Archive les arrivages traités de plus de 3 semaines (voir
+                  archiverAnciensArrivages) : garde "Pointer arrivage" rapide, sans rien perdre —
+                  toujours consultable ensuite dans l'Historique. */}
+              <button onClick={archiverAnciensArrivages} disabled={archivageBusy} title="Déplace les arrivages traités de plus de 3 semaines vers l'Historique (archivage) pour garder cet écran rapide"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fff", color: "#8a6f2e", border: "1px solid #e8e0d0", cursor: archivageBusy ? "not-allowed" : "pointer" }}>
+                {archivageBusy ? "🗄 Archivage..." : "🗄 Archiver anciens arrivages"}
+              </button>
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
@@ -3658,13 +3737,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         {pageMode === "historique_arr" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
             <p style={{ fontWeight: 700, fontSize: 12, color: "#6b7280", margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.8px", fontFamily: "'Syne', sans-serif" }}>
-              📁 Historique · {arrivages.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length} arrivages
+              📁 Historique · {arrivagesAvecArchives.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length} arrivages
+              {arrivagesArchivesData.length > 0 && <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}> (dont {arrivagesArchivesData.length} archivés)</span>}
             </p>
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
               <input value={histSearchArr} onChange={e=>setHistSearchArr(e.target.value)} placeholder="🔍 Produit, fournisseur, lot..." style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
               <button
                 onClick={() => {
-                  const tous = arrivages
+                  const tous = arrivagesAvecArchives
                     .filter(a => a.date !== new Date().toLocaleDateString("fr-FR"))
                     .filter(a => !histSearchArr || `${a.produit} ${a.fournisseur} ${a.lot_interne}`.toLowerCase().includes(histSearchArr.toLowerCase()))
                     .filter((a: any) => a.lot_fournisseur);
@@ -3714,7 +3794,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 🖨 Traçabilité
               </button>
             </div>
-            {arrivages
+            {arrivagesAvecArchives
               .filter(a => a.date !== new Date().toLocaleDateString("fr-FR"))
               .filter(a => !histSearchArr || `${a.produit} ${a.fournisseur} ${a.lot_interne}`.toLowerCase().includes(histSearchArr.toLowerCase()))
               .map(a => {
@@ -3732,7 +3812,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   />
                 );
               })}
-            {arrivages.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length === 0 && (
+            {arrivagesAvecArchives.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length === 0 && (
               <div style={{ textAlign: "center", padding: "3rem", background: "#f5f3ee", borderRadius: 20 }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>📁</div>
                 <p style={{ margin: 0, fontWeight: 700, color: "#6b7280", fontFamily: "'Syne', sans-serif" }}>Aucun arrivage dans l'historique</p>
@@ -4484,7 +4564,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 // ci-dessus, mappé sur le statut de l'arrivage plutôt que la décision du rapport).
                 const decisionVersStatut: Record<string, string> = { stock: "validé", reserve: "sous réserve", refus: "refusé" };
                 const statutFiltre = filterDecision ? decisionVersStatut[filterDecision] : "";
-                const arrFiltres = arrivages.filter((a: any) => {
+                const arrFiltres = arrivagesAvecArchives.filter((a: any) => {
                   const matchText = !searchText ||
                     a.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
                     a.fournisseur?.toLowerCase().includes(searchText.toLowerCase());
