@@ -909,21 +909,23 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
                   </td>
                   <td style={{ padding: "8px", verticalAlign: "top", textAlign: "right", fontWeight: 700, fontSize: 13, color: "#6b7280" }}>{attendu}</td>
                   <td style={{ padding: "8px", verticalAlign: "top" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                    {/* 04/09/2026 — Cases alignées en ligne (comme sur un arrivage normal), plus de
+                        retour à la ligne du bouton "+" : le tableau défile horizontalement si besoin
+                        (overflowX déjà sur le tableau entier) plutôt que d'empiler verticalement. */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
                       {casesArr.map((val, idx) => (
-                        <span key={idx} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                        <div key={idx} style={{ position: "relative", flexShrink: 0 }}>
                           <input type="number" min="0" inputMode="numeric" value={val} placeholder={casesArr.length === 1 ? String(attendu) : "0"}
                             onChange={e => setCase(a.id, idx, e.target.value)}
-                            style={{ width: 58, padding: "5px 6px", border: `1.5px solid ${ecart !== 0 ? "#fde3a8" : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: ecart !== 0 ? "#b45309" : "#1a2e1a" }} />
+                            style={{ width: 58, padding: "6px 4px", border: `1.5px solid ${ecart !== 0 ? "#fde3a8" : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: ecart !== 0 ? "#b45309" : "#1a2e1a" }} />
                           {casesArr.length > 1 && (
-                            <button onClick={() => retirerCase(a.id, idx)} title="Retirer cette case" style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>×</button>
+                            <button onClick={() => retirerCase(a.id, idx)} title="Retirer cette case"
+                              style={{ position: "absolute", top: -7, right: -7, width: 16, height: 16, borderRadius: "50%", border: "none", background: "#dc2626", color: "#fff", fontSize: 9, lineHeight: "16px", padding: 0, cursor: "pointer" }}>✕</button>
                           )}
-                        </span>
+                        </div>
                       ))}
                       <button onClick={() => ajouterCase(a.id)} title="Ajouter une case (une palette de plus pour cette réf.)"
-                        style={{ padding: "4px 8px", borderRadius: 7, border: "1.5px dashed #d1d5db", background: "#fff", color: "#6b7280", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                        + palette
-                      </button>
+                        style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 16, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, padding: 0 }}>+</button>
                     </div>
                   </td>
                   <td style={{ padding: "8px", verticalAlign: "top", textAlign: "right", fontWeight: 700, fontSize: 13, color: ecart !== 0 ? "#b45309" : "#16a34a" }}>
