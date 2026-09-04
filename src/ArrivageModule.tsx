@@ -157,6 +157,16 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const [poidsOk, setPoidsOk] = useState(true);
   const [litige, setLitige] = useState(false);
   const [colisRecus, setColisRecus] = useState<string>("");
+  // 04/09/2026 — Pour un arrivage "normal" (pas Go-Embal/IFCO/retour reconditionnement), l'agréeur
+  // saisit directement la quantité DANS chaque case palette plutôt que de taper un total "Colis"
+  // puis de choisir séparément un nombre de palettes — comme pour le pointage groupé NLT
+  // (PointageGroupeNLT) et la correction de stock. Le total reçu est la somme des cases, et
+  // c'est cette répartition qui détermine directement le nombre d'étiquettes imprimées à la
+  // validation (une étiquette par case remplie, avec sa propre quantité).
+  const [cases, setCases] = useState<string[]>([""]);
+  const setCase = (idx: number, val: string) => setCases(prev => { const arr = [...prev]; arr[idx] = val; return arr; });
+  const ajouterCase = () => setCases(prev => [...prev, ""]);
+  const retirerCase = (idx: number) => setCases(prev => { const arr = prev.filter((_, i) => i !== idx); return arr.length ? arr : [""]; });
   // Champs spécifiques au retour d'une demande de reconditionnement (NLT/Andès) — remplacent
   // l'ancienne modale "Pointage du retour" du module Reconditionnement, désormais pointée ici.
   const [retourQte, setRetourQte] = useState<string>(arrivage.qteConditionnementAttendue != null ? String(arrivage.qteConditionnementAttendue) : "");
@@ -304,6 +314,30 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     if (!dejaAjusteManuel.current && nbPalettes === 1) setRepartitionPalettes([colisRecusNum]);
   }, [colisRecusNum, nbPalettes]);
 
+  // Synchronise colisRecus/nbPalettes/repartitionPalettes à partir des cases palette (voir
+  // "cases" ci-dessus) — pour un arrivage "normal", ce sont les cases qui pilotent tout le
+  // reste : le total reçu (somme des cases, ou l'attendu si toutes vides, même logique que
+  // PointageGroupeNLT), et la répartition palette imprimée à la validation. N'a aucun effet
+  // sur isSimple (Go-Embal/IFCO/retour reconditionnement), qui garde son ancien mécanisme
+  // Colis + Palettes intact.
+  useEffect(() => {
+    if (isSimple) return;
+    const valeurs = cases.map(c => c.trim());
+    const toutesVides = valeurs.every(v => v === "");
+    const somme = valeurs.reduce((s, v) => s + (parseInt(v) || 0), 0);
+    setColisRecus(toutesVides ? "" : String(somme));
+    const valeursNum = valeurs.map(v => parseInt(v) || 0).filter(v => v > 0);
+    if (valeursNum.length) {
+      dejaAjusteManuel.current = true;
+      setNbPalettesState(valeursNum.length);
+      setRepartitionPalettes(valeursNum);
+    } else {
+      dejaAjusteManuel.current = false;
+      setNbPalettesState(1);
+      setRepartitionPalettes([colisAttendu]);
+    }
+  }, [cases, isSimple, colisAttendu]);
+
   const updateNbPalettes = (n: number) => {
     setNbPalettesState(n);
     dejaAjusteManuel.current = false;
@@ -434,24 +468,58 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
         {/* Pour un retour de reconditionnement, un écart de colis n'est pas alarmant (tri/poids)
             — couleur ambre informative plutôt que rouge "problème" réservée aux vrais arrivages. */}
-        <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 8, background: hasEcartColis ? (isRetourRecond ? "#fffbeb" : "#fef2f2") : "#f9fafb", border: `1.5px solid ${hasEcartColis ? (isRetourRecond ? "#fde3a8" : "#fca5a5") : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Colis</span>
-          <button onClick={() => setColisRecus("")}
-            style={{ padding: "3px 9px", borderRadius: 7, border: `1.5px solid #27ae60`, background: colisRecus === "" ? "#27ae6018" : "#fff", color: "#27ae60", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
-            ✓ {colisAttendu}
-          </button>
-          <input type="number" min="0" inputMode="numeric"
-            value={colisRecus}
-            placeholder={String(colisAttendu)}
-            onChange={e => setColisRecus(e.target.value)}
-            style={{ width: 56, padding: "4px 6px", border: `1.5px solid ${hasEcartColis ? (isRetourRecond ? "#fde3a8" : "#fca5a5") : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: hasEcartColis ? (isRetourRecond ? "#b45309" : "#dc2626") : "#1a2e1a" }}
-          />
-          {hasEcartColis && (
-            <span style={{ fontSize: 11, fontWeight: 700, color: isRetourRecond ? "#b45309" : (ecartColis < 0 ? "#dc2626" : "#d97706"), whiteSpace: "nowrap" }}>
-              {ecartColis > 0 ? `+${ecartColis}` : `${ecartColis}`}
-            </span>
-          )}
-        </div>
+        {isSimple ? (
+          <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 8, background: hasEcartColis ? (isRetourRecond ? "#fffbeb" : "#fef2f2") : "#f9fafb", border: `1.5px solid ${hasEcartColis ? (isRetourRecond ? "#fde3a8" : "#fca5a5") : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>📦 Colis</span>
+            <button onClick={() => setColisRecus("")}
+              style={{ padding: "3px 9px", borderRadius: 7, border: `1.5px solid #27ae60`, background: colisRecus === "" ? "#27ae6018" : "#fff", color: "#27ae60", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}>
+              ✓ {colisAttendu}
+            </button>
+            <input type="number" min="0" inputMode="numeric"
+              value={colisRecus}
+              placeholder={String(colisAttendu)}
+              onChange={e => setColisRecus(e.target.value)}
+              style={{ width: 56, padding: "4px 6px", border: `1.5px solid ${hasEcartColis ? (isRetourRecond ? "#fde3a8" : "#fca5a5") : "#e5e7eb"}`, borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none", color: hasEcartColis ? (isRetourRecond ? "#b45309" : "#dc2626") : "#1a2e1a" }}
+            />
+            {hasEcartColis && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: isRetourRecond ? "#b45309" : (ecartColis < 0 ? "#dc2626" : "#d97706"), whiteSpace: "nowrap" }}>
+                {ecartColis > 0 ? `+${ecartColis}` : `${ecartColis}`}
+              </span>
+            )}
+          </div>
+        ) : (
+          // Un arrivage "normal" : plus de champ Colis séparé — on saisit directement la quantité
+          // dans chaque case palette (voir "cases" plus haut), le total et les étiquettes en
+          // découlent automatiquement. Pleine largeur pour laisser la place aux cases.
+          <div style={{ flex: "1 1 100%", background: hasEcartColis ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes — colis reçus par palette</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: hasEcartColis ? "#dc2626" : "#1a2e1a" }}>
+                Total : {colisRecusNum}/{colisAttendu}{hasEcartColis ? ` (${ecartColis > 0 ? "+" : ""}${ecartColis})` : ""}
+              </span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {cases.map((c, idx) => (
+                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "#9ca3af", width: 24, flexShrink: 0 }}>P{idx + 1}</span>
+                  <input type="number" min="0" inputMode="numeric" value={c} placeholder="0"
+                    onChange={e => setCase(idx, e.target.value)}
+                    style={{ flex: 1, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                  <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>colis</span>
+                  {cases.length > 1 && (
+                    <button onClick={() => retirerCase(idx)} title="Retirer cette palette"
+                      style={{ flexShrink: 0, background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, fontWeight: 700, padding: "0 4px" }}>✕</button>
+                  )}
+                </div>
+              ))}
+              <button onClick={ajouterCase}
+                style={{ alignSelf: "flex-start", background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                + Palette
+              </button>
+            </div>
+            <p style={{ margin: "6px 0 0", fontSize: 10, color: "#9ca3af" }}>Laisser toutes les cases vides = {colisAttendu} colis attendus (1 palette)</p>
+          </div>
+        )}
         {isRetourRecond && (
           <>
             {/* Libellé au-dessus de la case (comme DLC/poids ci-dessous) plutôt que sur la même
@@ -637,8 +705,10 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       {/* Palettes — détermine combien d'étiquettes seront imprimées automatiquement à la validation.
           Contrairement aux autres champs "produce" (DLC/poids/traça), on garde cette section pour
           un retour de reconditionnement : il y a bien un produit physique sur palette, qui doit
-          repartir avec une étiquette portant le lot de CET arrivage (lot_interne/lot_fournisseur). */}
-      {true && (
+          repartir avec une étiquette portant le lot de CET arrivage (lot_interne/lot_fournisseur).
+          Pour un arrivage "normal" (!isSimple), ce bloc est remplacé par les cases palette
+          fusionnées avec "Colis" plus haut — pas besoin de le répéter ici. */}
+      {isSimple && (
         <>
           <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
@@ -677,14 +747,14 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               </div>
             )}
           </div>
-          <div style={{ textAlign: "right", marginBottom: 4 }}>
-            <button onClick={() => setSansEtiquette(v => !v)}
-              style={{ background: "none", border: "none", padding: 0, color: sansEtiquette ? "#d97706" : "#9ca3af", fontSize: 10.5, textDecoration: "underline", cursor: "pointer", fontWeight: sansEtiquette ? 700 : 400 }}>
-              {sansEtiquette ? "✓ Sans étiquette à la validation (cas rare)" : "Valider sans étiquette (cas rare)"}
-            </button>
-          </div>
         </>
       )}
+      <div style={{ textAlign: "right", marginBottom: 4 }}>
+        <button onClick={() => setSansEtiquette(v => !v)}
+          style={{ background: "none", border: "none", padding: 0, color: sansEtiquette ? "#d97706" : "#9ca3af", fontSize: 10.5, textDecoration: "underline", cursor: "pointer", fontWeight: sansEtiquette ? 700 : 400 }}>
+          {sansEtiquette ? "✓ Sans étiquette à la validation (cas rare)" : "Valider sans étiquette (cas rare)"}
+        </button>
+      </div>
 
       {paletteAbsente ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 10, background: "#fffbeb", border: "1.5px solid #fcd34d" }}>
