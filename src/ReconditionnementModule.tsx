@@ -1032,10 +1032,63 @@ export function ReconditionnementModule({ onClose, userName }: {
     }
   }
 
-  // La validation des réajustements de stock demandés par le reconditionneur et la validation
-  // par scan QR du bon ("prêt"/"parti") sont des actions entrepôt — elles vivent dans le module
-  // Préparation entrepôt à part (voir src/PreparationModule.tsx), pas ici.
+  // La validation par scan QR du bon ("prêt"/"parti") est une action entrepôt — elle vit dans
+  // le module Préparation entrepôt à part (voir src/PreparationModule.tsx), pas ici. La
+  // validation des réajustements de stock demandés par le reconditionneur, elle, est dupliquée
+  // ici aussi depuis le 04/09/2026 (voir traiterReajustement plus haut).
   //
+  // 04/09/2026 — Correction manuelle du stock, à l'initiative de Moorea : jusqu'ici, la SEULE
+  // façon de corriger le stock IFCO (NLT) ou carton (Andès) était de passer par une demande de
+  // réajustement envoyée PAR le reconditionneur depuis son portail (voir traiterReajustement) —
+  // impossible pour Elinathan de corriger lui-même un chiffre qu'il sait faux, sans attendre
+  // que NLT/Andès fasse la démarche. Ce petit formulaire écrit directement le nouveau nombre
+  // (même mouvement Firebase que traiterReajustement côté "validé" : ifco_stock/levels.nlt ou
+  // stock_carton_andes/baby_blanc, plus une entrée stock_ajustements pour la traçabilité).
+  const [correctionOuverte, setCorrectionOuverte] = useState<Depot | null>(null);
+  const [correctionValeur, setCorrectionValeur] = useState("");
+  const [correctionRaison, setCorrectionRaison] = useState("");
+  const [correctionEnCours, setCorrectionEnCours] = useState(false);
+
+  function ouvrirCorrection(dep: Depot) {
+    setCorrectionOuverte(dep);
+    setCorrectionValeur(String(dep === "nlt" ? stockIfco.nlt : stockBabyBlancAndes));
+    setCorrectionRaison("");
+  }
+
+  async function validerCorrectionStock() {
+    if (!correctionOuverte) return;
+    const nouvelleValeur = parseInt(correctionValeur);
+    if (!Number.isFinite(nouvelleValeur) || nouvelleValeur < 0) {
+      notify("error", "✗ Quantité invalide");
+      return;
+    }
+    if (!correctionRaison.trim()) {
+      notify("error", "✗ Indique une raison (obligatoire, pour la traçabilité)");
+      return;
+    }
+    setCorrectionEnCours(true);
+    try {
+      const ancienneValeur = correctionOuverte === "nlt" ? stockIfco.nlt : stockBabyBlancAndes;
+      const chemin = correctionOuverte === "nlt" ? "ifco_stock/levels" : "stock_carton_andes";
+      const champ = correctionOuverte === "nlt" ? "nlt" : "baby_blanc";
+      await update(ref(db, chemin), { [champ]: nouvelleValeur });
+      await push(ref(db, "stock_ajustements"), {
+        emplacement: correctionOuverte === "nlt" ? "Caisses IFCO — NLT" : "Carton Baby Blanc — Andes",
+        ancienneValeur,
+        nouvelleValeur,
+        raison: `Correction manuelle (Moorea) — ${correctionRaison.trim()} — par ${userName || "Moorea"}`,
+        date: new Date().toLocaleDateString("fr-FR"),
+        timestamp: Date.now(),
+      });
+      notify("success", `✓ Stock ${DEPOT_LABEL[correctionOuverte]} corrigé : ${ancienneValeur} → ${nouvelleValeur}`);
+      setCorrectionOuverte(null);
+    } catch (err: any) {
+      notify("error", `Erreur lors de la correction : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      setCorrectionEnCours(false);
+    }
+  }
+
   // 27/08/2026 — L'ENVOI DU RÉCAP, en revanche, est repassé côté commercial (ici) : Elinathan
   // avait d'abord tout regroupé côté entrepôt (voir plus haut), mais l'envoi du récap au
   // reconditionneur est une décision commerciale ("le lot du jour est prêt à partir"), pas une
@@ -2466,6 +2519,44 @@ export function ReconditionnementModule({ onClose, userName }: {
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
             <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} />
+
+            {/* 04/09/2026 — Correction manuelle du stock NLT (IFCO) / Andès (carton), à
+                l'initiative de Moorea — voir validerCorrectionStock plus haut. */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <button type="button" onClick={() => ouvrirCorrection("nlt")} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                ✏️ Corriger le stock IFCO NLT
+              </button>
+              <button type="button" onClick={() => ouvrirCorrection("andes")} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                ✏️ Corriger le stock carton Andès
+              </button>
+            </div>
+
+            {correctionOuverte && (
+              <div style={{ background: COLORS.gray100, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700, marginBottom: 10 }}>
+                  ✏️ Corriger le stock {correctionOuverte === "nlt" ? "IFCO — NLT" : "carton — Andès"}
+                  <span style={{ fontWeight: 500, color: COLORS.gray400 }}> (actuellement {formatCaisses(correctionOuverte === "nlt" ? stockIfco.nlt : stockBabyBlancAndes)})</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Nouvelle quantité</label>
+                    <input type="number" min={0} value={correctionValeur} onChange={e => setCorrectionValeur(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Raison *</label>
+                    <input type="text" value={correctionRaison} onChange={e => setCorrectionRaison(e.target.value)} placeholder="Ex : comptage physique, erreur de saisie..." style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={validerCorrectionStock} disabled={correctionEnCours} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: correctionEnCours ? "default" : "pointer", opacity: correctionEnCours ? 0.6 : 1 }}>
+                    {correctionEnCours ? "…" : "✓ Valider la correction"}
+                  </button>
+                  <button type="button" onClick={() => setCorrectionOuverte(null)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* 31/08/2026 — Bouton global, indépendant de toute demande précise : c'est
                 désormais ici (et non plus depuis la création d'une demande) que se déclare
