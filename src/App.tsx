@@ -159,14 +159,33 @@ export default function App() {
     // récupéré/détruit — ces cas doivent rester visibles dans les tableaux de bord "en cours"
     // (qui ne regardent que "arrivages", pas les archives) tant qu'ils ne sont pas clôturés,
     // même si l'arrivage a plus de 3 semaines.
+    // 04/09/2026 — Comptage détaillé des exclusions (demande d'Elinathan : "ça a archivé une
+    // partie mais pas jusqu'à 3 semaines") pour pouvoir dire précisément pourquoi un arrivage
+    // n'a pas été archivé, plutôt qu'un simple total muet. Note : "Historique" continue
+    // d'afficher les arrivages déjà archivés (fusionnés avec les récents, voir
+    // arrivagesAvecArchives) — les revoir dans cette liste après archivage est normal, ce n'est
+    // pas un signe que l'archivage n'a pas fonctionné.
+    let nbTropRecent = 0, nbEnAttente = 0, nbLitigeOuvert = 0, nbRefusNonTraite = 0, nbDateInvalide = 0;
     const aArchiver = arrivages.filter(a => {
-      if (!a.statut || a.statut === "en attente") return false;
-      if (a.litige && a.litige.statut === "ouvert") return false;
-      if ((a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee) return false;
+      if (!a.statut || a.statut === "en attente") { nbEnAttente++; return false; }
+      if (a.litige && a.litige.statut === "ouvert") { nbLitigeOuvert++; return false; }
+      if ((a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee) { nbRefusNonTraite++; return false; }
       const t = parseDateArr(a.date).getTime();
-      return t > 0 && t < limite;
+      if (t <= 0) { nbDateInvalide++; return false; }
+      if (t >= limite) { nbTropRecent++; return false; }
+      return true;
     });
-    if (!aArchiver.length) { showToast("Rien à archiver pour le moment"); return; }
+    const detailIgnores = [
+      nbEnAttente ? `${nbEnAttente} en attente` : "",
+      nbLitigeOuvert ? `${nbLitigeOuvert} litige ouvert` : "",
+      nbRefusNonTraite ? `${nbRefusNonTraite} refus non traité` : "",
+      nbDateInvalide ? `${nbDateInvalide} date illisible` : "",
+    ].filter(Boolean).join(" · ");
+    console.log("Archivage arrivages — détail:", { aArchiver: aArchiver.length, nbTropRecent, nbEnAttente, nbLitigeOuvert, nbRefusNonTraite, nbDateInvalide });
+    if (!aArchiver.length) {
+      showToast(detailIgnores ? `Rien à archiver — ignorés : ${detailIgnores}` : "Rien à archiver pour le moment (tout est déjà récent ou déjà archivé)");
+      return;
+    }
     setArchivageBusy(true);
     try {
       const updates: Record<string, any> = {};
@@ -176,7 +195,7 @@ export default function App() {
         updates[`arrivages/${id}`] = null;
       }
       await update(ref(db), updates);
-      showToast(`✅ ${aArchiver.length} arrivage(s) archivé(s) — toujours consultables dans l'Historique`);
+      showToast(`✅ ${aArchiver.length} arrivage(s) archivé(s)${detailIgnores ? ` · ignorés : ${detailIgnores}` : ""}`);
     } catch (err) {
       console.error("Erreur archivage arrivages:", err);
       showToast("❌ Erreur lors de l'archivage", "error");
