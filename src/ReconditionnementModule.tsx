@@ -1057,10 +1057,26 @@ export function ReconditionnementModule({ onClose, userName }: {
   // convention ici : écrit directement le nouveau nombre dans ifco_stock/levels.nlt ou
   // stock_carton_andes/baby_blanc, et journalise dans stock_ajustements (partagé avec
   // Prestataires — un même journal, visible et modifiable depuis les deux modules).
+  const [ajustStockMoorea, setAjustStockMoorea] = useState("");
+  const [raisonAjustMoorea, setRaisonAjustMoorea] = useState("");
   const [ajustStockNlt, setAjustStockNlt] = useState("");
   const [raisonAjustNlt, setRaisonAjustNlt] = useState("");
   const [ajustStockAndes, setAjustStockAndes] = useState("");
   const [raisonAjustAndes, setRaisonAjustAndes] = useState("");
+
+  // 04/09/2026 (suite) — Ajouté à la demande d'Elinathan : le stock IFCO Moorea (vide) manquait
+  // ici alors qu'il est affiché juste à côté (StockCardsIfco) — seuls NLT et Andès avaient une
+  // correction. Même principe/mêmes champs que le bloc Prestataires.
+  async function corrigerStockMoorea() {
+    const v = parseInt(ajustStockMoorea);
+    if (!Number.isFinite(v) || v < 0) { notify("error", "✗ Valeur invalide"); return; }
+    if (!raisonAjustMoorea.trim()) { notify("error", "✗ Indique une raison pour la correction"); return; }
+    const ancienneValeur = stockIfco.moorea;
+    await update(ref(db, "ifco_stock/levels"), { moorea: v });
+    await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+    setAjustStockMoorea(""); setRaisonAjustMoorea("");
+    notify("success", "✓ Stock IFCO Moorea ajusté");
+  }
 
   async function corrigerStockNlt() {
     const v = parseInt(ajustStockNlt);
@@ -3627,6 +3643,14 @@ export function ReconditionnementModule({ onClose, userName }: {
                 Corrige un stock affiché sur "En cours"/"Nouvelle demande" s'il ne correspond plus au stock réel.
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: stockAjustements.length > 0 ? 20 : 0 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>🏭 IFCO — Moorea (actuel : {formatCaisses(stockIfco.moorea)})</div>
+                  <input type="number" value={ajustStockMoorea} onChange={e => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box", marginBottom: 6 }} />
+                  <input type="text" value={raisonAjustMoorea} onChange={e => setRaisonAjustMoorea(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box", marginBottom: 6 }} />
+                  <button onClick={corrigerStockMoorea} style={{ width: "100%", padding: "8px 14px", background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                    Valider la correction
+                  </button>
+                </div>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>🔄 IFCO — NLT (actuel : {formatCaisses(stockIfco.nlt)})</div>
                   <input type="number" value={ajustStockNlt} onChange={e => setAjustStockNlt(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box", marginBottom: 6 }} />
