@@ -490,11 +490,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           // dans chaque case palette (voir "cases" plus haut), le total et les étiquettes en
           // découlent automatiquement. Pleine largeur pour laisser la place aux cases.
           <div style={{ flex: "1 1 100%", background: hasEcartColis ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+            <div style={{ marginBottom: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes — colis reçus par palette</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: hasEcartColis ? "#dc2626" : "#1a2e1a" }}>
-                Total : {colisRecusNum}/{colisAttendu}{hasEcartColis ? ` (${ecartColis > 0 ? "+" : ""}${ecartColis})` : ""}
-              </span>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {cases.map((c, idx) => (
@@ -510,6 +507,20 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               ))}
               <button onClick={ajouterCase} title="Ajouter une palette"
                 style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 16, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, padding: 0 }}>+</button>
+              {/* 04/09/2026 — Cellule "totale" bien visible au bout de la ligne, à la demande
+                  d'Elinathan : verte si le total tombe pile sur l'attendu, orange si on est
+                  au-dessus, rouge si on est en-dessous. */}
+              <div title={ecartColis === 0 ? "Total conforme" : ecartColis > 0 ? `+${ecartColis} par rapport à l'attendu` : `${ecartColis} par rapport à l'attendu`}
+                style={{
+                  marginLeft: 4, minWidth: 76, height: 32, padding: "0 10px", borderRadius: 8,
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                  fontSize: 13, fontWeight: 800, whiteSpace: "nowrap",
+                  background: ecartColis === 0 ? "#f0fdf4" : ecartColis > 0 ? "#fffbeb" : "#fef2f2",
+                  border: `1.5px solid ${ecartColis === 0 ? "#bbf7d0" : ecartColis > 0 ? "#fde3a8" : "#fca5a5"}`,
+                  color: ecartColis === 0 ? "#15803d" : ecartColis > 0 ? "#d97706" : "#dc2626",
+                }}>
+                {colisRecusNum}/{colisAttendu}
+              </div>
             </div>
             <p style={{ margin: "6px 0 0", fontSize: 10, color: "#9ca3af" }}>Laisser toutes les cases vides = {colisAttendu} colis attendus (1 palette)</p>
           </div>
