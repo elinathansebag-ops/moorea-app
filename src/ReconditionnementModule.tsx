@@ -880,6 +880,14 @@ export function ReconditionnementModule({ onClose, userName }: {
   const [importMultiEnCours, setImportMultiEnCours] = useState(false);
   const [afficherPdfsEnAttente, setAfficherPdfsEnAttente] = useState(false);
 
+  // 04/09/2026 — Demandes de réajustement de stock envoyées par le reconditionneur depuis son
+  // espace public (voir src/PortailReconditionneur.tsx) — auparavant visibles/validables
+  // uniquement dans Préparation entrepôt (src/PreparationModule.tsx). Sur demande d'Elinathan,
+  // elles sont aussi affichées et actionnables ici, côté Reconditionnement (commercial) : même
+  // source Firebase (reajustements_stock_demandes), même logique de validation que
+  // traiterReajustement dans PreparationModule.tsx, pour ne pas dépendre d'un seul écran.
+  const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
+
   useEffect(() => {
     const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
       const d = snap.val();
@@ -921,7 +929,11 @@ export function ReconditionnementModule({ onClose, userName }: {
       const d = snap.val();
       setPdfsEnAttente(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.ts || 0) - (b.ts || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
+    const u10 = onValue(ref(db, "reajustements_stock_demandes"), snap => {
+      const d = snap.val();
+      setReajustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
@@ -987,6 +999,37 @@ export function ReconditionnementModule({ onClose, userName }: {
     // message d'erreur qui disparaît tout seul en 3,5s est illisible/impossible à capturer en
     // capture d'écran pour diagnostiquer un problème. Les succès restent auto-masqués, rapides.
     if (type === "success") setTimeout(() => setNotification(null), 3500);
+  }
+
+  // ─── VALIDATION / REFUS D'UNE DEMANDE DE RÉAJUSTEMENT DE STOCK (portail reconditionneur) ───
+  // Même logique que traiterReajustement dans PreparationModule.tsx — dupliquée ici pour que la
+  // validation soit possible directement depuis Reconditionnement (voir commentaire plus haut
+  // sur reajustements). Valider applique réellement la nouvelle quantité au stock ; refuser ne
+  // change rien.
+  async function traiterReajustement(r: ReajustementDemande, valider: boolean) {
+    try {
+      await update(ref(db, `reajustements_stock_demandes/${r.id}`), {
+        statut: valider ? "validé" : "refusé",
+        traitePar: userName,
+        traiteDate: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      });
+      if (valider) {
+        const chemin = r.depot === "nlt" ? "ifco_stock/levels" : "stock_carton_andes";
+        const champ = r.depot === "nlt" ? "nlt" : "baby_blanc";
+        await update(ref(db, chemin), { [champ]: r.quantiteProposee });
+        await push(ref(db, "stock_ajustements"), {
+          emplacement: r.depot === "nlt" ? "Caisses IFCO — NLT" : "Carton Baby Blanc — Andes",
+          ancienneValeur: r.quantiteActuelle,
+          nouvelleValeur: r.quantiteProposee,
+          raison: `Réajustement demandé par ${DEPOT_LABEL[r.depot]} (${r.raison}) — validé par ${userName}`,
+          date: new Date().toLocaleDateString("fr-FR"),
+          timestamp: Date.now(),
+        });
+      }
+      notify("success", valider ? "✓ Réajustement validé, stock mis à jour" : "✓ Demande refusée, stock inchangé");
+    } catch (err: any) {
+      notify("error", `Erreur lors du traitement : ${err?.message || "erreur inconnue"}`);
+    }
   }
 
   // La validation des réajustements de stock demandés par le reconditionneur et la validation
@@ -1873,6 +1916,28 @@ export function ReconditionnementModule({ onClose, userName }: {
   // d'être envoyé — sinon il n'a pas lieu d'être affiché.
   const yABonsNltEnAttente = demandes.some(d => d.depot === "nlt" && d.statut === "en attente");
 
+  // 04/09/2026 — Rétabli à la demande d'Elinathan : le message d'alerte "NLT n'a pas assez de
+  // caisses IFCO" n'existait plus qu'au moment de CRÉER une nouvelle demande (voir plus bas,
+  // formulaire "Nouvelle demande") — donc invisible pour tout le stock déjà en attente. Ici on
+  // calcule le besoin total en caisses IFCO de toutes les demandes NLT "en attente" (pas encore
+  // préparées) et on compare au stock réellement disponible chez NLT, pour afficher l'alerte de
+  // façon permanente sur l'onglet "En cours", juste au-dessus du bouton d'envoi de palette.
+  const besoinCaissesIfcoNlt = demandes
+    .filter(d => d.depot === "nlt" && d.statut === "en attente" && retourEnIfcoDemande(d))
+    .reduce((s, d) => s + (d.nbColisAEntrer || 0), 0);
+  const manqueCaissesIfcoNlt = Math.max(0, besoinCaissesIfcoNlt - stockIfco.nlt);
+  // 04/09/2026 (suite) — Ça ne suffisait pas : Elinathan a enchaîné 7 reconditionnements NLT
+  // (tous conditionnés puis repassés "parti" au fil de l'eau) qui ont fait fondre le stock NLT
+  // à 362 caisses sans qu'aucune alerte ne se déclenche, puisqu'il n'y avait justement plus
+  // aucune demande "en attente" au moment de regarder — le calcul ci-dessus ne voit que le
+  // besoin des demandes PAS ENCORE conditionnées, pas la tendance du stock qui fond au fil des
+  // demandes déjà parties. On ajoute donc un second déclencheur, complémentaire : le stock NLT
+  // lui-même repassé sous 1 palette (même convention que "Stock bas à Moorea !" dans
+  // IFCOStockModule.tsx), qui prévient même quand tout est déjà traité et qu'il n'y a plus
+  // aucune demande en attente pour le détecter.
+  const stockNltBas = stockIfco.nlt < CAISSES_PAR_PALETTE;
+  const alerteCaissesIfcoNlt = manqueCaissesIfcoNlt > 0 || stockNltBas;
+
   // Tous les lots connus (arrivages, stock, historique reconditionnement), pour la saisie
   // assistée du champ Lot du formulaire.
   const lotsConnus = Array.from(new Set(
@@ -2280,14 +2345,43 @@ export function ReconditionnementModule({ onClose, userName }: {
 
         {/* ── EN COURS ── */}
         {/* Anciennement l'onglet "Demandes" avec toutes les actions entrepôt (marquer prêt/parti,
-            réajustements, récap...) — tout ça vit désormais dans le module Préparation entrepôt
-            à part (voir src/PreparationModule.tsx, ouvert depuis l'accueil). Ici, côté
-            Reconditionnement (commercial), on ne garde qu'un suivi en lecture du détail et du
-            statut de chaque demande — seule la correction du contenu d'une demande pas encore
-            préparée (Modifier / Supprimer / Annuler) reste ici, puisque c'est le seul endroit où
-            se trouve le formulaire de création à réutiliser pour la modifier. */}
+            récap...) — tout ça vit désormais dans le module Préparation entrepôt à part (voir
+            src/PreparationModule.tsx, ouvert depuis l'accueil). Ici, côté Reconditionnement
+            (commercial), on ne garde qu'un suivi en lecture du détail et du statut de chaque
+            demande — seule la correction du contenu d'une demande pas encore préparée (Modifier /
+            Supprimer / Annuler) reste ici, puisque c'est le seul endroit où se trouve le
+            formulaire de création à réutiliser pour la modifier. 04/09/2026 — Les demandes de
+            réajustement de stock (ci-dessous) restent, elles, affichées ET validables des DEUX
+            côtés (ici et dans Préparation) sur demande d'Elinathan, pour ne pas les rater. */}
         {activeTab === "en_cours" && (
           <div>
+            {/* Demandes de réajustement de stock envoyées par les reconditionneurs (voir
+                PortailReconditionneur.tsx) — mêmes données/actions que dans Préparation entrepôt. */}
+            {reajustements.filter(r => r.statut === "en attente").map(r => (
+              <div key={r.id} style={{ background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginBottom: 4 }}>
+                  📦 {DEPOT_LABEL[r.depot]} demande un réajustement de stock — {r.quantiteActuelle} → <b>{r.quantiteProposee}</b>
+                </div>
+                <div style={{ fontSize: 12, color: "#92400e", marginBottom: 10 }}>
+                  "{r.raison}" — {r.date}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => traiterReajustement(r, true)}
+                    style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ✓ Valider ({r.quantiteProposee})
+                  </button>
+                  <button
+                    onClick={() => traiterReajustement(r, false)}
+                    style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ✗ Refuser
+                  </button>
+                </div>
+              </div>
+            ))}
+
             {/* Envoi du récap du jour — manuel, un bouton par dépôt. Repassé côté commercial ici
                 le 27/08/2026 (retiré de Préparation entrepôt, voir envoyerRecapDuJour plus haut) :
                 c'est une décision commerciale ("le lot du jour est prêt à partir au reconditionneur"),
@@ -2387,8 +2481,23 @@ export function ReconditionnementModule({ onClose, userName }: {
                 nombre de palettes est déduit du nombre de caisses (640 caisses = 1 palette,
                 CAISSES_PAR_PALETTE) — arrondi au plus proche, au moins 1.
                 01/09/2026 — À la demande d'Elinathan : n'a de sens que s'il y a un bon NLT en
-                attente d'être envoyé, sinon le bouton n'a pas lieu d'être affiché. */}
-            {yABonsNltEnAttente && (
+                attente d'être envoyé, sinon le bouton n'a pas lieu d'être affiché. 04/09/2026 —
+                Affiché aussi quand le stock NLT est bas (alerteCaissesIfcoNlt), même sans bon en
+                attente, puisque le message d'alerte juste au-dessus y renvoie ("ci-dessous"). */}
+            {alerteCaissesIfcoNlt && (
+              <p style={{ margin: "0 0 10px", fontSize: 11.5, color: COLORS.danger, fontWeight: 700, background: "#fef2f2", border: `1.5px solid #fca5a5`, borderRadius: 8, padding: "8px 12px" }}>
+                {manqueCaissesIfcoNlt > 0 ? (
+                  <>⚠️ NLT produit plus de caisses IFCO que ce qu'il y a en stock chez eux — besoin
+                  d'environ {formatCaisses(besoinCaissesIfcoNlt)} pour les demandes en attente, seulement{" "}
+                  {formatCaisses(stockIfco.nlt)} disponibles (manque {formatCaisses(manqueCaissesIfcoNlt)})</>
+                ) : (
+                  <>⚠️ Stock de caisses IFCO bas chez NLT — seulement {formatCaisses(stockIfco.nlt)} disponibles
+                  (moins d'une palette)</>
+                )}
+                {" "}— envoie une palette IFCO à NLT ci-dessous.
+              </p>
+            )}
+            {(yABonsNltEnAttente || alerteCaissesIfcoNlt) && (
             <div style={{ marginBottom: 14 }}>
               <button
                 type="button"
@@ -2918,7 +3027,7 @@ export function ReconditionnementModule({ onClose, userName }: {
               {depot === "nlt" && retourIfco === "oui" && (parseInt(nbColisAEntrer) || 0) > (stockIfco.nlt + (parseInt(caissesIfcoEnvoyees) || 0)) && (
                 <p style={{ margin: "-6px 0 10px", fontSize: 10.5, color: COLORS.danger, fontWeight: 700 }}>
                   ⚠️ NLT n'a pas assez de caisses IFCO vides pour conditionner {nbColisAEntrer || 0} colis
-                  ({formatCaisses(stockIfco.nlt + (parseInt(caissesIfcoEnvoyees) || 0))} dispo avec l'envoi actuel) — envoie une palette IFCO à NLT ci-dessus.
+                  ({formatCaisses(stockIfco.nlt + (parseInt(caissesIfcoEnvoyees) || 0))} dispo avec l'envoi actuel) — envoie une palette IFCO à NLT depuis l'onglet "En cours".
                 </p>
               )}
 
