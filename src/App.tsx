@@ -155,39 +155,27 @@ export default function App() {
       return new Date(0);
     };
     const limite = Date.now() - ARCHIVAGE_APRES_JOURS * 24 * 60 * 60 * 1000;
-    // Sécurité : on n'archive jamais un litige encore ouvert, ni un refus pas encore signé/
-    // récupéré/détruit — ces cas doivent rester visibles dans les tableaux de bord "en cours"
-    // (qui ne regardent que "arrivages", pas les archives) tant qu'ils ne sont pas clôturés,
-    // même si l'arrivage a plus de 3 semaines.
-    // 04/09/2026 — Comptage détaillé des exclusions (demande d'Elinathan : "ça a archivé une
-    // partie mais pas jusqu'à 3 semaines") pour pouvoir dire précisément pourquoi un arrivage
-    // n'a pas été archivé, plutôt qu'un simple total muet. Note : "Historique" continue
-    // d'afficher les arrivages déjà archivés (fusionnés avec les récents, voir
-    // arrivagesAvecArchives) — les revoir dans cette liste après archivage est normal, ce n'est
-    // pas un signe que l'archivage n'a pas fonctionné.
-    // 04/09/2026 — Ordre important : on regarde D'ABORD si l'arrivage a plus de 3 semaines
-    // avant de vérifier les autres critères, pour que le compte-rendu ("ignorés : X litige
-    // ouvert" etc.) ne compte QUE parmi les arrivages qui avaient déjà l'âge requis — sinon un
-    // litige ouvert récent (des 3 dernières semaines, qui ne serait de toute façon jamais
-    // archivé) fausse le total et fait croire à un blocage sur les vieux arrivages qui n'existe
-    // peut-être pas.
-    let nbTropRecent = 0, nbEnAttente = 0, nbLitigeOuvert = 0, nbRefusNonTraite = 0, nbDateInvalide = 0;
+    // 04/09/2026 — Elinathan a vérifié : les "litiges ouverts"/"refus non traités" de plus de
+    // 3 semaines sont en réalité de vieux dossiers jamais clôturés dans l'outil (54 + 4 sur ce
+    // seul essai), pas des cas encore réellement en cours — les bloquer empêchait l'archivage de
+    // faire son travail ("il devrait plus rien avoir en dessous de la semaine 33"). On archive
+    // donc désormais aussi ces cas dès qu'ils ont plus de 3 semaines : rien n'est perdu, le
+    // litige reste visible et cliquable (bouton "Clôturer") depuis l'Historique, qui sait
+    // maintenant écrire au bon endroit ("arrivages_archives" au lieu de "arrivages") pour un
+    // arrivage archivé — voir onLitige/onClotureLitige/onDestruction plus bas.
+    let nbTropRecent = 0, nbEnAttente = 0, nbDateInvalide = 0;
     const aArchiver = arrivages.filter(a => {
       const t = parseDateArr(a.date).getTime();
       if (t <= 0) { nbDateInvalide++; return false; }
       if (t >= limite) { nbTropRecent++; return false; }
       if (!a.statut || a.statut === "en attente") { nbEnAttente++; return false; }
-      if (a.litige && a.litige.statut === "ouvert") { nbLitigeOuvert++; return false; }
-      if ((a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee) { nbRefusNonTraite++; return false; }
       return true;
     });
     const detailIgnores = [
       nbEnAttente ? `${nbEnAttente} en attente` : "",
-      nbLitigeOuvert ? `${nbLitigeOuvert} litige ouvert` : "",
-      nbRefusNonTraite ? `${nbRefusNonTraite} refus non traité` : "",
       nbDateInvalide ? `${nbDateInvalide} date illisible` : "",
     ].filter(Boolean).join(" · ");
-    console.log("Archivage arrivages — détail:", { aArchiver: aArchiver.length, nbTropRecent, nbEnAttente, nbLitigeOuvert, nbRefusNonTraite, nbDateInvalide });
+    console.log("Archivage arrivages — détail:", { aArchiver: aArchiver.length, nbTropRecent, nbEnAttente, nbDateInvalide });
     if (!aArchiver.length) {
       showToast(detailIgnores ? `Rien à archiver — ignorés : ${detailIgnores}` : "Rien à archiver pour le moment (tout est déjà récent ou déjà archivé)");
       return;
@@ -3828,9 +3816,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 return (
                   <HistoriqueArrivageRow key={a.id} a={a} rapport={rapport} borderColor={borderColor}
                     onRapport={() => ouvrirRapportDepuisArrivage(a)}
-                    onLitige={() => { ouvrirRapportDepuisArrivage(a, true); update(ref(db, `arrivages/${a.id}`), { statut: "sous réserve", litige: { type: "sous réserve", raison: "", pct: "", lot_moorea: a.lot_interne||"", lot_fournisseur: a.lot_fournisseur||"", date: new Date().toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now(), ouvertApresValidation: a.statut==="validé" } }); }}
-                    onClotureLitige={() => { update(ref(db, `arrivages/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") }).then(() => showToast("✅ Litige clôturé")); }}
-                    onDestruction={async (qte: string, raison: string) => { await update(ref(db, `arrivages/${a.id}`), { destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName||user?.email||"-" } }); showToast("🗑 Destruction enregistrée"); }}
+                    onLitige={() => { ouvrirRapportDepuisArrivage(a, true); const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; update(ref(db, `${noeud}/${a.id}`), { statut: "sous réserve", litige: { type: "sous réserve", raison: "", pct: "", lot_moorea: a.lot_interne||"", lot_fournisseur: a.lot_fournisseur||"", date: new Date().toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now(), ouvertApresValidation: a.statut==="validé" } }); }}
+                    onClotureLitige={() => { const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; update(ref(db, `${noeud}/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") }).then(() => showToast("✅ Litige clôturé")); }}
+                    onDestruction={async (qte: string, raison: string) => { const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; await update(ref(db, `${noeud}/${a.id}`), { destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName||user?.email||"-" } }); showToast("🗑 Destruction enregistrée"); }}
                     onPDF={() => rapport && downloadPDF(rapport)}
                     onWA={() => rapport && partagerWhatsApp(rapport)}
                     user={user}
