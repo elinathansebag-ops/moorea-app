@@ -165,14 +165,20 @@ export default function App() {
     // d'afficher les arrivages déjà archivés (fusionnés avec les récents, voir
     // arrivagesAvecArchives) — les revoir dans cette liste après archivage est normal, ce n'est
     // pas un signe que l'archivage n'a pas fonctionné.
+    // 04/09/2026 — Ordre important : on regarde D'ABORD si l'arrivage a plus de 3 semaines
+    // avant de vérifier les autres critères, pour que le compte-rendu ("ignorés : X litige
+    // ouvert" etc.) ne compte QUE parmi les arrivages qui avaient déjà l'âge requis — sinon un
+    // litige ouvert récent (des 3 dernières semaines, qui ne serait de toute façon jamais
+    // archivé) fausse le total et fait croire à un blocage sur les vieux arrivages qui n'existe
+    // peut-être pas.
     let nbTropRecent = 0, nbEnAttente = 0, nbLitigeOuvert = 0, nbRefusNonTraite = 0, nbDateInvalide = 0;
     const aArchiver = arrivages.filter(a => {
-      if (!a.statut || a.statut === "en attente") { nbEnAttente++; return false; }
-      if (a.litige && a.litige.statut === "ouvert") { nbLitigeOuvert++; return false; }
-      if ((a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee) { nbRefusNonTraite++; return false; }
       const t = parseDateArr(a.date).getTime();
       if (t <= 0) { nbDateInvalide++; return false; }
       if (t >= limite) { nbTropRecent++; return false; }
+      if (!a.statut || a.statut === "en attente") { nbEnAttente++; return false; }
+      if (a.litige && a.litige.statut === "ouvert") { nbLitigeOuvert++; return false; }
+      if ((a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee) { nbRefusNonTraite++; return false; }
       return true;
     });
     const detailIgnores = [
