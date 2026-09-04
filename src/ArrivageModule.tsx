@@ -146,7 +146,13 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   // retourPresta.parti.nbPalettes, saisi depuis le portail au moment de "Repartie").
   const isTransportMoorea = isRetourRecond && !!arrivage.transporteurNom && /moorea/i.test(String(arrivage.transporteurNom));
 
-  const [qualite, setQualite] = useState(3);
+  // 0 = "pas encore notée" (convention utilisée partout ailleurs dans l'app, ex. ligne
+  // "nettoyage en masse" plus bas). Avant, la valeur par défaut était 3 : si l'agréeur ne
+  // touchait jamais au sélecteur de note, une fausse note "3/5" partait quand même dans le
+  // rapport, ce qui polluait aussi bien l'affichage sur la carte que la moyenne par
+  // fournisseur (d'où le "3,5" observé, qui n'était en fait qu'une moyenne entre une vraie
+  // note et une note fantôme).
+  const [qualite, setQualite] = useState(0);
   const [tempOk, setTempOk] = useState(true);
   const [poidsOk, setPoidsOk] = useState(true);
   const [litige, setLitige] = useState(false);
@@ -361,7 +367,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
   };
 
-  const statusColor = litige || (hasEcartColis && !isRetourRecond) ? "#dc2626" : (hasEcartColis && isRetourRecond) ? "#d97706" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
+  const statusColor = litige || (hasEcartColis && !isRetourRecond) ? "#dc2626" : (hasEcartColis && isRetourRecond) ? "#d97706" : qualite === 0 ? "#d4edda" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
 
   return (
     <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : (litige || hasEcartColis) ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
@@ -775,7 +781,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
         const valeursNum = casesArr.map(c => parseInt(c.trim()) || 0).filter(v => v > 0);
         const palettesArr = valeursNum.length ? valeursNum : [recu];
         const ctrl: any = {
-          qualite: 3, temperature: "ok", poids_mesure: "ok", poids_brut: "", poids_net: "",
+          qualite: 0, temperature: "ok", poids_mesure: "ok", poids_brut: "", poids_net: "",
           observations: `Colis reçus : ${recu}/${attendu}${palettesArr.length > 1 ? ` (${palettesArr.length} palettes)` : ""}`,
           dlc: a.dlc || "", lot_fournisseur: a.lot_fournisseur || "", lot_fournisseur_liste: a.lot_fournisseur_liste || [],
           colisRecus: recu,
