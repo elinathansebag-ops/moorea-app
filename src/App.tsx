@@ -3500,6 +3500,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fff", color: "#8a6f2e", border: "1px solid #e8e0d0", cursor: archivageBusy ? "not-allowed" : "pointer" }}>
                 {archivageBusy ? "🗄 Archivage..." : "🗄 Archiver anciens arrivages"}
               </button>
+              {/* 04/09/2026 — Elinathan ne trouvait pas comment revoir l'Historique arrivages
+                  (aucun bouton n'y menait depuis cet écran) : ajout d'un accès direct. */}
+              <button onClick={() => { setPageMode("historique_arr"); setVue("__none__" as any); window.scrollTo(0,0); }}
+                title="Voir l'historique des arrivages traités (dont les arrivages archivés)"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fff", color: "#1a2e1a", border: "1px solid #e8e0d0", cursor: "pointer" }}>
+                📁 Voir l'historique
+              </button>
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
