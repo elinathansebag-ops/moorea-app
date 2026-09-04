@@ -1100,6 +1100,19 @@ export function ReconditionnementModule({ onClose, userName }: {
     notify("success", "✓ Stock carton Baby Blanc (Andes) ajusté");
   }
 
+  // 04/09/2026 (suite) — Demande d'Elinathan : les champs "Nouvelle valeur" de la correction de
+  // stock (Configuration) étaient vides, il fallait retaper le chiffre à la main même pour une
+  // petite retouche — avant, la case affichait déjà le stock actuel et il n'avait qu'à le
+  // modifier sur place. On pré-remplit donc les 3 champs avec le stock en cours dès qu'on
+  // arrive sur l'onglet Configuration (seulement si le champ est encore vide, pour ne jamais
+  // écraser une saisie déjà commencée si les valeurs Firebase se mettent à jour entre-temps).
+  useEffect(() => {
+    if (activeTab !== "configuration") return;
+    setAjustStockMoorea(v => v === "" ? String(stockIfco.moorea) : v);
+    setAjustStockNlt(v => v === "" ? String(stockIfco.nlt) : v);
+    setAjustStockAndes(v => v === "" ? String(stockBabyBlancAndes) : v);
+  }, [activeTab, stockIfco.moorea, stockIfco.nlt, stockBabyBlancAndes]);
+
   // 27/08/2026 — L'ENVOI DU RÉCAP, en revanche, est repassé côté commercial (ici) : Elinathan
   // avait d'abord tout regroupé côté entrepôt (voir plus haut), mais l'envoi du récap au
   // reconditionneur est une décision commerciale ("le lot du jour est prêt à partir"), pas une
