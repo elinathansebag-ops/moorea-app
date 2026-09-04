@@ -461,34 +461,6 @@ export default function App() {
     return () => clearInterval(t);
   }, [printRelayLastSeen]);
 
-  // Étiquettes bloquées : en erreur, ou "en attente"/"en cours d'impression" depuis plus de
-  // 2 minutes (signe que le PC ne les a jamais traitées, ex : hors ligne au moment de l'envoi).
-  const [etiquettesBloquees, setEtiquettesBloquees] = useState<{ key: string; job: any }[]>([]);
-  useEffect(() => {
-    const unsub = onValue(ref(db, "printQueue"), snap => {
-      const data = snap.val() || {};
-      const maintenant = Date.now();
-      const bloquees = Object.entries(data)
-        .filter(([, job]: [string, any]) => job.status === "error" || ((job.status === "pending" || job.status === "printing") && maintenant - (job.createdAt || 0) > 120000))
-        .map(([key, job]: [string, any]) => ({ key, job }));
-      setEtiquettesBloquees(bloquees);
-    });
-    return () => unsub();
-  }, []);
-  const relancerEtiquette = (key: string) => {
-    update(ref(db, `printQueue/${key}`), { status: "pending", error: null, createdAt: Date.now() })
-      .catch((err: any) => showToast("❌ Relance impossible : " + (err?.message || "erreur inconnue"), "error"));
-  };
-  const ignorerEtiquette = (key: string) => {
-    update(ref(db, `printQueue/${key}`), { status: "ignored" })
-      .catch((err: any) => showToast("❌ Impossible d'ignorer : " + (err?.message || "erreur inconnue"), "error"));
-  };
-  const [showEtiquettesBloqueesModal, setShowEtiquettesBloqueesModal] = useState(false);
-  const ignorerToutesBloquees = () => {
-    etiquettesBloquees.forEach(({ key }) => ignorerEtiquette(key));
-    setShowEtiquettesBloqueesModal(false);
-  };
-
   // ─── DARK MODE ───
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
@@ -3436,44 +3408,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block" }} />
                 🖨️ Imprimante PC : {printRelayOnline === null ? "..." : printRelayOnline ? "en ligne" : "hors ligne"}
               </span>
-              {etiquettesBloquees.length > 0 && (
-                <button onClick={() => setShowEtiquettesBloqueesModal(true)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", cursor: "pointer" }}>
-                  ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""}
-                </button>
-              )}
             </div>
-            {showEtiquettesBloqueesModal && (
-              <div style={{ position: "fixed", inset: 0, zIndex: 3700, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setShowEtiquettesBloqueesModal(false)}>
-                <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 480, maxHeight: "85vh", boxShadow: "0 24px 60px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                  <div style={{ padding: "16px 20px 10px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: "#991b1b", fontFamily: "'Syne', sans-serif" }}>
-                      ⚠️ {etiquettesBloquees.length} étiquette{etiquettesBloquees.length > 1 ? "s" : ""} bloquée{etiquettesBloquees.length > 1 ? "s" : ""}
-                    </p>
-                    <button onClick={() => setShowEtiquettesBloqueesModal(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
-                  </div>
-                  <div style={{ overflowY: "auto", padding: "0 20px", flex: 1 }}>
-                    {etiquettesBloquees.map(({ key, job }) => (
-                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderTop: "1px solid #f0f0f0" }}>
-                        <span style={{ flex: 1, fontSize: 12.5, color: "#374151" }}>{job.lotLabel || job.produit || "Étiquette"} {job.error ? <span style={{ color: "#991b1b" }}>— {job.error}</span> : ""}</span>
-                        <button onClick={() => relancerEtiquette(key)} style={{ flexShrink: 0, background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
-                          🔁 Relancer
-                        </button>
-                        <button onClick={() => ignorerEtiquette(key)} style={{ flexShrink: 0, background: "none", border: "1px solid #e5e7eb", color: "#6b7280", borderRadius: 8, padding: "6px 8px", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>
-                          Ignorer
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ padding: "12px 20px 20px", flexShrink: 0, borderTop: "1px solid #f0f0f0" }}>
-                    <button onClick={ignorerToutesBloquees}
-                      style={{ width: "100%", padding: "12px", background: "#fee2e2", color: "#991b1b", border: "1.5px solid #fca5a5", borderRadius: 12, fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
-                      Tout ignorer →
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
                 📊 Import
