@@ -970,8 +970,11 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                               )}
                                               {/* 04/09/2026 — Secours si l'arrivage attendu ne s'est jamais créé (voir le
                                                   toast d'erreur ajouté dans marquerPartiSilencieux) : repasse à "prêt" pour
-                                                  pouvoir recliquer "Marquer parti" et recréer l'arrivage proprement. */}
-                                              {!arrivagesData.some(a => a.reconditionnement_demande_id === d.id) && (
+                                                  pouvoir recliquer "Marquer parti" et recréer l'arrivage proprement.
+                                                  d.nbColisAEntrer != null exclut les envois de palettes IFCO vides (bouton
+                                                  "📦 Envoyer une palette IFCO à NLT", Reconditionnement) : un aller simple,
+                                                  sans retour attendu, donc normal qu'il n'y ait jamais d'arrivage lié. */}
+                                              {d.nbColisAEntrer != null && !arrivagesData.some(a => a.reconditionnement_demande_id === d.id) && (
                                                 <button
                                                   onClick={() => repasserAPret(d.id)}
                                                   style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: "#fff", color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
