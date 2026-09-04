@@ -498,24 +498,20 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
                 Total : {colisRecusNum}/{colisAttendu}{hasEcartColis ? ` (${ecartColis > 0 ? "+" : ""}${ecartColis})` : ""}
               </span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {cases.map((c, idx) => (
-                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: "#9ca3af", width: 24, flexShrink: 0 }}>P{idx + 1}</span>
+                <div key={idx} style={{ position: "relative" }}>
                   <input type="number" min="0" inputMode="numeric" value={c} placeholder="0"
                     onChange={e => setCase(idx, e.target.value)}
-                    style={{ flex: 1, padding: "4px 6px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none" }} />
-                  <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>colis</span>
+                    style={{ width: 60, padding: "6px 4px", border: "1.5px solid #e5e7eb", borderRadius: 7, fontSize: 13, fontWeight: 700, textAlign: "center", outline: "none" }} />
                   {cases.length > 1 && (
                     <button onClick={() => retirerCase(idx)} title="Retirer cette palette"
-                      style={{ flexShrink: 0, background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 15, fontWeight: 700, padding: "0 4px" }}>✕</button>
+                      style={{ position: "absolute", top: -7, right: -7, width: 16, height: 16, borderRadius: "50%", border: "none", background: "#dc2626", color: "#fff", fontSize: 9, lineHeight: "16px", padding: 0, cursor: "pointer" }}>✕</button>
                   )}
                 </div>
               ))}
-              <button onClick={ajouterCase}
-                style={{ alignSelf: "flex-start", background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-                + Palette
-              </button>
+              <button onClick={ajouterCase} title="Ajouter une palette"
+                style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 16, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, padding: 0 }}>+</button>
             </div>
             <p style={{ margin: "6px 0 0", fontSize: 10, color: "#9ca3af" }}>Laisser toutes les cases vides = {colisAttendu} colis attendus (1 palette)</p>
           </div>
