@@ -361,7 +361,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const aujourdhuiIso = frToIso(new Date().toLocaleDateString("fr-FR"));
   const paletteAbsente = !!dateArrivageIso && dateArrivageIso > aujourdhuiIso;
 
-  const handleValider = async () => {
+  // 04/09/2026 — forcerLitige : permet au bouton "🚩 Créer un litige" (à côté du bouton
+  // "Valider") de basculer directement en litige ET valider en un seul tap, sans passer par le
+  // toggle "⚠️ Litige" au-dessus puis un second tap sur "Valider" — demande d'Elinathan. On ne
+  // peut pas lire l'état "litige" juste après un setLitige(true) (mise à jour asynchrone), d'où
+  // ce paramètre qui prend le pas sur le state le temps de cet appel.
+  const handleValider = async (forcerLitige?: boolean) => {
     // Filet supplémentaire contre le double-tap : sur tablette, deux taps très rapprochés
     // peuvent partir avant que React n'ait eu le temps de désactiver le bouton (disabled={saving}
     // ne suffit pas toujours) — ce qui déclenchait parfois une double impression d'étiquette.
@@ -372,13 +377,15 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     // via le bouton "📲 Prévenir écarts" du bandeau du jour (voir alerterEcartsJourWhatsApp
     // dans DateBlock plus bas).
     setSaving(true);
+    const litigeEffectif = forcerLitige !== undefined ? forcerLitige : litige;
+    if (forcerLitige) setLitige(true);
     // Pour un retour de reconditionnement, un écart de colis n'est PAS un litige : le tri fait
     // que le poids ne tombe jamais exactement sur un compte rond (ex: pas moyen de faire des
     // colis de 4kg00 pile), donc le nombre de colis produits diffère presque toujours un peu de
     // ce qui était demandé — c'est normal, pas un problème qualité. Seul le choix explicite
     // "⚠️ Problème" (litige) compte pour un retour ; pour un arrivage normal (fournisseur), un
     // écart de colis reste un litige comme avant.
-    const hasLitige = isRetourRecond ? litige : (litige || hasEcartColis);
+    const hasLitige = isRetourRecond ? litigeEffectif : (litigeEffectif || hasEcartColis);
     const obs = [
       colisRecus !== "" ? `Colis reçus : ${colisRecusNum}/${colisAttendu}` : "",
       poidsBrut ? `Poids brut : ${poidsBrut} kg` : "",
@@ -395,7 +402,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     }
     const raisonFinal = hasEcartColis
       ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})`
-      : (isRetourRecond && litige ? (retourCommentaire.trim() || "Problème signalé au retour") : "");
+      : (isRetourRecond && litigeEffectif ? (retourCommentaire.trim() || "Problème signalé au retour") : "");
     await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", raisonFinal, "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquette);
     setSaving(false);
     if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
@@ -756,9 +763,16 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           </button>
         </div>
       ) : (
-        <button onClick={handleValider} disabled={saving} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : hasLitige ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-          {saving ? "..." : hasLitige ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => handleValider()} disabled={saving} style={{ flex: 2, padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : hasLitige ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
+            {saving ? "..." : hasLitige ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
+          </button>
+          {/* 04/09/2026 — Raccourci demandé par Elinathan : basculer en litige ET valider en un
+              seul tap, sans passer par le toggle "⚠️ Litige" ci-dessus puis un second tap. */}
+          <button onClick={() => handleValider(true)} disabled={saving} style={{ flex: 1, padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 12.5, border: "1.5px solid #dc2626", background: "#fff", color: "#dc2626", fontFamily: "'Syne', sans-serif" }}>
+            🚩 Litige
+          </button>
+        </div>
       )}
       {showReport && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }} onClick={() => setShowReport(false)}>

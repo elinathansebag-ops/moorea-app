@@ -225,6 +225,11 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   const [groupePartiIds, setGroupePartiIds] = useState<string[] | null>(null);
   const [groupePartiGrandes, setGroupePartiGrandes] = useState("");
   const [groupePartiDemi, setGroupePartiDemi] = useState("");
+  // 04/09/2026 — Désactive "✓ Valider" pendant l'appel : un double-tap (courant sur tablette,
+  // sans retour visuel immédiat) relançait toute la boucle marquerToutPretPuisPartiGroupe avant
+  // que le premier appel n'ait fini, créant des arrivages retour en double (bug des "115 lignes
+  // en attente NLT pour 7 bons" trouvé avec Elinathan).
+  const [groupePartiSaving, setGroupePartiSaving] = useState(false);
   // Aperçu PDF (bon de prépa ou scan Geslot) dans une modale avec iframe, plutôt qu'un lien
   // <a target="_blank"> vers une data:URI — Chrome bloque/redirige la navigation top-level
   // vers un data: URL, alors qu'un iframe src="data:..." affiché dans la page fonctionne.
@@ -418,7 +423,14 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     const quantitePrevue = typeof demande?.nbColisAEntrer === "number" ? demande.nbColisAEntrer : null;
     const quantiteDeclareePresta = typeof demande?.retourPresta?.quantiteDeclaree === "number" ? demande.retourPresta.quantiteDeclaree : null;
     const quantiteArrivage = quantiteDeclareePresta != null ? quantiteDeclareePresta : (quantitePrevue ?? 0);
-    if (demande) {
+    // 04/09/2026 — Garde-fou contre les doublons (bug trouvé avec Elinathan : 115 lignes "en
+    // attente" NLT pour seulement 7 bons) : un double-tap sur "✓ Valider" (rien n'empêchait
+    // jusqu'ici de relancer cette fonction pour la même demande pendant que le premier appel
+    // était encore en cours) recréait un arrivage identique à chaque fois, puisque push()
+    // génère toujours une nouvelle clé. On vérifie donc qu'aucun arrivage n'existe déjà pour
+    // cette demande avant d'en créer un nouveau.
+    const arrivageDejaCree = demande && arrivagesData.some(a => a.reconditionnement_demande_id === demande.id);
+    if (demande && !arrivageDejaCree) {
       try {
         await push(ref(db, "arrivages"), {
           fournisseur: "Reconditionnement",
@@ -1015,17 +1027,24 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
               </div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setGroupePartiIds(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+              <button onClick={() => setGroupePartiIds(null)} disabled={groupePartiSaving} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: groupePartiSaving ? "not-allowed" : "pointer" }}>Annuler</button>
               <button
+                disabled={groupePartiSaving}
                 onClick={async () => {
-                  const g = parseInt(groupePartiGrandes) || 0;
-                  const d = parseInt(groupePartiDemi) || 0;
-                  await marquerToutPretPuisPartiGroupe(groupePartiIds, g, d);
-                  setGroupePartiIds(null);
+                  if (groupePartiSaving) return;
+                  setGroupePartiSaving(true);
+                  try {
+                    const g = parseInt(groupePartiGrandes) || 0;
+                    const d = parseInt(groupePartiDemi) || 0;
+                    await marquerToutPretPuisPartiGroupe(groupePartiIds, g, d);
+                    setGroupePartiIds(null);
+                  } finally {
+                    setGroupePartiSaving(false);
+                  }
                 }}
-                style={{ flex: 2, background: COLORS.secondary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                style={{ flex: 2, background: groupePartiSaving ? "#ccc" : COLORS.secondary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: groupePartiSaving ? "not-allowed" : "pointer" }}
               >
-                ✓ Valider
+                {groupePartiSaving ? "..." : "✓ Valider"}
               </button>
             </div>
           </div>
