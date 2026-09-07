@@ -57,8 +57,8 @@ function formatCaisses(caisses: number): string {
 // mauvais modèle (celui du calendrier IFCO, avec le nombre de palettes en gros). Ici : le gros
 // chiffre est le total en CAISSES (donnée réellement stockée, sans ambiguïté), et le détail
 // "= X palette(s) + Y caisses" est en dessous, sur un fond teinté, comme dans Prestataires.
-function StockCardsIfco({ moorea, nlt, cartonAndes }: { moorea: number; nlt: number; cartonAndes: number }) {
-  const carte = (label: string, total: number, couleur: string, bg: string) => {
+function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage }: { moorea: number; nlt: number; cartonAndes: number; nltEngage?: number }) {
+  const carte = (label: string, total: number, couleur: string, bg: string, extra?: any) => {
     const palettes = Math.floor((total || 0) / CAISSES_PAR_PALETTE);
     const reste = (total || 0) % CAISSES_PAR_PALETTE;
     return (
@@ -69,13 +69,26 @@ function StockCardsIfco({ moorea, nlt, cartonAndes }: { moorea: number; nlt: num
         <div style={{ fontSize: 13, fontWeight: 700, color: "#3a3a3a", background: bg, borderRadius: 8, padding: "5px 8px" }}>
           = {palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisse${reste > 1 ? "s" : ""}` : ""}` : `${total || 0} caisse${(total || 0) > 1 ? "s" : ""} (moins d'une palette)`}
         </div>
+        {extra}
       </div>
     );
   };
+  // 07/09/2026 — "Stock tampon" demandé par Elinathan : le stock officiel NLT ne bouge qu'au
+  // retour agréé, donc il reste haut même quand des demandes "prêt"/"parti" sont déjà en train
+  // de consommer des caisses chez NLT. On affiche ici ce qui est déjà engagé sur ces demandes et
+  // ce qu'il reste réellement de marge, pour voir un manque AVANT que le stock officiel ne
+  // l'affiche lui-même (une fois les caisses reçues vides, trop tard pour anticiper).
+  const nltExtra = nltEngage ? (
+    <div style={{ marginTop: 8, fontSize: 11, color: nlt - nltEngage < 0 ? "#dc2626" : "#8a6f2e", fontWeight: 700 }}>
+      🔒 dont {nltEngage} engagée{nltEngage > 1 ? "s" : ""} (prêt/parti, pas encore reçues)
+      <br />
+      = {nlt - nltEngage < 0 ? `manque ${-(nlt - nltEngage)}` : `${nlt - nltEngage} disponible${nlt - nltEngage > 1 ? "s" : ""}`}
+    </div>
+  ) : undefined;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 8 }}>
       {carte("🏭 IFCO — Moorea", moorea, "#27ae60", "#eafaf1")}
-      {carte("🔄 IFCO — NLT", nlt, "#3b82f6", "#eff6ff")}
+      {carte("🔄 IFCO — NLT", nlt, "#3b82f6", "#eff6ff", nltExtra)}
       <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Andès</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{cartonAndes || 0}</div>
@@ -1999,9 +2012,20 @@ export function ReconditionnementModule({ onClose, userName }: {
   // calcule le besoin total en caisses IFCO de toutes les demandes NLT "en attente" (pas encore
   // préparées) et on compare au stock réellement disponible chez NLT, pour afficher l'alerte de
   // façon permanente sur l'onglet "En cours", juste au-dessus du bouton d'envoi de palette.
+  // 07/09/2026 — Elinathan a demandé un vrai "stock tampon" : le calcul ne regardait QUE les
+  // demandes "en attente", alors qu'une demande "prêt" ou "parti" est déjà en train de consommer
+  // des caisses chez NLT (elles sont en cours de remplissage) sans que le stock officiel
+  // (ifco_stock/levels, qui ne bouge qu'au retour agréé) ne le reflète encore. Deux demandes
+  // pouvaient donc être "parti" pour 270 colis sans la moindre alerte, tant que le stock brut
+  // restait positif. On inclut donc maintenant aussi "prêt" et "parti" dans le besoin — c'est ce
+  // nombre qui sert de stock tampon (caisses déjà engagées, pas encore réellement décomptées).
+  const caissesEngageesNlt = demandes
+    .filter(d => d.depot === "nlt" && (d.statut === "prêt" || d.statut === "parti") && retourEnIfcoDemande(d))
+    .reduce((s, d) => s + (d.nbColisAEntrer || 0), 0);
   const besoinCaissesIfcoNlt = demandes
     .filter(d => d.depot === "nlt" && d.statut === "en attente" && retourEnIfcoDemande(d))
-    .reduce((s, d) => s + (d.nbColisAEntrer || 0), 0);
+    .reduce((s, d) => s + (d.nbColisAEntrer || 0), 0) + caissesEngageesNlt;
+  const stockDispoNlt = stockIfco.nlt - caissesEngageesNlt;
   const manqueCaissesIfcoNlt = Math.max(0, besoinCaissesIfcoNlt - stockIfco.nlt);
   // 04/09/2026 (suite) — Ça ne suffisait pas : Elinathan a enchaîné 7 reconditionnements NLT
   // (tous conditionnés puis repassés "parti" au fil de l'eau) qui ont fait fondre le stock NLT
@@ -2012,7 +2036,7 @@ export function ReconditionnementModule({ onClose, userName }: {
   // lui-même repassé sous 1 palette (même convention que "Stock bas à Moorea !" dans
   // IFCOStockModule.tsx), qui prévient même quand tout est déjà traité et qu'il n'y a plus
   // aucune demande en attente pour le détecter.
-  const stockNltBas = stockIfco.nlt < CAISSES_PAR_PALETTE;
+  const stockNltBas = stockIfco.nlt < CAISSES_PAR_PALETTE || stockDispoNlt < 0;
   const alerteCaissesIfcoNlt = manqueCaissesIfcoNlt > 0 || stockNltBas;
 
   // Tous les lots connus (arrivages, stock, historique reconditionnement), pour la saisie
@@ -2542,7 +2566,7 @@ export function ReconditionnementModule({ onClose, userName }: {
 
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
-            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} />
+            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} />
 
             {/* 04/09/2026 — La correction manuelle du stock (IFCO NLT / carton Andès) vit
                 maintenant dans l'onglet "⚙️ Configuration" (demande d'Elinathan : pas ici, sous
@@ -2569,7 +2593,8 @@ export function ReconditionnementModule({ onClose, userName }: {
               <p style={{ margin: "0 0 10px", fontSize: 11.5, color: COLORS.danger, fontWeight: 700, background: "#fef2f2", border: `1.5px solid #fca5a5`, borderRadius: 8, padding: "8px 12px" }}>
                 {manqueCaissesIfcoNlt > 0 ? (
                   <>⚠️ NLT produit plus de caisses IFCO que ce qu'il y a en stock chez eux — besoin
-                  d'environ {formatCaisses(besoinCaissesIfcoNlt)} pour les demandes en attente, seulement{" "}
+                  d'environ {formatCaisses(besoinCaissesIfcoNlt)} (demandes en attente + déjà prêt/parti,
+                  pas encore reçues), seulement{" "}
                   {formatCaisses(stockIfco.nlt)} disponibles (manque {formatCaisses(manqueCaissesIfcoNlt)})</>
                 ) : (
                   <>⚠️ Stock de caisses IFCO bas chez NLT — seulement {formatCaisses(stockIfco.nlt)} disponibles
@@ -2872,7 +2897,7 @@ export function ReconditionnementModule({ onClose, userName }: {
             )}
 
             {/* Stock, en couleur pâle pour repérer chaque compteur d'un coup d'œil */}
-            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} />
+            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} />
 
             {/* Bon Geslot + envoi palette IFCO, côte à côte en haut — les deux actions rapides */}
             <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap", alignItems: "stretch" }}>
