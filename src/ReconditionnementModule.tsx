@@ -78,11 +78,15 @@ function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage }: { moorea: numbe
   // de consommer des caisses chez NLT. On affiche ici ce qui est déjà engagé sur ces demandes et
   // ce qu'il reste réellement de marge, pour voir un manque AVANT que le stock officiel ne
   // l'affiche lui-même (une fois les caisses reçues vides, trop tard pour anticiper).
+  const nltReste = nlt - nltEngage;
   const nltExtra = nltEngage ? (
-    <div style={{ marginTop: 8, fontSize: 11, color: nlt - nltEngage < 0 ? "#dc2626" : "#8a6f2e", fontWeight: 700 }}>
-      🔒 dont {nltEngage} engagée{nltEngage > 1 ? "s" : ""} (prêt/parti, pas encore reçues)
-      <br />
-      = {nlt - nltEngage < 0 ? `manque ${-(nlt - nltEngage)}` : `${nlt - nltEngage} disponible${nlt - nltEngage > 1 ? "s" : ""}`}
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
+      <div style={{ fontSize: 10.5, color: "#8a6f2e" }}>
+        🔒 {nltEngage} déjà utilisées par des bons prêt/parti (pas encore reçus)
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: nltReste < 0 ? "#dc2626" : "#15803d", marginTop: 2 }}>
+        {nltReste < 0 ? `⚠️ il en manque ${-nltReste}` : `✅ ${nltReste} vraiment disponibles`}
+      </div>
     </div>
   ) : undefined;
   return (
@@ -2591,16 +2595,17 @@ export function ReconditionnementModule({ onClose, userName }: {
                 attente, puisque le message d'alerte juste au-dessus y renvoie ("ci-dessous"). */}
             {alerteCaissesIfcoNlt && (
               <p style={{ margin: "0 0 10px", fontSize: 11.5, color: COLORS.danger, fontWeight: 700, background: "#fef2f2", border: `1.5px solid #fca5a5`, borderRadius: 8, padding: "8px 12px" }}>
+                {/* 07/09/2026 — Simplifié à la demande d'Elinathan (message précédent illisible,
+                    trop de chiffres imbriqués) : des caisses brutes, une phrase courte. */}
                 {manqueCaissesIfcoNlt > 0 ? (
-                  <>⚠️ NLT produit plus de caisses IFCO que ce qu'il y a en stock chez eux — besoin
-                  d'environ {formatCaisses(besoinCaissesIfcoNlt)} (demandes en attente + déjà prêt/parti,
-                  pas encore reçues), seulement{" "}
-                  {formatCaisses(stockIfco.nlt)} disponibles (manque {formatCaisses(manqueCaissesIfcoNlt)})</>
+                  <>⚠️ Pas assez de caisses IFCO chez NLT pour finir ce qui est en cours — il en faut{" "}
+                  {besoinCaissesIfcoNlt} (bons en attente + déjà prêt/parti), il n'y en a que{" "}
+                  {stockIfco.nlt} en stock chez eux : il en manque {manqueCaissesIfcoNlt}.</>
                 ) : (
-                  <>⚠️ Stock de caisses IFCO bas chez NLT — seulement {formatCaisses(stockIfco.nlt)} disponibles
-                  (moins d'une palette)</>
+                  <>⚠️ Stock de caisses IFCO bas chez NLT — seulement {stockIfco.nlt} caisses disponibles
+                  (moins d'une palette).</>
                 )}
-                {" "}— envoie une palette IFCO à NLT ci-dessous.
+                {" "}Envoie une palette IFCO à NLT ci-dessous.
               </p>
             )}
             {(yABonsNltEnAttente || alerteCaissesIfcoNlt) && (
