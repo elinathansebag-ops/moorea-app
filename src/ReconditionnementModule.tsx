@@ -82,7 +82,7 @@ function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage }: { moorea: numbe
   const nltExtra = nltEngage ? (
     <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
       <div style={{ fontSize: 10.5, color: "#8a6f2e" }}>
-        🔒 {nltEngage} déjà utilisées par des bons prêt/parti (pas encore reçus)
+        🏭 {nltEngage} en cours de production chez NLT (bons prêt/parti, pas encore reçus)
       </div>
       <div style={{ fontSize: 12, fontWeight: 800, color: nltReste < 0 ? "#dc2626" : "#15803d", marginTop: 2 }}>
         {nltReste < 0 ? `⚠️ il en manque ${-nltReste}` : `✅ ${nltReste} vraiment disponibles`}
@@ -3730,6 +3730,32 @@ export function ReconditionnementModule({ onClose, userName }: {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* 07/09/2026 — Demande d'Elinathan : un accès direct à l'espace de chaque
+                prestataire depuis Configuration, sans devoir repasser par un mail. Même lien que
+                celui envoyé par email (PrestatairesModule.tsx, "?portail=nlt"/"?portail=andes")
+                — ouvre PortailReconditionneur.tsx dans un nouvel onglet, avec toutes les données
+                du prestataire (stock, demandes, historique). */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
+              <h3 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>🔗 Accès à l'espace prestataire</h3>
+              <p style={{ margin: "0 0 16px", fontSize: 12, color: COLORS.gray600 }}>
+                Ouvre l'espace public d'un prestataire (celui qu'il reçoit par mail) directement depuis ici, pour vérifier ou faire une action à sa place.
+              </p>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => window.open(`${window.location.origin}/?portail=nlt`, "_blank")}
+                  style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  🔄 Espace NLT
+                </button>
+                <button
+                  onClick={() => window.open(`${window.location.origin}/?portail=andes`, "_blank")}
+                  style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: COLORS.amber, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  📦 Espace Andès
+                </button>
+              </div>
             </div>
 
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
