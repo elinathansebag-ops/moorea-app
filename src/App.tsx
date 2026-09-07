@@ -313,6 +313,10 @@ export default function App() {
   const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showStatt, setShowStatt] = useState(false);
   const [showPrestataires, setShowPrestataires] = useState(false);
+  // 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : quand on clique "Ouvrir
+  // Prestataires → Configuration" depuis Reconditionnement, on atterrit directement sur cet
+  // onglet plutôt que sur le Dashboard.
+  const [prestatairesInitialTab, setPrestatairesInitialTab] = useState<"dashboard" | "configuration" | undefined>(undefined);
   const [showReconditionnement, setShowReconditionnement] = useState(false);
   const [showAppro, setShowAppro] = useState(false);
   // Préparation entrepôt — anciennement l'onglet "Demandes" de Reconditionnement, extrait en
@@ -2564,13 +2568,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showPrestataires) {
-    return <PrestatairesModule onClose={() => { setShowPrestataires(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
+    return <PrestatairesModule
+      onClose={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }}
+      userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
+      initialTab={prestatairesInitialTab}
+    />;
   }
 
   if (showReconditionnement) {
     return <ReconditionnementModule
       onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
       userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
+      onOpenPrestatairesConfig={() => { setShowReconditionnement(false); setPrestatairesInitialTab("configuration"); setShowPrestataires(true); }}
     />;
   }
 
