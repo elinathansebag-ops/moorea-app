@@ -229,6 +229,13 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   const [groupeOuvertPour, setGroupeOuvertPour] = useState<string | null>(null);
   const [reajustementOuvert, setReajustementOuvert] = useState(false);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  // 07/09/2026 — Remplace les alert() natifs (déclarerPerte, confirmerRepartie,
+  // confirmerLivraisonCarton, demanderReajustement) : signalé par Elinathan (retour d'Andès) un
+  // bouton qui "ne fait rien du tout" au clic — l'action échoue probablement bel et bien (réseau,
+  // etc.) mais alert() peut être silencieusement bloqué sur certains navigateurs/PWA installées,
+  // laissant l'erreur invisible sans le moindre indice. Un bandeau rouge dans la page, toujours
+  // visible, ne dépend d'aucune API navigateur qui pourrait être coupée.
+  const [erreurAction, setErreurAction] = useState<string | null>(null);
 
   const charger = useCallback(async () => {
     try {
@@ -364,6 +371,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   // par Moorea à la création de la demande (demande.transporteurNom).
   async function confirmerRepartie(d: Demande, quantite: number, commentaire: string, grandes: number, demi: number) {
     setEnvoiEnCours(true);
+    setErreurAction(null);
     try {
       const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
@@ -373,8 +381,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setRepartieOuvertPour(null);
       await charger();
-    } catch {
-      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
+    } catch (err) {
+      setErreurAction(`Erreur d'envoi (${err instanceof Error ? err.message : "réseau"}) — réessaie ou contacte Moorea directement.`);
     } finally {
       setEnvoiEnCours(false);
     }
@@ -386,6 +394,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   // api/portail-reconditionneur.js, action "confirmerRepartieGroupee").
   async function confirmerRepartieGroupee(items: { id: string; quantite: number }[], commentaire: string, grandes: number, demi: number, creneauReste: string) {
     setEnvoiEnCours(true);
+    setErreurAction(null);
     try {
       const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
@@ -395,8 +404,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setGroupeOuvertPour(null);
       await charger();
-    } catch {
-      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
+    } catch (err) {
+      setErreurAction(`Erreur d'envoi (${err instanceof Error ? err.message : "réseau"}) — réessaie ou contacte Moorea directement.`);
     } finally {
       setEnvoiEnCours(false);
     }
@@ -404,6 +413,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
 
   async function envoyerPerte(d: Demande, motif: string, quantite: number, commentaire: string, photoEtiquette: string | null, photoProduit: string | null) {
     setEnvoiEnCours(true);
+    setErreurAction(null);
     try {
       const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
@@ -413,8 +423,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setPerteOuvertePour(null);
       await charger();
-    } catch {
-      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
+    } catch (err) {
+      setErreurAction(`Erreur d'envoi (${err instanceof Error ? err.message : "réseau"}) — réessaie ou contacte Moorea directement.`);
     } finally {
       setEnvoiEnCours(false);
     }
@@ -425,6 +435,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   // reconditionneur, sans dépendre de l'ouverture d'un email.
   async function confirmerLivraisonCarton(id: string) {
     setConfirmationCartonEnCours(id);
+    setErreurAction(null);
     try {
       const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
@@ -433,8 +444,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await charger();
-    } catch {
-      alert("Erreur de confirmation, réessaie ou contacte Moorea directement.");
+    } catch (err) {
+      setErreurAction(`Erreur de confirmation (${err instanceof Error ? err.message : "réseau"}) — réessaie ou contacte Moorea directement.`);
     } finally {
       setConfirmationCartonEnCours(null);
     }
@@ -442,6 +453,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
 
   async function demanderReajustement(quantiteProposee: number, raison: string) {
     setEnvoiEnCours(true);
+    setErreurAction(null);
     try {
       const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`, {
         method: "POST",
@@ -451,8 +463,8 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setReajustementOuvert(false);
       await charger();
-    } catch {
-      alert("Erreur d'envoi, réessaie ou contacte Moorea directement.");
+    } catch (err) {
+      setErreurAction(`Erreur d'envoi (${err instanceof Error ? err.message : "réseau"}) — réessaie ou contacte Moorea directement.`);
     } finally {
       setEnvoiEnCours(false);
     }
@@ -497,6 +509,13 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
       </div>
 
       <div style={{ maxWidth: 640, margin: "0 auto", padding: 14 }}>
+        {erreurAction && (
+          <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <div style={{ flex: 1, fontSize: 12.5, color: "#b91c1c", fontWeight: 700 }}>{erreurAction}</div>
+            <button onClick={() => setErreurAction(null)} title="Fermer" style={{ background: "none", border: "none", color: "#b91c1c", fontSize: 16, fontWeight: 800, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+          </div>
+        )}
         {stock != null && (
           <Card style={{ background: "#faf7ef", borderColor: "#e8dcc0" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
