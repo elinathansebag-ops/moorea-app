@@ -240,7 +240,10 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
   const charger = useCallback(async () => {
     try {
       const res = await fetch(`/api/portail-reconditionneur?depot=${depot}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const corps = await res.json().catch(() => null);
+        throw new Error(corps?.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       setDemandes(Array.isArray(data.demandes) ? data.demandes : []);
       setStock(typeof data.stock === "number" ? data.stock : 0);
@@ -378,7 +381,10 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: d.id, action: "confirmerRepartie", quantite, commentaire, transporteur: d.transporteurNom || "-", nbPalettes: { grandes, demi } }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const corps = await res.json().catch(() => null);
+        throw new Error(corps?.error || `HTTP ${res.status}`);
+      }
       setRepartieOuvertPour(null);
       await charger();
     } catch (err) {
@@ -401,7 +407,10 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "confirmerRepartieGroupee", items, commentaire, nbPalettes: { grandes, demi }, creneauReste }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const corps = await res.json().catch(() => null);
+        throw new Error(corps?.error || `HTTP ${res.status}`);
+      }
       setGroupeOuvertPour(null);
       await charger();
     } catch (err) {
@@ -420,7 +429,10 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: d.id, action: "declarerPerte", motif, quantite, commentaire, photoEtiquette, photoProduit }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const corps = await res.json().catch(() => null);
+        throw new Error(corps?.error || `HTTP ${res.status}`);
+      }
       setPerteOuvertePour(null);
       await charger();
     } catch (err) {
@@ -442,7 +454,10 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, action: "confirmerLivraisonCarton" }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const corps = await res.json().catch(() => null);
+        throw new Error(corps?.error || `HTTP ${res.status}`);
+      }
       await charger();
     } catch (err) {
       setErreurAction(`Erreur de confirmation (${err instanceof Error ? err.message : "réseau"}) — réessaie ou contacte Moorea directement.`);
@@ -460,7 +475,10 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "demanderReajustement", quantiteProposee, raison }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const corps = await res.json().catch(() => null);
+        throw new Error(corps?.error || `HTTP ${res.status}`);
+      }
       setReajustementOuvert(false);
       await charger();
     } catch (err) {
