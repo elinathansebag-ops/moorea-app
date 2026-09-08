@@ -846,6 +846,13 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
   const totalRecu = rows.reduce((s, r) => s + r.recu, 0);
   const totalEcart = totalRecu - totalAttendu;
 
+  // 08/09/2026 — Bug trouvé avec Elinathan : si une écriture Firebase échouait au milieu de la
+  // boucle (coupure réseau, permission...), l'erreur remontait jusqu'ici SANS être rattrapée —
+  // la boucle s'arrêtait net, `setRecap` n'était jamais appelé, et rien ne prévenait
+  // l'utilisatrice : ni pop-up de récap, ni message d'erreur. Ça pouvait laisser certaines
+  // lignes du pointage groupé non enregistrées sans qu'elle s'en rende compte. On attrape
+  // maintenant l'erreur pour au moins afficher un message clair, avec le détail de ce qui a pu
+  // être validé avant l'échec (recapLignes contient déjà ce qui est passé).
   const validerTout = async () => {
     if (saving || !rows.length) return;
     setSaving(true);
@@ -876,6 +883,14 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
       const lignesMsg = recapLignes.map(r => `${r.ecart !== 0 ? "⚠️" : "✅"} ${r.produit || "-"}${r.lot ? ` · lot ${r.lot}` : ""} — reçu ${r.recu}/${r.attendu}${r.ecart !== 0 ? ` (${r.ecart > 0 ? "+" : ""}${r.ecart})` : ""}`);
       const message = `POINTAGE ${groupe} - ${date}\nTotal reçu : ${totalRecu}/${totalAttendu}${totalEcart !== 0 ? ` — écart ${totalEcart > 0 ? "+" : ""}${totalEcart}` : ""}\n\n${lignesMsg.join("\n")}`;
       setRecap({ lignes: recapLignes, message, totalEcart });
+    } catch (err: any) {
+      const dejaValidees = recapLignes.length;
+      alert(
+        `❌ Erreur pendant le pointage groupé : ${err?.message || "erreur inconnue"}\n\n` +
+        (dejaValidees > 0
+          ? `${dejaValidees} référence${dejaValidees > 1 ? "s" : ""} sur ${rows.length} ont bien été validée${dejaValidees > 1 ? "s" : ""} avant l'erreur — vérifie ce qui manque et relance le pointage pour le reste.`
+          : `Aucune référence n'a été validée — réessaie.`)
+      );
     } finally {
       setSaving(false);
     }
@@ -2401,7 +2416,19 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
             <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 6, fontSize: 12 }}>· {a.fournisseur}</span>
           </p>
           <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
-            📦 {a.quantite} {a.unite}
+            {/* 08/09/2026 — Bug trouvé avec Elinathan : cette ligne affichait toujours la quantité
+                ATTENDUE d'origine (a.quantite), jamais la quantité RÉELLEMENT reçue/saisie à la
+                validation (a.colisRecus, écrite par handleAgrement dans App.tsx) — du coup une
+                quantité corrigée à l'agréage (ex: 383 au lieu de 350 attendu) semblait "disparaître"
+                en rouvrant l'arrivage validé, alors qu'elle était bien enregistrée, juste jamais
+                affichée ici. On affiche maintenant colisRecus quand il existe, avec l'écart visible
+                s'il diffère de la quantité attendue. */}
+            📦 {a.colisRecus ?? a.quantite} {a.unite}
+            {typeof a.colisRecus === "number" && a.colisRecus !== a.quantite && (
+              <span style={{ color: a.colisRecus > a.quantite ? "#16a34a" : "#dc2626", marginLeft: 6, fontWeight: 700 }}>
+                (attendu {a.quantite}, {a.colisRecus > a.quantite ? "+" : ""}{a.colisRecus - a.quantite})
+              </span>
+            )}
             {a.destruction && <span style={{ color: "#dc2626", marginLeft: 8, fontWeight: 700 }}>🗑 {a.destruction.quantite} détruits</span>}
           </p>
         </div>
