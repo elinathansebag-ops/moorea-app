@@ -560,6 +560,30 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
 
   const demandesTermineesRecond = demandesRecond.filter((d: any) => d.statut === "reçu");
 
+  // ── 08/09/2026 — Demande d'Elinathan : "la feuille de reconditionnement ne sort pas quand
+  // le commercial l'envoie". Le relais d'impression (PC entrepôt) était vert/en ligne, donc le
+  // souci n'est pas une panne générale — il fallait un moyen de voir si le job "bon_reconditionnement"
+  // reste coincé "pending" dans la file (jamais traité par print-relay.js côté PC, ce fichier
+  // n'étant pas dans ce dépôt donc pas modifiable d'ici) pendant que d'autres types de jobs
+  // (étiquettes) passent bien. Vue en lecture seule, aucune écriture — juste un diagnostic.
+  const [printQueueJobs, setPrintQueueJobs] = useState<any[]>([]);
+  useEffect(() => {
+    const u = onValue(ref(db, "printQueue"), snap => {
+      const d = snap.val();
+      const jobs = d ? Object.entries(d).map(([id, v]: any) => ({ id, ...v })) : [];
+      jobs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      setPrintQueueJobs(jobs.slice(0, 30));
+    });
+    return () => u();
+  }, []);
+  const PRINT_JOB_LABEL: Record<string, string> = {
+    bon_reconditionnement: "📄 Bon reconditionnement (A4)",
+    etiquette_palette: "🏷️ Étiquette palette",
+    etiquette_refus: "🏷️ Étiquette refus",
+    etiquette_manifest: "🏷️ Étiquette manifeste",
+    etiquette_production: "🏷️ Étiquette production",
+  };
+
   const moisNoms = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
 
   // Load carton commands
@@ -3868,30 +3892,137 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
               </div>
             </div>
 
-            {/* 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : tout ce qui vivait
-                dans Reconditionnement → Configuration arrive ici. "Ajuster les stocks" reste dans
-                l'onglet "Déclarer IFCO" (elle le loupait tout le temps sous Configuration, voir
-                #stock-ifco-ajustement) — ce raccourci l'y amène directement en un clic. */}
+            {/* 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : "Ajuster les
+                stocks" affiché directement ici (pas juste un lien vers un autre onglet — "ajoute
+                le ici dans ce configuration pas la peine une autre page"). Même bloc, mêmes
+                données/fonctions que celui de l'onglet "Déclarer IFCO" (id différent pour éviter
+                un doublon d'id HTML — pas de surlignage ici, il est déjà directement visible). */}
             <div style={{ background: "white", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", border: `1px solid ${COLORS.gray200}` }}>
               <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>⚖️ Ajuster les stocks (IFCO / Carton Andès)</h3>
-                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock IFCO (Moorea/NLT) ou de carton Andès s'il ne correspond plus au stock réel — l'outil est dans l'onglet « Déclarer IFCO ».</p>
+                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock IFCO (Moorea/NLT) ou de carton Andès s'il ne correspond plus au stock réel.</p>
               </div>
-              <div style={{ padding: "16px" }}>
-                <button
-                  onClick={() => {
-                    setActiveTab("ifco-histo");
-                    setTimeout(() => {
-                      document.getElementById("stock-ifco-ajustement")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                      setSurligneStockIfco(true);
-                      setTimeout(() => setSurligneStockIfco(false), 2000);
-                    }, 60);
-                  }}
-                  style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
-                >
-                  ⚖️ Ouvrir « Ajuster les stocks »
-                </button>
+              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {formatCaisses(stockLevels.moorea)})</div>
+                  <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="text" value={raisonAjustMoorea} onChange={(e) => setRaisonAjustMoorea(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <button
+                    onClick={async () => {
+                      const v = parseInt(ajustStockMoorea);
+                      if (isNaN(v) || v < 0) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
+                      if (!raisonAjustMoorea.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockLevels.moorea;
+                      await update(ref(db, "ifco_stock/levels"), { moorea: v });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      setRaisonAjustMoorea("");
+                      setNotification({ type: "success", message: "✓ Stock IFCO Moorea ajusté" });
+                    }}
+                    style={{ width: "100%", padding: "8px 14px", background: COLORS.primary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                  >
+                    Valider la correction
+                  </button>
+                </div>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🔄 IFCO — NLT (actuel : {formatCaisses(stockLevels.nlt)})</div>
+                  <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="text" value={raisonAjustNlt} onChange={(e) => setRaisonAjustNlt(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <button
+                    onClick={async () => {
+                      const v = parseInt(ajustStockNlt);
+                      if (isNaN(v) || v < 0) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
+                      if (!raisonAjustNlt.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockLevels.nlt;
+                      await update(ref(db, "ifco_stock/levels"), { nlt: v });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      setRaisonAjustNlt("");
+                      setNotification({ type: "success", message: "✓ Stock IFCO NLT ajusté" });
+                    }}
+                    style={{ width: "100%", padding: "8px 14px", background: COLORS.secondary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                  >
+                    Valider la correction
+                  </button>
+                </div>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>📦 Carton Baby Blanc — Andes (actuel : {stockCartonAndes} cartons)</div>
+                  <input type="number" value={ajustStockAndes} onChange={(e) => setAjustStockAndes(e.target.value)} placeholder="Nouvelle valeur" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="text" value={raisonAjustAndes} onChange={(e) => setRaisonAjustAndes(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <button
+                    onClick={async () => {
+                      const v = parseInt(ajustStockAndes);
+                      if (isNaN(v) || v < 0) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
+                      if (!raisonAjustAndes.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockCartonAndes;
+                      await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      setRaisonAjustAndes("");
+                      setNotification({ type: "success", message: "✓ Stock carton Baby Blanc (Andes) ajusté" });
+                    }}
+                    style={{ width: "100%", padding: "8px 14px", background: COLORS.tertiary, color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}
+                  >
+                    Valider la correction
+                  </button>
+                </div>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🟢 IFCO — Pleines en attente ({formatCaisses(stockLevels.pleines || 0)})</div>
+                  <p style={{ margin: "0 0 8px", fontSize: "11px", color: COLORS.gray600 }}>Vidées tous les 2 jours en pratique — rejoint le stock vide Moorea ci-dessus.</p>
+                  <button
+                    onClick={viderCaissesPleines}
+                    disabled={stockLevels.pleines <= 0}
+                    style={{ width: "100%", padding: "8px 14px", background: stockLevels.pleines <= 0 ? COLORS.gray200 : "#ca8a04", color: stockLevels.pleines <= 0 ? "#999" : "white", border: "none", borderRadius: "6px", cursor: stockLevels.pleines <= 0 ? "not-allowed" : "pointer", fontWeight: "700", fontSize: "12px" }}
+                  >
+                    Vider vers le stock Moorea
+                  </button>
+                </div>
               </div>
+
+              {stockAjustements.length > 0 && (
+                <div style={{ padding: "0 16px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                    <h4 style={{ margin: "8px 0 0", fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>🕐 Historique des corrections ({stockAjustements.length})</h4>
+                    {ajustementsASupprimer.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Supprimer définitivement ${ajustementsASupprimer.size} ligne(s) de l'historique ? Le stock actuel n'est pas modifié — c'est juste le journal.`)) return;
+                          await Promise.all(Array.from(ajustementsASupprimer).map(id => remove(ref(db, `stock_ajustements/${id}`))));
+                          setAjustementsASupprimer(new Set());
+                          setNotification({ type: "success", message: "🧹 Historique nettoyé" });
+                        }}
+                        style={{ padding: "5px 12px", borderRadius: "6px", border: "none", background: "#dc2626", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        🗑️ Supprimer ({ajustementsASupprimer.size})
+                      </button>
+                    )}
+                  </div>
+                  <p style={{ margin: "0 0 10px", fontSize: "11px", color: COLORS.gray600 }}>Coche les lignes créées pendant des tests pour les retirer de ce journal — ça ne touche pas au stock actuel, déjà correct.</p>
+                  <div style={{ display: "grid", gap: "8px", maxHeight: "260px", overflowY: "auto" }}>
+                    {stockAjustements.map((a) => (
+                      <label key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: "8px", background: ajustementsASupprimer.has(a.id) ? "#fef2f2" : COLORS.gray100, border: `1px solid ${ajustementsASupprimer.has(a.id) ? "#fca5a5" : COLORS.gray200}`, borderRadius: "8px", padding: "10px 12px", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={ajustementsASupprimer.has(a.id)}
+                          onChange={() => setAjustementsASupprimer(prev => {
+                            const next = new Set(prev);
+                            if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+                            return next;
+                          })}
+                          style={{ width: "auto", margin: "2px 0 0", flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
+                            <span style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray700 }}>{a.emplacement}</span>
+                            <span style={{ fontSize: "11px", color: COLORS.gray600 }}>{a.date}</span>
+                          </div>
+                          <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
+                            {a.ancienneValeur} → <strong style={{ color: COLORS.gray700 }}>{a.nouvelleValeur}</strong> · {a.raison}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ background: "white", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", border: `1px solid ${COLORS.gray200}` }}>
@@ -3906,6 +4037,37 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
                 <button onClick={() => window.open(`${window.location.origin}/?portail=andes`, "_blank")} style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: COLORS.tertiary, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
                   📦 Espace Andès
                 </button>
+              </div>
+            </div>
+
+            <div style={{ background: "white", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", border: `1px solid ${COLORS.gray200}` }}>
+              <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
+                <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>🖨️ File d'impression (diagnostic)</h3>
+                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Les 30 derniers jobs envoyés au relais PC de l'entrepôt (étiquettes + bons). Un job resté "en attente" plus de 3 min alors que le relais est en ligne veut dire que le PC ne l'a pas traité — utile pour repérer si SEUL le bon de reconditionnement (A4) coince, pendant que les étiquettes s'impriment normalement.</p>
+              </div>
+              <div style={{ padding: "16px" }}>
+                {printQueueJobs.length === 0 ? (
+                  <p style={{ fontSize: 12, color: "#999" }}>Aucun job récent.</p>
+                ) : (
+                  <div style={{ display: "grid", gap: 6, maxHeight: 320, overflowY: "auto" }}>
+                    {printQueueJobs.map(job => {
+                      const ageMs = Date.now() - (job.createdAt || 0);
+                      const bloqueProbable = job.status === "pending" && ageMs > 3 * 60 * 1000;
+                      const ageLabel = ageMs < 60000 ? "à l'instant" : ageMs < 3600000 ? `il y a ${Math.round(ageMs / 60000)} min` : `il y a ${Math.round(ageMs / 3600000)} h`;
+                      return (
+                        <div key={job.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 10px", background: bloqueProbable ? "#fef2f2" : COLORS.gray100, border: `1.5px solid ${bloqueProbable ? "#fca5a5" : COLORS.gray200}`, borderRadius: 8 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700 }}>{PRINT_JOB_LABEL[job.type] || job.type || "?"}</div>
+                            <div style={{ fontSize: 11, color: "#888" }}>{job.pdfNom || job.lotLabel || job.reference || ""} · {ageLabel}</div>
+                          </div>
+                          <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: bloqueProbable ? COLORS.danger : job.status === "pending" ? COLORS.tertiary : COLORS.primary, color: "#fff" }}>
+                            {bloqueProbable ? "⚠️ probablement bloqué" : job.status === "pending" ? "en attente" : job.status || "?"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
