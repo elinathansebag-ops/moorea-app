@@ -664,6 +664,68 @@ export async function genererBonPdf(demande: Demande): Promise<string> {
   return doc.output("datauristring");
 }
 
+// 08/09/2026 — Demande d'Elinathan : le bouton "📦 Envoyer une palette IFCO à NLT" (envoi
+// interne d'une palette de caisses IFCO vides, PAS un vrai reconditionnement — pas d'article
+// vrac/fini, pas de retour attendu) n'avait ni bon PDF ni vraie validation (juste un
+// window.prompt/confirm). genererBonPdf ne convient pas tel quel : conçu pour un vrai
+// reconditionnement (2 zones, colis à sortir/entrer, retour attendu...), il afficherait plein
+// de "-" pour un envoi de palette. Bon dédié, simple, une seule zone — sert de bordereau
+// d'envoi à donner au transporteur/à l'entrepôt.
+export async function genererBonEnvoiPaletteIfco(data: {
+  numero: string;
+  dateFr: string;
+  caisses: number;
+  nbPalettes: number;
+  transporteurNom?: string;
+  envoyePar?: string;
+}): Promise<string> {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 16, CW = W - M * 2;
+  let y = 0;
+
+  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
+  doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
+  doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+  doc.text("MOOREA", M, 14);
+  doc.setTextColor(255, 255, 255); doc.setFontSize(10);
+  doc.text("Bordereau d'envoi — palette IFCO", M + 32, 14);
+  doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text(data.numero || "-", W - M, 10.5, { align: "right" });
+  doc.setTextColor(170, 170, 170); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+  doc.text(data.dateFr, W - M, 16.5, { align: "right" });
+  y = 32;
+
+  doc.setFillColor(245, 243, 238); doc.roundedRect(M, y, CW, 16, 2, 2, "F");
+  doc.setTextColor(30, 30, 30); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+  doc.text("Moorea  »  NLT — Palette(s) IFCO vide(s)", M + 6, y + 10);
+  y += 24;
+
+  const col1 = M + 8, col2 = M + CW / 2 + 4;
+  const ligne = (label: string, valeur: string, col: number, yy: number) => {
+    doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(label + " :", col, yy);
+    doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+    doc.text(valeur || "-", col, yy + 5);
+  };
+
+  const zoneTop = y, zoneH = 90;
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.rect(M, zoneTop, CW, zoneH, "S");
+  let yy = zoneTop + 16;
+  ligne("Caisses IFCO envoyées", String(data.caisses), col1, yy);
+  ligne("Nombre de palettes", String(data.nbPalettes), col2, yy);
+  yy += 20;
+  ligne("Transporteur", data.transporteurNom || "-", col1, yy);
+  ligne("Envoyé par", data.envoyePar || "-", col2, yy);
+  yy += 20;
+  doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(7.3);
+  doc.text("Envoi interne (transfert de stock) — aucun retour attendu pour ce bordereau.", col1, yy, { maxWidth: CW - 16 });
+
+  doc.setTextColor(160, 160, 160); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+  doc.text(`N° ${data.numero}`, M, 290);
+
+  return doc.output("datauristring");
+}
+
 // Sélecteur d'article : propose en priorité les articles du catalogue global Moorea
 // (`moorea_articles`, même source que le module Catalogue), mais accepte aussi une saisie libre
 // si l'article n'y figure pas encore (nouvel article, référence pas encore ajoutée...) — la
@@ -816,6 +878,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // vers un data: URL (d'où le renvoi vers une page Google constaté par l'utilisateur), alors
   // qu'un iframe src="data:..." affiché dans la page fonctionne normalement.
   const [pdfApercu, setPdfApercu] = useState<{ titre: string; base64: string } | null>(null);
+  // 08/09/2026 — Demande d'Elinathan : "Envoyer une palette IFCO à NLT" utilisait un simple
+  // window.prompt/confirm, sans bon PDF. Remplacé par une vraie modale de validation + bon PDF
+  // dédié (voir genererBonEnvoiPaletteIfco), imprimé automatiquement comme les autres bons.
+  const [envoiPaletteModalOuvert, setEnvoiPaletteModalOuvert] = useState(false);
+  const [envoiPaletteQte, setEnvoiPaletteQte] = useState(String(CAISSES_PAR_PALETTE));
+  const [envoiPaletteTransporteur, setEnvoiPaletteTransporteur] = useState("");
+  const [envoiPaletteEnCours, setEnvoiPaletteEnCours] = useState(false);
   // Aperçu plein écran d'une photo de perte déclarée par le reconditionneur (clic sur une miniature)
   const [photoApercu, setPhotoApercu] = useState<string | null>(null);
 
@@ -2615,44 +2684,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             <div style={{ marginBottom: 14 }}>
               <button
                 type="button"
-                onClick={async () => {
-                  const saisie = window.prompt("Combien de caisses IFCO envoyer à NLT ?", String(CAISSES_PAR_PALETTE));
-                  if (saisie == null) return;
-                  const qte = parseInt(saisie);
-                  if (!qte || qte <= 0) {
-                    notify("error", "✗ Quantité invalide");
-                    return;
-                  }
-                  if (!window.confirm(`Confirmer l'envoi de ${qte} caisses IFCO (Moorea → NLT) ?`)) return;
-                  await pousserEnvoiPaletteIfco(qte, "Envoi manuel de palette IFCO à NLT");
-
-                  const now = new Date();
-                  const aa = String(now.getFullYear()).slice(-2);
-                  const mm = String(now.getMonth() + 1).padStart(2, "0");
-                  const jj = String(now.getDate()).padStart(2, "0");
-                  const prefixeJour = `PAL${aa}${mm}${jj}`;
-                  const dejaAujourdhui = demandes.filter(d => d.numero?.startsWith(prefixeJour)).length;
-                  const numero = `${prefixeJour}-${String(dejaAujourdhui + 1).padStart(2, "0")}`;
-                  const nbGrandes = Math.max(1, Math.round(qte / CAISSES_PAR_PALETTE));
-                  await push(ref(db, "reconditionnement_demandes"), {
-                    numero,
-                    dateCreation: now.toISOString(),
-                    dateCreationFr: nowFr(),
-                    creePar: userName || "Moorea",
-                    depot: "nlt",
-                    articleVrac: "Palette IFCO vide",
-                    articleFini: "NLT",
-                    caissesIfcoEnvoyees: qte,
-                    retourEnIfco: false,
-                    statut: "parti",
-                    entrepotPretPar: userName || "Moorea",
-                    entrepotPretDate: nowFr(),
-                    nbPalettesDepart: { grandes: nbGrandes, demi: 0 },
-                    departDate: nowFr(),
-                    ts: now.getTime(),
-                  });
-
-                  notify("success", `📦 ${qte} caisses IFCO envoyées à NLT (${numero})`);
+                onClick={() => {
+                  setEnvoiPaletteQte(String(CAISSES_PAR_PALETTE));
+                  setEnvoiPaletteTransporteur("");
+                  setEnvoiPaletteModalOuvert(true);
                 }}
                 style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
               >
@@ -3703,6 +3738,119 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       {/* Les actions "Marquer prêt" / "Marquer parti" / "Tout marquer parti" et le pointage du
           retour vivent désormais dans le module Préparation entrepôt à part (voir
           src/PreparationModule.tsx) — plus de modale ici pour ça. */}
+
+      {/* MODALE — Valider l'envoi d'une palette IFCO à NLT (08/09/2026, demande d'Elinathan :
+          remplace l'ancien window.prompt/confirm par une vraie validation, avec génération d'un
+          bon PDF — voir genererBonEnvoiPaletteIfco). */}
+      {envoiPaletteModalOuvert && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => !envoiPaletteEnCours && setEnvoiPaletteModalOuvert(false)}>
+          <div style={{ background: "#fff", borderRadius: 14, maxWidth: 420, width: "100%", padding: 24 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 800, color: COLORS.gray700 }}>📦 Envoyer une palette IFCO à NLT</h3>
+            <p style={{ margin: "0 0 18px", fontSize: 12, color: COLORS.gray600 }}>Transfert interne (Moorea → NLT) — aucun retour attendu. Un bon PDF sera généré et envoyé à l'impression.</p>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Caisses IFCO à envoyer</div>
+              <input
+                type="number" min="1" value={envoiPaletteQte} onChange={e => setEnvoiPaletteQte(e.target.value)}
+                style={{ width: "100%", padding: "9px 12px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 14, fontWeight: 700, boxSizing: "border-box" }}
+              />
+              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                ≈ {Math.max(1, Math.round((parseInt(envoiPaletteQte) || 0) / CAISSES_PAR_PALETTE))} palette{Math.max(1, Math.round((parseInt(envoiPaletteQte) || 0) / CAISSES_PAR_PALETTE)) > 1 ? "s" : ""}
+              </div>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Transporteur (optionnel)</div>
+              <input
+                type="text" value={envoiPaletteTransporteur} onChange={e => setEnvoiPaletteTransporteur(e.target.value)}
+                placeholder="Nom du transporteur" list="transporteurs-envoi-palette"
+                style={{ width: "100%", padding: "9px 12px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+              />
+              <datalist id="transporteurs-envoi-palette">
+                {transporteurs.map(t => <option key={t.id} value={t.nom} />)}
+              </datalist>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                disabled={envoiPaletteEnCours}
+                onClick={async () => {
+                  const qte = parseInt(envoiPaletteQte);
+                  if (!qte || qte <= 0) { notify("error", "✗ Quantité invalide"); return; }
+                  setEnvoiPaletteEnCours(true);
+                  try {
+                    await pousserEnvoiPaletteIfco(qte, "Envoi manuel de palette IFCO à NLT");
+
+                    const now = new Date();
+                    const aa = String(now.getFullYear()).slice(-2);
+                    const mm = String(now.getMonth() + 1).padStart(2, "0");
+                    const jj = String(now.getDate()).padStart(2, "0");
+                    const prefixeJour = `PAL${aa}${mm}${jj}`;
+                    const dejaAujourdhui = demandes.filter(d => d.numero?.startsWith(prefixeJour)).length;
+                    const numero = `${prefixeJour}-${String(dejaAujourdhui + 1).padStart(2, "0")}`;
+                    const nbGrandes = Math.max(1, Math.round(qte / CAISSES_PAR_PALETTE));
+                    const dateFr = nowFr();
+                    const transporteurNom = envoiPaletteTransporteur.trim() || undefined;
+
+                    const demandeRef = await push(ref(db, "reconditionnement_demandes"), {
+                      numero,
+                      dateCreation: now.toISOString(),
+                      dateCreationFr: dateFr,
+                      creePar: userName || "Moorea",
+                      depot: "nlt",
+                      articleVrac: "Palette IFCO vide",
+                      articleFini: "NLT",
+                      caissesIfcoEnvoyees: qte,
+                      retourEnIfco: false,
+                      statut: "parti",
+                      entrepotPretPar: userName || "Moorea",
+                      entrepotPretDate: dateFr,
+                      nbPalettesDepart: { grandes: nbGrandes, demi: 0 },
+                      departDate: dateFr,
+                      ts: now.getTime(),
+                      ...(transporteurNom ? { transporteurNom } : {}),
+                    });
+
+                    // Bon PDF dédié (pas genererBonPdf — ce n'est pas un reconditionnement,
+                    // pas de retour attendu, ça afficherait plein de champs vides "-").
+                    try {
+                      const pdfBase64 = await genererBonEnvoiPaletteIfco({
+                        numero, dateFr, caisses: qte, nbPalettes: nbGrandes, transporteurNom, envoyePar: userName,
+                      });
+                      const pdfNom = `bon-envoi-palette-ifco-${demandeRef.key}.pdf`;
+                      if (demandeRef.key) await update(ref(db, `reconditionnement_demandes/${demandeRef.key}`), { pdfNom, pdfBase64 });
+                      try {
+                        await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
+                      } catch {
+                        notify("error", "⚠️ Envoi enregistré, mais l'impression automatique du bordereau a échoué");
+                      }
+                      setPdfApercu({ titre: `Bordereau d'envoi — ${numero}`, base64: pdfBase64 });
+                    } catch (errPdf: any) {
+                      notify("error", `⚠️ Envoi enregistré, mais la génération du bordereau a échoué : ${errPdf?.message || "erreur inconnue"}`);
+                    }
+
+                    notify("success", `📦 ${qte} caisses IFCO envoyées à NLT (${numero})`);
+                    setEnvoiPaletteModalOuvert(false);
+                  } catch (err: any) {
+                    notify("error", `❌ Erreur : ${err?.message || "erreur inconnue"}`);
+                  } finally {
+                    setEnvoiPaletteEnCours(false);
+                  }
+                }}
+                style={{ flex: 1, padding: "11px 16px", borderRadius: 8, border: "none", background: envoiPaletteEnCours ? COLORS.gray200 : COLORS.primary, color: envoiPaletteEnCours ? "#999" : "#fff", fontSize: 13, fontWeight: 700, cursor: envoiPaletteEnCours ? "not-allowed" : "pointer" }}
+              >
+                {envoiPaletteEnCours ? "Envoi en cours..." : "✓ Valider l'envoi"}
+              </button>
+              <button
+                type="button"
+                disabled={envoiPaletteEnCours}
+                onClick={() => setEnvoiPaletteModalOuvert(false)}
+                style={{ padding: "11px 16px", borderRadius: 8, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODALE — Aperçu PDF (bon Geslot ou bon de prépa), dans un iframe intégré à la page —
           un <a target="_blank"> vers une data:URI se fait bloquer/rediriger par Chrome (page
