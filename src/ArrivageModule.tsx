@@ -802,8 +802,13 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         </div>
       ) : (
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => handleValider()} disabled={saving} style={{ flex: 2, padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : hasLitige ? "#dc2626" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
-            {saving ? "..." : hasLitige ? "📋 Valider + litige →" : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
+          {/* 09/09/2026 — Demande d'Elinathan : "quand il y a un écart, passe le bouton en orange
+              'valider et prévenir', quand y a rien aussi en orange 'prévenir commercial non
+              reçu'" — le bouton reflète maintenant visuellement (couleur + texte) qu'un écart de
+              colis ne va PAS imprimer une étiquette "normale" mais juste prévenir le commercial
+              (voir hasLitige/hasEcartColis plus haut — un écart seul n'est plus un litige). */}
+          <button onClick={() => handleValider()} disabled={saving} style={{ flex: 2, padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, border: "none", background: saving ? "#ccc" : hasLitige ? "#dc2626" : hasEcartColis ? "#d97706" : "#27ae60", color: "#fff", fontFamily: "'Syne', sans-serif" }}>
+            {saving ? "..." : hasLitige ? "📋 Valider + litige →" : hasEcartColis ? (colisRecusNum === 0 ? "📲 Prévenir commercial (non reçu) →" : "📲 Valider et prévenir →") : sansEtiquette ? "✅ Valider (sans étiquette) →" : "✅ Valider et imprimer étiquette →"}
           </button>
           {/* 04/09/2026 — Raccourci demandé par Elinathan : basculer en litige ET valider en un
               seul tap, sans passer par le toggle "⚠️ Litige" ci-dessus puis un second tap. */}
