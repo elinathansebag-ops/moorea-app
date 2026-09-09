@@ -696,6 +696,33 @@ export default function App() {
     if (pageMode === "historique_arr" || vue === "historique") chargerArchivesArrivages();
   }, [pageMode, vue]);
 
+  // ─── ARCHIVAGE AUTOMATIQUE SILENCIEUX (09/09/2026) ───
+  // Demande d'Elinathan : "Pointer arrivage" reste long à charger (15s) tant que personne n'a
+  // cliqué à la main sur "Archiver tout" (bouton accueil) — et faire attendre ce même temps une
+  // seule fois au tout début (écran de démarrage) ne raccourcit rien, ça déplace juste l'attente
+  // (on l'a déjà testé le 04/09 : ça a fait passer le démarrage de 6s à 20s, cf. plus haut). La
+  // vraie solution est que l'archivage se fasse tout seul, sans qu'elle ait à y penser. On
+  // relance donc ici le même archivage que le bouton, mais sans popup/confirmation, une fois que
+  // les arrivages du jour sont arrivés (arrivagesCharges), et au maximum 1 fois toutes les 20h
+  // (horodatage dans "meta/dernier_archivage_auto") pour ne pas relire toutes les collections à
+  // chaque ouverture de l'app.
+  useEffect(() => {
+    if (!arrivagesCharges) return;
+    onValue(ref(db, "meta/dernier_archivage_auto"), snap => {
+      const dernier = snap.val() || 0;
+      if (Date.now() - dernier < 20 * 60 * 60 * 1000) return;
+      update(ref(db, "meta"), { dernier_archivage_auto: Date.now() }).then(async () => {
+        try {
+          await archiverAnciensArrivages();
+          const limite = Date.now() - ARCHIVAGE_APRES_JOURS * 24 * 60 * 60 * 1000;
+          await Promise.all(COLLECTIONS_ARCHIVABLES.map(col => archiverCollectionGenerique(col, limite)));
+        } catch (err) {
+          console.error("Archivage automatique — erreur:", err);
+        }
+      });
+    }, { onlyOnce: true });
+  }, [arrivagesCharges]);
+
   // ─── ÉTAT DU RELAIS D'IMPRESSION (PC) ───
   // Le PC envoie un signal de vie ("printRelayStatus/lastSeen") toutes les 15s tant que
   // print-relay.js tourne. On considère qu'il est hors ligne si ce signal date de plus de
