@@ -145,8 +145,8 @@ export default function App() {
   );
   const ARCHIVAGE_APRES_JOURS = 21;
   const [archivageBusy, setArchivageBusy] = useState(false);
-  const archiverAnciensArrivages = async () => {
-    if (archivageBusy) return;
+  const archiverAnciensArrivages = async (): Promise<{ archives: number; erreur?: string }> => {
+    if (archivageBusy) return { archives: 0 };
     const parseDateArr = (d: string): Date => {
       const slash = (d || "").split("/");
       if (slash.length === 3) return new Date(+slash[2], +slash[1] - 1, +slash[0]);
@@ -178,7 +178,7 @@ export default function App() {
     console.log("Archivage arrivages — détail:", { aArchiver: aArchiver.length, nbTropRecent, nbEnAttente, nbDateInvalide });
     if (!aArchiver.length) {
       showToast(detailIgnores ? `Rien à archiver — ignorés : ${detailIgnores}` : "Rien à archiver pour le moment (tout est déjà récent ou déjà archivé)");
-      return;
+      return { archives: 0 };
     }
     setArchivageBusy(true);
     try {
@@ -190,9 +190,11 @@ export default function App() {
       }
       await update(ref(db), updates);
       showToast(`✅ ${aArchiver.length} arrivage(s) archivé(s)${detailIgnores ? ` · ignorés : ${detailIgnores}` : ""}`);
-    } catch (err) {
+      return { archives: aArchiver.length };
+    } catch (err: any) {
       console.error("Erreur archivage arrivages:", err);
       showToast("❌ Erreur lors de l'archivage", "error");
+      return { archives: 0, erreur: err?.message || "erreur inconnue" };
     } finally {
       setArchivageBusy(false);
     }
@@ -239,6 +241,12 @@ export default function App() {
     { path: "ifco_declarations_entree", archivePath: "ifco_declarations_entree_archives", label: "Déclarations IFCO (entrées)",
       getTs: v => typeof v?.ts === "number" ? v.ts : null,
       isPending: v => v?.declare === false },
+    // 09/09/2026 — Ajouté après le retour d'Elinathan ("le stock de caisses prend beaucoup de
+    // temps à apparaître") : "ifco_histo" (historique des imports/déclarations IFCO, un mini
+    // rapport par import) était rechargé en entier par 3 écrans (Prestataires, module IFCO,
+    // accueil) mais n'était pas encore dans la liste à archiver.
+    { path: "ifco_histo", archivePath: "ifco_histo_archives", label: "Historique imports IFCO",
+      getTs: v => typeof v?.ts === "number" ? v.ts : null },
   ];
   const archiverCollectionGenerique = async (col: CollectionArchivable, limite: number): Promise<{ archives: number; erreur?: string }> => {
     try {
@@ -264,6 +272,11 @@ export default function App() {
     }
   };
   const [archivageGlobalBusy, setArchivageGlobalBusy] = useState(false);
+  // 09/09/2026 — Demande d'Elinathan : "je m'attendais à un pop up après l'archivage donc j'ai
+  // pas fait gaffe" — le résultat n'était qu'un petit toast, facile à manquer. On affiche
+  // maintenant un vrai popup récapitulatif (ligne par ligne, une par collection, avec le nombre
+  // d'éléments archivés), qui reste ouvert tant qu'elle ne l'a pas fermé — impossible à louper.
+  const [archivageResultats, setArchivageResultats] = useState<{ label: string; archives: number; erreur?: string }[] | null>(null);
   const archiverToutAncien = async () => {
     if (archivageGlobalBusy || archivageBusy) return;
     if (!window.confirm(
@@ -272,17 +285,13 @@ export default function App() {
     )) return;
     setArchivageGlobalBusy(true);
     try {
-      await archiverAnciensArrivages();
+      const resArrivages = await archiverAnciensArrivages();
       const limite = Date.now() - ARCHIVAGE_APRES_JOURS * 24 * 60 * 60 * 1000;
       const resultats = await Promise.all(COLLECTIONS_ARCHIVABLES.map(col => archiverCollectionGenerique(col, limite)));
-      const total = resultats.reduce((s, r) => s + r.archives, 0);
-      const enErreur = resultats.map((r, i) => r.erreur ? COLLECTIONS_ARCHIVABLES[i].label : null).filter(Boolean);
-      showToast(
-        enErreur.length
-          ? `⚠️ ${total} élément(s) archivé(s) (hors arrivages), mais erreur sur : ${enErreur.join(", ")}`
-          : `✅ ${total} élément(s) archivé(s) (hors arrivages, annoncé séparément ci-dessus)`,
-        enErreur.length ? "error" : undefined
-      );
+      setArchivageResultats([
+        { label: "Arrivages", archives: resArrivages.archives, erreur: resArrivages.erreur },
+        ...COLLECTIONS_ARCHIVABLES.map((col, i) => ({ label: col.label, archives: resultats[i].archives, erreur: resultats[i].erreur })),
+      ]);
     } finally {
       setArchivageGlobalBusy(false);
     }
@@ -2993,6 +3002,33 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           </div>
         </div>
       </div>
+      {archivageResultats && (() => {
+        const total = archivageResultats.reduce((s, r) => s + r.archives, 0);
+        const enErreur = archivageResultats.filter(r => r.erreur);
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setArchivageResultats(null)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: cardBg, borderRadius: 18, width: "100%", maxWidth: 440, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.35)", padding: "22px 22px 18px" }}>
+              <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 16, color: enErreur.length ? "#b45309" : "#16a34a", fontFamily: "'Syne', sans-serif" }}>
+                {enErreur.length ? "⚠️ Archivage terminé (avec erreurs)" : "✅ Archivage terminé"}
+              </p>
+              <p style={{ margin: "0 0 14px", fontSize: 12.5, color: textSub }}>{total} élément{total > 1 ? "s" : ""} archivé{total > 1 ? "s" : ""} au total. Rien n'a été supprimé.</p>
+              <div style={{ display: "grid", gap: 4, marginBottom: 16 }}>
+                {archivageResultats.map(r => (
+                  <div key={r.label} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, padding: "6px 10px", background: r.erreur ? "#fef2f2" : r.archives > 0 ? "#f0fdf4" : (darkMode ? "#1a1d27" : "#f5f3ee"), borderRadius: 8 }}>
+                    <span style={{ color: textMain }}>{r.label}</span>
+                    <span style={{ fontWeight: 700, color: r.erreur ? "#dc2626" : r.archives > 0 ? "#16a34a" : textSub }}>
+                      {r.erreur ? `Erreur : ${r.erreur}` : `${r.archives}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setArchivageResultats(null)} style={{ width: "100%", padding: "11px", background: "#1a2e1a", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        );
+      })()}
       </>
     );
   }

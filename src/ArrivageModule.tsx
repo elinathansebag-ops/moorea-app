@@ -299,11 +299,18 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const colisRecusNum = colisRecus === "" ? colisAttendu : parseInt(colisRecus) || 0;
   const ecartColis = colisRecusNum - colisAttendu;
   const hasEcartColis = colisRecus !== "" && ecartColis !== 0;
-  // Pour un retour de reconditionnement, un écart de colis (poids/tri) n'est jamais un litige à
-  // lui seul — seul "⚠️ Problème" coché en fait un ; pour un arrivage normal (fournisseur), un
-  // écart de colis reste un litige comme avant. Même règle que dans handleValider ci-dessous
-  // (utilisée là pour la soumission, ici pour l'affichage bouton/message).
-  const hasLitige = isRetourRecond ? litige : (litige || hasEcartColis);
+  // 09/09/2026 — Bug trouvé avec Elinathan : un simple écart de colis sur un arrivage NORMAL
+  // (fournisseur), même un colis totalement pas reçu (0/30), forçait automatiquement "litige" —
+  // le bouton proposait "📋 Valider + litige →" et ouvrait le rapport à remplir juste après. Or
+  // "je vais pas faire un rapport parce qu'il me manque un colis ou parce que j'en ai pas reçu" :
+  // un écart de quantité doit juste prévenir le commercial (le popup automatique avec message
+  // WhatsApp, voir plus bas), PAS déclencher un vrai rapport de litige qualité. Un litige ne doit
+  // se déclencher que si l'agréeur le signale explicitement (toggle "⚠️ Litige" / bouton
+  // "🚩 Litige" tout en bas) — même règle désormais pour TOUS les arrivages, plus seulement les
+  // retours de reconditionnement (isRetourRecond n'entre donc plus en compte ici). Même règle
+  // que dans handleValider ci-dessous (utilisée là pour la soumission, ici pour l'affichage
+  // bouton/message).
+  const hasLitige = litige;
 
 
   // ─── Palettes pour l'étiquette imprimée automatiquement à la validation ───
@@ -386,13 +393,10 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     setSaving(true);
     const litigeEffectif = forcerLitige !== undefined ? forcerLitige : litige;
     if (forcerLitige) setLitige(true);
-    // Pour un retour de reconditionnement, un écart de colis n'est PAS un litige : le tri fait
-    // que le poids ne tombe jamais exactement sur un compte rond (ex: pas moyen de faire des
-    // colis de 4kg00 pile), donc le nombre de colis produits diffère presque toujours un peu de
-    // ce qui était demandé — c'est normal, pas un problème qualité. Seul le choix explicite
-    // "⚠️ Problème" (litige) compte pour un retour ; pour un arrivage normal (fournisseur), un
-    // écart de colis reste un litige comme avant.
-    const hasLitige = isRetourRecond ? litigeEffectif : (litigeEffectif || hasEcartColis);
+    // 09/09/2026 — Un écart de colis (même un colis pas reçu du tout) n'est PAS un litige à lui
+    // seul, quel que soit le type d'arrivage — voir le commentaire sur hasLitige plus haut. Seul
+    // le choix explicite de l'agréeur ("⚠️ Litige" / "🚩 Litige") déclenche un vrai litige.
+    const hasLitige = litigeEffectif;
     const obs = [
       colisRecus !== "" ? `Colis reçus : ${colisRecusNum}/${colisAttendu}` : "",
       poidsBrut ? `Poids brut : ${poidsBrut} kg` : "",
@@ -431,7 +435,10 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     }
   };
 
-  const statusColor = litige || (hasEcartColis && !isRetourRecond) ? "#dc2626" : (hasEcartColis && isRetourRecond) ? "#d97706" : qualite === 0 ? "#d4edda" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
+  // 09/09/2026 — Un écart de colis seul (sans litige explicite) n'est plus un "problème" rouge
+  // pour un arrivage normal non plus (voir hasLitige plus haut) : orange (attention) dans tous
+  // les cas, réservé au rouge uniquement pour un vrai litige signalé par l'agréeur.
+  const statusColor = litige ? "#dc2626" : hasEcartColis ? "#d97706" : qualite === 0 ? "#d4edda" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
 
   return (
     <div style={{ background: selected ? "#fef2f2" : "#fff", borderRadius: 12, padding: "12px 16px", marginBottom: 8, border: `1.5px solid ${selected ? "#fca5a5" : (litige || hasEcartColis) ? "#fca5a5" : "#d4edda"}`, borderLeft: `4px solid ${statusColor}` }}>
@@ -720,11 +727,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               restent en state à leur valeur par défaut (0/true/true/false), rien pour les modifier
               ici — le litige se déclenche désormais directement via le bouton "🚩 Litige" à côté de
               "Valider" tout en bas (voir handleValider(forcerLitige)). */}
-          {/* Pour un retour de reconditionnement, un écart de colis (sans "⚠️ Problème" coché)
-              n'est pas un litige — voir hasLitige plus haut — donc pas de rapport à détailler ;
-              il sera juste repris automatiquement dans le récap "📲 Prévenir écarts" du jour. */}
+          {/* 09/09/2026 — Un écart de colis (sans "⚠️ Litige" coché), quel que soit le type
+              d'arrivage, n'est plus un litige — voir hasLitige plus haut — donc pas de rapport à
+              détailler ; un popup avec un message WhatsApp prêt à envoyer s'ouvre automatiquement
+              juste après la validation (voir setRecap dans handleValider). */}
           {hasLitige && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
-          {!hasLitige && hasEcartColis && isRetourRecond && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#b45309", fontStyle: "italic" }}>L'écart sera repris dans "📲 Prévenir écarts" (WhatsApp) — pas de rapport de litige.</p>}
+          {!hasLitige && hasEcartColis && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#b45309", fontStyle: "italic" }}>L'écart sera signalé automatiquement (popup WhatsApp) — pas de rapport de litige.</p>}
         </>
       )}
 
@@ -2792,6 +2800,16 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* 09/09/2026 — Demande d'Elinathan : "le bouton Traçabilité mets-le à côté de en
+              attente" — déplacé ici, à côté des badges du jour, au lieu d'être tout seul sur sa
+              propre ligne dans le panneau déplié (voir "Barre d'actions" plus bas, désormais
+              vide/sans bouton). */}
+          <button
+            onClick={e => { e.stopPropagation(); telechargerTracabilite(); }}
+            title="Imprimer les n° de traçabilité fournisseur du jour"
+            style={{ padding: "4px 10px", borderRadius: 20, border: "1px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+            🖨 Traçabilité
+          </button>
           {arrivages.length > 0 && (
             <span style={{ fontSize: 12, background: "#d97706", color: "#fff", padding: "4px 10px", borderRadius: 20, fontWeight: 700 }}>
               {arrivages.length} en attente
@@ -2807,32 +2825,12 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
       </div>
       {open && (
         <div style={{ background: "#1a2e1a", borderRadius: "0 0 14px 14px", padding: "10px 14px 14px", marginBottom: 8 }}>
-          {/* Barre d'actions */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            {/* 03/09/2026 — Bouton "✅ Tout valider (nettoyage en masse)" retiré à la demande
-                d'Elinathan : validait tous les arrivages en attente du jour d'un coup sans passer
-                par un vrai pointage (chaque arrivage doit être pointé individuellement, ou via le
-                pointage groupé NLT/Andès dédié — voir PointageGroupeNLT plus haut). La fonction
-                handleValiderTout n'est plus appelée nulle part mais reste définie ci-dessous, au
-                cas où ce nettoyage redevienne utile un jour. */}
-            {/* Bouton imprimer traçabilité fournisseur du jour */}
-            <button
-              onClick={e => { e.stopPropagation(); telechargerTracabilite(); }}
-              title="Imprimer les n° de traçabilité fournisseur du jour"
-              style={{ padding: "9px 14px", borderRadius: 10, border: "1px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-              🖨 Traçabilité
-            </button>
-            {/* 02/09/2026 — "Récap WA" (général), "Prévenir écarts" et "Scanner une étiquette"
-                retirés de la barre d'actions du jour à la demande d'Elinathan (jamais utilisés) —
-                les fonctions (recapWhatsAppJour, alerterEcartsJourWhatsApp, onScan/scanInputId)
-                restent en place dans le code, juste masquées/non appelées ici, au cas où on
-                voudrait les remettre.
-                03/09/2026 — "📲 Récap WA NLT" (recapWhatsAppJourNlt) retiré à son tour : il faisait
-                doublon avec le popup de récap/écarts qui s'ouvre maintenant automatiquement à la
-                fin du pointage groupé NLT/Andès (PointageGroupeNLT, bouton "✓ Valider tout
-                l'arrivage" → popup → "📲 Envoyer par WhatsApp"). La fonction recapWhatsAppJourNlt
-                reste définie plus haut, juste non appelée ici. */}
-          </div>
+          {/* 09/09/2026 — L'ancienne "Barre d'actions" ne contenait plus que le bouton
+              "🖨 Traçabilité", déplacé dans l'en-tête du jour (à côté des badges "en attente" /
+              "traités") à la demande d'Elinathan. Rien d'autre à afficher ici pour l'instant :
+              "✅ Tout valider (nettoyage en masse)", "📲 Récap WA", "Prévenir écarts" et "Scanner
+              une étiquette" restent tous retirés (demandes précédentes d'Elinathan, jamais
+              utilisés) — leurs fonctions restent définies plus haut, juste non appelées ici. */}
           {/* Fournisseurs - en attente + traités regroupés */}
           {allFourn.map(f => (
             <FournisseurBlock key={f} fournisseur={f}
