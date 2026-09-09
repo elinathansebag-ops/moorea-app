@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import jsPDF from "jspdf";
-import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
+import { db, ref, push, onValue, update, remove, set, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import RetoursModule from "./RetoursModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
@@ -456,7 +456,10 @@ export default function App() {
   const [qrRecondDemandeId, setQrRecondDemandeId] = useState<string | null>(null);
   const [showDashboard, setShowDashboard] = useState(false);
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
-  const ADMIN_PIN = "17092005";
+  // 09/09/2026 — Sur demande d'Elinathan ("donne moi le code admin ou n'en mets pas si je suis
+  // la seule à voir la page") : le code PIN partagé est retiré. L'accès est désormais réservé à
+  // monAcces.isAdmin (donc à elle, plus toute personne qu'elle coche "admin" dans Droits d'accès)
+  // — plus fiable qu'un code à 4 chiffres que n'importe qui pouvait taper ou faire circuler.
   const [showAdmin, setShowAdmin] = useState(false);
   // ─── 09/09/2026 — Droits d'accès (demande d'Elinathan : choisir quelle adresse mail accède à
   // quel module / panneau de config / onglet). Chargés une fois au niveau App.tsx (comme le
@@ -471,9 +474,31 @@ export default function App() {
     return () => { unsub1(); unsub2(); };
   }, []);
   const monAcces = calculerAcces(user?.email, permRoles, permUsers);
-  const [adminUnlocked, setAdminUnlocked] = useState(false);
-  const [adminPinInput, setAdminPinInput] = useState("");
-  const [adminPinError, setAdminPinError] = useState("");
+  // ─── 09/09/2026 — Comptes créés + présence (demande d'Elinathan : voir la liste des comptes,
+  // qui est en ligne, et la dernière date de connexion de chacun). On enregistre chaque personne
+  // qui se connecte dans "comptes/{uid}" (email, nom, première/dernière connexion), et on suit sa
+  // présence en direct dans "presence/{uid}" avec le mécanisme standard Firebase : dès que
+  // ".info/connected" passe à true, on programme un onDisconnect() qui marquera automatiquement
+  // la personne hors-ligne (avec l'heure) si elle ferme l'onglet, perd le réseau, etc. — même sans
+  // action de sa part. Rien de tout ça n'est visible ailleurs que dans l'écran "Droits d'accès".
+  useEffect(() => {
+    if (!user) return;
+    const uid = user.uid;
+    const email = user.email || "";
+    const displayName = user.displayName || "";
+    update(ref(db, `comptes/${uid}`), { email, displayName, derniere_connexion: Date.now() });
+    onValue(ref(db, `comptes/${uid}/premiere_connexion`), snap => {
+      if (snap.val() == null) update(ref(db, `comptes/${uid}`), { premiere_connexion: Date.now() });
+    }, { onlyOnce: true });
+    const presenceRef = ref(db, `presence/${uid}`);
+    const unsubConnected = onValue(ref(db, ".info/connected"), snap => {
+      if (snap.val() !== true) return;
+      onDisconnect(presenceRef).set({ online: false, lastSeen: serverTimestamp(), email, displayName }).then(() => {
+        set(presenceRef, { online: true, lastSeen: serverTimestamp(), email, displayName });
+      });
+    });
+    return () => unsubConnected();
+  }, [user?.uid]);
   const [adminTab, setAdminTab] = useState<"activite" | "reglages">("activite");
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [rackModePlacementAdmin, setRackModePlacementAdmin] = useState<"manuel" | "scan">("manuel");
@@ -2852,7 +2877,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showAdmin) {
-    const fermerAdmin = () => { setShowAdmin(false); setAdminUnlocked(false); setAdminPinInput(""); setShowAccueil(true); };
+    if (!monAcces.isAdmin) return <AccesRefuse onRetour={() => { setShowAdmin(false); setShowAccueil(true); }} />;
+    const fermerAdmin = () => { setShowAdmin(false); setShowAccueil(true); };
     const majModePlacementRack = async (v: "manuel" | "scan") => {
       try {
         const { set } = await import("firebase/database");
@@ -2869,27 +2895,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <PageHeader titre="⚙️ Admin" couleur="#6b7280" onBack={fermerAdmin} onHome={fermerAdmin} />
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px", boxSizing: "border-box" }}>
-          {!adminUnlocked ? (
-            <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
-              <div style={{ fontSize: 40, color: "#6b7280", marginBottom: 16 }}>🔒</div>
-              <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 20 }}>Entre le code pour accéder à l'admin</p>
-              <input
-                type="password" inputMode="numeric" maxLength={4} value={adminPinInput}
-                onChange={e => {
-                  const v = e.target.value.replace(/\D/g, "").slice(0, 4);
-                  setAdminPinInput(v); setAdminPinError("");
-                  if (v.length === 4) {
-                    if (v === ADMIN_PIN) setAdminUnlocked(true);
-                    else { setAdminPinError("Code incorrect"); setAdminPinInput(""); }
-                  }
-                }}
-                placeholder="••••"
-                style={{ width: 110, padding: 10, textAlign: "center", fontSize: 22, border: "1.5px solid #e5e7eb", borderRadius: 10, fontFamily: "inherit", outline: "none", letterSpacing: 8, display: "block", margin: "0 auto" }}
-              />
-              <p style={{ fontSize: 12, color: "#dc2626", marginTop: 10, minHeight: 16 }}>{adminPinError}</p>
-            </div>
-          ) : (
-            <>
+          <>
               <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                 <button onClick={() => setAdminTab("activite")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${adminTab === "activite" ? "#6b7280" : "#e5e7eb"}`, background: adminTab === "activite" ? "#f3f4f6" : "#fff", fontWeight: 700, fontSize: 13, color: adminTab === "activite" ? "#374151" : "#9ca3af", cursor: "pointer" }}>📜 Activité</button>
                 <button onClick={() => setAdminTab("reglages")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${adminTab === "reglages" ? "#6b7280" : "#e5e7eb"}`, background: adminTab === "reglages" ? "#f3f4f6" : "#fff", fontWeight: 700, fontSize: 13, color: adminTab === "reglages" ? "#374151" : "#9ca3af", cursor: "pointer" }}>⚙️ Réglages</button>
@@ -2934,8 +2940,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <button onClick={() => { setShowAdmin(false); setRackAutoConfig(true); setShowRack(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Ouvrir la configuration du Rack →</button>
                   </div>
                   {/* 09/09/2026 — Demande d'Elinathan : pouvoir choisir quelle adresse mail accède à
-                      quel module/onglet. Réservé aux comptes admin (monAcces.isAdmin) même si
-                      quelqu'un d'autre connaît le code PIN partagé ci-dessus. */}
+                      quel module/onglet. Réservé aux comptes admin (monAcces.isAdmin) — tout ce
+                      panneau Admin l'est déjà de toute façon depuis le retrait du code PIN. */}
                   {monAcces.isAdmin && (
                     <div style={{ background: "#fff", border: "1.5px solid #e9d8fd", borderRadius: 16, padding: 20, marginTop: 16 }}>
                       <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🔐 Droits d'accès</p>
@@ -2946,7 +2952,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               )}
             </>
-          )}
         </div>
       </div>
     );
@@ -3040,10 +3045,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.2)"}`, background: showLeofresh ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
                 🍋 Leofresh
               </button>
-              <button onClick={() => setShowAdmin(true)}
-                style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
-                ⚙️ Admin
-              </button>
+              {monAcces.isAdmin && (
+                <button onClick={() => setShowAdmin(true)}
+                  style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
+                  ⚙️ Admin
+                </button>
+              )}
               <button onClick={() => setDarkMode(!darkMode)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {darkMode ? "☀️" : "🌙"}
               </button>

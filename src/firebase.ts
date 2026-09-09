@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, push, onValue, remove, update } from "firebase/database";
+import { getDatabase, ref, push, onValue, remove, update, onDisconnect, serverTimestamp, set } from "firebase/database";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, signInAnonymously } from "firebase/auth";
 
 const firebaseConfig = {
@@ -20,4 +20,4 @@ export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence);
 
 export const googleProvider = new GoogleAuthProvider();
-export { ref, push, onValue, remove, update, signInWithPopup, signOut, onAuthStateChanged, signInAnonymously };
+export { ref, push, onValue, remove, update, set, onDisconnect, serverTimestamp, signInWithPopup, signOut, onAuthStateChanged, signInAnonymously };

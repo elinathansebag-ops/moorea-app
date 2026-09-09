@@ -49,8 +49,26 @@ function PermissionsChecklist({
   );
 }
 
+// 09/09/2026 — Un compte n'apparaît ici qu'APRÈS s'être connecté au moins une fois (App.tsx
+// enregistre "comptes/{uid}" + "presence/{uid}" à la connexion) — impossible de lister les
+// comptes Google jamais utilisés sur l'appli, ça demanderait un accès admin côté serveur qu'on
+// n'a pas ici. "En ligne" veut dire "un onglet de l'appli est ouvert en ce moment" (suivi via le
+// mécanisme de présence standard Firebase, avec onDisconnect côté App.tsx) — pas juste "connecté
+// à Google" en général.
+function formatDateFr(ts: number | null | undefined): string {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  const auj = new Date();
+  const hier = new Date(auj); hier.setDate(hier.getDate() - 1);
+  const memeJour = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const heure = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  if (memeJour(d, auj)) return `Aujourd'hui à ${heure}`;
+  if (memeJour(d, hier)) return `Hier à ${heure}`;
+  return d.toLocaleDateString("fr-FR") + " à " + heure;
+}
+
 export default function DroitsAccesModule({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"roles" | "utilisateurs">("roles");
+  const [tab, setTab] = useState<"roles" | "utilisateurs" | "comptes">("roles");
   const [roles, setRoles] = useState<Record<string, AccesRole>>({});
   const [users, setUsers] = useState<Record<string, AccesUser>>({});
   const [chargeRoles, setChargeRoles] = useState(false);
@@ -59,11 +77,15 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
   const [nouveauRoleNom, setNouveauRoleNom] = useState("");
   const [nouvelEmail, setNouvelEmail] = useState("");
   const [utilisateurOuvert, setUtilisateurOuvert] = useState<string | null>(null);
+  const [comptes, setComptes] = useState<Record<string, { email: string; displayName?: string; premiere_connexion?: number; derniere_connexion?: number }>>({});
+  const [presences, setPresences] = useState<Record<string, { online: boolean; lastSeen?: number }>>({});
 
   useEffect(() => {
     const unsub1 = onValue(ref(db, "acces_permissions/roles"), snap => { setRoles(snap.val() || {}); setChargeRoles(true); });
     const unsub2 = onValue(ref(db, "acces_permissions/users"), snap => { setUsers(snap.val() || {}); setChargeUsers(true); });
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = onValue(ref(db, "comptes"), snap => setComptes(snap.val() || {}));
+    const unsub4 = onValue(ref(db, "presence"), snap => setPresences(snap.val() || {}));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
   const sauverRole = (id: string, data: AccesRole) => set(ref(db, `acces_permissions/roles/${id}`), data);
@@ -125,6 +147,7 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <button onClick={() => setTab("roles")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "roles" ? "#7c3aed" : "#fff", color: tab === "roles" ? "#fff" : "#555" }}>🎭 Rôles</button>
           <button onClick={() => setTab("utilisateurs")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "utilisateurs" ? "#7c3aed" : "#fff", color: tab === "utilisateurs" ? "#fff" : "#555" }}>👤 Utilisateurs</button>
+          <button onClick={() => setTab("comptes")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "comptes" ? "#7c3aed" : "#fff", color: tab === "comptes" ? "#fff" : "#555" }}>📋 Comptes</button>
         </div>
 
         {tab === "roles" && (
@@ -237,6 +260,41 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
             })}
           </div>
         )}
+
+        {tab === "comptes" && (() => {
+          const uids = Object.keys(comptes).sort((a, b) => (comptes[b].derniere_connexion || 0) - (comptes[a].derniere_connexion || 0));
+          return (
+            <div>
+              <p style={{ fontSize: 11.5, color: "#9ca3af", marginBottom: 12 }}>
+                Chaque personne qui s'est déjà connectée au moins une fois apparaît ici, avec sa dernière connexion et si elle a l'appli ouverte en ce moment.
+              </p>
+              {uids.length === 0 && <p style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucun compte enregistré pour l'instant.</p>}
+              {uids.map(uid => {
+                const c = comptes[uid];
+                const p = presences[uid];
+                const enLigne = !!p?.online;
+                return (
+                  <div key={uid} className="card" style={{ padding: 14, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: enLigne ? "#16a34a" : "#d1d5db", display: "inline-block" }} />
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>{c.displayName || c.email}</span>
+                      </div>
+                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>{c.email}</p>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: enLigne ? "#16a34a" : "#9ca3af" }}>{enLigne ? "🟢 En ligne" : "⚪ Hors ligne"}</p>
+                      <p style={{ margin: "3px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                        {enLigne ? "Depuis le " : "Dernière connexion : "}{formatDateFr(enLigne ? c.derniere_connexion : (p?.lastSeen || c.derniere_connexion))}
+                      </p>
+                      <p style={{ margin: "3px 0 0", fontSize: 10.5, color: "#c1c9d6" }}>Premier accès : {formatDateFr(c.premiere_connexion)}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
