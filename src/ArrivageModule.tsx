@@ -197,6 +197,13 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const [showGencodeScan, setShowGencodeScan] = useState(false);
   const [showScanEtiquette, setShowScanEtiquette] = useState(false);
   const [scanEtiquetteMsg, setScanEtiquetteMsg] = useState("");
+  // 09/09/2026 — Demande d'Elinathan : le popup de récap avec message WhatsApp tout prêt, déjà en
+  // place sur le pointage groupé NLT (PointageGroupeNLT plus bas), n'existait QUE là — un arrivage
+  // validé ici, carte par carte (le cas normal pour tous les fournisseurs, et pour les retours de
+  // reconditionnement Andès non groupés), n'affichait jamais rien automatiquement en cas d'écart de
+  // colis. On reprend le même principe ici : dès qu'il y a un écart à la validation, un popup
+  // s'ouvre avec un message prêt à envoyer par WhatsApp.
+  const [recap, setRecap] = useState<null | { message: string }>(null);
 
   // ─── Report de date — un vrai sélecteur de date (input type=date) au lieu du window.prompt
   // texte libre, source d'erreurs de saisie et de format ("calendrier buggé").
@@ -403,9 +410,25 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     const raisonFinal = hasEcartColis
       ? `Écart colis : ${ecartColis > 0 ? "+" : ""}${ecartColis} (reçu ${colisRecusNum}/${colisAttendu})`
       : (isRetourRecond && litigeEffectif ? (retourCommentaire.trim() || "Problème signalé au retour") : "");
-    await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", raisonFinal, "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquette);
-    setSaving(false);
-    if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
+    // 09/09/2026 — Bug trouvé avec Elinathan : cet appel n'était pas protégé par un try/catch — si
+    // onValidate (handleAgrement dans App.tsx) échouait pour une raison quelconque, l'erreur
+    // remontait sans jamais être rattrapée ici : setSaving(false) n'était jamais exécuté (bouton
+    // bloqué sur "..."), et surtout rien ne prévenait l'agréeur — ni message d'erreur, ni popup de
+    // récap. Comportement identique au bug déjà corrigé sur le pointage groupé NLT
+    // (PointageGroupeNLT.validerTout, voir plus bas) — même correction ici.
+    try {
+      await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", raisonFinal, "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquette);
+      if (hasEcartColis) {
+        const signe = ecartColis > 0 ? "+" : "";
+        const message = `⚠️ ÉCART DE COLIS\n${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""} — ${arrivage.fournisseur || "-"}\nReçu ${colisRecusNum}/${colisAttendu} (${signe}${ecartColis})`;
+        setRecap({ message });
+      }
+      if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
+    } catch (err: any) {
+      alert(`❌ Erreur pendant la validation : ${err?.message || "erreur inconnue"}\n\nRien n'a été enregistré côté impression/récap — réessaie ou préviens Elinathan si ça persiste.`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const statusColor = litige || (hasEcartColis && !isRetourRecond) ? "#dc2626" : (hasEcartColis && isRetourRecond) ? "#d97706" : qualite === 0 ? "#d4edda" : qualite >= 4 ? "#27ae60" : qualite === 3 ? "#d97706" : "#dc2626";
@@ -790,6 +813,24 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => setShowReport(false)} style={{ flex: 1, padding: "9px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Annuler</button>
               <button onClick={confirmerReport} disabled={!dateReportIso} style={{ flex: 1, padding: "9px", borderRadius: 9, border: "none", background: dateReportIso ? "#27ae60" : "#ccc", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: dateReportIso ? "pointer" : "default" }}>Confirmer</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {recap && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 22, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>⚠️ Arrivage validé — écart détecté</p>
+            <textarea readOnly value={recap.message} rows={5}
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "monospace", boxSizing: "border-box", marginBottom: 12, resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setRecap(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                Fermer
+              </button>
+              <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(recap.message)}`, "_blank"); setRecap(null); }}
+                style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                📲 Envoyer par WhatsApp
+              </button>
             </div>
           </div>
         </div>
