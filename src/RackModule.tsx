@@ -54,7 +54,7 @@ type Preset = { produit: string; color: string; colorLabel: string; designation:
 // 09/09/2026 — remplacé par la recherche intelligente partagée (shared.tsx), généralisée à
 // toute l'app : même logique de pondération, avec en plus l'insensibilité aux accents. Le nom
 // "searchRanked" est conservé pour ne pas toucher tous les appels ci-dessous.
-function searchRanked(query: string, list: string[], max = 50): string[] {
+function searchRanked(query: string, list: string[], max = 500): string[] {
   if (query.trim().length < 1) return [];
   return rechercheIntelligente(query, list, max);
 }

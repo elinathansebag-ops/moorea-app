@@ -164,7 +164,7 @@ function genPDF(fiche: FicheRetour) {
 // toute l'app : même logique (mots dans le désordre, priorité à "commence par"), avec en plus
 // l'insensibilité aux accents. On garde le nom "searchRanked" pour ne pas toucher tous les
 // appels ci-dessous.
-function searchRanked(query: string, list: string[], max = 10): string[] {
+function searchRanked(query: string, list: string[], max = 500): string[] {
   if (query.trim().length < 2) return [];
   return rechercheIntelligente(query, list, max);
 }

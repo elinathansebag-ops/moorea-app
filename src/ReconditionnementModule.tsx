@@ -742,8 +742,8 @@ function ArticleSelect({ value, onSelect, articles, placeholder }: {
   const [open, setOpen] = useState(false);
   useEffect(() => { setSearch(value); }, [value]);
   const filtered = search.trim()
-    ? articles.filter(a => a.libelle.toLowerCase().includes(search.toLowerCase())).slice(0, 30)
-    : articles.slice(0, 30);
+    ? articles.filter(a => a.libelle.toLowerCase().includes(search.toLowerCase())).slice(0, 500)
+    : articles.slice(0, 500);
   const valide = value.trim() === "" || articles.some(a => a.libelle === value);
 
   return (
@@ -787,7 +787,7 @@ function ArticleSelect({ value, onSelect, articles, placeholder }: {
 // (contrairement à ArticleSelect) puisqu'un lot peut ne pas encore exister ailleurs.
 function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (v: string) => void; lotsConnus: string[] }) {
   const [open, setOpen] = useState(false);
-  const filtres = value.trim() ? lotsConnus.filter(l => l.includes(value.trim()) && l !== value.trim()).slice(0, 8) : [];
+  const filtres = value.trim() ? lotsConnus.filter(l => l.includes(value.trim()) && l !== value.trim()).slice(0, 500) : [];
   return (
     <div style={{ position: "relative" }}>
       <input

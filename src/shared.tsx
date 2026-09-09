@@ -241,7 +241,12 @@ export function normaliserRecherche(s: string): string {
   return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
-export function rechercheIntelligente(valeur: string, suggestions: string[], max = 8): string[] {
+// 09/09/2026 — Elinathan a demandé d'augmenter la limite "à l'infini" (plus juste 6 options) :
+// la valeur par défaut ci-dessous (et celle d'AutocompleteInput plus bas) sert désormais de
+// simple garde-fou anti-lenteur (aucune liste de clients/produits ne dépasse ce nombre en
+// pratique) plutôt qu'une vraie limite d'affichage — toutes les correspondances réelles
+// s'affichent, dans un menu qui défile (voir AutocompleteInput) au lieu de couper à 6.
+export function rechercheIntelligente(valeur: string, suggestions: string[], max = 500): string[] {
   const q = normaliserRecherche(valeur);
   if (!q) return [];
   const mots = q.split(/\s+/).filter(Boolean);
@@ -296,7 +301,7 @@ export function AutocompleteInput({ value, onChange, suggestions, placeholder, r
   required?: boolean;
 }) {
   const [show, setShow] = useState(false);
-  const filtered = rechercheIntelligente(value, suggestions, 6);
+  const filtered = rechercheIntelligente(value, suggestions, 500);
 
   return (
     <div style={{ position: "relative" }}>
@@ -309,7 +314,7 @@ export function AutocompleteInput({ value, onChange, suggestions, placeholder, r
         required={required}
       />
       {show && filtered.length > 0 && (
-        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #c8a84b", borderRadius: 10, zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", overflow: "hidden", marginTop: 2 }}>
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #c8a84b", borderRadius: 10, zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", overflowY: "auto", WebkitOverflowScrolling: "touch", maxHeight: 280, marginTop: 2 }}>
           {filtered.map((s, i) => (
             <div key={i} onMouseDown={() => { onChange(s); setShow(false); }}
               style={{ padding: "10px 14px", cursor: "pointer", fontSize: 14, color: "#1a2e1a", borderBottom: i < filtered.length - 1 ? "1px solid #f0ede6" : "none", background: "#fff" }}
