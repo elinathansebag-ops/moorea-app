@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import jsPDF from "jspdf";
 import { CLIENTS_LIST } from "./ClientsList";
-import { PageHeader, rechercheIntelligente } from "./shared";
+import { PageHeader, rechercheIntelligente, styles } from "./shared";
 
 // ── Types ──
 interface ProduitLigne {
@@ -703,6 +703,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
 
+      <style>{styles}</style>
       <PageHeader titre="📦 Retours commandes" couleur="#c8a84b" onBack={onClose} onHome={onClose} />
 
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px", boxSizing: "border-box" }}>

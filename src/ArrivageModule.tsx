@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import emailjs from "@emailjs/browser";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { PageHeader, NoteSelector, ScoreCircle, F, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, DESTINATAIRES, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, CRITERES } from "./shared";
+import { PageHeader, NoteSelector, ScoreCircle, F, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, DESTINATAIRES, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, CRITERES, styles } from "./shared";
 
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -2230,6 +2230,7 @@ export function PalettePublique({ id }: { id: string }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      <style>{styles}</style>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <PageHeader titre={`📦 MRA.${String(arrivage.lot_interne || "").padStart(4, "0")}`}
         onBack={() => { window.history.replaceState({}, "", window.location.pathname); window.location.reload(); }}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update } from "./firebase";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 
 // ─── RH APP ───
 const RH_PIN = "1709";
@@ -307,6 +307,7 @@ export function RHApp({ onClose }: { onClose: () => void }) {
   if (!unlocked) {
     return (
       <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
+        <style>{styles}</style>
         <PageHeader titre="👥 RH · Pointeuse" couleur="#0ea5e9" onBack={onClose} onHome={onClose} />
         <div style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
@@ -341,6 +342,7 @@ export function RHApp({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      <style>{styles}</style>
       <PageHeader titre="👥 RH · Pointeuse" couleur="#0ea5e9" onBack={onClose} onHome={onClose} />
 
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 12px 100px", boxSizing: "border-box" }}>

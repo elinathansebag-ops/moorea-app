@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MODULE PROGRAMME D'ACHAT — pour les grosses périodes (Noël, promos, etc.),
@@ -708,6 +708,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
   if (!selectedId) {
     return (
       <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
+        <style>{styles}</style>
         <PageHeader titre="Programme d'achat" couleur="#c8a84b" onBack={onClose} onHome={onClose} />
         <div style={{ maxWidth: 900, margin: "0 auto", padding: 16, boxSizing: "border-box" }}>
 
@@ -931,6 +932,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
   // ─── ÉCRAN 2 : plan de la période sélectionnée ───
   return (
     <div style={{ minHeight: "100vh", background: "#f7f7f5", fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{styles}</style>
       <PageHeader titre={cfg?.nom || "Programme d'achat"} couleur="#c8a84b" onBack={() => setSelectedId(null)} onHome={onClose} />
       <div style={{ maxWidth: 800, margin: "0 auto", padding: 12, boxSizing: "border-box" }}>
         {cfg && (

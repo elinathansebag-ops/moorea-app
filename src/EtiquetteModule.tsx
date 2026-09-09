@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 
 // ── Module Étiquettes — mini éditeur d'étiquettes ──
 // 01/09/2026 — Recréé à la demande d'Elinathan (l'ancien fichier avait été perdu sur GitHub,
@@ -700,6 +700,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      <style>{styles}</style>
       <PageHeader
         titre="🏷️ Étiquettes"
         onBack={() => (vue === "editeur" ? setVue("liste") : onClose())}

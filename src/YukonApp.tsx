@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update, push, remove } from "./firebase";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 
 // ─── YUKON APP ───
 const YUKON_ARTICLES_DEFAULT = [
@@ -245,6 +245,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
     <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Syne', sans-serif" }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
+      <style>{styles}</style>
       <PageHeader titre="🌿 Besoins Yukon" couleur="#16a34a" onBack={onClose} onHome={onClose} />
 
       {/* SOUS-NAV */}

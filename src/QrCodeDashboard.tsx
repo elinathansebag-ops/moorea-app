@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { initializeApp as initializeApp2, getApps as getApps2 } from "firebase/app";
 import { getDatabase as getDatabase2, ref as ref2, onValue as onValue2, off as off2 } from "firebase/database";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 
 // ─── QR CODE DASHBOARD ───
 const qrTrackerConfig = {
@@ -94,6 +94,7 @@ export function QrCodeDashboard({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      <style>{styles}</style>
       <PageHeader titre="📊 QR Code Leofresh" couleur="#27ae60" onBack={onClose} onHome={onClose} />
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 12px 80px", boxSizing: "border-box" }}>
         {loading ? (

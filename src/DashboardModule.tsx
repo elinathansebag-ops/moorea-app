@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, ref, onValue } from "./firebase";
+import { styles } from "./shared";
 
 // ─── TABLEAU DE BORD — écran de suivi en direct ───
 // Pensé pour être affiché en continu sur une TV que personne ne touche, lue de loin : gros
@@ -157,6 +158,7 @@ export function DashboardModule({
 
   return (
     <div style={{ minHeight: "100vh", background: "#0a0a0a", padding: "24px 30px", fontFamily: "'DM Sans', Arial, sans-serif", display: "flex", flexDirection: "column", gap: 18 }}>
+      <style>{styles}</style>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
 
       {/* En-tête */}

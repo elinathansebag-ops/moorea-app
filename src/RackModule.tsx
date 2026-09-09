@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove, auth } from "./firebase";
-import { PageHeader, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, rechercheIntelligente } from "./shared";
+import { PageHeader, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, rechercheIntelligente, styles } from "./shared";
 import { ScannerQR } from "./ArrivageModule";
 import emailjs from "@emailjs/browser";
 
@@ -894,6 +894,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
   if (showConfig) {
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+        <style>{styles}</style>
         <PageHeader titre="⚙️ Gestion des racks" couleur="#8b5cf6" onBack={fermerConfig} onHome={fermerConfig} />
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px", boxSizing: "border-box" }}>
           {!configUnlocked ? (
@@ -1122,6 +1123,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+      <style>{styles}</style>
       <PageHeader titre="🗄️ Rotation Racks" couleur="#8b5cf6" onBack={onClose} onHome={onClose} />
 
       <div style={{ maxWidth: 1500, margin: "0 auto", padding: "16px 16px 60px" }}>

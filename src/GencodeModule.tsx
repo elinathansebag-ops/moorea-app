@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue } from "./firebase";
 import { Html5Qrcode } from "html5-qrcode";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 
 interface Article {
   id: string;
@@ -4868,6 +4868,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
           .gc-linkrow-col { flex-basis: 100% !important; }
         }
       `}</style>
+      <style>{styles}</style>
       <PageHeader titre="Gencodes GMS" couleur="#3b82f6" onBack={onClose} onHome={onClose} />
       <div className="gc-stats" style={{ maxWidth:800, margin:'0 auto', boxSizing:'border-box', display:'flex', gap:6, alignItems:'center', flexWrap:'wrap', padding:'10px 16px 0' }}>
         {imported && <button onClick={syncAutoLinks} style={{ background:'#e5e7eb', border:'none', borderRadius:6, color:'#374151', padding:'4px 10px', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap' }}>Sync auto</button>}

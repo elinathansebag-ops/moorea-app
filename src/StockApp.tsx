@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update, push } from "./firebase";
 import { collection, getDocs, getDoc, setDoc, doc, query, where } from "firebase/firestore";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 import { Html5Qrcode } from "html5-qrcode";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -2977,6 +2977,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 500, overflowY: "auto", background: "#f5f3ee" }}>
+      <style>{styles}</style>
       <PageHeader titre="📦 Stock Moorea" onBack={onExit} onHome={onExit} />
       <div ref={containerRef} />
     </div>

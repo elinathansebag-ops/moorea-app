@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue, remove } from "./firebase";
 import * as XLSX from "xlsx";
-import { PageHeader } from "./shared";
+import { PageHeader, styles } from "./shared";
 
 export interface ArticleMoorea {
   code: string;
@@ -4119,6 +4119,7 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f3ee', fontFamily: "'Syne', sans-serif" }}>
+      <style>{styles}</style>
       <PageHeader titre="📚 Catalogue Articles" couleur="#27ae60" onBack={onClose} onHome={onClose} />
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '20px 16px 80px', boxSizing: 'border-box' }}>

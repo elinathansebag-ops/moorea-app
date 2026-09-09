@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { db, ref, onValue, update } from "./firebase";
-import { PageHeader, F } from "./shared";
+import { PageHeader, F, styles } from "./shared";
 
 // ─── Module Appro (commandes hebdo Kenya/Tanzanie) ───
 // Reproduit le tableau Excel "appro process" de Jennifer : plusieurs produits (haricot vert,
@@ -808,6 +808,7 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
 
   return (
     <div id="appro-root" style={{ minHeight: "100vh", background: COLORS.gray100 }}>
+      <style>{styles}</style>
       <PageHeader titre="Appro — Commandes fournisseurs" couleur={COLORS.primary} onBack={onClose} onHome={onClose} />
 
       {notification && (

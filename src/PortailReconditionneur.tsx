@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { styles } from "./shared";
 
 // ─── Espace reconditionneur (NLT / Andès) ───
 // Page publique (pas de compte @moorea.fr) ouverte via un lien fixe envoyé une fois pour toutes
@@ -516,6 +517,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+      <style>{styles}</style>
       <div style={{ background: COLORS.ink, padding: "16px 18px", position: "sticky", top: 0, zIndex: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ color: COLORS.gold, fontSize: 17, fontWeight: 800, letterSpacing: 0.5 }}>MOOREA</div>
