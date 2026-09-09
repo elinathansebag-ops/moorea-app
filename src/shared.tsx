@@ -52,8 +52,15 @@ export const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-text-size-adjust: 100%; }
+  html, body { max-width: 100%; overflow-x: hidden; }
   body { background: #f5f3ee; -webkit-tap-highlight-color: transparent; }
+  img, svg, video { max-width: 100%; height: auto; }
   .app { min-height: 100vh; background: #f5f3ee; }
+  /* Utilitaire générique pour rendre un tableau défilable horizontalement sur petit écran
+     plutôt que de casser la mise en page — enveloppe le <table> dans <div className="tbl-wrap">.
+     (Le module Stock avait déjà sa propre version scopée #stock-root ; celle-ci est utilisable
+     par n'importe quel module.) */
+  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   input, select, textarea {
     font-family: 'DM Sans', sans-serif;
     width: 100%; padding: 12px 14px; border-radius: 10px;
