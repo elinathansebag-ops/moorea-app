@@ -481,23 +481,31 @@ export default function App() {
   // ".info/connected" passe à true, on programme un onDisconnect() qui marquera automatiquement
   // la personne hors-ligne (avec l'heure) si elle ferme l'onglet, perd le réseau, etc. — même sans
   // action de sa part. Rien de tout ça n'est visible ailleurs que dans l'écran "Droits d'accès".
+  // 09/09/2026 (bis) — Elinathan a remarqué que "Comptes" affichait "hier" pour un compte qui
+  // était pourtant en ligne aujourd'hui : "derniere_connexion" n'était écrit qu'une seule fois, à
+  // l'ouverture de l'onglet — si l'onglet reste ouvert plusieurs jours sans jamais être rechargé
+  // (courant avec la connexion Google qui reste valable très longtemps), la date ne bougeait
+  // plus alors que la personne était bien active. On rafraîchit donc maintenant la date aussi à
+  // chaque reconnexion réseau, et en plus toutes les 5 minutes tant que l'onglet reste ouvert.
   useEffect(() => {
     if (!user) return;
     const uid = user.uid;
     const email = user.email || "";
     const displayName = user.displayName || "";
-    update(ref(db, `comptes/${uid}`), { email, displayName, derniere_connexion: Date.now() });
+    const presenceRef = ref(db, `presence/${uid}`);
+    const marquerActif = () => {
+      update(ref(db, `comptes/${uid}`), { email, displayName, derniere_connexion: Date.now() });
+      set(presenceRef, { online: true, lastSeen: serverTimestamp(), email, displayName });
+    };
     onValue(ref(db, `comptes/${uid}/premiere_connexion`), snap => {
       if (snap.val() == null) update(ref(db, `comptes/${uid}`), { premiere_connexion: Date.now() });
     }, { onlyOnce: true });
-    const presenceRef = ref(db, `presence/${uid}`);
     const unsubConnected = onValue(ref(db, ".info/connected"), snap => {
       if (snap.val() !== true) return;
-      onDisconnect(presenceRef).set({ online: false, lastSeen: serverTimestamp(), email, displayName }).then(() => {
-        set(presenceRef, { online: true, lastSeen: serverTimestamp(), email, displayName });
-      });
+      onDisconnect(presenceRef).set({ online: false, lastSeen: serverTimestamp(), email, displayName }).then(marquerActif);
     });
-    return () => unsubConnected();
+    const heartbeat = setInterval(marquerActif, 5 * 60 * 1000);
+    return () => { unsubConnected(); clearInterval(heartbeat); };
   }, [user?.uid]);
   const [adminTab, setAdminTab] = useState<"activite" | "reglages">("activite");
   const [activityLog, setActivityLog] = useState<any[]>([]);
