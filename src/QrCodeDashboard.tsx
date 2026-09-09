@@ -146,7 +146,7 @@ export function QrCodeDashboard({ onClose }: { onClose: () => void }) {
             {/* DÉTAIL */}
             <div style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #e8e0d0", overflow: "hidden" }}>
               <p style={{ fontSize: 13, fontWeight: 700, padding: "14px 16px 0", color: "#1a2e1a" }}>Détail des scans (les plus récents)</p>
-              <div style={{ maxHeight: 400, overflowY: "auto", padding: "10px 0" }}>
+              <div style={{ maxHeight: 400, overflowY: "auto", overflowX: "auto", WebkitOverflowScrolling: "touch", padding: "10px 0" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: "#faf9f6", textAlign: "left" }}>

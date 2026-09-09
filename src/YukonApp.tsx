@@ -573,7 +573,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
             </div>
 
             {/* Tableau récap */}
-            <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
+            <div style={{ background: "#fff", borderRadius: 14, overflow: "auto", WebkitOverflowScrolling: "touch", border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#1a2e1a" }}>
