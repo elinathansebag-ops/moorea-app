@@ -2652,10 +2652,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // 09/09/2026 (suite) — Elinathan a signalé un DEUXIÈME temps d'attente juste après : l'écran
   // noir disparaissait dès la connexion établie, mais "Pointer arrivage" (et l'accueil, qui
   // affiche les mêmes stats) restaient vides encore plusieurs secondes le temps que les
-  // arrivages arrivent. On fusionne les deux attentes en une seule : l'écran noir reste affiché
-  // jusqu'à ce que les arrivages (la donnée la plus utilisée, accueil + Pointer arrivage) soient
-  // là aussi — comme ça, dès que l'écran noir disparaît, il y a déjà des données à afficher.
-  if (!rtdbPret || !arrivagesCharges) return <EcranChargementInitial />;
+  // arrivages arrivent. Une fusion des deux attentes avait été tentée ici (l'écran noir restait
+  // affiché jusqu'à ce que les arrivages soient là aussi) — mais la collection "arrivages"
+  // (jamais archivée, voir la remarque sur les 90 onValue sans limite) est assez grosse pour que
+  // ça fasse grimper l'attente de ~1-2s à 15-20s, ce qui est pire que le problème d'origine.
+  // 09/09/2026 (revert) — Retour à l'attente courte (rtdbPret seul) pour l'écran noir : elle ne
+  // dépend que de la connexion, pas du volume de données. Le "vide qui s'affiche une fraction de
+  // seconde" sur Pointer arrivage reste réglé, mais via son propre indicateur ciblé plus bas
+  // (`if (!arrivagesCharges) return <ChargementEcran .../>`) — seule cette page-là attend les
+  // arrivages, pas toute l'appli.
+  if (!rtdbPret) return <EcranChargementInitial />;
 
   if (showScanner) {
     return (
