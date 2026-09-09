@@ -197,6 +197,96 @@ export default function App() {
       setArchivageBusy(false);
     }
   };
+
+  // ─── ARCHIVAGE GLOBAL (09/09/2026) ───
+  // Demande d'Elinathan ("toute l'app est très très longue, même les données de caisses/cartons,
+  // pareil pour les arrivages") : l'archivage ci-dessus ne concernait que les arrivages, et devait
+  // en plus être lancé à la main. Or plusieurs AUTRES collections Firebase grossissent sans fin
+  // depuis le tout début de l'app (journal d'activité, mouvements de stock IFCO, file
+  // d'impression, mouvements de reconditionnement, retours traités, commandes cartons,
+  // déclarations IFCO) et sont rechargées EN ENTIER à chaque ouverture de page par plusieurs
+  // écrans différents — c'est la vraie cause des 3-4 minutes de chargement (et des plantages).
+  // On généralise donc l'archivage à toutes ces collections, avec UN SEUL bouton (page
+  // d'accueil). Chaque collection a sa propre règle : un champ de date différent selon les cas,
+  // et pour certaines un statut "en cours" qu'il ne faut surtout JAMAIS archiver par erreur (un
+  // job d'impression encore "pending", une déclaration IFCO pas encore faite, un retour pas
+  // encore traité, une commande carton pas encore livrée).
+  type CollectionArchivable = {
+    path: string;
+    archivePath: string;
+    label: string;
+    getTs: (v: any) => number | null;
+    isPending?: (v: any) => boolean;
+  };
+  const COLLECTIONS_ARCHIVABLES: CollectionArchivable[] = [
+    { path: "activity_log", archivePath: "activity_log_archives", label: "Journal d'activité",
+      getTs: v => typeof v?.timestamp === "number" ? v.timestamp : null },
+    { path: "ifco_stock/movements", archivePath: "ifco_stock_movements_archives", label: "Mouvements stock IFCO",
+      getTs: v => typeof v?.ts === "number" ? v.ts : null },
+    { path: "printQueue", archivePath: "printQueue_archives", label: "File d'impression",
+      getTs: v => typeof v?.createdAt === "number" ? v.createdAt : null,
+      isPending: v => v?.status === "pending" },
+    { path: "reconditionnement_stock_mouvements", archivePath: "reconditionnement_stock_mouvements_archives", label: "Mouvements reconditionnement",
+      getTs: v => typeof v?.ts === "number" ? v.ts : null },
+    { path: "retours", archivePath: "retours_archives", label: "Retours",
+      getTs: v => typeof v?.ts === "number" ? v.ts : null,
+      isPending: v => v?.statut !== "traite" },
+    { path: "prestataires_cartons", archivePath: "prestataires_cartons_archives", label: "Commandes cartons",
+      getTs: v => { const d = v?.dateCommande ? new Date(v.dateCommande) : null; return d && !isNaN(d.getTime()) ? d.getTime() : null; },
+      isPending: v => v?.statut === "commandé" },
+    { path: "ifco_declarations_lignes", archivePath: "ifco_declarations_lignes_archives", label: "Déclarations IFCO (lignes)",
+      getTs: v => typeof v?.ts === "number" ? v.ts : null },
+    { path: "ifco_declarations_entree", archivePath: "ifco_declarations_entree_archives", label: "Déclarations IFCO (entrées)",
+      getTs: v => typeof v?.ts === "number" ? v.ts : null,
+      isPending: v => v?.declare === false },
+  ];
+  const archiverCollectionGenerique = async (col: CollectionArchivable, limite: number): Promise<{ archives: number; erreur?: string }> => {
+    try {
+      const { get } = await import("firebase/database");
+      const snap = await get(ref(db, col.path));
+      const data = snap.val();
+      if (!data) return { archives: 0 };
+      const updates: Record<string, any> = {};
+      let n = 0;
+      for (const [id, v] of Object.entries(data as Record<string, any>)) {
+        if (col.isPending?.(v)) continue;
+        const ts = col.getTs(v);
+        if (ts == null || ts >= limite) continue;
+        updates[`${col.archivePath}/${id}`] = { ...v, archived_at: Date.now() };
+        updates[`${col.path}/${id}`] = null;
+        n++;
+      }
+      if (n > 0) await update(ref(db), updates);
+      return { archives: n };
+    } catch (err: any) {
+      console.error(`Erreur archivage ${col.path}:`, err);
+      return { archives: 0, erreur: err?.message || "erreur inconnue" };
+    }
+  };
+  const [archivageGlobalBusy, setArchivageGlobalBusy] = useState(false);
+  const archiverToutAncien = async () => {
+    if (archivageGlobalBusy || archivageBusy) return;
+    if (!window.confirm(
+      "Archiver toutes les données de plus de 3 semaines (arrivages, journal d'activité, mouvements de stock, retours traités, commandes cartons, déclarations IFCO...) ?\n\n" +
+      "Rien n'est supprimé : tout reste consultable dans l'Historique. Ça peut prendre quelques secondes."
+    )) return;
+    setArchivageGlobalBusy(true);
+    try {
+      await archiverAnciensArrivages();
+      const limite = Date.now() - ARCHIVAGE_APRES_JOURS * 24 * 60 * 60 * 1000;
+      const resultats = await Promise.all(COLLECTIONS_ARCHIVABLES.map(col => archiverCollectionGenerique(col, limite)));
+      const total = resultats.reduce((s, r) => s + r.archives, 0);
+      const enErreur = resultats.map((r, i) => r.erreur ? COLLECTIONS_ARCHIVABLES[i].label : null).filter(Boolean);
+      showToast(
+        enErreur.length
+          ? `⚠️ ${total} élément(s) archivé(s) (hors arrivages), mais erreur sur : ${enErreur.join(", ")}`
+          : `✅ ${total} élément(s) archivé(s) (hors arrivages, annoncé séparément ci-dessus)`,
+        enErreur.length ? "error" : undefined
+      );
+    } finally {
+      setArchivageGlobalBusy(false);
+    }
+  };
   // Panneau plein écran listant tous les poids de barquettes et températures relevés.
   const [showHistoMesures, setShowHistoMesures] = useState(false);
   // 02/09/2026 — Popup d'alerte si aucune température / aucun poids de barquette relevé depuis
@@ -2889,6 +2979,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
             {row2Bureau.map((b, i) => <CardCarré key={i} {...b} />)}
           </div>
+
+          {/* 09/09/2026 — Demande d'Elinathan : archivage centralisé sur la page d'accueil (un
+              seul bouton pour toute l'app, plus seulement les arrivages) + accès direct à
+              l'historique complet des arrivages, à la place de l'ancien bouton "Archiver"
+              retiré de l'écran "Pointer arrivage". */}
+          <p style={{ margin: "16px 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🧹 Maintenance</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+            <CardCarré icon="🗄️" label={archivageGlobalBusy || archivageBusy ? "Archivage…" : "Archiver"} color="#8a6f2e"
+              stat="Nettoie toute l'app (+21j)" action={archiverToutAncien} />
+            <CardCarré icon="📜" label="Historique" color="#6c757d" stat="Tous les arrivages archivés"
+              action={() => { setShowAccueil(false); setPageMode("historique_arr"); setVue("__none__" as any); }} />
+          </div>
         </div>
       </div>
       </>
@@ -3510,13 +3612,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block" }} />
                 🖨️ Imprimante PC : {printRelayOnline === null ? "..." : printRelayOnline ? "en ligne" : "hors ligne"}
               </span>
-              {/* 04/09/2026 — Archive les arrivages traités de plus de 3 semaines (voir
-                  archiverAnciensArrivages) : garde "Pointer arrivage" rapide, sans rien perdre —
-                  toujours consultable ensuite dans l'Historique. */}
-              <button onClick={archiverAnciensArrivages} disabled={archivageBusy} title="Déplace les arrivages traités de plus de 3 semaines vers l'Historique (archivage) pour garder cet écran rapide"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fff", color: "#8a6f2e", border: "1px solid #e8e0d0", cursor: archivageBusy ? "not-allowed" : "pointer" }}>
-                {archivageBusy ? "🗄 Archivage..." : "🗄 Archiver anciens arrivages"}
-              </button>
+              {/* 09/09/2026 — Bouton "Archiver anciens arrivages" retiré d'ici à la demande
+                  d'Elinathan : l'app entière était devenue très lente (3-4 min de chargement,
+                  parfois un plantage) parce que plusieurs grosses collections Firebase (pas
+                  seulement les arrivages) grossissent sans fin et se rechargent en entier à
+                  chaque ouverture de page. L'archivage est désormais un système global (voir
+                  archiverToutAncien plus haut), accessible depuis UN SEUL bouton "🗄️ Archiver"
+                  sur la page d'accueil — qui nettoie les arrivages ET tous les autres journaux
+                  (activité, mouvements de stock, retours traités, etc.) en un seul geste. */}
               {/* 04/09/2026 — Elinathan ne trouvait pas comment revoir l'Historique arrivages
                   (aucun bouton n'y menait depuis cet écran) : ajout d'un accès direct. */}
               <button onClick={() => { setPageMode("historique_arr"); setVue("__none__" as any); window.scrollTo(0,0); }}
