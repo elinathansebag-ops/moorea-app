@@ -222,6 +222,12 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
   const [formatsOuverts, setFormatsOuverts] = useState<Set<string>>(new Set());
   const [nomFormatPerso, setNomFormatPerso] = useState("");
   const [nomModele, setNomModele] = useState("");
+  // 01/09/2026 — Id du modèle actuellement chargé dans l'éditeur (celui affiché dans le bandeau
+  // "💾 Enregistrée sous..."), ou null pour une étiquette pas encore enregistrée — avant,
+  // "Enregistrer ce modèle" créait toujours une NOUVELLE entrée (push), même en modifiant une
+  // étiquette déjà enregistrée, ce qui accumulait des doublons dans la liste au fil des
+  // modifications (bug repéré et corrigé le 01/09/2026, demande d'Elinathan).
+  const [modeleEnCoursId, setModeleEnCoursId] = useState<string | null>(null);
   const [showEnregistrerFormat, setShowEnregistrerFormat] = useState(false);
   const [showEnregistrerModele, setShowEnregistrerModele] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -434,16 +440,28 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setBlocs([nouveauBloc("PRODUIT", "center", 50, 50)]);
     setPivoter90(false);
     setNomModele("");
+    setModeleEnCoursId(null);
     setShowEnregistrerModele(false);
     setVue("editeur");
   }
 
+  // Met à jour l'étiquette déjà enregistrée (modeleEnCoursId) au lieu d'en créer une nouvelle,
+  // si l'éditeur a été ouvert depuis "✏️ Modifier" ou depuis un modèle déjà enregistré — sinon
+  // (nouvelle étiquette jamais enregistrée) crée l'entrée. Avant, cette fonction faisait
+  // systématiquement un push(), donc modifier une étiquette existante puis cliquer
+  // "Enregistrer" créait un doublon au lieu de mettre à jour l'originale.
   async function enregistrerModele() {
     if (!nomModele.trim()) { notify("error", "⚠️ Donne un nom à ce modèle"); return; }
     if (blocs.length === 0) { notify("error", "⚠️ Ajoute au moins une ligne de texte"); return; }
-    await push(ref(db, "etiquettes/modeles"), { nom: nomModele.trim(), ...etatActuel(), updatedAt: Date.now(), depuisImpression: false });
-    notify("success", "💾 Modèle enregistré");
-    setNomModele("");
+    if (modeleEnCoursId) {
+      await update(ref(db, `etiquettes/modeles/${modeleEnCoursId}`), { nom: nomModele.trim(), ...etatActuel(), updatedAt: Date.now() });
+      notify("success", "💾 Modèle mis à jour");
+    } else {
+      const nouvelleRef = push(ref(db, "etiquettes/modeles"));
+      await update(nouvelleRef, { nom: nomModele.trim(), ...etatActuel(), updatedAt: Date.now(), depuisImpression: false });
+      setModeleEnCoursId(nouvelleRef.key);
+      notify("success", "💾 Modèle enregistré");
+    }
     setShowEnregistrerModele(false);
   }
 
@@ -469,6 +487,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
     setBlocs(m.blocs && m.blocs.length > 0 ? m.blocs.map((b) => ({ ...b, id: nouvelId(), xPct: b.xPct ?? 50, yPct: b.yPct ?? 50 })) : [nouveauBloc()]);
     setPivoter90(!!m.pivoter90);
     setNomModele(m.nom);
+    setModeleEnCoursId(m.id);
     setVue("editeur");
     notify("success", `📂 "${m.nom}" chargé — modifie et réimprime, ou repars de ce format`);
   }
@@ -826,11 +845,11 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Largeur (cm)</label>
-                <input type="number" step="0.1" min="1" value={largeurCm} onChange={(e) => { setLargeurCm(parseFloat(e.target.value) || 0); setFormatChoisi("custom"); }} style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                <input type="number" step="0.1" min="1" value={largeurCm || ""} onChange={(e) => { setLargeurCm(parseFloat(e.target.value) || 0); setFormatChoisi("custom"); }} style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Hauteur (cm)</label>
-                <input type="number" step="0.1" min="1" value={hauteurCm} onChange={(e) => { setHauteurCm(parseFloat(e.target.value) || 0); setFormatChoisi("custom"); }} style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                <input type="number" step="0.1" min="1" value={hauteurCm || ""} onChange={(e) => { setHauteurCm(parseFloat(e.target.value) || 0); setFormatChoisi("custom"); }} style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
               </div>
             </div>
             {!showEnregistrerFormat ? (
@@ -901,8 +920,8 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                       type="number"
                       min={0.5}
                       step={0.1}
-                      value={logoTailleCm}
-                      onChange={(e) => setLogoTailleCm(parseFloat(e.target.value) || 0.5)}
+                      value={logoTailleCm || ""}
+                      onChange={(e) => setLogoTailleCm(parseFloat(e.target.value) || 0)}
                       style={{ width: 56, padding: "5px 6px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }}
                     />
                   </div>

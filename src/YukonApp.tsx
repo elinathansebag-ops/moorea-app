@@ -496,14 +496,19 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
                           <option value="">- Pas de liaison stock -</option>
                           {STOCK_LIST.filter(s => s).map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
-                        <input type="number" value={editArticle.colisVente} onChange={e => setEditArticle({ ...editArticle, colisVente: parseInt(e.target.value) || 1 })}
+                        {/* 09/09/2026 — value={... || ""} + onChange sans "|| 1" forcé : sinon le champ
+                            reprenait un 1 tout seul dès qu'on essayait de tout effacer pour ressaisir,
+                            impossible à vider (bug remonté par Elinathan). Le "|| 1" est repoussé au
+                            clic sur "✓" ci-dessous, pour ne jamais enregistrer 0. */}
+                        <input type="number" value={editArticle.colisVente || ""} onChange={e => setEditArticle({ ...editArticle, colisVente: parseInt(e.target.value) || 0 })}
                           style={{ width: 60, padding: "6px 8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12 }} placeholder="×vente" />
-                        <input type="number" value={editArticle.colisCommande} onChange={e => setEditArticle({ ...editArticle, colisCommande: parseInt(e.target.value) || 1 })}
+                        <input type="number" value={editArticle.colisCommande || ""} onChange={e => setEditArticle({ ...editArticle, colisCommande: parseInt(e.target.value) || 0 })}
                           style={{ width: 60, padding: "6px 8px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12 }} placeholder="×cmd" />
                         <button onClick={async () => {
-                          const updated = articles.map(a => a.id === editArticle.id ? editArticle : a);
+                          const articleFinal = { ...editArticle, colisVente: editArticle.colisVente || 1, colisCommande: editArticle.colisCommande || 1 };
+                          const updated = articles.map(a => a.id === articleFinal.id ? articleFinal : a);
                           setArticles(updated);
-                          await update(ref(db, `yukon/articles/${editArticle.id}`), editArticle);
+                          await update(ref(db, `yukon/articles/${articleFinal.id}`), articleFinal);
                           setEditArticle(null);
                         }} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>✓</button>
                         <button onClick={() => setEditArticle(null)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#f9fafb", color: "#6b7280", cursor: "pointer", fontSize: 12 }}>✕</button>
@@ -537,14 +542,14 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input value={nouvelArticle.nom} onChange={e => setNouvelArticle({ ...nouvelArticle, nom: e.target.value })}
                   placeholder="Nom de l'article" style={{ flex: 1, minWidth: 160, padding: "8px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 13 }} />
-                <input type="number" value={nouvelArticle.colisVente} onChange={e => setNouvelArticle({ ...nouvelArticle, colisVente: parseInt(e.target.value) || 1 })}
+                <input type="number" value={nouvelArticle.colisVente || ""} onChange={e => setNouvelArticle({ ...nouvelArticle, colisVente: parseInt(e.target.value) || 0 })}
                   style={{ width: 80, padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 12 }} placeholder="×vente" title="Unités par colis vendu" />
-                <input type="number" value={nouvelArticle.colisCommande} onChange={e => setNouvelArticle({ ...nouvelArticle, colisCommande: parseInt(e.target.value) || 1 })}
+                <input type="number" value={nouvelArticle.colisCommande || ""} onChange={e => setNouvelArticle({ ...nouvelArticle, colisCommande: parseInt(e.target.value) || 0 })}
                   style={{ width: 80, padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 12 }} placeholder="×cmd" title="Unités par colis commandé" />
                 <button onClick={async () => {
                   if (!nouvelArticle.nom) return;
                   const id = nouvelArticle.nom.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") + "-" + Date.now();
-                  const art = { ...nouvelArticle, id };
+                  const art = { ...nouvelArticle, colisVente: nouvelArticle.colisVente || 1, colisCommande: nouvelArticle.colisCommande || 1, id };
                   const updated = [...articles, art];
                   setArticles(updated);
                   await update(ref(db, `yukon/articles/${id}`), art);

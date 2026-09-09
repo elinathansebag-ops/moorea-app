@@ -254,6 +254,33 @@ export function rechercheIntelligente(valeur: string, suggestions: string[], max
   return scored.slice(0, max).map(x => x.s);
 }
 
+// 09/09/2026 — Chargement inline, réutilisable partout (demande d'Elinathan : plusieurs écrans
+// affichent une liste vide pendant que Firebase renvoie encore les données, sans rien qui
+// l'indique — on dirait que l'écran est cassé ou vide). À placer à la place du contenu tant que
+// les données de l'écran ne sont pas encore arrivées une première fois. Même logique que
+// l'écran de démarrage (temps écoulé honnête plutôt qu'une fausse barre de progression en %,
+// Firebase ne donnant pas de taille totale connue à l'avance).
+export function ChargementEcran({ texte = "Chargement…" }: { texte?: string }) {
+  const [secondes, setSecondes] = useState(0);
+  useEffect(() => {
+    const debut = Date.now();
+    const t = setInterval(() => setSecondes(Math.floor((Date.now() - debut) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "60px 20px", textAlign: "center" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div style={{ width: 28, height: 28, border: "3px solid #c8a84b", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <p style={{ margin: 0, color: "#9ca3af", fontSize: 13, fontFamily: "'Syne', sans-serif" }}>{texte} {secondes}s</p>
+      {secondes >= 6 && (
+        <p style={{ margin: 0, color: "#d97706", fontSize: 12, fontFamily: "'Syne', sans-serif", maxWidth: 260 }}>
+          Ça prend plus longtemps que d'habitude — vérifie ta connexion internet.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AutocompleteInput({ value, onChange, suggestions, placeholder, required }: {
   value: string;
   onChange: (v: string) => void;

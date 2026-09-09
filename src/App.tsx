@@ -7,7 +7,7 @@ import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWit
 import RetoursModule from "./RetoursModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
-import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F } from "./shared";
+import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran } from "./shared";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
 import { RHApp } from "./RHApp";
@@ -73,6 +73,33 @@ async function compressPhotoForPDF(dataUrl: string, MAX = 700, quality = 0.6): P
     img.onerror = () => resolve("");
     img.src = dataUrl;
   });
+}
+
+// 09/09/2026 — Écran de démarrage avec temps écoulé (demande d'Elinathan). Composant à part avec
+// son propre minuteur, pour ne pas alourdir l'état du composant App qui reste monté après (ce
+// composant ne l'est que le temps de la connexion initiale).
+function EcranChargementInitial() {
+  const [secondes, setSecondes] = useState(0);
+  useEffect(() => {
+    const debut = Date.now();
+    const t = setInterval(() => setSecondes(Math.floor((Date.now() - debut) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0a0a", gap: 16, padding: 24 }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #c8a84b", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ width: 160, height: 4, borderRadius: 4, background: "rgba(255,255,255,0.1)", overflow: "hidden" }}>
+        <div style={{ width: "40%", height: "100%", borderRadius: 4, background: "linear-gradient(90deg, transparent, #c8a84b, transparent)", animation: "chargementBarreDefile 1.2s ease-in-out infinite" }} />
+      </div>
+      <style>{`@keyframes chargementBarreDefile { 0% { transform: translateX(-250%); } 100% { transform: translateX(350%); } } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontFamily: "'Syne', sans-serif" }}>⏳ Chargement des données… {secondes}s</p>
+      {secondes >= 6 && (
+        <p style={{ color: "rgba(251,191,36,0.85)", fontSize: 12, fontFamily: "'Syne', sans-serif", textAlign: "center", maxWidth: 260 }}>
+          Ça prend plus longtemps que d'habitude — vérifie ta connexion internet.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function App() {
@@ -2617,12 +2644,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // base soit établie (donc que les listeners aient reçu leurs premières données) avant
   // d'afficher un module — sinon il pouvait sembler "vide" une fraction de seconde après un
   // rafraîchissement, ce qui donnait l'impression qu'il fallait le refermer/rouvrir.
-  if (!rtdbPret) return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0a0a", gap: 16 }}>
-      <div style={{ width: 32, height: 32, border: "3px solid #c8a84b", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-      <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontFamily: "'Syne', sans-serif" }}>⏳ Chargement des données…</p>
-    </div>
-  );
+  // 09/09/2026 — Ajout d'un décompte du temps écoulé (demande d'Elinathan : "c'est frustrant
+  // d'attendre sans savoir combien de temps"). Firebase ne donne pas de vraie progression en %
+  // (pas de taille totale connue à l'avance), donc plutôt qu'une fausse barre de progression, on
+  // affiche le temps écoulé — honnête — et une barre animée "indéterminée" juste pour montrer
+  // que ça travaille. Au-delà de 6s, un message rassure sur le fait que ce n'est pas normal.
+  if (!rtdbPret) return <EcranChargementInitial />;
 
   if (showScanner) {
     return (
@@ -3896,7 +3923,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   showToast(`✅ Semaine ${g.week} · ${g.year} nettoyée (${tousEnAttente.length} validé${tousEnAttente.length > 1 ? "s" : ""})`);
                 }
               };
-              return (
+              // 09/09/2026 — Demande d'Elinathan : "Pointer arrivage" affichait une liste vide le
+              // temps que Firebase renvoie les arrivages, sans rien qui l'indique. On utilise le
+              // flag arrivagesCharges (déjà présent plus haut, posé dès la première réponse de
+              // l'écouteur onValue) pour montrer un vrai message de chargement à la place.
+              return !arrivagesCharges ? (
+                <ChargementEcran texte="Chargement des arrivages…" />
+              ) : (
                 <>
                   {orderedWeekKeys.map((key, idxSemaine) => {
                     const g = weekGroups.get(key)!;

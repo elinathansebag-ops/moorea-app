@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader, styles } from "./shared";
+import { PageHeader, styles, ChargementEcran } from "./shared";
 import * as XLSX from "xlsx";
 // 07/09/2026 — Fusion des écrans Configuration (Prestataires ↔ Reconditionnement, demande
 // d'Elinathan) : les outils "Transporteurs", "Jeu de test", "Nettoyage" et "Tester
@@ -226,6 +226,14 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
   >(initialTab || "dashboard");
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
+  // 09/09/2026 — Demande d'Elinathan : cet écran (le plus lourd de l'app, une vingtaine de
+  // sources Firebase) affichait un calendrier vide le temps que les données arrivent, sans rien
+  // qui l'indique. On ne track pas les 20 listeners un par un (trop de risque de casser autre
+  // chose dans un fichier de cette taille) — juste les deux qui alimentent le Dashboard par
+  // défaut (commandes cartons + palettes IFCO), pour afficher un vrai message de chargement.
+  const [commandesChargees, setCommandesChargees] = useState(false);
+  const [palettesCommandesChargees, setPalettesCommandesChargees] = useState(false);
+  const chargementInitialDashboard = !commandesChargees || !palettesCommandesChargees;
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
 
@@ -591,6 +599,7 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
     const u = onValue(ref(db, "prestataires_cartons"), (snap) => {
       const data = snap.val() || {};
       setCommandes(Object.entries(data).map(([id, cmd]: any) => ({ id, ...cmd })));
+      setCommandesChargees(true);
     });
     return () => u();
   }, []);
@@ -637,6 +646,7 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
     const u = onValue(ref(db, "ifco_palettes_commandes"), (snap) => {
       const data = snap.val() || {};
       setPalettesCommandes(Object.entries(data).map(([id, cmd]: any) => ({ id, ...cmd })));
+      setPalettesCommandesChargees(true);
     });
     return () => u();
   }, []);
@@ -2025,6 +2035,7 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
         {/* DASHBOARD TAB */}
         {activeTab === "dashboard" && (
           <div>
+            {chargementInitialDashboard && <ChargementEcran texte="Chargement du dashboard…" />}
             {/* ACTIONS PRINCIPALES */}
             <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
               <div style={{ position: "relative" }}>
@@ -2680,8 +2691,8 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
                   <input
                     type="number"
                     min="1"
-                    value={ligne.nbPalettes}
-                    onChange={(e) => modifierLigneCarton(idx, "nbPalettes", parseInt(e.target.value) || 1)}
+                    value={ligne.nbPalettes || ""}
+                    onChange={(e) => modifierLigneCarton(idx, "nbPalettes", parseInt(e.target.value) || 0)}
                     style={{
                       width: "80px",
                       padding: "9px 12px",
@@ -2990,9 +3001,9 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
               <input
                 type="number"
                 min="1"
-                value={lignesIfco[0]?.quantite || 1}
+                value={lignesIfco[0]?.quantite || ""}
                 onChange={(e) => {
-                  const qty = parseInt(e.target.value) || 1;
+                  const qty = parseInt(e.target.value) || 0;
                   setLignesIfco([{ type: "BLL4314 (640 caisses)", quantite: qty }]);
                 }}
                 style={{

@@ -126,7 +126,7 @@ export function formaterHeureMesure(at: number) {
   return new Date(at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onReporterDate, selectMode, selected, onToggleSelect, gencodeArticles }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; onReporterDate?: (arrivage: any, nouvelleDateFr: string) => void; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[] }) {
+export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onReporterDate, selectMode, selected, onToggleSelect, gencodeArticles, onEcartDetecte }: { arrivage: any; onValidate: any; onDelete: any; onOuvreRapport: any; onReporterDate?: (arrivage: any, nouvelleDateFr: string) => void; selectMode?: boolean; selected?: boolean; onToggleSelect?: (id: string) => void; gencodeArticles?: any[]; onEcartDetecte?: (message: string) => void }) {
   // Déterminer si c'est un carton Go-Embal, une palette IFCO, ou un retour de reconditionnement
   // pour simplifier le formulaire (pas de DLC/poids/température/traçabilité à saisir).
   const isGoEmbal = arrivage.carton_commande_id || arrivage.fournisseur === "Go-Embal";
@@ -425,7 +425,16 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       if (hasEcartColis) {
         const signe = ecartColis > 0 ? "+" : "";
         const message = `⚠️ ÉCART DE COLIS\n${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""} — ${arrivage.fournisseur || "-"}\nReçu ${colisRecusNum}/${colisAttendu} (${signe}${ecartColis})`;
-        setRecap({ message });
+        // 09/09/2026 — Bug trouvé avec Elinathan : "je viens de valider un arrivage a 0 au lieux
+        // de 30 et aucun pop up". Cause réelle : dès que onValidate() ci-dessus écrit dans
+        // Firebase, le listener onValue du parent (liste "en attente") se déclenche quasi
+        // instantanément et fait sortir cet arrivage de la liste (il passe en "traités") — ce
+        // ProduitRow est alors démonté AVANT que le popup local n'ait eu la moindre chance de
+        // s'afficher. On préfère donc systématiquement remonter l'info au parent (DateBlock, qui
+        // lui ne se démonte pas à chaque validation) via onEcartDetecte ; on ne retombe sur le
+        // popup local que si aucun callback n'a été fourni (sécurité, ne devrait plus arriver).
+        if (onEcartDetecte) onEcartDetecte(message);
+        else setRecap({ message });
       }
       if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
     } catch (err: any) {
@@ -1068,6 +1077,14 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
 
 export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById }: any) {
   const [open, setOpen] = useState(false);
+  // 09/09/2026 — Bug trouvé avec Elinathan : "je viens de valider un arrivage a 0 au lieux de 30
+  // et aucun pop up". Le popup d'écart vivait dans le state local de ProduitRow — mais dès que
+  // la validation écrit dans Firebase, l'arrivage change de statut et ProduitRow est DÉMONTÉ
+  // (il sort de "produits" pour rejoindre "traites" juste en dessous) avant que son propre popup
+  // n'ait la moindre chance de s'afficher. FournisseurBlock, lui, reste monté dans les deux cas
+  // (produits et traites sont rendus par le même composant) — c'est donc ici qu'on porte l'état
+  // du popup, remonté depuis ProduitRow via le callback onEcartDetecte.
+  const [recapEcart, setRecapEcart] = useState<null | { message: string }>(null);
   const nbTraites = traites.length;
   const allDone = produits.length === 0 && nbTraites > 0;
   const headerBg = allDone ? "#f0fdf4" : "#faf8f3";
@@ -1167,13 +1184,31 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
           )}
           {isRetourRecondGroupe && produits.length > 0
             ? <PointageGroupeNLT groupe={fournisseur} produits={produits} onValidate={onValidate} date={date} paletteAnnonceInfo={paletteAnnonceInfo} />
-            : produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} />)}
+            : produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} onEcartDetecte={(message) => setRecapEcart({ message })} />)}
           {nbTraites > 0 && (
             <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>📁 Traités · {nbTraites}</p>
               {traites.map((a: any) => <ArrivageTraiteRow key={a.id} arrivage={a} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onImprimerMulti={onImprimerMulti} />)}
             </div>
           )}
+        </div>
+      )}
+      {recapEcart && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 22, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>⚠️ Arrivage validé — écart détecté</p>
+            <textarea readOnly value={recapEcart.message} rows={5}
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "monospace", boxSizing: "border-box", marginBottom: 12, resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setRecapEcart(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                Fermer
+              </button>
+              <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(recapEcart.message)}`, "_blank"); setRecapEcart(null); }}
+                style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                📲 Envoyer par WhatsApp
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
