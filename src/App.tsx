@@ -2981,9 +2981,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           </div>
 
           {/* 09/09/2026 — Demande d'Elinathan : archivage centralisé sur la page d'accueil (un
-              seul bouton pour toute l'app, plus seulement les arrivages) + accès direct à
-              l'historique complet des arrivages, à la place de l'ancien bouton "Archiver"
-              retiré de l'écran "Pointer arrivage". */}
+              seul bouton pour toute l'app, plus seulement les arrivages), à la place de l'ancien
+              bouton "Archiver" retiré de l'écran "Pointer arrivage" + accès direct à
+              l'historique complet des arrivages. */}
           <p style={{ margin: "16px 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🧹 Maintenance</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
             <CardCarré icon="🗄️" label={archivageGlobalBusy || archivageBusy ? "Archivage…" : "Archiver"} color="#8a6f2e"
@@ -3934,24 +3934,50 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 🖨 Traçabilité
               </button>
             </div>
-            {arrivagesAvecArchives
-              .filter(a => a.date !== new Date().toLocaleDateString("fr-FR"))
-              .filter(a => !histSearchArr || `${a.produit} ${a.fournisseur} ${a.lot_interne}`.toLowerCase().includes(histSearchArr.toLowerCase()))
-              .map(a => {
-                const rapport = rapports.find(r => r.arrivage_id === a.id);
-                const borderColor = a.statut==="validé" ? "#27ae60" : a.statut==="refusé" ? "#dc2626" : a.statut==="sous réserve" ? "#d97706" : "#9ca3af";
+            {/* 09/09/2026 — Demande d'Elinathan : "il faut qu'il y ait un peu d'ordre dans
+                l'archivage, par exemple par fournisseur" — avant, la liste était un seul long
+                flux mélangeant tous les fournisseurs les uns après les autres (juste triée par
+                date), difficile à parcourir avec 2000+ arrivages. On regroupe maintenant par
+                fournisseur (groupes triés alphabétiquement, arrivages de chaque fournisseur
+                triés du plus récent au plus ancien à l'intérieur du groupe), même principe que
+                le regroupement par fournisseur déjà utilisé sur "Pointer arrivage". */}
+            {(() => {
+              const filtres = arrivagesAvecArchives
+                .filter(a => a.date !== new Date().toLocaleDateString("fr-FR"))
+                .filter(a => !histSearchArr || `${a.produit} ${a.fournisseur} ${a.lot_interne}`.toLowerCase().includes(histSearchArr.toLowerCase()));
+              const parFournisseur: Record<string, any[]> = {};
+              filtres.forEach(a => {
+                const f = a.fournisseur || "(sans fournisseur)";
+                if (!parFournisseur[f]) parFournisseur[f] = [];
+                parFournisseur[f].push(a);
+              });
+              const fournisseurs = Object.keys(parFournisseur).sort((a, b) => a.localeCompare(b, "fr"));
+              return fournisseurs.map(f => {
+                const items = parFournisseur[f].slice().sort((x, y) => (y.timestamp || 0) - (x.timestamp || 0));
                 return (
-                  <HistoriqueArrivageRow key={a.id} a={a} rapport={rapport} borderColor={borderColor}
-                    onRapport={() => ouvrirRapportDepuisArrivage(a)}
-                    onLitige={() => { ouvrirRapportDepuisArrivage(a, true); const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; update(ref(db, `${noeud}/${a.id}`), { statut: "sous réserve", litige: { type: "sous réserve", raison: "", pct: "", lot_moorea: a.lot_interne||"", lot_fournisseur: a.lot_fournisseur||"", date: new Date().toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now(), ouvertApresValidation: a.statut==="validé" } }); }}
-                    onClotureLitige={() => { const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; update(ref(db, `${noeud}/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") }).then(() => showToast("✅ Litige clôturé")); }}
-                    onDestruction={async (qte: string, raison: string) => { const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; await update(ref(db, `${noeud}/${a.id}`), { destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName||user?.email||"-" } }); showToast("🗑 Destruction enregistrée"); }}
-                    onPDF={() => rapport && downloadPDF(rapport)}
-                    onWA={() => rapport && partagerWhatsApp(rapport)}
-                    user={user}
-                  />
+                  <div key={f} style={{ marginBottom: 18 }}>
+                    <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 800, color: "#8a6f2e", textTransform: "uppercase", letterSpacing: "0.5px", fontFamily: "'Syne', sans-serif" }}>
+                      🏭 {f} <span style={{ fontWeight: 400, color: "#9ca3af", textTransform: "none" }}>({items.length})</span>
+                    </p>
+                    {items.map(a => {
+                      const rapport = rapports.find(r => r.arrivage_id === a.id);
+                      const borderColor = a.statut==="validé" ? "#27ae60" : a.statut==="refusé" ? "#dc2626" : a.statut==="sous réserve" ? "#d97706" : "#9ca3af";
+                      return (
+                        <HistoriqueArrivageRow key={a.id} a={a} rapport={rapport} borderColor={borderColor}
+                          onRapport={() => ouvrirRapportDepuisArrivage(a)}
+                          onLitige={() => { ouvrirRapportDepuisArrivage(a, true); const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; update(ref(db, `${noeud}/${a.id}`), { statut: "sous réserve", litige: { type: "sous réserve", raison: "", pct: "", lot_moorea: a.lot_interne||"", lot_fournisseur: a.lot_fournisseur||"", date: new Date().toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now(), ouvertApresValidation: a.statut==="validé" } }); }}
+                          onClotureLitige={() => { const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; update(ref(db, `${noeud}/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") }).then(() => showToast("✅ Litige clôturé")); }}
+                          onDestruction={async (qte: string, raison: string) => { const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; await update(ref(db, `${noeud}/${a.id}`), { destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName||user?.email||"-" } }); showToast("🗑 Destruction enregistrée"); }}
+                          onPDF={() => rapport && downloadPDF(rapport)}
+                          onWA={() => rapport && partagerWhatsApp(rapport)}
+                          user={user}
+                        />
+                      );
+                    })}
+                  </div>
                 );
-              })}
+              });
+            })()}
             {arrivagesAvecArchives.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length === 0 && (
               <div style={{ textAlign: "center", padding: "3rem", background: "#f5f3ee", borderRadius: 20 }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>📁</div>
