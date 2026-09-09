@@ -803,7 +803,17 @@ export default function App() {
     const dlcFinal = ctrl.dlc || arrivage.dlc || "";
     const lotFournisseurFinal = ctrl.lot_fournisseur || arrivage.lot_fournisseur || "";
     const lotFournisseurListeFinal = ctrl.lot_fournisseur_liste || arrivage.lot_fournisseur_liste || [];
-    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut, poids_net: ctrl.poids_net, observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
+    // 09/09/2026 — Bug trouvé avec Elinathan (capture d'écran : "8 arrivages n'ont pas pu être
+    // validés" sur "🧹 Tout valider (nettoyage)") : ce bouton de nettoyage en masse appelle
+    // handleAgrement avec un ctrl minimal qui n'a JAMAIS de champs poids_brut/poids_net —
+    // ctrl.poids_brut et ctrl.poids_net valaient donc `undefined`, et Firebase refuse tout
+    // update() dont un champ imbriqué est `undefined` (erreur "contains undefined in property
+    // 'rapport.poids_brut'"), ce qui faisait échouer la toute première écriture de la fonction
+    // (celle qui n'était déjà pas protégée par un try/catch) pour CHAQUE arrivage nettoyé de la
+    // semaine — d'où "8 arrivages" (tous ceux du lot) en échec systématique. On retombe sur ""
+    // comme pour les autres champs optionnels (dlc, lot_fournisseur...) au lieu de laisser
+    // passer `undefined`.
+    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut ?? "", poids_net: ctrl.poids_net ?? "", observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
     // Retour de reconditionnement : les colis triés/écartés reviennent aussi avec le lot (tout
     // n'est pas récupérable au tri) — on garde ce nombre à la racine de l'arrivage (pas seulement
