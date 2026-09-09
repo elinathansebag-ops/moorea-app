@@ -3447,25 +3447,25 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               const poidsEnRetard = arrivages.length > 0 && (maintenant - dernierPoids) > SEUIL_3J_MS;
               if (alerteMesuresFermee || (!tempEnRetard && !poidsEnRetard)) return null;
               const jours = (at: number) => Math.floor((maintenant - at) / 86400000);
+              // 09/09/2026 — Demande d'Elinathan : "l'agréeur se plaint de trop de popup quand il
+              // pèse pas ou la température, mets juste un bandeau d'alerte pas un popup" — remplace
+              // la fenêtre modale plein écran (qui bloquait tout l'écran "Pointer arrivage" et
+              // demandait de cliquer "J'ai compris" pour continuer) par un simple bandeau, comme
+              // les autres alertes de la page d'accueil (📦 IFCO, 🔔 retours) : visible mais non
+              // bloquant, fermable d'une croix.
               return (
-                <div style={{ position: "fixed", inset: 0, zIndex: 3800, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setAlerteMesuresFermee(true)}>
-                  <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 440, boxShadow: "0 24px 60px rgba(0,0,0,0.3)", padding: "22px 22px 18px" }}>
-                    <p style={{ margin: "0 0 12px", fontWeight: 800, fontSize: 16, color: "#991b1b", fontFamily: "'Syne', sans-serif" }}>⚠️ Contrôles qualité en retard</p>
-                    {tempEnRetard && (
-                      <p style={{ margin: "0 0 8px", fontSize: 13, color: "#374151" }}>
-                        🌡️ Aucune température relevée depuis {dernierTemp ? `${jours(dernierTemp)} jours (dernière le ${new Date(dernierTemp).toLocaleDateString("fr-FR")})` : "le début"}.
-                      </p>
-                    )}
-                    {poidsEnRetard && (
-                      <p style={{ margin: "0 0 8px", fontSize: 13, color: "#374151" }}>
-                        ⚖️ Aucun poids de barquette relevé depuis {dernierPoids ? `${jours(dernierPoids)} jours (dernier le ${new Date(dernierPoids).toLocaleDateString("fr-FR")})` : "le début"}.
-                      </p>
-                    )}
-                    <p style={{ margin: "10px 0 16px", fontSize: 12, color: "#9ca3af" }}>Pense à relever ces contrôles sur les prochains arrivages.</p>
-                    <button onClick={() => setAlerteMesuresFermee(true)} style={{ width: "100%", padding: "11px", background: "#1a2e1a", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
-                      J'ai compris →
-                    </button>
+                <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 12.5, color: "#991b1b" }}>Contrôles qualité en retard</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "#7f1d1d" }}>
+                      {tempEnRetard && `🌡️ Aucune température relevée depuis ${dernierTemp ? `${jours(dernierTemp)} jours` : "le début"}.`}
+                      {tempEnRetard && poidsEnRetard && " "}
+                      {poidsEnRetard && `⚖️ Aucun poids de barquette relevé depuis ${dernierPoids ? `${jours(dernierPoids)} jours` : "le début"}.`}
+                    </p>
                   </div>
+                  <button onClick={() => setAlerteMesuresFermee(true)} title="Masquer cette alerte"
+                    style={{ flexShrink: 0, border: "none", background: "transparent", color: "#dc2626", cursor: "pointer", fontSize: 16, fontWeight: 800, padding: "2px 6px", lineHeight: 1 }}>✕</button>
                 </div>
               );
             })()}
