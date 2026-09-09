@@ -745,8 +745,8 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 #stock-root .tbl-wrap{overflow-x:auto}
 #stock-pdf-overlay{display:none;position:fixed;inset:0;background:#f5f3ee;z-index:700;flex-direction:column}
 #stock-pdf-frame{flex:1;width:100%;border:none;background:#fff;display:block}
-#stock-toast{position:fixed;bottom:24px;right:24px;padding:16px 20px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;transform:translateY(20px);transition:all .3s ease;pointer-events:auto;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.3);max-width:320px;word-wrap:break-word;backdrop-filter:blur(10px)}
-#stock-toast.show{opacity:1;transform:translateY(0)}
+#stock-toast{position:fixed;bottom:24px;right:24px;padding:16px 20px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;transform:translateY(20px);transition:all .3s ease;pointer-events:none;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.3);max-width:320px;word-wrap:break-word;backdrop-filter:blur(10px)}
+#stock-toast.show{opacity:1;transform:translateY(0);pointer-events:auto}
 #stock-toast.success{background:linear-gradient(135deg,#15803d 0%,#22c55e 100%);color:#fff;border:1px solid #86efac}
 #stock-toast.error{background:linear-gradient(135deg,#dc2626 0%,#ef4444 100%);color:#fff;border:1px solid #fca5a5}
 #stock-toast.info{background:linear-gradient(135deg,#0a0a0a 0%,#1a1a1a 100%);color:#c8a84b;border:1px solid rgba(200,168,75,0.5)}
