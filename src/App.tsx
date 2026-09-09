@@ -962,19 +962,25 @@ export default function App() {
       }
     }
 
-    showToast(decision === "conforme" ? "✅ Validé" : "📋 Litige créé");
+    showToast(decision === "conforme" ? (colisRecusFinal > 0 ? "✅ Validé" : "✅ Validé (0 colis reçu — aucune étiquette)") : "📋 Litige créé");
     logActivite(decision === "conforme" ? "Validation arrivage" : "Litige créé", `${arrivage.produit || "-"} · ${arrivage.fournisseur || "-"} · lot ${arrivage.lot_interne || "-"}`);
     // Chaque article validé doit repartir avec son étiquette — impression automatique dès la
     // validation, sans popup à remplir. Si l'agréeur a réparti sur plusieurs palettes (champ
     // "🎫 Palettes" de la carte d'agréage), on imprime une étiquette par palette avec le bon
     // nombre de colis ; sinon une seule étiquette avec la quantité totale. Exception rare (~5%) :
     // "sansEtiquette" coché sur la carte saute complètement cette impression automatique.
-    if (decision === "conforme" && !sansEtiquette && !arrivage.test) {
+    // 09/09/2026 — Demande d'Elinathan : "si 0 en quantité article reçu je veux pas une
+    // étiquette, une étiquette que si au moins 1 colis" — un article pas du tout reçu (0 colis,
+    // ex: rupture totale chez le fournisseur) ne doit imprimer AUCUNE étiquette (il n'y a
+    // physiquement rien à étiqueter), juste le message d'écart automatique (popup WhatsApp côté
+    // ArrivageModule) qui prévient déjà le commercial — pas de litige non plus (voir hasLitige
+    // dans ArrivageModule.tsx, déjà corrigé séparément).
+    if (decision === "conforme" && !sansEtiquette && !arrivage.test && colisRecusFinal > 0) {
       try {
         const arrivageMaj = { ...arrivage, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal };
         if (palettes && palettes.length > 1) {
           for (let i = 0; i < palettes.length; i++) {
-            await envoyerEtiquettePourImpressionPC(arrivageMaj, i + 1, palettes[i]);
+            if (palettes[i] > 0) await envoyerEtiquettePourImpressionPC(arrivageMaj, i + 1, palettes[i]);
           }
         } else {
           // 09/09/2026 — Bug trouvé avec Elinathan : ici, sans 3ᵉ argument, envoyerEtiquettePourImpressionPC
