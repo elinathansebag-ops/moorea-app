@@ -3023,7 +3023,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "rh", icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
       { key: "yukon", icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowYukon(true); } },
       { key: "taches", icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowTaches(true); } },
-    ].filter(b => monAcces.hasModule(b.key));
+      // 09/09/2026 — Demande d'Elinathan : "Archiver" et "Historique" déplacés ici depuis le bloc
+      // "🧹 Maintenance" de l'accueil principal (retiré juste en dessous), moins utilisés au
+      // quotidien maintenant que l'archivage se fait tout seul en silence (voir plus haut) — donc
+      // à ranger avec le reste des modules secondaires du tiroir Leofresh. Pas de "key" ici
+      // volontairement : ces deux actions n'ont jamais été restreintes par module (elles étaient
+      // visibles de tous sur l'accueil), on garde ce comportement pour ne pas les faire
+      // disparaître par erreur pour quelqu'un dont l'accès est restreint.
+      { icon: "🗄️", label: archivageGlobalBusy || archivageBusy ? "Archivage…" : "Archiver", color: "#8a6f2e", stat: "Nettoie toute l'app (+21j)", action: () => { setShowLeofresh(false); archiverToutAncien(); } },
+      { icon: "📜", label: "Historique", color: "#6c757d", stat: "Tous les arrivages archivés", action: () => { setShowLeofresh(false); setShowAccueil(false); setPageMode("historique_arr"); setVue("__none__" as any); } },
+    ].filter(b => !b.key || monAcces.hasModule(b.key));
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
       return (
@@ -3188,18 +3197,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🗂️ Bureau</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
             {row2Bureau.map((b, i) => <CardCarré key={i} {...b} />)}
-          </div>
-
-          {/* 09/09/2026 — Demande d'Elinathan : archivage centralisé sur la page d'accueil (un
-              seul bouton pour toute l'app, plus seulement les arrivages), à la place de l'ancien
-              bouton "Archiver" retiré de l'écran "Pointer arrivage" + accès direct à
-              l'historique complet des arrivages. */}
-          <p style={{ margin: "16px 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🧹 Maintenance</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
-            <CardCarré icon="🗄️" label={archivageGlobalBusy || archivageBusy ? "Archivage…" : "Archiver"} color="#8a6f2e"
-              stat="Nettoie toute l'app (+21j)" action={archiverToutAncien} />
-            <CardCarré icon="📜" label="Historique" color="#6c757d" stat="Tous les arrivages archivés"
-              action={() => { setShowAccueil(false); setPageMode("historique_arr"); setVue("__none__" as any); }} />
           </div>
         </div>
       </div>
