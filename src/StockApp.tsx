@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update, push } from "./firebase";
-import { collection, getDocs, getDoc, setDoc, doc, query, where } from "firebase/firestore";
+import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, limit, documentId } from "firebase/firestore";
 import { PageHeader, styles } from "./shared";
 import { Html5Qrcode } from "html5-qrcode";
 import jsPDF from "jspdf";
@@ -1558,19 +1558,32 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
         }
       };
 
+      // 09/09/2026 — Elinathan a remarqué que Stock met du temps à s'ouvrir, comme les arrivages
+      // avant correction : renderStockList() retélécharge TOUTE la collection "stocks" (jamais
+      // archivée, des années d'inventaires) + TOUTE la collection "comptages" (le détail
+      // article par article de chaque inventaire, potentiellement volumineux) à CHAQUE ouverture
+      // du module — alors que l'accueil n'affiche jamais que les plus récents. L'id d'un stock
+      // est un horodatage ISO ("2026-09-08_14-30"), donc il se trie tout seul dans le bon ordre :
+      // on ne récupère que les STOCK_LIST_LIMIT plus récents, puis seulement les comptages qui
+      // leur correspondent (au lieu de tout l'historique).
+      const STOCK_LIST_LIMIT = 80;
       const renderStockList = async () => {
         const list = document.getElementById("s-stock-list");
         if (!list) return;
         list.innerHTML = "<div class='empty-state'>Chargement...</div>";
         try {
-          const snap = await getDocs(collection(db, "stocks"));
+          const snap = await getDocs(query(collection(db, "stocks"), orderBy(documentId(), "desc"), limit(STOCK_LIST_LIMIT)));
           const stocks: any[] = [];
           snap.forEach(d => stocks.push({ id: d.id, ...d.data() }));
           stocks.sort((a, b) => b.id.localeCompare(a.id));
           if (!stocks.length) { list.innerHTML = "<div class='empty-state'>Aucun stock importé</div>"; return; }
-          const comptSnap = await getDocs(collection(db, "comptages"));
           const comptages: any = {};
-          comptSnap.forEach(d => { comptages[d.id] = d.data(); });
+          const comptIds = stocks.flatMap(s => [s.id + "_GMS", s.id + "_PRESTIGE"]);
+          for (let i = 0; i < comptIds.length; i += 10) {
+            const chunk = comptIds.slice(i, i + 10);
+            const chunkSnap = await getDocs(query(collection(db, "comptages"), where(documentId(), "in", chunk)));
+            chunkSnap.forEach(d => { comptages[d.id] = d.data(); });
+          }
           // Un comptage est "en cours" dès qu'au moins une équipe (GMS ou Prestige) a déjà coché
           // au moins un article — dans ce cas on cache le bouton Supprimer (même logique de
           // protection que pour un stock déjà clôturé) pour éviter d'effacer par erreur un
