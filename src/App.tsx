@@ -400,6 +400,7 @@ export default function App() {
   const [showRecherche, setShowRecherche] = useState(false);
   const [showYukon, setShowYukon] = useState(false);
   const [showTaches, setShowTaches] = useState(false);
+  const [tachesTabDemande, setTachesTabDemande] = useState<"taches" | "commandes">("taches");
   const [showRH, setShowRH] = useState(false);
   const [showEtiquettes, setShowEtiquettes] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
@@ -474,6 +475,32 @@ export default function App() {
     }).catch(() => {});
   };
   const [catalogueArticles, setCatalogueArticles] = useState<{code:string,libelle:string,equipe:string}[]>([]);
+
+  // 09/09/2026 — Bandeau "à traiter aujourd'hui" sur l'accueil (demande d'Elinathan) : deux
+  // compteurs légers, chargés indépendamment du reste du module Tâches (pour ne pas avoir à
+  // ouvrir tout ce module juste pour savoir s'il y a quelque chose en attente).
+  const [nbTachesActives, setNbTachesActives] = useState(0);
+  const [nbNotesCommandesEnAttente, setNbNotesCommandesEnAttente] = useState(0);
+  useEffect(() => {
+    const cle = (user?.email || "invite").toLowerCase().replace(/[.#$[\]]/g, "_");
+    const u = onValue(ref(db, `taches_perso/${cle}`), snap => {
+      const data = snap.val() || {};
+      const actives = Object.values(data).filter((t: any) => {
+        const sousIds = t.sousTaches ? Object.keys(t.sousTaches) : [];
+        if (sousIds.length > 0) return !sousIds.every((id: string) => t.sousTaches[id].fait);
+        return !t.fait;
+      }).length;
+      setNbTachesActives(actives);
+    });
+    return () => u();
+  }, [user?.email]);
+  useEffect(() => {
+    const u = onValue(ref(db, "bloc_notes_commandes"), snap => {
+      const data = snap.val() || {};
+      setNbNotesCommandesEnAttente(Object.values(data).filter((n: any) => !n.traite).length);
+    });
+    return () => u();
+  }, []);
   // Helper: trouver le code article depuis le libellé
   const getCodeArticle = (libelle: string): string => {
     if (!libelle || !catalogueArticles.length) return "";
@@ -2675,7 +2702,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showTaches) {
-    return <TachesModule onClose={() => { setShowTaches(false); setShowAccueil(true); }} userEmail={user?.email || ""} userName={user?.displayName || ""} />;
+    return <TachesModule onClose={() => { setShowTaches(false); setShowAccueil(true); }} userEmail={user?.email || ""} userName={user?.displayName || ""} catalogueArticles={catalogueArticles} initialTab={tachesTabDemande} />;
   }
 
   if (showRack) {
@@ -2906,21 +2933,47 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>Déco</button>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-            {[
-              { label: "En attente", value: nbAttente, color: "#fbbf24" },
-              { label: "Traités", value: nbTraitesAujourdHui, color: "#34d399" },
-              { label: "Litiges", value: nbLitigesOuverts, color: "#f87171" },
-              { label: "Rapports", value: nbRapports, color: "#c8a84b" },
-            ].map(s => (
-              <div key={s.label} style={{ flex: 1, background: "rgba(255,255,255,0.1)", borderRadius: 10, padding: "7px 6px", textAlign: "center", border: "1px solid rgba(255,255,255,0.12)" }}>
-                <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 9, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: "0.3px" }}>{s.label}</p>
-              </div>
-            ))}
-          </div>
+          {/* 09/09/2026 — Bandeau de stats (En attente / Traités / Litiges / Rapports) retiré à la
+              demande d'Elinathan : "ça sert à rien". nbAttente/nbTraitesAujourdHui/nbLitigesOuverts/
+              nbRapports restent calculés plus haut (utilisés ailleurs, ex: le bandeau "à traiter
+              aujourd'hui" juste en dessous), seul cet affichage disparaît. */}
         </div>
 
+        {/* 09/09/2026 — "À traiter aujourd'hui" : bandeau unique qui agrège ce qui était réparti
+            sur plusieurs écrans (Elinathan devait checker chacun séparément pour savoir si elle
+            avait quelque chose en attente). Volontairement discret et masqué s'il n'y a vraiment
+            rien — pas un pop-up, juste des raccourcis cliquables vers chaque source. */}
+        {(nbAttente > 0 || nbLitigesOuverts > 0 || nbNotesCommandesEnAttente > 0 || nbTachesActives > 0) && (
+          <div style={{ background: darkMode ? "#1a1d27" : "#fff", borderBottom: `1px solid ${darkMode ? "#2d3148" : "#e8e0d0"}`, padding: "14px 20px" }}>
+            <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: darkMode ? "#9b97b2" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>📌 À traiter aujourd'hui</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {nbAttente > 0 && (
+                <button onClick={() => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "1.5px solid #fbbf24", background: darkMode ? "#2d2410" : "#fffbeb", color: "#b45309", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  📋 {nbAttente} arrivage{nbAttente > 1 ? "s" : ""} en attente
+                </button>
+              )}
+              {nbLitigesOuverts > 0 && (
+                <button onClick={() => setShowLitiges(true)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "1.5px solid #f87171", background: darkMode ? "#2a1414" : "#fef2f2", color: "#dc2626", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  ⚠️ {nbLitigesOuverts} litige{nbLitigesOuverts > 1 ? "s" : ""} ouvert{nbLitigesOuverts > 1 ? "s" : ""}
+                </button>
+              )}
+              {nbNotesCommandesEnAttente > 0 && (
+                <button onClick={() => { setTachesTabDemande("commandes"); setShowAccueil(false); setShowTaches(true); }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "1.5px solid #93c5fd", background: darkMode ? "#14213a" : "#eff6ff", color: "#1d4ed8", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  📋 {nbNotesCommandesEnAttente} note{nbNotesCommandesEnAttente > 1 ? "s" : ""} commande à rentrer
+                </button>
+              )}
+              {nbTachesActives > 0 && (
+                <button onClick={() => { setTachesTabDemande("taches"); setShowAccueil(false); setShowTaches(true); }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "1.5px solid #fde68a", background: darkMode ? "#2d2410" : "#fef9e6", color: "#a16207", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  🍋 {nbTachesActives} tâche{nbTachesActives > 1 ? "s" : ""} active{nbTachesActives > 1 ? "s" : ""}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {alerteIfco && (
           <div style={{ background: darkMode ? "#2d2410" : "#fffbeb", borderBottom: "3px solid #d97706", padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>

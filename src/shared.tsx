@@ -222,6 +222,38 @@ export function F({ label, required, children }: { label: string; required?: boo
   );
 }
 
+// 09/09/2026 — Recherche intelligente, généralisée à toute l'app à la demande d'Elinathan :
+// avant, chaque champ client/produit/fournisseur avait sa propre recherche (parfois une simple
+// recherche "contient" qui obligeait à retaper le nom exactement dans l'ordre, parfois une
+// recherche par mots déjà pas mal mais sensible aux accents). Ici : une seule fonction,
+// utilisée partout — insensible aux accents et à la casse, qui découpe la saisie en mots et
+// affiche toute suggestion qui contient CHAQUE mot quelque part (peu importe l'ordre), puis
+// classe les meilleurs résultats en premier (commence par la saisie > un mot commence par la
+// saisie > contient la saisie telle quelle > matché seulement mot par mot).
+export function normaliserRecherche(s: string): string {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+export function rechercheIntelligente(valeur: string, suggestions: string[], max = 8): string[] {
+  const q = normaliserRecherche(valeur);
+  if (!q) return [];
+  const mots = q.split(/\s+/).filter(Boolean);
+  const scored = suggestions
+    .map(s => {
+      const n = normaliserRecherche(s);
+      if (n === q || !mots.every(m => n.includes(m))) return null;
+      let score = 1; // matché seulement via "chaque mot présent quelque part"
+      if (n.startsWith(q)) score = 5;
+      else if (n.split(/\s+/).some(mot => mot.startsWith(q))) score = 4;
+      else if (n.includes(" " + q)) score = 3;
+      else if (n.includes(q)) score = 2;
+      return { s, score };
+    })
+    .filter((x): x is { s: string; score: number } => x !== null)
+    .sort((a, b) => b.score - a.score || a.s.length - b.s.length);
+  return scored.slice(0, max).map(x => x.s);
+}
+
 export function AutocompleteInput({ value, onChange, suggestions, placeholder, required }: {
   value: string;
   onChange: (v: string) => void;
@@ -230,7 +262,7 @@ export function AutocompleteInput({ value, onChange, suggestions, placeholder, r
   required?: boolean;
 }) {
   const [show, setShow] = useState(false);
-  const filtered = suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()) && s.toLowerCase() !== value.toLowerCase()).slice(0, 6);
+  const filtered = rechercheIntelligente(value, suggestions, 6);
 
   return (
     <div style={{ position: "relative" }}>

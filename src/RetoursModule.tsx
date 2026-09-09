@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import jsPDF from "jspdf";
 import { CLIENTS_LIST } from "./ClientsList";
-import { PageHeader } from "./shared";
+import { PageHeader, rechercheIntelligente } from "./shared";
 
 // ── Types ──
 interface ProduitLigne {
@@ -160,26 +160,13 @@ function genPDF(fiche: FicheRetour) {
   doc.save("retour-" + fiche.numero + ".pdf");
 }
 
-// ── Recherche pondérée : priorise "commence par" avant "contient" ──
+// 09/09/2026 — remplacé par la recherche intelligente partagée (shared.tsx), généralisée à
+// toute l'app : même logique (mots dans le désordre, priorité à "commence par"), avec en plus
+// l'insensibilité aux accents. On garde le nom "searchRanked" pour ne pas toucher tous les
+// appels ci-dessous.
 function searchRanked(query: string, list: string[], max = 10): string[] {
-  const q = query.trim().toLowerCase();
-  if (q.length < 2) return [];
-  const words = q.split(/\s+/).filter(w => w.length > 0);
-  const scored = list
-    .map(item => {
-      const n = item.toLowerCase();
-      if (!words.every(w => n.includes(w))) return null;
-      let score = 0;
-      if (n.startsWith(q)) score = 5;
-      else if (n.split(/\s+/).some(word => word.startsWith(q))) score = 4; // un mot du nom commence par la requête
-      else if (n.includes(" " + q)) score = 3;
-      else if (n.includes(q)) score = 2;
-      else score = 1; // matché seulement via "chaque mot présent quelque part"
-      return { item, score };
-    })
-    .filter((x): x is { item: string; score: number } => x !== null)
-    .sort((a, b) => b.score - a.score || a.item.length - b.item.length);
-  return scored.slice(0, max).map(x => x.item);
+  if (query.trim().length < 2) return [];
+  return rechercheIntelligente(query, list, max);
 }
 
 // ── Composant recherche produit ──

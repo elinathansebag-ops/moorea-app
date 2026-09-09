@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove, auth } from "./firebase";
-import { PageHeader, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY } from "./shared";
+import { PageHeader, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, rechercheIntelligente } from "./shared";
 import { ScannerQR } from "./ArrivageModule";
 import emailjs from "@emailjs/browser";
 
@@ -51,26 +51,12 @@ type PalettePos = {
 // ─── FAVORIS (nom + couleur) — remplace l'ancien système de modèles codés en dur ───
 type Preset = { produit: string; color: string; colorLabel: string; designation: string; origine?: string; note?: string };
 
-// ─── RECHERCHE PONDÉRÉE : priorise "commence par" avant "contient quelque part" ───
+// 09/09/2026 — remplacé par la recherche intelligente partagée (shared.tsx), généralisée à
+// toute l'app : même logique de pondération, avec en plus l'insensibilité aux accents. Le nom
+// "searchRanked" est conservé pour ne pas toucher tous les appels ci-dessous.
 function searchRanked(query: string, list: string[], max = 50): string[] {
-  const q = query.trim().toLowerCase();
-  if (q.length < 1) return [];
-  const words = q.split(/\s+/).filter(w => w.length > 0);
-  const scored = list
-    .map(item => {
-      const n = item.toLowerCase();
-      if (!words.every(w => n.includes(w))) return null;
-      let score = 0;
-      if (n.startsWith(q)) score = 5;
-      else if (n.split(/\s+/).some(word => word.startsWith(q))) score = 4;
-      else if (n.includes(" " + q)) score = 3;
-      else if (n.includes(q)) score = 2;
-      else score = 1;
-      return { item, score };
-    })
-    .filter((x): x is { item: string; score: number } => x !== null)
-    .sort((a, b) => b.score - a.score || a.item.length - b.item.length);
-  return scored.slice(0, max).map(x => x.item);
+  if (query.trim().length < 1) return [];
+  return rechercheIntelligente(query, list, max);
 }
 
 // ─── AUTOCOMPLETE LOCAL (remplace l'ancien composant partagé mal trié) ───

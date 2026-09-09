@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader, styles } from "./shared";
+import { PageHeader, styles, AutocompleteInput } from "./shared";
+import { CLIENTS_LIST } from "./ClientsList";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GESTION DES TÂCHES — module perso, ajouté à Leofresh le 02/09/2026 à la
@@ -10,6 +11,37 @@ import { PageHeader, styles } from "./shared";
 // la progression du jour). Données personnelles : chaque compte @moorea.fr a
 // sa propre liste, stockée sous "taches_perso/<clé dérivée de l'e-mail>".
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BLOC-NOTES COMMANDES — ajouté le 09/09/2026 à la demande d'Elinathan : quand
+// un commercial (fournisseur) appelle et qu'elle prend une commande ou un
+// rajout client pour lui pendant qu'elle n'est pas devant le bon module de
+// l'app, elle notait ça sur un post-it. Remplace le post-it par une note
+// rapide (client + produits/quantités puisés dans les bases existantes,
+// numéro de commande fournisseur, qui appelle, pour quel commercial Moorea),
+// partagée entre tous les comptes (contrairement aux tâches perso ci-dessus)
+// puisque n'importe qui peut avoir à la ressaisir ensuite dans le système.
+// Stockage : "bloc_notes_commandes" (racine, pas par utilisateur).
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface LigneProduitNote {
+  produit: string;
+  quantite: string;
+}
+
+interface CommandeNote {
+  id: string;
+  ts: number;
+  client: string;
+  commercialFournisseur: string;
+  commercialMoorea: string;
+  numeroCommande: string;
+  lignes: LigneProduitNote[];
+  commentaire: string;
+  traite: boolean;
+  traiteAt?: number | null;
+  creePar?: string;
+}
 
 interface SousTache {
   id: string;
@@ -47,7 +79,8 @@ function estMemeJour(ts: number, ref: Date): boolean {
 
 const CONFETTI_EMOJIS = ["🍋", "✨", "🎉", "⭐", "💛"];
 
-export function TachesModule({ onClose, userEmail, userName }: { onClose: () => void; userEmail?: string; userName?: string }) {
+export function TachesModule({ onClose, userEmail, userName, catalogueArticles, initialTab }: { onClose: () => void; userEmail?: string; userName?: string; catalogueArticles?: { code: string; libelle: string; equipe: string }[]; initialTab?: "taches" | "commandes" }) {
+  const [tab, setTab] = useState<"taches" | "commandes">(initialTab || "taches");
   const [taches, setTaches] = useState<Tache[]>([]);
   const [nouvelleTache, setNouvelleTache] = useState("");
   const [nouvelleSousTache, setNouvelleSousTache] = useState<Record<string, string>>({});
@@ -94,6 +127,100 @@ export function TachesModule({ onClose, userEmail, userName }: { onClose: () => 
     );
     return () => u();
   }, [cle]);
+
+  // ── Bloc-notes commandes ── état, chargement (collection partagée, pas par utilisateur)
+  const [notesCommandes, setNotesCommandes] = useState<CommandeNote[]>([]);
+  const [filtreCommandes, setFiltreCommandes] = useState<"aTraiter" | "traitees">("aTraiter");
+  const [ncClient, setNcClient] = useState("");
+  const [ncCommercialFournisseur, setNcCommercialFournisseur] = useState("");
+  const [ncCommercialMoorea, setNcCommercialMoorea] = useState("");
+  const [ncNumeroCommande, setNcNumeroCommande] = useState("");
+  const [ncLignes, setNcLignes] = useState<LigneProduitNote[]>([{ produit: "", quantite: "" }]);
+  const [ncCommentaire, setNcCommentaire] = useState("");
+
+  useEffect(() => {
+    const u = onValue(
+      ref(db, "bloc_notes_commandes"),
+      snap => {
+        const data = snap.val() || {};
+        const liste: CommandeNote[] = Object.entries(data).map(([id, v]: any) => ({
+          id,
+          ts: v.ts || 0,
+          client: v.client || "",
+          commercialFournisseur: v.commercialFournisseur || "",
+          commercialMoorea: v.commercialMoorea || "",
+          numeroCommande: v.numeroCommande || "",
+          lignes: Array.isArray(v.lignes) ? v.lignes : [],
+          commentaire: v.commentaire || "",
+          traite: !!v.traite,
+          traiteAt: v.traiteAt ?? null,
+          creePar: v.creePar || "",
+        }));
+        liste.sort((a, b) => b.ts - a.ts);
+        setNotesCommandes(liste);
+      },
+      err => signalerErreur("charger le bloc-notes commandes", err)
+    );
+    return () => u();
+  }, []);
+
+  function ajouterLigneProduitNote() {
+    setNcLignes(l => [...l, { produit: "", quantite: "" }]);
+  }
+  function supprimerLigneProduitNote(idx: number) {
+    setNcLignes(l => l.filter((_, i) => i !== idx));
+  }
+  function modifierLigneProduitNote(idx: number, champ: "produit" | "quantite", val: string) {
+    setNcLignes(l => l.map((x, i) => (i === idx ? { ...x, [champ]: val } : x)));
+  }
+
+  async function enregistrerNoteCommande() {
+    if (!ncClient.trim()) { signalerErreur("enregistrer la note", { message: "le client est obligatoire" }); return; }
+    const lignesPropres = ncLignes.filter(l => l.produit.trim());
+    const note = {
+      ts: Date.now(),
+      client: ncClient.trim(),
+      commercialFournisseur: ncCommercialFournisseur.trim(),
+      commercialMoorea: ncCommercialMoorea.trim(),
+      numeroCommande: ncNumeroCommande.trim(),
+      lignes: lignesPropres,
+      commentaire: ncCommentaire.trim(),
+      traite: false,
+      creePar: userName || userEmail || "",
+    };
+    try {
+      await push(ref(db, "bloc_notes_commandes"), note);
+      afficherToast("📋 Note enregistrée");
+      setNcClient(""); setNcCommercialFournisseur(""); setNcCommercialMoorea(""); setNcNumeroCommande("");
+      setNcLignes([{ produit: "", quantite: "" }]); setNcCommentaire("");
+    } catch (err: any) {
+      signalerErreur("enregistrer la note", err);
+    }
+  }
+
+  async function marquerNoteTraitee(id: string) {
+    try {
+      await update(ref(db, `bloc_notes_commandes/${id}`), { traite: true, traiteAt: Date.now() });
+      afficherToast("✓ Note archivée");
+    } catch (err: any) {
+      signalerErreur("archiver la note", err);
+    }
+  }
+  async function reouvrirNoteCommande(id: string) {
+    try {
+      await update(ref(db, `bloc_notes_commandes/${id}`), { traite: false, traiteAt: null });
+    } catch (err: any) {
+      signalerErreur("réouvrir la note", err);
+    }
+  }
+  async function supprimerNoteCommande(id: string) {
+    if (!window.confirm("Supprimer définitivement cette note ?")) return;
+    try {
+      await remove(ref(db, `bloc_notes_commandes/${id}`));
+    } catch (err: any) {
+      signalerErreur("supprimer la note", err);
+    }
+  }
 
   function celebrer(intense = false) {
     const n = intense ? 18 : 8;
@@ -260,7 +387,7 @@ export function TachesModule({ onClose, userEmail, userName }: { onClose: () => 
         .tache-check:active { transform: scale(0.88); }
         .tache-card { animation: tachePop 0.25s ease; }
       `}</style>
-      <PageHeader titre="🍋 Mes tâches" couleur="#eab308" onBack={onClose} onHome={onClose} />
+      <PageHeader titre={tab === "taches" ? "🍋 Mes tâches" : "📋 Bloc-notes commandes"} couleur={tab === "taches" ? "#eab308" : "#2563eb"} onBack={onClose} onHome={onClose} />
 
       {/* Confettis */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 999, overflow: "hidden" }}>
@@ -283,6 +410,21 @@ export function TachesModule({ onClose, userEmail, userName }: { onClose: () => 
             {erreur}
           </div>
         )}
+
+        {/* BASCULE ENTRE LES DEUX OUTILS DE CE MODULE */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <button onClick={() => setTab("taches")}
+            style={{ flex: 1, padding: "10px 12px", borderRadius: 12, border: `1.5px solid ${tab === "taches" ? "#eab308" : "#e8e0d0"}`, background: tab === "taches" ? "#fef9e6" : "#fff", color: tab === "taches" ? "#a16207" : "#9ca3af", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            🍋 Mes tâches
+          </button>
+          <button onClick={() => setTab("commandes")}
+            style={{ flex: 1, padding: "10px 12px", borderRadius: 12, border: `1.5px solid ${tab === "commandes" ? "#2563eb" : "#e8e0d0"}`, background: tab === "commandes" ? "#eff6ff" : "#fff", color: tab === "commandes" ? "#1d4ed8" : "#9ca3af", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            📋 Bloc-notes commandes{notesCommandes.filter(n => !n.traite).length > 0 ? ` (${notesCommandes.filter(n => !n.traite).length})` : ""}
+          </button>
+        </div>
+
+        {tab === "taches" && (
+        <>
 
         {/* BANDEAU MOTIVATION */}
         <div style={{ background: "linear-gradient(135deg, #fef9e6, #fff)", border: "1.5px solid #f5deae", borderRadius: 18, padding: "18px 18px", marginBottom: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
@@ -420,6 +562,152 @@ export function TachesModule({ onClose, userEmail, userName }: { onClose: () => 
             );
           })}
         </div>
+        </>
+        )}
+
+        {tab === "commandes" && (
+        <>
+          {/* NOUVELLE NOTE */}
+          <div style={{ background: "#fff", border: "1.5px solid #bfdbfe", borderRadius: 16, padding: 16, marginBottom: 18 }}>
+            <p style={{ margin: "0 0 12px", fontWeight: 800, fontSize: 14, color: "#1a2e1a" }}>+ Nouvelle note</p>
+
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>Client *</label>
+            <div style={{ marginBottom: 10 }}>
+              <AutocompleteInput value={ncClient} onChange={setNcClient} suggestions={CLIENTS_LIST} placeholder="Rechercher un client…" />
+            </div>
+
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>Produits & quantités</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+              {ncLignes.map((l, idx) => (
+                <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ flex: 1 }}>
+                    <AutocompleteInput
+                      value={l.produit}
+                      onChange={v => modifierLigneProduitNote(idx, "produit", v)}
+                      suggestions={(catalogueArticles || []).map(a => a.libelle)}
+                      placeholder="Rechercher un produit…"
+                    />
+                  </div>
+                  <input
+                    value={l.quantite}
+                    onChange={e => modifierLigneProduitNote(idx, "quantite", e.target.value)}
+                    placeholder="Qté"
+                    style={{ width: 80, padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+                  />
+                  {ncLignes.length > 1 && (
+                    <button onClick={() => supprimerLigneProduitNote(idx)} style={{ border: "none", background: "transparent", color: "#d1d5db", fontSize: 15, cursor: "pointer", padding: 4 }}>✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button onClick={ajouterLigneProduitNote} style={{ marginBottom: 12, padding: "6px 12px", borderRadius: 8, border: "1.5px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+              + Ajouter un produit
+            </button>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>N° commande fournisseur</label>
+                <input value={ncNumeroCommande} onChange={e => setNcNumeroCommande(e.target.value)} placeholder="Ex: CF-2026-1234"
+                  style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>Commercial qui appelle</label>
+                <input value={ncCommercialFournisseur} onChange={e => setNcCommercialFournisseur(e.target.value)} placeholder="Nom du commercial"
+                  list="tm-commerciaux-fournisseur" style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                <datalist id="tm-commerciaux-fournisseur">
+                  {[...new Set(notesCommandes.map(n => n.commercialFournisseur).filter(Boolean))].map(v => <option key={v} value={v} />)}
+                </datalist>
+              </div>
+            </div>
+
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>Pour quel commercial Moorea</label>
+            <input value={ncCommercialMoorea} onChange={e => setNcCommercialMoorea(e.target.value)} placeholder="Destinataire chez Moorea"
+              list="tm-commerciaux-moorea" style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginBottom: 10 }} />
+            <datalist id="tm-commerciaux-moorea">
+              {[...new Set(notesCommandes.map(n => n.commercialMoorea).filter(Boolean))].map(v => <option key={v} value={v} />)}
+            </datalist>
+
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>Commentaire libre</label>
+            <textarea value={ncCommentaire} onChange={e => setNcCommentaire(e.target.value)} placeholder="Rajout client, conditions particulières, urgence…" rows={2}
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, boxSizing: "border-box", resize: "vertical", marginBottom: 12 }} />
+
+            <button onClick={enregistrerNoteCommande} disabled={!ncClient.trim()}
+              style={{ width: "100%", padding: "11px", borderRadius: 10, border: "none", background: ncClient.trim() ? "#2563eb" : "#ccc", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: ncClient.trim() ? "pointer" : "default" }}>
+              📋 Enregistrer la note
+            </button>
+          </div>
+
+          {/* FILTRE */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            {[
+              { key: "aTraiter" as const, label: `🔵 À traiter (${notesCommandes.filter(n => !n.traite).length})` },
+              { key: "traitees" as const, label: `✅ Archivées (${notesCommandes.filter(n => n.traite).length})` },
+            ].map(f => (
+              <button key={f.key} onClick={() => setFiltreCommandes(f.key)}
+                style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${filtreCommandes === f.key ? "#2563eb" : "#e8e0d0"}`, background: filtreCommandes === f.key ? "#eff6ff" : "#fff", color: filtreCommandes === f.key ? "#1d4ed8" : "#9ca3af", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* LISTE DES NOTES */}
+          {notesCommandes.filter(n => filtreCommandes === "aTraiter" ? !n.traite : n.traite).length === 0 && (
+            <div style={{ textAlign: "center", padding: "50px 20px", color: "#c4c4c4" }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>{filtreCommandes === "aTraiter" ? "📋" : "🗄️"}</div>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#9ca3af" }}>
+                {filtreCommandes === "aTraiter" ? "Aucune note en attente" : "Aucune note archivée pour l'instant"}
+              </p>
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {notesCommandes.filter(n => filtreCommandes === "aTraiter" ? !n.traite : n.traite).map(n => (
+              <div key={n.id} style={{ background: "#fff", border: `1.5px solid ${n.traite ? "#bbf7d0" : "#bfdbfe"}`, borderRadius: 16, padding: "14px 16px", opacity: n.traite ? 0.85 : 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>{n.client}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                      {new Date(n.ts).toLocaleDateString("fr-FR")} à {new Date(n.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                      {n.creePar ? ` · noté par ${n.creePar}` : ""}
+                    </p>
+                  </div>
+                  <button onClick={() => supprimerNoteCommande(n.id)} title="Supprimer" style={{ border: "none", background: "transparent", color: "#d1d5db", fontSize: 15, cursor: "pointer", padding: 4, flexShrink: 0 }}>🗑️</button>
+                </div>
+
+                {n.lignes.length > 0 && (
+                  <div style={{ marginTop: 8, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "8px 10px" }}>
+                    {n.lignes.map((l, i) => (
+                      <p key={i} style={{ margin: i > 0 ? "4px 0 0" : 0, fontSize: 12.5, color: "#374151" }}>
+                        <strong>{l.quantite || "?"}</strong> × {l.produit}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11.5, color: "#6b7280" }}>
+                  {n.numeroCommande && <span style={{ background: "#f3f4f6", borderRadius: 6, padding: "3px 8px" }}>N° {n.numeroCommande}</span>}
+                  {n.commercialFournisseur && <span style={{ background: "#f3f4f6", borderRadius: 6, padding: "3px 8px" }}>📞 {n.commercialFournisseur}</span>}
+                  {n.commercialMoorea && <span style={{ background: "#f3f4f6", borderRadius: 6, padding: "3px 8px" }}>👤 Pour {n.commercialMoorea}</span>}
+                </div>
+
+                {n.commentaire && (
+                  <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#6b7280", fontStyle: "italic" }}>💬 {n.commentaire}</p>
+                )}
+
+                {!n.traite ? (
+                  <button onClick={() => marquerNoteTraitee(n.id)} style={{ marginTop: 10, width: "100%", padding: "9px", borderRadius: 9, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+                    ✓ J'ai bien rentré ça dans le système
+                  </button>
+                ) : (
+                  <button onClick={() => reouvrirNoteCommande(n.id)} style={{ marginTop: 10, width: "100%", padding: "9px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+                    ↺ Remettre en attente
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+        )}
       </div>
     </div>
   );
