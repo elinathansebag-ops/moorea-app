@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update, push } from "./firebase";
-import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, limit, documentId } from "firebase/firestore";
+import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, limit, limitToLast, documentId } from "firebase/firestore";
 import { PageHeader, styles } from "./shared";
 import { Html5Qrcode } from "html5-qrcode";
 import jsPDF from "jspdf";
@@ -1570,13 +1570,19 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
       // est un horodatage ISO ("2026-09-08_14-30"), donc il se trie tout seul dans le bon ordre :
       // on ne récupère que les STOCK_LIST_LIMIT plus récents, puis seulement les comptages qui
       // leur correspondent (au lieu de tout l'historique).
+      // 09/09/2026 (bis) — Le tri "orderBy(documentId(), 'desc')" a cassé l'écran en prod avec
+      // "The query requires an index" (Firestore a besoin d'un index composite pour trier
+      // l'identifiant du document en ordre DEcroissant, mais pas en croissant). On demande donc
+      // les documents en ordre croissant (pas d'index nécessaire) et on prend les derniers avec
+      // limitToLast — ça revient au même résultat (les 80 plus récents) sans jamais avoir besoin
+      // d'index à créer à la main dans la console Firebase.
       const STOCK_LIST_LIMIT = 80;
       const renderStockList = async () => {
         const list = document.getElementById("s-stock-list");
         if (!list) return;
         list.innerHTML = "<div class='empty-state'>Chargement...</div>";
         try {
-          const snap = await getDocs(query(collection(db, "stocks"), orderBy(documentId(), "desc"), limit(STOCK_LIST_LIMIT)));
+          const snap = await getDocs(query(collection(db, "stocks"), orderBy(documentId()), limitToLast(STOCK_LIST_LIMIT)));
           const stocks: any[] = [];
           snap.forEach(d => stocks.push({ id: d.id, ...d.data() }));
           stocks.sort((a, b) => b.id.localeCompare(a.id));
