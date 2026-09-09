@@ -272,6 +272,23 @@ export function rechercheIntelligente(valeur: string, suggestions: string[], max
 // les données de l'écran ne sont pas encore arrivées une première fois. Même logique que
 // l'écran de démarrage (temps écoulé honnête plutôt qu'une fausse barre de progression en %,
 // Firebase ne donnant pas de taille totale connue à l'avance).
+// 09/09/2026 — Écran affiché à la place d'un module quand l'adresse mail connectée n'a pas
+// (ou plus) le droit d'y accéder (voir DroitsAccesModule.tsx / calculerAcces). Sert de filet de
+// sécurité même si le bouton correspondant a été caché sur l'accueil — au cas où quelqu'un
+// arriverait directement dessus (lien, retour en arrière du navigateur, etc.).
+export function AccesRefuse({ onRetour }: { onRetour: () => void }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#f5f3ee", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ textAlign: "center", maxWidth: 320 }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+        <p style={{ fontSize: 15, fontWeight: 700, color: "#1a2e1a", margin: "0 0 6px", fontFamily: "'Syne', sans-serif" }}>Accès non autorisé</p>
+        <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 20px" }}>Ton compte n'a pas accès à cette page. Contacte un administrateur si tu penses que c'est une erreur.</p>
+        <button onClick={onRetour} className="btn-primary" style={{ width: "auto", padding: "10px 24px" }}>← Retour à l'accueil</button>
+      </div>
+    </div>
+  );
+}
+
 export function ChargementEcran({ texte = "Chargement…" }: { texte?: string }) {
   const [secondes, setSecondes] = useState(0);
   useEffect(() => {
@@ -326,6 +343,93 @@ export function AutocompleteInput({ value, onChange, suggestions, placeholder, r
       )}
     </div>
   );
+}
+
+
+// 09/09/2026 — Système de droits d'accès (demande d'Elinathan : pouvoir choisir quelle adresse
+// mail a accès à quel module / panneau de config / onglet). Catalogue de tout ce qui peut être
+// restreint dans l'appli — sert à la fois à construire l'écran d'administration
+// (DroitsAccesModule.tsx) et à vérifier les droits partout ailleurs (App.tsx). Les clés
+// d'onglets sont préfixées par le module ("prestataires.configuration") pour ne jamais se
+// mélanger entre deux modules qui ont un onglet du même nom.
+export type ModuleDef = { key: string; label: string; tabs?: { key: string; label: string }[] };
+
+export const MODULE_DEFS: ModuleDef[] = [
+  { key: "arrivages", label: "📋 Pointer arrivage" },
+  { key: "rapports", label: "📊 Rapports" },
+  { key: "litiges", label: "⚠️ Litiges" },
+  { key: "stock", label: "📦 Stock", tabs: [
+    { key: "config", label: "⚙️ Configuration (répartition GMS/Prestige)" },
+  ] },
+  { key: "retours", label: "🚚 Retours clients" },
+  { key: "preparation", label: "🏭 Préparation" },
+  { key: "rack", label: "🗄️ Rotation racks" },
+  { key: "prestataires", label: "📦 Prestataires", tabs: [
+    { key: "dashboard", label: "Dashboard" },
+    { key: "cartons", label: "Cartons" },
+    { key: "palettes", label: "Palettes IFCO" },
+    { key: "ifco", label: "Suivi IFCO" },
+    { key: "entretiens", label: "Entretiens" },
+    { key: "configuration", label: "⚙️ Configuration" },
+  ] },
+  { key: "reconditionnement", label: "🔄 Reconditionnement", tabs: [
+    { key: "en_cours", label: "En cours" },
+    { key: "nouvelle", label: "Nouvelle demande" },
+    { key: "historique", label: "Historique" },
+    { key: "suivi_ifco", label: "Suivi IFCO" },
+    { key: "configuration", label: "⚙️ Configuration" },
+  ] },
+  { key: "appro", label: "🌱 Appro", tabs: [
+    { key: "commandes", label: "Commandes" },
+    { key: "statistiques", label: "Statistiques" },
+    { key: "configuration", label: "⚙️ Configuration" },
+  ] },
+  { key: "etiquettes", label: "🏷️ Étiquettes" },
+  { key: "statt", label: "🛒 Statt" },
+  { key: "catalogue", label: "📚 Catalogue" },
+  { key: "dashboard_tv", label: "📺 Tableau de bord (écran)" },
+  { key: "qrcode", label: "📊 QR Code Leofresh" },
+  { key: "gencodes", label: "🏷️ Gencodes GMS" },
+  { key: "rh", label: "👥 RH · Pointeuse" },
+  { key: "yukon", label: "🌿 Besoins Yukon" },
+  { key: "taches", label: "✅ Tâches", tabs: [
+    { key: "mes_taches", label: "Mes tâches" },
+    { key: "commandes", label: "Bloc-notes commandes" },
+  ] },
+];
+
+// Toujours admin, quoi qu'il arrive dans la base de droits (même vide/mal configurée) — pour ne
+// jamais risquer de se retrouver bloquée dehors de son propre écran d'administration.
+export const ADMIN_BOOTSTRAP = ["elinathan.sebag@moorea.fr"];
+
+export function cleEmail(email?: string | null): string {
+  return (email || "").toLowerCase().trim().replace(/[.#$[\]/]/g, "_");
+}
+
+export type AccesRole = { label: string; modules?: Record<string, boolean>; tabs?: Record<string, boolean> };
+export type AccesUser = { email: string; role?: string | null; admin?: boolean; extraModules?: Record<string, boolean>; extraTabs?: Record<string, boolean> };
+
+// hasModule/hasTab renvoient toujours true (accès total) tant que la base de droits est vide
+// (personne n'a encore été configuré) ou que l'email n'a pas été explicitement ajouté à la
+// liste — comme ça, la mise en place des droits ne bloque personne le jour où elle est activée :
+// Elinathan ajoute les gens un par un pour les restreindre, à son rythme.
+export function calculerAcces(
+  email: string | undefined | null,
+  roles: Record<string, AccesRole> | null | undefined,
+  users: Record<string, AccesUser> | null | undefined
+): { isAdmin: boolean; hasModule: (key: string) => boolean; hasTab: (key: string) => boolean } {
+  const em = (email || "").toLowerCase().trim();
+  const isBootstrapAdmin = ADMIN_BOOTSTRAP.includes(em);
+  const userRec = users ? users[cleEmail(em)] : undefined;
+  const isAdmin = isBootstrapAdmin || !!userRec?.admin;
+  const rienConfigure = !users || Object.keys(users).length === 0;
+  if (isAdmin || rienConfigure || !userRec) {
+    return { isAdmin, hasModule: () => true, hasTab: () => true };
+  }
+  const roleRec = userRec.role ? roles?.[userRec.role] : null;
+  const hasModule = (key: string) => !!(roleRec?.modules?.[key] || userRec.extraModules?.[key]);
+  const hasTab = (key: string) => !!(roleRec?.tabs?.[key] || userRec.extraTabs?.[key]);
+  return { isAdmin: false, hasModule, hasTab };
 }
 
 

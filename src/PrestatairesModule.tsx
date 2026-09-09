@@ -220,10 +220,10 @@ const COLORS = {
   info: "#06b6d4",
 };
 
-export function PrestatairesModule({ onClose, userName, initialTab }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration" }) {
+export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean }) {
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges"
-  >(initialTab || "dashboard");
+  >(initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
   // 09/09/2026 — Demande d'Elinathan : cet écran (le plus lourd de l'app, une vingtaine de
@@ -2015,6 +2015,7 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
         {/* Bouton Configuration / retour au Dashboard (en haut à droite) — 02/09/2026 : agrandi
             à la demande d'Elinathan, qui le loupait tout le temps (trop petit / trop discret). */}
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+          {canConfig && (
           <button
             onClick={() => setActiveTab(activeTab === "dashboard" ? "configuration" : "dashboard")}
             style={{
@@ -2030,6 +2031,7 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
           >
             {activeTab === "dashboard" ? "⚙️ Configuration" : "📊 Dashboard"}
           </button>
+          )}
         </div>
 
         {/* DASHBOARD TAB */}
@@ -3706,8 +3708,19 @@ export function PrestatairesModule({ onClose, userName, initialTab }: { onClose:
           </div>
         )}
 
+        {/* 09/09/2026 — Droits d'accès : le panneau Configuration peut être restreint
+            indépendamment du reste du module (voir DroitsAccesModule.tsx, clé
+            "prestataires.configuration") — utile pour laisser l'accès au suivi cartons/IFCO
+            sans donner la main sur les réglages. */}
+        {activeTab === "configuration" && !canConfig && (
+          <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+            <p style={{ fontSize: 14, color: COLORS.gray600 }}>Ton compte n'a pas accès à la configuration de ce module.</p>
+          </div>
+        )}
+
         {/* IFCO — CLIENTS */}
-        {activeTab === "configuration" && (
+        {activeTab === "configuration" && canConfig && (
           <div style={{ display: "grid", gap: "20px" }}>
             {/* Taille d'une pile complète de palettes vierges, par référence — utilisé par le
                 bouton principal "+ 1 pile complète" de l'onglet Palettes vierges. */}

@@ -7,7 +7,8 @@ import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWit
 import RetoursModule from "./RetoursModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
-import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran } from "./shared";
+import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, AccesRole, AccesUser, AccesRefuse } from "./shared";
+import DroitsAccesModule from "./DroitsAccesModule";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
 import { RHApp } from "./RHApp";
@@ -457,6 +458,19 @@ export default function App() {
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
   const ADMIN_PIN = "17092005";
   const [showAdmin, setShowAdmin] = useState(false);
+  // ─── 09/09/2026 — Droits d'accès (demande d'Elinathan : choisir quelle adresse mail accède à
+  // quel module / panneau de config / onglet). Chargés une fois au niveau App.tsx (comme le
+  // reste des données partagées) puis passés à calculerAcces() qui renvoie les fonctions de
+  // vérification utilisées à la fois pour filtrer l'accueil et pour garder chaque module. ───
+  const [showDroitsAcces, setShowDroitsAcces] = useState(false);
+  const [permRoles, setPermRoles] = useState<Record<string, AccesRole>>({});
+  const [permUsers, setPermUsers] = useState<Record<string, AccesUser>>({});
+  useEffect(() => {
+    const unsub1 = onValue(ref(db, "acces_permissions/roles"), snap => setPermRoles(snap.val() || {}));
+    const unsub2 = onValue(ref(db, "acces_permissions/users"), snap => setPermUsers(snap.val() || {}));
+    return () => { unsub1(); unsub2(); };
+  }, []);
+  const monAcces = calculerAcces(user?.email, permRoles, permUsers);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPinInput, setAdminPinInput] = useState("");
   const [adminPinError, setAdminPinError] = useState("");
@@ -2712,59 +2726,73 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showRetours) {
+    if (!monAcces.hasModule("retours")) return <AccesRefuse onRetour={() => { setShowRetours(false); setShowAccueil(true); }} />;
     const stockArticles = catalogueArticles.length > 0 ? catalogueArticles.map(a => a.libelle) : [];
     return <RetoursModule onClose={() => { setShowRetours(false); setShowAccueil(true); }} stockArticles={stockArticles} />;
   }
 
   if (showQrCode) {
+    if (!monAcces.hasModule("qrcode")) return <AccesRefuse onRetour={() => { setShowQrCode(false); setShowAccueil(true); }} />;
     return <QrCodeDashboard onClose={() => { setShowQrCode(false); setShowAccueil(true); }} />;
   }
 
   if (showEtiquettes) {
+    if (!monAcces.hasModule("etiquettes")) return <AccesRefuse onRetour={() => { setShowEtiquettes(false); setShowAccueil(true); }} />;
     return <EtiquetteModule onClose={() => { setShowEtiquettes(false); setShowAccueil(true); }} />;
   }
 
   if (showRH) {
+    if (!monAcces.hasModule("rh")) return <AccesRefuse onRetour={() => { setShowRH(false); setShowAccueil(true); }} />;
     return <>{fabScanner}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} /></>;
   }
 
   if (showCatalogue) {
+    if (!monAcces.hasModule("catalogue")) return <AccesRefuse onRetour={() => { setShowCatalogue(false); setShowAccueil(true); }} />;
     return <CatalogueModule onClose={() => { setShowCatalogue(false); setShowAccueil(true); }} />;
   }
 
   if (showGencode) {
+    if (!monAcces.hasModule("gencodes")) return <AccesRefuse onRetour={() => { setShowGencode(false); setShowAccueil(true); }} />;
     return <GencodeModule onClose={() => { setShowGencode(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} />;
   }
 
   if (showYukon) {
+    if (!monAcces.hasModule("yukon")) return <AccesRefuse onRetour={() => { setShowYukon(false); setShowAccueil(true); }} />;
     return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
 
   if (showTaches) {
+    if (!monAcces.hasModule("taches")) return <AccesRefuse onRetour={() => { setShowTaches(false); setShowAccueil(true); }} />;
     return <TachesModule onClose={() => { setShowTaches(false); setShowAccueil(true); }} userEmail={user?.email || ""} userName={user?.displayName || ""} catalogueArticles={catalogueArticles} initialTab={tachesTabDemande} />;
   }
 
   if (showRack) {
+    if (!monAcces.hasModule("rack")) return <AccesRefuse onRetour={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />;
     return <RackModule autoOpenConfig={rackAutoConfig} onClose={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />;
   }
 
   if (showDashboard) {
+    if (!monAcces.hasModule("dashboard_tv")) return <AccesRefuse onRetour={() => { setShowDashboard(false); setShowAccueil(true); }} />;
     return <DashboardModule arrivages={arrivages} onClose={() => { setShowDashboard(false); setShowAccueil(true); }} />;
   }
 
   if (showStatt) {
+    if (!monAcces.hasModule("statt")) return <AccesRefuse onRetour={() => { setShowStatt(false); setShowAccueil(true); }} />;
     return <StattModule onClose={() => { setShowStatt(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
   if (showPrestataires) {
+    if (!monAcces.hasModule("prestataires")) return <AccesRefuse onRetour={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }} />;
     return <PrestatairesModule
       onClose={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }}
       userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
       initialTab={prestatairesInitialTab}
+      canConfig={monAcces.hasTab("prestataires.configuration")}
     />;
   }
 
   if (showReconditionnement) {
+    if (!monAcces.hasModule("reconditionnement")) return <AccesRefuse onRetour={() => { setShowReconditionnement(false); setShowAccueil(true); }} />;
     return <ReconditionnementModule
       onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
       userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
@@ -2773,19 +2801,27 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showAppro) {
+    if (!monAcces.hasModule("appro")) return <AccesRefuse onRetour={() => { setShowAppro(false); setShowAccueil(true); }} />;
     return <ApproModule
       onClose={() => { setShowAppro(false); setShowAccueil(true); }}
       userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
+      canConfig={monAcces.hasTab("appro.configuration")}
     />;
   }
 
   if (showPreparation) {
+    if (!monAcces.hasModule("preparation")) return <AccesRefuse onRetour={() => { setShowPreparation(false); setShowAccueil(true); }} />;
     return <PreparationModule
       onClose={() => { setShowPreparation(false); setShowAccueil(true); }}
       userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
       scanDemandeId={qrRecondDemandeId}
       onScanHandled={() => { setQrRecondDemandeId(null); window.history.replaceState({}, "", window.location.pathname); }}
     />;
+  }
+
+  if (showDroitsAcces) {
+    if (!monAcces.isAdmin) return <AccesRefuse onRetour={() => { setShowDroitsAcces(false); setShowAccueil(true); }} />;
+    return <DroitsAccesModule onClose={() => { setShowDroitsAcces(false); setShowAccueil(true); }} />;
   }
 
   if (showAdmin) {
@@ -2870,6 +2906,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🗄️ Autres réglages du module Rack</p>
                     <button onClick={() => { setShowAdmin(false); setRackAutoConfig(true); setShowRack(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Ouvrir la configuration du Rack →</button>
                   </div>
+                  {/* 09/09/2026 — Demande d'Elinathan : pouvoir choisir quelle adresse mail accède à
+                      quel module/onglet. Réservé aux comptes admin (monAcces.isAdmin) même si
+                      quelqu'un d'autre connaît le code PIN partagé ci-dessus. */}
+                  {monAcces.isAdmin && (
+                    <div style={{ background: "#fff", border: "1.5px solid #e9d8fd", borderRadius: 16, padding: 20, marginTop: 16 }}>
+                      <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🔐 Droits d'accès</p>
+                      <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#9ca3af" }}>Choisir quelle adresse mail a accès à quel module, panneau de configuration ou onglet.</p>
+                      <button onClick={() => { setShowAdmin(false); setShowDroitsAcces(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e9d8fd", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Gérer les droits d'accès →</button>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -2899,40 +2945,45 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const textMain = darkMode ? "#e8e6f0" : "#1a2e1a";
     const textSub = darkMode ? "#9b97b2" : "#9ca3af";
 
+    // 09/09/2026 — Chaque bouton porte désormais une "key" correspondant à MODULE_DEFS
+    // (shared.tsx) : le .filter(...) juste après chaque tableau cache les modules auxquels le
+    // compte connecté n'a pas droit (voir DroitsAccesModule.tsx). C'est une protection en plus
+    // du garde posé à l'entrée de chaque module (defense in depth) — même si un lien traînait
+    // quelque part, le module resterait bloqué.
     const row1 = [
-      { icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, stat: nbAttente > 0 ? `${nbAttente} en attente auj.` : nbTraitesAujourdHui > 0 ? `${nbTraitesAujourdHui} traités auj.` : "Aucun arrivage auj.", action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
-      { icon: "📊", label: "Rapports", color: "#16a34a", badge: null, stat: `${nbRapports} total`, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
-      { icon: "📦", label: "Stock", color: "#0891b2", badge: null, stat: "GMS & Prestige", action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
-    ];
+      { key: "arrivages", icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, stat: nbAttente > 0 ? `${nbAttente} en attente auj.` : nbTraitesAujourdHui > 0 ? `${nbTraitesAujourdHui} traités auj.` : "Aucun arrivage auj.", action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
+      { key: "rapports", icon: "📊", label: "Rapports", color: "#16a34a", badge: null, stat: `${nbRapports} total`, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
+      { key: "stock", icon: "📦", label: "Stock", color: "#0891b2", badge: null, stat: "GMS & Prestige", action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
+    ].filter(b => monAcces.hasModule(b.key));
 
     // 03/09/2026 — Demande d'Elinathan : les 2 premières lignes (row1 + row2Entrepot) sont des
     // actions d'entrepôt (quai/manutention), la dernière (row2Bureau) des actions de bureau
     // (suivi administratif/commercial) — on les sépare visuellement avec un sous-titre dédié.
     const row2Entrepot = [
-      { icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
-      { icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
-      { icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
-    ];
+      { key: "retours", icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
+      { key: "preparation", icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
+      { key: "rack", icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
+    ].filter(b => monAcces.hasModule(b.key));
 
     const row2Bureau = [
-      { icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
-      { icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
-      { icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
-    ];
+      { key: "prestataires", icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
+      { key: "reconditionnement", icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
+      { key: "appro", icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
+    ].filter(b => monAcces.hasModule(b.key));
 
     // 03/09/2026 — Demande d'Elinathan : Étiquettes et Statt déménagés ici, dans le tiroir
     // "🍋 Leofresh" (repliable), moins utilisés au quotidien que les modules de la grille
     // principale ci-dessus.
     const leofreshBtns = [
-      { icon: "🏷️", label: "Étiquettes", color: "#c8a84b", stat: "Créer & imprimer une étiquette", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
-      { icon: "🛒", label: "Statt", color: "#ea580c", stat: "Ventes réelles + objectifs par période", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowStatt(true); } },
-      { icon: "📚", label: "Catalogue", color: "#27ae60", stat: "Base articles Moorea", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowCatalogue(true); } },
-      { icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowDashboard(true); } },
-      { icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowGencode(true); } },
-      { icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
-      { icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowYukon(true); } },
-      { icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowTaches(true); } },
-    ];
+      { key: "etiquettes", icon: "🏷️", label: "Étiquettes", color: "#c8a84b", stat: "Créer & imprimer une étiquette", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
+      { key: "statt", icon: "🛒", label: "Statt", color: "#ea580c", stat: "Ventes réelles + objectifs par période", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowStatt(true); } },
+      { key: "catalogue", icon: "📚", label: "Catalogue", color: "#27ae60", stat: "Base articles Moorea", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowCatalogue(true); } },
+      { key: "dashboard_tv", icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowDashboard(true); } },
+      { key: "gencodes", icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowGencode(true); } },
+      { key: "rh", icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
+      { key: "yukon", icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowYukon(true); } },
+      { key: "taches", icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowTaches(true); } },
+    ].filter(b => monAcces.hasModule(b.key));
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
       return (
@@ -3142,6 +3193,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showLitiges) {
+    if (!monAcces.hasModule("litiges")) return <AccesRefuse onRetour={() => { setShowLitiges(false); setShowAccueil(true); }} />;
     const nbRefusASigner = arrivages.filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee).length;
     const nbRapportsLitiges = rapports.filter(r => (r.decision === "refus" || r.decision === "reserve")).length;
     return (
@@ -3191,6 +3243,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showRecherche) {
+    if (!monAcces.hasModule("arrivages")) return <AccesRefuse onRetour={() => { setShowRecherche(false); setShowAccueil(true); }} />;
     const resultats = searchLotQuery.length >= 2
       ? arrivages.filter(a =>
           (a.lot_interne && a.lot_interne.toLowerCase().includes(searchLotQuery.toLowerCase())) ||
@@ -3333,11 +3386,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showStock) {
+    if (!monAcces.hasModule("stock")) return <AccesRefuse onRetour={() => { setShowStock(false); setShowAccueil(true); }} />;
     (window as any)._gencodeArticles = gencodeArticles;
     return (
-      <>{fabScanner}<StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} /></>
+      <>{fabScanner}<StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} canConfig={monAcces.hasTab("stock.config")} /></>
     );
   }
+
+  // ─── 09/09/2026 — Dernier filet de sécurité des droits d'accès : cet écran par défaut sert
+  // à la fois "Rapports" (vue === "historique") et "Pointer arrivage" (le reste : pageMode
+  // arrivages / historique_arr / stats_arr / saisie_arr, tous atteints depuis Pointer arrivage).
+  if (vue === "historique" && !monAcces.hasModule("rapports")) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
+  if (vue !== "historique" && !monAcces.hasModule("arrivages")) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
 
   return (
     <div className="app">

@@ -111,7 +111,7 @@ function getSemaineKey(offset = 0): string {
   return `${yr}-W${String(wk).padStart(2, "0")}`;
 }
 
-export function ApproModule({ onClose, userName }: { onClose: () => void; userName: string }) {
+export function ApproModule({ onClose, userName, canConfig = true }: { onClose: () => void; userName: string; canConfig?: boolean }) {
   const [activeTab, setActiveTab] = useState<"commandes" | "statistiques" | "configuration">("commandes");
   const [semaineOffset, setSemaineOffset] = useState(0);
   const [vague, setVague] = useState<Vague>("weekend");
@@ -821,7 +821,9 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
           <button onClick={() => setActiveTab("commandes")} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${activeTab === "commandes" ? COLORS.primary : COLORS.gray200}`, background: activeTab === "commandes" ? COLORS.primaryLight : "#fff", color: activeTab === "commandes" ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📋 Commandes</button>
           <button onClick={() => setActiveTab("statistiques")} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${activeTab === "statistiques" ? COLORS.primary : COLORS.gray200}`, background: activeTab === "statistiques" ? COLORS.primaryLight : "#fff", color: activeTab === "statistiques" ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📊 Statistiques</button>
+          {canConfig && (
           <button onClick={() => setActiveTab("configuration")} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${activeTab === "configuration" ? COLORS.primary : COLORS.gray200}`, background: activeTab === "configuration" ? COLORS.primaryLight : "#fff", color: activeTab === "configuration" ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Configuration</button>
+          )}
         </div>
 
         {activeTab === "commandes" && (
@@ -1170,7 +1172,13 @@ export function ApproModule({ onClose, userName }: { onClose: () => void; userNa
           </div>
         )}
 
-        {activeTab === "configuration" && (
+        {activeTab === "configuration" && !canConfig && (
+          <div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+            <p style={{ fontSize: 14, color: COLORS.gray600 }}>Ton compte n'a pas accès à la configuration de ce module.</p>
+          </div>
+        )}
+        {activeTab === "configuration" && canConfig && (
           <div className="fade-up">
             {/* 31/08/2026 — Switch mode test/réel (demande d'Elinathan) : à gauche, tout part
                 uniquement dans sa boîte mail (test avant envoi réel) ; à droite, les mails

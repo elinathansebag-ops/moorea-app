@@ -637,7 +637,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
   {article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"}
 ];
 
-export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[] }) {
+export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[]; canConfig?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mainRtdb = db; // DB principale (moorea-qualite) — c'est là que vivent les racks (rack_positions)
 
@@ -809,7 +809,7 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
       <button class="nav-btn active" id="s-nav-home" onclick="sShowPage('home')">🏠 Stocks</button>
       <button class="nav-btn hidden" id="s-nav-comptage" onclick="sShowPage('comptage')">📋 Comptage</button>
       <button class="nav-btn hidden" id="s-nav-ecarts" onclick="sShowPage('ecarts')">📊 Écarts</button>
-      <button class="nav-btn" id="s-nav-config" onclick="sShowPage('config')">⚙️ Configuration</button>
+      ${canConfig ? '<button class="nav-btn" id="s-nav-config" onclick="sShowPage(\'config\')">⚙️ Configuration</button>' : ''}
     </div>
   </div>
 
@@ -1249,6 +1249,10 @@ export function StockApp({ onExit, catalogueArticles }: { onExit: () => void; ca
 
       // Pages
       (window as any).sShowPage = (p: string) => {
+        if (p === "config" && !canConfig) {
+          toast("⛔ Accès non autorisé à la configuration");
+          return;
+        }
         ["home", "comptage", "ecarts", "config"].forEach(id => {
           const pg = document.getElementById("s-page-" + id);
           const btn = document.getElementById("s-nav-" + id);
