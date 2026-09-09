@@ -878,7 +878,15 @@ export default function App() {
             await envoyerEtiquettePourImpressionPC(arrivageMaj, i + 1, palettes[i]);
           }
         } else {
-          await envoyerEtiquettePourImpressionPC(arrivageMaj);
+          // 09/09/2026 — Bug trouvé avec Elinathan : ici, sans 3ᵉ argument, envoyerEtiquettePourImpressionPC
+          // retombe sur arrivage.quantite (la quantité ATTENDUE d'origine) pour l'étiquette — jamais la
+          // quantité réellement reçue/saisie à l'agréage (colisRecusFinal, déjà calculée plus haut). Ça ne se
+          // voyait pas quand tout collait, mais dès qu'il y avait un écart (ex: pointage groupé NLT avec une
+          // seule case remplie, palettes.length === 1, ou un arrivage classique sans répartition palette),
+          // l'étiquette imprimée affichait la quantité attendue (ex: 350) au lieu de la quantité réelle
+          // (ex: 383) — donnant l'impression que la quantité corrigée n'était "pas enregistrée". On passe
+          // maintenant explicitement colisRecusFinal comme nombre de colis de l'étiquette.
+          await envoyerEtiquettePourImpressionPC(arrivageMaj, undefined, colisRecusFinal);
         }
       } catch (err) {
         // 03/09/2026 — Ce catch avalait toute erreur en silence (aucun log, aucun message) :
