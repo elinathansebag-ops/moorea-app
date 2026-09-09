@@ -2649,7 +2649,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // (pas de taille totale connue à l'avance), donc plutôt qu'une fausse barre de progression, on
   // affiche le temps écoulé — honnête — et une barre animée "indéterminée" juste pour montrer
   // que ça travaille. Au-delà de 6s, un message rassure sur le fait que ce n'est pas normal.
-  if (!rtdbPret) return <EcranChargementInitial />;
+  // 09/09/2026 (suite) — Elinathan a signalé un DEUXIÈME temps d'attente juste après : l'écran
+  // noir disparaissait dès la connexion établie, mais "Pointer arrivage" (et l'accueil, qui
+  // affiche les mêmes stats) restaient vides encore plusieurs secondes le temps que les
+  // arrivages arrivent. On fusionne les deux attentes en une seule : l'écran noir reste affiché
+  // jusqu'à ce que les arrivages (la donnée la plus utilisée, accueil + Pointer arrivage) soient
+  // là aussi — comme ça, dès que l'écran noir disparaît, il y a déjà des données à afficher.
+  if (!rtdbPret || !arrivagesCharges) return <EcranChargementInitial />;
 
   if (showScanner) {
     return (
@@ -3813,6 +3819,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             )}
             {(() => {
               const filtered = arrivages.filter(a => !filtersArr.q || `${a.produit} ${a.fournisseur}`.toLowerCase().includes(filtersArr.q.toLowerCase()));
+              // 09/09/2026 — Bug trouvé avec Elinathan (capture d'écran à l'appui) : c'est CE
+              // "return" précis, pas celui plus bas sur weekGroups, qui s'affichait pendant que
+              // Firebase n'avait pas encore renvoyé les arrivages — "arrivages.length === 0" est
+              // vrai aussi bien quand la liste est vraiment vide QUE pendant le chargement, donc
+              // "Aucun arrivage importé" s'affichait à tort le temps que les données arrivent.
+              // Ajout du check arrivagesCharges pour distinguer les deux cas.
+              if (!arrivagesCharges) return <ChargementEcran texte="Chargement des arrivages…" />;
               if (filtered.length === 0 && arrivages.length === 0) return (
                 <div style={{ textAlign: "center", padding: "3rem", background: "#eafaf1", border: "1px solid #d4edda", borderRadius: 20 }}>
                   <div style={{ fontSize: 36, marginBottom: 10 }}>📋</div>
@@ -3923,13 +3936,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   showToast(`✅ Semaine ${g.week} · ${g.year} nettoyée (${tousEnAttente.length} validé${tousEnAttente.length > 1 ? "s" : ""})`);
                 }
               };
-              // 09/09/2026 — Demande d'Elinathan : "Pointer arrivage" affichait une liste vide le
-              // temps que Firebase renvoie les arrivages, sans rien qui l'indique. On utilise le
-              // flag arrivagesCharges (déjà présent plus haut, posé dès la première réponse de
-              // l'écouteur onValue) pour montrer un vrai message de chargement à la place.
-              return !arrivagesCharges ? (
-                <ChargementEcran texte="Chargement des arrivages…" />
-              ) : (
+              return (
                 <>
                   {orderedWeekKeys.map((key, idxSemaine) => {
                     const g = weekGroups.get(key)!;
