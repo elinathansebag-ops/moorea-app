@@ -396,6 +396,7 @@ export const MODULE_DEFS: ModuleDef[] = [
     { key: "mes_taches", label: "Mes tâches" },
     { key: "commandes", label: "Bloc-notes commandes" },
   ] },
+  { key: "chargement", label: "🚛 Optimisation chargement" },
 ];
 
 // Toujours admin, quoi qu'il arrive dans la base de droits (même vide/mal configurée) — pour ne

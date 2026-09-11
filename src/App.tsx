@@ -24,6 +24,7 @@ import { PreparationModule } from "./PreparationModule";
 import { PortailReconditionneur } from "./PortailReconditionneur";
 import { DashboardModule } from "./DashboardModule";
 import { ApproModule } from "./ApproModule";
+import { ChargementModule } from "./ChargementModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
 // passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
@@ -441,6 +442,7 @@ export default function App() {
   const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showStatt, setShowStatt] = useState(false);
   const [showPrestataires, setShowPrestataires] = useState(false);
+  const [showChargement, setShowChargement] = useState(false);
   // 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : quand on clique "Ouvrir
   // Prestataires → Configuration" depuis Reconditionnement, on atterrit directement sur cet
   // onglet plutôt que sur le Dashboard.
@@ -2879,6 +2881,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     />;
   }
 
+  if (showChargement) {
+    if (!monAcces.hasModule("chargement")) return <AccesRefuse onRetour={() => { setShowChargement(false); setShowAccueil(true); }} />;
+    return <ChargementModule onClose={() => { setShowChargement(false); setShowAccueil(true); }} />;
+  }
+
   if (showDroitsAcces) {
     if (!monAcces.isAdmin) return <AccesRefuse onRetour={() => { setShowDroitsAcces(false); setShowAccueil(true); }} />;
     return <DroitsAccesModule onClose={() => { setShowDroitsAcces(false); setShowAccueil(true); }} />;
@@ -3009,6 +3016,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "prestataires", icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
       { key: "reconditionnement", icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       { key: "appro", icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
+      { key: "chargement", icon: "🚛", label: "Optimisation chargement", color: "#0891b2", badge: null, stat: "Calculateur palettes & camion", action: () => { setShowAccueil(false); setShowChargement(true); } },
     ].filter(b => monAcces.hasModule(b.key));
 
     // 03/09/2026 — Demande d'Elinathan : Étiquettes et Statt déménagés ici, dans le tiroir
