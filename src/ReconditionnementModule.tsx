@@ -965,7 +965,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // 28/08/2026 — Fichiers issus du découpage d'un PDF Geslot multi-pages (voir
   // importerPdfMultiPages), en attente d'être rattachés à une demande via "Utiliser" dans le
   // formulaire de création. Chaque entrée disparaît de cette liste une fois utilisée.
-  const [pdfsEnAttente, setPdfsEnAttente] = useState<{ id: string; nom: string; base64: string; dateFr: string; ts: number }[]>([]);
+  const [pdfsEnAttente, setPdfsEnAttente] = useState<{ id: string; nom: string; base64: string; dateFr: string; ts: number; article?: string }[]>([]);
   const [importMultiEnCours, setImportMultiEnCours] = useState(false);
   const [afficherPdfsEnAttente, setAfficherPdfsEnAttente] = useState(false);
 
@@ -1287,6 +1287,60 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     });
   }
 
+  // 11/09/2026 — Demande d'Elinathan : dans « Fichiers en attente », afficher le nom de
+  // l'article plutôt que le nom de fichier générique ("reconditionnement-11-09-2026-1.pdf"),
+  // pour reconnaître le bon fichier sans avoir à cliquer sur "Aperçu" à chaque fois. Même
+  // reconnaissance que lireEtPreremplirDepuisPdf (pdf.js pour rendre la page en image + Tesseract
+  // pour l'OCR + résolution contre le catalogue), mais allégée : on ne lit ici que le champ
+  // "Article à utiliser" (ou "à fabriquer" si le premier est vide), pas tous les autres champs
+  // du bon. Lancée en arrière-plan après le découpage (voir plus bas) pour ne jamais faire
+  // attendre l'import — la liste affiche d'abord le nom du fichier, puis se met à jour toute
+  // seule avec le nom de l'article dès que la reconnaissance de cette page est terminée.
+  async function extraireArticleApercu(bytes: Uint8Array): Promise<string> {
+    try {
+      const pdfjsLib: any = await import("pdfjs-dist");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const page = await doc.getPage(1);
+      const viewport = page.getViewport({ scale: 2.5 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const Tesseract: any = await import("tesseract.js");
+      const { data } = await Tesseract.recognize(canvas, "fra");
+      const lines: string[] = (data?.text || "").split("\n");
+      const lire = (label: string): string => {
+        const re = new RegExp(label + "\\s*[:：]?\\s*(.+)", "i");
+        for (const line of lines) {
+          const m = line.match(re);
+          if (m && m[1] && m[1].trim()) return m[1].trim();
+        }
+        return "";
+      };
+      const resoudreArticle = (brut: string): string => {
+        if (!brut) return "";
+        const nettoye = brut.toUpperCase().replace(/\s+/g, " ").trim();
+        if (!nettoye) return brut;
+        let trouve = catalogueArticles.find(a => a.libelle.toUpperCase() === nettoye);
+        if (trouve) return trouve.libelle;
+        trouve = catalogueArticles.find(a => nettoye.includes(a.libelle.toUpperCase()));
+        if (trouve) return trouve.libelle;
+        trouve = catalogueArticles.find(a => nettoye.length > 4 && a.libelle.toUpperCase().includes(nettoye));
+        if (trouve) return trouve.libelle;
+        return brut;
+      };
+      const vArticleVrac = resoudreArticle(lire("Article\\s*[àa]\\s*utiliser"));
+      const vArticleFini = resoudreArticle(lire("Article\\s*[àa]\\s*fabriquer"));
+      return vArticleVrac || vArticleFini || "";
+    } catch {
+      // La reconnaissance de l'article est un confort d'affichage, pas une nécessité — si elle
+      // échoue, le fichier reste utilisable normalement, la liste affiche juste son nom de fichier.
+      return "";
+    }
+  }
+
   // 28/08/2026 — Découpe un PDF Geslot multi-pages (plusieurs bons imprimés à la suite) en
   // fichiers séparés, un par page, et les enregistre dans l'app (pas juste téléchargés sur le
   // PC) pour qu'ils servent ensuite de "fichier de base" quand on crée chaque demande — voir
@@ -1306,6 +1360,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       }
       const dateStr = new Date().toLocaleDateString("fr-FR").split("/").join("-");
       const dateFr = nowFr();
+      const pagesPourApercu: { cle: string; bytes: Uint8Array }[] = [];
       for (let i = 0; i < nbPages; i++) {
         const pageDoc = await PDFDocument.create();
         const [copiedPage] = await pageDoc.copyPages(srcDoc, [i]);
@@ -1319,10 +1374,19 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           reader.readAsDataURL(blob);
         });
         const nom = `reconditionnement-${dateStr}-${i + 1}.pdf`;
-        await push(ref(db, "reconditionnement_pdfs_en_attente"), { nom, base64, dateFr, ts: Date.now() + i });
+        const pushee = await push(ref(db, "reconditionnement_pdfs_en_attente"), { nom, base64, dateFr, ts: Date.now() + i });
+        if (pushee.key) pagesPourApercu.push({ cle: pushee.key, bytes });
       }
       notify("success", `✅ ${nbPages} pages enregistrées — disponibles dans « Fichiers en attente »`);
       setAfficherPdfsEnAttente(true);
+      // Reconnaissance des articles en arrière-plan, une page après l'autre (voir
+      // extraireArticleApercu plus haut) — ne bloque jamais l'import lui-même.
+      (async () => {
+        for (const { cle, bytes } of pagesPourApercu) {
+          const article = await extraireArticleApercu(bytes);
+          if (article) await update(ref(db, `reconditionnement_pdfs_en_attente/${cle}`), { article });
+        }
+      })();
     } catch (err: any) {
       notify("error", `❌ Erreur lors du découpage : ${err?.message || "erreur inconnue"}`);
     } finally {
@@ -2622,7 +2686,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {pdfsEnAttente.map(p => (
                     <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", background: "#fff", border: "1px solid #e9d8fd", borderRadius: 8, padding: "6px 10px" }}>
-                      <span style={{ fontSize: 12, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>
+                      <span style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.article || p.nom}</span>
+                        {p.article && <span style={{ fontSize: 10, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>}
+                        {!p.article && <span style={{ fontSize: 10, color: "#9ca3af" }}>⏳ reconnaissance de l'article…</span>}
+                      </span>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                         <button type="button" onClick={() => setPdfApercu({ titre: p.nom, base64: p.base64 })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e9d8fd", background: "#fff", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                           Aperçu
@@ -2981,7 +3049,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 <div style={{ flexBasis: "100%", background: "#faf5ff", border: "1.5px solid #e9d8fd", borderRadius: 10, padding: "8px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
                   {pdfsEnAttente.map(p => (
                     <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 11.5, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>
+                      <span style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.article || p.nom}</span>
+                        {p.article && <span style={{ fontSize: 10, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>}
+                        {!p.article && <span style={{ fontSize: 10, color: "#9ca3af" }}>⏳ reconnaissance de l'article…</span>}
+                      </span>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                         <button type="button" onClick={() => setPdfApercu({ titre: p.nom, base64: p.base64 })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e9d8fd", background: "#fff", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                           Aperçu
