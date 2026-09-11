@@ -1341,11 +1341,16 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     }
   }
 
-  // 28/08/2026 — Découpe un PDF Geslot multi-pages (plusieurs bons imprimés à la suite) en
-  // fichiers séparés, un par page, et les enregistre dans l'app (pas juste téléchargés sur le
-  // PC) pour qu'ils servent ensuite de "fichier de base" quand on crée chaque demande — voir
-  // utiliserPdfEnAttente plus bas. Nommés reconditionnement-JJ-MM-AAAA-1.pdf, -2.pdf, etc.
-  async function importerPdfMultiPages(e: ChangeEvent<HTMLInputElement>) {
+  // 11/09/2026 — Demande d'Elinathan : fusionner « Importer un bon Geslot » et « Importer un PDF
+  // multi-pages » en un seul bouton — plus besoin de savoir à l'avance combien de pages a le PDF
+  // avant de choisir le bon bouton. Ce point d'entrée unique regarde lui-même le nombre de pages
+  // du fichier choisi : une seule page → comportement de l'ancien "Importer un bon Geslot"
+  // (attaché direct à la demande en cours + lecture OCR immédiate) ; plusieurs pages →
+  // comportement de l'ancien "Importer un PDF multi-pages" (découpage + dépôt dans « Fichiers en
+  // attente », un par page). Les deux anciennes fonctions (handlePdfChange / importerPdfMultiPages)
+  // sont fusionnées ici plutôt que juste appelées l'une depuis l'autre, pour n'avoir qu'un seul
+  // indicateur de chargement et un seul message d'erreur cohérents dans les deux cas.
+  async function importerPdf(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.type !== "application/pdf") { notify("error", "✗ Merci de choisir un fichier PDF"); return; }
@@ -1355,7 +1360,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const srcDoc = await PDFDocument.load(arrayBuffer);
       const nbPages = srcDoc.getPageCount();
       if (nbPages <= 1) {
-        notify("error", "✗ Ce PDF n'a qu'une seule page — utilise plutôt « Importer un bon Geslot » directement");
+        // Une seule page : comportement de l'ancien "Importer un bon Geslot" — attaché
+        // directement à la demande en cours de création, avec lecture OCR automatique.
+        const reader = new FileReader();
+        reader.onload = () => setPdfFile({ nom: f.name, base64: reader.result as string });
+        reader.readAsDataURL(f);
+        await lireEtPreremplirDepuisPdf(f);
         return;
       }
       const dateStr = new Date().toLocaleDateString("fr-FR").split("/").join("-");
@@ -1388,14 +1398,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         }
       })();
     } catch (err: any) {
-      notify("error", `❌ Erreur lors du découpage : ${err?.message || "erreur inconnue"}`);
+      notify("error", `❌ Erreur lors de l'import du PDF : ${err?.message || "erreur inconnue"}`);
     } finally {
       setImportMultiEnCours(false);
       e.target.value = "";
     }
   }
 
-  // Rattache un fichier déjà découpé (voir importerPdfMultiPages) à la demande en cours de
+  // Rattache un fichier déjà découpé (voir importerPdf) à la demande en cours de
   // création — exactement comme un import manuel via "Importer un bon Geslot" (même lecture
   // automatique OCR), sauf qu'on reconstruit un objet File à partir du base64 déjà enregistré
   // plutôt que de repartir d'un fichier choisi sur le disque. Retiré de la liste d'attente une
@@ -1421,16 +1431,6 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       // La lecture automatique est un confort, pas une nécessité — si elle échoue, le fichier
       // reste quand même attaché, le commercial complète simplement les champs à la main.
     }
-  }
-
-  function handlePdfChange(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.type !== "application/pdf") { notify("error", "✗ Merci de choisir un fichier PDF"); return; }
-    const reader = new FileReader();
-    reader.onload = () => setPdfFile({ nom: f.name, base64: reader.result as string });
-    reader.readAsDataURL(f);
-    lireEtPreremplirDepuisPdf(f);
   }
 
   // Lecture automatique du bon Geslot : les pages sont des scans (pas de texte sélectionnable),
@@ -3014,12 +3014,17 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             {/* Stock, en couleur pâle pour repérer chaque compteur d'un coup d'œil */}
             <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} />
 
-            {/* Bon Geslot + envoi palette IFCO, côte à côte en haut — les deux actions rapides */}
+            {/* 11/09/2026 — Demande d'Elinathan : un seul bouton d'import (voir importerPdf) au
+                lieu de deux — plus besoin de deviner d'avance si le PDF choisi a une ou plusieurs
+                pages avant de savoir quel bouton cliquer. Le bouton détecte lui-même : une page →
+                attaché direct à la demande (comme avant "Importer un bon Geslot") ; plusieurs
+                pages → découpé et déposé dans « Fichiers en attente » (comme avant "Importer un
+                PDF multi-pages"). */}
             <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap", alignItems: "stretch" }}>
-              <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: COLORS.gray200, color: COLORS.gray700, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  📄 Importer un bon Geslot
-                  <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handlePdfChange} style={{ display: "none" }} />
+              <div style={{ flex: "1 1 320px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: importMultiEnCours ? COLORS.gray200 : COLORS.gray200, color: COLORS.gray700, fontSize: 11.5, fontWeight: 700, cursor: importMultiEnCours ? "default" : "pointer", whiteSpace: "nowrap" }}>
+                  {importMultiEnCours ? "⏳ Import en cours..." : "📄 Importer un bon Geslot"}
+                  <input ref={fileInputRef} type="file" accept="application/pdf" onChange={importerPdf} disabled={importMultiEnCours} style={{ display: "none" }} />
                 </label>
                 {pdfFile && (
                   <span style={{ fontSize: 11.5, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -3032,17 +3037,6 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 {lectureEnCours && (
                   <span style={{ fontSize: 11.5, color: "#1d4ed8", fontWeight: 700 }}>⏳ lecture en cours…</span>
                 )}
-              </div>
-
-              {/* 28/08/2026 — Import d'un PDF Geslot multi-pages (plusieurs bons imprimés à la
-                  suite) : découpé automatiquement en un fichier par page, chaque page devenant
-                  disponible ci-dessous pour être rattachée à une demande (voir
-                  importerPdfMultiPages / utiliserPdfEnAttente). */}
-              <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, background: importMultiEnCours ? COLORS.gray200 : "#f5f3ff", color: importMultiEnCours ? COLORS.gray600 : "#7c3aed", fontSize: 11.5, fontWeight: 700, cursor: importMultiEnCours ? "default" : "pointer", whiteSpace: "nowrap" }}>
-                  {importMultiEnCours ? "⏳ Découpage..." : "📚 Importer un PDF multi-pages"}
-                  <input type="file" accept="application/pdf" onChange={importerPdfMultiPages} disabled={importMultiEnCours} style={{ display: "none" }} />
-                </label>
                 {pdfsEnAttente.length > 0 && (
                   <button type="button" onClick={() => setAfficherPdfsEnAttente(v => !v)} style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e9d8fd", background: "#faf5ff", color: "#7c3aed", fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                     📥 Fichiers en attente ({pdfsEnAttente.length})

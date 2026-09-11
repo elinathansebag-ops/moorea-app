@@ -216,15 +216,26 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // récente s'ouvrira automatiquement).
   const [semainesOuvertesDemandes, setSemainesOuvertesDemandes] = useState<Set<string> | null>(null);
 
-  // Modale "prêt" (validation entrepôt étape 1)
-  const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
-  const [pretGrandes, setPretGrandes] = useState("");
-  const [pretDemi, setPretDemi] = useState("");
+  // 11/09/2026 — À la demande d'Elinathan : l'entrepôt valide maintenant chaque ligne "prêt" une
+  // par une SANS qu'on lui demande le nombre de palettes à chaque fois (voir marquerPretSansPalettes,
+  // généralisée à tout le monde ci-dessous, plus seulement au transport Moorea). Le nombre de
+  // palettes n'est demandé qu'UNE SEULE FOIS, une fois que toutes les lignes du dépôt/jour sont
+  // passées "prêt" — voir palettesGroupeIds plus bas. L'ancienne modale "prêt" par ligne
+  // (pretDemandeId/validerPret/ouvrirModalePret) est donc retirée.
+
   // Modale "Tout marquer parti" groupée (un seul total de palettes pour tout un dépôt/jour,
   // peu importe le statut de départ de chaque demande — "en attente" ou déjà "prêt")
   const [groupePartiIds, setGroupePartiIds] = useState<string[] | null>(null);
   const [groupePartiGrandes, setGroupePartiGrandes] = useState("");
   const [groupePartiDemi, setGroupePartiDemi] = useState("");
+  // 11/09/2026 — Modale "Combien de palettes ?" : se déclenche une fois que toutes les demandes
+  // "en attente" d'un dépôt/jour sont passées "prêt" (plus aucune en attente) — demande le total
+  // de palettes UNE SEULE FOIS pour tout le lot, sans faire passer les demandes à "parti" (ça reste
+  // une étape "préparation terminée", le départ réel se valide toujours séparément avec "Marquer parti").
+  const [palettesGroupeIds, setPalettesGroupeIds] = useState<string[] | null>(null);
+  const [palettesGroupeGrandes, setPalettesGroupeGrandes] = useState("");
+  const [palettesGroupeDemi, setPalettesGroupeDemi] = useState("");
+  const [palettesGroupeSaving, setPalettesGroupeSaving] = useState(false);
   // 04/09/2026 — Désactive "✓ Valider" pendant l'appel : un double-tap (courant sur tablette,
   // sans retour visuel immédiat) relançait toute la boucle marquerToutPretPuisPartiGroupe avant
   // que le premier appel n'ait fini, créant des arrivages retour en double (bug des "115 lignes
@@ -311,14 +322,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // ReconditionnementModule.tsx (voir plus haut le commentaire sur envoyerRecapDuJour, même
   // logique). Préparation entrepôt ne garde que marquer "prêt" / marquer "parti".
 
-  function ouvrirModalePret(id: string) {
-    setPretDemandeId(id);
-    setPretGrandes("");
-    setPretDemi("");
-  }
-
-  // Quand le transport est assuré par Moorea elle-même, pas de nombre de palettes à indiquer —
-  // on marque directement "prêt" sans passer par la modale.
+  // 11/09/2026 — Généralisée à TOUTES les demandes (avant, réservée au transport Moorea) : marque
+  // directement "prêt" sans modale ni saisie de palettes — le nombre de palettes est maintenant
+  // demandé une seule fois pour tout le lot une fois que tout est validé (voir validerPaletteGroupe).
   async function marquerPretSansPalettes(id: string) {
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "prêt",
@@ -326,16 +332,16 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       entrepotPretDate: nowFr(),
       nbPalettesDepart: null,
     });
-    notify("success", "✅ Marqué prêt — transport Moorea, pas de palette à indiquer");
+    notify("success", "✅ Marqué prêt");
   }
 
   // 27/08/2026 — À la demande d'Elinathan : quand l'entrepôt saisit le nombre de palettes,
   // on imprime automatiquement une étiquette "Production Moorea" par palette physique
   // (grandes + demi confondues), avec la référence de la demande, le produit sorti, le dépôt
   // destinataire, le numéro de palette (i/N), la date de production et le transporteur.
-  // Ne se déclenche QUE depuis validerPret() (saisie manuelle du nb de palettes) — pas depuis
-  // marquerPretSansPalettes() (transport Moorea, pas de palette) ni depuis le flux groupé
-  // "Tout marquer parti".
+  // Se déclenche depuis validerPaletteGroupe() (saisie groupée du nb de palettes, une fois par
+  // lot) et depuis le flux "Tout marquer parti" — pas depuis marquerPretSansPalettes() (pas
+  // encore de palette connue à ce stade).
   // 01/09/2026 — Remplace l'ancienne étiquette "production" (1 seul produit + QR code, à la
   // demande d'Elinathan : trop pauvre en infos et pas adaptée à un départ groupé). La nouvelle
   // étiquette est un manifest de départ : en-tête "MOOREA → <dépôt>", "Palette X/N", puis la
@@ -343,7 +349,8 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // IFCO vides / cartons Andès si présent) avec une case à cocher à gauche de chaque ligne pour
   // marquer à la main ce qui est chargé sur CETTE palette précise, et un total en bas. Une
   // étiquette identique est imprimée pour chaque palette physique (paletteIndex 1..N) — appelée
-  // aussi bien pour une demande seule (validerPret) que pour un groupe (marquerToutPretPuisPartiGroupe).
+  // aussi bien pour un lot validé "prêt" (validerPaletteGroupe) que pour un départ groupé
+  // (marquerToutPretPuisPartiGroupe).
   async function envoyerEtiquettesManifestPourImpressionPC(depot: Depot, demandesGroupe: Demande[], grandes: number, demi: number) {
     const totalPalettes = grandes + demi;
     if (totalPalettes === 0) return;
@@ -384,24 +391,25 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     }
   }
 
-  async function validerPret() {
-    if (!pretDemandeId) return;
-    const g = parseInt(pretGrandes) || 0;
-    const d = parseInt(pretDemi) || 0;
-    if (g === 0 && d === 0) { notify("error", "✗ Indique au moins une palette"); return; }
-    await update(ref(db, `reconditionnement_demandes/${pretDemandeId}`), {
-      statut: "prêt",
-      entrepotPretPar: userName || "Moorea",
-      entrepotPretDate: nowFr(),
-      nbPalettesDepart: { grandes: g, demi: d },
-    });
-    // Impression de l'étiquette manifest, une par palette
-    const demandePourEtiquette = demandes.find(dd => dd.id === pretDemandeId);
-    if (demandePourEtiquette) {
-      await envoyerEtiquettesManifestPourImpressionPC(demandePourEtiquette.depot, [demandePourEtiquette], g, d);
+  // 11/09/2026 — Remplace l'ancienne validerPret() (par ligne) : une fois que toutes les demandes
+  // "en attente" d'un dépôt/jour sont passées "prêt", on demande le total de palettes UNE FOIS
+  // pour tout le lot, on le pose sur chaque demande (même nbPalettesDepartGroupeId pour ne pas le
+  // compter plusieurs fois dans les stats/facturation transporteur), et on imprime les étiquettes
+  // manifest correspondantes — sans faire passer les demandes à "parti" (ça reste une étape à part,
+  // voir "Marquer parti").
+  async function validerPaletteGroupe(ids: string[], grandes: number, demi: number) {
+    const groupeId = `grp_${Date.now()}_${ids[0]}`;
+    for (const id of ids) {
+      await update(ref(db, `reconditionnement_demandes/${id}`), {
+        nbPalettesDepart: { grandes, demi },
+        nbPalettesDepartGroupeId: groupeId,
+      });
     }
-    notify("success", "✅ Marqué prêt — en attente du transporteur");
-    setPretDemandeId(null);
+    const demandesGroupe = ids.map(id => demandes.find(d => d.id === id)).filter((d): d is Demande => !!d);
+    if (demandesGroupe.length > 0) {
+      await envoyerEtiquettesManifestPourImpressionPC(demandesGroupe[0].depot, demandesGroupe, grandes, demi);
+    }
+    notify("success", `✅ Palettes enregistrées pour ${ids.length} demande${ids.length > 1 ? "s" : ""} — étiquette${grandes + demi > 1 ? "s" : ""} envoyée${grandes + demi > 1 ? "s" : ""} à l'impression`);
   }
 
   // Cœur de "marquer parti", sans notification — utilisé aussi bien pour une demande seule
@@ -534,8 +542,10 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
 
   // ─── VALIDATION PAR SCAN DU QR CODE DU BON ───
   // App.tsx ouvre ce module avec scanDemandeId quand l'app a été chargée via l'URL du QR
-  // (?recond=<id>). Le 1er scan (statut "en attente") ouvre la modale "Marquer prêt". Le 2e scan
-  // (statut déjà "prêt") marque directement "parti", sans saisie supplémentaire.
+  // (?recond=<id>). Le 1er scan (statut "en attente") marque directement "prêt", sans saisie
+  // supplémentaire (11/09/2026 — même logique que le bouton "✓ Marquer prêt", le nombre de
+  // palettes n'est plus demandé ligne par ligne). Le 2e scan (statut déjà "prêt") marque
+  // directement "parti".
   const scanHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (!scanDemandeId || scanHandledRef.current === scanDemandeId || !demandes.length) return;
@@ -544,8 +554,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     if (!demande) {
       notify("error", "❌ Demande introuvable pour ce QR");
     } else if (demande.statut === "en attente") {
-      ouvrirModalePret(demande.id);
-      notify("success", "📷 Scanné — confirme le nombre de palettes pour valider \"prêt\"");
+      marquerPretSansPalettes(demande.id);
     } else if (demande.statut === "prêt") {
       marquerParti(demande.id);
     } else if (demande.statut === "parti") {
@@ -756,6 +765,12 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                             // "Tout marquer parti" couvre les demandes déjà "prêt" ET celles encore
                             // "en attente" — un seul bouton, un seul total de palettes demandé.
                             const aEnvoyerDuGroupe = demandesJourDepot.filter(d => d.statut === "prêt" || d.statut === "en attente");
+                            // 11/09/2026 — "Combien de palettes ?" : apparaît une fois que TOUTES les
+                            // demandes du dépôt/jour sont passées "prêt" (plus aucune "en attente") et
+                            // qu'au moins une n'a pas encore de palettes enregistrées — demande d'Elinathan
+                            // (valider les lignes une par une, puis ne demander le total qu'une seule fois).
+                            const pretsSansPalette = demandesJourDepot.filter(d => d.statut === "prêt" && d.nbPalettesDepart == null);
+                            const resteDesEnAttente = demandesJourDepot.some(d => d.statut === "en attente");
                             return (
                               <div key={dep} style={{ marginBottom: 10, background: `${accentDepot}0d`, border: `1px solid ${accentDepot}33`, borderRadius: 10, padding: 8 }}>
                                 <div onClick={() => toggleDepotDemandes(cleDepot, depotOuvert)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0, cursor: "pointer" }}>
@@ -778,6 +793,19 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                       style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                                     >
                                       🚚 Tout marquer parti ({aEnvoyerDuGroupe.length})
+                                    </button>
+                                  )}
+                                  {!resteDesEnAttente && pretsSansPalette.length > 0 && (
+                                    <button
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        setPalettesGroupeIds(pretsSansPalette.map(d => d.id));
+                                        setPalettesGroupeGrandes("");
+                                        setPalettesGroupeDemi("");
+                                      }}
+                                      style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: COLORS.primary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                                    >
+                                      📦 Combien de palettes ? ({pretsSansPalette.length})
                                     </button>
                                   )}
                                 </div>
@@ -922,21 +950,14 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                             Supprimer/Annuler/Revenir à "en attente" sont retirés d'ici — ce sont des
                                             décisions commerciales, elles vivent uniquement dans Reconditionnement. */}
                                         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                                          {/* 02/09/2026 — Demande d'Elinathan : même déclenché depuis UNE seule carte, la
-                                              déclaration du nombre de palettes doit couvrir TOUTES les demandes encore en
-                                              attente/prêt du même dépôt ce jour-là (mêmes règles que "Tout marquer parti"
-                                              groupé ci-dessus) — sinon chaque demande imprime sa propre étiquette avec un seul
-                                              article et une numérotation de palette qui repart à 1, au lieu d'un manifeste
-                                              unique listant tout ce qui part pour ce reconditionneur avec une numérotation
-                                              continue (1/N, 2/N...). */}
+                                          {/* 11/09/2026 — Demande d'Elinathan : chaque ligne se valide "prêt" une par une,
+                                              sans demander le nombre de palettes à chaque fois. Le total de palettes pour
+                                              tout le lot n'est demandé qu'une seule fois, une fois que toutes les lignes du
+                                              dépôt/jour sont passées "prêt" — voir le bouton "📦 Combien de palettes ?"
+                                              ci-dessus (apparaît dès qu'il n'y a plus de "en attente" dans le groupe). */}
                                           {d.statut === "en attente" && (
                                             <button
-                                              onClick={() => {
-                                                if (d.transporteurNom && /moorea/i.test(d.transporteurNom)) { marquerPretSansPalettes(d.id); return; }
-                                                setGroupePartiIds(aEnvoyerDuGroupe.map(dd => dd.id));
-                                                setGroupePartiGrandes("");
-                                                setGroupePartiDemi("");
-                                              }}
+                                              onClick={() => marquerPretSansPalettes(d.id)}
                                               style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                                             >
                                               ✓ Marquer prêt
@@ -1004,28 +1025,48 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
         )}
       </div>
 
-      {/* MODALE — "Marquer prêt" (validation entrepôt étape 1) */}
-      {pretDemandeId && (
+      {/* MODALE — "Combien de palettes ?" groupée (une seule fois, une fois tout validé "prêt") */}
+      {palettesGroupeIds && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 400, width: "100%", borderTop: `7px solid ${COLORS.primary}` }}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>✓</div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Marquer prêt</p>
-              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>Nombre de palettes réellement préparées</p>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
+              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Combien de palettes ?</p>
+              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                {palettesGroupeIds.length} demande{palettesGroupeIds.length > 1 ? "s" : ""} validée{palettesGroupeIds.length > 1 ? "s" : ""} "prêt" — total de palettes pour tout le lot (pas de détail par demande)
+              </p>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes</label>
-                <input type="number" value={pretGrandes} onChange={e => setPretGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+                <input type="number" value={palettesGroupeGrandes} onChange={e => setPalettesGroupeGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Demi-palettes</label>
-                <input type="number" value={pretDemi} onChange={e => setPretDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+                <input type="number" value={palettesGroupeDemi} onChange={e => setPalettesGroupeDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
               </div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setPretDemandeId(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-              <button onClick={validerPret} style={{ flex: 2, background: COLORS.primary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Valider</button>
+              <button onClick={() => setPalettesGroupeIds(null)} disabled={palettesGroupeSaving} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: palettesGroupeSaving ? "not-allowed" : "pointer" }}>Annuler</button>
+              <button
+                disabled={palettesGroupeSaving}
+                onClick={async () => {
+                  if (palettesGroupeSaving) return;
+                  const g = parseInt(palettesGroupeGrandes) || 0;
+                  const d = parseInt(palettesGroupeDemi) || 0;
+                  if (g === 0 && d === 0) { notify("error", "✗ Indique au moins une palette"); return; }
+                  setPalettesGroupeSaving(true);
+                  try {
+                    await validerPaletteGroupe(palettesGroupeIds, g, d);
+                    setPalettesGroupeIds(null);
+                  } finally {
+                    setPalettesGroupeSaving(false);
+                  }
+                }}
+                style={{ flex: 2, background: palettesGroupeSaving ? "#ccc" : COLORS.primary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: palettesGroupeSaving ? "not-allowed" : "pointer" }}
+              >
+                {palettesGroupeSaving ? "..." : "✓ Valider"}
+              </button>
             </div>
           </div>
         </div>
