@@ -872,6 +872,22 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
       <input type="file" id="s-file-input" accept=".xlsx,.xls" style="display:none"/>
       <input type="file" id="s-file-reimport" accept=".xlsx,.xls" style="display:none"/>
       <div id="s-upload-status" style="font-size:13px;color:#6b7280;margin-bottom:1rem;min-height:18px"></div>
+      <!-- 11/09/2026 — Demande d'Elinathan : la liste n'affiche que les 2 dernières semaines
+           (voir STOCK_LIST_LOOKBACK_JOURS) pour charger plus vite — ce bloc laisse retrouver les
+           stocks plus anciens à la demande, sans jamais retélécharger tout l'historique par
+           défaut. -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <span style="font-size:11px;color:#9ca3af">Affiche les 2 dernières semaines</span>
+        <a href="#" onclick="sToggleHistorique();return false" id="s-historique-lien" style="font-size:11px;font-weight:700;color:#8a6f2e;text-decoration:none">🕐 Voir plus ancien</a>
+      </div>
+      <div id="s-historique-panel" style="display:none;align-items:flex-end;gap:8px;flex-wrap:wrap;background:#faf8f3;border:1.5px solid #e8e0d0;border-radius:10px;padding:10px;margin-bottom:10px">
+        <div>
+          <label style="display:block;font-size:10px;font-weight:700;color:#6b7280;margin-bottom:2px">Remonter jusqu'à (jours)</label>
+          <input type="number" id="s-historique-jours" value="90" style="width:90px;padding:7px 9px;border:1px solid #e8e0d0;border-radius:6px;font-size:13px;box-sizing:border-box"/>
+        </div>
+        <button class="btn btn-sm btn-gold" onclick="sRechercherHistorique()">🔍 Afficher</button>
+        <button class="btn btn-sm" onclick="sRevenirRecents()">↩️ Revenir aux 2 semaines</button>
+      </div>
       <div class="card"><div id="s-stock-list"><div class="empty-state">Aucun stock importé</div></div></div>
     </div>
     <div id="s-page-comptage" style="display:none">
@@ -1584,12 +1600,15 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
       // l'Historique/Rapports, s'il en a besoin un jour, peut interroger Firestore directement sans
       // cette limite.
       const STOCK_LIST_LOOKBACK_JOURS = 14;
-      const renderStockList = async () => {
+      // 11/09/2026 — joursPerso : quand renseigné (via le panneau "🕐 Voir plus ancien"), remplace
+      // STOCK_LIST_LOOKBACK_JOURS pour cet appel précis — permet de retrouver un stock plus ancien
+      // à la demande, sans jamais charger plus de 2 semaines par défaut à l'ouverture de la page.
+      const renderStockList = async (joursPerso?: number) => {
         const list = document.getElementById("s-stock-list");
         if (!list) return;
         list.innerHTML = "<div class='empty-state'>Chargement...</div>";
         try {
-          const cutoff = new Date(Date.now() - STOCK_LIST_LOOKBACK_JOURS * 24 * 60 * 60 * 1000);
+          const cutoff = new Date(Date.now() - (joursPerso || STOCK_LIST_LOOKBACK_JOURS) * 24 * 60 * 60 * 1000);
           const cutoffId = cutoff.toISOString().slice(0, 10) + "_00-00";
           const snap = await getDocs(query(collection(db, "stocks"), where(documentId(), ">=", cutoffId), orderBy(documentId())));
           const stocks: any[] = [];
@@ -1683,6 +1702,24 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
         const open = body.style.display !== "none";
         body.style.display = open ? "none" : "block";
         if (chev) chev.style.transform = `rotate(${open ? 0 : 90}deg)`;
+      };
+
+      // 11/09/2026 — Demande d'Elinathan : retrouver un stock plus ancien que les 2 semaines
+      // affichées par défaut, sans jamais retélécharger tout l'historique à chaque ouverture.
+      (window as any).sToggleHistorique = () => {
+        const panel = document.getElementById("s-historique-panel");
+        if (!panel) return;
+        panel.style.display = panel.style.display === "none" ? "flex" : "none";
+      };
+      (window as any).sRechercherHistorique = () => {
+        const input = document.getElementById("s-historique-jours") as HTMLInputElement | null;
+        const jours = parseInt(input?.value || "") || 90;
+        renderStockList(jours);
+      };
+      (window as any).sRevenirRecents = () => {
+        const panel = document.getElementById("s-historique-panel");
+        if (panel) panel.style.display = "none";
+        renderStockList();
       };
 
       // Vraies blagues amusantes sur le stock
