@@ -218,29 +218,22 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
 
   // 11/09/2026 — À la demande d'Elinathan : l'entrepôt valide maintenant chaque ligne "prêt" une
   // par une SANS qu'on lui demande le nombre de palettes à chaque fois (voir marquerPretSansPalettes,
-  // généralisée à tout le monde ci-dessous, plus seulement au transport Moorea). Le nombre de
-  // palettes n'est demandé qu'UNE SEULE FOIS, une fois que toutes les lignes du dépôt/jour sont
-  // passées "prêt" — voir palettesGroupeIds plus bas. L'ancienne modale "prêt" par ligne
-  // (pretDemandeId/validerPret/ouvrirModalePret) est donc retirée.
+  // généralisée à tout le monde ci-dessous, plus seulement au transport Moorea). Une fois que toutes
+  // les lignes d'un dépôt/jour sont passées "prêt" (plus aucune "en attente"), on demande le nombre
+  // de palettes UNE SEULE FOIS pour tout le lot — directement dans la carte du dépôt (pas de fenêtre
+  // à ouvrir, deux petites cases grandes/demi-palettes + un bouton "✓ Valider"), voir palettesInputs
+  // plus bas. Une fois les palettes enregistrées, un seul bouton "🚚 Marquer parti" fait passer tout
+  // le lot d'un coup, sans rien redemander. L'ancienne modale "prêt" par ligne
+  // (pretDemandeId/validerPret/ouvrirModalePret) et l'ancienne modale "Tout marquer parti"
+  // (groupePartiIds/marquerToutPretPuisPartiGroupe) sont donc retirées.
 
-  // Modale "Tout marquer parti" groupée (un seul total de palettes pour tout un dépôt/jour,
-  // peu importe le statut de départ de chaque demande — "en attente" ou déjà "prêt")
-  const [groupePartiIds, setGroupePartiIds] = useState<string[] | null>(null);
-  const [groupePartiGrandes, setGroupePartiGrandes] = useState("");
-  const [groupePartiDemi, setGroupePartiDemi] = useState("");
-  // 11/09/2026 — Modale "Combien de palettes ?" : se déclenche une fois que toutes les demandes
-  // "en attente" d'un dépôt/jour sont passées "prêt" (plus aucune en attente) — demande le total
-  // de palettes UNE SEULE FOIS pour tout le lot, sans faire passer les demandes à "parti" (ça reste
-  // une étape "préparation terminée", le départ réel se valide toujours séparément avec "Marquer parti").
-  const [palettesGroupeIds, setPalettesGroupeIds] = useState<string[] | null>(null);
-  const [palettesGroupeGrandes, setPalettesGroupeGrandes] = useState("");
-  const [palettesGroupeDemi, setPalettesGroupeDemi] = useState("");
-  const [palettesGroupeSaving, setPalettesGroupeSaving] = useState(false);
-  // 04/09/2026 — Désactive "✓ Valider" pendant l'appel : un double-tap (courant sur tablette,
-  // sans retour visuel immédiat) relançait toute la boucle marquerToutPretPuisPartiGroupe avant
-  // que le premier appel n'ait fini, créant des arrivages retour en double (bug des "115 lignes
-  // en attente NLT pour 7 bons" trouvé avec Elinathan).
-  const [groupePartiSaving, setGroupePartiSaving] = useState(false);
+  // Saisie du nombre de palettes, directement dans la carte du dépôt (une entrée par dépôt/jour,
+  // clé = cleDepot) — pas de modale, les deux cases sont visibles dès que le lot est prêt à saisir.
+  const [palettesInputs, setPalettesInputs] = useState<Record<string, { grandes: string; demi: string }>>({});
+  const [palettesSavingKey, setPalettesSavingKey] = useState<string | null>(null);
+  // Bouton unique "🚚 Marquer parti" groupé, une fois les palettes déjà enregistrées — pas de
+  // ressaisie, juste la confirmation du départ.
+  const [partiSavingKey, setPartiSavingKey] = useState<string | null>(null);
   // Aperçu PDF (bon de prépa ou scan Geslot) dans une modale avec iframe, plutôt qu'un lien
   // <a target="_blank"> vers une data:URI — Chrome bloque/redirige la navigation top-level
   // vers un data: URL, alors qu'un iframe src="data:..." affiché dans la page fonctionne.
@@ -349,8 +342,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // IFCO vides / cartons Andès si présent) avec une case à cocher à gauche de chaque ligne pour
   // marquer à la main ce qui est chargé sur CETTE palette précise, et un total en bas. Une
   // étiquette identique est imprimée pour chaque palette physique (paletteIndex 1..N) — appelée
-  // aussi bien pour un lot validé "prêt" (validerPaletteGroupe) que pour un départ groupé
-  // (marquerToutPretPuisPartiGroupe).
+  // depuis validerPaletteGroupe(), une fois par lot dépôt/jour validé "prêt".
   async function envoyerEtiquettesManifestPourImpressionPC(depot: Depot, demandesGroupe: Demande[], grandes: number, demi: number) {
     const totalPalettes = grandes + demi;
     if (totalPalettes === 0) return;
@@ -413,9 +405,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   }
 
   // Cœur de "marquer parti", sans notification — utilisé aussi bien pour une demande seule
-  // (marquerParti) que pour plusieurs à la fois (marquerToutPretPuisPartiGroupe), qui n'affiche
+  // (marquerParti) que pour plusieurs à la fois (marquerPartiGroupeDirect), qui n'affiche
   // qu'une seule notification consolidée à la fin plutôt qu'une par demande. Accepte des champs
-  // supplémentaires (extra) pour le cas groupé, qui doit aussi écrire nbPalettesDepart etc.
+  // supplémentaires (extra) pour d'éventuels cas particuliers.
   async function marquerPartiSilencieux(id: string, extra?: Record<string, any>) {
     const demande = demandes.find(d => d.id === id);
     await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "parti", departDate: nowFr(), ...(extra || {}) });
@@ -499,26 +491,12 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
   }
 
-  // Version "tout d'un coup, peu importe le statut" : couvre à la fois les demandes déjà "prêt"
-  // ET celles encore "en attente". Un seul total de palettes saisi pour tout le groupe (pas de
-  // détail par demande) — on tague chaque demande avec le même nbPalettesDepartGroupeId pour que
-  // le total ne soit compté qu'une fois dans les statistiques par transporteur (côté Reconditionnement).
-  async function marquerToutPretPuisPartiGroupe(ids: string[], grandes: number, demi: number) {
-    const groupeId = `grp_${Date.now()}_${ids[0]}`;
+  // 11/09/2026 — Remplace marquerToutPretPuisPartiGroupe : les palettes sont déjà enregistrées à ce
+  // stade (via validerPaletteGroupe, juste avant) — ce bouton unique ne fait QUE confirmer le
+  // départ de tout le lot, sans rien redemander.
+  async function marquerPartiGroupeDirect(ids: string[]) {
     for (const id of ids) {
-      await marquerPartiSilencieux(id, {
-        entrepotPretPar: userName || "Moorea",
-        entrepotPretDate: nowFr(),
-        nbPalettesDepart: { grandes, demi },
-        nbPalettesDepartGroupeId: groupeId,
-      });
-    }
-    // 01/09/2026 — À la demande d'Elinathan : le départ groupé imprime maintenant lui aussi
-    // l'étiquette manifest (avant, seul validerPret() imprimait quelque chose) — une étiquette
-    // par palette, listant TOUT ce qui part dans ce groupe (toutes les demandes confondues).
-    const demandesGroupe = ids.map(id => demandes.find(d => d.id === id)).filter((d): d is Demande => !!d);
-    if (demandesGroupe.length > 0) {
-      await envoyerEtiquettesManifestPourImpressionPC(demandesGroupe[0].depot, demandesGroupe, grandes, demi);
+      await marquerPartiSilencieux(id);
     }
     notify("success", `🚚 ${ids.length} demande${ids.length > 1 ? "s" : ""} marquée${ids.length > 1 ? "s" : ""} partie${ids.length > 1 ? "s" : ""} — les retours apparaîtront dans « Pointer arrivage »`);
   }
@@ -762,15 +740,16 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                             const estGroupeTermineDepot = demandesJourDepot.every(d => d.statut === "reçu" || d.statut === "annulé");
                             const depotOuvert = depotsForcesOuvertsDemandes.has(cleDepot) ? true : depotsFermesDemandes.has(cleDepot) ? false : !estGroupeTermineDepot;
                             const accentDepot = DEPOT_ACCENT[dep];
-                            // "Tout marquer parti" couvre les demandes déjà "prêt" ET celles encore
-                            // "en attente" — un seul bouton, un seul total de palettes demandé.
-                            const aEnvoyerDuGroupe = demandesJourDepot.filter(d => d.statut === "prêt" || d.statut === "en attente");
-                            // 11/09/2026 — "Combien de palettes ?" : apparaît une fois que TOUTES les
-                            // demandes du dépôt/jour sont passées "prêt" (plus aucune "en attente") et
-                            // qu'au moins une n'a pas encore de palettes enregistrées — demande d'Elinathan
-                            // (valider les lignes une par une, puis ne demander le total qu'une seule fois).
-                            const pretsSansPalette = demandesJourDepot.filter(d => d.statut === "prêt" && d.nbPalettesDepart == null);
+                            // 11/09/2026 — Demande d'Elinathan : valider les lignes une par une (bouton
+                            // "✓ Marquer prêt", plus haut), puis une fois que TOUT le dépôt/jour est
+                            // passé "prêt" (plus aucune "en attente") : d'abord les cases palettes
+                            // apparaissent directement (pas de fenêtre à ouvrir) pour saisir le total une
+                            // seule fois, puis, une fois enregistré, un seul bouton "🚚 Marquer parti"
+                            // confirme le départ de tout le lot sans rien redemander.
                             const resteDesEnAttente = demandesJourDepot.some(d => d.statut === "en attente");
+                            const pretsSansPalette = demandesJourDepot.filter(d => d.statut === "prêt" && d.nbPalettesDepart == null);
+                            const pretsAvecPaletteAPartir = demandesJourDepot.filter(d => d.statut === "prêt" && d.nbPalettesDepart != null);
+                            const inputsPalette = palettesInputs[cleDepot] || { grandes: "", demi: "" };
                             return (
                               <div key={dep} style={{ marginBottom: 10, background: `${accentDepot}0d`, border: `1px solid ${accentDepot}33`, borderRadius: 10, padding: 8 }}>
                                 <div onClick={() => toggleDepotDemandes(cleDepot, depotOuvert)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0, cursor: "pointer" }}>
@@ -782,33 +761,72 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                     </span>
                                     <ResumeStatutsGroupe demandes={demandesJourDepot} />
                                   </div>
-                                  {aEnvoyerDuGroupe.length > 1 && (
-                                    <button
-                                      onClick={e => {
-                                        e.stopPropagation();
-                                        setGroupePartiIds(aEnvoyerDuGroupe.map(d => d.id));
-                                        setGroupePartiGrandes("");
-                                        setGroupePartiDemi("");
-                                      }}
-                                      style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                                    >
-                                      🚚 Tout marquer parti ({aEnvoyerDuGroupe.length})
-                                    </button>
-                                  )}
-                                  {!resteDesEnAttente && pretsSansPalette.length > 0 && (
-                                    <button
-                                      onClick={e => {
-                                        e.stopPropagation();
-                                        setPalettesGroupeIds(pretsSansPalette.map(d => d.id));
-                                        setPalettesGroupeGrandes("");
-                                        setPalettesGroupeDemi("");
-                                      }}
-                                      style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: COLORS.primary, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                                    >
-                                      📦 Combien de palettes ? ({pretsSansPalette.length})
-                                    </button>
-                                  )}
                                 </div>
+                                {/* 11/09/2026 — Cases palettes directement visibles (pas de fenêtre à
+                                    ouvrir) dès que tout le lot est "prêt" et qu'il manque encore le total
+                                    de palettes. Reste affiché même carte repliée pour qu'Elinathan/l'entrepôt
+                                    le voie tout de suite. */}
+                                {!resteDesEnAttente && pretsSansPalette.length > 0 && (
+                                  <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap", background: "#fff", border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: 8, marginBottom: 8 }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray600, flexBasis: "100%" }}>
+                                      📦 Combien de palettes pour les {pretsSansPalette.length} demande{pretsSansPalette.length > 1 ? "s" : ""} prête{pretsSansPalette.length > 1 ? "s" : ""} ?
+                                    </span>
+                                    {pretsSansPalette.some(d => d.retourPresta?.ecart) && (
+                                      <div style={{ flexBasis: "100%", background: COLORS.amberLight, border: `1.5px solid #fde3a8`, borderRadius: 8, padding: "6px 10px" }}>
+                                        <p style={{ fontSize: 11, fontWeight: 800, color: "#92400e", margin: "0 0 4px" }}>⚠️ Écart annoncé par le reconditionneur — à vérifier :</p>
+                                        {pretsSansPalette.filter(d => d.retourPresta?.ecart).map(d => (
+                                          <p key={d.id} style={{ fontSize: 11, color: "#92400e", margin: "2px 0" }}>
+                                            {d.numero || d.id} : {d.retourPresta!.quantiteDeclaree} colis déclarés (prévu {d.nbColisAEntrer ?? "-"}, écart {d.retourPresta!.ecart! > 0 ? "+" : ""}{d.retourPresta!.ecart})
+                                          </p>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div>
+                                      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: COLORS.gray600, marginBottom: 2 }}>Grandes</label>
+                                      <input type="number" value={inputsPalette.grandes} onChange={e => setPalettesInputs(prev => ({ ...prev, [cleDepot]: { grandes: e.target.value, demi: prev[cleDepot]?.demi || "" } }))} style={{ width: 70, padding: "6px 8px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+                                    </div>
+                                    <div>
+                                      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: COLORS.gray600, marginBottom: 2 }}>Demi</label>
+                                      <input type="number" value={inputsPalette.demi} onChange={e => setPalettesInputs(prev => ({ ...prev, [cleDepot]: { grandes: prev[cleDepot]?.grandes || "", demi: e.target.value } }))} style={{ width: 70, padding: "6px 8px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+                                    </div>
+                                    <button
+                                      disabled={palettesSavingKey === cleDepot}
+                                      onClick={async () => {
+                                        const g = parseInt(inputsPalette.grandes) || 0;
+                                        const d = parseInt(inputsPalette.demi) || 0;
+                                        if (g === 0 && d === 0) { notify("error", "✗ Indique au moins une palette"); return; }
+                                        setPalettesSavingKey(cleDepot);
+                                        try {
+                                          await validerPaletteGroupe(pretsSansPalette.map(dd => dd.id), g, d);
+                                          setPalettesInputs(prev => { const next = { ...prev }; delete next[cleDepot]; return next; });
+                                        } finally {
+                                          setPalettesSavingKey(null);
+                                        }
+                                      }}
+                                      style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: palettesSavingKey === cleDepot ? "#ccc" : COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: palettesSavingKey === cleDepot ? "not-allowed" : "pointer" }}
+                                    >
+                                      {palettesSavingKey === cleDepot ? "..." : "✓ Valider"}
+                                    </button>
+                                  </div>
+                                )}
+                                {!resteDesEnAttente && pretsSansPalette.length === 0 && pretsAvecPaletteAPartir.length > 0 && (
+                                  <div onClick={e => e.stopPropagation()} style={{ marginBottom: 8 }}>
+                                    <button
+                                      disabled={partiSavingKey === cleDepot}
+                                      onClick={async () => {
+                                        setPartiSavingKey(cleDepot);
+                                        try {
+                                          await marquerPartiGroupeDirect(pretsAvecPaletteAPartir.map(dd => dd.id));
+                                        } finally {
+                                          setPartiSavingKey(null);
+                                        }
+                                      }}
+                                      style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "none", background: partiSavingKey === cleDepot ? "#ccc" : COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: partiSavingKey === cleDepot ? "not-allowed" : "pointer" }}
+                                    >
+                                      {partiSavingKey === cleDepot ? "..." : `🚚 Marquer parti (${pretsAvecPaletteAPartir.length})`}
+                                    </button>
+                                  </div>
+                                )}
                                 {depotOuvert && (
                                   <div style={{ display: "grid", gap: 12 }}>
                                     {demandesJourDepot.map(d => (
@@ -951,28 +969,16 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                             décisions commerciales, elles vivent uniquement dans Reconditionnement. */}
                                         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                                           {/* 11/09/2026 — Demande d'Elinathan : chaque ligne se valide "prêt" une par une,
-                                              sans demander le nombre de palettes à chaque fois. Le total de palettes pour
-                                              tout le lot n'est demandé qu'une seule fois, une fois que toutes les lignes du
-                                              dépôt/jour sont passées "prêt" — voir le bouton "📦 Combien de palettes ?"
-                                              ci-dessus (apparaît dès qu'il n'y a plus de "en attente" dans le groupe). */}
+                                              sans demander le nombre de palettes à chaque fois. Une fois tout le dépôt/jour
+                                              passé "prêt", les cases palettes puis le bouton "🚚 Marquer parti" (groupé, une
+                                              seule fois) apparaissent directement dans l'en-tête du dépôt ci-dessus — plus de
+                                              bouton "prêt"/"parti" par ligne individuelle. */}
                                           {d.statut === "en attente" && (
                                             <button
                                               onClick={() => marquerPretSansPalettes(d.id)}
                                               style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                                             >
                                               ✓ Marquer prêt
-                                            </button>
-                                          )}
-                                          {d.statut === "prêt" && (
-                                            <button
-                                              onClick={() => {
-                                                setGroupePartiIds(aEnvoyerDuGroupe.map(dd => dd.id));
-                                                setGroupePartiGrandes("");
-                                                setGroupePartiDemi("");
-                                              }}
-                                              style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                                            >
-                                              🚚 Marquer parti
                                             </button>
                                           )}
                                           {d.statut === "parti" && (
@@ -1024,113 +1030,6 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           </div>
         )}
       </div>
-
-      {/* MODALE — "Combien de palettes ?" groupée (une seule fois, une fois tout validé "prêt") */}
-      {palettesGroupeIds && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 400, width: "100%", borderTop: `7px solid ${COLORS.primary}` }}>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Combien de palettes ?</p>
-              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                {palettesGroupeIds.length} demande{palettesGroupeIds.length > 1 ? "s" : ""} validée{palettesGroupeIds.length > 1 ? "s" : ""} "prêt" — total de palettes pour tout le lot (pas de détail par demande)
-              </p>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes</label>
-                <input type="number" value={palettesGroupeGrandes} onChange={e => setPalettesGroupeGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Demi-palettes</label>
-                <input type="number" value={palettesGroupeDemi} onChange={e => setPalettesGroupeDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setPalettesGroupeIds(null)} disabled={palettesGroupeSaving} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: palettesGroupeSaving ? "not-allowed" : "pointer" }}>Annuler</button>
-              <button
-                disabled={palettesGroupeSaving}
-                onClick={async () => {
-                  if (palettesGroupeSaving) return;
-                  const g = parseInt(palettesGroupeGrandes) || 0;
-                  const d = parseInt(palettesGroupeDemi) || 0;
-                  if (g === 0 && d === 0) { notify("error", "✗ Indique au moins une palette"); return; }
-                  setPalettesGroupeSaving(true);
-                  try {
-                    await validerPaletteGroupe(palettesGroupeIds, g, d);
-                    setPalettesGroupeIds(null);
-                  } finally {
-                    setPalettesGroupeSaving(false);
-                  }
-                }}
-                style={{ flex: 2, background: palettesGroupeSaving ? "#ccc" : COLORS.primary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: palettesGroupeSaving ? "not-allowed" : "pointer" }}
-              >
-                {palettesGroupeSaving ? "..." : "✓ Valider"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODALE — "Tout marquer parti" groupée */}
-      {groupePartiIds && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 400, width: "100%", borderTop: `7px solid ${COLORS.secondary}` }}>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>🚚</div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Tout marquer parti</p>
-              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                {groupePartiIds.length} demande{groupePartiIds.length > 1 ? "s" : ""} — total de palettes chargées (pas de détail par demande)
-              </p>
-            </div>
-            {(() => {
-              const demandesAvecEcart = groupePartiIds.map(id => demandes.find(d => d.id === id)).filter((d): d is Demande => !!d && !!d.retourPresta?.ecart);
-              if (demandesAvecEcart.length === 0) return null;
-              return (
-                <div style={{ background: COLORS.amberLight, border: `1.5px solid #fde3a8`, borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
-                  <p style={{ fontSize: 11.5, fontWeight: 800, color: "#92400e", margin: "0 0 6px" }}>⚠️ Écart annoncé par le reconditionneur — à vérifier avant de valider :</p>
-                  {demandesAvecEcart.map(d => (
-                    <p key={d.id} style={{ fontSize: 11.5, color: "#92400e", margin: "2px 0" }}>
-                      {d.numero || d.id} : {d.retourPresta!.quantiteDeclaree} colis déclarés (prévu {d.nbColisAEntrer ?? "-"}, écart {d.retourPresta!.ecart! > 0 ? "+" : ""}{d.retourPresta!.ecart})
-                    </p>
-                  ))}
-                </div>
-              );
-            })()}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes</label>
-                <input type="number" value={groupePartiGrandes} onChange={e => setGroupePartiGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Demi-palettes</label>
-                <input type="number" value={groupePartiDemi} onChange={e => setGroupePartiDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setGroupePartiIds(null)} disabled={groupePartiSaving} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: groupePartiSaving ? "not-allowed" : "pointer" }}>Annuler</button>
-              <button
-                disabled={groupePartiSaving}
-                onClick={async () => {
-                  if (groupePartiSaving) return;
-                  setGroupePartiSaving(true);
-                  try {
-                    const g = parseInt(groupePartiGrandes) || 0;
-                    const d = parseInt(groupePartiDemi) || 0;
-                    await marquerToutPretPuisPartiGroupe(groupePartiIds, g, d);
-                    setGroupePartiIds(null);
-                  } finally {
-                    setGroupePartiSaving(false);
-                  }
-                }}
-                style={{ flex: 2, background: groupePartiSaving ? "#ccc" : COLORS.secondary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: groupePartiSaving ? "not-allowed" : "pointer" }}
-              >
-                {groupePartiSaving ? "..." : "✓ Valider"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODALE — Aperçu PDF (bon Geslot ou bon de prépa) */}
       {pdfApercu && (

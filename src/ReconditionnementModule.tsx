@@ -59,15 +59,23 @@ function formatCaisses(caisses: number): string {
 // "= X palette(s) + Y caisses" est en dessous, sur un fond teinté, comme dans Prestataires.
 function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage }: { moorea: number; nlt: number; cartonAndes: number; nltEngage?: number }) {
   const carte = (label: string, total: number, couleur: string, bg: string, extra?: any) => {
-    const palettes = Math.floor((total || 0) / CAISSES_PAR_PALETTE);
-    const reste = (total || 0) % CAISSES_PAR_PALETTE;
+    // 11/09/2026 — Demande d'Elinathan : signaler clairement quand le stock de caisses est
+    // NÉGATIF (plus de caisses sorties que ce qui était réellement disponible), au lieu d'afficher
+    // silencieusement un nombre négatif sans explication — même code couleur rouge/alerte que le
+    // "il en manque X" déjà utilisé plus bas pour le stock tampon NLT.
+    const negatif = (total || 0) < 0;
+    const totalAbs = Math.abs(total || 0);
+    const palettes = Math.floor(totalAbs / CAISSES_PAR_PALETTE);
+    const reste = totalAbs % CAISSES_PAR_PALETTE;
     return (
-      <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+      <div style={{ background: "#fff", border: `1.5px solid ${negatif ? COLORS.danger : "#e8e0d0"}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>{label}</div>
-        <div style={{ fontSize: 26, fontWeight: 800, color: couleur }}>{total || 0}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: negatif ? COLORS.danger : couleur }}>{total || 0}</div>
         <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>caisses au total</div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#3a3a3a", background: bg, borderRadius: 8, padding: "5px 8px" }}>
-          = {palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisse${reste > 1 ? "s" : ""}` : ""}` : `${total || 0} caisse${(total || 0) > 1 ? "s" : ""} (moins d'une palette)`}
+        <div style={{ fontSize: 13, fontWeight: 700, color: negatif ? COLORS.danger : "#3a3a3a", background: negatif ? COLORS.dangerLight : bg, borderRadius: 8, padding: "5px 8px" }}>
+          {negatif
+            ? `⚠️ stock négatif — il manque ${totalAbs} caisse${totalAbs > 1 ? "s" : ""}`
+            : `= ${palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisse${reste > 1 ? "s" : ""}` : ""}` : `${total || 0} caisse${(total || 0) > 1 ? "s" : ""} (moins d'une palette)`}`}
         </div>
         {extra}
       </div>
@@ -1333,7 +1341,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       };
       const vArticleVrac = resoudreArticle(lire("Article\\s*[àa]\\s*utiliser"));
       const vArticleFini = resoudreArticle(lire("Article\\s*[àa]\\s*fabriquer"));
-      return vArticleVrac || vArticleFini || "";
+      // 11/09/2026 — Demande d'Elinathan : afficher l'article qu'on va PRODUIRE (article fini, "à
+      // fabriquer") plutôt que l'article vrac qu'on va sortir du stock ("à utiliser") — avant, c'était
+      // l'inverse, la liste montrait ce qui sort au lieu de ce qui se fabrique.
+      return vArticleFini || vArticleVrac || "";
     } catch {
       // La reconnaissance de l'article est un confort d'affichage, pas une nécessité — si elle
       // échoue, le fichier reste utilisable normalement, la liste affiche juste son nom de fichier.
