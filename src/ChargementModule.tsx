@@ -44,11 +44,14 @@ const DIMENSIONS_PALETTE: Record<FormatPalette, { w: number; d: number; label: s
 
 type TruckConfig = {
   longueur: number; largeur: number; hauteurUtile: number; hauteurPalette: number;
-  niveauxMax: number; poidsMax: number; poidsPaletteVide: number;
+  hauteurEcrasementCm: number; poidsMax: number; poidsPaletteVide: number;
 };
+// 11/09/2026 — Elinathan a demandé que la limite d'écrasement se règle en cm de hauteur de
+// cartons empilés (ce qu'elle observe concrètement), pas en nombre de niveaux — le nombre de
+// niveaux qu'on peut en tirer dépend de la hauteur d'un carton et se recalcule à partir de là.
 const TRUCK_DEFAUT: TruckConfig = {
   longueur: 1158, largeur: 229, hauteurUtile: 225, hauteurPalette: 15,
-  niveauxMax: 8, poidsMax: 26000, poidsPaletteVide: 25,
+  hauteurEcrasementCm: 96, poidsMax: 26000, poidsPaletteVide: 25,
 };
 
 type Parametres = { cartonL: number; cartonl: number; cartonH: number; truck: TruckConfig };
@@ -144,7 +147,8 @@ function calculerEmpilageEtages(truck: TruckConfig, cartonH: number, coucheCount
 // sert de comparaison ("ce que tu aurais sans empiler en paliers").
 function calculerPileSimple(truck: TruckConfig, cartonH: number, coucheCount: number) {
   const niveauxHauteur = cartonH > 0 ? Math.floor((truck.hauteurUtile - truck.hauteurPalette) / cartonH) : 0;
-  const niveaux = Math.max(0, truck.niveauxMax > 0 ? Math.min(truck.niveauxMax, niveauxHauteur) : niveauxHauteur);
+  const niveauxEcrasement = cartonH > 0 ? Math.floor(truck.hauteurEcrasementCm / cartonH) : 0;
+  const niveaux = Math.max(0, truck.hauteurEcrasementCm > 0 ? Math.min(niveauxEcrasement, niveauxHauteur) : niveauxHauteur);
   return { niveaux, colis: niveaux * coucheCount, hauteurUtilisee: truck.hauteurPalette + niveaux * cartonH };
 }
 
@@ -166,6 +170,7 @@ function nowFrDate() {
 }
 
 function calculerStats(conteneur: Conteneur, references: Reference[], cartonL: number, cartonl: number, cartonH: number) {
+  const truck = { ...TRUCK_DEFAUT, ...(conteneur.truck || {}) };
   const palettes = Object.values(conteneur.palettes || {});
   const refMap = Object.fromEntries(references.map(r => [r.id, r]));
   let totalCartons = 0, poidsNet = 0, poidsBrut = 0, longueurUtilisee = 0, nbPalettesInterEtages = 0;
@@ -188,11 +193,11 @@ function calculerStats(conteneur: Conteneur, references: Reference[], cartonL: n
     if (p.modeEmpilage === "etages" && p.colisParEtage) {
       const dims = DIMENSIONS_PALETTE[p.format];
       const couche = meilleureCoucheCarton(dims.w, dims.d, cartonL, cartonl);
-      const { etages } = calculerEmpilageEtages(conteneur.truck, cartonH, couche.n, p.colisParEtage);
+      const { etages } = calculerEmpilageEtages(truck, cartonH, couche.n, p.colisParEtage);
       nbPalettesInterEtages += Math.max(0, etages - 1);
     }
   }
-  poidsBrut += (palettes.length + nbPalettesInterEtages) * conteneur.truck.poidsPaletteVide;
+  poidsBrut += (palettes.length + nbPalettesInterEtages) * truck.poidsPaletteVide;
   return { totalCartons, poidsNet, poidsBrut, nbPalettes: palettes.length, longueurUtilisee, parRef: Object.entries(parRefMap).map(([id, v]) => ({ id, ...v })).filter(v => v.cartons > 0) };
 }
 
@@ -367,7 +372,7 @@ function ModaleReglages({ parametres, onClose, onSave }: { parametres: Parametre
           <div><label style={labelStyle}>Largeur utile (cm)</label><input type="number" value={p.truck.largeur} onChange={e => setP({ ...p, truck: { ...p.truck, largeur: parseFloat(e.target.value) || 0 } })} style={champStyle} /></div>
           <div><label style={labelStyle}>Hauteur intérieure (cm)</label><input type="number" value={p.truck.hauteurUtile} onChange={e => setP({ ...p, truck: { ...p.truck, hauteurUtile: parseFloat(e.target.value) || 0 } })} style={champStyle} /></div>
           <div><label style={labelStyle}>Hauteur palette (cm)</label><input type="number" value={p.truck.hauteurPalette} onChange={e => setP({ ...p, truck: { ...p.truck, hauteurPalette: parseFloat(e.target.value) || 0 } })} style={champStyle} /></div>
-          <div><label style={labelStyle}>Niveaux max (écrasement)</label><input type="number" value={p.truck.niveauxMax} onChange={e => setP({ ...p, truck: { ...p.truck, niveauxMax: parseInt(e.target.value) || 0 } })} style={champStyle} /></div>
+          <div><label style={labelStyle}>Écrasement max (cm de cartons empilés)</label><input type="number" value={p.truck.hauteurEcrasementCm} onChange={e => setP({ ...p, truck: { ...p.truck, hauteurEcrasementCm: parseFloat(e.target.value) || 0 } })} style={champStyle} /></div>
           <div><label style={labelStyle}>Poids max marchandise (kg)</label><input type="number" value={p.truck.poidsMax} onChange={e => setP({ ...p, truck: { ...p.truck, poidsMax: parseFloat(e.target.value) || 0 } })} style={champStyle} /></div>
           <div><label style={labelStyle}>Poids palette vide (kg)</label><input type="number" value={p.truck.poidsPaletteVide} onChange={e => setP({ ...p, truck: { ...p.truck, poidsPaletteVide: parseFloat(e.target.value) || 0 } })} style={champStyle} /></div>
         </div>
@@ -412,7 +417,9 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
   const [justPlacedId, setJustPlacedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  const truck = conteneur.truck || parametres.truck;
+  // Fusionné avec les valeurs par défaut : un conteneur créé avant l'ajout d'un réglage (ex :
+  // "hauteurEcrasementCm") ne doit pas se retrouver avec un champ manquant/undefined.
+  const truck = { ...TRUCK_DEFAUT, ...(conteneur.truck || parametres.truck) };
   const palettes = Object.values(conteneur.palettes || {});
   const stats = calculerStats(conteneur, references, parametres.cartonL, parametres.cartonl, parametres.cartonH);
   const pctPoids = truck.poidsMax > 0 ? (stats.poidsBrut / truck.poidsMax) * 100 : 0;
@@ -661,7 +668,7 @@ function ModaleReglagesCamion({ truck, onClose, onSave }: { truck: TruckConfig; 
           <div><label style={labelStyle}>Largeur utile (cm)</label><input type="number" value={t.largeur} onChange={e => setT({ ...t, largeur: parseFloat(e.target.value) || 0 })} style={champStyle} /></div>
           <div><label style={labelStyle}>Hauteur intérieure (cm)</label><input type="number" value={t.hauteurUtile} onChange={e => setT({ ...t, hauteurUtile: parseFloat(e.target.value) || 0 })} style={champStyle} /></div>
           <div><label style={labelStyle}>Hauteur palette (cm)</label><input type="number" value={t.hauteurPalette} onChange={e => setT({ ...t, hauteurPalette: parseFloat(e.target.value) || 0 })} style={champStyle} /></div>
-          <div><label style={labelStyle}>Niveaux max (écrasement)</label><input type="number" value={t.niveauxMax} onChange={e => setT({ ...t, niveauxMax: parseInt(e.target.value) || 0 })} style={champStyle} /></div>
+          <div><label style={labelStyle}>Écrasement max (cm de cartons empilés)</label><input type="number" value={t.hauteurEcrasementCm} onChange={e => setT({ ...t, hauteurEcrasementCm: parseFloat(e.target.value) || 0 })} style={champStyle} /></div>
           <div><label style={labelStyle}>Poids max marchandise (kg)</label><input type="number" value={t.poidsMax} onChange={e => setT({ ...t, poidsMax: parseFloat(e.target.value) || 0 })} style={champStyle} /></div>
           <div><label style={labelStyle}>Poids palette vide (kg)</label><input type="number" value={t.poidsPaletteVide} onChange={e => setT({ ...t, poidsPaletteVide: parseFloat(e.target.value) || 0 })} style={champStyle} /></div>
         </div>
@@ -735,11 +742,12 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
   // des deux — la hauteur du camion ne sert que de plafond théorique, l'écrasement est presque
   // toujours la vraie limite en dessous de ce plafond.
   const niveauxHauteurCamion = cartonH > 0 ? Math.floor((truck.hauteurUtile - truck.hauteurPalette) / cartonH) : 0;
-  const niveauxMaxEffectif = truck.niveauxMax > 0 ? Math.min(truck.niveauxMax, niveauxHauteurCamion) : niveauxHauteurCamion;
+  const niveauxEcrasement = cartonH > 0 ? Math.floor(truck.hauteurEcrasementCm / cartonH) : 0;
+  const niveauxMaxEffectif = truck.hauteurEcrasementCm > 0 ? Math.min(niveauxEcrasement, niveauxHauteurCamion) : niveauxHauteurCamion;
 
   const niveauxImpliques = couche.n > 0 ? Math.ceil(nbCartons / couche.n) : 0;
   const ecrasementDepasse = modeEmpilage === "simple" && niveauxMaxEffectif > 0 && niveauxImpliques > niveauxMaxEffectif;
-  const limitantHauteur = niveauxHauteurCamion <= truck.niveauxMax;
+  const limitantHauteur = niveauxHauteurCamion <= niveauxEcrasement;
 
   // Empilage par étages : combien de paliers de `colisParEtage` tiennent dans la hauteur du
   // camion, séparés par une palette intermédiaire — et ce qu'on "perd" en restant sur une seule
@@ -816,7 +824,7 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
             {couche.n} colis/couche ({couche.detail}) → environ <b>{niveauxImpliques}</b> niveau{niveauxImpliques > 1 ? "x" : ""} pour {nbCartons || 0} colis.
             <div style={{ marginTop: 6, fontSize: 11, color: COLORS.gray400 }}>
               Hauteur camion : ({truck.hauteurUtile} − {truck.hauteurPalette} cm de palette) ÷ {cartonH} cm/carton = <b>{niveauxHauteurCamion} niveaux</b> maxi possibles.
-              Réglage écrasement : <b>{truck.niveauxMax} niveaux</b> maxi. → limite retenue : <b>{niveauxMaxEffectif}</b> ({limitantHauteur ? "hauteur du camion" : "sécurité écrasement"}).
+              Réglage écrasement : {truck.hauteurEcrasementCm} cm ÷ {cartonH} cm/carton = <b>{niveauxEcrasement} niveaux</b> maxi. → limite retenue : <b>{niveauxMaxEffectif}</b> ({limitantHauteur ? "hauteur du camion" : "sécurité écrasement"}).
             </div>
             {ecrasementDepasse && <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ {niveauxImpliques} niveaux dépasse la limite de {niveauxMaxEffectif} — risque d'écrasement ou ça ne rentre pas en hauteur.</div>}
             <div style={{ marginTop: 6, fontSize: 11, color: COLORS.tertiary }}>
@@ -826,8 +834,8 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
         ) : (
           <div style={{ background: COLORS.tertiaryLight, border: `1px solid ${COLORS.tertiary}`, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#78350f", marginBottom: 12 }}>
             {couche.n} colis/couche → <b>{empilage.niveauxParEtage}</b> niveau{empilage.niveauxParEtage > 1 ? "x" : ""} pour tenir {colisParEtage} colis par étage.
-            {empilage.niveauxParEtage > truck.niveauxMax && truck.niveauxMax > 0 && (
-              <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ {empilage.niveauxParEtage} niveaux par étage dépasse ton réglage écrasement ({truck.niveauxMax}) — risque d'écraser le bas de CHAQUE étage.</div>
+            {empilage.niveauxParEtage > niveauxEcrasement && truck.hauteurEcrasementCm > 0 && (
+              <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ {empilage.niveauxParEtage} niveaux par étage ({empilage.niveauxParEtage * cartonH} cm) dépasse ton réglage écrasement ({truck.hauteurEcrasementCm} cm, soit {niveauxEcrasement} niveaux) — risque d'écraser le bas de CHAQUE étage.</div>
             )}
             <div style={{ marginTop: 6 }}>
               → <b>{empilage.etages}</b> étage{empilage.etages > 1 ? "s" : ""} de {colisParEtage} tiennent dans les {formatNombre(truck.hauteurUtile / 100, 2)} m de hauteur (1 palette de base + {Math.max(0, empilage.etages - 1)} palette{empilage.etages > 2 ? "s" : ""} intermédiaire{empilage.etages > 2 ? "s" : ""}), hauteur utilisée : {formatNombre(empilage.hauteurUtilisee / 100, 2)} m / {formatNombre(truck.hauteurUtile / 100, 2)} m.
