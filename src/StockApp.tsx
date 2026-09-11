@@ -1577,10 +1577,13 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
       // filtre directement par date (tout ce qui est plus récent que STOCK_LIST_LOOKBACK_JOURS
       // jours) avec un simple ">=", combiné à un tri croissant SUR LE MÊME CHAMP — cette
       // combinaison-là (filtre + tri sur le même champ) ne demande jamais d'index, quel que soit
-      // le champ, y compris l'identifiant du document. Un import de stock étant rare (quelques
-      // fois par semaine au plus), quelques mois de recul suffisent largement à couvrir tous les
-      // stocks réellement utiles à l'accueil, sans jamais retélécharger tout l'historique.
-      const STOCK_LIST_LOOKBACK_JOURS = 180;
+      // le champ, y compris l'identifiant du document.
+      // 11/09/2026 — Demande d'Elinathan : réduit de 180 à 14 jours (2 semaines en amont) — la
+      // liste d'accueil n'a besoin que des stocks récents, pas de plusieurs mois d'historique. Les
+      // stocks plus anciens restent bien en base (rien n'est supprimé), juste plus affichés ici ;
+      // l'Historique/Rapports, s'il en a besoin un jour, peut interroger Firestore directement sans
+      // cette limite.
+      const STOCK_LIST_LOOKBACK_JOURS = 14;
       const renderStockList = async () => {
         const list = document.getElementById("s-stock-list");
         if (!list) return;
