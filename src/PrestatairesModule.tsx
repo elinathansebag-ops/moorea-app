@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, styles, ChargementEcran } from "./shared";
 import * as XLSX from "xlsx";
@@ -201,6 +201,25 @@ function fmtDateIfco(val: any): string {
   return s;
 }
 
+// 11/09/2026 — Demande d'Elinathan : "Fiche récap prestataires" — une fiche par prestataire
+// (reconditionneur, transporteur, fournisseur emballage/IFCO, ou autre) avec sa photo, son nom, sa
+// catégorie et la liste de ses coûts (colis, filet, caisse, etc. — libres, chaque prestataire a
+// ses propres lignes), pour que les commerciaux aient un récap visuel rapide. Stocké dans
+// "prestataires_fiches" (Firebase Realtime Database), indépendant des données déjà existantes
+// (transporteurs de Reconditionnement, catalogue cartons...) — une fiche "à plat", saisie
+// librement, pas reliée à une logique métier particulière.
+type CoutPrestataire = { label: string; prix: number; unite: string };
+type PrestataireFiche = {
+  id: string;
+  nom: string;
+  categorie: string;
+  photoBase64?: string | null;
+  couts: CoutPrestataire[];
+  notes?: string;
+  createdAt: number;
+};
+const CATEGORIES_FICHE_PRESTA = ["Reconditionneur", "Transporteur", "Fournisseur emballage / IFCO", "Autre"];
+
 const COLORS = {
   primary: "#27ae60",      // Green
   primaryLight: "#eafaf1",
@@ -222,7 +241,7 @@ const COLORS = {
 
 export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap"
   >(initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
@@ -253,6 +272,19 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   const [notesIfco, setNotesIfco] = useState("");
 
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  // ── Fiche récap prestataires (11/09/2026, demande d'Elinathan) ──
+  const [fichesPresta, setFichesPresta] = useState<PrestataireFiche[]>([]);
+  const [fichesPrestaChargees, setFichesPrestaChargees] = useState(false);
+  // null = fermé, "new" = création, sinon l'id de la fiche en cours d'édition
+  const [showFormFiche, setShowFormFiche] = useState<string | null>(null);
+  const [ficheNom, setFicheNom] = useState("");
+  const [ficheCategorie, setFicheCategorie] = useState(CATEGORIES_FICHE_PRESTA[0]);
+  const [fichePhotoBase64, setFichePhotoBase64] = useState<string | null>(null);
+  const [ficheCouts, setFicheCouts] = useState<{ label: string; prix: string; unite: string }[]>([{ label: "", prix: "", unite: "€ / colis" }]);
+  const [ficheNotes, setFicheNotes] = useState("");
+  const [ficheSaving, setFicheSaving] = useState(false);
+  const [photoApercuFiche, setPhotoApercuFiche] = useState<string | null>(null);
 
   // ── Entretiens / interventions prestataires (maintenance) ──
   const [entretiens, setEntretiens] = useState<Entretien[]>([]);
@@ -615,6 +647,16 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     return () => u();
   }, []);
 
+  // Fiches récap prestataires (photo + coûts, voir type PrestataireFiche plus haut).
+  useEffect(() => {
+    const u = onValue(ref(db, "prestataires_fiches"), (snap) => {
+      const d = snap.val();
+      setFichesPresta(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: PrestataireFiche, b: PrestataireFiche) => a.nom.localeCompare(b.nom)) : []);
+      setFichesPrestaChargees(true);
+    });
+    return () => u();
+  }, []);
+
   // Interventions de maintenance (portes de quai, froid...) — voir type Entretien plus haut.
   useEffect(() => {
     const u = onValue(ref(db, "entretiens"), (snap) => {
@@ -969,6 +1011,77 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     if (!window.confirm("Supprimer cette entrée ?")) return;
     await remove(ref(db, `palettes_vierges_livraisons/${id}`));
     setNotification({ type: "success", message: "🗑️ Entrée supprimée" });
+  }
+
+  // ── Fiche récap prestataires ──
+  function ouvrirNouvelleFiche() {
+    setFicheNom("");
+    setFicheCategorie(CATEGORIES_FICHE_PRESTA[0]);
+    setFichePhotoBase64(null);
+    setFicheCouts([{ label: "", prix: "", unite: "€ / colis" }]);
+    setFicheNotes("");
+    setShowFormFiche("new");
+  }
+  function ouvrirEditionFiche(f: PrestataireFiche) {
+    setFicheNom(f.nom);
+    setFicheCategorie(f.categorie);
+    setFichePhotoBase64(f.photoBase64 || null);
+    setFicheCouts(f.couts && f.couts.length > 0 ? f.couts.map(c => ({ label: c.label, prix: String(c.prix), unite: c.unite })) : [{ label: "", prix: "", unite: "€ / colis" }]);
+    setFicheNotes(f.notes || "");
+    setShowFormFiche(f.id);
+  }
+  function fermerFormFiche() {
+    setShowFormFiche(null);
+  }
+  function ajouterLigneCoutFiche() {
+    setFicheCouts(prev => [...prev, { label: "", prix: "", unite: "€ / colis" }]);
+  }
+  function retirerLigneCoutFiche(i: number) {
+    setFicheCouts(prev => prev.filter((_, idx) => idx !== i));
+  }
+  function modifierLigneCoutFiche(i: number, champ: "label" | "prix" | "unite", val: string) {
+    setFicheCouts(prev => prev.map((l, idx) => (idx === i ? { ...l, [champ]: val } : l)));
+  }
+  function handlePhotoFicheChange(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setFichePhotoBase64(reader.result as string);
+    reader.readAsDataURL(f);
+  }
+  async function enregistrerFiche() {
+    const nom = ficheNom.trim();
+    if (!nom) { setNotification({ type: "error", message: "✗ Indique le nom du prestataire" }); return; }
+    setFicheSaving(true);
+    try {
+      const couts: CoutPrestataire[] = ficheCouts
+        .filter(l => l.label.trim() && l.prix.trim())
+        .map(l => ({ label: l.label.trim(), prix: parseFloat(l.prix.replace(",", ".")) || 0, unite: l.unite.trim() || "€" }));
+      const payload = {
+        nom,
+        categorie: ficheCategorie,
+        photoBase64: fichePhotoBase64 || null,
+        couts,
+        notes: ficheNotes.trim(),
+      };
+      if (showFormFiche && showFormFiche !== "new") {
+        await update(ref(db, `prestataires_fiches/${showFormFiche}`), payload);
+        setNotification({ type: "success", message: "✅ Fiche mise à jour" });
+      } else {
+        await push(ref(db, "prestataires_fiches"), { ...payload, createdAt: Date.now() });
+        setNotification({ type: "success", message: "✅ Fiche créée" });
+      }
+      setShowFormFiche(null);
+    } catch (err: any) {
+      setNotification({ type: "error", message: `❌ Erreur : ${err?.message || "erreur inconnue"}` });
+    } finally {
+      setFicheSaving(false);
+    }
+  }
+  async function supprimerFiche(id: string) {
+    if (!window.confirm("Supprimer cette fiche prestataire ?")) return;
+    await remove(ref(db, `prestataires_fiches/${id}`));
+    setNotification({ type: "success", message: "🗑️ Fiche supprimée" });
   }
 
   // ── Entretiens / interventions prestataires ──
@@ -2157,6 +2270,27 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 }}
               >
                 ⚖️ Point de stock IFCO
+              </button>
+
+              {/* 11/09/2026 — Demande d'Elinathan : fiche récap visuelle (photo + coûts) de
+                  chaque prestataire, pour que les commerciaux aient un aperçu rapide. */}
+              <button
+                onClick={() => setActiveTab("fiche-recap")}
+                style={{
+                  padding: "14px 22px",
+                  background: "white",
+                  color: "#8e44ad",
+                  border: "2px solid #8e44ad",
+                  borderRadius: "10px",
+                  cursor: "pointer",
+                  fontSize: "15px",
+                  fontWeight: "700",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                📋 Fiche récap prestataires{fichesPresta.length > 0 ? ` (${fichesPresta.length})` : ""}
               </button>
 
             </div>
@@ -4437,6 +4571,142 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                     </table>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 11/09/2026 — Demande d'Elinathan : "Fiche récap prestataires" — photo + nom + coûts
+            (colis, filet, caisse...) de chaque prestataire, pour que les commerciaux aient un
+            aperçu visuel rapide, comme une fiche imprimée. */}
+        {activeTab === "fiche-recap" && (
+          <div style={{ display: "grid", gap: "20px" }}>
+            <div style={{
+              background: "white",
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              border: `1px solid ${COLORS.gray200}`,
+            }}>
+              <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>📋 Fiche récap prestataires</h3>
+                  <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Photo, nom et coûts (colis, filet, caisse...) de chaque prestataire — pour les commerciaux.</p>
+                </div>
+                <button
+                  onClick={ouvrirNouvelleFiche}
+                  style={{ padding: "10px 18px", background: "#8e44ad", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+                >
+                  ➕ Nouveau prestataire
+                </button>
+              </div>
+
+              <div style={{ padding: 16 }}>
+                {!fichesPrestaChargees ? (
+                  <ChargementEcran texte="Chargement des fiches…" />
+                ) : fichesPresta.length === 0 ? (
+                  <div style={{ textAlign: "center", color: COLORS.gray400, padding: "30px 0" }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                    <p style={{ margin: 0, fontSize: 13 }}>Aucune fiche pour l'instant — clique "➕ Nouveau prestataire" pour en créer une.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+                    {fichesPresta.map(f => (
+                      <div key={f.id} style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden", background: "#fff", display: "flex", flexDirection: "column" }}>
+                        <div
+                          onClick={() => f.photoBase64 && setPhotoApercuFiche(f.photoBase64)}
+                          style={{ height: 140, background: f.photoBase64 ? `#000 url(${f.photoBase64}) center/cover no-repeat` : COLORS.gray100, display: "flex", alignItems: "center", justifyContent: "center", cursor: f.photoBase64 ? "pointer" : "default" }}
+                        >
+                          {!f.photoBase64 && <span style={{ fontSize: 36, color: COLORS.gray400 }}>🏢</span>}
+                        </div>
+                        <div style={{ padding: 14, flex: 1, display: "flex", flexDirection: "column" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: COLORS.gray700 }}>{f.nom}</span>
+                          </div>
+                          <span style={{ alignSelf: "flex-start", fontSize: 10.5, fontWeight: 700, color: "#8e44ad", background: "#f4ecf7", borderRadius: 20, padding: "2px 10px", marginBottom: 10 }}>{f.categorie}</span>
+                          {f.couts && f.couts.length > 0 ? (
+                            <div style={{ display: "grid", gap: 4, marginBottom: f.notes ? 10 : 0 }}>
+                              {f.couts.map((c, i) => (
+                                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: COLORS.gray700, background: COLORS.gray100, borderRadius: 6, padding: "5px 8px" }}>
+                                  <span>{c.label}</span>
+                                  <span style={{ fontWeight: 700 }}>{c.prix.toFixed(2).replace(".", ",")} {c.unite.replace(/^€\s*\/\s*/, "€ / ")}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p style={{ fontSize: 11.5, color: COLORS.gray400, fontStyle: "italic", margin: "0 0 10px" }}>Aucun coût renseigné</p>
+                          )}
+                          {f.notes && <p style={{ fontSize: 11.5, color: COLORS.gray600, margin: "0 0 10px" }}>{f.notes}</p>}
+                          <div style={{ marginTop: "auto", display: "flex", gap: 8 }}>
+                            <button onClick={() => ouvrirEditionFiche(f)} style={{ flex: 1, padding: "7px 10px", background: "#fff", color: COLORS.gray700, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 7, cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>✏️ Modifier</button>
+                            <button onClick={() => supprimerFiche(f.id)} style={{ padding: "7px 10px", background: COLORS.dangerLight, color: COLORS.danger, border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>🗑️</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODALE — Aperçu photo prestataire en plein écran */}
+        {photoApercuFiche && (
+          <div onClick={() => setPhotoApercuFiche(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <img src={photoApercuFiche} alt="Prestataire" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }} />
+          </div>
+        )}
+
+        {/* MODALE — Créer / modifier une fiche prestataire */}
+        {showFormFiche && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 850, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 460, width: "100%", borderTop: "7px solid #8e44ad", maxHeight: "90vh", overflowY: "auto" }}>
+              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: "0 0 16px" }}>
+                {showFormFiche === "new" ? "➕ Nouveau prestataire" : "✏️ Modifier la fiche"}
+              </p>
+
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Nom du prestataire</label>
+              <input value={ficheNom} onChange={e => setFicheNom(e.target.value)} placeholder="Ex : NLT, AB Transports..." style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginBottom: 12 }} />
+
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Catégorie</label>
+              <select value={ficheCategorie} onChange={e => setFicheCategorie(e.target.value)} style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginBottom: 12 }}>
+                {CATEGORIES_FICHE_PRESTA.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Photo</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                {fichePhotoBase64 && <img src={fichePhotoBase64} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${COLORS.gray200}` }} />}
+                <label style={{ padding: "8px 14px", background: "#fff", color: COLORS.gray700, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  📷 {fichePhotoBase64 ? "Changer" : "Ajouter"}
+                  <input type="file" accept="image/*" onChange={handlePhotoFicheChange} style={{ display: "none" }} />
+                </label>
+                {fichePhotoBase64 && (
+                  <button onClick={() => setFichePhotoBase64(null)} style={{ padding: "8px 10px", background: "none", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Retirer</button>
+                )}
+              </div>
+
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Coûts (un par ligne — colis, filet, caisse...)</label>
+              <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+                {ficheCouts.map((l, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6 }}>
+                    <input value={l.label} onChange={e => modifierLigneCoutFiche(i, "label", e.target.value)} placeholder="Ex : Colis" style={{ flex: 2, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
+                    <input value={l.prix} onChange={e => modifierLigneCoutFiche(i, "prix", e.target.value)} placeholder="0,00" inputMode="decimal" style={{ width: 70, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
+                    <input value={l.unite} onChange={e => modifierLigneCoutFiche(i, "unite", e.target.value)} placeholder="€ / colis" style={{ flex: 1.4, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
+                    <button onClick={() => retirerLigneCoutFiche(i)} style={{ padding: "0 10px", background: "none", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 16 }}>×</button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={ajouterLigneCoutFiche} style={{ padding: "6px 12px", background: "none", border: `1.5px dashed ${COLORS.gray200}`, borderRadius: 7, color: COLORS.gray600, cursor: "pointer", fontSize: 11.5, fontWeight: 700, marginBottom: 14 }}>+ Ajouter une ligne</button>
+
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Notes (optionnel)</label>
+              <textarea value={ficheNotes} onChange={e => setFicheNotes(e.target.value)} rows={2} style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginBottom: 16, resize: "vertical" }} />
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={fermerFormFiche} disabled={ficheSaving} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: ficheSaving ? "not-allowed" : "pointer" }}>Annuler</button>
+                <button onClick={enregistrerFiche} disabled={ficheSaving} style={{ flex: 2, background: ficheSaving ? "#ccc" : "#8e44ad", color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: ficheSaving ? "not-allowed" : "pointer" }}>
+                  {ficheSaving ? "..." : "✓ Enregistrer"}
+                </button>
               </div>
             </div>
           </div>
