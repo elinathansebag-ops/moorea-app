@@ -74,31 +74,44 @@ type Conteneur = {
   palettes?: Record<string, PaletteItem>;
 };
 
-// ─── Meilleure disposition de cartons sur une couche de palette (voir v1) ───
+// ─── Meilleure disposition de cartons sur une couche de palette ───
+// 11/09/2026 — Elinathan a signalé qu'en vrai, une 100×120 prend 10 cartons (pas 9 comme le
+// premier calcul le donnait). La vraie disposition, c'est de couper la palette en 2 bandes de
+// largeurs différentes, chacune dans un sens différent : sur 100×120 avec un carton 40×30, une
+// bande de 40 cm (1 carton en largeur × 4 en longueur = 4) + une bande de 60 cm (2 en largeur ×
+// 3 en longueur = 6) = 10 cartons, sans aucune perte (40×30×10 = 12000 cm² = 100×120 pile).
+// Le calcul d'avant ne testait qu'une seule coupe "au plus près" (le reste après avoir rempli au
+// maximum dans un seul sens) — il ratait cette coupe à 40/60. Maintenant on essaie TOUTES les
+// coupes possibles (toutes les bandes dont la largeur est un multiple de 40 ou de 30, dans les
+// deux sens de la palette) et on garde la meilleure. Ça retrouve bien 8 pour 80×120 et 10 pour
+// 100×120.
+function meilleureRemplissageUneOrientation(w: number, d: number, cartL: number, cartl: number) {
+  const a = Math.floor(w / cartL) * Math.floor(d / cartl);
+  const b = Math.floor(w / cartl) * Math.floor(d / cartL);
+  return Math.max(a, b);
+}
 function meilleureCoucheCarton(palW: number, palD: number, cartL: number, cartl: number) {
-  const options: { n: number; detail: string }[] = [];
-  const colsA = Math.floor(palW / cartL);
-  const rowsA = Math.floor(palD / cartl);
-  options.push({ n: colsA * rowsA, detail: `${colsA} × ${rowsA} (carton ${cartL}×${cartl} cm)` });
-  const colsB = Math.floor(palW / cartl);
-  const rowsB = Math.floor(palD / cartL);
-  options.push({ n: colsB * rowsB, detail: `${colsB} × ${rowsB} (carton tourné)` });
-  const usedWa = colsA * cartL;
-  const restW = palW - usedWa;
-  if (restW >= cartl && colsA > 0) {
-    const bandCols = Math.floor(restW / cartl);
-    const bandRows = Math.floor(palD / cartL);
-    options.push({ n: colsA * rowsA + bandCols * bandRows, detail: "bande mixte" });
-  }
-  const usedDb = rowsB * cartL;
-  const restD = palD - usedDb;
-  if (restD >= cartl && rowsB > 0) {
-    const bandRows2 = Math.floor(restD / cartl);
-    const bandCols2 = Math.floor(palW / cartL);
-    options.push({ n: colsB * rowsB + bandCols2 * bandRows2, detail: "bande mixte" });
-  }
-  options.sort((a, b) => b.n - a.n);
-  return options[0];
+  let best = { n: meilleureRemplissageUneOrientation(palW, palD, cartL, cartl), detail: "une seule orientation, sur toute la palette" };
+
+  const candidatsLargeur = new Set<number>();
+  for (let k = cartL; k < palW; k += cartL) candidatsLargeur.add(k);
+  for (let k = cartl; k < palW; k += cartl) candidatsLargeur.add(k);
+  candidatsLargeur.forEach(s => {
+    const a = meilleureRemplissageUneOrientation(s, palD, cartL, cartl);
+    const b = meilleureRemplissageUneOrientation(palW - s, palD, cartL, cartl);
+    if (a + b > best.n) best = { n: a + b, detail: `2 bandes de ${s} + ${palW - s} cm (sens largeur)` };
+  });
+
+  const candidatsProfondeur = new Set<number>();
+  for (let k = cartL; k < palD; k += cartL) candidatsProfondeur.add(k);
+  for (let k = cartl; k < palD; k += cartl) candidatsProfondeur.add(k);
+  candidatsProfondeur.forEach(s => {
+    const a = meilleureRemplissageUneOrientation(palW, s, cartL, cartl);
+    const b = meilleureRemplissageUneOrientation(palW, palD - s, cartL, cartl);
+    if (a + b > best.n) best = { n: a + b, detail: `2 bandes de ${s} + ${palD - s} cm (sens profondeur)` };
+  });
+
+  return best;
 }
 
 function rectPalette(p: PaletteItem) {
@@ -339,6 +352,18 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
   const [showNouvelleRef, setShowNouvelleRef] = useState(false);
   const [showReglagesCamion, setShowReglagesCamion] = useState(false);
 
+  // ── Déplacer une palette posée à la souris (glisser-déposer) ──
+  // 11/09/2026 — avant, la seule façon de bouger une palette était de rouvrir sa fiche et de
+  // taper de nouvelles coordonnées à la main ("je peux pas bouger les palettes"). On garde ces
+  // champs (utile pour un réglage précis), mais on ajoute le glisser directement sur le plan :
+  // on clique-maintient une palette et on la fait glisser, elle se dépose là où on relâche (si
+  // ça ne sort pas du camion et ne chevauche personne — sinon elle revient à sa place). Un clic
+  // simple (sans bouger la souris) ouvre toujours sa fiche, comme avant.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragInfoRef = useRef<{ startClientX: number; startClientY: number; startX: number; startY: number; moved: boolean } | null>(null);
+  const dragPosRef = useRef<{ x: number; y: number } | null>(null);
+
   const truck = conteneur.truck || parametres.truck;
   const palettes = Object.values(conteneur.palettes || {});
   const stats = calculerStats(conteneur, references, parametres.cartonL, parametres.cartonl);
@@ -373,6 +398,59 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
     setModale(null);
   }
 
+  function demarrerGlisser(e: React.MouseEvent, p: PaletteItem) {
+    e.stopPropagation();
+    e.preventDefault();
+    dragInfoRef.current = { startClientX: e.clientX, startClientY: e.clientY, startX: p.x, startY: p.y, moved: false };
+    dragPosRef.current = { x: p.x, y: p.y };
+    setDragId(p.id);
+  }
+
+  useEffect(() => {
+    if (!dragId) return;
+    const palette = palettes.find(p => p.id === dragId);
+    if (!palette) return;
+
+    function onMove(e: MouseEvent) {
+      const info = dragInfoRef.current;
+      if (!info) return;
+      const dx = (e.clientX - info.startClientX) / echelle;
+      const dy = (e.clientY - info.startClientY) / echelle;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) info.moved = true;
+      const nx = Math.max(0, Math.round((info.startX + dx) / 5) * 5);
+      const ny = Math.max(0, Math.round((info.startY + dy) / 5) * 5);
+      dragPosRef.current = { x: nx, y: ny };
+      setDragPos({ x: nx, y: ny });
+    }
+    async function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      const info = dragInfoRef.current;
+      const pos = dragPosRef.current;
+      if (info && !info.moved) {
+        // Pas de déplacement réel : c'était un simple clic → ouvre la fiche, comme avant.
+        setModale({ mode: "editer", x: palette!.x, y: palette!.y, palette: palette! });
+      } else if (info && pos && palette) {
+        const rect = rectPalette(palette);
+        const rectTest = { x: pos.x, y: pos.y, lx: rect.lx, ly: rect.ly };
+        const horsLimites = pos.x < 0 || pos.y < 0 || pos.x + rect.lx > truck.longueur || pos.y + rect.ly > truck.largeur;
+        const chevauche = palettes.some(o => o.id !== palette!.id && seChevauchent(rectTest, rectPalette(o)));
+        if (!horsLimites && !chevauche) {
+          await update(ref(db, `chargement_conteneurs/${conteneur.id}/palettes/${palette!.id}`), { x: pos.x, y: pos.y });
+        }
+        // sinon : on ne fait rien, la palette revient visuellement à sa place d'origine.
+      }
+      dragInfoRef.current = null;
+      dragPosRef.current = null;
+      setDragId(null);
+      setDragPos(null);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragId]);
+
   const barre = (pct: number, danger: boolean) => (
     <div style={{ background: COLORS.gray200, borderRadius: 8, height: 10, overflow: "hidden", marginTop: 6 }}>
       <div style={{ width: `${Math.min(100, pct)}%`, height: "100%", background: danger ? COLORS.danger : pct > 90 ? COLORS.tertiary : COLORS.primary }} />
@@ -402,18 +480,19 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(240px, 1fr)", gap: 16 }}>
           {/* ── PLAN DE CHARGEMENT (vue de dessus, cliquable) ── */}
           <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 14, padding: 16, overflowX: "auto" }}>
-            <p style={{ margin: "0 0 10px", fontSize: 12, color: COLORS.gray600 }}>👆 Clique sur une zone vide du plancher pour poser une palette. Clique sur une palette posée pour la modifier ou la supprimer.</p>
-            <svg ref={svgRef} width={Math.max(svgW, 260)} height={svgH} style={{ background: COLORS.gray100, borderRadius: 8, cursor: "crosshair", display: "block" }}
+            <p style={{ margin: "0 0 10px", fontSize: 12, color: COLORS.gray600 }}>👆 Clique sur une zone vide du plancher pour poser une palette. Sur une palette posée : clique-glisse pour la déplacer, ou clique simplement dessus (sans bouger) pour la modifier/supprimer.</p>
+            <svg ref={svgRef} width={Math.max(svgW, 260)} height={svgH} style={{ background: COLORS.gray100, borderRadius: 8, cursor: "crosshair", display: "block", userSelect: "none" }}
               onClick={(e) => { if ((e.target as SVGElement).tagName === "svg" || (e.target as SVGElement).getAttribute("data-floor")) setModale({ mode: "creer", ...positionDepuisClic(e) }); }}>
               <rect data-floor="1" x={0} y={0} width={svgW} height={svgH} fill="transparent" stroke={COLORS.gray400} strokeWidth={2} strokeDasharray="4 3" />
               {palettes.map(p => {
-                const rect = rectPalette(p);
+                const enTrainDeGlisser = dragId === p.id && dragPos;
+                const rect = enTrainDeGlisser ? { ...rectPalette(p), x: dragPos!.x, y: dragPos!.y } : rectPalette(p);
                 const refInfo = references.find(r => r.id === p.referenceId);
                 const idx = references.findIndex(r => r.id === p.referenceId);
                 const couleur = idx >= 0 ? COULEURS_REF[idx % COULEURS_REF.length] : "#9ca3af";
                 return (
-                  <g key={p.id} onClick={(e) => { e.stopPropagation(); setModale({ mode: "editer", x: p.x, y: p.y, palette: p }); }} style={{ cursor: "pointer" }}>
-                    <rect x={rect.x * echelle} y={rect.y * echelle} width={rect.lx * echelle} height={rect.ly * echelle} fill={couleur} stroke="#fff" strokeWidth={2} rx={3} opacity={0.9} />
+                  <g key={p.id} onMouseDown={(e) => demarrerGlisser(e, p)} style={{ cursor: enTrainDeGlisser ? "grabbing" : "grab" }}>
+                    <rect x={rect.x * echelle} y={rect.y * echelle} width={rect.lx * echelle} height={rect.ly * echelle} fill={couleur} stroke="#fff" strokeWidth={2} rx={3} opacity={enTrainDeGlisser ? 0.65 : 0.9} />
                     <text x={(rect.x + rect.lx / 2) * echelle} y={(rect.y + rect.ly / 2) * echelle - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="#fff">{refInfo?.nom || "?"}</text>
                     <text x={(rect.x + rect.lx / 2) * echelle} y={(rect.y + rect.ly / 2) * echelle + 10} textAnchor="middle" fontSize={9} fill="#fff">{p.nbCartons} colis</text>
                   </g>
@@ -471,7 +550,7 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
           palette={modale.palette}
           references={references}
           truck={truck}
-          cartonL={parametres.cartonL} cartonl={parametres.cartonl}
+          cartonL={parametres.cartonL} cartonl={parametres.cartonl} cartonH={parametres.cartonH}
           palettesExistantes={palettes}
           onClose={() => setModale(null)}
           onSave={(data) => enregistrerPalette(data, modale.palette?.id)}
@@ -544,9 +623,9 @@ function ModaleReference({ onClose }: { onClose: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────
 // MODALE CRÉER / MODIFIER UNE PALETTE
 // ─────────────────────────────────────────────────────────────────────────
-function ModalePalette({ mode, x, y, palette, references, truck, cartonL, cartonl, palettesExistantes, onClose, onSave, onSupprimer }: {
+function ModalePalette({ mode, x, y, palette, references, truck, cartonL, cartonl, cartonH, palettesExistantes, onClose, onSave, onSupprimer }: {
   mode: "creer" | "editer"; x: number; y: number; palette?: PaletteItem;
-  references: Reference[]; truck: TruckConfig; cartonL: number; cartonl: number;
+  references: Reference[]; truck: TruckConfig; cartonL: number; cartonl: number; cartonH: number;
   palettesExistantes: PaletteItem[];
   onClose: () => void; onSave: (data: { format: FormatPalette; rotated: boolean; x: number; y: number; referenceId: string; nbCartons: number }) => void;
   onSupprimer?: () => void;
@@ -564,10 +643,20 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
   const couche = meilleureCoucheCarton(dims.w, dims.d, cartonL, cartonl);
   const niveauxImpliques = couche.n > 0 ? Math.ceil(nbCartons / couche.n) : 0;
 
+  // 11/09/2026 — la hauteur se calcule en 2 temps : (1) ce que la hauteur intérieure du camion
+  // permet physiquement — (hauteur intérieure − hauteur palette) ÷ hauteur d'un carton, arrondi
+  // en dessous ; (2) le réglage "niveaux max (écrasement)" qu'Elinathan fixe elle-même, qui peut
+  // être plus bas si empiler trop haut écraserait les cartons du bas. On retient le plus petit
+  // des deux — la hauteur du camion ne sert que de plafond théorique, l'écrasement est presque
+  // toujours la vraie limite en dessous de ce plafond.
+  const niveauxHauteurCamion = cartonH > 0 ? Math.floor((truck.hauteurUtile - truck.hauteurPalette) / cartonH) : 0;
+  const niveauxMaxEffectif = truck.niveauxMax > 0 ? Math.min(truck.niveauxMax, niveauxHauteurCamion) : niveauxHauteurCamion;
+
   const rectTest = { x: posX, y: posY, lx, ly };
   const horsLimites = posX < 0 || posY < 0 || posX + lx > truck.longueur || posY + ly > truck.largeur;
   const chevauche = palettesExistantes.some(p => p.id !== palette?.id && seChevauchent(rectTest, rectPalette(p)));
-  const ecrasementDepasse = truck.niveauxMax > 0 && niveauxImpliques > truck.niveauxMax;
+  const ecrasementDepasse = niveauxMaxEffectif > 0 && niveauxImpliques > niveauxMaxEffectif;
+  const limitantHauteur = niveauxHauteurCamion <= truck.niveauxMax;
   const invalide = horsLimites || chevauche || !referenceId || nbCartons <= 0;
 
   const champStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const };
@@ -607,8 +696,12 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
         </div>
 
         <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: COLORS.gray600, marginBottom: 12 }}>
-          {couche.n} colis/couche → environ <b>{niveauxImpliques}</b> niveau{niveauxImpliques > 1 ? "x" : ""} pour {nbCartons || 0} colis.
-          {ecrasementDepasse && <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ Dépasse les {truck.niveauxMax} niveaux max autorisés — risque d'écrasement.</div>}
+          {couche.n} colis/couche ({couche.detail}) → environ <b>{niveauxImpliques}</b> niveau{niveauxImpliques > 1 ? "x" : ""} pour {nbCartons || 0} colis.
+          <div style={{ marginTop: 6, fontSize: 11, color: COLORS.gray400 }}>
+            Hauteur camion : ({truck.hauteurUtile} − {truck.hauteurPalette} cm de palette) ÷ {cartonH} cm/carton = <b>{niveauxHauteurCamion} niveaux</b> maxi possibles.
+            Réglage écrasement : <b>{truck.niveauxMax} niveaux</b> maxi. → limite retenue : <b>{niveauxMaxEffectif}</b> ({limitantHauteur ? "hauteur du camion" : "sécurité écrasement"}).
+          </div>
+          {ecrasementDepasse && <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ {niveauxImpliques} niveaux dépasse la limite de {niveauxMaxEffectif} — risque d'écrasement ou ça ne rentre pas en hauteur.</div>}
         </div>
 
         {horsLimites && <p style={{ color: COLORS.danger, fontSize: 12, margin: "0 0 10px" }}>⚠️ Cette palette dépasse les limites du plancher à cette position.</p>}
