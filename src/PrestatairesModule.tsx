@@ -2301,31 +2301,51 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 grand chiffre est maintenant le total en CAISSES (la donnée réellement stockée et
                 sans ambiguïté), et le détail "= X palette(s) + Y caisses" passe en dessous dans
                 un texte bien plus grand et lisible, sur fond légèrement teinté pour bien le
-                détacher visuellement. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "20px" }}>
-              {([
-                { label: "🏭 IFCO — Moorea", total: stockLevels.moorea, color: "#27ae60", bg: "#eafaf1" },
-                { label: "🔄 IFCO — NLT", total: stockLevels.nlt, color: "#3b82f6", bg: "#eff6ff" },
-              ]).map(({ label, total, color, bg }) => {
-                const palettes = Math.floor(total / CAISSES_PAR_PALETTE);
-                const reste = total % CAISSES_PAR_PALETTE;
-                return (
-                  <div key={label} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>{label}</div>
-                    <div style={{ fontSize: 26, fontWeight: 800, color }}>{total}</div>
-                    <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>caisses au total</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#3a3a3a", background: bg, borderRadius: 8, padding: "5px 8px" }}>
-                      = {palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisse${reste > 1 ? "s" : ""}` : ""}` : `${total} caisse${total > 1 ? "s" : ""} (moins d'une palette)`}
-                    </div>
+                détacher visuellement.
+                11/09/2026 — Demande d'Elinathan : mêmes infos qu'en Reconditionnement (même
+                logique de carte, StockCardsIfco) — stock négatif signalé en rouge, PLUS les
+                palettes déjà commandées mais pas encore reçues (ifco_palettes_commandes,
+                statut "commandé") qui vont entrer en stock Moorea dans le futur. */}
+            {(() => {
+              const caissesEnCommandeMoorea = palettesCommandes
+                .filter(c => c.statut === "commandé")
+                .reduce((total, c) => total + c.lignes.reduce((s, l) => s + (PALETTES_IFCO[l.type as keyof typeof PALETTES_IFCO]?.caisses || 0) * l.quantite, 0), 0);
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+                  {([
+                    { label: "🏭 IFCO — Moorea", total: stockLevels.moorea, color: "#27ae60", bg: "#eafaf1", enCommande: caissesEnCommandeMoorea },
+                    { label: "🔄 IFCO — NLT", total: stockLevels.nlt, color: "#3b82f6", bg: "#eff6ff", enCommande: 0 },
+                  ]).map(({ label, total, color, bg, enCommande }) => {
+                    const negatif = (total || 0) < 0;
+                    const totalAbs = Math.abs(total || 0);
+                    const palettes = Math.floor(totalAbs / CAISSES_PAR_PALETTE);
+                    const reste = totalAbs % CAISSES_PAR_PALETTE;
+                    return (
+                      <div key={label} style={{ background: "#fff", border: `1.5px solid ${negatif ? COLORS.danger : "#e8e0d0"}`, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>{label}</div>
+                        <div style={{ fontSize: 26, fontWeight: 800, color: negatif ? COLORS.danger : color }}>{total}</div>
+                        <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>caisses au total</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: negatif ? COLORS.danger : "#3a3a3a", background: negatif ? COLORS.dangerLight : bg, borderRadius: 8, padding: "5px 8px" }}>
+                          {negatif
+                            ? `⚠️ stock négatif — il manque ${totalAbs} caisse${totalAbs > 1 ? "s" : ""}`
+                            : `= ${palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisse${reste > 1 ? "s" : ""}` : ""}` : `${total} caisse${total > 1 ? "s" : ""} (moins d'une palette)`}`}
+                        </div>
+                        {enCommande > 0 && (
+                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", fontSize: 10.5, color: "#8a6f2e" }}>
+                            🚚 + {enCommande} caisse{enCommande > 1 ? "s" : ""} en commande (arrivée à venir)
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Baby Blanc — Andes</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{stockCartonAndes}</div>
+                    <div style={{ fontSize: 11, color: "#999" }}>cartons</div>
                   </div>
-                );
-              })}
-              <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Baby Blanc — Andes</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{stockCartonAndes}</div>
-                <div style={{ fontSize: 11, color: "#999" }}>cartons</div>
-              </div>
-            </div>
+                </div>
+              );
+            })()}
             {/* Le compteur "IFCO pleines" existe toujours en interne (séparé du stock vide
                 Moorea, voir viderCaissesPleines dans l'onglet Configuration) mais n'est plus
                 affiché ici : vidé tous les 2 jours en vrai, cette donnée n'apporte rien au
