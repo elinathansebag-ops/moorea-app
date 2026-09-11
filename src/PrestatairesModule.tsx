@@ -247,12 +247,38 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
   // 09/09/2026 — Demande d'Elinathan : cet écran (le plus lourd de l'app, une vingtaine de
   // sources Firebase) affichait un calendrier vide le temps que les données arrivent, sans rien
-  // qui l'indique. On ne track pas les 20 listeners un par un (trop de risque de casser autre
-  // chose dans un fichier de cette taille) — juste les deux qui alimentent le Dashboard par
-  // défaut (commandes cartons + palettes IFCO), pour afficher un vrai message de chargement.
+  // qui l'indique.
+  // 11/09/2026 — Elinathan a signalé que le dashboard affichait quand même 0/0/0 sur les 3
+  // cartes de stock juste après la fin du chargement ("pourquoi ça prend 3 ans à charger") :
+  // le rond de chargement n'attendait que 2 des ~20 sources (commandes cartons + palettes IFCO),
+  // pas les sources qui alimentent RÉELLEMENT les cartes affichées (stock IFCO, carton Andes,
+  // historique IFCO, entretiens, déclarations d'entrée en attente) — d'où l'affichage de "0"
+  // pendant une fraction de seconde avant que ces autres listeners finissent d'arriver. On
+  // élargit donc l'attente à tout ce qui est réellement affiché sur cet écran par défaut,
+  // sans toucher aux ~13 autres sources qui ne servent que dans un onglet précis (voir plus bas
+  // `chargerDonneesSecondaires`, qui les charge seulement quand on quitte le Dashboard).
   const [commandesChargees, setCommandesChargees] = useState(false);
   const [palettesCommandesChargees, setPalettesCommandesChargees] = useState(false);
-  const chargementInitialDashboard = !commandesChargees || !palettesCommandesChargees;
+  const [stockLevelsChargees, setStockLevelsChargees] = useState(false);
+  const [stockCartonAndesChargee, setStockCartonAndesChargee] = useState(false);
+  const [histoChargee, setHistoChargee] = useState(false);
+  const [entretiensChargee, setEntretiensChargee] = useState(false);
+  const [declarationsEntreeChargee, setDeclarationsEntreeChargee] = useState(false);
+  const chargementInitialDashboard =
+    !commandesChargees || !palettesCommandesChargees || !stockLevelsChargees ||
+    !stockCartonAndesChargee || !histoChargee || !entretiensChargee || !declarationsEntreeChargee;
+
+  // 11/09/2026 — Idem : sur les ~20 sources Firebase de cet écran, une bonne moitié ne sert que
+  // dans un onglet secondaire (historique IFCO, rapprochement, ajustements de stock, palettes
+  // vierges, reconditionnement...). Avant, tout se chargeait dès l'ouverture du Dashboard même
+  // si on n'allait jamais dans ces onglets, ce qui ralentissait l'écran par défaut pour rien.
+  // On ne les charge maintenant qu'à partir du moment où on quitte le Dashboard une première
+  // fois (une seule fois : une fois chargées, elles restent en mémoire, pas de rechargement à
+  // chaque changement d'onglet).
+  const [chargerDonneesSecondaires, setChargerDonneesSecondaires] = useState(activeTab !== "dashboard");
+  useEffect(() => {
+    if (activeTab !== "dashboard") setChargerDonneesSecondaires(true);
+  }, [activeTab]);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
 
@@ -441,28 +467,31 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   const [mouvementsASupprimer, setMouvementsASupprimer] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    if (!chargerDonneesSecondaires) return;
     const u = onValue(ref(db, "reconditionnement_transporteurs"), snap => {
       const d = snap.val();
       setTransporteursRecond(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     return () => u();
-  }, []);
+  }, [chargerDonneesSecondaires]);
 
   useEffect(() => {
+    if (!chargerDonneesSecondaires) return;
     const u = onValue(ref(db, "reconditionnement_demandes"), snap => {
       const d = snap.val();
       setDemandesRecond(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     return () => u();
-  }, []);
+  }, [chargerDonneesSecondaires]);
 
   useEffect(() => {
+    if (!chargerDonneesSecondaires) return;
     const u = onValue(ref(db, "reconditionnement_stock_mouvements"), snap => {
       const d = snap.val();
       setMouvementsRecond(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     return () => u();
-  }, []);
+  }, [chargerDonneesSecondaires]);
 
   function notifyRecond(type: "success" | "error", message: string) {
     setNotification({ type, message });
@@ -608,6 +637,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   // (étiquettes) passent bien. Vue en lecture seule, aucune écriture — juste un diagnostic.
   const [printQueueJobs, setPrintQueueJobs] = useState<any[]>([]);
   useEffect(() => {
+    if (!chargerDonneesSecondaires) return;
     const u = onValue(ref(db, "printQueue"), snap => {
       const d = snap.val();
       const jobs = d ? Object.entries(d).map(([id, v]: any) => ({ id, ...v })) : [];
@@ -615,7 +645,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       setPrintQueueJobs(jobs.slice(0, 30));
     });
     return () => u();
-  }, []);
+  }, [chargerDonneesSecondaires]);
   const PRINT_JOB_LABEL: Record<string, string> = {
     bon_reconditionnement: "📄 Bon reconditionnement (A4)",
     etiquette_palette: "🏷️ Étiquette palette",
@@ -640,12 +670,13 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   // quand on change le statut d'une commande de cartons/palettes IFCO)
   const [arrivagesLies, setArrivagesLies] = useState<any[]>([]);
   useEffect(() => {
+    if (!chargerDonneesSecondaires) return;
     const u = onValue(ref(db, "arrivages"), (snap) => {
       const data = snap.val() || {};
       setArrivagesLies(Object.entries(data).map(([id, a]: any) => ({ id, ...a })));
     });
     return () => u();
-  }, []);
+  }, [chargerDonneesSecondaires]);
 
   // Fiches récap prestataires (photo + coûts, voir type PrestataireFiche plus haut).
   useEffect(() => {
@@ -662,26 +693,29 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     const u = onValue(ref(db, "entretiens"), (snap) => {
       const d = snap.val();
       setEntretiens(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+      setEntretiensChargee(true);
     });
     return () => u();
   }, []);
 
   // Livraisons de palettes vierges (voir REFS_PALETTES_VIERGES plus haut).
   useEffect(() => {
+    if (!chargerDonneesSecondaires) return;
     const u = onValue(ref(db, "palettes_vierges_livraisons"), (snap) => {
       const d = snap.val();
       setPalettesViergeLivraisons(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     return () => u();
-  }, []);
+  }, [chargerDonneesSecondaires]);
 
   // Taille d'une pile complète par référence (réglée dans Configuration).
   useEffect(() => {
+    if (!chargerDonneesSecondaires) return;
     const u = onValue(ref(db, "parametres/palettes_vierges_taille_pile"), (snap) => {
       setTaillesPilesPv(snap.val() || {});
     });
     return () => u();
-  }, []);
+  }, [chargerDonneesSecondaires]);
 
   // Load IFCO palettes commands (commandes fournisseur)
   useEffect(() => {
@@ -694,10 +728,15 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   }, []);
 
   // ── Firebase IFCO (mêmes chemins que l'ancien IFCOModule) ──
+  // Les sources qui alimentent réellement le Dashboard (histo, stock, carton Andes,
+  // déclarations d'entrée en attente) restent chargées tout de suite. Les autres (mouvements
+  // détaillés, ajustements, lignes de déclarations, rapprochements — utilisées seulement dans
+  // des onglets qu'on n'ouvre pas forcément) sont regroupées plus bas avec `chargerDonneesSecondaires`.
   useEffect(() => {
     const u1 = onValue(ref(db, "ifco_histo"), snap => {
       const d = snap.val();
       setHisto(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+      setHistoChargee(true);
     });
     const u2 = onValue(ref(db, "ifco_clients"), snap => {
       const d = snap.val();
@@ -716,6 +755,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       const v = snap.val();
       if (v) setStockLevels({ moorea: v.moorea || 0, transit: v.transit || 0, nlt: v.nlt || 0, pleines: v.pleines || 0 });
       else setStockLevels({ moorea: 0, transit: 0, nlt: 0, pleines: 0 });
+      setStockLevelsChargees(true);
     });
     const u5 = onValue(ref(db, "ifco_stock/movements"), snap => {
       const d = snap.val();
@@ -728,14 +768,23 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     });
     const u7 = onValue(ref(db, "stock_carton_andes/baby_blanc"), snap => {
       setStockCartonAndes(typeof snap.val() === "number" ? snap.val() : 0);
-    });
-    const u8 = onValue(ref(db, "stock_ajustements"), snap => {
-      const d = snap.val();
-      setStockAjustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0)) : []);
+      setStockCartonAndesChargee(true);
     });
     const u9 = onValue(ref(db, "ifco_declarations_entree"), snap => {
       const d = snap.val();
       setDeclarationsEntree(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
+      setDeclarationsEntreeChargee(true);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u9(); };
+  }, []);
+
+  // Sources IFCO secondaires (voir commentaire ci-dessus) — chargées seulement quand on quitte
+  // le Dashboard une première fois.
+  useEffect(() => {
+    if (!chargerDonneesSecondaires) return;
+    const u8 = onValue(ref(db, "stock_ajustements"), snap => {
+      const d = snap.val();
+      setStockAjustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0)) : []);
     });
     const u10 = onValue(ref(db, "ifco_declarations_lignes"), snap => {
       const d = snap.val();
@@ -745,8 +794,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       const d = snap.val();
       setRapprochementsIfco(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u7(); u8(); u9(); u10(); u11(); };
-  }, []);
+    return () => { u8(); u10(); u11(); };
+  }, [chargerDonneesSecondaires]);
 
   // Persiste, pour chaque déclaration IFCO réellement envoyée, le détail ligne à ligne
   // (client / BL / quantité / date de livraison) dans un historique qui n'est JAMAIS
