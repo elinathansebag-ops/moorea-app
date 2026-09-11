@@ -68,7 +68,12 @@ type PaletteItem = {
   referenceId: string;
   nbCartons: number; // total de colis sur ce plot — recalculé automatiquement en mode "étages"
   modeEmpilage?: "simple" | "etages"; // "etages" = plusieurs paliers séparés par une palette intermédiaire
-  colisParEtage?: number; // uniquement en mode "etages" — la quantité fixe qu'Elinathan vend par palier (ex: 56)
+  // 11/09/2026 (v3) — Elinathan veut concevoir la pile elle-même plutôt que de partir d'une
+  // quantité par palier auto-répartie en niveaux : combien d'étages (palettes intermédiaires),
+  // combien de couches de cartons dans CHAQUE étage, et combien de colis sur CHAQUE couche.
+  etages?: number; // nombre d'étages empilés (1 palette de base + (etages-1) palettes intermédiaires)
+  couchesParEtage?: number; // nombre de niveaux de cartons empilés dans un étage
+  colisParCouche?: number; // nombre de colis posés sur une couche (peut être < couche.n si pas remplie à fond)
 };
 
 type Conteneur = {
@@ -121,27 +126,46 @@ function meilleureCoucheCarton(palW: number, palD: number, cartL: number, cartl:
 
 // ─── Empilage en plusieurs "étages" avec palette intermédiaire ───
 // 11/09/2026 — Elinathan vend des palettes toutes faites à quantité fixe (ex: 56 colis) et
-// veut savoir ce qu'elle "perd" si elle empile plusieurs de ces paliers de 56, séparés par une
-// palette intermédiaire (un carton ne pèse jamais sur plus de X niveaux avant d'être écrasé, mais
-// rien n'empêche de reposer une palette vide par-dessus pour repartir sur un nouveau petit tas —
+// veut savoir ce qu'elle "perd" si elle empile plusieurs de ces paliers, séparés par une palette
+// intermédiaire (un carton ne pèse jamais sur plus de X niveaux avant d'être écrasé, mais rien
+// n'empêche de reposer une palette vide par-dessus pour repartir sur un nouveau petit tas —
 // exactement comme "gerber" 2 palettes en entrepôt, sauf qu'ici c'est dans le même camion, en
-// hauteur). On calcule combien de paliers de 56 tiennent dans la hauteur totale du camion, et on
-// compare à une seule pile classique (limitée par l'écrasement) pour chiffrer le gain/la perte.
-function calculerEmpilageEtages(truck: TruckConfig, cartonH: number, coucheCount: number, colisParEtage: number) {
-  if (coucheCount <= 0 || cartonH <= 0 || colisParEtage <= 0) return { etages: 0, niveauxParEtage: 0, hauteurUtilisee: truck.hauteurPalette, colisTotal: 0 };
-  const niveauxParEtage = Math.max(1, Math.ceil(colisParEtage / coucheCount));
-  const hauteurEtage = niveauxParEtage * cartonH;
-  let etages = 0;
-  let hauteur = truck.hauteurPalette;
-  for (let i = 0; i < 50; i++) {
-    if (hauteur + hauteurEtage > truck.hauteurUtile) break;
-    hauteur += hauteurEtage;
-    etages++;
-    const avecPaletteInter = hauteur + truck.hauteurPalette;
-    if (avecPaletteInter + hauteurEtage <= truck.hauteurUtile) hauteur = avecPaletteInter;
-    else break;
+// hauteur).
+// v3 (même jour) — au lieu de déduire automatiquement le nombre de niveaux à partir d'une
+// quantité par palier (ce qui donnait des résultats absurdes, ex: "1 colis par étage → 8 étages
+// pour 8 colis"), Elinathan choisit elle-même les 3 paramètres : le nombre d'étages, le nombre de
+// couches de cartons par étage, et le nombre de colis posés sur chaque couche. On se contente de
+// vérifier que ça tient dans la hauteur du camion et de calculer le total.
+function calculerEmpilageManuel(truck: TruckConfig, cartonH: number, etages: number, couchesParEtage: number, colisParCouche: number) {
+  const etagesOk = Math.max(0, Math.floor(etages) || 0);
+  const couchesOk = Math.max(0, Math.floor(couchesParEtage) || 0);
+  const colisOk = Math.max(0, Math.floor(colisParCouche) || 0);
+  if (etagesOk <= 0 || couchesOk <= 0 || cartonH <= 0) {
+    return { hauteurUtilisee: truck.hauteurPalette, colisTotal: 0, tientDansCamion: true, depasseDe: 0 };
   }
-  return { etages, niveauxParEtage, hauteurUtilisee: hauteur, colisTotal: etages * colisParEtage };
+  const hauteurEtage = couchesOk * cartonH;
+  // 1 palette de base + les étages de cartons + une palette intermédiaire entre chaque étage
+  // (pas après le dernier).
+  const hauteurUtilisee = truck.hauteurPalette + etagesOk * hauteurEtage + Math.max(0, etagesOk - 1) * truck.hauteurPalette;
+  const colisTotal = etagesOk * couchesOk * colisOk;
+  const tientDansCamion = hauteurUtilisee <= truck.hauteurUtile;
+  return { hauteurUtilisee, colisTotal, tientDansCamion, depasseDe: Math.max(0, hauteurUtilisee - truck.hauteurUtile) };
+}
+// Construit la liste des "tranches" (bas → haut) d'une pile, pour la vue de face : alternance de
+// couches de cartons et de planches de palette (base + intermédiaires en mode étages).
+function construireTranchesEmpilage(truck: TruckConfig, cartonH: number, mode: "simple" | "etages", niveauxSimple: number, etages: number, couchesParEtage: number): { type: "carton" | "palette"; hauteur: number }[] {
+  const tranches: { type: "carton" | "palette"; hauteur: number }[] = [{ type: "palette", hauteur: truck.hauteurPalette }];
+  if (mode === "simple") {
+    for (let i = 0; i < Math.max(0, niveauxSimple); i++) tranches.push({ type: "carton", hauteur: cartonH });
+  } else {
+    const e = Math.max(0, Math.floor(etages) || 0);
+    const c = Math.max(0, Math.floor(couchesParEtage) || 0);
+    for (let i = 0; i < e; i++) {
+      for (let j = 0; j < c; j++) tranches.push({ type: "carton", hauteur: cartonH });
+      if (i < e - 1) tranches.push({ type: "palette", hauteur: truck.hauteurPalette });
+    }
+  }
+  return tranches;
 }
 // Une seule pile classique (sans palette intermédiaire), limitée par l'écrasement ET la hauteur —
 // sert de comparaison ("ce que tu aurais sans empiler en paliers").
@@ -150,6 +174,44 @@ function calculerPileSimple(truck: TruckConfig, cartonH: number, coucheCount: nu
   const niveauxEcrasement = cartonH > 0 ? Math.floor(truck.hauteurEcrasementCm / cartonH) : 0;
   const niveaux = Math.max(0, truck.hauteurEcrasementCm > 0 ? Math.min(niveauxEcrasement, niveauxHauteur) : niveauxHauteur);
   return { niveaux, colis: niveaux * coucheCount, hauteurUtilisee: truck.hauteurPalette + niveaux * cartonH };
+}
+
+// ─── Vue de face (élévation) d'une pile de palettes ───
+// 11/09/2026 (v3) — Elinathan a précisé : « quand je dis visualiser la palette c'est de face pas
+// que de haut ». Le plan du camion (vue de dessus) existait déjà ; ici on dessine la pile vue de
+// côté/de face, tranche par tranche (planches de palette en marron, couches de cartons dans la
+// couleur de la référence), à l'échelle de la hauteur utile du camion — pour bien voir combien de
+// couches et de palettes intermédiaires ça représente, et si ça dépasse le toit.
+function VueDeFace({ truck, tranches, couleur }: { truck: TruckConfig; tranches: { type: "carton" | "palette"; hauteur: number }[]; couleur: string }) {
+  const largeurPx = 84;
+  const pxParCm = truck.hauteurUtile > 0 ? Math.min(2.2, 260 / truck.hauteurUtile) : 1;
+  const hauteurCamionPx = Math.max(20, truck.hauteurUtile * pxParCm);
+  const totalHauteurCm = tranches.reduce((s, t) => s + t.hauteur, 0);
+  const depasseCm = Math.max(0, totalHauteurCm - truck.hauteurUtile);
+  const margeHaut = depasseCm > 0 ? Math.min(40, depasseCm * pxParCm + 6) : 6;
+  const svgH = hauteurCamionPx + margeHaut + 8;
+  let cursorBasCm = 0;
+  return (
+    <div style={{ textAlign: "center" }}>
+      <svg width={largeurPx + 60} height={svgH} style={{ display: "block", margin: "0 auto", overflow: "visible" }}>
+        {/* toit / plafond du camion */}
+        <line x1={18} y1={margeHaut} x2={largeurPx + 18} y2={margeHaut} stroke={COLORS.gray400} strokeWidth={1.5} strokeDasharray="3 2" />
+        {/* contour intérieur du camion (hauteur utile) */}
+        <rect x={18} y={margeHaut} width={largeurPx} height={hauteurCamionPx} fill="#f3f4f6" stroke={COLORS.gray200} strokeWidth={1} rx={3} />
+        {tranches.map((t, i) => {
+          const yTopCm = cursorBasCm + t.hauteur;
+          cursorBasCm = yTopCm;
+          const yPx = margeHaut + hauteurCamionPx - yTopCm * pxParCm;
+          const hPx = Math.max(1.2, t.hauteur * pxParCm - 0.6);
+          const enDepassement = yTopCm > truck.hauteurUtile;
+          const fill = t.type === "palette" ? "#a16207" : (enDepassement ? COLORS.danger : couleur);
+          return <rect key={i} x={20} y={yPx} width={largeurPx - 4} height={hPx} fill={fill} opacity={t.type === "palette" ? 0.95 : 0.85} stroke="#fff" strokeWidth={0.6} rx={1.5} />;
+        })}
+        <text x={18 + largeurPx / 2} y={margeHaut + hauteurCamionPx + 16} textAnchor="middle" fontSize={9} fill={COLORS.gray400}>{formatNombre(truck.hauteurUtile / 100, 2)} m</text>
+      </svg>
+      {depasseCm > 0 && <div style={{ color: COLORS.danger, fontSize: 11, fontWeight: 700, marginTop: 2 }}>⚠️ dépasse le toit de {formatNombre(depasseCm)} cm</div>}
+    </div>
+  );
 }
 
 function rectPalette(p: PaletteItem) {
@@ -190,11 +252,8 @@ function calculerStats(conteneur: Conteneur, references: Reference[], cartonL: n
     longueurUtilisee = Math.max(longueurUtilisee, rect.x + rect.lx);
     // En mode "étages", chaque palier au-delà du premier repose sur sa propre palette
     // intermédiaire — ça pèse en plus du poids de base déjà compté ci-dessous.
-    if (p.modeEmpilage === "etages" && p.colisParEtage) {
-      const dims = DIMENSIONS_PALETTE[p.format];
-      const couche = meilleureCoucheCarton(dims.w, dims.d, cartonL, cartonl);
-      const { etages } = calculerEmpilageEtages(truck, cartonH, couche.n, p.colisParEtage);
-      nbPalettesInterEtages += Math.max(0, etages - 1);
+    if (p.modeEmpilage === "etages" && p.etages) {
+      nbPalettesInterEtages += Math.max(0, p.etages - 1);
     }
   }
   poidsBrut += (palettes.length + nbPalettesInterEtages) * truck.poidsPaletteVide;
@@ -440,7 +499,7 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
     return { x, y };
   }
 
-  async function enregistrerPalette(data: { format: FormatPalette; rotated: boolean; x: number; y: number; referenceId: string; nbCartons: number; modeEmpilage: "simple" | "etages"; colisParEtage?: number }, existingId?: string) {
+  async function enregistrerPalette(data: { format: FormatPalette; rotated: boolean; x: number; y: number; referenceId: string; nbCartons: number; modeEmpilage: "simple" | "etages"; etages?: number; couchesParEtage?: number; colisParCouche?: number }, existingId?: string) {
     if (existingId) {
       await update(ref(db, `chargement_conteneurs/${conteneur.id}/palettes/${existingId}`), data);
       setJustPlacedId(existingId);
@@ -566,8 +625,8 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
                 const idx = references.findIndex(r => r.id === p.referenceId);
                 const couleur = idx >= 0 ? COULEURS_REF[idx % COULEURS_REF.length] : "#9ca3af";
                 const remplissage = idx >= 0 ? `url(#grad-${p.referenceId})` : couleur;
-                const etageLabel = p.modeEmpilage === "etages" && p.colisParEtage
-                  ? `${p.colisParEtage} × ${Math.round(p.nbCartons / p.colisParEtage)} ét.`
+                const etageLabel = p.modeEmpilage === "etages" && p.etages
+                  ? `${p.etages} ét. × ${p.couchesParEtage || 0}c.`
                   : `${p.nbCartons} colis`;
                 return (
                   <g key={p.id}
@@ -717,7 +776,7 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
   mode: "creer" | "editer"; x: number; y: number; palette?: PaletteItem;
   references: Reference[]; truck: TruckConfig; cartonL: number; cartonl: number; cartonH: number;
   palettesExistantes: PaletteItem[];
-  onClose: () => void; onSave: (data: { format: FormatPalette; rotated: boolean; x: number; y: number; referenceId: string; nbCartons: number; modeEmpilage: "simple" | "etages"; colisParEtage?: number }) => void;
+  onClose: () => void; onSave: (data: { format: FormatPalette; rotated: boolean; x: number; y: number; referenceId: string; nbCartons: number; modeEmpilage: "simple" | "etages"; etages?: number; couchesParEtage?: number; colisParCouche?: number }) => void;
   onSupprimer?: () => void;
 }) {
   const [format, setFormat] = useState<FormatPalette>(palette?.format || "100x120");
@@ -727,13 +786,25 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
   const [referenceId, setReferenceId] = useState(palette?.referenceId || references[0]?.id || "");
   const [nbCartons, setNbCartons] = useState(palette?.nbCartons || 0);
   // ── Empilage en plusieurs étages avec palette intermédiaire (demande du 11/09/2026) ──
+  // v3 : Elinathan choisit elle-même les 3 paramètres de la pile (au lieu d'une quantité par
+  // palier auto-répartie en niveaux, qui donnait des résultats absurdes/déroutants).
   const [modeEmpilage, setModeEmpilage] = useState<"simple" | "etages">(palette?.modeEmpilage || "simple");
-  const [colisParEtage, setColisParEtage] = useState(palette?.colisParEtage || 56);
+  const [etages, setEtages] = useState(palette?.etages || 2);
+  const [couchesParEtage, setCouchesParEtage] = useState(palette?.couchesParEtage || 1);
+  const [colisParCouche, setColisParCouche] = useState(palette?.colisParCouche || 0);
 
   const dims = DIMENSIONS_PALETTE[format];
   const lx = rotated ? dims.w : dims.d;
   const ly = rotated ? dims.d : dims.w;
   const couche = meilleureCoucheCarton(dims.w, dims.d, cartonL, cartonl);
+
+  // Par défaut, une couche est remplie au maximum (couche.n) — mais Elinathan peut la corriger si
+  // elle veut poser moins de colis par couche. On ne préremplit que si le champ est encore vide
+  // (nouvelle palette) pour ne pas écraser une valeur déjà choisie/enregistrée.
+  useEffect(() => {
+    if (!palette && colisParCouche === 0 && couche.n > 0) setColisParCouche(couche.n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [couche.n]);
 
   // 11/09/2026 — la hauteur se calcule en 2 temps : (1) ce que la hauteur intérieure du camion
   // permet physiquement — (hauteur intérieure − hauteur palette) ÷ hauteur d'un carton, arrondi
@@ -749,19 +820,24 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
   const ecrasementDepasse = modeEmpilage === "simple" && niveauxMaxEffectif > 0 && niveauxImpliques > niveauxMaxEffectif;
   const limitantHauteur = niveauxHauteurCamion <= niveauxEcrasement;
 
-  // Empilage par étages : combien de paliers de `colisParEtage` tiennent dans la hauteur du
-  // camion, séparés par une palette intermédiaire — et ce qu'on "perd" en restant sur une seule
-  // pile classique limitée par l'écrasement.
-  const empilage = calculerEmpilageEtages(truck, cartonH, couche.n, colisParEtage);
+  // Empilage par étages : Elinathan choisit le nombre d'étages, de couches par étage et de colis
+  // par couche — on vérifie juste que ça tient dans la hauteur du camion et on chiffre le
+  // gain/la perte par rapport à une seule pile classique limitée par l'écrasement.
+  const empilage = calculerEmpilageManuel(truck, cartonH, etages, couchesParEtage, colisParCouche);
   const pileSimpleRef = calculerPileSimple(truck, cartonH, couche.n);
   const colisFinal = modeEmpilage === "etages" ? empilage.colisTotal : nbCartons;
   const perteColis = modeEmpilage === "etages" ? empilage.colisTotal - pileSimpleRef.colis : 0;
   const hauteurRestanteSansEtages = truck.hauteurUtile - pileSimpleRef.hauteurUtilisee;
+  const couchesDepassentEcrasement = niveauxEcrasement > 0 && couchesParEtage > niveauxEcrasement;
+
+  const idxRef = references.findIndex(r => r.id === referenceId);
+  const couleurRef = idxRef >= 0 ? COULEURS_REF[idxRef % COULEURS_REF.length] : "#9ca3af";
+  const tranches = construireTranchesEmpilage(truck, cartonH, modeEmpilage, niveauxImpliques, etages, couchesParEtage);
 
   const rectTest = { x: posX, y: posY, lx, ly };
   const horsLimites = posX < 0 || posY < 0 || posX + lx > truck.longueur || posY + ly > truck.largeur;
   const chevauche = palettesExistantes.some(p => p.id !== palette?.id && seChevauchent(rectTest, rectPalette(p)));
-  const invalide = horsLimites || chevauche || !referenceId || colisFinal <= 0 || (modeEmpilage === "etages" && empilage.etages <= 0);
+  const invalide = horsLimites || chevauche || !referenceId || colisFinal <= 0 || (modeEmpilage === "etages" && (etages <= 0 || couchesParEtage <= 0 || colisParCouche <= 0 || !empilage.tientDansCamion));
 
   const champStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const };
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4, display: "block" };
@@ -793,11 +869,25 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
             </div>
           ) : (
             <div>
-              <label style={labelStyle}>Colis par étage</label>
-              <input type="number" min={1} value={colisParEtage || ""} onChange={e => setColisParEtage(parseInt(e.target.value) || 0)} style={champStyle} />
+              <label style={labelStyle}>Colis par couche</label>
+              <input type="number" min={0} value={colisParCouche || ""} onChange={e => setColisParCouche(parseInt(e.target.value) || 0)} style={champStyle} />
             </div>
           )}
         </div>
+
+        {/* ── Mode "étages" : Elinathan choisit directement le nombre d'étages et de couches ── */}
+        {modeEmpilage === "etages" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={labelStyle}>Nb d'étages (palettes empilées)</label>
+              <input type="number" min={1} value={etages || ""} onChange={e => setEtages(parseInt(e.target.value) || 0)} style={champStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Couches par étage</label>
+              <input type="number" min={1} value={couchesParEtage || ""} onChange={e => setCouchesParEtage(parseInt(e.target.value) || 0)} style={champStyle} />
+            </div>
+          </div>
+        )}
 
         {/* ── Mode d'empilage : une seule pile, ou plusieurs étages séparés par une palette intermédiaire ── */}
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -819,38 +909,47 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
           <div><label style={labelStyle}>Position — largeur (cm)</label><input type="number" value={posY} onChange={e => setPosY(parseFloat(e.target.value) || 0)} style={champStyle} /></div>
         </div>
 
-        {modeEmpilage === "simple" ? (
-          <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: COLORS.gray600, marginBottom: 12 }}>
-            {couche.n} colis/couche ({couche.detail}) → environ <b>{niveauxImpliques}</b> niveau{niveauxImpliques > 1 ? "x" : ""} pour {nbCartons || 0} colis.
-            <div style={{ marginTop: 6, fontSize: 11, color: COLORS.gray400 }}>
-              Hauteur camion : ({truck.hauteurUtile} − {truck.hauteurPalette} cm de palette) ÷ {cartonH} cm/carton = <b>{niveauxHauteurCamion} niveaux</b> maxi possibles.
-              Réglage écrasement : {truck.hauteurEcrasementCm} cm ÷ {cartonH} cm/carton = <b>{niveauxEcrasement} niveaux</b> maxi. → limite retenue : <b>{niveauxMaxEffectif}</b> ({limitantHauteur ? "hauteur du camion" : "sécurité écrasement"}).
+        <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "stretch" }}>
+          {modeEmpilage === "simple" ? (
+            <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: COLORS.gray600, flex: 1 }}>
+              {couche.n} colis/couche ({couche.detail}) → environ <b>{niveauxImpliques}</b> niveau{niveauxImpliques > 1 ? "x" : ""} pour {nbCartons || 0} colis.
+              <div style={{ marginTop: 6, fontSize: 11, color: COLORS.gray400 }}>
+                Hauteur camion : ({truck.hauteurUtile} − {truck.hauteurPalette} cm de palette) ÷ {cartonH} cm/carton = <b>{niveauxHauteurCamion} niveaux</b> maxi possibles.
+                Réglage écrasement : {truck.hauteurEcrasementCm} cm ÷ {cartonH} cm/carton = <b>{niveauxEcrasement} niveaux</b> maxi. → limite retenue : <b>{niveauxMaxEffectif}</b> ({limitantHauteur ? "hauteur du camion" : "sécurité écrasement"}).
+              </div>
+              {ecrasementDepasse && <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ {niveauxImpliques} niveaux dépasse la limite de {niveauxMaxEffectif} — risque d'écrasement ou ça ne rentre pas en hauteur.</div>}
+              <div style={{ marginTop: 6, fontSize: 11, color: COLORS.tertiary }}>
+                💡 Avec cette pile simple, il reste {formatNombre(hauteurRestanteSansEtages / 100, 2)} m de hauteur inutilisée sous le toit — passe en « Plusieurs étages » pour voir ce que ça donnerait avec une palette intermédiaire.
+              </div>
             </div>
-            {ecrasementDepasse && <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ {niveauxImpliques} niveaux dépasse la limite de {niveauxMaxEffectif} — risque d'écrasement ou ça ne rentre pas en hauteur.</div>}
-            <div style={{ marginTop: 6, fontSize: 11, color: COLORS.tertiary }}>
-              💡 Avec cette pile simple, il reste {formatNombre(hauteurRestanteSansEtages / 100, 2)} m de hauteur inutilisée sous le toit — passe en « Plusieurs étages » pour voir ce que ça donnerait avec une palette intermédiaire.
+          ) : (
+            <div style={{ background: COLORS.tertiaryLight, border: `1px solid ${COLORS.tertiary}`, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#78350f", flex: 1 }}>
+              {couche.n} colis/couche possibles ({couche.detail}) — tu as choisi {colisParCouche || 0}.
+              {couchesDepassentEcrasement && (
+                <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ {couchesParEtage} couches ({couchesParEtage * cartonH} cm) dépasse ton réglage écrasement ({truck.hauteurEcrasementCm} cm, soit {niveauxEcrasement} niveaux) — risque d'écraser le bas de CHAQUE étage.</div>
+              )}
+              <div style={{ marginTop: 6 }}>
+                → <b>{etages}</b> étage{etages > 1 ? "s" : ""} de {couchesParEtage} couche{couchesParEtage > 1 ? "s" : ""} × {colisParCouche || 0} colis (1 palette de base + {Math.max(0, etages - 1)} palette{etages > 2 ? "s" : ""} intermédiaire{etages > 2 ? "s" : ""}), hauteur utilisée : {formatNombre(empilage.hauteurUtilisee / 100, 2)} m / {formatNombre(truck.hauteurUtile / 100, 2)} m.
+              </div>
+              {!empilage.tientDansCamion && (
+                <div style={{ color: COLORS.danger, marginTop: 4, fontWeight: 700 }}>⚠️ Ça dépasse la hauteur du camion de {formatNombre(empilage.depasseDe)} cm.</div>
+              )}
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1a35480", fontWeight: 700 }}>
+                Total sur ce plot : {formatNombre(empilage.colisTotal)} colis
+              </div>
+              <div style={{ marginTop: 4 }}>
+                Comparé à une seule pile classique (limitée à {pileSimpleRef.niveaux} niveaux par l'écrasement = {formatNombre(pileSimpleRef.colis)} colis) :{" "}
+                {perteColis >= 0
+                  ? <span style={{ color: "#166534", fontWeight: 700 }}>+{formatNombre(perteColis)} colis gagnés en empilant par étages.</span>
+                  : <span style={{ color: COLORS.danger, fontWeight: 700 }}>{formatNombre(perteColis)} colis de moins qu'une pile simple.</span>}
+              </div>
             </div>
+          )}
+          <div style={{ flexShrink: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.gray400, textAlign: "center", marginBottom: 2 }}>Vue de face</div>
+            <VueDeFace truck={truck} tranches={tranches} couleur={couleurRef} />
           </div>
-        ) : (
-          <div style={{ background: COLORS.tertiaryLight, border: `1px solid ${COLORS.tertiary}`, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#78350f", marginBottom: 12 }}>
-            {couche.n} colis/couche → <b>{empilage.niveauxParEtage}</b> niveau{empilage.niveauxParEtage > 1 ? "x" : ""} pour tenir {colisParEtage} colis par étage.
-            {empilage.niveauxParEtage > niveauxEcrasement && truck.hauteurEcrasementCm > 0 && (
-              <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ {empilage.niveauxParEtage} niveaux par étage ({empilage.niveauxParEtage * cartonH} cm) dépasse ton réglage écrasement ({truck.hauteurEcrasementCm} cm, soit {niveauxEcrasement} niveaux) — risque d'écraser le bas de CHAQUE étage.</div>
-            )}
-            <div style={{ marginTop: 6 }}>
-              → <b>{empilage.etages}</b> étage{empilage.etages > 1 ? "s" : ""} de {colisParEtage} tiennent dans les {formatNombre(truck.hauteurUtile / 100, 2)} m de hauteur (1 palette de base + {Math.max(0, empilage.etages - 1)} palette{empilage.etages > 2 ? "s" : ""} intermédiaire{empilage.etages > 2 ? "s" : ""}), hauteur utilisée : {formatNombre(empilage.hauteurUtilisee / 100, 2)} m / {formatNombre(truck.hauteurUtile / 100, 2)} m.
-            </div>
-            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1a35480", fontWeight: 700 }}>
-              Total sur ce plot : {formatNombre(empilage.colisTotal)} colis
-            </div>
-            <div style={{ marginTop: 4 }}>
-              Comparé à une seule pile classique (limitée à {pileSimpleRef.niveaux} niveaux par l'écrasement = {formatNombre(pileSimpleRef.colis)} colis) :{" "}
-              {perteColis >= 0
-                ? <span style={{ color: "#166534", fontWeight: 700 }}>+{formatNombre(perteColis)} colis gagnés en empilant par étages.</span>
-                : <span style={{ color: COLORS.danger, fontWeight: 700 }}>{formatNombre(perteColis)} colis de moins qu'une pile simple.</span>}
-            </div>
-          </div>
-        )}
+        </div>
 
         {horsLimites && <p style={{ color: COLORS.danger, fontSize: 12, margin: "0 0 10px" }}>⚠️ Cette palette dépasse les limites du plancher à cette position.</p>}
         {chevauche && <p style={{ color: COLORS.danger, fontSize: 12, margin: "0 0 10px" }}>⚠️ Cette position chevauche une autre palette déjà posée.</p>}
@@ -861,7 +960,7 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} style={{ padding: "10px 16px", borderRadius: 10, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>Annuler</button>
-            <button disabled={invalide} onClick={() => onSave({ format, rotated, x: posX, y: posY, referenceId, nbCartons: colisFinal, modeEmpilage, colisParEtage: modeEmpilage === "etages" ? colisParEtage : undefined })}
+            <button disabled={invalide} onClick={() => onSave({ format, rotated, x: posX, y: posY, referenceId, nbCartons: colisFinal, modeEmpilage, etages: modeEmpilage === "etages" ? etages : undefined, couchesParEtage: modeEmpilage === "etages" ? couchesParEtage : undefined, colisParCouche: modeEmpilage === "etages" ? colisParCouche : undefined })}
               style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: invalide ? COLORS.gray200 : COLORS.primary, color: invalide ? COLORS.gray400 : "#fff", cursor: invalide ? "not-allowed" : "pointer", fontWeight: 700, fontSize: 13 }}>
               ✓ {mode === "creer" ? "Poser" : "Enregistrer"}
             </button>
