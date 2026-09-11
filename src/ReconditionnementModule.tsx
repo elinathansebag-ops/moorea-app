@@ -2724,11 +2724,15 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 01/09/2026 — À la demande d'Elinathan : cet envoi doit aussi apparaître comme une
                 carte dans Préparation entrepôt (avant, seul le stock bougeait, sans aucune trace
                 visible côté entrepôt). On crée donc en plus un enregistrement dans
-                reconditionnement_demandes, directement au statut "parti" (l'envoi est immédiat,
-                pas de préparation à valider), avec un numéro préfixé "PAL" (au lieu de "RC") pour
-                le distinguer d'une vraie demande de reconditionnement au premier coup d'œil. Le
+                reconditionnement_demandes, avec un numéro préfixé "PAL" (au lieu de "RC") pour le
+                distinguer d'une vraie demande de reconditionnement au premier coup d'œil. Le
                 nombre de palettes est déduit du nombre de caisses (640 caisses = 1 palette,
                 CAISSES_PAR_PALETTE) — arrondi au plus proche, au moins 1.
+                11/09/2026 — Corrigé : on avait d'abord créé cette carte directement au statut
+                "parti" ("l'envoi est immédiat, pas de préparation à valider"), mais Elinathan a
+                remarqué que la palette n'était pas encore réellement partie à ce moment-là — elle
+                démarre donc maintenant "en attente" comme une demande normale, et suit le même
+                circuit entrepôt (en attente → prêt → parti) avant de s'afficher "parti".
                 01/09/2026 — À la demande d'Elinathan : n'a de sens que s'il y a un bon NLT en
                 attente d'être envoyé, sinon le bouton n'a pas lieu d'être affiché. 04/09/2026 —
                 Affiché aussi quand le stock NLT est bas (alerteCaissesIfcoNlt), même sans bon en
@@ -3872,11 +3876,22 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       articleFini: "NLT",
                       caissesIfcoEnvoyees: qte,
                       retourEnIfco: false,
-                      statut: "parti",
-                      entrepotPretPar: userName || "Moorea",
-                      entrepotPretDate: dateFr,
-                      nbPalettesDepart: { grandes: nbGrandes, demi: 0 },
-                      departDate: dateFr,
+                      // 11/09/2026 — Elinathan a remarqué que la palette apparaissait tout de suite
+                      // "🚚 Parti chez le reconditionneur" alors qu'elle n'était pas encore
+                      // physiquement partie. Le 01/09/2026 on avait volontairement sauté direct à
+                      // "parti" ("l'envoi est immédiat, pas de préparation à valider") — mais ça ne
+                      // correspond pas à la réalité du terrain : elle doit d'abord passer par
+                      // l'entrepôt ("🕐 En attente entrepôt"), qui la marque "prêt" (avec le nombre
+                      // de palettes réellement chargées) puis "parti" au moment où le transporteur
+                      // l'emporte réellement — exactement comme une demande de reconditionnement
+                      // normale. On ne pré-remplit donc plus entrepotPretPar/entrepotPretDate/
+                      // nbPalettesDepart/departDate ici : c'est l'entrepôt qui les renseigne en
+                      // validant, via les mêmes boutons/QR que pour les autres demandes — on ne
+                      // met donc pas non plus nbPalettesDepart ici : le laisser vide tant que ce
+                      // n'est pas "prêt" évite de le compter par erreur dans les totaux "parties"
+                      // du récap transporteurs (voir plus bas, totalParties), qui se basent
+                      // justement sur la présence de ce champ sans re-vérifier le statut.
+                      statut: "en attente",
                       ts: now.getTime(),
                       ...(transporteurNom ? { transporteurNom } : {}),
                     });
@@ -3892,14 +3907,16 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       try {
                         await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
                       } catch {
-                        notify("error", "⚠️ Envoi enregistré, mais l'impression automatique du bordereau a échoué");
+                        notify("error", "⚠️ Demande enregistrée, mais l'impression automatique du bordereau a échoué");
                       }
                       setPdfApercu({ titre: `Bordereau d'envoi — ${numero}`, base64: pdfBase64 });
                     } catch (errPdf: any) {
-                      notify("error", `⚠️ Envoi enregistré, mais la génération du bordereau a échoué : ${errPdf?.message || "erreur inconnue"}`);
+                      notify("error", `⚠️ Demande enregistrée, mais la génération du bordereau a échoué : ${errPdf?.message || "erreur inconnue"}`);
                     }
 
-                    notify("success", `📦 ${qte} caisses IFCO envoyées à NLT (${numero})`);
+                    // 11/09/2026 — Message ajusté : ce n'est plus "envoyées" (déjà parti), mais
+                    // juste créée, en attente que l'entrepôt la prépare puis la fasse partir.
+                    notify("success", `📦 Demande créée — ${qte} caisses IFCO à préparer pour NLT (${numero})`);
                     setEnvoiPaletteModalOuvert(false);
                   } catch (err: any) {
                     notify("error", `❌ Erreur : ${err?.message || "erreur inconnue"}`);
