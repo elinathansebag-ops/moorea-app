@@ -1229,12 +1229,16 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     await remove(ref(db, `entretiens/${id}`));
   }
 
-  // 14/09/2026 — Les champs d'ajustement de stock sont maintenant un correctif (+/-) qui s'ajoute
-  // au stock actuel, pas la valeur finale (voir plus bas, boutons "Valider la correction") — donc
-  // on ne les préremplit plus avec le stock actuel (retaper "405" comme correctif aurait doublé
-  // le stock). Ils restent vides, prêts à recevoir un nombre positif ou négatif.
+  // Pré-remplit les champs d'ajustement de stock avec la valeur actuelle quand on ouvre
+  // l'onglet Configuration, pour que ce soit clair sur quoi on part avant de corriger.
+  // 14/09/2026 — Elinathan a essayé le correctif +/- (v du 14/09) puis a préféré revenir à la
+  // valeur finale directe, MAIS avec la possibilité de la mettre en négatif (le stock réel côté
+  // prestataire peut l'être) — donc plus de blocage sur v < 0 dans les 3 boutons plus bas.
   useEffect(() => {
     if (activeTab === "configuration") {
+      setAjustStockMoorea(String(stockLevels.moorea));
+      setAjustStockNlt(String(stockLevels.nlt));
+      setAjustStockAndes(String(stockCartonAndes));
       setTailleSaisiePv(
         Object.keys(REFS_PALETTES_VIERGES).reduce((acc, cle) => {
           acc[cle] = taillesPilesPv[cle] != null ? String(taillesPilesPv[cle]) : "";
@@ -3508,26 +3512,23 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             }}>
               <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>🏭 IFCO — Ajuster les stocks</h3>
-                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock affiché sur le Dashboard s'il ne correspond plus au stock réel. Tape un correctif (positif ou négatif) — pas la valeur finale — ex: -235 pour retirer 235.</p>
+                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock affiché sur le Dashboard s'il ne correspond plus au stock réel. Tape directement la valeur que doit prendre le stock (peut être négative).</p>
               </div>
               <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {formatCaisses(stockLevels.moorea)})</div>
-                  <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Correctif (+/-), ex: -50" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur (peut être négative)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <input type="text" value={raisonAjustMoorea} onChange={(e) => setRaisonAjustMoorea(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <button
                     onClick={async () => {
-                      // 14/09/2026 — Elinathan voulait pouvoir taper un correctif négatif ("-235")
-                      // pour retirer du stock ("je peux pas régler en négatif") : avant, le champ
-                      // attendait la valeur finale absolue, qui ne peut jamais être négative — ce
-                      // qui bloquait toute soustraction. Maintenant le champ est un correctif
-                      // (+/-) qui s'ajoute au stock actuel ; seul le résultat final doit rester ≥ 0.
-                      const delta = parseInt(ajustStockMoorea);
-                      if (!Number.isFinite(delta) || delta === 0) { setNotification({ type: "error", message: "✗ Indique un correctif (positif ou négatif), pas 0" }); return; }
-                      const ancienneValeur = stockLevels.moorea;
-                      const v = ancienneValeur + delta;
-                      if (v < 0) { setNotification({ type: "error", message: `✗ Ça ferait passer le stock à ${v} — impossible, un stock ne peut pas être négatif` }); return; }
+                      // 14/09/2026 — Retour à la valeur finale directe (pas un correctif +/-) :
+                      // Elinathan tape le chiffre qu'elle veut voir comme stock, et ça peut être
+                      // négatif (elle en a besoin pour refléter un stock réellement négatif côté
+                      // prestataire). On ne bloque donc plus les valeurs négatives ici.
+                      const v = parseInt(ajustStockMoorea);
+                      if (!Number.isFinite(v)) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
                       if (!raisonAjustMoorea.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockLevels.moorea;
                       await update(ref(db, "ifco_stock/levels"), { moorea: v });
                       await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockMoorea("");
@@ -3541,16 +3542,14 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 </div>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🔄 IFCO — NLT (actuel : {formatCaisses(stockLevels.nlt)})</div>
-                  <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Correctif (+/-), ex: -235" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Nouvelle valeur (peut être négative)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <input type="text" value={raisonAjustNlt} onChange={(e) => setRaisonAjustNlt(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <button
                     onClick={async () => {
-                      const delta = parseInt(ajustStockNlt);
-                      if (!Number.isFinite(delta) || delta === 0) { setNotification({ type: "error", message: "✗ Indique un correctif (positif ou négatif), pas 0" }); return; }
-                      const ancienneValeur = stockLevels.nlt;
-                      const v = ancienneValeur + delta;
-                      if (v < 0) { setNotification({ type: "error", message: `✗ Ça ferait passer le stock à ${v} — impossible, un stock ne peut pas être négatif` }); return; }
+                      const v = parseInt(ajustStockNlt);
+                      if (!Number.isFinite(v)) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
                       if (!raisonAjustNlt.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockLevels.nlt;
                       await update(ref(db, "ifco_stock/levels"), { nlt: v });
                       await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockNlt("");
@@ -3564,16 +3563,14 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 </div>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>📦 Carton Baby Blanc — Andes (actuel : {stockCartonAndes} cartons)</div>
-                  <input type="number" value={ajustStockAndes} onChange={(e) => setAjustStockAndes(e.target.value)} placeholder="Correctif (+/-), ex: -20" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="number" value={ajustStockAndes} onChange={(e) => setAjustStockAndes(e.target.value)} placeholder="Nouvelle valeur (peut être négative)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <input type="text" value={raisonAjustAndes} onChange={(e) => setRaisonAjustAndes(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <button
                     onClick={async () => {
-                      const delta = parseInt(ajustStockAndes);
-                      if (!Number.isFinite(delta) || delta === 0) { setNotification({ type: "error", message: "✗ Indique un correctif (positif ou négatif), pas 0" }); return; }
-                      const ancienneValeur = stockCartonAndes;
-                      const v = ancienneValeur + delta;
-                      if (v < 0) { setNotification({ type: "error", message: `✗ Ça ferait passer le stock à ${v} — impossible, un stock ne peut pas être négatif` }); return; }
+                      const v = parseInt(ajustStockAndes);
+                      if (!Number.isFinite(v)) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
                       if (!raisonAjustAndes.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockCartonAndes;
                       await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
                       await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockAndes("");
@@ -4140,26 +4137,23 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             <div style={{ background: "white", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", border: `1px solid ${COLORS.gray200}` }}>
               <div style={{ padding: "16px", background: COLORS.gray100, borderBottom: `1px solid ${COLORS.gray200}` }}>
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>⚖️ Ajuster les stocks (IFCO / Carton Andès)</h3>
-                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock IFCO (Moorea/NLT) ou de carton Andès s'il ne correspond plus au stock réel. Tape un correctif (positif ou négatif) — pas la valeur finale — ex: -235 pour retirer 235.</p>
+                <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock IFCO (Moorea/NLT) ou de carton Andès s'il ne correspond plus au stock réel. Tape directement la valeur que doit prendre le stock (peut être négative).</p>
               </div>
               <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {formatCaisses(stockLevels.moorea)})</div>
-                  <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Correctif (+/-), ex: -50" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur (peut être négative)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <input type="text" value={raisonAjustMoorea} onChange={(e) => setRaisonAjustMoorea(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <button
                     onClick={async () => {
-                      // 14/09/2026 — Elinathan voulait pouvoir taper un correctif négatif ("-235")
-                      // pour retirer du stock ("je peux pas régler en négatif") : avant, le champ
-                      // attendait la valeur finale absolue, qui ne peut jamais être négative — ce
-                      // qui bloquait toute soustraction. Maintenant le champ est un correctif
-                      // (+/-) qui s'ajoute au stock actuel ; seul le résultat final doit rester ≥ 0.
-                      const delta = parseInt(ajustStockMoorea);
-                      if (!Number.isFinite(delta) || delta === 0) { setNotification({ type: "error", message: "✗ Indique un correctif (positif ou négatif), pas 0" }); return; }
-                      const ancienneValeur = stockLevels.moorea;
-                      const v = ancienneValeur + delta;
-                      if (v < 0) { setNotification({ type: "error", message: `✗ Ça ferait passer le stock à ${v} — impossible, un stock ne peut pas être négatif` }); return; }
+                      // 14/09/2026 — Retour à la valeur finale directe (pas un correctif +/-) :
+                      // Elinathan tape le chiffre qu'elle veut voir comme stock, et ça peut être
+                      // négatif (elle en a besoin pour refléter un stock réellement négatif côté
+                      // prestataire). On ne bloque donc plus les valeurs négatives ici.
+                      const v = parseInt(ajustStockMoorea);
+                      if (!Number.isFinite(v)) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
                       if (!raisonAjustMoorea.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockLevels.moorea;
                       await update(ref(db, "ifco_stock/levels"), { moorea: v });
                       await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockMoorea("");
@@ -4173,16 +4167,14 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 </div>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🔄 IFCO — NLT (actuel : {formatCaisses(stockLevels.nlt)})</div>
-                  <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Correctif (+/-), ex: -235" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="number" value={ajustStockNlt} onChange={(e) => setAjustStockNlt(e.target.value)} placeholder="Nouvelle valeur (peut être négative)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <input type="text" value={raisonAjustNlt} onChange={(e) => setRaisonAjustNlt(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <button
                     onClick={async () => {
-                      const delta = parseInt(ajustStockNlt);
-                      if (!Number.isFinite(delta) || delta === 0) { setNotification({ type: "error", message: "✗ Indique un correctif (positif ou négatif), pas 0" }); return; }
-                      const ancienneValeur = stockLevels.nlt;
-                      const v = ancienneValeur + delta;
-                      if (v < 0) { setNotification({ type: "error", message: `✗ Ça ferait passer le stock à ${v} — impossible, un stock ne peut pas être négatif` }); return; }
+                      const v = parseInt(ajustStockNlt);
+                      if (!Number.isFinite(v)) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
                       if (!raisonAjustNlt.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockLevels.nlt;
                       await update(ref(db, "ifco_stock/levels"), { nlt: v });
                       await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockNlt("");
@@ -4196,16 +4188,14 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 </div>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>📦 Carton Baby Blanc — Andes (actuel : {stockCartonAndes} cartons)</div>
-                  <input type="number" value={ajustStockAndes} onChange={(e) => setAjustStockAndes(e.target.value)} placeholder="Correctif (+/-), ex: -20" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
+                  <input type="number" value={ajustStockAndes} onChange={(e) => setAjustStockAndes(e.target.value)} placeholder="Nouvelle valeur (peut être négative)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <input type="text" value={raisonAjustAndes} onChange={(e) => setRaisonAjustAndes(e.target.value)} placeholder="Raison de la correction (obligatoire)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
                   <button
                     onClick={async () => {
-                      const delta = parseInt(ajustStockAndes);
-                      if (!Number.isFinite(delta) || delta === 0) { setNotification({ type: "error", message: "✗ Indique un correctif (positif ou négatif), pas 0" }); return; }
-                      const ancienneValeur = stockCartonAndes;
-                      const v = ancienneValeur + delta;
-                      if (v < 0) { setNotification({ type: "error", message: `✗ Ça ferait passer le stock à ${v} — impossible, un stock ne peut pas être négatif` }); return; }
+                      const v = parseInt(ajustStockAndes);
+                      if (!Number.isFinite(v)) { setNotification({ type: "error", message: "✗ Valeur invalide" }); return; }
                       if (!raisonAjustAndes.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
+                      const ancienneValeur = stockCartonAndes;
                       await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
                       await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockAndes("");
