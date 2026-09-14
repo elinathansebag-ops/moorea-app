@@ -1542,24 +1542,38 @@ export default function App() {
     setPageMode("arrivages");
   };
 
-  // Détecte les arrivages en double — clé = numéro de lot interne + produit + fournisseur
-  // (le lot seul ne suffit pas : plusieurs produits différents partagent souvent le même
-  // lot_interne dans un import, donc les grouper par lot seul créait plein de faux doublons).
-  // S'il manque un lot_interne sur d'anciennes entrées, on retombe sur produit + fournisseur +
-  // date. N'affiche qu'un aperçu à valider, ne supprime rien tout seul.
+  // Détecte les arrivages en double — clé = numéro de lot interne + produit + fournisseur +
+  // date + quantité (le lot seul ne suffit pas : un même lot_interne peut légitimement revenir
+  // sur plusieurs arrivages distincts — dates différentes, ou quantités différentes parce que
+  // c'est une livraison partielle suivante — donc les grouper par lot seul créait plein de
+  // faux doublons, 14/09/2026 demande d'Elinathan). S'il manque un lot_interne sur d'anciennes
+  // entrées, on retombe sur produit + fournisseur + date + quantité. N'affiche qu'un aperçu à
+  // valider, ne supprime rien tout seul.
   const detecterDoublonsArr = () => {
     const groupes: Record<string, any[]> = {};
     arrivages.forEach((a: any) => {
       const lot = String(a.lot_interne || "").trim();
       const produitNorm = (a.produit || "").toLowerCase().trim();
       const fournNorm = (a.fournisseur || "").toLowerCase().trim();
-      const cle = lot ? `lot:${lot}|${produitNorm}|${fournNorm}` : `${produitNorm}|${fournNorm}|${a.date || ""}`;
+      const dateNorm = a.date || "";
+      const quantiteNorm = String(a.quantite ?? "").trim();
+      const cle = lot
+        ? `lot:${lot}|${produitNorm}|${fournNorm}|${dateNorm}|${quantiteNorm}`
+        : `${produitNorm}|${fournNorm}|${dateNorm}|${quantiteNorm}`;
       if (!groupes[cle]) groupes[cle] = [];
       groupes[cle].push(a);
     });
     const suspects = Object.entries(groupes)
       .filter(([, items]) => items.length > 1)
-      .map(([cle, items]) => ({ cle, items: items.sort((x, y) => (x.timestamp || 0) - (y.timestamp || 0)) }));
+      .map(([cle, items]) => ({ cle, items: items.sort((x, y) => (x.timestamp || 0) - (y.timestamp || 0)) }))
+      // 14/09/2026 — Tri par produit puis fournisseur, pour que les groupes ne s'affichent
+      // plus dans un ordre aléatoire (demande d'Elinathan : "c'est dans le desordre").
+      .sort((a, b) => {
+        const pa = (a.items[0].produit || "").toLowerCase();
+        const pb = (b.items[0].produit || "").toLowerCase();
+        if (pa !== pb) return pa.localeCompare(pb);
+        return (a.items[0].fournisseur || "").toLowerCase().localeCompare((b.items[0].fournisseur || "").toLowerCase());
+      });
 
     if (suspects.length === 0) {
       showToast("✅ Aucun doublon détecté");
@@ -3729,7 +3743,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <button onClick={() => setDoublonsGroupes(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
                     </div>
                     <p style={{ margin: 0, fontSize: 12.5, color: "#6b7280" }}>
-                      Même produit + fournisseur + date trouvés plusieurs fois. Touche une ligne pour la cocher (rouge = sera supprimée). Le plus ancien de chaque groupe est décoché par défaut, pour être conservé. Rien n'est supprimé tant que tu n'appuies pas sur le bouton en bas.
+                      Même produit + fournisseur + date + quantité trouvés plusieurs fois. Touche une ligne pour la cocher (rouge = sera supprimée). Le plus ancien de chaque groupe est décoché par défaut, pour être conservé. Rien n'est supprimé tant que tu n'appuies pas sur le bouton en bas.
                     </p>
                   </div>
                   <div style={{ overflowY: "auto", padding: "0 20px", flex: 1 }}>
