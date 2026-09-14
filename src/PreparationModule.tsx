@@ -950,7 +950,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: cochantIds.has(d.id) ? "wait" : "pointer", padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primary}`, background: "#fff" }}>
                                               <input
                                                 type="checkbox"
-                                                checked={false}
+                                                checked={cochantIds.has(d.id)}
                                                 disabled={cochantIds.has(d.id)}
                                                 onChange={async () => {
                                                   setCochantIds(prev => new Set(prev).add(d.id));

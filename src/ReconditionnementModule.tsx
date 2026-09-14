@@ -57,7 +57,7 @@ function formatCaisses(caisses: number): string {
 // mauvais modèle (celui du calendrier IFCO, avec le nombre de palettes en gros). Ici : le gros
 // chiffre est le total en CAISSES (donnée réellement stockée, sans ambiguïté), et le détail
 // "= X palette(s) + Y caisses" est en dessous, sur un fond teinté, comme dans Prestataires.
-function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage }: { moorea: number; nlt: number; cartonAndes: number; nltEngage?: number }) {
+function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage, nltAujourdhui }: { moorea: number; nlt: number; cartonAndes: number; nltEngage?: number; nltAujourdhui?: { caisses: number; nb: number } }) {
   const carte = (label: string, total: number, couleur: string, bg: string, extra?: any) => {
     // 11/09/2026 — Demande d'Elinathan : signaler clairement quand le stock de caisses est
     // NÉGATIF (plus de caisses sorties que ce qui était réellement disponible), au lieu d'afficher
@@ -87,7 +87,7 @@ function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage }: { moorea: numbe
   // ce qu'il reste réellement de marge, pour voir un manque AVANT que le stock officiel ne
   // l'affiche lui-même (une fois les caisses reçues vides, trop tard pour anticiper).
   const nltReste = nlt - nltEngage;
-  const nltExtra = nltEngage ? (
+  const nltEngageBlock = nltEngage ? (
     <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
       <div style={{ fontSize: 10.5, color: "#8a6f2e" }}>
         🏭 {nltEngage} en cours de production chez NLT (bons prêt/parti, pas encore reçus)
@@ -96,6 +96,21 @@ function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage }: { moorea: numbe
         {nltReste < 0 ? `⚠️ il en manque ${-nltReste}` : `✅ ${nltReste} vraiment disponibles`}
       </div>
     </div>
+  ) : undefined;
+  // 14/09/2026 — Demande d'Elinathan : voir directement sous le total NLT combien de caisses vont
+  // être consommées par les demandes créées AUJOURD'HUI (toutes, quel que soit leur statut) —
+  // affiché en négatif volontairement (c'est une sortie de caisses), sans aucun blocage : ce
+  // nombre peut très bien dépasser ce qui reste, exactement comme le stock lui-même peut devenir
+  // négatif (voir plus haut, "stock négatif").
+  const nltAujourdhuiBlock = nltAujourdhui && nltAujourdhui.nb > 0 ? (
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.danger }}>
+        📅 Aujourd'hui : -{nltAujourdhui.caisses} caisse{nltAujourdhui.caisses > 1 ? "s" : ""} ({nltAujourdhui.nb} demande{nltAujourdhui.nb > 1 ? "s" : ""})
+      </div>
+    </div>
+  ) : undefined;
+  const nltExtra = (nltEngageBlock || nltAujourdhuiBlock) ? (
+    <>{nltEngageBlock}{nltAujourdhuiBlock}</>
   ) : undefined;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 8 }}>
@@ -555,9 +570,11 @@ export async function genererBonPdf(demande: Demande): Promise<string> {
   ligne("Fournisseur d'origine", demande.origineFournisseur || "-", col1, yy);
   yy += 14;
   ligne("Colis à sortir", colisSortirTexte, col1, yy, colisSortirMaxWidth);
-  if (demande.depot === "nlt") {
-    ligne("Caisses IFCO envoyées", demande.caissesIfcoEnvoyees != null ? String(demande.caissesIfcoEnvoyees) : "-", col2, yy);
-  } else {
+  // 14/09/2026 — Demande d'Elinathan : retiré "Caisses IFCO envoyées" du bon de prépa NLT
+  // (simplification de la phase validation entrepôt) — l'entrepôt n'a plus besoin de ce chiffre
+  // sur le bon. Le champ caissesIfcoEnvoyees existe toujours côté Firebase (utilisé ailleurs :
+  // calcul du stock tampon NLT, arrivages), seul l'affichage imprimé disparaît.
+  if (demande.depot !== "nlt") {
     ligne("Cartons BABY BLANC utilisés", demande.cartonsBabyBlancEnvoyes != null ? String(demande.cartonsBabyBlancEnvoyes) : "-", col2, yy);
   }
   yy += 16 + colisSortirExtra;
@@ -2173,6 +2190,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const caissesEngageesNlt = demandes
     .filter(d => d.depot === "nlt" && (d.statut === "prêt" || d.statut === "parti") && retourEnIfcoDemande(d))
     .reduce((s, d) => s + (d.nbColisAEntrer || 0), 0);
+  // 14/09/2026 — Demande d'Elinathan : afficher, sous le stock NLT, combien de caisses les
+  // demandes créées AUJOURD'HUI vont consommer (toutes, quel que soit leur statut) — comparaison
+  // avec dateCreationFr directement en texte ("DD/MM/YYYY ..."), pas besoin de parseFrDate qui
+  // n'est défini que plus bas dans ce composant.
+  const aujourdHuiFr = new Date().toLocaleDateString("fr-FR");
+  const demandesAujourdhuiNlt = demandes.filter(d => d.depot === "nlt" && retourEnIfcoDemande(d) && (d.dateCreationFr || "").startsWith(aujourdHuiFr));
+  const caissesAujourdhuiNlt = demandesAujourdhuiNlt.reduce((s, d) => s + (d.nbColisAEntrer || 0), 0);
+  const nltAujourdhui = { caisses: caissesAujourdhuiNlt, nb: demandesAujourdhuiNlt.length };
   const besoinCaissesIfcoNlt = demandes
     .filter(d => d.depot === "nlt" && d.statut === "en attente" && retourEnIfcoDemande(d))
     .reduce((s, d) => s + (d.nbColisAEntrer || 0), 0) + caissesEngageesNlt;
@@ -2721,7 +2746,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
-            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} />
+            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
 
             {/* 04/09/2026 — La correction manuelle du stock (IFCO NLT / carton Andès) vit
                 maintenant dans l'onglet "⚙️ Configuration" (demande d'Elinathan : pas ici, sous
@@ -3023,7 +3048,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             )}
 
             {/* Stock, en couleur pâle pour repérer chaque compteur d'un coup d'œil */}
-            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} />
+            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
 
             {/* 11/09/2026 — Demande d'Elinathan : un seul bouton d'import (voir importerPdf) au
                 lieu de deux — plus besoin de deviner d'avance si le PDF choisi a une ou plusieurs
