@@ -216,26 +216,26 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // récente s'ouvrira automatiquement).
   const [semainesOuvertesDemandes, setSemainesOuvertesDemandes] = useState<Set<string> | null>(null);
 
-  // 11/09/2026 — À la demande d'Elinathan (préparation entrepôt) :
-  // 1) Chaque ligne se valide "prêt" une par une, EN SAISISSANT le nombre de palettes de CETTE
-  //    ligne (modale pretDemandeId/validerPret ci-dessous) — ça imprime tout de suite l'étiquette
-  //    de cette ligne. Exception : transport assuré par Moorea elle-même → pas de palette à
-  //    indiquer, marquerPretSansPalettes() sans modale ni étiquette.
-  // 2) Une fois que TOUTES les lignes du dépôt/jour sont passées "prêt" (plus aucune "en attente"),
-  //    le total de palettes du lot s'affiche directement dans la carte (pré-rempli avec la somme
-  //    des palettes saisies ligne par ligne), MODIFIABLE si le chargement réel diffère (palettes
-  //    regroupées différemment une fois sur le camion) — voir totalPaletteInputs plus bas.
-  // 3) Un seul bouton "🚚 Tout marquer parti" confirme le départ de tout le lot d'un coup, en
-  //    utilisant ce total (édité ou non) — pas d'étape séparée.
-  const [pretDemandeId, setPretDemandeId] = useState<string | null>(null);
-  const [pretGrandes, setPretGrandes] = useState("");
-  const [pretDemi, setPretDemi] = useState("");
+  // 14/09/2026 — Demande d'Elinathan : simplification de la validation entrepôt IFCO.
+  // 1) Chaque ligne se valide "prêt" d'une simple case à cocher ("cellule par cellule") — plus de
+  //    modale, plus de saisie de palettes par ligne, plus d'étiquette imprimée à chaque ligne.
+  //    Exception inchangée : transport assuré par Moorea elle-même → marquerPretSansPalettes().
+  // 2) Une fois que TOUTES les lignes du dépôt/jour sont cochées (plus aucune "en attente"), le
+  //    total de palettes du lot se saisit UNE FOIS dans la carte (voir totalPaletteInputs plus
+  //    bas) — plus de pré-remplissage ligne par ligne puisqu'il n'y a plus de saisie par ligne.
+  // 3) Un seul bouton valide le départ de tout le lot d'un coup ET imprime, à ce moment-là
+  //    seulement, une étiquette par palette physique — un seul type, simplifié : "MOOREA" + "IFCO"
+  //    + dépôt destinataire + numéro de palette (X/Y). Plus de bouton "marquer parti" séparé ni de
+  //    manifeste détaillé par article : voir envoyerEtiquetteIfcoMooreaPourImpressionPC plus bas.
 
   // Total de palettes du lot, éditable, directement dans la carte du dépôt (une entrée par
   // dépôt/jour, clé = cleDepot) — pré-rempli avec la somme des palettes déjà saisies ligne par
   // ligne, mais modifiable avant de confirmer le départ groupé.
   const [totalPaletteInputs, setTotalPaletteInputs] = useState<Record<string, { grandes: string; demi: string }>>({});
   const [partiSavingKey, setPartiSavingKey] = useState<string | null>(null);
+  // 14/09/2026 — Désactive brièvement la case à cocher "prêt" pendant l'écriture Firebase, pour
+  // éviter un double-clic qui la coche/décoche en rafale avant que le statut ne soit à jour.
+  const [cochantIds, setCochantIds] = useState<Set<string>>(new Set());
   // Aperçu PDF (bon de prépa ou scan Geslot) dans une modale avec iframe, plutôt qu'un lien
   // <a target="_blank"> vers une data:URI — Chrome bloque/redirige la navigation top-level
   // vers un data: URL, alors qu'un iframe src="data:..." affiché dans la page fonctionne.
@@ -317,14 +317,22 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // ReconditionnementModule.tsx (voir plus haut le commentaire sur envoyerRecapDuJour, même
   // logique). Préparation entrepôt ne garde que marquer "prêt" / marquer "parti".
 
-  function ouvrirModalePret(id: string) {
-    setPretDemandeId(id);
-    setPretGrandes("");
-    setPretDemi("");
+  // 14/09/2026 — Remplace l'ancienne modale de saisie de palettes par ligne : une simple case à
+  // cocher passe la demande "prêt" directement, sans rien demander (le nombre de palettes se
+  // saisit une seule fois, au niveau du lot entier, voir plus bas). Aucune étiquette n'est
+  // imprimée à ce stade — l'impression se fait une seule fois, à la fin, quand tout le lot part.
+  async function marquerPretDirect(id: string) {
+    await update(ref(db, `reconditionnement_demandes/${id}`), {
+      statut: "prêt",
+      entrepotPretPar: userName || "Moorea",
+      entrepotPretDate: nowFr(),
+      nbPalettesDepart: null,
+    });
   }
 
   // Quand le transport est assuré par Moorea elle-même, pas de nombre de palettes à indiquer —
-  // on marque directement "prêt" sans passer par la modale ni imprimer d'étiquette.
+  // on marque directement "prêt" sans imprimer d'étiquette. (Même effet que marquerPretDirect,
+  // gardé séparé pour le message de notification distinct et pour les appels depuis le scan QR.)
   async function marquerPretSansPalettes(id: string) {
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "prêt",
@@ -335,91 +343,42 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     notify("success", "✅ Marqué prêt — transport Moorea, pas de palette à indiquer");
   }
 
-  // 27/08/2026 — À la demande d'Elinathan : quand l'entrepôt saisit le nombre de palettes,
-  // on imprime automatiquement une étiquette "Production Moorea" par palette physique
-  // (grandes + demi confondues), avec la référence de la demande, le produit sorti, le dépôt
-  // destinataire, le numéro de palette (i/N), la date de production et le transporteur.
-  // Se déclenche depuis validerPret() (saisie des palettes de cette ligne, à chaque validation
-  // "prêt") — pas depuis marquerPretSansPalettes() (transport Moorea, pas de palette).
-  // 01/09/2026 — Remplace l'ancienne étiquette "production" (1 seul produit + QR code, à la
-  // demande d'Elinathan : trop pauvre en infos et pas adaptée à un départ groupé). La nouvelle
-  // étiquette est un manifest de départ : en-tête "MOOREA → <dépôt>", "Palette X/N", puis la
-  // liste de TOUT ce qui part dans ce départ (une ligne par article fini + une ligne caisses
-  // IFCO vides / cartons Andès si présent) avec une case à cocher à gauche de chaque ligne pour
-  // marquer à la main ce qui est chargé sur CETTE palette précise, et un total en bas. Une
-  // étiquette identique est imprimée pour chaque palette physique (paletteIndex 1..N) — appelée
-  // depuis validerPret(), à chaque ligne validée "prêt" (une étiquette par ligne, tout de suite).
-  async function envoyerEtiquettesManifestPourImpressionPC(depot: Depot, demandesGroupe: Demande[], grandes: number, demi: number) {
-    const totalPalettes = grandes + demi;
-    if (totalPalettes === 0) return;
-
-    const parArticle: Record<string, number> = {};
-    let totalIfco = 0;
-    let totalCartons = 0;
-    demandesGroupe.forEach(d => {
-      const qte = d.nbColisAEntrer ?? d.qteConditionnement ?? 0;
-      if (qte > 0) parArticle[d.articleFini] = (parArticle[d.articleFini] || 0) + qte;
-      if (d.caissesIfcoEnvoyees) totalIfco += d.caissesIfcoEnvoyees;
-      if (d.cartonsBabyBlancEnvoyes) totalCartons += d.cartonsBabyBlancEnvoyes;
-    });
-    const lignes = Object.entries(parArticle).map(([label, quantite]) => ({ label, quantite, unite: "colis" }));
-    if (totalIfco > 0) lignes.push({ label: "Caisses IFCO vides", quantite: totalIfco, unite: "caisses" });
-    if (totalCartons > 0) lignes.push({ label: "Cartons Andès", quantite: totalCartons, unite: "cartons" });
-    if (lignes.length === 0) return;
-
-    const transporteur = demandesGroupe.find(d => d.transporteurNom)?.transporteurNom || "";
+  // 14/09/2026 — Demande d'Elinathan : simplifie l'étiquette imprimée au départ — plus de
+  // manifeste détaillé (liste des articles, cases à cocher papier), juste "MOOREA" + "IFCO" + le
+  // dépôt destinataire + le numéro de palette (X/Y), le transporteur et la date. Imprimée une
+  // seule fois, quand tout le lot est validé (voir finaliserDepartGroupe plus bas) — plus une
+  // étiquette par ligne à chaque "prêt" comme avant. Un seul type d'étiquette (`printQueue.type
+  // === "etiquette_ifco_moorea"`), à adapter côté relais PC d'impression.
+  async function envoyerEtiquetteIfcoMooreaPourImpressionPC(depot: Depot, totalPalettes: number, transporteur: string) {
+    if (totalPalettes <= 0) return;
     const dateProd = new Date().toLocaleDateString("fr-FR");
-
     for (let i = 1; i <= totalPalettes; i++) {
       try {
         await push(ref(db, "printQueue"), {
-          type: "etiquette_manifest",
+          type: "etiquette_ifco_moorea",
+          titre: "MOOREA",
+          mention: "IFCO",
           depot: DEPOT_LABEL[depot],
           dateProd,
           transporteur,
           paletteIndex: i,
           paletteTotal: totalPalettes,
-          lignes,
           status: "pending",
           createdAt: Date.now(),
         });
       } catch (e) {
-        console.error("Erreur envoi étiquette manifest", e);
+        console.error("Erreur envoi étiquette IFCO Moorea", e);
       }
     }
   }
 
-  // Validation "prêt" PAR LIGNE (demande d'Elinathan, 11/09/2026) : saisie du nombre de palettes de
-  // CETTE demande précise, impression immédiate de son étiquette manifest (un produit, ses propres
-  // palettes), la demande passe "prêt". Le départ réel (statut "parti") reste une étape séparée,
-  // groupée, voir finaliserDepartGroupe plus bas.
-  async function validerPret() {
-    if (!pretDemandeId) return;
-    const g = parseInt(pretGrandes) || 0;
-    const d = parseInt(pretDemi) || 0;
-    if (g === 0 && d === 0) { notify("error", "✗ Indique au moins une palette"); return; }
-    await update(ref(db, `reconditionnement_demandes/${pretDemandeId}`), {
-      statut: "prêt",
-      entrepotPretPar: userName || "Moorea",
-      entrepotPretDate: nowFr(),
-      nbPalettesDepart: { grandes: g, demi: d },
-    });
-    const demandePourEtiquette = demandes.find(dd => dd.id === pretDemandeId);
-    if (demandePourEtiquette) {
-      await envoyerEtiquettesManifestPourImpressionPC(demandePourEtiquette.depot, [demandePourEtiquette], g, d);
-    }
-    notify("success", "✅ Marqué prêt — étiquette envoyée à l'impression");
-    setPretDemandeId(null);
-  }
-
-  // 11/09/2026 — Une fois que toutes les demandes "en attente" d'un dépôt/jour sont passées "prêt"
-  // (chacune avec ses propres palettes saisies ligne par ligne, voir validerPret), le total de
-  // palettes du lot est affiché (pré-rempli avec la somme des palettes déjà saisies), MODIFIABLE
-  // (le chargement réel sur le camion peut regrouper les palettes différemment), et un seul clic
-  // confirme le départ de TOUT le lot d'un coup : le total (édité ou non) est posé sur chaque
-  // demande (même nbPalettesDepartGroupeId pour ne compter le total qu'une fois en facturation),
-  // et chaque demande passe "parti".
-  async function finaliserDepartGroupe(idsAvecPalette: string[], idsSansPalette: string[], grandes: number, demi: number) {
+  // 14/09/2026 — Une fois que toutes les demandes "en attente" d'un dépôt/jour sont cochées (voir
+  // marquerPretDirect), le total de palettes du lot se saisit ici, en une fois, et UN SEUL clic
+  // confirme le départ de TOUT le lot d'un coup : le total est posé sur chaque demande (même
+  // nbPalettesDepartGroupeId pour ne compter le total qu'une fois en facturation), chaque demande
+  // passe "parti", ET l'étiquette simplifiée (MOOREA/IFCO/X-Y) part à l'impression pour chaque
+  // palette physique — le tout en une seule action, plus de bouton "marquer parti" séparé.
+  async function finaliserDepartGroupe(depot: Depot, idsAvecPalette: string[], idsSansPalette: string[], grandes: number, demi: number, transporteur: string) {
     const groupeId = idsAvecPalette.length > 0 ? `grp_${Date.now()}_${idsAvecPalette[0]}` : undefined;
     for (const id of idsAvecPalette) {
       await marquerPartiSilencieux(id, { nbPalettesDepart: { grandes, demi }, nbPalettesDepartGroupeId: groupeId });
@@ -427,8 +386,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     for (const id of idsSansPalette) {
       await marquerPartiSilencieux(id);
     }
+    await envoyerEtiquetteIfcoMooreaPourImpressionPC(depot, grandes + demi, transporteur);
     const total = idsAvecPalette.length + idsSansPalette.length;
-    notify("success", `🚚 ${total} demande${total > 1 ? "s" : ""} marquée${total > 1 ? "s" : ""} partie${total > 1 ? "s" : ""} — les retours apparaîtront dans « Pointer arrivage »`);
+    notify("success", `🚚 ${total} demande${total > 1 ? "s" : ""} validée${total > 1 ? "s" : ""} et partie${total > 1 ? "s" : ""} — étiquette(s) envoyée(s) à l'impression, les retours apparaîtront dans « Pointer arrivage »`);
   }
 
   // Cœur de "marquer parti", sans notification — utilisé aussi bien pour une demande seule
@@ -520,26 +480,24 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
 
   // 01/09/2026 — Bouton "Réimprimer" sur les départs déjà partis (demande d'Elinathan) : si
   // l'imprimante a raté ou le papier s'est coincé, on renvoie exactement les mêmes étiquettes
-  // manifest (même dépôt, mêmes palettes X/N, même liste) sans re-marquer quoi que ce soit.
-  // Pour un départ groupé, on retrouve toutes les demandes du même groupe via
-  // nbPalettesDepartGroupeId pour reconstituer le manifeste complet du départ.
+  // (même dépôt, mêmes palettes X/N) sans re-marquer quoi que ce soit.
+  // 14/09/2026 — Utilise maintenant l'étiquette simplifiée MOOREA/IFCO (voir
+  // envoyerEtiquetteIfcoMooreaPourImpressionPC) au lieu de l'ancien manifeste détaillé.
   async function reimprimerEtiquetteManifest(demande: Demande) {
     if (!demande.nbPalettesDepart) {
       notify("error", "❌ Pas de nombre de palettes enregistré pour ce départ — impossible de réimprimer");
       return;
     }
-    const groupe = demande.nbPalettesDepartGroupeId
-      ? demandes.filter(d => d.nbPalettesDepartGroupeId === demande.nbPalettesDepartGroupeId)
-      : [demande];
-    await envoyerEtiquettesManifestPourImpressionPC(demande.depot, groupe, demande.nbPalettesDepart.grandes, demande.nbPalettesDepart.demi);
+    const totalPalettes = demande.nbPalettesDepart.grandes + demande.nbPalettesDepart.demi;
+    await envoyerEtiquetteIfcoMooreaPourImpressionPC(demande.depot, totalPalettes, demande.transporteurNom || "");
     notify("success", "🖨️ Étiquette(s) renvoyée(s) à l'impression");
   }
 
   // ─── VALIDATION PAR SCAN DU QR CODE DU BON ───
   // App.tsx ouvre ce module avec scanDemandeId quand l'app a été chargée via l'URL du QR
-  // (?recond=<id>). Le 1er scan (statut "en attente") ouvre la modale "Marquer prêt" (saisie du
-  // nombre de palettes de cette ligne) — sauf transport Moorea, marqué prêt direct sans palette.
-  // Le 2e scan (statut déjà "prêt") marque directement "parti".
+  // (?recond=<id>). Le 1er scan (statut "en attente") marque directement "prêt" — comme la case à
+  // cocher, plus de saisie de palettes à ce stade (voir marquerPretDirect). Le 2e scan (statut
+  // déjà "prêt") marque directement "parti".
   const scanHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (!scanDemandeId || scanHandledRef.current === scanDemandeId || !demandes.length) return;
@@ -551,8 +509,8 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       if (demande.transporteurNom && /moorea/i.test(demande.transporteurNom)) {
         marquerPretSansPalettes(demande.id);
       } else {
-        ouvrirModalePret(demande.id);
-        notify("success", "📷 Scanné — confirme le nombre de palettes pour valider \"prêt\"");
+        marquerPretDirect(demande.id);
+        notify("success", "📷 Scanné — marqué \"prêt\"");
       }
     } else if (demande.statut === "prêt") {
       marquerParti(demande.id);
@@ -761,22 +719,24 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                             const estGroupeTermineDepot = demandesJourDepot.every(d => d.statut === "reçu" || d.statut === "annulé");
                             const depotOuvert = depotsForcesOuvertsDemandes.has(cleDepot) ? true : depotsFermesDemandes.has(cleDepot) ? false : !estGroupeTermineDepot;
                             const accentDepot = DEPOT_ACCENT[dep];
-                            // 11/09/2026 — Demande d'Elinathan : chaque ligne se valide "prêt" une par
-                            // une avec SES propres palettes (bouton "✓ Marquer prêt", plus bas — ouvre la
-                            // modale de saisie et imprime l'étiquette de cette ligne tout de suite). Une
-                            // fois que TOUT le dépôt/jour est passé "prêt" (plus aucune "en attente"), le
-                            // total de palettes du lot s'affiche ici, PRÉ-REMPLI avec la somme des
-                            // palettes déjà saisies ligne par ligne mais MODIFIABLE, et un seul bouton
-                            // "🚚 Tout marquer parti" confirme le départ de tout le lot d'un coup.
+                            // 14/09/2026 — Demande d'Elinathan (simplification) : chaque ligne se valide
+                            // "prêt" d'une simple case à cocher (voir marquerPretDirect, plus bas dans la
+                            // carte). Une fois que TOUT le dépôt/jour est coché (plus aucune "en attente"),
+                            // le nombre de palettes du lot se saisit ICI, une seule fois (plus de saisie ni
+                            // de pré-remplissage ligne par ligne), et un seul bouton valide le départ de
+                            // tout le lot ET imprime l'étiquette simplifiée (MOOREA/IFCO/X-Y) — plus de
+                            // bouton "marquer parti" séparé.
                             const resteDesEnAttente = demandesJourDepot.some(d => d.statut === "en attente");
                             const pretsAPartir = demandesJourDepot.filter(d => d.statut === "prêt");
-                            const pretsAvecPalette = pretsAPartir.filter(d => d.nbPalettesDepart != null);
-                            const pretsSansPalette = pretsAPartir.filter(d => d.nbPalettesDepart == null);
-                            const sommeGrandes = pretsAvecPalette.reduce((s, d) => s + (d.nbPalettesDepart?.grandes || 0), 0);
-                            const sommeDemi = pretsAvecPalette.reduce((s, d) => s + (d.nbPalettesDepart?.demi || 0), 0);
+                            // Seul le transport assuré par Moorea elle-même n'a pas de palette à compter
+                            // dans le total du lot (voir marquerPretSansPalettes) — tout le reste en a.
+                            const estTransportMoorea = (d: Demande) => !!(d.transporteurNom && /moorea/i.test(d.transporteurNom));
+                            const pretsAvecPalette = pretsAPartir.filter(d => !estTransportMoorea(d));
+                            const pretsSansPalette = pretsAPartir.filter(estTransportMoorea);
+                            const transporteurGroupe = pretsAPartir.find(d => d.transporteurNom)?.transporteurNom || "";
                             const inputsTotal = totalPaletteInputs[cleDepot];
-                            const totalGrandesAffiche = inputsTotal?.grandes ?? String(sommeGrandes || "");
-                            const totalDemiAffiche = inputsTotal?.demi ?? String(sommeDemi || "");
+                            const totalGrandesAffiche = inputsTotal?.grandes ?? "";
+                            const totalDemiAffiche = inputsTotal?.demi ?? "";
                             return (
                               <div key={dep} style={{ marginBottom: 10, background: `${accentDepot}0d`, border: `1px solid ${accentDepot}33`, borderRadius: 10, padding: 8 }}>
                                 <div onClick={() => toggleDepotDemandes(cleDepot, depotOuvert)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: depotOuvert ? 8 : 0, cursor: "pointer" }}>
@@ -789,15 +749,14 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                     <ResumeStatutsGroupe demandes={demandesJourDepot} />
                                   </div>
                                 </div>
-                                {/* 11/09/2026 — Total de palettes du lot, directement visible (pas de
-                                    fenêtre à ouvrir), dès que tout le dépôt/jour est passé "prêt". Reste
-                                    affiché même carte repliée pour qu'Elinathan/l'entrepôt le voie tout de
-                                    suite. Pré-rempli avec la somme des palettes saisies ligne par ligne,
-                                    mais modifiable avant de confirmer le départ groupé. */}
+                                {/* 14/09/2026 — Total de palettes du lot, directement visible dès que tout
+                                    le dépôt/jour est coché "prêt". Saisi une seule fois ici (plus de saisie
+                                    ligne par ligne) ; ce clic valide le départ ET imprime l'étiquette
+                                    simplifiée — plus de bouton "marquer parti" séparé. */}
                                 {!resteDesEnAttente && pretsAPartir.length > 0 && (
                                   <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap", background: "#fff", border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 10, padding: 8, marginBottom: 8 }}>
                                     <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray600, flexBasis: "100%" }}>
-                                      📦 Total palettes pour le départ ({pretsAPartir.length} demande{pretsAPartir.length > 1 ? "s" : ""} prête{pretsAPartir.length > 1 ? "s" : ""}) — modifiable si besoin
+                                      📦 Nombre de palettes pour le départ ({pretsAPartir.length} demande{pretsAPartir.length > 1 ? "s" : ""} coché{pretsAPartir.length > 1 ? "es" : "e"})
                                     </span>
                                     {pretsAPartir.some(d => d.retourPresta?.ecart) && (
                                       <div style={{ flexBasis: "100%", background: COLORS.amberLight, border: `1.5px solid #fde3a8`, borderRadius: 8, padding: "6px 10px" }}>
@@ -811,20 +770,21 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                     )}
                                     <div>
                                       <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: COLORS.gray600, marginBottom: 2 }}>Grandes</label>
-                                      <input type="number" value={totalGrandesAffiche} onChange={e => setTotalPaletteInputs(prev => ({ ...prev, [cleDepot]: { grandes: e.target.value, demi: prev[cleDepot]?.demi ?? String(sommeDemi || "") } }))} style={{ width: 70, padding: "6px 8px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+                                      <input type="number" value={totalGrandesAffiche} onChange={e => setTotalPaletteInputs(prev => ({ ...prev, [cleDepot]: { grandes: e.target.value, demi: prev[cleDepot]?.demi ?? "" } }))} style={{ width: 70, padding: "6px 8px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
                                     </div>
                                     <div>
                                       <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: COLORS.gray600, marginBottom: 2 }}>Demi</label>
-                                      <input type="number" value={totalDemiAffiche} onChange={e => setTotalPaletteInputs(prev => ({ ...prev, [cleDepot]: { grandes: prev[cleDepot]?.grandes ?? String(sommeGrandes || ""), demi: e.target.value } }))} style={{ width: 70, padding: "6px 8px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+                                      <input type="number" value={totalDemiAffiche} onChange={e => setTotalPaletteInputs(prev => ({ ...prev, [cleDepot]: { grandes: prev[cleDepot]?.grandes ?? "", demi: e.target.value } }))} style={{ width: 70, padding: "6px 8px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
                                     </div>
                                     <button
                                       disabled={partiSavingKey === cleDepot}
                                       onClick={async () => {
                                         const g = parseInt(totalGrandesAffiche) || 0;
                                         const d = parseInt(totalDemiAffiche) || 0;
+                                        if (g === 0 && d === 0 && pretsAvecPalette.length > 0) { notify("error", "✗ Indique le nombre de palettes du départ"); return; }
                                         setPartiSavingKey(cleDepot);
                                         try {
-                                          await finaliserDepartGroupe(pretsAvecPalette.map(dd => dd.id), pretsSansPalette.map(dd => dd.id), g, d);
+                                          await finaliserDepartGroupe(dep, pretsAvecPalette.map(dd => dd.id), pretsSansPalette.map(dd => dd.id), g, d, transporteurGroupe);
                                           setTotalPaletteInputs(prev => { const next = { ...prev }; delete next[cleDepot]; return next; });
                                         } finally {
                                           setPartiSavingKey(null);
@@ -832,7 +792,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                       }}
                                       style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: partiSavingKey === cleDepot ? "#ccc" : COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: partiSavingKey === cleDepot ? "not-allowed" : "pointer" }}
                                     >
-                                      {partiSavingKey === cleDepot ? "..." : `🚚 Tout marquer parti (${pretsAPartir.length})`}
+                                      {partiSavingKey === cleDepot ? "..." : `✅ Valider le départ et imprimer (${pretsAPartir.length})`}
                                     </button>
                                   </div>
                                 )}
@@ -859,9 +819,12 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                           <StatutBadge statut={d.statut} />
                                         </div>
 
+                                        {/* 14/09/2026 — Demande d'Elinathan : à ce stade (validation entrepôt),
+                                            on ne montre plus que ce qui doit SORTIR — l'entrepôt n'a pas
+                                            besoin de savoir ce qui doit rentrer (articleFini/nbColisAEntrer),
+                                            c'est une info commerciale/reconditionneur, pas physique ici. */}
                                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, fontSize: 12, color: COLORS.gray600, marginBottom: 10 }}>
                                           {d.nbColisASortir != null && <div>Colis à sortir : <b>{d.nbColisASortir}</b> — {d.articleVrac}</div>}
-                                          {d.nbColisAEntrer != null && <div>Colis à entrer : <b>{d.nbColisAEntrer}</b> — {d.articleFini}</div>}
                                           {d.qteConditionnement != null && <div>Qté conditionnement : <b>{d.qteConditionnement} {UNITE_QTE[d.depot]}</b></div>}
                                           {d.caissesIfcoEnvoyees != null && <div>Caisses IFCO envoyées : <b>{d.caissesIfcoEnvoyees}</b></div>}
                                           {d.cartonsBabyBlancEnvoyes != null && <div>Cartons BABY BLANC utilisés : <b>{d.cartonsBabyBlancEnvoyes}</b></div>}
@@ -976,23 +939,37 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                             d'Elinathan) : marquer "prêt" et marquer "parti" (avec le nombre de palettes).
                                             Supprimer/Annuler/Revenir à "en attente" sont retirés d'ici — ce sont des
                                             décisions commerciales, elles vivent uniquement dans Reconditionnement. */}
-                                        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                                          {/* 11/09/2026 — Demande d'Elinathan : chaque ligne se valide "prêt" une par une,
-                                              EN SAISISSANT ses propres palettes (modale, imprime l'étiquette de cette
-                                              ligne tout de suite) — sauf transport Moorea, pas de palette à indiquer. Une
-                                              fois tout le dépôt/jour passé "prêt", le total de palettes (modifiable) puis
-                                              le bouton "🚚 Tout marquer parti" apparaissent dans l'en-tête du dépôt
-                                              ci-dessus — plus de bouton "parti" par ligne individuelle. */}
+                                        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+                                          {/* 14/09/2026 — Demande d'Elinathan : simplification — chaque ligne se coche
+                                              simplement "prêt" (checklist numérique), plus de saisie de palette par
+                                              ligne ni de modale. Le nombre de palettes du départ est saisi UNE FOIS au
+                                              niveau du groupe (en-tête du dépôt ci-dessus), et l'étiquette
+                                              Moorea/IFCO unique + le départ sont finalisés en un seul clic via le
+                                              bouton "✅ Valider le départ et imprimer" dans l'en-tête. */}
                                           {d.statut === "en attente" && (
-                                            <button
-                                              onClick={() => {
-                                                if (d.transporteurNom && /moorea/i.test(d.transporteurNom)) { marquerPretSansPalettes(d.id); return; }
-                                                ouvrirModalePret(d.id);
-                                              }}
-                                              style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                                            >
-                                              ✓ Marquer prêt
-                                            </button>
+                                            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: cochantIds.has(d.id) ? "wait" : "pointer", padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primary}`, background: "#fff" }}>
+                                              <input
+                                                type="checkbox"
+                                                checked={false}
+                                                disabled={cochantIds.has(d.id)}
+                                                onChange={async () => {
+                                                  setCochantIds(prev => new Set(prev).add(d.id));
+                                                  try {
+                                                    if (d.transporteurNom && /moorea/i.test(d.transporteurNom)) {
+                                                      await marquerPretSansPalettes(d.id);
+                                                    } else {
+                                                      await marquerPretDirect(d.id);
+                                                    }
+                                                  } finally {
+                                                    setCochantIds(prev => { const next = new Set(prev); next.delete(d.id); return next; });
+                                                  }
+                                                }}
+                                                style={{ width: 18, height: 18, cursor: "pointer" }}
+                                              />
+                                              <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary }}>
+                                                {cochantIds.has(d.id) ? "..." : "✓ Marquer prêt"}
+                                              </span>
+                                            </label>
                                           )}
                                           {d.statut === "parti" && (
                                             <>
@@ -1043,33 +1020,6 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           </div>
         )}
       </div>
-
-      {/* MODALE — "Marquer prêt" par ligne (saisie des palettes de CETTE demande) */}
-      {pretDemandeId && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 400, width: "100%", borderTop: `7px solid ${COLORS.primary}` }}>
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>✓</div>
-              <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: 0 }}>Marquer prêt</p>
-              <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>Nombre de palettes réellement préparées pour cette ligne</p>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Grandes palettes</label>
-                <input type="number" value={pretGrandes} onChange={e => setPretGrandes(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4 }}>Demi-palettes</label>
-                <input type="number" value={pretDemi} onChange={e => setPretDemi(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setPretDemandeId(null)} style={{ flex: 1, background: "#f5f5f5", color: "#555", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-              <button onClick={validerPret} style={{ flex: 2, background: COLORS.primary, color: "#fff", border: "none", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Valider</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODALE — Aperçu PDF (bon Geslot ou bon de prépa) */}
       {pdfApercu && (
