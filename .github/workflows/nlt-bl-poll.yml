@@ -1,0 +1,16 @@
+name: Détection automatique du BL NLT (mail)
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appelle l'endpoint de détection du BL NLT
+        run: |
+          curl -sS -X POST "${{ secrets.APP_URL }}/api/nlt-bl-poll?secret=${{ secrets.NLT_BL_POLL_SECRET }}" \
+            --fail-with-body \
+            --max-time 60
