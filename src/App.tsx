@@ -157,6 +157,10 @@ export default function App() {
   // l'Historique ou les Rapports (avec stats) sont ouverts, jamais au démarrage de l'app.
   const [arrivagesArchivesData, setArrivagesArchivesData] = useState<any[]>([]);
   const archivesChargeesRef = useRef(false);
+  // 15/09/2026 — Retient les pages lourdes déjà ouvertes dans la session (Prestataires,
+  // Reconditionnement, Appro, Préparation, Chargement, Rack), pour les garder montées en
+  // mémoire (cachées) au lieu de tout recharger depuis Firebase à chaque retour dessus.
+  const pagesGardeesRef = useRef<Set<string>>(new Set());
   const chargerArchivesArrivages = () => {
     if (archivesChargeesRef.current) return;
     archivesChargeesRef.current = true;
@@ -2753,6 +2757,132 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // arrivages, pas toute l'appli.
   if (!rtdbPret) return <EcranChargementInitial />;
 
+  // 15/09/2026 — Demande d'Elinathan : "j'aimerai que toute les donnée charge au debut et que
+  // tout sois dispo apres pas a attendre sur chaque page". Avant, chaque module était démonté
+  // entièrement en le quittant puis reconstruit de zéro en y retournant (voir les anciens blocs
+  // `if (showX) { ... return <XModule/>; }` plus bas) — ce qui relançait TOUS ses listeners
+  // Firebase à chaque visite, même la 10e fois dans la même session. On garde maintenant montés
+  // (juste cachés avec display:none) les modules les plus lourds une fois ouverts une première
+  // fois. La toute première ouverture d'une page prend toujours le même temps qu'avant ; y
+  // retourner ensuite dans la même session est instantané.
+  const nomAfficheGarde = user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea");
+  const clesPagesGardees: [string, boolean][] = [
+    ["prestataires", showPrestataires],
+    ["reconditionnement", showReconditionnement],
+    ["appro", showAppro],
+    ["preparation", showPreparation],
+    ["chargement", showChargement],
+    ["rack", showRack],
+  ];
+  clesPagesGardees.forEach(([cle, actif]) => { if (actif) pagesGardeesRef.current.add(cle); });
+
+  const couchePrestataires = pagesGardeesRef.current.has("prestataires") && (
+    <div key="garde-prestataires" style={{ display: showPrestataires ? "contents" : "none" }}>
+      {monAcces.hasModule("prestataires") ? (
+        <PrestatairesModule
+          onClose={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }}
+          userName={nomAfficheGarde}
+          initialTab={prestatairesInitialTab}
+          canConfig={monAcces.hasTab("prestataires.configuration")}
+        />
+      ) : (
+        <AccesRefuse onRetour={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }} />
+      )}
+    </div>
+  );
+
+  const coucheReconditionnement = pagesGardeesRef.current.has("reconditionnement") && (
+    <div key="garde-reconditionnement" style={{ display: showReconditionnement ? "contents" : "none" }}>
+      {monAcces.hasModule("reconditionnement") ? (
+        <ReconditionnementModule
+          onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
+          userName={nomAfficheGarde}
+          onOpenPrestatairesConfig={() => { setShowReconditionnement(false); setPrestatairesInitialTab("configuration"); setShowPrestataires(true); }}
+        />
+      ) : (
+        <AccesRefuse onRetour={() => { setShowReconditionnement(false); setShowAccueil(true); }} />
+      )}
+    </div>
+  );
+
+  const coucheAppro = pagesGardeesRef.current.has("appro") && (
+    <div key="garde-appro" style={{ display: showAppro ? "contents" : "none" }}>
+      {monAcces.hasModule("appro") ? (
+        <ApproModule
+          onClose={() => { setShowAppro(false); setShowAccueil(true); }}
+          userName={nomAfficheGarde}
+          canConfig={monAcces.hasTab("appro.configuration")}
+        />
+      ) : (
+        <AccesRefuse onRetour={() => { setShowAppro(false); setShowAccueil(true); }} />
+      )}
+    </div>
+  );
+
+  const couchePreparation = pagesGardeesRef.current.has("preparation") && (
+    <div key="garde-preparation" style={{ display: showPreparation ? "contents" : "none" }}>
+      {monAcces.hasModule("preparation") ? (
+        <PreparationModule
+          onClose={() => { setShowPreparation(false); setShowAccueil(true); }}
+          userName={nomAfficheGarde}
+          scanDemandeId={qrRecondDemandeId}
+          onScanHandled={() => { setQrRecondDemandeId(null); window.history.replaceState({}, "", window.location.pathname); }}
+        />
+      ) : (
+        <AccesRefuse onRetour={() => { setShowPreparation(false); setShowAccueil(true); }} />
+      )}
+    </div>
+  );
+
+  const coucheChargement = pagesGardeesRef.current.has("chargement") && (
+    <div key="garde-chargement" style={{ display: showChargement ? "contents" : "none" }}>
+      {monAcces.hasModule("chargement") ? (
+        <ChargementModule onClose={() => { setShowChargement(false); setShowAccueil(true); }} />
+      ) : (
+        <AccesRefuse onRetour={() => { setShowChargement(false); setShowAccueil(true); }} />
+      )}
+    </div>
+  );
+
+  const coucheRack = pagesGardeesRef.current.has("rack") && (
+    <div key="garde-rack" style={{ display: showRack ? "contents" : "none" }}>
+      {monAcces.hasModule("rack") ? (
+        <RackModule autoOpenConfig={rackAutoConfig} onClose={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />
+      ) : (
+        <AccesRefuse onRetour={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />
+      )}
+    </div>
+  );
+
+  const yAUneCoucheGardee = pagesGardeesRef.current.size > 0;
+  const couchesGardees = yAUneCoucheGardee && (
+    <>
+      {couchePrestataires}
+      {coucheReconditionnement}
+      {coucheAppro}
+      {couchePreparation}
+      {coucheChargement}
+      {coucheRack}
+    </>
+  );
+
+  // L'une des 6 pages lourdes est active maintenant : on l'affiche (les autres couches gardées
+  // restent montées mais cachées dans le fragment ci-dessus).
+  if (showPrestataires || showReconditionnement || showAppro || showPreparation || showChargement || showRack) {
+    return couchesGardees;
+  }
+
+  // Aucune des 6 pages lourdes n'est active actuellement (on est sur l'accueil, une autre page,
+  // etc.) : on garde leurs couches montées-mais-cachées en plus du reste du flux normal, pour
+  // qu'elles restent instantanées si on y revient.
+  return (
+    <>
+      {couchesGardees}
+      {renderResteDeLApp()}
+    </>
+  );
+
+  function renderResteDeLApp() {
   if (showScanner) {
     return (
       <ScannerQR
@@ -2842,10 +2972,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <TachesModule onClose={() => { setShowTaches(false); setShowAccueil(true); }} userEmail={user?.email || ""} userName={user?.displayName || ""} catalogueArticles={catalogueArticles} initialTab={tachesTabDemande} />;
   }
 
-  if (showRack) {
-    if (!monAcces.hasModule("rack")) return <AccesRefuse onRetour={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />;
-    return <RackModule autoOpenConfig={rackAutoConfig} onClose={() => { setShowRack(false); setRackAutoConfig(false); setShowAccueil(true); }} />;
-  }
+  // 15/09/2026 — showRack est géré plus haut par la couche gardée (pagesGardeesRef), plus besoin
+  // de le traiter ici : si on arrive dans cette fonction, showRack est forcément false.
 
   if (showDashboard) {
     if (!monAcces.hasModule("dashboard_tv")) return <AccesRefuse onRetour={() => { setShowDashboard(false); setShowAccueil(true); }} />;
@@ -2857,48 +2985,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <StattModule onClose={() => { setShowStatt(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
-  if (showPrestataires) {
-    if (!monAcces.hasModule("prestataires")) return <AccesRefuse onRetour={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }} />;
-    return <PrestatairesModule
-      onClose={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }}
-      userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
-      initialTab={prestatairesInitialTab}
-      canConfig={monAcces.hasTab("prestataires.configuration")}
-    />;
-  }
-
-  if (showReconditionnement) {
-    if (!monAcces.hasModule("reconditionnement")) return <AccesRefuse onRetour={() => { setShowReconditionnement(false); setShowAccueil(true); }} />;
-    return <ReconditionnementModule
-      onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
-      userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
-      onOpenPrestatairesConfig={() => { setShowReconditionnement(false); setPrestatairesInitialTab("configuration"); setShowPrestataires(true); }}
-    />;
-  }
-
-  if (showAppro) {
-    if (!monAcces.hasModule("appro")) return <AccesRefuse onRetour={() => { setShowAppro(false); setShowAccueil(true); }} />;
-    return <ApproModule
-      onClose={() => { setShowAppro(false); setShowAccueil(true); }}
-      userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
-      canConfig={monAcces.hasTab("appro.configuration")}
-    />;
-  }
-
-  if (showPreparation) {
-    if (!monAcces.hasModule("preparation")) return <AccesRefuse onRetour={() => { setShowPreparation(false); setShowAccueil(true); }} />;
-    return <PreparationModule
-      onClose={() => { setShowPreparation(false); setShowAccueil(true); }}
-      userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")}
-      scanDemandeId={qrRecondDemandeId}
-      onScanHandled={() => { setQrRecondDemandeId(null); window.history.replaceState({}, "", window.location.pathname); }}
-    />;
-  }
-
-  if (showChargement) {
-    if (!monAcces.hasModule("chargement")) return <AccesRefuse onRetour={() => { setShowChargement(false); setShowAccueil(true); }} />;
-    return <ChargementModule onClose={() => { setShowChargement(false); setShowAccueil(true); }} />;
-  }
+  // 15/09/2026 — showPrestataires / showReconditionnement / showAppro / showPreparation /
+  // showChargement sont gérés plus haut par la couche gardée (pagesGardeesRef) : ils ne sont
+  // plus traités ici, si on arrive dans cette fonction ils sont forcément tous false.
 
   if (showDroitsAcces) {
     if (!monAcces.isAdmin) return <AccesRefuse onRetour={() => { setShowDroitsAcces(false); setShowAccueil(true); }} />;
@@ -5304,4 +5393,5 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       </div>
     </div>
   );
+  } // fin de renderResteDeLApp
 }
