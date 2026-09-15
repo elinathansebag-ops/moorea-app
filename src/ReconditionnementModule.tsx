@@ -184,6 +184,12 @@ export type Demande = {
   // un QR code de suivi — c'est LUI qui est affiché/téléchargé/imprimé partout dans l'app.
   pdfNom?: string;
   pdfBase64?: string;
+  // 15/09/2026 — BL NLT détecté automatiquement par mail (voir api/nlt-bl-poll.js) : le PDF
+  // original envoyé par NLT, attaché à la demande pour rester consultable ("faudrait garder
+  // le bl avec le reconditionnement" — demande d'Elinathan).
+  blNltPdfBase64?: string;
+  blNltNumero?: string;
+  blNltDate?: string;
   // Le scan Geslot d'origine, tel qu'uploadé par le commercial — gardé uniquement comme archive
   // / pont de données (il a servi à pré-remplir le formulaire par OCR), jamais montré en premier.
   pdfGeslotNom?: string;
@@ -2926,7 +2932,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       </div>
                     )}
 
-                    {(d.pdfBase64 || d.pdfGeslotBase64) && (
+                    {(d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64) && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         {d.pdfGeslotBase64 && (
                           <button type="button" onClick={() => setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: d.pdfGeslotBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -2936,6 +2942,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         {d.pdfBase64 && (
                           <button type="button" onClick={() => setPdfApercu({ titre: `Bon de prépa — ${d.numero || d.id}`, base64: d.pdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                             📄 Bon de prépa (avec QR)
+                          </button>
+                        )}
+                        {d.blNltPdfBase64 && (
+                          <button type="button" onClick={() => setPdfApercu({ titre: `BL NLT — ${d.numero || d.id}`, base64: d.blNltPdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            📄 BL NLT
                           </button>
                         )}
                       </div>

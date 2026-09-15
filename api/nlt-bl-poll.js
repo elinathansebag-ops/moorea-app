@@ -127,8 +127,15 @@ export default async function handler(req, res) {
               continue;
             }
 
+            // 15/09/2026 — Demande d'Elinathan : "ya plusieur article sur le bl" — un même BL
+            // NLT peut lister plusieurs lots (donc plusieurs demandes différentes) à la fois.
+            // C'est déjà géré : chaque "VOTRE LOT N° X" détecté dans extraireLotsEtColis est
+            // traité et rapproché INDÉPENDAMMENT des autres (une seule ambiguïté sur un lot ne
+            // bloque pas les autres lots du même BL). Le PDF du BL est joint à CHAQUE demande
+            // ainsi mise à jour, pour qu'il reste consultable depuis chacune.
+            const blPdfDataUri = `data:application/pdf;base64,${piece.content.toString("base64")}`;
             for (const { lot, colis } of lots) {
-              const resultat = await traiterUnLot(adminDb, lot, colis, { sujetMail: parsed.subject || "", blNumero });
+              const resultat = await traiterUnLot(adminDb, lot, colis, { sujetMail: parsed.subject || "", blNumero, blPdfDataUri });
               if (resultat === "applique") resume.lotsAppliques++;
               else resume.lotsAVerifier++;
             }
@@ -178,6 +185,7 @@ function extraireLotsEtColis(texte) {
 // d'ambiguïté (0 ou plusieurs correspondances), n'écrit rien en base — juste une trace dans
 // "nlt_bl_a_verifier" pour vérification manuelle. Voir la note de sécurité en haut du fichier.
 async function traiterUnLot(adminDb, lot, colis, contexteMail) {
+  const { blPdfDataUri, ...contexteSansPdf } = contexteMail;
   const snap = await adminDb.ref("reconditionnement_demandes").once("value");
   const toutes = snap.val() || {};
   const correspondantes = Object.entries(toutes).filter(
@@ -185,6 +193,8 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
   );
 
   if (correspondantes.length !== 1) {
+    // Pas de PDF joint ici (nlt_bl_a_verifier reste léger à lire dans l'appli) — le mail original
+    // reste de toute façon disponible dans la boîte mail pour vérifier à la main.
     await adminDb.ref("nlt_bl_a_verifier").push({
       date: nowFr(),
       lot,
@@ -193,7 +203,7 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
         correspondantes.length === 0
           ? "aucune demande NLT \"en attente\" avec ce numéro de lot"
           : `${correspondantes.length} demandes NLT "en attente" ont ce même numéro de lot — ambigu`,
-      ...contexteMail,
+      ...contexteSansPdf,
     });
     return "a_verifier";
   }
@@ -204,6 +214,10 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
   const date = nowFr();
   const transporteur = demande.transporteurNom || "";
 
+  // 15/09/2026 — Demande d'Elinathan : "si tout est ok faudrait garder le BL avec le
+  // reconditionnement" — le PDF du BL est attaché à la demande (même principe que pdfBase64
+  // pour le bon de prépa), consultable ensuite depuis Reconditionnement/Préparation via un
+  // bouton "📄 BL NLT" (voir ReconditionnementModule.tsx).
   await adminDb.ref(`reconditionnement_demandes/${id}`).update({
     retourPresta: {
       confirme: true,
@@ -217,6 +231,9 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
     entrepotPretPar: "NLT (BL mail détecté automatiquement)",
     entrepotPretDate: date,
     nbPalettesDepart: null,
+    blNltPdfBase64: blPdfDataUri || null,
+    blNltNumero: contexteMail.blNumero || null,
+    blNltDate: date,
   });
 
   await notifierProdPrete(adminDb, "nlt", demande, id, {
