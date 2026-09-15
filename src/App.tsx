@@ -5176,13 +5176,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     {tousFourn.length > 0 && (
                       <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
                         <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>🏭 Par fournisseur ({tousFourn.length}) — triés par nb de refus</p>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
-                          <span>Fournisseur</span><span>Reçu</span><span>Réserve</span><span>Refus</span><span>Taux refus</span>
+                        {/* 15/09/2026 — Chaque ligne était sa propre grille CSS indépendante : les colonnes
+                            "auto" se redimensionnaient selon le contenu de CHAQUE ligne séparément, donc
+                            les chiffres ne tombaient plus sous les bons en-têtes (demande d'Elinathan :
+                            "les donnée sont pas en dessous des colones"). Fix : largeurs de colonnes fixes,
+                            identiques sur l'en-tête et toutes les lignes, garantissant l'alignement. */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
+                          <span>Fournisseur</span><span style={{ textAlign: "right" }}>Reçu</span><span style={{ textAlign: "right" }}>Réserve</span><span style={{ textAlign: "right" }}>Refus</span><span style={{ textAlign: "right" }}>Taux refus</span>
                         </div>
                         {tousFourn.map(([nom, s]) => {
                           const taux = s.total > 0 ? Math.round((s.refus / s.total) * 100) : 0;
                           return (
-                            <div key={nom} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                            <div key={nom} style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
                               <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{nom}</span>
                               <span style={{ fontSize: 12, color: "#6b7280", textAlign: "right" }}>{s.total}</span>
                               <span style={{ fontSize: 12, color: s.reserve > 0 ? "#d97706" : "#9ca3af", fontWeight: 700, textAlign: "right" }}>{s.reserve}</span>
@@ -5196,13 +5201,15 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     {tousProd.length > 0 && (
                       <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 16 }}>
                         <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>🥦 Par produit ({tousProd.length}) — triés par nb de refus</p>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
-                          <span>Produit</span><span>Reçu</span><span>Réserve</span><span>Refus</span><span>Taux refus</span>
+                        {/* 15/09/2026 — même correctif d'alignement que "Par fournisseur" ci-dessus :
+                            largeurs de colonnes fixes au lieu de "auto" par ligne. */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
+                          <span>Produit</span><span style={{ textAlign: "right" }}>Reçu</span><span style={{ textAlign: "right" }}>Réserve</span><span style={{ textAlign: "right" }}>Refus</span><span style={{ textAlign: "right" }}>Taux refus</span>
                         </div>
                         {tousProd.map(([nom, s]) => {
                           const taux = s.total > 0 ? Math.round((s.refus / s.total) * 100) : 0;
                           return (
-                            <div key={nom} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                            <div key={nom} style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
                               <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{nom}</span>
                               <span style={{ fontSize: 12, color: "#6b7280", textAlign: "right" }}>{s.total}</span>
                               <span style={{ fontSize: 12, color: s.reserve > 0 ? "#d97706" : "#9ca3af", fontWeight: 700, textAlign: "right" }}>{s.reserve}</span>
