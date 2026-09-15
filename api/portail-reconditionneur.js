@@ -268,6 +268,18 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
   });
   await syncArrivageQuantiteDeclaree(adminDb, id, quantite, attendu);
 
+  await notifierProdPrete(adminDb, depot, demande, id, { quantite, ecart, attendu, transporteur, nbPalettes, commentaire });
+
+  return { success: true };
+}
+
+// 15/09/2026 — Extrait de handleConfirmerRepartie (le code était identique à ce qu'il faut
+// refaire quand une demande passe "prête" par un autre chemin que le portail — voir
+// api/nlt-bl-poll.js, qui détecte automatiquement le BL envoyé par mail par le reconditionneur
+// et appelle cette même fonction plutôt que de dupliquer ~90 lignes d'envoi de mail).
+// Prévient le transporteur (annuaire) ET l'entrepôt/Moorea qu'une prod est prête à récupérer.
+// Best effort : n'importe quelle erreur d'envoi est avalée (loggée), ne bloque jamais l'appelant.
+export async function notifierProdPrete(adminDb, depot, demande, id, { quantite, ecart, attendu, transporteur, nbPalettes, commentaire }) {
   const ref = demande.numero || id;
   // 01/09/2026 — Ligne "Quantité" reformulée pour dire explicitement si la quantité déclarée
   // par le presta correspond à ce qui était prévu, ou si elle a été changée — demande
@@ -363,8 +375,6 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
   } catch (emailErr) {
     console.error("Erreur envoi email prod prête (portail):", emailErr);
   }
-
-  return { success: true };
 }
 
 // Version "plusieurs à la fois" de confirmerRepartie — pour les jours où le presta a plusieurs

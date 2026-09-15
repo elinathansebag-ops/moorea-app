@@ -1007,6 +1007,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // affiché en historique dans l'onglet Configuration.
   const [stockAjustements, setStockAjustements] = useState<{ id: string; emplacement: string; ancienneValeur: number; nouvelleValeur: number; raison: string; date: string; timestamp: number }[]>([]);
 
+  // 15/09/2026 — Détection automatique du BL NLT par mail (voir api/nlt-bl-poll.js) : quand un
+  // lot détecté dans le PDF ne correspond pas à EXACTEMENT une seule demande NLT "en attente",
+  // rien n'est appliqué automatiquement — le cas est juste noté ici pour vérification manuelle.
+  const [blNltAVerifier, setBlNltAVerifier] = useState<{ id: string; date: string; lot?: string; colisDetectes?: number; raison: string; sujetMail?: string; blNumero?: string }[]>([]);
+
   useEffect(() => {
     const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
       const d = snap.val();
@@ -1056,7 +1061,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const d = snap.val();
       setStockAjustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0)) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); };
+    const u12 = onValue(ref(db, "nlt_bl_a_verifier"), snap => {
+      const d = snap.val();
+      setBlNltAVerifier(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); u12(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase
@@ -2592,6 +2601,31 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             {notification.type === "error" && (
               <button onClick={() => setNotification(null)} style={{ border: "none", background: "transparent", color: "#b91c1c", fontSize: 16, fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
             )}
+          </div>
+        )}
+
+        {/* 15/09/2026 — Alerte "BL NLT à vérifier" : la détection automatique du mail NLT (voir
+            api/nlt-bl-poll.js) n'applique JAMAIS un lot ambigu toute seule — elle le note ici à
+            la place pour vérification manuelle plutôt que de risquer une mauvaise saisie. */}
+        {blNltAVerifier.length > 0 && (
+          <div style={{ background: "#fffbeb", border: "1.5px solid #fde3a8", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+            <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#92400e" }}>
+              ⚠️ {blNltAVerifier.length} BL NLT détecté{blNltAVerifier.length > 1 ? "s" : ""} par mail à vérifier à la main
+            </p>
+            {blNltAVerifier.map(b => (
+              <div key={b.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "#fff", border: "1px solid #fde3a8", borderRadius: 8, padding: "8px 12px", marginBottom: 6 }}>
+                <div style={{ fontSize: 12, color: "#78350f" }}>
+                  {b.lot && <><b>Lot {b.lot}</b>{b.colisDetectes != null ? ` — ${b.colisDetectes} colis détectés` : ""} — </>}
+                  {b.raison}
+                  {b.blNumero ? ` (BL ${b.blNumero})` : ""}
+                  <span style={{ color: "#b45309", marginLeft: 6 }}>· {b.date}</span>
+                </div>
+                <button onClick={() => remove(ref(db, `nlt_bl_a_verifier/${b.id}`))}
+                  style={{ flexShrink: 0, border: "1px solid #fde3a8", background: "#fff", color: "#92400e", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                  ✓ Traité
+                </button>
+              </div>
+            ))}
           </div>
         )}
 

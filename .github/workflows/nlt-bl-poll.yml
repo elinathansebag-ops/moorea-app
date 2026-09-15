@@ -1,0 +1,25 @@
+name: Détection automatique du BL NLT (mail)
+
+# 15/09/2026 — Déclenche périodiquement api/nlt-bl-poll.js pour vérifier si NLT a envoyé un
+# nouveau BL par mail depuis la dernière fois. Vercel Cron n'est pas utilisé ici : le plan Hobby
+# limite les Cron Jobs Vercel à 1 exécution par jour, alors que GitHub Actions (gratuit sur ce
+# repo) permet un intervalle de 10 minutes sans coût. Voir api/nlt-bl-poll.js pour toute la
+# logique (IMAP + lecture du PDF + rapprochement avec les demandes de reconditionnement).
+#
+# Secrets requis (Settings → Secrets and variables → Actions, sur GitHub) :
+#   APP_URL              → l'URL de production de l'appli (ex: https://moorea-app.vercel.app)
+#   NLT_BL_POLL_SECRET   → la même valeur que la variable d'environnement Vercel du même nom
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appelle l'endpoint de détection du BL NLT
+        run: |
+          curl -sS -X POST "${{ secrets.APP_URL }}/api/nlt-bl-poll?secret=${{ secrets.NLT_BL_POLL_SECRET }}" \
+            --fail-with-body \
+            --max-time 60
