@@ -27,7 +27,7 @@
     "imapflow": "^2.0.5",
     "mailparser": "^3.9.28",
     "pdf-parse": "^2.4.5",
-    "@napi-rs/canvas": "1.0.9"
+    "dommatrix": "^1.0.3"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

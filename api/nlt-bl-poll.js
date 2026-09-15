@@ -1,3 +1,4 @@
+import "./_pdfPolyfills.js";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { PDFParse } from "pdf-parse";
