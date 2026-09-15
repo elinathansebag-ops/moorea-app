@@ -371,8 +371,9 @@ export function ChargementModule({ onClose }: { onClose: () => void }) {
               return (
                 <div key={c.id} style={{ background: "#fff", border: `1.5px solid ${coche ? COLORS.secondary : COLORS.gray200}`, borderRadius: 14, padding: "14px 16px", cursor: "pointer", position: "relative" }}
                   onClick={() => { setConteneurOuvertId(c.id); setVue("editeur"); }}>
-                  <label onClick={e => e.stopPropagation()} style={{ position: "absolute", top: 10, right: 10, cursor: "pointer" }}>
-                    <input type="checkbox" checked={coche} onChange={() => toggleComparaison(c.id)} style={{ width: 18, height: 18 }} />
+                  <label onClick={e => e.stopPropagation()} className="mrq-case-conteneur" style={{ position: "absolute", top: 10, right: 10 }}>
+                    <input type="checkbox" className="mrq-case-native" checked={coche} onChange={() => toggleComparaison(c.id)} />
+                    <span className="mrq-case-visuelle" />
                   </label>
                   <div style={{ fontWeight: 800, fontSize: 14, color: COLORS.gray700, marginBottom: 4, paddingRight: 24 }}>{c.nom}</div>
                   <div style={{ fontSize: 11, color: COLORS.gray400, marginBottom: 10 }}>{new Date(c.dateCreation).toLocaleDateString("fr-FR")}</div>
@@ -915,7 +916,10 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
         </div>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: COLORS.gray600, marginBottom: 10, cursor: "pointer" }}>
-          <input type="checkbox" checked={rotated} onChange={e => setRotated(e.target.checked)} /> Tourner la palette de 90°
+          <span className="mrq-case-conteneur">
+            <input type="checkbox" className="mrq-case-native" checked={rotated} onChange={e => setRotated(e.target.checked)} />
+            <span className="mrq-case-visuelle" />
+          </span> Tourner la palette de 90°
         </label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div><label style={labelStyle}>Position — longueur (cm)</label><input type="number" value={posX} onChange={e => setPosX(parseFloat(e.target.value) || 0)} style={champStyle} /></div>

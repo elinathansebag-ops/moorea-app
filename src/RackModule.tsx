@@ -978,7 +978,10 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
                 const checked = !!fav;
                 return (
                   <label key={article} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: checked ? "#faf5ff" : "#f9fafb", border: `1px solid ${checked ? "#e9d5ff" : "#e5e7eb"}`, cursor: "pointer" }}>
-                    <input type="checkbox" checked={checked} onChange={e => toggleFavori(article, e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }} />
+                    <span className="mrq-case-conteneur" style={{ flexShrink: 0 }}>
+                      <input type="checkbox" className="mrq-case-native" checked={checked} onChange={e => toggleFavori(article, e.target.checked)} />
+                      <span className="mrq-case-visuelle" />
+                    </span>
                     <span style={{ fontSize: 12, color: "#1a2e1a", flex: 1 }}>{article}</span>
                     {checked && fav && (
                       <input type="color" value={fav.color} onChange={e => updateFavoriColor(fav._key, e.target.value)} onClick={ev => ev.stopPropagation()}
@@ -1089,7 +1092,10 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
                     const checked = selectedLockKeys.has(key);
                     return (
                       <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, background: checked ? "#f5f3ff" : "#f9fafb", cursor: "pointer" }}>
-                        <input type="checkbox" checked={checked} onChange={() => toggleLockSelect(key)} />
+                        <span className="mrq-case-conteneur">
+                          <input type="checkbox" className="mrq-case-native" checked={checked} onChange={() => toggleLockSelect(key)} />
+                          <span className="mrq-case-visuelle" />
+                        </span>
                         <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: "#1a2e1a" }}>{p.produit}</span>
                         <span style={{ fontSize: 11, color: "#9ca3af" }}>Niveau {row + 1} · Sect. {bay + 1} · Place {slot + 1}</span>
                         {p.verrouille && <span style={{ fontSize: 13 }}>🔒</span>}

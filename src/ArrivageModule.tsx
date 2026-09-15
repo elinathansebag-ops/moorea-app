@@ -1034,7 +1034,10 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
           Total reçu {totalRecu}/{totalAttendu}{totalEcart !== 0 ? ` (${totalEcart > 0 ? "+" : ""}${totalEcart})` : ""}
         </span>
         <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#9ca3af", cursor: "pointer" }}>
-          <input type="checkbox" checked={sansEtiquette} onChange={e => setSansEtiquette(e.target.checked)} style={{ width: "auto", margin: 0 }} />
+          <span className="mrq-case-conteneur">
+            <input type="checkbox" className="mrq-case-native" checked={sansEtiquette} onChange={e => setSansEtiquette(e.target.checked)} />
+            <span className="mrq-case-visuelle" />
+          </span>
           Sans étiquette (cas rare)
         </label>
         <button onClick={validerTout} disabled={saving} style={{ marginLeft: "auto", padding: "9px 18px", borderRadius: 9, border: "none", background: saving ? "#ccc" : "#27ae60", color: "#fff", fontWeight: 700, fontSize: 13, cursor: saving ? "default" : "pointer" }}>

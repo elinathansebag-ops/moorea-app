@@ -1,0 +1,84 @@
+/* 15/09/2026 — Demande d'Elinathan : les cases à cocher de l'appli utilisaient le rendu natif
+   du navigateur, qui ne remplit pas toujours vraiment la case de couleur quand elle est cochée
+   (juste un petit contour selon le navigateur/OS) — "il faut que toute la case devienne colorée
+   quand je clique dessus, pas juste le contour, que ce soit plus vieux".
+
+   Solution : chaque case à cocher est maintenant enveloppée dans un conteneur
+   `.mrq-case-conteneur` contenant l'input natif (toujours présent et fonctionnel, mais rendu
+   invisible) suivi d'un `<span className="mrq-case-visuelle">` purement décoratif, stylé ici en
+   pur CSS via le sélecteur `:checked` — donc ça marche à l'identique que la case soit contrôlée
+   par React (`checked`) ou pas (`defaultChecked`), sans changer aucune logique existante.
+
+   Couleur : gris/vert par défaut ; une case peut personnaliser sa couleur cochée avec la
+   variable CSS inline --case-couleur (ex: style={{ "--case-couleur": "#c8a84b" }}). */
+
+.mrq-case-conteneur {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.mrq-case-conteneur.mrq-case-lg {
+  width: 22px;
+  height: 22px;
+}
+
+.mrq-case-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.mrq-case-native:disabled {
+  cursor: not-allowed;
+}
+
+.mrq-case-visuelle {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 5px;
+  border: 2px solid #d1d5db;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color .12s ease, border-color .12s ease;
+}
+
+.mrq-case-native:checked + .mrq-case-visuelle {
+  background: var(--case-couleur, #16a34a);
+  border-color: var(--case-couleur, #16a34a);
+}
+
+.mrq-case-native:checked + .mrq-case-visuelle::after {
+  content: "✓";
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.mrq-case-conteneur.mrq-case-lg .mrq-case-native:checked + .mrq-case-visuelle::after {
+  font-size: 15px;
+}
+
+.mrq-case-native:disabled + .mrq-case-visuelle {
+  opacity: .55;
+}
+
+.mrq-case-native:focus-visible + .mrq-case-visuelle {
+  outline: 2px solid var(--case-couleur, #16a34a);
+  outline-offset: 2px;
+}

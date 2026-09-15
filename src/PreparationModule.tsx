@@ -948,24 +948,27 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                               bouton "✅ Valider le départ et imprimer" dans l'en-tête. */}
                                           {d.statut === "en attente" && (
                                             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: cochantIds.has(d.id) ? "wait" : "pointer", padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primary}`, background: "#fff" }}>
-                                              <input
-                                                type="checkbox"
-                                                checked={cochantIds.has(d.id)}
-                                                disabled={cochantIds.has(d.id)}
-                                                onChange={async () => {
-                                                  setCochantIds(prev => new Set(prev).add(d.id));
-                                                  try {
-                                                    if (d.transporteurNom && /moorea/i.test(d.transporteurNom)) {
-                                                      await marquerPretSansPalettes(d.id);
-                                                    } else {
-                                                      await marquerPretDirect(d.id);
+                                              <span className="mrq-case-conteneur">
+                                                <input
+                                                  type="checkbox"
+                                                  className="mrq-case-native"
+                                                  checked={cochantIds.has(d.id)}
+                                                  disabled={cochantIds.has(d.id)}
+                                                  onChange={async () => {
+                                                    setCochantIds(prev => new Set(prev).add(d.id));
+                                                    try {
+                                                      if (d.transporteurNom && /moorea/i.test(d.transporteurNom)) {
+                                                        await marquerPretSansPalettes(d.id);
+                                                      } else {
+                                                        await marquerPretDirect(d.id);
+                                                      }
+                                                    } finally {
+                                                      setCochantIds(prev => { const next = new Set(prev); next.delete(d.id); return next; });
                                                     }
-                                                  } finally {
-                                                    setCochantIds(prev => { const next = new Set(prev); next.delete(d.id); return next; });
-                                                  }
-                                                }}
-                                                style={{ width: 18, height: 18, cursor: "pointer" }}
-                                              />
+                                                  }}
+                                                />
+                                                <span className="mrq-case-visuelle" />
+                                              </span>
                                               <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary }}>
                                                 {cochantIds.has(d.id) ? "..." : "✓ Marquer prêt"}
                                               </span>

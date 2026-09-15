@@ -635,9 +635,11 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                         </span>
                       </td>
                       <td style={{ padding: "6px", textAlign: "center" }}>
-                        <input data-f="ifco" type="checkbox" defaultChecked={p.emballageIfco || false}
-                          title="Cet article revient en caisses IFCO — la quantité « En stock » réalimentera le stock de caisses vides Moorea"
-                          style={{ width: 20, height: 20, cursor: "pointer", accentColor: "#c8a84b" }} />
+                        <label className="mrq-case-conteneur mrq-case-lg" style={{ "--case-couleur": "#c8a84b" } as React.CSSProperties}>
+                          <input data-f="ifco" type="checkbox" className="mrq-case-native" defaultChecked={p.emballageIfco || false}
+                            title="Cet article revient en caisses IFCO — la quantité « En stock » réalimentera le stock de caisses vides Moorea" />
+                          <span className="mrq-case-visuelle" />
+                        </label>
                       </td>
                     </tr>
                   );

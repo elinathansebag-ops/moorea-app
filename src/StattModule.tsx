@@ -699,7 +699,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
   const searchBoxStyle: React.CSSProperties = {
     width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box", fontSize: 13.5,
   };
-  const tableWrapStyle: React.CSSProperties = { background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 10 };
+  const tableWrapStyle: React.CSSProperties = { background: "#fff", borderRadius: 10, overflow: "auto", WebkitOverflowScrolling: "touch", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 10 };
 
   // ─── ÉCRAN 1 (page principale) : stats de vente réelles par période, d'où on lance la
   // création d'un programme — soit "par article" (combien acheter de chaque produit), soit
@@ -829,7 +829,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
               </div>
               <input value={statsSearch} onChange={e => setStatsSearch(e.target.value)} placeholder={statsVue === "produit" ? "Rechercher un produit…" : "Rechercher un client…"} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", boxSizing: "border-box", fontSize: 13.5, marginBottom: 4 }} />
 
-              <div style={{ background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 10 }}>
+              <div style={{ background: "#fff", borderRadius: 10, overflow: "auto", WebkitOverflowScrolling: "touch", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 10 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead>
                     <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
@@ -864,7 +864,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
                   <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", margin: "0 0 8px" }}>
                     {statsVue === "produit" ? `👥 Clients pour "${statsDetailNom}"` : `📦 Produits pris par "${statsDetailNom}"`}
                   </p>
-                  <div style={{ background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+                  <div style={{ background: "#fff", borderRadius: 10, overflow: "auto", WebkitOverflowScrolling: "touch", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                       <thead>
                         <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
@@ -1138,7 +1138,10 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
                         <>
                           <tr key={p.nom} style={{ borderTop: "1px solid #f0f0f0", background: ouvert ? "#fff7ed" : l?.selectionne ? "#fffbeb" : "transparent" }}>
                             <td style={{ padding: "6px 6px", textAlign: "center" }}>
-                              <input type="checkbox" checked={!!l?.selectionne} onChange={() => toggleSelection("produit", p.nom)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                              <label className="mrq-case-conteneur">
+                                <input type="checkbox" className="mrq-case-native" checked={!!l?.selectionne} onChange={() => toggleSelection("produit", p.nom)} />
+                                <span className="mrq-case-visuelle" />
+                              </label>
                             </td>
                             <td style={{ padding: "6px 10px" }}>{p.nom}</td>
                             <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{p.colis.toLocaleString("fr-FR")}</td>
@@ -1192,7 +1195,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
                                         }}>→ reporter comme total de la période</button>
                                       </p>
                                       {detailJour && (
-                                        <div style={{ marginTop: 10, background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+                                        <div style={{ marginTop: 10, background: "#fff", borderRadius: 8, overflow: "auto", WebkitOverflowScrolling: "touch", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
                                           <p style={{ fontSize: 11.5, fontWeight: 700, color: "#1a2e1a", margin: 0, padding: "8px 10px", background: "#f3f4f6" }}>
                                             👥 Clients ayant pris "{p.nom}" le {formatDate(detailJour)}
                                           </p>
@@ -1242,7 +1245,10 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
                       return (
                         <tr key={c.nom} style={{ borderTop: "1px solid #f0f0f0", background: l?.selectionne ? "#fff7ed" : "transparent" }}>
                           <td style={{ padding: "6px 6px", textAlign: "center" }}>
-                            <input type="checkbox" checked={!!l?.selectionne} onChange={() => toggleSelection("client", c.nom)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                            <label className="mrq-case-conteneur">
+                              <input type="checkbox" className="mrq-case-native" checked={!!l?.selectionne} onChange={() => toggleSelection("client", c.nom)} />
+                              <span className="mrq-case-visuelle" />
+                            </label>
                           </td>
                           <td style={{ padding: "6px 10px" }}>{c.nom}</td>
                           <td style={{ padding: "6px", textAlign: "right", color: "#888" }}>{c.nbArticles}</td>

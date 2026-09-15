@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { VersionChecker } from './VersionChecker'
 import { ErrorBoundary } from './ErrorBoundary'
+import './cases-a-cocher.css'
 
 // Active le service worker (public/sw.js) — le fichier existait déjà dans le projet mais
 // n'était jamais enregistré nulle part, ce qui rendait la proposition d'installation Chrome

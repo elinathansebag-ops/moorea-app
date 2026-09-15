@@ -27,7 +27,10 @@ function PermissionsChecklist({
       {MODULE_DEFS.map(m => (
         <div key={m.key} style={{ background: "#faf8f3", borderRadius: 10, padding: "8px 12px" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
-            <input type="checkbox" checked={!!modules[m.key]} onChange={() => onToggleModule(m.key)} style={{ width: "auto" }} />
+            <span className="mrq-case-conteneur">
+              <input type="checkbox" className="mrq-case-native" checked={!!modules[m.key]} onChange={() => onToggleModule(m.key)} />
+              <span className="mrq-case-visuelle" />
+            </span>
             {m.label}
           </label>
           {m.tabs && modules[m.key] && (
@@ -36,7 +39,10 @@ function PermissionsChecklist({
                 const tk = `${m.key}.${t.key}`;
                 return (
                   <label key={tk} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5, color: "#555" }}>
-                    <input type="checkbox" checked={!!tabs[tk]} onChange={() => onToggleTab(tk)} style={{ width: "auto" }} />
+                    <span className="mrq-case-conteneur">
+                      <input type="checkbox" className="mrq-case-native" checked={!!tabs[tk]} onChange={() => onToggleTab(tk)} />
+                      <span className="mrq-case-visuelle" />
+                    </span>
                     {t.label}
                   </label>
                 );
@@ -233,7 +239,10 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
 
                       {!estBootstrap && (
                         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 12 }}>
-                          <input type="checkbox" checked={!!u.admin} onChange={() => sauverUser(cle, { ...u, admin: !u.admin })} style={{ width: "auto" }} />
+                          <span className="mrq-case-conteneur">
+                            <input type="checkbox" className="mrq-case-native" checked={!!u.admin} onChange={() => sauverUser(cle, { ...u, admin: !u.admin })} />
+                            <span className="mrq-case-visuelle" />
+                          </span>
                           Administrateur (peut aussi gérer les droits)
                         </label>
                       )}

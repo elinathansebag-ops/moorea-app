@@ -880,7 +880,10 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                 "Orientation" pour un format personnalisé en cm, contrairement aux formats
                 standards A4/Letter (demande d'Elinathan). */}
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: COLORS.gray600, marginTop: 10, cursor: "pointer" }}>
-              <input type="checkbox" checked={pivoter90} onChange={(e) => setPivoter90(e.target.checked)} />
+              <span className="mrq-case-conteneur">
+                <input type="checkbox" className="mrq-case-native" checked={pivoter90} onChange={(e) => setPivoter90(e.target.checked)} />
+                <span className="mrq-case-visuelle" />
+              </span>
               🔄 Pivoter l'impression de 90° (si l'étiquette sort de travers sur ton rouleau)
             </label>
           </div>
@@ -890,7 +893,10 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: logoActif ? 10 : 0 }}>
               <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🖼️ Logo</h3>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: logoUrl ? "pointer" : "default", opacity: logoUrl ? 1 : 0.4 }}>
-                <input type="checkbox" checked={logoActif && !!logoUrl} disabled={!logoUrl} onChange={(e) => setLogoActif(e.target.checked)} />
+                <span className="mrq-case-conteneur">
+                  <input type="checkbox" className="mrq-case-native" checked={logoActif && !!logoUrl} disabled={!logoUrl} onChange={(e) => setLogoActif(e.target.checked)} />
+                  <span className="mrq-case-visuelle" />
+                </span>
                 Afficher
               </label>
             </div>
@@ -898,7 +904,10 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               <>
                 <img src={logoUrlAffichee || logoUrl} alt="Logo" style={{ maxHeight: 60, maxWidth: "100%", display: "block", marginBottom: 8, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: logoNoirEtBlanc ? "#f5f5f5" : "transparent" }} />
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: COLORS.gray600, marginBottom: 10, cursor: "pointer" }}>
-                  <input type="checkbox" checked={logoNoirEtBlanc} onChange={(e) => setLogoNoirEtBlanc(e.target.checked)} />
+                  <span className="mrq-case-conteneur">
+                    <input type="checkbox" className="mrq-case-native" checked={logoNoirEtBlanc} onChange={(e) => setLogoNoirEtBlanc(e.target.checked)} />
+                    <span className="mrq-case-visuelle" />
+                  </span>
                   🖨️ Convertir en noir (imprimante à étiquettes — impression thermique, pas de couleur)
                   {logoConversionEnCours && " · conversion..."}
                 </label>
@@ -1029,13 +1038,22 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     ))}
                   </select>
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontWeight: b.gras ? 800 : 400 }}>
-                    <input type="checkbox" checked={b.gras} onChange={(e) => modifierBloc(b.id, { gras: e.target.checked })} /> Gras
+                    <span className="mrq-case-conteneur">
+                      <input type="checkbox" className="mrq-case-native" checked={b.gras} onChange={(e) => modifierBloc(b.id, { gras: e.target.checked })} />
+                      <span className="mrq-case-visuelle" />
+                    </span> Gras
                   </label>
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontStyle: b.italique ? "italic" : "normal" }}>
-                    <input type="checkbox" checked={b.italique} onChange={(e) => modifierBloc(b.id, { italique: e.target.checked })} /> Italique
+                    <span className="mrq-case-conteneur">
+                      <input type="checkbox" className="mrq-case-native" checked={b.italique} onChange={(e) => modifierBloc(b.id, { italique: e.target.checked })} />
+                      <span className="mrq-case-visuelle" />
+                    </span> Italique
                   </label>
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
-                    <input type="checkbox" checked={b.majuscule} onChange={(e) => modifierBloc(b.id, { majuscule: e.target.checked })} /> MAJ.
+                    <span className="mrq-case-conteneur">
+                      <input type="checkbox" className="mrq-case-native" checked={b.majuscule} onChange={(e) => modifierBloc(b.id, { majuscule: e.target.checked })} />
+                      <span className="mrq-case-visuelle" />
+                    </span> MAJ.
                   </label>
                   <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
                     <button onClick={() => deplacerBloc(b.id, -1)} disabled={i === 0} style={{ width: 24, height: 24, borderRadius: 6, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.3 : 1, fontSize: 11 }}>↑</button>
@@ -1129,13 +1147,22 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                     ))}
                   </select>
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontWeight: blocVariable.gras ? 800 : 400 }}>
-                    <input type="checkbox" checked={blocVariable.gras} onChange={(e) => modifierBloc(blocVariable.id, { gras: e.target.checked })} /> Gras
+                    <span className="mrq-case-conteneur">
+                      <input type="checkbox" className="mrq-case-native" checked={blocVariable.gras} onChange={(e) => modifierBloc(blocVariable.id, { gras: e.target.checked })} />
+                      <span className="mrq-case-visuelle" />
+                    </span> Gras
                   </label>
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontStyle: blocVariable.italique ? "italic" : "normal" }}>
-                    <input type="checkbox" checked={blocVariable.italique} onChange={(e) => modifierBloc(blocVariable.id, { italique: e.target.checked })} /> Italique
+                    <span className="mrq-case-conteneur">
+                      <input type="checkbox" className="mrq-case-native" checked={blocVariable.italique} onChange={(e) => modifierBloc(blocVariable.id, { italique: e.target.checked })} />
+                      <span className="mrq-case-visuelle" />
+                    </span> Italique
                   </label>
                   <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
-                    <input type="checkbox" checked={blocVariable.majuscule} onChange={(e) => modifierBloc(blocVariable.id, { majuscule: e.target.checked })} /> MAJ.
+                    <span className="mrq-case-conteneur">
+                      <input type="checkbox" className="mrq-case-native" checked={blocVariable.majuscule} onChange={(e) => modifierBloc(blocVariable.id, { majuscule: e.target.checked })} />
+                      <span className="mrq-case-visuelle" />
+                    </span> MAJ.
                   </label>
                   <button onClick={() => supprimerVariable(blocVariable.id)} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 6, border: `1px solid ${COLORS.danger}`, background: COLORS.dangerLight, color: COLORS.danger, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🗑 Retirer</button>
                 </div>

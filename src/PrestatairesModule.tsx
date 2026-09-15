@@ -3400,7 +3400,10 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       {allRows.map((r: any, i: number) => (
                         <tr key={i} style={{ borderBottom: "1px solid #f4f4f4", background: selected[i] ? "#fff" : "#fafafa", opacity: selected[i] ? 1 : 0.6 }}>
                           <td style={{ padding: "10px", textAlign: "center" }}>
-                            <input type="checkbox" checked={selected[i]} onChange={e => setSelected(prev => prev.map((v, j) => j === i ? e.target.checked : v))} style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#27ae60" }} />
+                            <label className="mrq-case-conteneur" style={{ "--case-couleur": "#27ae60" } as React.CSSProperties}>
+                              <input type="checkbox" className="mrq-case-native" checked={selected[i]} onChange={e => setSelected(prev => prev.map((v, j) => j === i ? e.target.checked : v))} />
+                              <span className="mrq-case-visuelle" />
+                            </label>
                           </td>
                           <td style={{ padding: "10px", fontWeight: 600, color: "#2c3e50" }}>{r['_CLIENT']}</td>
                           <td style={{ padding: "10px", color: "#1a6b3a" }}>{r['DATE DE LIVRAISON']}</td>
@@ -3622,16 +3625,19 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                   <div style={{ display: "grid", gap: "8px", maxHeight: "260px", overflowY: "auto" }}>
                     {stockAjustements.map((a) => (
                       <label key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: "8px", background: ajustementsASupprimer.has(a.id) ? "#fef2f2" : COLORS.gray100, border: `1px solid ${ajustementsASupprimer.has(a.id) ? "#fca5a5" : COLORS.gray200}`, borderRadius: "8px", padding: "10px 12px", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={ajustementsASupprimer.has(a.id)}
-                          onChange={() => setAjustementsASupprimer(prev => {
-                            const next = new Set(prev);
-                            if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
-                            return next;
-                          })}
-                          style={{ width: "auto", margin: "2px 0 0", flexShrink: 0 }}
-                        />
+                        <span className="mrq-case-conteneur" style={{ margin: "2px 0 0", flexShrink: 0 }}>
+                          <input
+                            type="checkbox"
+                            className="mrq-case-native"
+                            checked={ajustementsASupprimer.has(a.id)}
+                            onChange={() => setAjustementsASupprimer(prev => {
+                              const next = new Set(prev);
+                              if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+                              return next;
+                            })}
+                          />
+                          <span className="mrq-case-visuelle" />
+                        </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
                             <span style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray700 }}>{a.emplacement}</span>
@@ -4243,16 +4249,19 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                   <div style={{ display: "grid", gap: "8px", maxHeight: "260px", overflowY: "auto" }}>
                     {stockAjustements.map((a) => (
                       <label key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: "8px", background: ajustementsASupprimer.has(a.id) ? "#fef2f2" : COLORS.gray100, border: `1px solid ${ajustementsASupprimer.has(a.id) ? "#fca5a5" : COLORS.gray200}`, borderRadius: "8px", padding: "10px 12px", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={ajustementsASupprimer.has(a.id)}
-                          onChange={() => setAjustementsASupprimer(prev => {
-                            const next = new Set(prev);
-                            if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
-                            return next;
-                          })}
-                          style={{ width: "auto", margin: "2px 0 0", flexShrink: 0 }}
-                        />
+                        <span className="mrq-case-conteneur" style={{ margin: "2px 0 0", flexShrink: 0 }}>
+                          <input
+                            type="checkbox"
+                            className="mrq-case-native"
+                            checked={ajustementsASupprimer.has(a.id)}
+                            onChange={() => setAjustementsASupprimer(prev => {
+                              const next = new Set(prev);
+                              if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+                              return next;
+                            })}
+                          />
+                          <span className="mrq-case-visuelle" />
+                        </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
                             <span style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray700 }}>{a.emplacement}</span>
@@ -4418,16 +4427,19 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                         <div style={{ display: "grid", gap: 6, marginBottom: 12, maxHeight: 320, overflowY: "auto" }}>
                           {demandesTermineesRecond.map(d => (
                             <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: demandesASupprimerTest.has(d.id) ? "#fef2f2" : COLORS.gray100, border: `1.5px solid ${demandesASupprimerTest.has(d.id) ? "#fca5a5" : COLORS.gray200}`, borderRadius: 8, cursor: "pointer" }}>
-                              <input
-                                type="checkbox"
-                                checked={demandesASupprimerTest.has(d.id)}
-                                onChange={() => setDemandesASupprimerTest(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(d.id)) next.delete(d.id); else next.add(d.id);
-                                  return next;
-                                })}
-                                style={{ width: "auto", margin: 0, flexShrink: 0 }}
-                              />
+                              <span className="mrq-case-conteneur" style={{ flexShrink: 0 }}>
+                                <input
+                                  type="checkbox"
+                                  className="mrq-case-native"
+                                  checked={demandesASupprimerTest.has(d.id)}
+                                  onChange={() => setDemandesASupprimerTest(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(d.id)) next.delete(d.id); else next.add(d.id);
+                                    return next;
+                                  })}
+                                />
+                                <span className="mrq-case-visuelle" />
+                              </span>
                               <span style={{ fontSize: 12, color: COLORS.gray700 }}>
                                 {d.numero && <b style={{ color: COLORS.secondary, marginRight: 6 }}>{d.numero}</b>}
                                 {d.articleVrac} → {d.articleFini} · {DEPOT_LABEL[d.depot]} · {(d as any).retour?.date || d.dateCreationFr}
@@ -4477,16 +4489,19 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                             const libelleArticle = m.article === "ifco_vide" ? "Caisses IFCO vides" : estCarton ? "Cartons BABY BLANC" : "Caisses IFCO pleines";
                             return (
                               <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: mouvementsASupprimer.has(m.id) ? "#fef2f2" : COLORS.gray100, border: `1.5px solid ${mouvementsASupprimer.has(m.id) ? "#fca5a5" : COLORS.gray200}`, borderRadius: 8, cursor: "pointer" }}>
-                                <input
-                                  type="checkbox"
-                                  checked={mouvementsASupprimer.has(m.id)}
-                                  onChange={() => setMouvementsASupprimer(prev => {
-                                    const next = new Set(prev);
-                                    if (next.has(m.id)) next.delete(m.id); else next.add(m.id);
-                                    return next;
-                                  })}
-                                  style={{ width: "auto", margin: 0, flexShrink: 0 }}
-                                />
+                                <span className="mrq-case-conteneur" style={{ flexShrink: 0 }}>
+                                  <input
+                                    type="checkbox"
+                                    className="mrq-case-native"
+                                    checked={mouvementsASupprimer.has(m.id)}
+                                    onChange={() => setMouvementsASupprimer(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(m.id)) next.delete(m.id); else next.add(m.id);
+                                      return next;
+                                    })}
+                                  />
+                                  <span className="mrq-case-visuelle" />
+                                </span>
                                 <span style={{ fontSize: 12, color: COLORS.gray700 }}>
                                   {estEnvoi ? "📤 Envoi" : "📥 Retour"} — {libelleArticle} · {estEnvoi ? "−" : "+"}{m.quantite} · {m.depot ? `${DEPOT_LABEL[m.depot as DepotRecond]} · ` : ""}{m.date}
                                   {!m.reconditionnement_demande_id && <span style={{ color: "#d97706", fontWeight: 700 }}> (non lié à une demande)</span>}

@@ -736,7 +736,10 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                       {allRows.map((r:any, i:number) => (
                         <tr key={i} style={{ borderBottom: "1px solid #f4f4f4", background: selected[i] ? "#fff" : "#fafafa", opacity: selected[i] ? 1 : 0.6 }}>
                           <td style={{ padding: "10px", textAlign: "center" }}>
-                            <input type="checkbox" checked={selected[i]} onChange={e => setSelected(prev => prev.map((v,j) => j===i ? e.target.checked : v))} style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#27ae60" }} />
+                            <label className="mrq-case-conteneur" style={{ "--case-couleur": "#27ae60" } as React.CSSProperties}>
+                              <input type="checkbox" className="mrq-case-native" checked={selected[i]} onChange={e => setSelected(prev => prev.map((v,j) => j===i ? e.target.checked : v))} />
+                              <span className="mrq-case-visuelle" />
+                            </label>
                           </td>
                           <td style={{ padding: "10px", fontWeight: 600, color: "#2c3e50" }}>{r['_CLIENT']}</td>
                           <td style={{ padding: "10px", color: "#1a6b3a" }}>{r['DATE DE LIVRAISON']}</td>
