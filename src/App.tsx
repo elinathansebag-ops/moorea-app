@@ -3266,19 +3266,21 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "12px 12px 100px", boxSizing: "border-box" }}>
 
-          {/* BANDEAU RECHERCHE LOT */}
-          <div style={{ background: darkMode ? "#1a1d27" : "#fff", border: `1.5px solid ${darkMode ? "#2d3148" : "#e8e0d0"}`, borderRadius: 16, padding: "14px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
-            <span style={{ fontSize: 22, flexShrink: 0 }}>🔍</span>
+          {/* BANDEAU RECHERCHE LOT — 15/09/2026 : réduit et rendu discret à la demande
+              d'Elinathan ("personne ne l'utilise"), au lieu du gros bandeau très visible
+              d'avant. Reste fonctionnel à l'identique (Entrée ou clic ouvrent la recherche). */}
+          <div style={{ background: "transparent", border: "none", borderRadius: 10, padding: "4px 6px", marginBottom: 10, display: "flex", alignItems: "center", gap: 6, opacity: 0.55 }}>
+            <span style={{ fontSize: 13, flexShrink: 0 }}>🔍</span>
             <input
               value={searchLotQuery}
               onChange={e => setSearchLotQuery(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && searchLotQuery.trim()) { setShowAccueil(false); setShowRecherche(true); } }}
               placeholder="Chercher un lot, un produit ou un fournisseur…"
-              style={{ flex: 1, border: "none", outline: "none", fontSize: 15, fontFamily: "'Syne', sans-serif", background: "transparent", color: textMain, minWidth: 0 }}
+              style={{ flex: 1, border: "none", outline: "none", fontSize: 11.5, fontFamily: "'Syne', sans-serif", background: "transparent", color: textMain, minWidth: 0 }}
             />
             <button onClick={() => { setShowAccueil(false); setShowRecherche(true); }}
-              style={{ padding: "9px 18px", borderRadius: 10, border: "none", background: "#3b82f6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", flexShrink: 0, fontFamily: "'Syne', sans-serif" }}>
-              Chercher →
+              style={{ padding: "3px 9px", borderRadius: 7, border: `1px solid ${darkMode ? "#2d3148" : "#e8e0d0"}`, background: "transparent", color: darkMode ? "#9ca3af" : "#6b7280", fontWeight: 600, fontSize: 10.5, cursor: "pointer", flexShrink: 0, fontFamily: "'Syne', sans-serif" }}>
+              Chercher
             </button>
           </div>
 
