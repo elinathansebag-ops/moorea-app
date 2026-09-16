@@ -705,11 +705,24 @@ export default function App() {
   // Sert uniquement à afficher, en haut de chaque groupe NLT/Andès dans "Pointer arrivage", le
   // total de palettes ANNONCÉ par le reconditionneur au moment de son "Repartie" — voir
   // reconditionnementDemandesById, passé à DateBlock (ArrivageModule.tsx).
+  // 16/09/2026 — Bug de coût trouvé avec Elinathan : cette même collection était ré-écoutée
+  // séparément ICI, dans ReconditionnementModule, PreparationModule ET PrestatairesModule — soit
+  // 4 abonnements simultanés sur la même collection (qui contient aussi les PDF encodés, très
+  // lourds) dès que ces écrans restent "gardés" ouverts en même temps (voir pagesGardeesRef plus
+  // bas). Un abonnement Firebase renvoie TOUT le contenu à chaque changement, pas juste ce qui a
+  // changé — donc 4 téléchargements complets de tout l'historique à chaque mise à jour d'une
+  // seule demande. Conséquence concrète : 456 Go téléchargés en 2 semaines, largement au-delà du
+  // forfait gratuit Firebase. On garde donc UN SEUL abonnement ici, et on le transmet aux 3
+  // modules ci-dessous (demandesRecondExterne) au lieu qu'ils s'y abonnent chacun. Ne règle pas
+  // le fond du problème (les PDF restent dans la collection) mais divise déjà la consommation
+  // par ~4 sans rien changer au comportement visible.
   const [reconditionnementDemandesById, setReconditionnementDemandesById] = useState<Record<string, any>>({});
+  const [reconditionnementDemandesListe, setReconditionnementDemandesListe] = useState<any[]>([]);
   useEffect(() => {
     const unsub = onValue(ref(db, "reconditionnement_demandes"), snap => {
       const d = snap.val();
       setReconditionnementDemandesById(d || {});
+      setReconditionnementDemandesListe(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     return () => unsub();
   }, []);
@@ -2790,6 +2803,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           userName={nomAfficheGarde}
           initialTab={prestatairesInitialTab}
           canConfig={monAcces.hasTab("prestataires.configuration")}
+          demandesRecondExterne={reconditionnementDemandesListe}
         />
       ) : (
         <AccesRefuse onRetour={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }} />
@@ -2804,6 +2818,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
           userName={nomAfficheGarde}
           onOpenPrestatairesConfig={() => { setShowReconditionnement(false); setPrestatairesInitialTab("configuration"); setShowPrestataires(true); }}
+          demandesRecondExterne={reconditionnementDemandesListe}
         />
       ) : (
         <AccesRefuse onRetour={() => { setShowReconditionnement(false); setShowAccueil(true); }} />
@@ -2847,6 +2862,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           userName={nomAfficheGarde}
           scanDemandeId={qrRecondDemandeId}
           onScanHandled={() => { setQrRecondDemandeId(null); window.history.replaceState({}, "", window.location.pathname); }}
+          demandesRecondExterne={reconditionnementDemandesListe}
         />
       ) : (
         <AccesRefuse onRetour={() => { setShowPreparation(false); setShowAccueil(true); }} />

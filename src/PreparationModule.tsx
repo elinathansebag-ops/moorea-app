@@ -179,7 +179,7 @@ function ResumeStatutsGroupe({ demandes }: { demandes: Demande[] }) {
   );
 }
 
-export function PreparationModule({ onClose, userName, scanDemandeId, onScanHandled }: {
+export function PreparationModule({ onClose, userName, scanDemandeId, onScanHandled, demandesRecondExterne }: {
   onClose: () => void;
   userName?: string;
   // Id de demande transmis quand l'app a été ouverte via le QR code imprimé sur le bon (voir
@@ -187,6 +187,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // en scannant, sans repasser par l'écran de préparation.
   scanDemandeId?: string | null;
   onScanHandled?: () => void;
+  // 16/09/2026 — Voir le commentaire dans App.tsx à côté de "reconditionnementDemandesListe" :
+  // reçu depuis App.tsx au lieu de s'abonner ici en plus à "reconditionnement_demandes".
+  demandesRecondExterne?: any[];
 }) {
   const [demandes, setDemandes] = useState<Demande[]>([]);
 
@@ -255,11 +258,13 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // (voir src/PortailReconditionneur.tsx, api/portail-reconditionneur.js) — à valider ou refuser.
   const [reajustements, setReajustements] = useState<ReajustementDemande[]>([]);
 
+  // 16/09/2026 — Ne s'abonne plus directement à "reconditionnement_demandes" (voir App.tsx) :
+  // dérive juste "demandes" de la liste reçue en prop, avec exactement le même tri qu'avant.
   useEffect(() => {
-    const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
-      const d = snap.val();
-      setDemandes(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
-    });
+    setDemandes([...(demandesRecondExterne || [])].sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)));
+  }, [demandesRecondExterne]);
+
+  useEffect(() => {
     const u3 = onValue(ref(db, "ifco_stock/levels"), snap => {
       const v = snap.val();
       setStockIfco(v ? { moorea: v.moorea || 0, transit: v.transit || 0, nlt: v.nlt || 0 } : { moorea: 0, transit: 0, nlt: 0 });
@@ -273,7 +278,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       const d = snap.val();
       setReajustements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
     });
-    return () => { u1(); u3(); u4(); u6(); u8(); };
+    return () => { u3(); u4(); u6(); u8(); };
   }, []);
 
   function notify(type: "success" | "error", message: string) {

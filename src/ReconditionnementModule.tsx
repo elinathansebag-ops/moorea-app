@@ -843,12 +843,17 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
   );
 }
 
-export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig }: {
+export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne }: {
   onClose: () => void;
   userName?: string;
   // 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : la Configuration vit
   // maintenant uniquement dans Prestataires. Optionnel pour ne pas casser d'anciens appels.
   onOpenPrestatairesConfig?: () => void;
+  // 16/09/2026 — Voir le commentaire dans App.tsx à côté de "reconditionnementDemandesListe" :
+  // reçu depuis App.tsx (qui porte maintenant le seul abonnement Firebase à
+  // "reconditionnement_demandes") au lieu de s'y abonner ici en plus. Optionnel pour ne pas
+  // casser un appel qui ne le passerait pas encore.
+  demandesRecondExterne?: any[];
 }) {
   const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "suivi_ifco" | "configuration">("en_cours");
   const [demandes, setDemandes] = useState<Demande[]>([]);
@@ -1018,11 +1023,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // rien n'est appliqué automatiquement — le cas est juste noté ici pour vérification manuelle.
   const [blNltAVerifier, setBlNltAVerifier] = useState<{ id: string; date: string; lot?: string; colisDetectes?: number; raison: string; sujetMail?: string; blNumero?: string }[]>([]);
 
+  // 16/09/2026 — Ne s'abonne plus directement à "reconditionnement_demandes" (voir App.tsx) :
+  // dérive juste "demandes" de la liste reçue en prop, avec exactement le même tri qu'avant.
   useEffect(() => {
-    const u1 = onValue(ref(db, "reconditionnement_demandes"), snap => {
-      const d = snap.val();
-      setDemandes(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)) : []);
-    });
+    setDemandes([...(demandesRecondExterne || [])].sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)));
+  }, [demandesRecondExterne]);
+
+  useEffect(() => {
     const u2 = onValue(ref(db, "reconditionnement_transporteurs"), snap => {
       const d = snap.val();
       setTransporteurs(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
@@ -1071,7 +1078,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const d = snap.val();
       setBlNltAVerifier(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); u12(); };
+    return () => { u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); u12(); };
   }, []);
 
   // Lecture (uniquement en lecture) des lots présents dans le module Stock, projet Firebase

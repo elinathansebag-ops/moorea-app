@@ -239,7 +239,7 @@ const COLORS = {
   info: "#06b6d4",
 };
 
-export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean }) {
+export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[] }) {
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap"
   >(initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
@@ -475,14 +475,13 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     return () => u();
   }, [chargerDonneesSecondaires]);
 
+  // 16/09/2026 — Ne s'abonne plus directement à "reconditionnement_demandes" (voir App.tsx,
+  // commentaire à côté de "reconditionnementDemandesListe") : dérive juste "demandesRecond" de
+  // la liste reçue en prop, en gardant le même déclenchement sur chargerDonneesSecondaires.
   useEffect(() => {
     if (!chargerDonneesSecondaires) return;
-    const u = onValue(ref(db, "reconditionnement_demandes"), snap => {
-      const d = snap.val();
-      setDemandesRecond(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
-    });
-    return () => u();
-  }, [chargerDonneesSecondaires]);
+    setDemandesRecond(demandesRecondExterne || []);
+  }, [chargerDonneesSecondaires, demandesRecondExterne]);
 
   useEffect(() => {
     if (!chargerDonneesSecondaires) return;
