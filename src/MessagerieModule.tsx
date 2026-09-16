@@ -167,7 +167,7 @@ export function MessagerieModule({
         return;
       }
       const idToken = await utilisateur.getIdToken();
-      const reponse = await fetch(`/api/messagerie-inbox?limite=${limite}`, {
+      const reponse = await fetch(`/api/messagerie?action=inbox&limite=${limite}`, {
         headers: { Authorization: `Bearer ${idToken}` },
       });
       const data = await reponse.json();
@@ -232,7 +232,7 @@ export function MessagerieModule({
     setChargementDetail(true);
     try {
       const headers = await enTeteAuth();
-      const reponse = await fetch(`/api/messagerie-mail-detail?uid=${m.uid}`, { headers });
+      const reponse = await fetch(`/api/messagerie?action=detail&uid=${m.uid}`, { headers });
       const data = await reponse.json();
       if (!reponse.ok) { setErreurDetail(data?.error || "Erreur pendant le chargement du mail."); return; }
       setDetailMail(data);
@@ -255,7 +255,7 @@ export function MessagerieModule({
   const telechargerPieceJointe = async (uid: number, index: number, nomFichier: string) => {
     try {
       const headers = await enTeteAuth();
-      const reponse = await fetch(`/api/messagerie-piece-jointe?uid=${uid}&index=${index}`, { headers });
+      const reponse = await fetch(`/api/messagerie?action=piece-jointe&uid=${uid}&index=${index}`, { headers });
       if (!reponse.ok) { notify("error", "Téléchargement de la pièce jointe échoué"); return; }
       const blob = await reponse.blob();
       const url = URL.createObjectURL(blob);
@@ -344,7 +344,7 @@ export function MessagerieModule({
       let piecesJointes: { nomFichier: string; typeContenu: string; contenuBase64: string }[] = [];
       if (modeCompose === "transferer" && composeInclurePieces && detailMail.pieces.length > 0) {
         for (const piece of detailMail.pieces) {
-          const rep = await fetch(`/api/messagerie-piece-jointe?uid=${detailMail.uid}&index=${piece.index}`, { headers });
+          const rep = await fetch(`/api/messagerie?action=piece-jointe&uid=${detailMail.uid}&index=${piece.index}`, { headers });
           if (!rep.ok) continue;
           const blob = await rep.blob();
           const contenuBase64 = await blobEnBase64(blob);
@@ -352,7 +352,7 @@ export function MessagerieModule({
         }
       }
 
-      const reponse = await fetch("/api/messagerie-envoyer", {
+      const reponse = await fetch("/api/messagerie?action=envoyer", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
