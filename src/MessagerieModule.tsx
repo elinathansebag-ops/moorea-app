@@ -145,20 +145,25 @@ export function MessagerieModule({
     await update(ref(db, `messagerie_regles/${r.id}`), { commercialIds: nouveaux });
   };
 
-  // ─── Boîte de réception réelle (16/09/2026) ───
+  // ─── Boîte de réception réelle (16/09/2026, v2 : actualisation en temps réel demandée par
+  // Elinathan) — pas d'IMAP "IDLE" possible ici (fonctions Vercel = pas de connexion permanente),
+  // donc on relit la boîte toutes les 20s tant que l'onglet est ouvert. "silencieux" évite de
+  // réafficher le grand spinner à chaque relance automatique — seul le premier chargement et le
+  // bouton "Actualiser" manuel montrent l'état "Chargement...".
   const [mails, setMails] = useState<Mail[]>([]);
   const [chargementMails, setChargementMails] = useState(false);
   const [erreurMails, setErreurMails] = useState<string | null>(null);
   const [mailsDejaCharges, setMailsDejaCharges] = useState(false);
   const [filtreMails, setFiltreMails] = useState("");
+  const [derniereActualisation, setDerniereActualisation] = useState<Date | null>(null);
 
-  const chargerMails = async (limite = 150) => {
-    setChargementMails(true);
-    setErreurMails(null);
+  const chargerMails = async (limite = 150, silencieux = false) => {
+    if (!silencieux) setChargementMails(true);
+    if (!silencieux) setErreurMails(null);
     try {
       const utilisateur = auth.currentUser;
       if (!utilisateur) {
-        setErreurMails("Tu dois être connectée pour voir la boîte de réception.");
+        if (!silencieux) setErreurMails("Tu dois être connectée pour voir la boîte de réception.");
         return;
       }
       const idToken = await utilisateur.getIdToken();
@@ -167,15 +172,19 @@ export function MessagerieModule({
       });
       const data = await reponse.json();
       if (!reponse.ok) {
-        setErreurMails(data?.error || "Erreur inconnue pendant le chargement des mails.");
+        // En actualisation silencieuse, une erreur ponctuelle (réseau, etc.) ne doit pas remplacer
+        // la liste déjà affichée par un message d'erreur — on retentera dans 20s.
+        if (!silencieux) setErreurMails(data?.error || "Erreur inconnue pendant le chargement des mails.");
         return;
       }
       setMails(data.mails || []);
       setMailsDejaCharges(true);
+      setDerniereActualisation(new Date());
+      if (!silencieux) setErreurMails(null);
     } catch (err: any) {
-      setErreurMails(err?.message || "Erreur réseau pendant le chargement des mails.");
+      if (!silencieux) setErreurMails(err?.message || "Erreur réseau pendant le chargement des mails.");
     } finally {
-      setChargementMails(false);
+      if (!silencieux) setChargementMails(false);
     }
   };
 
@@ -183,6 +192,16 @@ export function MessagerieModule({
     if (activeTab === "boite" && !mailsDejaCharges && !chargementMails) {
       chargerMails();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Actualisation automatique en arrière-plan toutes les 20s tant que l'onglet "Boîte de
+  // réception" est affiché — coupée dès qu'on quitte l'onglet ou le module (pour ne pas cogner
+  // Gmail en IMAP inutilement en arrière-plan).
+  useEffect(() => {
+    if (activeTab !== "boite") return;
+    const intervalle = setInterval(() => { chargerMails(150, true); }, 20000);
+    return () => clearInterval(intervalle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -266,17 +285,24 @@ export function MessagerieModule({
               <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
                 📥 {mails.length > 0 ? `${mails.length} derniers mails` : "Boîte de réception"}
               </p>
-              <button
-                onClick={() => chargerMails()}
-                disabled={chargementMails}
-                style={{
-                  padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`,
-                  background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700,
-                  cursor: chargementMails ? "default" : "pointer", opacity: chargementMails ? 0.6 : 1,
-                }}
-              >
-                {chargementMails ? "⏳ Chargement..." : "🔄 Actualiser"}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {derniereActualisation && (
+                  <span style={{ fontSize: 11, color: COLORS.gray600 }}>
+                    🟢 Auto — {derniereActualisation.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  </span>
+                )}
+                <button
+                  onClick={() => chargerMails()}
+                  disabled={chargementMails}
+                  style={{
+                    padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`,
+                    background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700,
+                    cursor: chargementMails ? "default" : "pointer", opacity: chargementMails ? 0.6 : 1,
+                  }}
+                >
+                  {chargementMails ? "⏳ Chargement..." : "🔄 Actualiser"}
+                </button>
+              </div>
             </div>
 
             {mails.length > 0 && (
