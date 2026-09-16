@@ -79,7 +79,7 @@ export default async function handler(req, res) {
       cetAppel = aTraiter.slice(0, limite);
       dejaTraitesAvant = totalUids - aTraiter.length;
 
-      for await (const message of client.fetch(cetAppel, { envelope: true, uid: true })) {
+      for await (const message of client.fetch(cetAppel, { envelope: true, uid: true }, { uid: true })) {
         const env = message.envelope;
         const expediteur = env?.from?.[0];
         if (!expediteur?.address) continue;
