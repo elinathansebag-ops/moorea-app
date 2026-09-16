@@ -54,6 +54,14 @@ export default async function handler(req, res) {
   }
 
   const appliquer = req.query?.apply === "1" || req.query?.apply === "true";
+  // 16/09/2026 — Vercel coupe une fonction au bout de 60 secondes (plan Hobby). Avec plusieurs
+  // dizaines de mails à télécharger + PDF à lire dedans, un seul appel qui tenterait de TOUT faire
+  // d'un coup dépasse ce délai (constaté par Elinathan : "This request timed out"). On traite donc
+  // par lots : "limite" mails par appel (20 par défaut), et "depuisUid" permet de reprendre pile où
+  // le lot précédent s'est arrêté (la réponse renvoie "dernierUidTraite" et "resteAExaminer" pour
+  // savoir s'il faut relancer l'appel une fois de plus, avec ce nouvel uid dans l'adresse).
+  const limite = Math.max(1, Math.min(100, parseInt(req.query?.limite, 10) || 20));
+  const depuisUid = parseInt(req.query?.depuisUid, 10) || 0;
 
   const motDePasse = process.env.GMAIL_PASS_ELINATHAN;
   if (!motDePasse) {
@@ -73,6 +81,9 @@ export default async function handler(req, res) {
   }
 
   const resultats = { mailsExamines: 0, lotsTrouves: 0, attaches: 0, ambigus: 0, sansCorrespondance: 0, dejaAttaches: 0, mode: appliquer ? "APPLICATION" : "APERCU (aucune écriture)", details: [] };
+  // Déclaré ici (portée de la fonction) car réutilisé après la fermeture de la connexion IMAP,
+  // pour calculer le curseur de reprise "&depuisUid=...".
+  let cetAppel = [];
 
   const client = new ImapFlow({
     host: IMAP_HOST,
@@ -98,9 +109,17 @@ export default async function handler(req, res) {
         const trouves = await client.search({ from: expediteur }, { uid: true });
         if (Array.isArray(trouves)) uids = uids.concat(trouves);
       }
-      uids = [...new Set(uids)];
+      uids = [...new Set(uids)].sort((a, b) => a - b);
+      const totalUids = uids.length;
+      const aTraiter = uids.filter(u => u > depuisUid);
+      cetAppel = aTraiter.slice(0, limite);
+      resultats.progression = {
+        totalMailsNlt: totalUids,
+        dejaTraitesAvant: totalUids - aTraiter.length,
+        traitesCetAppel: cetAppel.length,
+      };
 
-      for (const uid of uids) {
+      for (const uid of cetAppel) {
         resultats.mailsExamines++;
         try {
           const { content } = await client.download(uid, undefined, { uid: true });
@@ -217,6 +236,17 @@ export default async function handler(req, res) {
     }
   } finally {
     try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+  }
+
+  // Le vrai curseur de reprise est le dernier UID IMAP effectivement traité dans ce lot (pas un
+  // simple compteur) : c'est cette valeur qu'il faut redonner dans "&depuisUid=..." au prochain
+  // appel pour reprendre exactement là où on s'est arrêté.
+  resultats.dernierUidTraite = cetAppel.length > 0 ? cetAppel[cetAppel.length - 1] : depuisUid;
+  resultats.resteAExaminer = resultats.progression
+    ? resultats.progression.dejaTraitesAvant + resultats.progression.traitesCetAppel < resultats.progression.totalMailsNlt
+    : false;
+  if (resultats.resteAExaminer) {
+    resultats.commentContinuer = `Relance la même adresse en ajoutant &depuisUid=${resultats.dernierUidTraite} pour traiter la suite (ou augmente &limite=... si tu préfères moins d'allers-retours).`;
   }
 
   return res.status(200).json(resultats);
