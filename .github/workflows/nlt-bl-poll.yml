@@ -1,8 +1,35 @@
 name: Détection automatique du BL NLT (mail)
 
+# 15/09/2026 — Déclenche périodiquement api/nlt-bl-poll.js pour vérifier si NLT a envoyé un
+# nouveau BL par mail depuis la dernière fois. Vercel Cron n'est pas utilisé ici : le plan Hobby
+# limite les Cron Jobs Vercel à 1 exécution par jour, alors que GitHub Actions (gratuit sur ce
+# repo) permet un intervalle bien plus court sans coût. Voir api/nlt-bl-poll.js pour toute la
+# logique (IMAP + lecture du PDF + rapprochement avec les demandes de reconditionnement).
+#
+# 16/09/2026 — Demande d'Elinathan : pas la peine de tourner 24h/24, NLT n'envoie ses BL qu'en
+# horaires d'activité. On resserre donc sur la plage 8h–19h (heure de Paris) et on augmente en
+# échange la fréquence à toutes les 3 minutes.
+#
+# Le "cron:" ci-dessous est toujours en heure UTC (GitHub ne connaît pas les fuseaux horaires),
+# et Paris change d'heure l'été (UTC+2) et l'hiver (UTC+1). Pour être sûr de bien couvrir 8h–19h
+# à Paris toute l'année sans calcul à refaire à chaque changement d'heure, la plage UTC choisie
+# (6h–18h) est volontairement un peu plus large que nécessaire :
+#   - en hiver (Paris = UTC+1) : 6h–18h UTC = 7h–19h à Paris
+#   - en été   (Paris = UTC+2) : 6h–18h UTC = 8h–20h à Paris
+# Dans les deux cas, la plage demandée (8h–19h à Paris) est entièrement couverte, avec au pire
+# une petite heure de marge en plus le matin ou le soir — sans conséquence puisque de toute façon
+# rien ne se passe si aucun mail NLT n'est arrivé.
+#
+# Note GitHub : en dessous de 5 minutes d'intervalle, GitHub prévient que l'exécution peut parfois
+# être décalée de quelques minutes en cas de forte charge sur leurs serveurs (pas un vrai souci
+# ici, l'appli se contente de vérifier s'il y a du nouveau).
+#
+# Secrets requis (Settings → Secrets and variables → Actions, sur GitHub) :
+#   APP_URL              → l'URL de production de l'appli (ex: https://moorea-app.vercel.app)
+#   NLT_BL_POLL_SECRET   → la même valeur que la variable d'environnement Vercel du même nom
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/3 6-18 * * *"
   workflow_dispatch: {}
 
 jobs:
