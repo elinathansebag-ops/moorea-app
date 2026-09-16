@@ -417,7 +417,14 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     // génère toujours une nouvelle clé. On vérifie donc qu'aucun arrivage n'existe déjà pour
     // cette demande avant d'en créer un nouveau.
     const arrivageDejaCree = demande && arrivagesData.some(a => a.reconditionnement_demande_id === demande.id);
-    if (demande && !arrivageDejaCree) {
+    // 16/09/2026 — Bug trouvé avec Elinathan : un envoi de palette IFCO vide vers NLT (bouton
+    // "📦 Envoyer une palette IFCO à NLT", Reconditionnement) n'a jamais de retour attendu — c'est
+    // un aller simple (voir le commentaire plus bas sur `repasserAPret`, qui utilise déjà
+    // `nbColisAEntrer != null` pour repérer ces envois). Pourtant cette fonction créait quand même
+    // un arrivage pour eux, avec quantite forcée à 0 (nbColisAEntrer étant null pour ces
+    // demandes) — d'où des lignes "Palette IFCO vide" à 0 attendu qui polluaient "Pointer
+    // arrivage" sans jamais rien avoir à pointer. On applique donc ici le même garde-fou.
+    if (demande && demande.nbColisAEntrer != null && !arrivageDejaCree) {
       try {
         await push(ref(db, "arrivages"), {
           fournisseur: "Reconditionnement",
