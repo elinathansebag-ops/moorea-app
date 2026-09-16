@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { db, ref, push, onValue, update, remove, auth } from "./firebase";
+import { db, ref, push, onValue, update, remove, auth, get, set } from "./firebase";
 import { PageHeader, styles } from "./shared";
 
 // ── Module Messagerie (16/09/2026, démarrage du projet — demande d'Elinathan) ──
@@ -238,12 +238,33 @@ export function MessagerieModule({
     return { Authorization: `Bearer ${idToken}` };
   };
 
+  // Cache Firebase des mails déjà ouverts (16/09/2026) : le contenu d'un mail ne change
+  // jamais une fois reçu, donc une fois qu'on l'a lu une première fois via IMAP, on le
+  // garde en cache — la réouverture est alors instantanée, sans repasser par Gmail. C'est
+  // ce qui manquait pour que ça ressemble à "une vraie boîte" réactive : Gmail lui-même
+  // n'est instantané que parce qu'il a déjà tout en cache après la première lecture.
+  const cheminCacheMail = (uid: number) => `messagerieCache/${uid}`;
+
   const ouvrirMail = async (m: Mail) => {
     mailOuvertRef.current = true;
     setMailOuvert(m);
     setDetailMail(null);
     setErreurDetail(null);
     setModeCompose(null);
+
+    // 1) Cache Firebase d'abord : si le mail a déjà été ouvert une fois, affichage immédiat.
+    try {
+      const snapshot = await get(ref(db, cheminCacheMail(m.uid)));
+      if (snapshot.exists()) {
+        setDetailMail(snapshot.val());
+        setChargementDetail(false);
+        return;
+      }
+    } catch {
+      // Pas grave si le cache est illisible (ex: hors ligne) — on retombe sur l'IMAP.
+    }
+
+    // 2) Sinon, on va le chercher sur Gmail via l'API (première ouverture seulement).
     setChargementDetail(true);
     try {
       const headers = await enTeteAuth();
@@ -251,6 +272,17 @@ export function MessagerieModule({
       const data = await reponse.json();
       if (!reponse.ok) { setErreurDetail(data?.error || "Erreur pendant le chargement du mail."); return; }
       setDetailMail(data);
+      // On met en cache pour que les prochaines ouvertures soient instantanées. On limite
+      // la taille (mails avec de très grosses images intégrées) pour rester raisonnable
+      // dans Firebase — un mail normal ne s'en approche jamais.
+      try {
+        const tailleApprox = JSON.stringify(data).length;
+        if (tailleApprox < 800000) {
+          await set(ref(db, cheminCacheMail(m.uid)), data);
+        }
+      } catch {
+        // La mise en cache est un bonus, pas grave si ça échoue.
+      }
     } catch (err: any) {
       setErreurDetail(err?.message || "Erreur réseau.");
     } finally {
