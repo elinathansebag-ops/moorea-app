@@ -161,6 +161,22 @@ export default async function handler(req, res) {
                 } else {
                   resultats.sansCorrespondance++;
                   detail.resultat = "aucune demande NLT avec ce numéro de lot";
+                  // 16/09/2026 — Demande d'Elinathan : les cas non rattachés (ni sûrs ni ambigus) ne
+                  // doivent pas juste disparaître dans la réponse JSON du dry-run — on les note dans
+                  // "nlt_bl_a_verifier" (même liste que la détection automatique, déjà affichée dans
+                  // Reconditionnement sous "BL NLT à vérifier à la main"), pour garder une trace
+                  // consultable et pouvoir les traiter/archiver depuis l'appli. On n'écrit ça qu'en
+                  // mode "apply" (jamais pendant un simple aperçu).
+                  if (appliquer) {
+                    await adminDb.ref("nlt_bl_a_verifier").push({
+                      date: nowFr(),
+                      lot,
+                      colisDetectes: colis,
+                      blNumero,
+                      sujetMail: parsed.subject || "",
+                      raison: "rattrapage historique — aucune demande NLT avec ce numéro de lot",
+                    });
+                  }
                 }
                 resultats.details.push(detail);
                 continue;
@@ -206,6 +222,19 @@ export default async function handler(req, res) {
                 resultats.ambigus++;
                 detail.resultat = "ambigu — plusieurs demandes avec ce lot, ni la quantité ni la date ne permettent de départager sans risque";
                 detail.candidats = candidats.map(d => ({ id: d.id, numero: d.numero, dateCreationFr: d.dateCreationFr, nbColisAEntrer: d.nbColisAEntrer ?? null }));
+                // Même logique que ci-dessus pour les cas "sans correspondance" : on garde une trace
+                // dans "nlt_bl_a_verifier" (uniquement en mode apply) pour qu'Elinathan puisse trancher
+                // à l'œil depuis l'appli, plutôt que cette info ne reste que dans la réponse JSON.
+                if (appliquer) {
+                  await adminDb.ref("nlt_bl_a_verifier").push({
+                    date: nowFr(),
+                    lot,
+                    colisDetectes: colis,
+                    blNumero,
+                    sujetMail: parsed.subject || "",
+                    raison: `rattrapage historique — ${candidats.length} demandes NLT ont ce même numéro de lot (${candidats.map(d => d.numero || d.id).join(", ")}) — ambigu`,
+                  });
+                }
                 resultats.details.push(detail);
                 continue;
               }
