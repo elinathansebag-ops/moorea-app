@@ -16,11 +16,15 @@ import { PageHeader, styles } from "./shared";
 // propre base de données dédiée (voir note de cadrage, section 4) — le contenu des mails eux-mêmes
 // ne passera jamais par Firebase Realtime Database, seulement les règles de routage ci-dessous.
 //
-// Elinathan a demandé explicitement un écran de configuration où ELLE choisit quel mail (adresse
-// ou domaine expéditeur) doit être vu par quel commercial — c'est l'onglet "⚙️ Configuration"
-// ci-dessous. Un mail qui ne correspond à aucune règle ira dans une liste "non attribué" (à
-// construire une fois la lecture des mails branchée) qu'elle pourra assigner en un clic, ce qui
-// créera la règle pour la prochaine fois.
+// 16/09/2026 (v2) — Demande d'Elinathan après avoir vu la liste réelle des expéditeurs (scan de
+// commercial@moorea.fr) : "il faudrait que dans configuration il y ait tous les mails et que je
+// coche qui les voit comme un filtre, et que je puisse en mettre plusieurs personnes sur le même
+// mail" — un expéditeur peut donc être vu par PLUSIEURS commerciaux à la fois (ex: Jennifer en
+// tant que directrice commerciale + l'assistante en charge du dossier). D'où commercialIds
+// (tableau) au lieu d'un commercialId unique, et le tableau de cases à cocher ci-dessous à la
+// place d'un simple menu déroulant. La liste est pré-remplie par un script ponctuel
+// (api/messagerie-seed-expediteurs.js) à partir des vrais expéditeurs vus dans commercial@moorea.fr,
+// pour qu'Elinathan n'ait qu'à cocher plutôt qu'à retaper chaque adresse.
 
 const COLORS = {
   primary: "#0f766e",
@@ -38,7 +42,10 @@ export type Commercial = { id: string; nom: string };
 export type RegleAttribution = {
   id: string;
   expediteur: string; // adresse mail complète ("client@exemple.com") ou domaine ("@exemple.com")
-  commercialId: string;
+  commercialIds: string[]; // 0, 1 ou plusieurs commerciaux peuvent voir cet expéditeur
+  domaine?: string;
+  nbMails?: number; // information de contexte ramenée par le scan (pas mise à jour en temps réel)
+  dernierSujet?: string;
   commentaire?: string;
   creeLe?: string;
 };
@@ -73,7 +80,7 @@ export function MessagerieModule({
     });
     const u2 = onValue(ref(db, "messagerie_regles"), snap => {
       const d = snap.val();
-      setRegles(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+      setRegles(d ? Object.entries(d).map(([id, v]: any) => ({ commercialIds: [], ...v, id })) : []);
     });
     return () => { u1(); u2(); };
   }, []);
@@ -91,39 +98,50 @@ export function MessagerieModule({
     notify("success", `✓ ${nom} ajouté(e)`);
   };
   const supprimerCommercial = async (c: Commercial) => {
-    const nbRegles = regles.filter(r => r.commercialId === c.id).length;
-    if (!window.confirm(`Supprimer ${c.nom} ?${nbRegles > 0 ? ` (${nbRegles} règle(s) d'attribution seront aussi supprimées)` : ""}`)) return;
+    const reglesConcernees = regles.filter(r => (r.commercialIds || []).includes(c.id));
+    if (!window.confirm(`Supprimer ${c.nom} ?${reglesConcernees.length > 0 ? ` (retiré de ${reglesConcernees.length} règle(s) d'attribution)` : ""}`)) return;
     await Promise.all([
       remove(ref(db, `messagerie_commerciaux/${c.id}`)),
-      ...regles.filter(r => r.commercialId === c.id).map(r => remove(ref(db, `messagerie_regles/${r.id}`))),
+      ...reglesConcernees.map(r => update(ref(db, `messagerie_regles/${r.id}`), {
+        commercialIds: (r.commercialIds || []).filter(id => id !== c.id),
+      })),
     ]);
   };
 
   const [nouvelleRegleExpediteur, setNouvelleRegleExpediteur] = useState("");
-  const [nouvelleRegleCommercialId, setNouvelleRegleCommercialId] = useState("");
   const ajouterRegle = async () => {
     const expediteur = nouvelleRegleExpediteur.trim().toLowerCase();
-    if (!expediteur || !nouvelleRegleCommercialId) {
-      notify("error", "Renseigne l'adresse (ou le domaine) et le commercial");
+    if (!expediteur) {
+      notify("error", "Renseigne l'adresse (ou le domaine)");
       return;
     }
     if (regles.some(r => r.expediteur === expediteur)) {
-      notify("error", "Une règle existe déjà pour cet expéditeur");
+      notify("error", "Cet expéditeur est déjà dans la liste");
       return;
     }
     await push(ref(db, "messagerie_regles"), {
       expediteur,
-      commercialId: nouvelleRegleCommercialId,
+      commercialIds: [],
       creeLe: new Date().toLocaleString("fr-FR"),
     });
     setNouvelleRegleExpediteur("");
-    notify("success", "✓ Règle ajoutée");
+    notify("success", "✓ Expéditeur ajouté — coche qui doit le voir");
   };
   const supprimerRegle = async (r: RegleAttribution) => {
     await remove(ref(db, `messagerie_regles/${r.id}`));
   };
+  const toggleCommercialSurRegle = async (r: RegleAttribution, commercialId: string) => {
+    const actuels = r.commercialIds || [];
+    const nouveaux = actuels.includes(commercialId) ? actuels.filter(id => id !== commercialId) : [...actuels, commercialId];
+    await update(ref(db, `messagerie_regles/${r.id}`), { commercialIds: nouveaux });
+  };
 
-  const nomCommercial = (id: string) => commerciaux.find(c => c.id === id)?.nom || "?";
+  const [filtreExpediteur, setFiltreExpediteur] = useState("");
+  const reglesFiltrees = regles
+    .filter(r => !filtreExpediteur.trim() || r.expediteur.toLowerCase().includes(filtreExpediteur.trim().toLowerCase()))
+    .sort((a, b) => (b.nbMails || 0) - (a.nbMails || 0) || a.expediteur.localeCompare(b.expediteur));
+
+  const nbNonAttribues = regles.filter(r => (r.commercialIds || []).length === 0).length;
 
   return (
     <div id="messagerie-root" style={{ minHeight: "100vh", background: COLORS.gray100, overflowX: "hidden", maxWidth: "100vw" }}>
@@ -135,7 +153,7 @@ export function MessagerieModule({
         onHome={onClose}
       />
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px" }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px 16px 60px" }}>
         {notification && (
           <div style={{
             position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)", zIndex: 900,
@@ -217,54 +235,91 @@ export function MessagerieModule({
 
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
               <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
-                📬 Règles d'attribution ({regles.length})
+                📬 Expéditeurs & qui les voit ({regles.length}{nbNonAttribues > 0 ? `, ${nbNonAttribues} non attribué(s)` : ""})
               </p>
               <p style={{ margin: "0 0 12px", fontSize: 11.5, color: COLORS.gray600 }}>
-                Une adresse complète ("client@exemple.com") ou un domaine entier ("@exemple.com") → le
-                commercial qui doit recevoir ces mails.
+                Coche un ou plusieurs commerciaux par expéditeur — plusieurs personnes peuvent voir le
+                même mail (ex: Jennifer + l'assistante en charge du dossier).
               </p>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+
+              <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                 <input
                   value={nouvelleRegleExpediteur}
                   onChange={e => setNouvelleRegleExpediteur(e.target.value)}
-                  placeholder="client@exemple.com ou @exemple.com"
-                  style={{ flex: 2, minWidth: 200, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13 }}
+                  onKeyDown={e => { if (e.key === "Enter") ajouterRegle(); }}
+                  placeholder="Ajouter : client@exemple.com ou @exemple.com"
+                  style={{ flex: 2, minWidth: 220, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13 }}
                 />
-                <select
-                  value={nouvelleRegleCommercialId}
-                  onChange={e => setNouvelleRegleCommercialId(e.target.value)}
-                  style={{ flex: 1, minWidth: 160, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13 }}
-                >
-                  <option value="">Commercial...</option>
-                  {commerciaux.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-                </select>
                 <button onClick={ajouterRegle} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                   ➕ Ajouter
                 </button>
               </div>
-              {regles.length === 0 ? (
-                <p style={{ fontSize: 12, color: "#999" }}>Aucune règle pour l'instant.</p>
+              <input
+                value={filtreExpediteur}
+                onChange={e => setFiltreExpediteur(e.target.value)}
+                placeholder="🔎 Filtrer la liste (ex: terreazur, monoprix...)"
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
+              />
+
+              {commerciaux.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#999" }}>Ajoute d'abord au moins un commercial ci-dessus.</p>
+              ) : regles.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#999" }}>Aucun expéditeur pour l'instant.</p>
               ) : (
-                <div style={{ display: "grid", gap: 6 }}>
-                  {regles.map(r => (
-                    <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: COLORS.gray100, borderRadius: 8, padding: "8px 12px" }}>
-                      <div style={{ fontSize: 12.5, color: COLORS.gray700 }}>
-                        <b>{r.expediteur}</b> → {nomCommercial(r.commercialId)}
-                      </div>
-                      <button onClick={() => supprimerRegle(r)}
-                        style={{ flexShrink: 0, border: "1px solid #fca5a5", background: "#fff", color: COLORS.danger, borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                        Supprimer
-                      </button>
-                    </div>
-                  ))}
+                <div style={{ overflowX: "auto", maxHeight: 520, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
+                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Expéditeur</th>
+                        <th style={{ textAlign: "right", padding: "8px 6px", color: COLORS.gray600, fontWeight: 700, whiteSpace: "nowrap" }}>Mails</th>
+                        {commerciaux.map(c => (
+                          <th key={c.id} style={{ textAlign: "center", padding: "8px 6px", color: COLORS.primary, fontWeight: 800, whiteSpace: "nowrap" }}>
+                            {c.nom}
+                          </th>
+                        ))}
+                        <th style={{ padding: "8px 6px" }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reglesFiltrees.map(r => (
+                        <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.gray200}` }}>
+                          <td style={{ padding: "7px 10px", color: COLORS.gray700, fontWeight: 700 }}>
+                            {r.expediteur}
+                            {r.dernierSujet ? (
+                              <div style={{ fontSize: 10.5, color: COLORS.gray600, fontWeight: 400, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {r.dernierSujet}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td style={{ padding: "7px 6px", textAlign: "right", color: COLORS.gray600 }}>{r.nbMails ?? "-"}</td>
+                          {commerciaux.map(c => (
+                            <td key={c.id} style={{ padding: "7px 6px", textAlign: "center" }}>
+                              <input
+                                type="checkbox"
+                                checked={(r.commercialIds || []).includes(c.id)}
+                                onChange={() => toggleCommercialSurRegle(r, c.id)}
+                                style={{ width: 16, height: 16, cursor: "pointer" }}
+                              />
+                            </td>
+                          ))}
+                          <td style={{ padding: "7px 6px" }}>
+                            <button onClick={() => supprimerRegle(r)} title="Supprimer cet expéditeur"
+                              style={{ border: "1px solid #fca5a5", background: "#fff", color: COLORS.danger, borderRadius: 7, padding: "3px 8px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                              Suppr.
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
 
             <div style={{ background: "#fffbeb", border: "1.5px solid #fde3a8", borderRadius: 12, padding: "12px 16px", fontSize: 12, color: "#92400e" }}>
-              💡 Les mails qui ne correspondront à aucune règle ci-dessus apparaîtront dans une liste
+              💡 Les mails qui ne correspondront à aucun expéditeur ci-dessus apparaîtront dans une liste
               "non attribué" (à venir avec la connexion à la boîte mail) — tu pourras les assigner en un
-              clic, ce qui créera automatiquement la règle pour la prochaine fois.
+              clic, ce qui créera automatiquement l'entrée pour la prochaine fois.
             </div>
           </>
         )}
