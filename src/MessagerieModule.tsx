@@ -292,16 +292,32 @@ export function MessagerieModule({
                             ) : null}
                           </td>
                           <td style={{ padding: "7px 6px", textAlign: "right", color: COLORS.gray600 }}>{r.nbMails ?? "-"}</td>
-                          {commerciaux.map(c => (
-                            <td key={c.id} style={{ padding: "7px 6px", textAlign: "center" }}>
-                              <input
-                                type="checkbox"
-                                checked={(r.commercialIds || []).includes(c.id)}
-                                onChange={() => toggleCommercialSurRegle(r, c.id)}
-                                style={{ width: 16, height: 16, cursor: "pointer" }}
-                              />
-                            </td>
-                          ))}
+                          {commerciaux.map(c => {
+                            const estCoche = (r.commercialIds || []).includes(c.id);
+                            return (
+                              <td key={c.id} style={{ padding: "7px 6px", textAlign: "center" }}>
+                                {/* 16/09/2026 — Bug trouvé avec Elinathan : la case native <input type="checkbox">
+                                    ne dessinait pas sa coche dans la fenêtre de l'app (webview), donc l'état cochée
+                                    était invisible même si la donnée était bien enregistrée dans Firebase. On dessine
+                                    donc la case nous-mêmes (carré + coche), sans dépendre du rendu natif du navigateur. */}
+                                <div
+                                  role="checkbox"
+                                  aria-checked={estCoche}
+                                  onClick={() => toggleCommercialSurRegle(r, c.id)}
+                                  title={estCoche ? `Décocher ${c.nom}` : `Cocher ${c.nom}`}
+                                  style={{
+                                    width: 20, height: 20, borderRadius: 5, margin: "0 auto", cursor: "pointer",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    border: `2px solid ${estCoche ? COLORS.primary : COLORS.gray200}`,
+                                    background: estCoche ? COLORS.primary : "#fff",
+                                    color: "#fff", fontSize: 13, fontWeight: 900, lineHeight: 1, userSelect: "none",
+                                  }}
+                                >
+                                  {estCoche ? "✓" : ""}
+                                </div>
+                              </td>
+                            );
+                          })}
                           <td style={{ padding: "7px 6px" }}>
                             <button onClick={() => supprimerRegle(r)} title="Supprimer cet expéditeur"
                               style={{ border: "1px solid #fca5a5", background: "#fff", color: COLORS.danger, borderRadius: 7, padding: "3px 8px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
