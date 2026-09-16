@@ -1319,7 +1319,11 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
         articles.forEach((a, idx) => {
           if (counted(a)) {
             const locs: any = {};
-            for (let i = 1; i <= NB_MAX_CELLULES; i++) { const v = a["compte" + i]; if (v !== null && v !== undefined && v !== 0) locs["c" + i] = v; }
+            // 16/09/2026 — Bug trouvé avec Elinathan : une case comptée à 0 était exclue d'ici
+            // (condition "v !== 0"), donc jamais écrite dans Firestore. Au rechargement, la case
+            // redevenait "non comptée" comme si personne n'était passé, alors que 0 est un vrai
+            // comptage (le commercial doit pouvoir distinguer "compté, il n'y a rien" de "oublié").
+            for (let i = 1; i <= NB_MAX_CELLULES; i++) { const v = a["compte" + i]; if (v !== null && v !== undefined) locs["c" + i] = v; }
             data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: a._saisieTs || Date.now(), _idx: idx };
           }
         });
