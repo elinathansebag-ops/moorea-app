@@ -62,8 +62,16 @@ function nouveauClientImap() {
 // incident réseau ponctuel côté Gmail, pas une vraie panne. On retente donc jusqu'à
 // 2 fois avec un client tout neuf avant d'abandonner, pour que ça marche du premier
 // coup pour l'utilisatrice le plus souvent possible.
+// IMPORTANT (16/09/2026) : NB_ESSAIS a été remonté à 3 un peu plus tôt dans la
+// journée pour absorber les coupures ponctuelles "Unexpected close" — mais avec
+// l'actualisation automatique de la boîte toutes les 20s en plus, ça revenait à
+// taper sur la connexion Gmail plusieurs fois par minute en continu. Gmail a fini
+// par traiter ça comme une activité suspecte (façon force brute) et a bloqué
+// systématiquement les connexions IMAP de ce compte. On repasse donc à 1 seul
+// essai : mieux vaut un échec occasionnel affiché clairement que déclencher un
+// blocage complet du compte côté Google.
 async function connecterImap() {
-  const NB_ESSAIS = 3;
+  const NB_ESSAIS = 1;
   let derniereErreur;
   for (let essai = 1; essai <= NB_ESSAIS; essai++) {
     const client = nouveauClientImap();
@@ -76,7 +84,7 @@ async function connecterImap() {
       if (essai < NB_ESSAIS) await attendre(400 * essai);
     }
   }
-  const e = new Error(`Connexion IMAP échouée après ${NB_ESSAIS} essais : ${derniereErreur.message}`);
+  const e = new Error(`Connexion IMAP échouée : ${derniereErreur.message}`);
   e.status = 502;
   throw e;
 }
@@ -110,17 +118,13 @@ async function telechargerMessageBrut(client, uid) {
 // pour une raison de connexion (Gmail coupe parfois la connexion, ou trop de connexions
 // simultanées). Objectif : que ça marche du premier coup pour l'utilisatrice le plus
 // souvent possible, sans lui faire cliquer deux fois.
+// Ré-essai désactivé (16/09/2026) : combiné aux tentatives multiples de
+// connecterImap() et au polling 20s de la boîte de réception, il multipliait
+// le nombre de connexions IMAP par minute et a contribué au blocage Gmail.
+// On garde la fonction pour ne rien casser côté appelants, mais elle n'essaie
+// plus qu'une fois.
 async function avecReessai(tache) {
-  try {
-    return await tache();
-  } catch (premiereErreur) {
-    try {
-      return await tache();
-    } catch (deuxiemeErreur) {
-      deuxiemeErreur.status = deuxiemeErreur.status || premiereErreur.status || 500;
-      throw deuxiemeErreur;
-    }
-  }
+  return await tache();
 }
 
 async function exigerConnexionMoorea(req) {

@@ -195,9 +195,14 @@ export function MessagerieModule({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  // Actualisation automatique en arrière-plan toutes les 20s tant que l'onglet "Boîte de
+  // Actualisation automatique en arrière-plan toutes les 90s tant que l'onglet "Boîte de
   // réception" est affiché — coupée dès qu'on quitte l'onglet ou le module (pour ne pas cogner
   // Gmail en IMAP inutilement en arrière-plan).
+  //
+  // IMPORTANT (16/09/2026) : c'était réglé sur 20s au départ, ce qui — combiné à d'autres
+  // tentatives de connexion — a fini par faire ressembler notre trafic IMAP à une activité
+  // suspecte pour Gmail, qui a bloqué les connexions du compte commercial@moorea.fr. On espace
+  // donc beaucoup plus l'actualisation pour rester largement sous le radar de Gmail.
   const mailOuvertRef = useRef(false);
 
   useEffect(() => {
@@ -209,7 +214,7 @@ export function MessagerieModule({
       // ralentir l'ouverture ("Connection not available").
       if (mailOuvertRef.current) return;
       chargerMails(150, true);
-    }, 20000);
+    }, 90000);
     return () => clearInterval(intervalle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
