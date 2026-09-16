@@ -36,8 +36,12 @@ function motDePasseBoite() {
   return motDePasse;
 }
 
-async function connecterImap() {
-  const client = new ImapFlow({
+function attendre(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function nouveauClientImap() {
+  return new ImapFlow({
     host: IMAP_HOST,
     port: IMAP_PORT,
     secure: true,
@@ -51,14 +55,30 @@ async function connecterImap() {
     greetingTimeout: 8000,
     socketTimeout: 20000,
   });
-  try {
-    await client.connect();
-  } catch (err) {
-    const e = new Error(`Connexion IMAP échouée : ${err.message}`);
-    e.status = 500;
-    throw e;
+}
+
+// Gmail coupe parfois la connexion IMAP en plein login ("Unexpected close"), surtout
+// depuis une IP de datacenter partagée comme celles de Vercel — souvent juste un
+// incident réseau ponctuel côté Gmail, pas une vraie panne. On retente donc jusqu'à
+// 2 fois avec un client tout neuf avant d'abandonner, pour que ça marche du premier
+// coup pour l'utilisatrice le plus souvent possible.
+async function connecterImap() {
+  const NB_ESSAIS = 3;
+  let derniereErreur;
+  for (let essai = 1; essai <= NB_ESSAIS; essai++) {
+    const client = nouveauClientImap();
+    try {
+      await client.connect();
+      return client;
+    } catch (err) {
+      derniereErreur = err;
+      try { client.close(); } catch { /* déjà fermé, sans conséquence */ }
+      if (essai < NB_ESSAIS) await attendre(400 * essai);
+    }
   }
-  return client;
+  const e = new Error(`Connexion IMAP échouée après ${NB_ESSAIS} essais : ${derniereErreur.message}`);
+  e.status = 502;
+  throw e;
 }
 
 async function telechargerMessageBrut(client, uid) {
