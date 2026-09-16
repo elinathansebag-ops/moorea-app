@@ -21,6 +21,15 @@
     },
     "api/messagerie-inbox.js": {
       "maxDuration": 30
+    },
+    "api/messagerie-mail-detail.js": {
+      "maxDuration": 30
+    },
+    "api/messagerie-piece-jointe.js": {
+      "maxDuration": 30
+    },
+    "api/messagerie-envoyer.js": {
+      "maxDuration": 30
     }
   }
 }

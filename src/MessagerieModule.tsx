@@ -205,6 +205,177 @@ export function MessagerieModule({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  // ─── Ouvrir un mail : détail, pièces jointes, répondre/transférer, imprimer (16/09/2026, v3) ───
+  type DetailMail = {
+    uid: number; de: string; a: string[]; cc: string[]; sujet: string; date: string | null;
+    html: string | null; texte: string | null; messageId: string | null;
+    pieces: { index: number; nomFichier: string; typeContenu: string; taille: number }[];
+  };
+
+  const [mailOuvert, setMailOuvert] = useState<Mail | null>(null);
+  const [detailMail, setDetailMail] = useState<DetailMail | null>(null);
+  const [chargementDetail, setChargementDetail] = useState(false);
+  const [erreurDetail, setErreurDetail] = useState<string | null>(null);
+
+  const enTeteAuth = async () => {
+    const utilisateur = auth.currentUser;
+    if (!utilisateur) throw new Error("Tu dois être connectée.");
+    const idToken = await utilisateur.getIdToken();
+    return { Authorization: `Bearer ${idToken}` };
+  };
+
+  const ouvrirMail = async (m: Mail) => {
+    setMailOuvert(m);
+    setDetailMail(null);
+    setErreurDetail(null);
+    setModeCompose(null);
+    setChargementDetail(true);
+    try {
+      const headers = await enTeteAuth();
+      const reponse = await fetch(`/api/messagerie-mail-detail?uid=${m.uid}`, { headers });
+      const data = await reponse.json();
+      if (!reponse.ok) { setErreurDetail(data?.error || "Erreur pendant le chargement du mail."); return; }
+      setDetailMail(data);
+    } catch (err: any) {
+      setErreurDetail(err?.message || "Erreur réseau.");
+    } finally {
+      setChargementDetail(false);
+    }
+  };
+
+  const fermerMail = () => { setMailOuvert(null); setDetailMail(null); setModeCompose(null); };
+
+  // Extrait juste l'adresse d'un "Nom <adresse@exemple.com>" (ou renvoie la chaîne si elle est
+  // déjà juste une adresse).
+  const extraireAdresse = (deTexte: string): string => {
+    const m = deTexte.match(/<([^>]+)>/);
+    return (m ? m[1] : deTexte).trim();
+  };
+
+  const telechargerPieceJointe = async (uid: number, index: number, nomFichier: string) => {
+    try {
+      const headers = await enTeteAuth();
+      const reponse = await fetch(`/api/messagerie-piece-jointe?uid=${uid}&index=${index}`, { headers });
+      if (!reponse.ok) { notify("error", "Téléchargement de la pièce jointe échoué"); return; }
+      const blob = await reponse.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = nomFichier;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      notify("error", "Téléchargement de la pièce jointe échoué");
+    }
+  };
+
+  const imprimerMail = () => {
+    if (!detailMail) return;
+    const fenetre = window.open("", "_blank");
+    if (!fenetre) return;
+    const corps = detailMail.html || `<pre style="white-space:pre-wrap;font-family:inherit;">${(detailMail.texte || "").replace(/</g, "&lt;")}</pre>`;
+    fenetre.document.write(`
+      <html><head><title>${detailMail.sujet}</title></head>
+      <body style="font-family:Arial,sans-serif;padding:20px;">
+        <h3 style="margin:0 0 4px;">${detailMail.sujet}</h3>
+        <p style="margin:0 0 2px;color:#555;font-size:13px;"><b>De :</b> ${detailMail.de}</p>
+        <p style="margin:0 0 14px;color:#555;font-size:13px;"><b>Date :</b> ${formatDateMail(detailMail.date)}</p>
+        <hr/>
+        ${corps}
+      </body></html>
+    `);
+    fenetre.document.close();
+    setTimeout(() => { fenetre.print(); }, 300);
+  };
+
+  // ─── Répondre / Transférer ───
+  const [modeCompose, setModeCompose] = useState<"repondre" | "transferer" | null>(null);
+  const [composeA, setComposeA] = useState("");
+  const [composeCc, setComposeCc] = useState("");
+  const [composeSujet, setComposeSujet] = useState("");
+  const [composeCorps, setComposeCorps] = useState("");
+  const [composeEnvoiEnCours, setComposeEnvoiEnCours] = useState(false);
+  const [composeErreur, setComposeErreur] = useState<string | null>(null);
+  const [composeInclurePieces, setComposeInclurePieces] = useState(true);
+
+  const citationOriginale = () => {
+    if (!detailMail) return "";
+    return `\n\n--- Message original ---\nDe : ${detailMail.de}\nDate : ${formatDateMail(detailMail.date)}\nSujet : ${detailMail.sujet}\n\n${detailMail.texte || ""}`;
+  };
+
+  const ouvrirRepondre = () => {
+    if (!detailMail) return;
+    setModeCompose("repondre");
+    setComposeA(extraireAdresse(detailMail.de));
+    setComposeCc("");
+    setComposeSujet(detailMail.sujet.toLowerCase().startsWith("re:") ? detailMail.sujet : `Re: ${detailMail.sujet}`);
+    setComposeCorps(citationOriginale());
+    setComposeInclurePieces(false);
+    setComposeErreur(null);
+  };
+
+  const ouvrirTransferer = () => {
+    if (!detailMail) return;
+    setModeCompose("transferer");
+    setComposeA("");
+    setComposeCc("");
+    setComposeSujet(detailMail.sujet.toLowerCase().startsWith("tr:") || detailMail.sujet.toLowerCase().startsWith("fwd:") ? detailMail.sujet : `Tr: ${detailMail.sujet}`);
+    setComposeCorps(citationOriginale());
+    setComposeInclurePieces((detailMail.pieces || []).length > 0);
+    setComposeErreur(null);
+  };
+
+  const blobEnBase64 = (blob: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const lecteur = new FileReader();
+      lecteur.onload = () => resolve((lecteur.result as string).split(",")[1] || "");
+      lecteur.onerror = reject;
+      lecteur.readAsDataURL(blob);
+    });
+
+  const envoyerCompose = async () => {
+    if (!detailMail || !modeCompose) return;
+    const destinataires = composeA.split(",").map(s => s.trim()).filter(Boolean);
+    if (destinataires.length === 0) { setComposeErreur("Indique au moins un destinataire."); return; }
+    setComposeEnvoiEnCours(true);
+    setComposeErreur(null);
+    try {
+      const headers = await enTeteAuth();
+
+      let piecesJointes: { nomFichier: string; typeContenu: string; contenuBase64: string }[] = [];
+      if (modeCompose === "transferer" && composeInclurePieces && detailMail.pieces.length > 0) {
+        for (const piece of detailMail.pieces) {
+          const rep = await fetch(`/api/messagerie-piece-jointe?uid=${detailMail.uid}&index=${piece.index}`, { headers });
+          if (!rep.ok) continue;
+          const blob = await rep.blob();
+          const contenuBase64 = await blobEnBase64(blob);
+          piecesJointes.push({ nomFichier: piece.nomFichier, typeContenu: piece.typeContenu, contenuBase64 });
+        }
+      }
+
+      const reponse = await fetch("/api/messagerie-envoyer", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: destinataires,
+          cc: composeCc.split(",").map(s => s.trim()).filter(Boolean),
+          sujet: composeSujet,
+          texte: composeCorps,
+          enReponseA: modeCompose === "repondre" ? detailMail.messageId : undefined,
+          references: modeCompose === "repondre" ? detailMail.messageId : undefined,
+          piecesJointes,
+        }),
+      });
+      const data = await reponse.json();
+      if (!reponse.ok) { setComposeErreur(data?.error || "Envoi échoué."); return; }
+      notify("success", modeCompose === "repondre" ? "✓ Réponse envoyée" : "✓ Mail transféré");
+      setModeCompose(null);
+    } catch (err: any) {
+      setComposeErreur(err?.message || "Erreur réseau pendant l'envoi.");
+    } finally {
+      setComposeEnvoiEnCours(false);
+    }
+  };
+
   // Retrouve le(s) commercial(aux) attribué(s) à une adresse — d'abord une règle exacte sur
   // l'adresse complète, sinon une règle de domaine ("@exemple.com").
   const trouverAttribution = (adresse: string): string[] => {
@@ -347,7 +518,13 @@ export function MessagerieModule({
                     {mailsFiltres.map(m => {
                       const attribues = trouverAttribution(m.expediteur);
                       return (
-                        <tr key={m.uid} style={{ borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400 }}>
+                        <tr
+                          key={m.uid}
+                          onClick={() => ouvrirMail(m)}
+                          style={{ borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400, cursor: "pointer" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
+                          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                        >
                           <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap" }}>{formatDateMail(m.date)}</td>
                           <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 220 }}>
                             {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
@@ -370,6 +547,141 @@ export function MessagerieModule({
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {mailOuvert && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 950,
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 12,
+          }} onClick={fermerMail}>
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 820, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+            >
+              <div style={{ padding: "14px 18px", borderBottom: `1.5px solid ${COLORS.gray200}`, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 15, color: COLORS.gray700, overflowWrap: "anywhere" }}>
+                    {detailMail?.sujet || mailOuvert.sujet}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: COLORS.gray600 }}>
+                    De : {detailMail?.de || mailOuvert.expediteur} · {formatDateMail(detailMail?.date || mailOuvert.date)}
+                  </p>
+                  {detailMail && detailMail.a.length > 0 && (
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: COLORS.gray600 }}>À : {detailMail.a.join(", ")}</p>
+                  )}
+                </div>
+                <button onClick={fermerMail} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: COLORS.gray600, lineHeight: 1, flexShrink: 0 }}>✕</button>
+              </div>
+
+              <div style={{ padding: "14px 18px", overflowY: "auto", flex: 1 }}>
+                {chargementDetail && (
+                  <div style={{ textAlign: "center", padding: "30px 0", color: COLORS.gray600, fontSize: 13 }}>⏳ Chargement du mail...</div>
+                )}
+                {erreurDetail && (
+                  <div style={{ background: COLORS.dangerLight, border: "1.5px solid #fca5a5", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: COLORS.danger }}>
+                    ⚠️ {erreurDetail}
+                  </div>
+                )}
+
+                {detailMail && !chargementDetail && (
+                  <>
+                    {detailMail.pieces.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                        {detailMail.pieces.map(p => (
+                          <button
+                            key={p.index}
+                            onClick={() => telechargerPieceJointe(detailMail.uid, p.index, p.nomFichier)}
+                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                          >
+                            📎 {p.nomFichier} <span style={{ color: COLORS.gray600, fontWeight: 400 }}>({Math.round((p.taille || 0) / 1024)} Ko)</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {detailMail.html ? (
+                      <iframe
+                        title="contenu-mail"
+                        sandbox=""
+                        srcDoc={detailMail.html}
+                        style={{ width: "100%", minHeight: 320, border: `1px solid ${COLORS.gray200}`, borderRadius: 8 }}
+                      />
+                    ) : (
+                      <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13, color: COLORS.gray700, margin: 0 }}>
+                        {detailMail.texte || "(mail vide)"}
+                      </pre>
+                    )}
+                  </>
+                )}
+
+                {modeCompose && detailMail && (
+                  <div style={{ marginTop: 18, borderTop: `1.5px solid ${COLORS.gray200}`, paddingTop: 14 }}>
+                    <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: COLORS.gray700 }}>
+                      {modeCompose === "repondre" ? "↩️ Répondre" : "➡️ Transférer"}
+                    </p>
+                    {composeErreur && (
+                      <div style={{ background: COLORS.dangerLight, border: "1.5px solid #fca5a5", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: COLORS.danger, marginBottom: 10 }}>
+                        ⚠️ {composeErreur}
+                      </div>
+                    )}
+                    <input
+                      value={composeA}
+                      onChange={e => setComposeA(e.target.value)}
+                      placeholder="À (adresses séparées par une virgule)"
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
+                    />
+                    <input
+                      value={composeCc}
+                      onChange={e => setComposeCc(e.target.value)}
+                      placeholder="Cc (facultatif)"
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
+                    />
+                    <input
+                      value={composeSujet}
+                      onChange={e => setComposeSujet(e.target.value)}
+                      placeholder="Sujet"
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
+                    />
+                    <textarea
+                      value={composeCorps}
+                      onChange={e => setComposeCorps(e.target.value)}
+                      rows={8}
+                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }}
+                    />
+                    {modeCompose === "transferer" && detailMail.pieces.length > 0 && (
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLORS.gray700, marginBottom: 10, cursor: "pointer" }}>
+                        <input type="checkbox" checked={composeInclurePieces} onChange={e => setComposeInclurePieces(e.target.checked)} />
+                        Inclure les {detailMail.pieces.length} pièce(s) jointe(s) du mail original
+                      </label>
+                    )}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={envoyerCompose}
+                        disabled={composeEnvoiEnCours}
+                        style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: composeEnvoiEnCours ? "default" : "pointer", opacity: composeEnvoiEnCours ? 0.6 : 1 }}
+                      >
+                        {composeEnvoiEnCours ? "⏳ Envoi..." : "📤 Envoyer"}
+                      </button>
+                      <button
+                        onClick={() => setModeCompose(null)}
+                        style={{ padding: "8px 18px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {detailMail && !modeCompose && (
+                <div style={{ padding: "12px 18px", borderTop: `1.5px solid ${COLORS.gray200}`, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={ouvrirRepondre} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>↩️ Répondre</button>
+                  <button onClick={ouvrirTransferer} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>➡️ Transférer</button>
+                  <button onClick={imprimerMail} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🖨️ Imprimer</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
