@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove, auth } from "./firebase";
 import { PageHeader, styles } from "./shared";
 
@@ -198,9 +198,18 @@ export function MessagerieModule({
   // Actualisation automatique en arrière-plan toutes les 20s tant que l'onglet "Boîte de
   // réception" est affiché — coupée dès qu'on quitte l'onglet ou le module (pour ne pas cogner
   // Gmail en IMAP inutilement en arrière-plan).
+  const mailOuvertRef = useRef(false);
+
   useEffect(() => {
     if (activeTab !== "boite") return;
-    const intervalle = setInterval(() => { chargerMails(150, true); }, 20000);
+    const intervalle = setInterval(() => {
+      // On coupe l'actualisation automatique pendant qu'un mail est ouvert : ça évite
+      // d'ouvrir une connexion IMAP en arrière-plan pile quand une autre est déjà en
+      // train de charger le détail du mail cliqué, ce qui pouvait faire échouer ou
+      // ralentir l'ouverture ("Connection not available").
+      if (mailOuvertRef.current) return;
+      chargerMails(150, true);
+    }, 20000);
     return () => clearInterval(intervalle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -225,6 +234,7 @@ export function MessagerieModule({
   };
 
   const ouvrirMail = async (m: Mail) => {
+    mailOuvertRef.current = true;
     setMailOuvert(m);
     setDetailMail(null);
     setErreurDetail(null);
@@ -243,7 +253,12 @@ export function MessagerieModule({
     }
   };
 
-  const fermerMail = () => { setMailOuvert(null); setDetailMail(null); setModeCompose(null); };
+  const fermerMail = () => {
+    mailOuvertRef.current = false;
+    setMailOuvert(null);
+    setDetailMail(null);
+    setModeCompose(null);
+  };
 
   // Extrait juste l'adresse d'un "Nom <adresse@exemple.com>" (ou renvoie la chaîne si elle est
   // déjà juste une adresse).

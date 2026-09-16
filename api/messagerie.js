@@ -43,6 +43,13 @@ async function connecterImap() {
     secure: true,
     auth: { user: BOITE_COMMERCIALE, pass: motDePasseBoite() },
     logger: false,
+    // Timeouts courts : par défaut ImapFlow peut rester bloqué plusieurs minutes
+    // (socketTimeout par défaut = 5 min) avant de signaler une erreur. On préfère
+    // échouer vite (quelques secondes) pour que l'appli puisse réessayer plutôt
+    // que de laisser l'utilisatrice attendre "3 plombes" devant un chargement figé.
+    connectionTimeout: 10000,
+    greetingTimeout: 8000,
+    socketTimeout: 20000,
   });
   try {
     await client.connect();
@@ -55,15 +62,44 @@ async function connecterImap() {
 }
 
 async function telechargerMessageBrut(client, uid) {
-  const lock = await client.getMailboxLock("INBOX");
+  let lock;
+  try {
+    lock = await client.getMailboxLock("INBOX");
+  } catch (err) {
+    const e = new Error(`Connexion IMAP perdue avant la lecture du mail : ${err.message}`);
+    e.status = 502;
+    throw e;
+  }
   try {
     const dl = await client.download(uid, undefined, { uid: true });
     if (!dl || !dl.content) throw new Error("Mail introuvable (uid inconnu)");
     const morceaux = [];
     for await (const morceau of dl.content) morceaux.push(morceau);
     return Buffer.concat(morceaux);
+  } catch (err) {
+    if (err && err.status) throw err;
+    const e = new Error(`Erreur pendant le téléchargement du mail : ${err.message}`);
+    e.status = 502;
+    throw e;
   } finally {
-    lock.release();
+    try { lock.release(); } catch { /* connexion déjà perdue, sans conséquence */ }
+  }
+}
+
+// Ré-essaie une fois avec une connexion IMAP toute neuve si le premier essai échoue
+// pour une raison de connexion (Gmail coupe parfois la connexion, ou trop de connexions
+// simultanées). Objectif : que ça marche du premier coup pour l'utilisatrice le plus
+// souvent possible, sans lui faire cliquer deux fois.
+async function avecReessai(tache) {
+  try {
+    return await tache();
+  } catch (premiereErreur) {
+    try {
+      return await tache();
+    } catch (deuxiemeErreur) {
+      deuxiemeErreur.status = deuxiemeErreur.status || premiereErreur.status || 500;
+      throw deuxiemeErreur;
+    }
   }
 }
 
@@ -202,15 +238,23 @@ async function actionDetail(req, res) {
   const uid = parseInt(req.query?.uid, 10);
   if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
 
-  const client = await connecterImap();
-  let messageBrut;
-  try {
-    messageBrut = await telechargerMessageBrut(client, uid);
-  } finally {
-    try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
-  }
+  const messageBrut = await avecReessai(async () => {
+    const client = await connecterImap();
+    try {
+      return await telechargerMessageBrut(client, uid);
+    } finally {
+      try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+    }
+  });
 
-  const analyse = await simpleParser(messageBrut);
+  let analyse;
+  try {
+    analyse = await simpleParser(messageBrut);
+  } catch (err) {
+    const e = new Error(`Erreur pendant l'analyse du mail : ${err.message}`);
+    e.status = 500;
+    throw e;
+  }
   const pieces = (analyse.attachments || []).map((piece, index) => ({
     index,
     nomFichier: piece.filename || `piece-jointe-${index + 1}`,
@@ -240,15 +284,23 @@ async function actionPieceJointe(req, res) {
     return res.status(400).json({ error: "uid ou index manquant/invalide" });
   }
 
-  const client = await connecterImap();
-  let messageBrut;
-  try {
-    messageBrut = await telechargerMessageBrut(client, uid);
-  } finally {
-    try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
-  }
+  const messageBrut = await avecReessai(async () => {
+    const client = await connecterImap();
+    try {
+      return await telechargerMessageBrut(client, uid);
+    } finally {
+      try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+    }
+  });
 
-  const analyse = await simpleParser(messageBrut);
+  let analyse;
+  try {
+    analyse = await simpleParser(messageBrut);
+  } catch (err) {
+    const e = new Error(`Erreur pendant l'analyse du mail : ${err.message}`);
+    e.status = 500;
+    throw e;
+  }
   const piece = (analyse.attachments || [])[index];
   if (!piece) return res.status(404).json({ error: "Pièce jointe introuvable à cet index" });
 
