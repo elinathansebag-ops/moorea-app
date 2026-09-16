@@ -3489,6 +3489,29 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                       </div>
                                     );
                                   })()}
+                                  {/* 16/09/2026 — Le bouton "📄 BL NLT" n'existait jusqu'ici que dans l'onglet "En
+                                      cours" : une fois la demande passée en Historique (terminée), il disparaissait
+                                      complètement, alors que le BL rattaché (automatiquement ou via le rattrapage
+                                      historique) reste consultable. On l'affiche donc ici aussi. */}
+                                  {(d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64) && (
+                                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+                                      {d.pdfGeslotBase64 && (
+                                        <button type="button" onClick={() => setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: d.pdfGeslotBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                          📄 Bon Geslot
+                                        </button>
+                                      )}
+                                      {d.pdfBase64 && (
+                                        <button type="button" onClick={() => setPdfApercu({ titre: `Bon de prépa — ${d.numero || d.id}`, base64: d.pdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                          📄 Bon de prépa (avec QR)
+                                        </button>
+                                      )}
+                                      {d.blNltPdfBase64 && (
+                                        <button type="button" onClick={() => setPdfApercu({ titre: `BL NLT — ${d.numero || d.id}`, base64: d.blNltPdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                          📄 BL NLT
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
                                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                                     {d.pointageCompta?.facture ? (
                                       <span style={{ fontSize: 11, color: COLORS.primary, fontWeight: 700 }}>
