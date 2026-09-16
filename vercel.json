@@ -10,6 +10,9 @@
     },
     "api/nlt-bl-poll.js": {
       "maxDuration": 60
+    },
+    "api/nlt-bl-backfill.js": {
+      "maxDuration": 60
     }
   }
 }
