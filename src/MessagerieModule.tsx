@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { db, ref, push, onValue, update, remove } from "./firebase";
+import { db, ref, push, onValue, update, remove, auth } from "./firebase";
 import { PageHeader, styles } from "./shared";
 
 // ── Module Messagerie (16/09/2026, démarrage du projet — demande d'Elinathan) ──
@@ -48,6 +48,15 @@ export type RegleAttribution = {
   dernierSujet?: string;
   commentaire?: string;
   creeLe?: string;
+};
+
+export type Mail = {
+  uid: number;
+  expediteur: string;
+  nomExpediteur: string;
+  sujet: string;
+  date: string | null;
+  lu: boolean | null;
 };
 
 type TabKey = "boite" | "configuration";
@@ -136,6 +145,71 @@ export function MessagerieModule({
     await update(ref(db, `messagerie_regles/${r.id}`), { commercialIds: nouveaux });
   };
 
+  // ─── Boîte de réception réelle (16/09/2026) ───
+  const [mails, setMails] = useState<Mail[]>([]);
+  const [chargementMails, setChargementMails] = useState(false);
+  const [erreurMails, setErreurMails] = useState<string | null>(null);
+  const [mailsDejaCharges, setMailsDejaCharges] = useState(false);
+  const [filtreMails, setFiltreMails] = useState("");
+
+  const chargerMails = async (limite = 150) => {
+    setChargementMails(true);
+    setErreurMails(null);
+    try {
+      const utilisateur = auth.currentUser;
+      if (!utilisateur) {
+        setErreurMails("Tu dois être connectée pour voir la boîte de réception.");
+        return;
+      }
+      const idToken = await utilisateur.getIdToken();
+      const reponse = await fetch(`/api/messagerie-inbox?limite=${limite}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const data = await reponse.json();
+      if (!reponse.ok) {
+        setErreurMails(data?.error || "Erreur inconnue pendant le chargement des mails.");
+        return;
+      }
+      setMails(data.mails || []);
+      setMailsDejaCharges(true);
+    } catch (err: any) {
+      setErreurMails(err?.message || "Erreur réseau pendant le chargement des mails.");
+    } finally {
+      setChargementMails(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "boite" && !mailsDejaCharges && !chargementMails) {
+      chargerMails();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Retrouve le(s) commercial(aux) attribué(s) à une adresse — d'abord une règle exacte sur
+  // l'adresse complète, sinon une règle de domaine ("@exemple.com").
+  const trouverAttribution = (adresse: string): string[] => {
+    if (!adresse) return [];
+    const regleExacte = regles.find(r => r.expediteur === adresse);
+    const regle = regleExacte || regles.find(r => r.expediteur.startsWith("@") && adresse.endsWith(r.expediteur));
+    if (!regle) return [];
+    return (regle.commercialIds || [])
+      .map(id => commerciaux.find(c => c.id === id)?.nom)
+      .filter(Boolean) as string[];
+  };
+
+  const formatDateMail = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
+
+  const mailsFiltres = mails.filter(m => {
+    if (!filtreMails.trim()) return true;
+    const q = filtreMails.trim().toLowerCase();
+    return m.expediteur.includes(q) || m.nomExpediteur.toLowerCase().includes(q) || m.sujet.toLowerCase().includes(q);
+  });
+
   const [filtreExpediteur, setFiltreExpediteur] = useState("");
   const reglesFiltrees = regles
     .filter(r => !filtreExpediteur.trim() || r.expediteur.toLowerCase().includes(filtreExpediteur.trim().toLowerCase()))
@@ -187,16 +261,89 @@ export function MessagerieModule({
         </div>
 
         {activeTab === "boite" && (
-          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "28px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>📭</div>
-            <p style={{ margin: "0 0 6px", fontWeight: 800, fontSize: 14, color: COLORS.gray700 }}>
-              Boîte de réception pas encore connectée
-            </p>
-            <p style={{ margin: 0, fontSize: 12.5, color: COLORS.gray600, maxWidth: 480, marginLeft: "auto", marginRight: "auto" }}>
-              La connexion à la boîte mail commerciale (lecture des mails, tri automatique, recherche)
-              arrive dans une prochaine étape. En attendant, tu peux préparer la liste des commerciaux
-              et leurs règles d'attribution dans l'onglet "⚙️ Configuration".
-            </p>
+          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
+                📥 {mails.length > 0 ? `${mails.length} derniers mails` : "Boîte de réception"}
+              </p>
+              <button
+                onClick={() => chargerMails()}
+                disabled={chargementMails}
+                style={{
+                  padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`,
+                  background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700,
+                  cursor: chargementMails ? "default" : "pointer", opacity: chargementMails ? 0.6 : 1,
+                }}
+              >
+                {chargementMails ? "⏳ Chargement..." : "🔄 Actualiser"}
+              </button>
+            </div>
+
+            {mails.length > 0 && (
+              <input
+                value={filtreMails}
+                onChange={e => setFiltreMails(e.target.value)}
+                placeholder="🔎 Filtrer (expéditeur, nom, sujet...)"
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
+              />
+            )}
+
+            {erreurMails && (
+              <div style={{ background: COLORS.dangerLight, border: "1.5px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 12.5, color: COLORS.danger }}>
+                ⚠️ {erreurMails}
+              </div>
+            )}
+
+            {chargementMails && mails.length === 0 && !erreurMails && (
+              <div style={{ textAlign: "center", padding: "28px 0", color: COLORS.gray600, fontSize: 13 }}>
+                ⏳ Chargement des mails...
+              </div>
+            )}
+
+            {!chargementMails && mailsDejaCharges && mails.length === 0 && !erreurMails && (
+              <div style={{ textAlign: "center", padding: "28px 0", color: COLORS.gray600, fontSize: 13 }}>
+                📭 Aucun mail trouvé.
+              </div>
+            )}
+
+            {mailsFiltres.length > 0 && (
+              <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
+                      <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
+                      <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
+                      <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
+                      <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mailsFiltres.map(m => {
+                      const attribues = trouverAttribution(m.expediteur);
+                      return (
+                        <tr key={m.uid} style={{ borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400 }}>
+                          <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap" }}>{formatDateMail(m.date)}</td>
+                          <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 220 }}>
+                            {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
+                            <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400 }}>{m.expediteur}</div>
+                          </td>
+                          <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {m.sujet}
+                          </td>
+                          <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
+                            {attribues.length > 0 ? (
+                              <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")}</span>
+                            ) : (
+                              <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5 }}>Non attribué</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

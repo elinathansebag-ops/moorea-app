@@ -18,6 +18,9 @@
     },
     "api/messagerie-scan-expediteurs.js": {
       "maxDuration": 60
+    },
+    "api/messagerie-inbox.js": {
+      "maxDuration": 30
     }
   }
 }
