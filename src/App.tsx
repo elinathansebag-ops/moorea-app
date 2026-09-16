@@ -20,6 +20,7 @@ import { RackModule } from "./RackModule";
 import { StattModule } from "./StattModule";
 import { PrestatairesModule } from "./PrestatairesModule";
 import { ReconditionnementModule } from "./ReconditionnementModule";
+import { MessagerieModule } from "./MessagerieModule";
 import { PreparationModule } from "./PreparationModule";
 import { PortailReconditionneur } from "./PortailReconditionneur";
 import { DashboardModule } from "./DashboardModule";
@@ -452,6 +453,10 @@ export default function App() {
   // onglet plutôt que sur le Dashboard.
   const [prestatairesInitialTab, setPrestatairesInitialTab] = useState<"dashboard" | "configuration" | undefined>(undefined);
   const [showReconditionnement, setShowReconditionnement] = useState(false);
+  // 16/09/2026 — Démarrage du projet "plateforme mail commerciale" (demande d'Elinathan, voir
+  // MessagerieModule.tsx) : pour l'instant seulement la config des commerciaux/règles
+  // d'attribution, la connexion à la vraie boîte mail arrive dans une étape suivante.
+  const [showMessagerie, setShowMessagerie] = useState(false);
   const [showAppro, setShowAppro] = useState(false);
   // Préparation entrepôt — anciennement l'onglet "Demandes" de Reconditionnement, extrait en
   // module à part (voir src/PreparationModule.tsx) : c'est là que vivent les actions entrepôt
@@ -2769,6 +2774,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   const clesPagesGardees: [string, boolean][] = [
     ["prestataires", showPrestataires],
     ["reconditionnement", showReconditionnement],
+    ["messagerie", showMessagerie],
     ["appro", showAppro],
     ["preparation", showPreparation],
     ["chargement", showChargement],
@@ -2801,6 +2807,20 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         />
       ) : (
         <AccesRefuse onRetour={() => { setShowReconditionnement(false); setShowAccueil(true); }} />
+      )}
+    </div>
+  );
+
+  const coucheMessagerie = pagesGardeesRef.current.has("messagerie") && (
+    <div key="garde-messagerie" style={{ display: showMessagerie ? "contents" : "none" }}>
+      {monAcces.hasModule("messagerie") ? (
+        <MessagerieModule
+          onClose={() => { setShowMessagerie(false); setShowAccueil(true); }}
+          userName={nomAfficheGarde}
+          canConfig={monAcces.hasTab("messagerie.configuration")}
+        />
+      ) : (
+        <AccesRefuse onRetour={() => { setShowMessagerie(false); setShowAccueil(true); }} />
       )}
     </div>
   );
@@ -2859,6 +2879,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     <>
       {couchePrestataires}
       {coucheReconditionnement}
+      {coucheMessagerie}
       {coucheAppro}
       {couchePreparation}
       {coucheChargement}
@@ -2868,7 +2889,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   // L'une des 6 pages lourdes est active maintenant : on l'affiche (les autres couches gardées
   // restent montées mais cachées dans le fragment ci-dessus).
-  if (showPrestataires || showReconditionnement || showAppro || showPreparation || showChargement || showRack) {
+  if (showPrestataires || showReconditionnement || showMessagerie || showAppro || showPreparation || showChargement || showRack) {
     return couchesGardees;
   }
 
@@ -3118,6 +3139,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const row2Bureau = [
       { key: "prestataires", icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
       { key: "reconditionnement", icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
+      { key: "messagerie", icon: "📧", label: "Messagerie", color: "#0f766e", badge: null, stat: "Tri automatique par commercial", action: () => { setShowAccueil(false); setShowMessagerie(true); } },
       { key: "appro", icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
       { key: "chargement", icon: "🚛", label: "Optimisation chargement", color: "#0891b2", badge: null, stat: "Calculateur palettes & camion", action: () => { setShowAccueil(false); setShowChargement(true); } },
     ].filter(b => monAcces.hasModule(b.key));

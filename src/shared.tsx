@@ -397,6 +397,14 @@ export const MODULE_DEFS: ModuleDef[] = [
     { key: "commandes", label: "Bloc-notes commandes" },
   ] },
   { key: "chargement", label: "🚛 Optimisation chargement" },
+  // 16/09/2026 — Démarrage du projet "plateforme mail commerciale" (voir note de cadrage) :
+  // module ajouté au catalogue des droits dès le départ, même si son contenu réel (connexion à la
+  // boîte mail, tri automatique) arrive par étapes. La configuration (qui reçoit quels mails) est
+  // volontairement son propre onglet, restreignable indépendamment de la boîte de réception.
+  { key: "messagerie", label: "📧 Messagerie", tabs: [
+    { key: "boite", label: "Boîte de réception" },
+    { key: "configuration", label: "⚙️ Configuration" },
+  ] },
 ];
 
 // Toujours admin, quoi qu'il arrive dans la base de droits (même vide/mal configurée) — pour ne
