@@ -68,7 +68,7 @@ const DEPOT_LABEL = { nlt: "NLT", andes: "Andès" };
 const EMBALLAGE_LABEL = { nlt: "caisses IFCO", andes: "cartons BABY BLANC" };
 
 function creerMailer() {
-  return nodemailer.createTransport({ service: "gmail", auth: { user: "agreage@moorea.fr", pass: "ymxz ktzv lele vucp" } });
+  return nodemailer.createTransport({ service: "gmail", auth: { user: "agreage@moorea.fr", pass: process.env.GMAIL_PASS_AGREAGE } });
 }
 
 function nowFr() {
@@ -570,7 +570,7 @@ async function handleDeclarerPerte(adminDb, depot, id, body) {
   try {
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: { user: "agreage@moorea.fr", pass: "ymxz ktzv lele vucp" },
+      auth: { user: "agreage@moorea.fr", pass: process.env.GMAIL_PASS_AGREAGE },
     });
     const attachments = [];
     if (perte.photoEtiquette) attachments.push({ filename: "etiquette-colis.jpg", content: Buffer.from(perte.photoEtiquette.split(",").pop(), "base64"), contentType: "image/jpeg", cid: "photo-etiquette" });
@@ -695,7 +695,7 @@ async function handleDemanderReajustement(adminDb, depot, body) {
   try {
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: { user: "agreage@moorea.fr", pass: "ymxz ktzv lele vucp" },
+      auth: { user: "agreage@moorea.fr", pass: process.env.GMAIL_PASS_AGREAGE },
     });
     await transporter.sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",

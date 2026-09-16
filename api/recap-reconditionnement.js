@@ -232,7 +232,7 @@ async function envoyerRecapPourDepot(depot, stockActuel) {
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: { user: "jordan.jouanest@moorea.fr", pass: "zupv znno urcy qoqy" },
+    auth: { user: "jordan.jouanest@moorea.fr", pass: process.env.GMAIL_PASS_JORDAN },
   });
   const destinataires = EMAILS_PAR_DEPOT[depot] || [];
   const info = await transporter.sendMail({

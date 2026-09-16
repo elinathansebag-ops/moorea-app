@@ -108,7 +108,7 @@ export default async function handler(req, res) {
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: { user: "jennifer.martin@moorea.fr", pass: "aote ysch meur ygmu" },
+      auth: { user: "jennifer.martin@moorea.fr", pass: process.env.GMAIL_PASS_JENNIFER_APPRO },
     });
 
     const info = await transporter.sendMail({

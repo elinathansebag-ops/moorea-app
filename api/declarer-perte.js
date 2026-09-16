@@ -262,7 +262,7 @@ export default async function handler(req, res) {
       try {
         const transporter = nodemailer.createTransport({
           service: "gmail",
-          auth: { user: "agreage@moorea.fr", pass: "ymxz ktzv lele vucp" },
+          auth: { user: "agreage@moorea.fr", pass: process.env.GMAIL_PASS_AGREAGE },
         });
         // `cid` (Content-ID) permet de référencer ces pièces jointes directement dans le corps du
         // mail via <img src="cid:...">, pour que les photos s'affichent tout de suite à la

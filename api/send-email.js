@@ -16,16 +16,27 @@ export default async function handler(req, res) {
     // Comptes d'envoi disponibles : par défaut agreage@moorea.fr, mais les mails de stock
     // (envoi à Jordan) partent depuis entrepot@moorea.fr — voir `sender: "entrepot"` envoyé
     // par StockApp.tsx.
+    //
+    // 16/09/2026 — Les mots de passe d'application étaient écrits en clair directement ici,
+    // donc visibles dans l'historique GitHub (repéré pendant le chantier Messagerie, qui lui
+    // est "200% secure"). Déplacés en variables d'environnement Vercel — normalement déjà
+    // présentes (vues dans Vercel : GMAIL_PASS_AGREAGE, GMAIL_PASS_ENTREPOT,
+    // GMAIL_PASS_ELINATHAN, GMAIL_PASS_JORDAN). Si GMAIL_PASS_JENNIFER n'existe pas encore,
+    // l'envoi depuis son compte échouera avec un message d'erreur clair ci-dessous — il suffira
+    // de l'ajouter dans Vercel (même mot de passe d'application qu'avant).
     const comptes = {
-      agreage: { email: 'agreage@moorea.fr', pass: 'ymxz ktzv lele vucp', label: 'Moorea Agréage' },
-      entrepot: { email: 'entrepot@moorea.fr', pass: 'cara kcnl iddu atxu', label: 'Moorea Entrepôt' },
-      elinathan: { email: 'elinathan.sebag@moorea.fr', pass: 'zkev xapy ygkw mjiy', label: 'Elinathan Sebag' },
-      jordan: { email: 'jordan.jouanest@moorea.fr', pass: 'zupv znno urcy qoqy', label: 'Jordan Jouanest' },
+      agreage: { email: 'agreage@moorea.fr', pass: process.env.GMAIL_PASS_AGREAGE, label: 'Moorea Agréage' },
+      entrepot: { email: 'entrepot@moorea.fr', pass: process.env.GMAIL_PASS_ENTREPOT, label: 'Moorea Entrepôt' },
+      elinathan: { email: 'elinathan.sebag@moorea.fr', pass: process.env.GMAIL_PASS_ELINATHAN, label: 'Elinathan Sebag' },
+      jordan: { email: 'jordan.jouanest@moorea.fr', pass: process.env.GMAIL_PASS_JORDAN, label: 'Jordan Jouanest' },
       // 31/08/2026 — Ajouté pour le module Appro (commandes fournisseurs Kenya/Tanzanie) :
       // les mails de commande partent bien de la boîte de Jennifer, pas d'agreage@.
-      jennifer: { email: 'jennifer.martin@moorea.fr', pass: 'juya mfsk asep zrjy', label: 'Jennifer Martin' },
+      jennifer: { email: 'jennifer.martin@moorea.fr', pass: process.env.GMAIL_PASS_JENNIFER, label: 'Jennifer Martin' },
     };
     const compte = comptes[sender] || comptes.agreage;
+    if (!compte.pass) {
+      return res.status(500).json({ error: `Mot de passe manquant pour ${compte.email} (variable d'env Vercel absente) — vérifie qu'elle est bien créée dans Environment Variables.` });
+    }
 
     // Configuration Gmail via nodemailer
     const transporter = nodemailer.createTransport({
