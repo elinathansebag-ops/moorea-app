@@ -128,6 +128,21 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
     remove(ref(db, `acces_permissions/users/${cle}`));
   };
 
+  // 16/09/2026 — Demande d'Elinathan : depuis l'onglet "Comptes" (qui liste tout le monde
+  // s'étant déjà connecté), pouvoir cliquer directement sur une personne pour choisir ses
+  // modules, plutôt que de devoir retaper son adresse dans l'onglet "Utilisateurs". Si la
+  // personne n'a pas encore d'entrée dans "Utilisateurs", on la crée (accès total par défaut,
+  // comme aujourd'hui) puis on l'ouvre directement.
+  const configurerDepuisCompte = (email: string) => {
+    if (!email) return;
+    const cle = cleEmail(email);
+    if (!users[cle]) {
+      sauverUser(cle, { email, role: null, admin: false, extraModules: {}, extraTabs: {} });
+    }
+    setTab("utilisateurs");
+    setUtilisateurOuvert(cle);
+  };
+
   if (!chargeRoles || !chargeUsers) {
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee" }}>
@@ -297,6 +312,12 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                         {enLigne ? "Depuis le " : "Dernière connexion : "}{formatDateFr(enLigne ? c.derniere_connexion : (p?.lastSeen || c.derniere_connexion))}
                       </p>
                       <p style={{ margin: "3px 0 0", fontSize: 10.5, color: "#c1c9d6" }}>Premier accès : {formatDateFr(c.premiere_connexion)}</p>
+                      <button
+                        onClick={() => configurerDepuisCompte(c.email)}
+                        style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e9d8fd", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}
+                      >
+                        ⚙️ Choisir ses modules
+                      </button>
                     </div>
                   </div>
                 );
