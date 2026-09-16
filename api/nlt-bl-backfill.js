@@ -148,28 +148,49 @@ export default async function handler(req, res) {
               }
 
               let choisi = candidats[0];
-              if (candidats.length > 1 && dateMail) {
-                const avecEcart = candidats
-                  .map(d => ({ d, ecartJours: Math.abs((dateMail - new Date(d.dateCreation)) / 86400000) }))
-                  .sort((a, b) => a.ecartJours - b.ecartJours);
-                const meilleur = avecEcart[0];
-                const suivant = avecEcart[1];
-                if (meilleur.ecartJours <= ECART_MAX_JOURS && (!suivant || suivant.ecartJours - meilleur.ecartJours >= ECART_MIN_AVANCE_JOURS)) {
-                  choisi = meilleur.d;
+              let commentDepartage = "";
+
+              if (candidats.length > 1) {
+                // 1er critère de départage : le nombre de colis indiqué sur le BL correspond-il
+                // exactement au nombre de colis attendu sur UNE seule des demandes candidates ?
+                // (Elinathan a confirmé plus tôt que la quantité est un critère fiable, comme pour
+                // la détection des doublons ailleurs dans l'appli.)
+                const parQuantite = candidats.filter(d => typeof d.nbColisAEntrer === "number" && d.nbColisAEntrer === colis);
+
+                if (parQuantite.length === 1) {
+                  choisi = parQuantite[0];
+                  commentDepartage = "départagé par le nombre de colis";
                 } else {
-                  choisi = null;
+                  // 2ème critère : parmi les candidats restants (tous si la quantité n'a rien
+                  // départagé, ou seulement ceux à la bonne quantité si plusieurs la partagent),
+                  // on regarde lequel est créé le plus près dans le temps du mail.
+                  const based = parQuantite.length > 1 ? parQuantite : candidats;
+                  const avecEcart = based
+                    .map(d => ({ d, ecartJours: dateMail ? Math.abs((dateMail - new Date(d.dateCreation)) / 86400000) : null }))
+                    .sort((a, b) => (a.ecartJours ?? Infinity) - (b.ecartJours ?? Infinity));
+                  const meilleur = avecEcart[0];
+                  const suivant = avecEcart[1];
+                  if (
+                    dateMail &&
+                    meilleur.ecartJours <= ECART_MAX_JOURS &&
+                    (!suivant || suivant.ecartJours - meilleur.ecartJours >= ECART_MIN_AVANCE_JOURS)
+                  ) {
+                    choisi = meilleur.d;
+                    commentDepartage = parQuantite.length > 1 ? "départagé par la date, parmi ceux à la bonne quantité" : "départagé par la date la plus proche";
+                  } else {
+                    choisi = null;
+                  }
                 }
-              } else if (candidats.length > 1 && !dateMail) {
-                choisi = null;
               }
 
               if (!choisi) {
                 resultats.ambigus++;
-                detail.resultat = "ambigu — plusieurs demandes avec ce lot, pas de date de mail fiable pour départager";
-                detail.candidats = candidats.map(d => ({ id: d.id, numero: d.numero, dateCreationFr: d.dateCreationFr }));
+                detail.resultat = "ambigu — plusieurs demandes avec ce lot, ni la quantité ni la date ne permettent de départager sans risque";
+                detail.candidats = candidats.map(d => ({ id: d.id, numero: d.numero, dateCreationFr: d.dateCreationFr, nbColisAEntrer: d.nbColisAEntrer ?? null }));
                 resultats.details.push(detail);
                 continue;
               }
+              if (commentDepartage) detail.departage = commentDepartage;
 
               detail.resultat = appliquer ? "attaché" : "serait attaché (aperçu)";
               detail.demande = { id: choisi.id, numero: choisi.numero, dateCreationFr: choisi.dateCreationFr, articleFini: choisi.articleFini };
