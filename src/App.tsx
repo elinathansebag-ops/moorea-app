@@ -499,6 +499,22 @@ export default function App() {
     const unsub = onValue(ref(db, "comptes"), snap => setComptes(snap.val() || {}));
     return () => unsub();
   }, []);
+  // 17/09/2026 — Demande d'Elinathan : un compte admin voit TOUS les modules (isAdmin court-
+  // circuite monAcces.hasModule), ce qui remplit l'accueil de modules qu'elle n'utilise pas tous
+  // les jours. "accueilMasques" est un simple réglage d'AFFICHAGE personnel par compte (stocké
+  // dans comptes/{uid}, jamais dans acces_permissions) — ça ne touche à aucun droit réel, juste
+  // à ce qui est montré sur SA page d'accueil à elle. Réversible à tout moment via "🎛️ Personnaliser".
+  const [accueilMasques, setAccueilMasques] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!user?.uid) { setAccueilMasques({}); return; }
+    const unsub = onValue(ref(db, `comptes/${user.uid}/accueil_masques`), snap => setAccueilMasques(snap.val() || {}));
+    return () => unsub();
+  }, [user?.uid]);
+  const toggleMasqueAccueil = (moduleKey: string) => {
+    if (!user?.uid) return;
+    update(ref(db, `comptes/${user.uid}/accueil_masques`), { [moduleKey]: accueilMasques[moduleKey] ? null : true });
+  };
+  const [showPersonnaliserAccueil, setShowPersonnaliserAccueil] = useState(false);
   const monAccesReel = calculerAcces(user?.email, permRoles, permUsers);
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
   // 17/09/2026 — Demande d'Elinathan : être prévenue (pas juste devoir aller vérifier) qu'un
@@ -3394,18 +3410,52 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             </button>
           </div>
 
-          <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
-          {/* 17/09/2026 — Demande d'Elinathan : retrait de la séparation "Entrepôt" / "Bureau"
-              (les sous-titres posaient problème dès qu'un compte n'avait accès qu'à une seule des
-              deux catégories — voir aperçu "Voir comme…"). Une seule grille avec tous les modules
-              auxquels le compte a droit, dans l'ordre déjà établi (arrivages en premier, puis le
-              reste), sans étiquette de section. Le tiroir repliable "🍋 Leofresh" est supprimé
-              (17/09/2026 bis) : ses modules (row3Autres) rejoignent simplement cette grille. */}
-          {[...row1, ...row2Entrepot, ...row2Bureau, ...row3Autres].length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
-              {[...row1, ...row2Entrepot, ...row2Bureau, ...row3Autres].map((b, i) => <CardCarré key={i} {...b} />)}
-            </div>
-          )}
+          {(() => {
+            // 17/09/2026 (ter) — "tousModulesAccueil" = tout ce à quoi le compte a réellement
+            // droit (avant le masquage perso) — c'est la liste proposée dans le panneau
+            // "🎛️ Personnaliser" ; "modulesAffiches" retire en plus ce que CE compte a choisi de
+            // masquer sur SA page d'accueil (accueilMasques), sans toucher aux droits eux-mêmes.
+            const tousModulesAccueil = [...row1, ...row2Entrepot, ...row2Bureau, ...row3Autres];
+            const modulesAffiches = tousModulesAccueil.filter(b => !b.key || !accueilMasques[b.key]);
+            const modulesMasquables = tousModulesAccueil.filter(b => b.key);
+            const nbMasques = modulesMasquables.filter(b => accueilMasques[b.key!]).length;
+            return (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
+                  <button onClick={() => setShowPersonnaliserAccueil(!showPersonnaliserAccueil)}
+                    style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 11, fontWeight: 700, color: showPersonnaliserAccueil ? "#8a6f2e" : textSub, padding: "2px 4px" }}>
+                    🎛️ Personnaliser{nbMasques > 0 ? ` (${nbMasques} masqué${nbMasques > 1 ? "s" : ""})` : ""}
+                  </button>
+                </div>
+
+                {showPersonnaliserAccueil && (
+                  <div style={{ marginBottom: 16, background: darkMode ? "#1a1808" : "#fffbeb", borderRadius: 14, border: "1.5px solid #f59e0b55", padding: "14px" }}>
+                    <p style={{ margin: "0 0 10px", fontSize: 11.5, color: darkMode ? "#c9a869" : "#8a6f2e" }}>
+                      Décoche ce que tu ne veux plus voir ici — ça ne change rien à tes accès, juste à ce qui s'affiche sur ta page d'accueil.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "6px 10px" }}>
+                      {modulesMasquables.map(b => (
+                        <label key={b.key} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5, color: textMain }}>
+                          <span className="mrq-case-conteneur">
+                            <input type="checkbox" className="mrq-case-native" checked={!accueilMasques[b.key!]} onChange={() => toggleMasqueAccueil(b.key!)} />
+                            <span className="mrq-case-visuelle" />
+                          </span>
+                          {b.icon} {b.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {modulesAffiches.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+                    {modulesAffiches.map((b, i) => <CardCarré key={i} {...b} />)}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
       {archivageResultats && (() => {
