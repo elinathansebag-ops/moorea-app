@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { db, ref, onValue, remove } from "./firebase";
 import { set } from "firebase/database";
-import { PageHeader, styles, MODULE_DEFS, cleEmail, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, AccesRole, AccesUser } from "./shared";
+import { PageHeader, styles, MODULE_DEFS, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, AccesRole, AccesUser } from "./shared";
 import { Commercial } from "./MessagerieModule";
 
 // ─── 09/09/2026 — Écran d'administration des droits d'accès (demande d'Elinathan : choisir
@@ -165,8 +165,9 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
     const cle = cleEmail(email);
     const u = users[cle];
     if (!u) return; // le module lui-même n'est pas encore configuré ; rien à faire ici.
+    const cleDenyTab = cleTab(tabKey); // Firebase interdit les "." dans une clé — voir shared.tsx
     const denyTabs = { ...(u.denyTabs || {}) };
-    if (visibleActuellement) denyTabs[tabKey] = true; else delete denyTabs[tabKey];
+    if (visibleActuellement) denyTabs[cleDenyTab] = true; else delete denyTabs[cleDenyTab];
     sauverUser(cle, { ...u, denyTabs });
   };
 

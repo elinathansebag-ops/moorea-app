@@ -425,6 +425,17 @@ export function cleEmail(email?: string | null): string {
   return (email || "").toLowerCase().trim().replace(/[.#$[\]/]/g, "_");
 }
 
+// 17/09/2026 (ter) — Bug trouvé avec Elinathan : les clés de tab comme "stock.compter" contiennent
+// un point, or Firebase Realtime Database interdit "." (et #, $, [, ], /) dans N'IMPORTE QUELLE
+// clé de son arbre, même une simple propriété d'objet imbriqué dans un set() — pas seulement un
+// segment de chemin ref(). Chaque écriture dans denyTabs avec une clé pareille était donc
+// rejetée en silence : la case se recochait toute seule au rechargement suivant, impossible de
+// la décocher pour de vrai. On assainit la clé avant de toucher denyTabs (écriture ET lecture),
+// tout en gardant "module.tab" partout ailleurs (affichage, split pour retrouver le module).
+export function cleTab(tabKey: string): string {
+  return tabKey.replace(/[.#$[\]/]/g, "__");
+}
+
 // 17/09/2026 — Demande d'Elinathan : "si un module n'est pas attribué à un compte, il ne doit
 // rien voir ; un compte flambant neuf commence sans accès à rien, et ça m'envoie une demande où
 // je décide quels modules lui donner." Un tout nouveau compte reçoit désormais, dès sa première
@@ -505,7 +516,7 @@ export function calculerAcces(
   // plus utilisés du tout ici (conservés dans le type pour compatibilité, mais inertes).
   const hasTab = (key: string) => {
     const moduleKey = key.split(".")[0];
-    return hasModule(moduleKey) && !userRec.denyTabs?.[key];
+    return hasModule(moduleKey) && !userRec.denyTabs?.[cleTab(key)];
   };
   return { isAdmin: false, hasModule, hasTab };
 }
