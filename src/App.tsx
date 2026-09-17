@@ -255,9 +255,14 @@ export default function App() {
     getTs: (v: any) => number | null;
     isPending?: (v: any) => boolean;
   };
+  // 17/09/2026 — "activity_log" retiré de cette liste : contrairement aux autres collections
+  // ci-dessous (jamais supprimées, juste déplacées vers un "_archives" qui grossit lui aussi
+  // indéfiniment), Elinathan a explicitement demandé à NE PAS garder ce journal quelque part pour
+  // toujours — il a sa propre purge automatique (suppression réelle après 30 jours, voir
+  // l'useEffect qui charge "activity_log" plus haut). Le laisser ici l'aurait archivé au bout de
+  // 21 jours dans "activity_log_archives" AVANT que la purge à 30 jours n'ait sa chance, et cette
+  // archive-là n'est elle-même jamais nettoyée : exactement l'historique infini qu'elle voulait éviter.
   const COLLECTIONS_ARCHIVABLES: CollectionArchivable[] = [
-    { path: "activity_log", archivePath: "activity_log_archives", label: "Journal d'activité",
-      getTs: v => typeof v?.timestamp === "number" ? v.timestamp : null },
     { path: "ifco_stock/movements", archivePath: "ifco_stock_movements_archives", label: "Mouvements stock IFCO",
       getTs: v => typeof v?.ts === "number" ? v.ts : null },
     { path: "printQueue", archivePath: "printQueue_archives", label: "File d'impression",
@@ -3188,6 +3193,19 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <button onClick={() => { setShowAdmin(false); setShowDroitsAcces(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e9d8fd", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Gérer les droits d'accès →</button>
                     </div>
                   )}
+                  {/* 17/09/2026 — "Archiver" et "Historique" déplacés ici depuis la grille
+                      d'accueil (demande d'Elinathan : ça ne méritait pas une carte de module
+                      comme les autres) — actions de maintenance, à leur place dans Réglages. */}
+                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginTop: 16 }}>
+                    <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🗄️ Archivage & historique</p>
+                    <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#9ca3af" }}>Nettoie les données de plus de 3 semaines (rien n'est supprimé, tout reste consultable dans l'Historique) ; l'Historique liste tous les arrivages déjà archivés.</p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button onClick={() => archiverToutAncien()} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                        {archivageGlobalBusy || archivageBusy ? "Archivage…" : "🗄️ Archiver (+21j)"}
+                      </button>
+                      <button onClick={() => { setShowAdmin(false); setPageMode("historique_arr"); setVue("__none__" as any); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#6c757d", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>📜 Historique des arrivages →</button>
+                    </div>
+                  </div>
                 </div>
               )}
             </>
@@ -3257,11 +3275,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "rh", icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowAccueil(false); setShowRH(true); } },
       { key: "yukon", icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
       { key: "taches", icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowAccueil(false); setShowTaches(true); } },
-      // 09/09/2026 — "Archiver" et "Historique" n'ont jamais été restreints par module (visibles
-      // de tous sur l'accueil) — pas de "key" ici volontairement, pour ne pas les faire
-      // disparaître par erreur pour quelqu'un dont l'accès est restreint.
-      { icon: "🗄️", label: archivageGlobalBusy || archivageBusy ? "Archivage…" : "Archiver", color: "#8a6f2e", stat: "Nettoie toute l'app (+21j)", action: () => archiverToutAncien() },
-      { icon: "📜", label: "Historique", color: "#6c757d", stat: "Tous les arrivages archivés", action: () => { setShowAccueil(false); setPageMode("historique_arr"); setVue("__none__" as any); } },
+      // 17/09/2026 — "Archiver" et "Historique" retirés d'ici (demande d'Elinathan : ça ne
+      // mérite pas une carte de module comme les autres) — déplacés dans Admin > Réglages, voir
+      // plus bas.
     ].filter(b => !b.key || monAcces.hasModule(b.key));
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
