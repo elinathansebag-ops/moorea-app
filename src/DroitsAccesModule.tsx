@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { db, ref, onValue, remove } from "./firebase";
 import { set } from "firebase/database";
-import { PageHeader, styles, MODULE_DEFS, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, AccesRole, AccesUser } from "./shared";
+import { PageHeader, styles, MODULE_DEFS, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, toutesLesClesModules, AccesRole, AccesUser } from "./shared";
 import { Commercial } from "./MessagerieModule";
 
 // ─── 09/09/2026 — Écran d'administration des droits d'accès (demande d'Elinathan : choisir
@@ -116,7 +116,10 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
     if (!email || !email.includes("@")) { alert("Adresse mail invalide."); return; }
     const cle = cleEmail(email);
     if (users[cle]) { alert("Cette adresse est déjà dans la liste."); return; }
-    sauverUser(cle, { email, role: null, admin: false, extraModules: {}, extraTabs: {} });
+    sauverUser(cle, {
+      email, role: null, admin: false, modeBase: "total",
+      extraModules: {}, extraTabs: {}, denyModules: toutesLesClesModules(), denyTabs: {},
+    });
     setNouvelEmail("");
     setCompteOuvert(cle);
   };
@@ -284,12 +287,15 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
           const ouvrirPanneau = (email: string) => {
             if (!email) return;
             const cle = cleEmail(email);
-            if (!users[cle]) sauverUser(cle, { email, role: null, admin: false, extraModules: {}, extraTabs: {} });
+            if (!users[cle]) sauverUser(cle, {
+              email, role: null, admin: false, modeBase: "total",
+              extraModules: {}, extraTabs: {}, denyModules: toutesLesClesModules(), denyTabs: {},
+            });
             setCompteOuvert(compteOuvert === cle ? null : cle);
           };
 
           const PanneauEdition = ({ cle, email }: { cle: string; email: string }) => {
-            const u = users[cle] || { email, role: null, admin: false, extraModules: {}, extraTabs: {} };
+            const u = users[cle] || { email, role: null, admin: false, modeBase: "total" as const, extraModules: {}, extraTabs: {}, denyModules: toutesLesClesModules(), denyTabs: {} };
             const estBootstrap = ADMIN_BOOTSTRAP.includes(email.toLowerCase());
             return (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f0ede6" }}>
