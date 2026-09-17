@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { db, ref, onValue, remove } from "./firebase";
 import { set } from "firebase/database";
 import { PageHeader, styles, MODULE_DEFS, cleEmail, ADMIN_BOOTSTRAP, AccesRole, AccesUser } from "./shared";
+import { Commercial } from "./MessagerieModule";
 
 // ─── 09/09/2026 — Écran d'administration des droits d'accès (demande d'Elinathan : choisir
 // quelle adresse mail a accès à quel module / panneau de configuration / onglet). Deux volets :
@@ -85,13 +86,21 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
   const [utilisateurOuvert, setUtilisateurOuvert] = useState<string | null>(null);
   const [comptes, setComptes] = useState<Record<string, { email: string; displayName?: string; premiere_connexion?: number; derniere_connexion?: number }>>({});
   const [presences, setPresences] = useState<Record<string, { online: boolean; lastSeen?: number }>>({});
+  // 17/09/2026 — Liste des commerciaux Messagerie (voir messagerie_commerciaux dans
+  // MessagerieModule.tsx), pour pouvoir rattacher une adresse de connexion à un ou plusieurs
+  // d'entre eux directement depuis "Droits d'accès" (demande d'Elinathan).
+  const [commerciaux, setCommerciaux] = useState<Commercial[]>([]);
 
   useEffect(() => {
     const unsub1 = onValue(ref(db, "acces_permissions/roles"), snap => { setRoles(snap.val() || {}); setChargeRoles(true); });
     const unsub2 = onValue(ref(db, "acces_permissions/users"), snap => { setUsers(snap.val() || {}); setChargeUsers(true); });
     const unsub3 = onValue(ref(db, "comptes"), snap => setComptes(snap.val() || {}));
     const unsub4 = onValue(ref(db, "presence"), snap => setPresences(snap.val() || {}));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+    const unsub5 = onValue(ref(db, "messagerie_commerciaux"), snap => {
+      const d = snap.val();
+      setCommerciaux(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.nom || "").localeCompare(b.nom || "")) : []);
+    });
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
   }, []);
 
   const sauverRole = (id: string, data: AccesRole) => set(ref(db, `acces_permissions/roles/${id}`), data);
@@ -260,6 +269,38 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                           </span>
                           Administrateur (peut aussi gérer les droits)
                         </label>
+                      )}
+
+                      {commerciaux.length > 0 && (
+                        <div style={{ marginBottom: 14 }}>
+                          <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#8a6f2e", textTransform: "uppercase", marginBottom: 4 }}>📧 Boîte(s) mail rattachée(s) (Messagerie)</label>
+                          <p style={{ margin: "0 0 8px", fontSize: 11.5, color: "#9ca3af" }}>
+                            Détermine, dans la Boîte de réception, quels mails cette adresse voit (uniquement ceux attribués au(x) commercial(aux) coché(s) ci-dessous — rien de coché = tout voir).
+                          </p>
+                          <div style={{ display: "grid", gap: 4 }}>
+                            {commerciaux.map(c => {
+                              const estCoche = (u.commercialIds || []).includes(c.id);
+                              return (
+                                <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5, color: "#555", background: "#faf8f3", borderRadius: 8, padding: "6px 10px" }}>
+                                  <span className="mrq-case-conteneur">
+                                    <input
+                                      type="checkbox"
+                                      className="mrq-case-native"
+                                      checked={estCoche}
+                                      onChange={() => {
+                                        const actuels = u.commercialIds || [];
+                                        const nouveaux = estCoche ? actuels.filter(id => id !== c.id) : [...actuels, c.id];
+                                        sauverUser(cle, { ...u, commercialIds: nouveaux });
+                                      }}
+                                    />
+                                    <span className="mrq-case-visuelle" />
+                                  </span>
+                                  {c.nom}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
 
                       <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#8a6f2e", textTransform: "uppercase", marginBottom: 8 }}>Accès supplémentaires (en plus du rôle)</label>

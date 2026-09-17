@@ -416,7 +416,15 @@ export function cleEmail(email?: string | null): string {
 }
 
 export type AccesRole = { label: string; modules?: Record<string, boolean>; tabs?: Record<string, boolean> };
-export type AccesUser = { email: string; role?: string | null; admin?: boolean; extraModules?: Record<string, boolean>; extraTabs?: Record<string, boolean> };
+export type AccesUser = {
+  email: string; role?: string | null; admin?: boolean;
+  extraModules?: Record<string, boolean>; extraTabs?: Record<string, boolean>;
+  // 17/09/2026 — Demande d'Elinathan : rattacher une adresse de connexion à un ou plusieurs
+  // "commerciaux" de la Messagerie (voir messagerie_commerciaux dans MessagerieModule.tsx), pour
+  // qu'à la connexion, la Boîte de réception ne montre à cette personne QUE les mails attribués
+  // à son propre commercial — pas besoin de compte email séparé, juste ce rattachement ici.
+  commercialIds?: string[];
+};
 
 // hasModule/hasTab renvoient toujours true (accès total) tant que la base de droits est vide
 // (personne n'a encore été configuré) ou que l'email n'a pas été explicitement ajouté à la

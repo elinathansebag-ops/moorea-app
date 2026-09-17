@@ -66,11 +66,19 @@ export function MessagerieModule({
   userName,
   initialTab,
   canConfig = true,
+  isAdmin = true,
+  commercialIdsUtilisateur = [],
 }: {
   onClose: () => void;
   userName?: string;
   initialTab?: TabKey;
   canConfig?: boolean;
+  // 17/09/2026 — Filtrage de la Boîte de réception par commercial rattaché (Droits d'accès >
+  // Utilisateurs > "Boîte(s) mail rattachée(s)"). isAdmin=true par défaut pour ne rien changer
+  // si le composant est utilisé ailleurs sans ces props. Un admin (ou une adresse sans
+  // commercial rattaché) continue de tout voir, comme avant.
+  isAdmin?: boolean;
+  commercialIdsUtilisateur?: string[];
 }) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab || "boite");
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -452,14 +460,31 @@ export function MessagerieModule({
 
   // Retrouve le(s) commercial(aux) attribué(s) à une adresse — d'abord une règle exacte sur
   // l'adresse complète, sinon une règle de domaine ("@exemple.com").
-  const trouverAttribution = (adresse: string): string[] => {
+  // ids bruts des commerciaux attribués (pour filtrer) — trouverAttribution() (ci-dessous)
+  // s'appuie dessus pour l'affichage (noms).
+  const trouverAttributionIds = (adresse: string): string[] => {
     if (!adresse) return [];
     const regleExacte = regles.find(r => r.expediteur === adresse);
     const regle = regleExacte || regles.find(r => r.expediteur.startsWith("@") && adresse.endsWith(r.expediteur));
-    if (!regle) return [];
-    return (regle.commercialIds || [])
+    return regle?.commercialIds || [];
+  };
+
+  const trouverAttribution = (adresse: string): string[] => {
+    return trouverAttributionIds(adresse)
       .map(id => commerciaux.find(c => c.id === id)?.nom)
       .filter(Boolean) as string[];
+  };
+
+  // 17/09/2026 — Demande d'Elinathan : une adresse rattachée à un ou plusieurs commerciaux (voir
+  // Droits d'accès > Utilisateurs) ne doit voir, dans la Boîte de réception, QUE les mails
+  // attribués à son/ses commercial(aux) — comme une vraie boîte personnelle. Un admin, ou une
+  // adresse sans rattachement (commercialIdsUtilisateur vide), continue de tout voir : c'est un
+  // filtre d'affichage qui s'ajoute au-dessus de l'attribution existante, pas une restriction
+  // d'accès aux données (l'API renvoie toujours tous les mails, seul l'affichage change ici).
+  const mailVisiblePourMoi = (adresse: string): boolean => {
+    if (isAdmin || commercialIdsUtilisateur.length === 0) return true;
+    const attribues = trouverAttributionIds(adresse);
+    return attribues.some(id => commercialIdsUtilisateur.includes(id));
   };
 
   const formatDateMail = (iso: string | null) => {
@@ -469,6 +494,7 @@ export function MessagerieModule({
   };
 
   const mailsFiltres = mails.filter(m => {
+    if (!mailVisiblePourMoi(m.expediteur)) return false;
     if (!filtreMails.trim()) return true;
     const q = filtreMails.trim().toLowerCase();
     return m.expediteur.includes(q) || m.nomExpediteur.toLowerCase().includes(q) || m.sujet.toLowerCase().includes(q);

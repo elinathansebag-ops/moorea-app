@@ -7,7 +7,7 @@ import { db, ref, push, onValue, update, remove, set, onDisconnect, serverTimest
 import RetoursModule from "./RetoursModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
-import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, AccesRole, AccesUser, AccesRefuse } from "./shared";
+import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse } from "./shared";
 import DroitsAccesModule from "./DroitsAccesModule";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
@@ -501,6 +501,11 @@ export default function App() {
   }, []);
   const monAccesReel = calculerAcces(user?.email, permRoles, permUsers);
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
+  // 17/09/2026 — Pour que la Messagerie sache filtrer la Boîte de réception : quelle adresse
+  // "compte" pour ce filtre (celle aperçue si un aperçu admin est actif, sinon la vraie), et
+  // quels commerciaux lui sont rattachés (voir Droits d'accès > Utilisateurs).
+  const emailPourAcces = (apercuEmail && monAccesReel.isAdmin) ? apercuEmail : (user?.email || "");
+  const monCommercialIds: string[] = permUsers[cleEmail(emailPourAcces)]?.commercialIds || [];
   const emailsConnus = Array.from(new Set([
     ...Object.values(comptes).map((c: any) => c?.email).filter(Boolean),
     ...Object.values(permUsers).map((u: any) => u?.email).filter(Boolean),
@@ -2853,6 +2858,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           onClose={() => { setShowMessagerie(false); setShowAccueil(true); }}
           userName={nomAfficheGarde}
           canConfig={monAcces.hasTab("messagerie.configuration")}
+          isAdmin={monAcces.isAdmin}
+          commercialIdsUtilisateur={monCommercialIds}
         />
       ) : (
         <AccesRefuse onRetour={() => { setShowMessagerie(false); setShowAccueil(true); }} />
@@ -3382,17 +3389,34 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             </div>
           )}
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
-          <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🏭 Entrepôt</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
-            {row1.map((b, i) => <CardCarré key={i} {...b} />)}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-            {row2Entrepot.map((b, i) => <CardCarré key={i} {...b} />)}
-          </div>
-          <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🗂️ Bureau</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-            {row2Bureau.map((b, i) => <CardCarré key={i} {...b} />)}
-          </div>
+          {/* 17/09/2026 — Demande d'Elinathan (vue avec l'aperçu "Voir comme…") : si un compte n'a
+              aucun module dans une section (Entrepôt ou Bureau), ne pas afficher le sous-titre de
+              cette section non plus — sinon on se retrouve avec un titre "Bureau" tout seul,
+              sans aucune carte dessous, pour quelqu'un qui n'a accès à rien du Bureau (et
+              inversement pour l'Entrepôt). */}
+          {(row1.length > 0 || row2Entrepot.length > 0) && (
+            <>
+              <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🏭 Entrepôt</p>
+              {row1.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
+                  {row1.map((b, i) => <CardCarré key={i} {...b} />)}
+                </div>
+              )}
+              {row2Entrepot.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+                  {row2Entrepot.map((b, i) => <CardCarré key={i} {...b} />)}
+                </div>
+              )}
+            </>
+          )}
+          {row2Bureau.length > 0 && (
+            <>
+              <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🗂️ Bureau</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                {row2Bureau.map((b, i) => <CardCarré key={i} {...b} />)}
+              </div>
+            </>
+          )}
         </div>
       </div>
       {archivageResultats && (() => {
