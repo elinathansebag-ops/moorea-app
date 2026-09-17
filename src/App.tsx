@@ -484,7 +484,27 @@ export default function App() {
     const unsub2 = onValue(ref(db, "acces_permissions/users"), snap => setPermUsers(snap.val() || {}));
     return () => { unsub1(); unsub2(); };
   }, []);
-  const monAcces = calculerAcces(user?.email, permRoles, permUsers);
+  // 17/09/2026 — Demande d'Elinathan : pouvoir choisir dans une liste déroulante, depuis
+  // l'accueil, l'adresse mail de qui elle veut "voir et tester" — sans avoir à se connecter
+  // depuis le compte Google de cette personne. "monAccesReel" reste TOUJOURS calculé sur sa
+  // vraie identité (jamais sur l'aperçu) : c'est lui qui garde le contrôle "Quitter l'aperçu"
+  // et le menu Admin accessibles quoi qu'il arrive, même si la personne aperçue n'a droit à
+  // rien. "monAcces" (utilisé partout ailleurs dans l'appli pour filtrer modules/onglets) bascule
+  // sur l'aperçu dès qu'un est actif — ce n'est qu'un affichage différent des mêmes droits déjà
+  // enregistrés dans "Droits d'accès" (aucune vraie connexion à un autre compte, aucun accès aux
+  // données réelles de cette personne au-delà de ce qu'elle-même peut déjà voir).
+  const [apercuEmail, setApercuEmail] = useState<string | null>(null);
+  const [comptes, setComptes] = useState<Record<string, any>>({});
+  useEffect(() => {
+    const unsub = onValue(ref(db, "comptes"), snap => setComptes(snap.val() || {}));
+    return () => unsub();
+  }, []);
+  const monAccesReel = calculerAcces(user?.email, permRoles, permUsers);
+  const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
+  const emailsConnus = Array.from(new Set([
+    ...Object.values(comptes).map((c: any) => c?.email).filter(Boolean),
+    ...Object.values(permUsers).map((u: any) => u?.email).filter(Boolean),
+  ] as string[])).sort((a, b) => a.localeCompare(b));
   // ─── 09/09/2026 — Comptes créés + présence (demande d'Elinathan : voir la liste des comptes,
   // qui est en ligne, et la dernière date de connexion de chacun). On enregistre chaque personne
   // qui se connecte dans "comptes/{uid}" (email, nom, première/dernière connexion), et on suit sa
@@ -3027,12 +3047,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // plus traités ici, si on arrive dans cette fonction ils sont forcément tous false.
 
   if (showDroitsAcces) {
-    if (!monAcces.isAdmin) return <AccesRefuse onRetour={() => { setShowDroitsAcces(false); setShowAccueil(true); }} />;
+    if (!monAccesReel.isAdmin) return <AccesRefuse onRetour={() => { setShowDroitsAcces(false); setShowAccueil(true); }} />;
     return <DroitsAccesModule onClose={() => { setShowDroitsAcces(false); setShowAccueil(true); }} />;
   }
 
   if (showAdmin) {
-    if (!monAcces.isAdmin) return <AccesRefuse onRetour={() => { setShowAdmin(false); setShowAccueil(true); }} />;
+    if (!monAccesReel.isAdmin) return <AccesRefuse onRetour={() => { setShowAdmin(false); setShowAccueil(true); }} />;
     const fermerAdmin = () => { setShowAdmin(false); setShowAccueil(true); };
     const majModePlacementRack = async (v: "manuel" | "scan") => {
       try {
@@ -3095,9 +3115,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <button onClick={() => { setShowAdmin(false); setRackAutoConfig(true); setShowRack(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Ouvrir la configuration du Rack →</button>
                   </div>
                   {/* 09/09/2026 — Demande d'Elinathan : pouvoir choisir quelle adresse mail accède à
-                      quel module/onglet. Réservé aux comptes admin (monAcces.isAdmin) — tout ce
+                      quel module/onglet. Réservé aux comptes admin (monAccesReel.isAdmin, la vraie
                       panneau Admin l'est déjà de toute façon depuis le retrait du code PIN. */}
-                  {monAcces.isAdmin && (
+                  {monAccesReel.isAdmin && (
                     <div style={{ background: "#fff", border: "1.5px solid #e9d8fd", borderRadius: 16, padding: 20, marginTop: 16 }}>
                       <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🔐 Droits d'accès</p>
                       <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#9ca3af" }}>Choisir quelle adresse mail a accès à quel module, panneau de configuration ou onglet.</p>
@@ -3211,7 +3231,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.2)"}`, background: showLeofresh ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
                 🍋 Leofresh
               </button>
-              {monAcces.isAdmin && (
+              {monAccesReel.isAdmin && (
                 <button onClick={() => setShowAdmin(true)}
                   style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
                   ⚙️ Admin
@@ -3227,6 +3247,30 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               demande d'Elinathan : "ça sert à rien". nbAttente/nbTraitesAujourdHui/nbLitigesOuverts/
               nbRapports restent calculés plus haut (utilisés ailleurs, ex: le bandeau "à traiter
               aujourd'hui" juste en dessous), seul cet affichage disparaît. */}
+          {/* 17/09/2026 — Demande d'Elinathan : liste déroulante pour choisir "voir/tester comme"
+              qui elle veut, sans avoir à se connecter avec le mail de la personne. Réservé à
+              monAccesReel.isAdmin (sa vraie identité, jamais l'aperçu en cours) pour qu'elle
+              garde toujours la main pour revenir à sa propre vue. */}
+          {monAccesReel.isAdmin && (
+            <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <select
+                value={apercuEmail || ""}
+                onChange={e => setApercuEmail(e.target.value || null)}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11.5, fontFamily: "'Syne', sans-serif", fontWeight: 600, cursor: "pointer" }}
+              >
+                <option value="" style={{ color: "#111" }}>🔐 Voir comme… (ma vue normale)</option>
+                {emailsConnus.map(email => (
+                  <option key={email} value={email} style={{ color: "#111" }}>{email}</option>
+                ))}
+              </select>
+              {apercuEmail && (
+                <span style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", fontSize: 11, color: "#fbbf24", fontWeight: 700 }}>
+                  👁️ Aperçu : {apercuEmail}
+                  <button onClick={() => setApercuEmail(null)} style={{ border: "none", background: "rgba(0,0,0,0.2)", color: "#fff", borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>Quitter</button>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 09/09/2026 — "À traiter aujourd'hui" : bandeau unique qui agrège ce qui était réparti
