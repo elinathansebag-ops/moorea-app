@@ -3389,33 +3389,15 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             </div>
           )}
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
-          {/* 17/09/2026 — Demande d'Elinathan (vue avec l'aperçu "Voir comme…") : si un compte n'a
-              aucun module dans une section (Entrepôt ou Bureau), ne pas afficher le sous-titre de
-              cette section non plus — sinon on se retrouve avec un titre "Bureau" tout seul,
-              sans aucune carte dessous, pour quelqu'un qui n'a accès à rien du Bureau (et
-              inversement pour l'Entrepôt). */}
-          {(row1.length > 0 || row2Entrepot.length > 0) && (
-            <>
-              <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🏭 Entrepôt</p>
-              {row1.length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
-                  {row1.map((b, i) => <CardCarré key={i} {...b} />)}
-                </div>
-              )}
-              {row2Entrepot.length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-                  {row2Entrepot.map((b, i) => <CardCarré key={i} {...b} />)}
-                </div>
-              )}
-            </>
-          )}
-          {row2Bureau.length > 0 && (
-            <>
-              <p style={{ margin: "0 0 8px", fontSize: 10.5, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.75 }}>🗂️ Bureau</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                {row2Bureau.map((b, i) => <CardCarré key={i} {...b} />)}
-              </div>
-            </>
+          {/* 17/09/2026 — Demande d'Elinathan : retrait de la séparation "Entrepôt" / "Bureau"
+              (les sous-titres posaient problème dès qu'un compte n'avait accès qu'à une seule des
+              deux catégories — voir aperçu "Voir comme…"). Une seule grille avec tous les modules
+              auxquels le compte a droit, dans l'ordre déjà établi (arrivages en premier, puis le
+              reste), sans étiquette de section. */}
+          {[...row1, ...row2Entrepot, ...row2Bureau].length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+              {[...row1, ...row2Entrepot, ...row2Bureau].map((b, i) => <CardCarré key={i} {...b} />)}
+            </div>
           )}
         </div>
       </div>
