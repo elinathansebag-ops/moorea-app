@@ -304,20 +304,42 @@ export function MessagerieModule({
     return (m ? m[1] : deTexte).trim();
   };
 
-  const telechargerPieceJointe = async (uid: number, index: number, nomFichier: string) => {
+  // Récupère une pièce jointe (16/09/2026) : renvoie le blob + son URL objet, sans décider
+  // de ce qu'on en fait — aperçu ou téléchargement, c'est l'appelant qui choisit.
+  const recupererPieceJointe = async (uid: number, index: number): Promise<Blob | null> => {
     try {
       const headers = await enTeteAuth();
       const reponse = await fetch(`/api/messagerie?action=piece-jointe&uid=${uid}&index=${index}`, { headers });
-      if (!reponse.ok) { notify("error", "Téléchargement de la pièce jointe échoué"); return; }
-      const blob = await reponse.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = nomFichier;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      if (!reponse.ok) { notify("error", "Ouverture de la pièce jointe échouée"); return null; }
+      return await reponse.blob();
     } catch {
-      notify("error", "Téléchargement de la pièce jointe échoué");
+      notify("error", "Ouverture de la pièce jointe échouée");
+      return null;
     }
+  };
+
+  // Aperçu (16/09/2026) : ouvre la pièce jointe dans un nouvel onglet — le navigateur
+  // l'affiche directement pour une image ou un PDF, comme dans une vraie boîte mail.
+  // Pour les types qu'il ne sait pas afficher (Word, Excel...), il proposera lui-même
+  // de la télécharger, mais sans qu'on force ce comportement.
+  const apercuPieceJointe = async (uid: number, index: number) => {
+    const blob = await recupererPieceJointe(uid, index);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    // On laisse le temps au nouvel onglet de charger le fichier avant de libérer l'URL.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  };
+
+  // Téléchargement explicite (bouton ⬇️ séparé) : celui-là force bien l'enregistrement.
+  const telechargerPieceJointe = async (uid: number, index: number, nomFichier: string) => {
+    const blob = await recupererPieceJointe(uid, index);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nomFichier;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const imprimerMail = () => {
@@ -641,13 +663,25 @@ export function MessagerieModule({
                     {detailMail.pieces.length > 0 && (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
                         {detailMail.pieces.map(p => (
-                          <button
+                          <div
                             key={p.index}
-                            onClick={() => telechargerPieceJointe(detailMail.uid, p.index, p.nomFichier)}
-                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            style={{ display: "flex", alignItems: "center", borderRadius: 20, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, overflow: "hidden" }}
                           >
-                            📎 {p.nomFichier} <span style={{ color: COLORS.gray600, fontWeight: 400 }}>({Math.round((p.taille || 0) / 1024)} Ko)</span>
-                          </button>
+                            <button
+                              onClick={() => apercuPieceJointe(detailMail.uid, p.index)}
+                              title="Aperçu"
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 6px 6px 12px", border: "none", background: "transparent", color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              📎 {p.nomFichier} <span style={{ color: COLORS.gray600, fontWeight: 400 }}>({Math.round((p.taille || 0) / 1024)} Ko)</span>
+                            </button>
+                            <button
+                              onClick={() => telechargerPieceJointe(detailMail.uid, p.index, p.nomFichier)}
+                              title="Télécharger"
+                              style={{ display: "flex", alignItems: "center", padding: "6px 12px 6px 6px", border: "none", borderLeft: `1.5px solid ${COLORS.primaryBorder}`, background: "transparent", color: COLORS.primary, fontSize: 13, cursor: "pointer" }}
+                            >
+                              ⬇️
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}
