@@ -3392,22 +3392,21 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "12px 12px 100px", boxSizing: "border-box" }}>
 
-          {/* BANDEAU RECHERCHE LOT — 15/09/2026 : réduit et rendu discret à la demande
-              d'Elinathan ("personne ne l'utilise"), au lieu du gros bandeau très visible
-              d'avant. Reste fonctionnel à l'identique (Entrée ou clic ouvrent la recherche). */}
-          <div style={{ background: "transparent", border: "none", borderRadius: 10, padding: "4px 6px", marginBottom: 10, display: "flex", alignItems: "center", gap: 6, opacity: 0.55 }}>
-            <span style={{ fontSize: 13, flexShrink: 0 }}>🔍</span>
+          {/* BANDEAU RECHERCHE LOT — 17/09/2026 (quater) : Elinathan voulait un peu plus de
+              présence visuelle (avant : totalement transparent/discret, demande du 15/09) sans
+              retomber dans l'agressif — un léger fond + bordure dorée, cohérent avec le thème de
+              l'appli. Le bouton "Chercher" à côté faisait doublon avec Entrée : retiré, l'icône
+              🔍 fait maintenant elle-même office de bouton (clic ou Entrée ouvrent la recherche). */}
+          <div style={{ background: darkMode ? "#1a1d27" : "#faf8f3", border: `1.5px solid ${darkMode ? "#3d3620" : "#d9cba3"}`, borderRadius: 12, padding: "8px 12px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <span onClick={() => { if (searchLotQuery.trim()) { setShowAccueil(false); setShowRecherche(true); } }}
+              style={{ fontSize: 15, flexShrink: 0, cursor: "pointer" }}>🔍</span>
             <input
               value={searchLotQuery}
               onChange={e => setSearchLotQuery(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && searchLotQuery.trim()) { setShowAccueil(false); setShowRecherche(true); } }}
               placeholder="Chercher un lot, un produit ou un fournisseur…"
-              style={{ flex: 1, border: "none", outline: "none", fontSize: 11.5, fontFamily: "'Syne', sans-serif", background: "transparent", color: textMain, minWidth: 0 }}
+              style={{ flex: 1, border: "none", outline: "none", fontSize: 13, fontFamily: "'Syne', sans-serif", background: "transparent", color: textMain, minWidth: 0 }}
             />
-            <button onClick={() => { setShowAccueil(false); setShowRecherche(true); }}
-              style={{ padding: "3px 9px", borderRadius: 7, border: `1px solid ${darkMode ? "#2d3148" : "#e8e0d0"}`, background: "transparent", color: darkMode ? "#9ca3af" : "#6b7280", fontWeight: 600, fontSize: 10.5, cursor: "pointer", flexShrink: 0, fontFamily: "'Syne', sans-serif" }}>
-              Chercher
-            </button>
           </div>
 
           {(() => {
