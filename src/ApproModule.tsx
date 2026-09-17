@@ -111,8 +111,8 @@ function getSemaineKey(offset = 0): string {
   return `${yr}-W${String(wk).padStart(2, "0")}`;
 }
 
-export function ApproModule({ onClose, userName, canConfig = true }: { onClose: () => void; userName: string; canConfig?: boolean }) {
-  const [activeTab, setActiveTab] = useState<"commandes" | "statistiques" | "configuration">("commandes");
+export function ApproModule({ onClose, userName, canConfig = true, initialTab }: { onClose: () => void; userName: string; canConfig?: boolean; initialTab?: "commandes" | "statistiques" | "configuration" }) {
+  const [activeTab, setActiveTab] = useState<"commandes" | "statistiques" | "configuration">(initialTab || "commandes");
   const [semaineOffset, setSemaineOffset] = useState(0);
   const [vague, setVague] = useState<Vague>("weekend");
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);

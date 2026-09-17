@@ -458,6 +458,11 @@ export default function App() {
   // onglet plutôt que sur le Dashboard.
   const [prestatairesInitialTab, setPrestatairesInitialTab] = useState<"dashboard" | "configuration" | undefined>(undefined);
   const [showReconditionnement, setShowReconditionnement] = useState(false);
+  // 17/09/2026 — Demande d'Elinathan : centraliser tous les raccourcis de configuration dans
+  // Admin > Réglages ("rendre cette page vraiment centrale") — mêmes états "ouvrir directement
+  // sur l'onglet Configuration" que prestatairesInitialTab ci-dessus, pour Appro et Messagerie.
+  const [approInitialTab, setApproInitialTab] = useState<"commandes" | "statistiques" | "configuration" | undefined>(undefined);
+  const [messagerieInitialTab, setMessagerieInitialTab] = useState<"boite" | "configuration" | undefined>(undefined);
   // 16/09/2026 — Démarrage du projet "plateforme mail commerciale" (demande d'Elinathan, voir
   // MessagerieModule.tsx) : pour l'instant seulement la config des commerciaux/règles
   // d'attribution, la connexion à la vraie boîte mail arrive dans une étape suivante.
@@ -2919,14 +2924,15 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     <div key="garde-messagerie" style={{ display: showMessagerie ? "contents" : "none" }}>
       {monAcces.hasModule("messagerie") ? (
         <MessagerieModule
-          onClose={() => { setShowMessagerie(false); setShowAccueil(true); }}
+          onClose={() => { setShowMessagerie(false); setMessagerieInitialTab(undefined); setShowAccueil(true); }}
           userName={nomAfficheGarde}
+          initialTab={messagerieInitialTab}
           canConfig={monAcces.hasTab("messagerie.configuration")}
           isAdmin={monAcces.isAdmin}
           commercialIdsUtilisateur={monCommercialIds}
         />
       ) : (
-        <AccesRefuse onRetour={() => { setShowMessagerie(false); setShowAccueil(true); }} />
+        <AccesRefuse onRetour={() => { setShowMessagerie(false); setMessagerieInitialTab(undefined); setShowAccueil(true); }} />
       )}
     </div>
   );
@@ -2935,12 +2941,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     <div key="garde-appro" style={{ display: showAppro ? "contents" : "none" }}>
       {monAcces.hasModule("appro") ? (
         <ApproModule
-          onClose={() => { setShowAppro(false); setShowAccueil(true); }}
+          onClose={() => { setShowAppro(false); setApproInitialTab(undefined); setShowAccueil(true); }}
           userName={nomAfficheGarde}
+          initialTab={approInitialTab}
           canConfig={monAcces.hasTab("appro.configuration")}
         />
       ) : (
-        <AccesRefuse onRetour={() => { setShowAppro(false); setShowAccueil(true); }} />
+        <AccesRefuse onRetour={() => { setShowAppro(false); setApproInitialTab(undefined); setShowAccueil(true); }} />
       )}
     </div>
   );
@@ -3167,49 +3174,74 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               )}
 
-              {adminTab === "reglages" && (
-                <div>
-                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
-                    <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>📦 Mode de placement rack (mur "Stockage")</p>
-                    <p style={{ margin: "0 0 10px", fontSize: 11, color: "#9ca3af" }}>Réglage partagé, valable pour tous les appareils. Sur les autres murs, le scan reste obligatoire quoi qu'il arrive.</p>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => majModePlacementRack("manuel")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${rackModePlacementAdmin === "manuel" ? "#8b5cf6" : "#e5e7eb"}`, background: rackModePlacementAdmin === "manuel" ? "#f5f3ff" : "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12, color: rackModePlacementAdmin === "manuel" ? "#6d28d9" : "#6b7280" }}>✍️ Manuel</button>
-                      <button onClick={() => majModePlacementRack("scan")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${rackModePlacementAdmin === "scan" ? "#8b5cf6" : "#e5e7eb"}`, background: rackModePlacementAdmin === "scan" ? "#f5f3ff" : "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12, color: rackModePlacementAdmin === "scan" ? "#6d28d9" : "#6b7280" }}>📷 Scan</button>
-                    </div>
+              {adminTab === "reglages" && (() => {
+                // 17/09/2026 — Refonte demandée par Elinathan : "harmoniser cette page, mettre
+                // tous les réglages dedans, la rendre vraiment centrale à l'utilisation de
+                // l'app" — regroupement par catégorie (au lieu d'un empilement de cartes sans
+                // ordre) + un accès direct à la Configuration de chaque module qui en a une,
+                // au lieu de devoir ouvrir le module puis cliquer sur son onglet Configuration.
+                const TitreSection = ({ children }: { children: React.ReactNode }) => (
+                  <p style={{ margin: "18px 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".6px" }}>{children}</p>
+                );
+                const CarteReglage = ({ titre, desc, children, accent }: { titre: string; desc?: string; children: React.ReactNode; accent?: string }) => (
+                  <div style={{ background: "#fff", border: `1.5px solid ${accent || "#e8e0d0"}`, borderRadius: 16, padding: 20, marginBottom: 12 }}>
+                    <p style={{ margin: desc ? "0 0 4px" : "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>{titre}</p>
+                    {desc && <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#9ca3af" }}>{desc}</p>}
+                    {children}
                   </div>
-                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginBottom: 16 }}>
-                    <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🖨️ Imprimante étiquettes</p>
-                    <p style={{ margin: 0, fontSize: 11.5, color: "#9ca3af" }}>Configurée directement dans le script du PC (print-relay.js, nom de l'imprimante et format papier) — pas encore pilotable depuis ce panneau.</p>
+                );
+                const BoutonReglage = ({ label, onClick, accent }: { label: string; onClick: () => void; accent?: { bg: string; fg: string; bd: string } }) => (
+                  <button onClick={onClick} style={{ padding: "9px 14px", borderRadius: 10, border: `1.5px solid ${accent?.bd || "#e8e0d0"}`, background: accent?.bg || "#faf8f3", color: accent?.fg || "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>{label}</button>
+                );
+                return (
+                  <div>
+                    <TitreSection>🔧 Configuration des modules</TitreSection>
+                    <CarteReglage titre="📦 Stock" desc="Répartition GMS/Prestige, qui peut lancer un comptage.">
+                      <BoutonReglage label="Ouvrir Stock →" onClick={() => { setShowAdmin(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); }} />
+                    </CarteReglage>
+                    <CarteReglage titre="🗄️ Rack" desc="Mode de placement (manuel/scan) et autres réglages du mur Stockage.">
+                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                        <button onClick={() => majModePlacementRack("manuel")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${rackModePlacementAdmin === "manuel" ? "#8b5cf6" : "#e5e7eb"}`, background: rackModePlacementAdmin === "manuel" ? "#f5f3ff" : "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12, color: rackModePlacementAdmin === "manuel" ? "#6d28d9" : "#6b7280" }}>✍️ Manuel</button>
+                        <button onClick={() => majModePlacementRack("scan")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${rackModePlacementAdmin === "scan" ? "#8b5cf6" : "#e5e7eb"}`, background: rackModePlacementAdmin === "scan" ? "#f5f3ff" : "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12, color: rackModePlacementAdmin === "scan" ? "#6d28d9" : "#6b7280" }}>📷 Scan</button>
+                      </div>
+                      <BoutonReglage label="Ouvrir la configuration du Rack →" onClick={() => { setShowAdmin(false); setRackAutoConfig(true); setShowRack(true); }} />
+                    </CarteReglage>
+                    <CarteReglage titre="📦 Prestataires" desc="Transporteurs, cartons, palettes IFCO — couvre aussi la configuration Reconditionnement (fusionnées).">
+                      <BoutonReglage label="Ouvrir la configuration →" onClick={() => { setShowAdmin(false); setPrestatairesInitialTab("configuration"); setShowPrestataires(true); }} />
+                    </CarteReglage>
+                    <CarteReglage titre="🌱 Appro" desc="Fournisseurs, emails de commande Kenya & Tanzanie.">
+                      <BoutonReglage label="Ouvrir la configuration →" onClick={() => { setShowAdmin(false); setApproInitialTab("configuration"); setShowAppro(true); }} />
+                    </CarteReglage>
+                    <CarteReglage titre="📧 Messagerie" desc="Rattachement des adresses aux commerciaux, tri automatique.">
+                      <BoutonReglage label="Ouvrir la configuration →" onClick={() => { setShowAdmin(false); setMessagerieInitialTab("configuration"); setShowMessagerie(true); }} />
+                    </CarteReglage>
+
+                    <TitreSection>🔐 Accès & sécurité</TitreSection>
+                    {/* 09/09/2026 — Demande d'Elinathan : pouvoir choisir quelle adresse mail accède à
+                        quel module/onglet. Réservé aux comptes admin (monAccesReel.isAdmin, la vraie
+                        panneau Admin l'est déjà de toute façon depuis le retrait du code PIN. */}
+                    {monAccesReel.isAdmin && (
+                      <CarteReglage titre="🔐 Droits d'accès" desc="Choisir quelle adresse mail a accès à quel module, panneau de configuration ou onglet." accent="#e9d8fd">
+                        <BoutonReglage label="Gérer les droits d'accès →" onClick={() => { setShowAdmin(false); setShowDroitsAcces(true); }} accent={{ bg: "#faf5ff", fg: "#7c3aed", bd: "#e9d8fd" }} />
+                      </CarteReglage>
+                    )}
+
+                    <TitreSection>🗄️ Données</TitreSection>
+                    {/* 17/09/2026 — "Archiver" et "Historique" déplacés ici depuis la grille
+                        d'accueil (demande d'Elinathan : ça ne méritait pas une carte de module
+                        comme les autres) — actions de maintenance, à leur place dans Réglages. */}
+                    <CarteReglage titre="🗄️ Archivage & historique" desc="Nettoie les données de plus de 3 semaines (rien n'est supprimé, tout reste consultable dans l'Historique) ; l'Historique liste tous les arrivages déjà archivés.">
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <BoutonReglage label={archivageGlobalBusy || archivageBusy ? "Archivage…" : "🗄️ Archiver (+21j)"} onClick={() => archiverToutAncien()} />
+                        <BoutonReglage label="📜 Historique des arrivages →" onClick={() => { setShowAdmin(false); setPageMode("historique_arr"); setVue("__none__" as any); }} accent={{ bg: "#faf8f3", fg: "#6c757d", bd: "#e8e0d0" }} />
+                      </div>
+                    </CarteReglage>
+
+                    <TitreSection>🖨️ Matériel</TitreSection>
+                    <CarteReglage titre="🖨️ Imprimante étiquettes" desc="Configurée directement dans le script du PC (print-relay.js, nom de l'imprimante et format papier) — pas encore pilotable depuis ce panneau." children={null} />
                   </div>
-                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20 }}>
-                    <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🗄️ Autres réglages du module Rack</p>
-                    <button onClick={() => { setShowAdmin(false); setRackAutoConfig(true); setShowRack(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Ouvrir la configuration du Rack →</button>
-                  </div>
-                  {/* 09/09/2026 — Demande d'Elinathan : pouvoir choisir quelle adresse mail accède à
-                      quel module/onglet. Réservé aux comptes admin (monAccesReel.isAdmin, la vraie
-                      panneau Admin l'est déjà de toute façon depuis le retrait du code PIN. */}
-                  {monAccesReel.isAdmin && (
-                    <div style={{ background: "#fff", border: "1.5px solid #e9d8fd", borderRadius: 16, padding: 20, marginTop: 16 }}>
-                      <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🔐 Droits d'accès</p>
-                      <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#9ca3af" }}>Choisir quelle adresse mail a accès à quel module, panneau de configuration ou onglet.</p>
-                      <button onClick={() => { setShowAdmin(false); setShowDroitsAcces(true); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e9d8fd", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Gérer les droits d'accès →</button>
-                    </div>
-                  )}
-                  {/* 17/09/2026 — "Archiver" et "Historique" déplacés ici depuis la grille
-                      d'accueil (demande d'Elinathan : ça ne méritait pas une carte de module
-                      comme les autres) — actions de maintenance, à leur place dans Réglages. */}
-                  <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 20, marginTop: 16 }}>
-                    <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>🗄️ Archivage & historique</p>
-                    <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#9ca3af" }}>Nettoie les données de plus de 3 semaines (rien n'est supprimé, tout reste consultable dans l'Historique) ; l'Historique liste tous les arrivages déjà archivés.</p>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button onClick={() => archiverToutAncien()} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
-                        {archivageGlobalBusy || archivageBusy ? "Archivage…" : "🗄️ Archiver (+21j)"}
-                      </button>
-                      <button onClick={() => { setShowAdmin(false); setPageMode("historique_arr"); setVue("__none__" as any); }} style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#6c757d", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>📜 Historique des arrivages →</button>
-                    </div>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </>
         </div>
       </div>
