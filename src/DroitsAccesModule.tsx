@@ -127,6 +127,49 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
     remove(ref(db, `acces_permissions/users/${cle}`));
   };
 
+  // 17/09/2026 — Demande d'Elinathan : "2 systèmes d'attribution qui marchent ensemble" — cette
+  // fonction est LA seule façon de (dé)cocher un module, utilisée à la fois par "Par module" et
+  // par "Comptes" : décocher crée toujours un denyModules (prioritaire, quel que soit le rôle ou
+  // le mode), cocher lève ce denyModules et accorde en extra si ce n'était pas déjà donné par le
+  // rôle. Comme les deux onglets appellent exactement la même fonction sur les mêmes données,
+  // ils ne peuvent pas se contredire.
+  const toggleModulePourEmail = (moduleKey: string, email: string, visibleActuellement: boolean) => {
+    const cle = cleEmail(email);
+    const u = users[cle];
+    if (!u) {
+      // Pas encore configurée nulle part : elle a accès à tout par défaut. On la fait basculer
+      // en mode "accès total sauf exceptions" pour ne retirer QUE ce module — tout le reste
+      // continue de fonctionner comme avant pour elle.
+      sauverUser(cle, {
+        email, role: null, admin: false, modeBase: "total",
+        extraModules: {}, extraTabs: {}, denyModules: { [moduleKey]: true }, denyTabs: {},
+      });
+      return;
+    }
+    if (visibleActuellement) {
+      const denyModules = { ...(u.denyModules || {}), [moduleKey]: true };
+      sauverUser(cle, { ...u, denyModules });
+    } else {
+      const denyModules = { ...(u.denyModules || {}) };
+      delete denyModules[moduleKey];
+      const extraModules = { ...(u.extraModules || {}), [moduleKey]: true };
+      sauverUser(cle, { ...u, denyModules, extraModules });
+    }
+  };
+
+  // Équivalent pour un onglet/sous-panneau ("stock.compter", "prestataires.configuration"...).
+  // Un onglet est accordé par défaut dès que son module l'est (voir calculerAcces dans
+  // shared.tsx) — décocher ici ne fait donc que l'interdire spécifiquement (denyTabs), pas besoin
+  // d'"extraTabs" : sans le module, l'onglet ne sert à rien de toute façon.
+  const toggleTabPourEmail = (tabKey: string, email: string, visibleActuellement: boolean) => {
+    const cle = cleEmail(email);
+    const u = users[cle];
+    if (!u) return; // le module lui-même n'est pas encore configuré ; rien à faire ici.
+    const denyTabs = { ...(u.denyTabs || {}) };
+    if (visibleActuellement) denyTabs[tabKey] = true; else delete denyTabs[tabKey];
+    sauverUser(cle, { ...u, denyTabs });
+  };
+
   if (!chargeRoles || !chargeUsers) {
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee" }}>
@@ -164,33 +207,6 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
             ...Object.values(comptes).map(c => c?.email).filter(Boolean),
             ...Object.values(users).map(u => u?.email).filter(Boolean),
           ] as string[])).sort((a, b) => a.localeCompare(b));
-
-          const toggleModulePourEmail = (moduleKey: string, email: string, visibleActuellement: boolean) => {
-            const cle = cleEmail(email);
-            const u = users[cle];
-            if (!u) {
-              // Pas encore configurée nulle part : elle a accès à tout par défaut. On la fait
-              // basculer en mode "accès total sauf exceptions" pour ne retirer QUE ce module —
-              // tout le reste continue de fonctionner comme avant pour elle.
-              sauverUser(cle, {
-                email, role: null, admin: false, modeBase: "total",
-                extraModules: {}, extraTabs: {}, denyModules: { [moduleKey]: true }, denyTabs: {},
-              });
-              return;
-            }
-            if (visibleActuellement) {
-              // On retire l'accès à ce module (quel que soit son mode par ailleurs).
-              const denyModules = { ...(u.denyModules || {}), [moduleKey]: true };
-              sauverUser(cle, { ...u, denyModules });
-            } else {
-              // On redonne l'accès : on lève l'interdiction, et si elle est en mode restreint
-              // (rôle + extras), on l'accorde aussi explicitement en extra.
-              const denyModules = { ...(u.denyModules || {}) };
-              delete denyModules[moduleKey];
-              const extraModules = { ...(u.extraModules || {}), [moduleKey]: true };
-              sauverUser(cle, { ...u, denyModules, extraModules });
-            }
-          };
 
           return (
             <div>
@@ -328,25 +344,36 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                   </div>
                 )}
 
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#8a6f2e", textTransform: "uppercase", marginBottom: 8 }}>Accès supplémentaires (en plus du rôle)</label>
-                <PermissionsChecklist
-                  modules={u.extraModules || {}}
-                  tabs={u.extraTabs || {}}
-                  onToggleModule={key => {
-                    const extraModules = { ...(u.extraModules || {}) };
-                    extraModules[key] = !extraModules[key];
-                    // Si ce module avait été décoché depuis "Par module", on lève l'interdiction
-                    // en même temps qu'on l'accorde ici, sinon les deux vues se contrediraient.
-                    const denyModules = { ...(u.denyModules || {}) };
-                    if (extraModules[key]) delete denyModules[key];
-                    sauverUser(cle, { ...u, extraModules, denyModules });
-                  }}
-                  onToggleTab={key => {
-                    const extraTabs = { ...(u.extraTabs || {}) };
-                    extraTabs[key] = !extraTabs[key];
-                    sauverUser(cle, { ...u, extraTabs });
-                  }}
-                />
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#8a6f2e", textTransform: "uppercase", marginBottom: 8 }}>Modules et accès</label>
+                <p style={{ margin: "-4px 0 8px", fontSize: 11, color: "#9ca3af" }}>
+                  Reflète l'accès réel (rôle + accès supplémentaires confondus) — décocher fonctionne toujours, même pour un module donné par le rôle. Un module coché rend tous ses sous-onglets accessibles par défaut ; décoche juste ceux que tu veux restreindre.
+                </p>
+                {(() => {
+                  // 17/09/2026 (bis) — Demande d'Elinathan : les cases doivent montrer l'accès
+                  // RÉEL (pas seulement les extras) et décocher doit TOUJOURS marcher, même si
+                  // l'accès vient du rôle — même moteur que l'onglet "Par module"
+                  // (toggleModulePourEmail / toggleTabPourEmail), donc les deux vues ne peuvent
+                  // pas se contredire.
+                  const acces = calculerAcces(email, roles, users);
+                  const estAdminCompte = ADMIN_BOOTSTRAP.includes(email.toLowerCase()) || !!u.admin;
+                  const modulesChecked: Record<string, boolean> = {};
+                  const tabsChecked: Record<string, boolean> = {};
+                  MODULE_DEFS.forEach(m => {
+                    modulesChecked[m.key] = estAdminCompte || acces.hasModule(m.key);
+                    (m.tabs || []).forEach(t => {
+                      const tk = `${m.key}.${t.key}`;
+                      tabsChecked[tk] = estAdminCompte || acces.hasTab(tk);
+                    });
+                  });
+                  return (
+                    <PermissionsChecklist
+                      modules={modulesChecked}
+                      tabs={tabsChecked}
+                      onToggleModule={key => { if (!estAdminCompte) toggleModulePourEmail(key, email, modulesChecked[key]); }}
+                      onToggleTab={key => { if (!estAdminCompte) toggleTabPourEmail(key, email, tabsChecked[key]); }}
+                    />
+                  );
+                })()}
 
                 {!estBootstrap && users[cle] && (
                   <button

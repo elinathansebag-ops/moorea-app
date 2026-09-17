@@ -490,15 +490,23 @@ export function calculerAcces(
     return { isAdmin, hasModule: () => true, hasTab: () => true };
   }
   const roleRec = userRec.role ? roles?.[userRec.role] : null;
-  if (userRec.modeBase === "total") {
-    // Accès à tout, sauf ce qui a été explicitement décoché (depuis "Par module" ou
-    // "Utilisateurs", peu importe).
-    const hasModule = (key: string) => !userRec.denyModules?.[key];
-    const hasTab = (key: string) => !userRec.denyTabs?.[key];
-    return { isAdmin: false, hasModule, hasTab };
-  }
-  const hasModule = (key: string) => !!(roleRec?.modules?.[key] || userRec.extraModules?.[key]) && !userRec.denyModules?.[key];
-  const hasTab = (key: string) => !!(roleRec?.tabs?.[key] || userRec.extraTabs?.[key]) && !userRec.denyTabs?.[key];
+  const hasModule = userRec.modeBase === "total"
+    // Accès à tout, sauf ce qui a été explicitement décoché (depuis "Par module" ou "Comptes",
+    // peu importe).
+    ? (key: string) => !userRec.denyModules?.[key]
+    : (key: string) => !!(roleRec?.modules?.[key] || userRec.extraModules?.[key]) && !userRec.denyModules?.[key];
+  // 17/09/2026 (bis) — Demande d'Elinathan : "par défaut tout coché, je décoche ce que je veux
+  // pour qui je veux" — dès qu'un module est accordé (peu importe comment : rôle, extra, ou mode
+  // "total"), TOUS ses onglets/sous-panneaux le sont AUSSI par défaut ; seul denyTabs peut en
+  // restreindre un en particulier. Avant, chaque onglet devait être coché un par un (via
+  // roleRec.tabs / extraTabs), ce qui obligeait à tout re-cocher à la main à chaque module — et
+  // laissait un module accordé par rôle sans qu'aucun de ses onglets ne soit jamais accessible
+  // tant qu'on n'allait pas les cocher un par un ailleurs. roleRec.tabs / extraTabs ne sont donc
+  // plus utilisés du tout ici (conservés dans le type pour compatibilité, mais inertes).
+  const hasTab = (key: string) => {
+    const moduleKey = key.split(".")[0];
+    return hasModule(moduleKey) && !userRec.denyTabs?.[key];
+  };
   return { isAdmin: false, hasModule, hasTab };
 }
 
