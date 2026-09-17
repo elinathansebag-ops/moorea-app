@@ -356,6 +356,11 @@ export type ModuleDef = { key: string; label: string; tabs?: { key: string; labe
 
 export const MODULE_DEFS: ModuleDef[] = [
   { key: "arrivages", label: "📋 Pointer arrivage" },
+  // 17/09/2026 — Demande d'Elinathan : module dédié aux commerciaux pour suivre l'état des
+  // arrivages du jour SANS pouvoir pointer/valider — juste consultation (voir
+  // ArrivagesApercuModule.tsx). Volontairement indépendant du module "arrivages" ci-dessus : un
+  // compte peut avoir l'un sans l'autre, dans les deux sens.
+  { key: "arrivages_apercu", label: "👀 Suivi arrivages (lecture)" },
   { key: "rapports", label: "📊 Rapports" },
   { key: "litiges", label: "⚠️ Litiges" },
   { key: "stock", label: "📦 Stock", tabs: [
