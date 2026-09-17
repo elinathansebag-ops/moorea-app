@@ -586,7 +586,9 @@ export default function App() {
     const heartbeat = setInterval(marquerActif, 5 * 60 * 1000);
     return () => { unsubConnected(); clearInterval(heartbeat); };
   }, [user?.uid]);
-  const [adminTab, setAdminTab] = useState<"activite" | "reglages">("activite");
+  // 17/09/2026 — Demande d'Elinathan : "Réglages" par défaut à l'ouverture d'Admin, pas
+  // "Activité" (elle n'a pas besoin de voir ça en première page).
+  const [adminTab, setAdminTab] = useState<"activite" | "reglages">("reglages");
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [rackModePlacementAdmin, setRackModePlacementAdmin] = useState<"manuel" | "scan">("manuel");
   useEffect(() => {
