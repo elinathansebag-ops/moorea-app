@@ -184,7 +184,6 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
     );
   }
 
-  const roleIds = Object.keys(roles).sort((a, b) => (roles[a].label || "").localeCompare(roles[b].label || ""));
   const userKeys = Object.keys(users).sort((a, b) => (users[a].email || "").localeCompare(users[b].email || ""));
 
   return (
@@ -299,16 +298,6 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
             const estBootstrap = ADMIN_BOOTSTRAP.includes(email.toLowerCase());
             return (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f0ede6" }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#8a6f2e", textTransform: "uppercase", marginBottom: 4 }}>Rôle de base</label>
-                <select
-                  value={u.role || ""}
-                  onChange={e => sauverUser(cle, { ...u, role: e.target.value || null })}
-                  style={{ marginBottom: 12 }}
-                >
-                  <option value="">Aucun (garde l'accès total)</option>
-                  {roleIds.map(id => <option key={id} value={id}>{roles[id].label}</option>)}
-                </select>
-
                 {!estBootstrap && (
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, marginBottom: 12 }}>
                     <span className="mrq-case-conteneur">
