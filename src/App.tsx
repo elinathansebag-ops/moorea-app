@@ -439,7 +439,6 @@ export default function App() {
   const [showRH, setShowRH] = useState(false);
   const [showEtiquettes, setShowEtiquettes] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
-  const [showLeofresh, setShowLeofresh] = useState(false);
   const [showGencode, setShowGencode] = useState(false);
   const [showGencodeChecker, setShowGencodeChecker] = useState(false);
   const [showCatalogue, setShowCatalogue] = useState(false);
@@ -3212,27 +3211,23 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "chargement", icon: "🚛", label: "Optimisation chargement", color: "#0891b2", badge: null, stat: "Calculateur palettes & camion", action: () => { setShowAccueil(false); setShowChargement(true); } },
     ].filter(b => monAcces.hasModule(b.key));
 
-    // 03/09/2026 — Demande d'Elinathan : Étiquettes et Statt déménagés ici, dans le tiroir
-    // "🍋 Leofresh" (repliable), moins utilisés au quotidien que les modules de la grille
-    // principale ci-dessus.
-    const leofreshBtns = [
-      { key: "etiquettes", icon: "🏷️", label: "Étiquettes", color: "#c8a84b", stat: "Créer & imprimer une étiquette", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowEtiquettes(true); } },
-      { key: "statt", icon: "🛒", label: "Statt", color: "#ea580c", stat: "Ventes réelles + objectifs par période", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowStatt(true); } },
-      { key: "catalogue", icon: "📚", label: "Catalogue", color: "#27ae60", stat: "Base articles Moorea", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowCatalogue(true); } },
-      { key: "dashboard_tv", icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowDashboard(true); } },
-      { key: "gencodes", icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowGencode(true); } },
-      { key: "rh", icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowRH(true); } },
-      { key: "yukon", icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowYukon(true); } },
-      { key: "taches", icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowLeofresh(false); setShowAccueil(false); setShowTaches(true); } },
-      // 09/09/2026 — Demande d'Elinathan : "Archiver" et "Historique" déplacés ici depuis le bloc
-      // "🧹 Maintenance" de l'accueil principal (retiré juste en dessous), moins utilisés au
-      // quotidien maintenant que l'archivage se fait tout seul en silence (voir plus haut) — donc
-      // à ranger avec le reste des modules secondaires du tiroir Leofresh. Pas de "key" ici
-      // volontairement : ces deux actions n'ont jamais été restreintes par module (elles étaient
-      // visibles de tous sur l'accueil), on garde ce comportement pour ne pas les faire
+    // 17/09/2026 — Demande d'Elinathan : le tiroir repliable "🍋 Leofresh" est supprimé (elle
+    // était la seule à l'ouvrir) — ces modules secondaires rejoignent simplement la grille
+    // principale, avec le même filtrage par droits que les autres.
+    const row3Autres = [
+      { key: "etiquettes", icon: "🏷️", label: "Étiquettes", color: "#c8a84b", stat: "Créer & imprimer une étiquette", action: () => { setShowAccueil(false); setShowEtiquettes(true); } },
+      { key: "statt", icon: "🛒", label: "Statt", color: "#ea580c", stat: "Ventes réelles + objectifs par période", action: () => { setShowAccueil(false); setShowStatt(true); } },
+      { key: "catalogue", icon: "📚", label: "Catalogue", color: "#27ae60", stat: "Base articles Moorea", action: () => { setShowAccueil(false); setShowCatalogue(true); } },
+      { key: "dashboard_tv", icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowAccueil(false); setShowDashboard(true); } },
+      { key: "gencodes", icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
+      { key: "rh", icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowAccueil(false); setShowRH(true); } },
+      { key: "yukon", icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
+      { key: "taches", icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowAccueil(false); setShowTaches(true); } },
+      // 09/09/2026 — "Archiver" et "Historique" n'ont jamais été restreints par module (visibles
+      // de tous sur l'accueil) — pas de "key" ici volontairement, pour ne pas les faire
       // disparaître par erreur pour quelqu'un dont l'accès est restreint.
-      { icon: "🗄️", label: archivageGlobalBusy || archivageBusy ? "Archivage…" : "Archiver", color: "#8a6f2e", stat: "Nettoie toute l'app (+21j)", action: () => { setShowLeofresh(false); archiverToutAncien(); } },
-      { icon: "📜", label: "Historique", color: "#6c757d", stat: "Tous les arrivages archivés", action: () => { setShowLeofresh(false); setShowAccueil(false); setPageMode("historique_arr"); setVue("__none__" as any); } },
+      { icon: "🗄️", label: archivageGlobalBusy || archivageBusy ? "Archivage…" : "Archiver", color: "#8a6f2e", stat: "Nettoie toute l'app (+21j)", action: () => archiverToutAncien() },
+      { icon: "📜", label: "Historique", color: "#6c757d", stat: "Tous les arrivages archivés", action: () => { setShowAccueil(false); setPageMode("historique_arr"); setVue("__none__" as any); } },
     ].filter(b => !b.key || monAcces.hasModule(b.key));
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
@@ -3259,10 +3254,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <h1 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: "#fff" }}>{getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋</h1>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => setShowLeofresh(!showLeofresh)}
-                style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.2)"}`, background: showLeofresh ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: showLeofresh ? "#f59e0b" : "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
-                🍋 Leofresh
-              </button>
               {monAccesReel.isAdmin && (
                 <button onClick={() => setShowAdmin(true)}
                   style={{ position: "relative", padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
@@ -3403,30 +3394,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             </button>
           </div>
 
-          {showLeofresh && (
-            <div style={{ marginBottom: 16, background: darkMode ? "#1a1808" : "#fffbeb", borderRadius: 14, border: "1.5px solid #f59e0b55", padding: "14px" }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: ".6px" }}>🍋 Leofresh</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                {leofreshBtns.map(b => (
-                  <button key={b.label} onClick={b.action}
-                    style={{ background: darkMode ? "#22200a" : "#fff", border: `1.5px solid ${b.color}33`, borderRadius: 14, padding: "16px 8px 14px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
-                    <span style={{ fontSize: 26, width: 50, height: 50, display: "flex", alignItems: "center", justifyContent: "center", background: b.color + "22", borderRadius: 14 }}>{b.icon}</span>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: textMain }}>{b.label}</span>
-                    <span style={{ fontSize: 10, color: b.color, fontWeight: 600, background: b.color + "15", padding: "2px 8px", borderRadius: 20 }}>{b.stat}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
           {/* 17/09/2026 — Demande d'Elinathan : retrait de la séparation "Entrepôt" / "Bureau"
               (les sous-titres posaient problème dès qu'un compte n'avait accès qu'à une seule des
               deux catégories — voir aperçu "Voir comme…"). Une seule grille avec tous les modules
               auxquels le compte a droit, dans l'ordre déjà établi (arrivages en premier, puis le
-              reste), sans étiquette de section. */}
-          {[...row1, ...row2Entrepot, ...row2Bureau].length > 0 && (
+              reste), sans étiquette de section. Le tiroir repliable "🍋 Leofresh" est supprimé
+              (17/09/2026 bis) : ses modules (row3Autres) rejoignent simplement cette grille. */}
+          {[...row1, ...row2Entrepot, ...row2Bureau, ...row3Autres].length > 0 && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
-              {[...row1, ...row2Entrepot, ...row2Bureau].map((b, i) => <CardCarré key={i} {...b} />)}
+              {[...row1, ...row2Entrepot, ...row2Bureau, ...row3Autres].map((b, i) => <CardCarré key={i} {...b} />)}
             </div>
           )}
         </div>
