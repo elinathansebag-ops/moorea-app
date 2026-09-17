@@ -355,12 +355,14 @@ export function AutocompleteInput({ value, onChange, suggestions, placeholder, r
 export type ModuleDef = { key: string; label: string; tabs?: { key: string; label: string }[] };
 
 export const MODULE_DEFS: ModuleDef[] = [
-  { key: "arrivages", label: "📋 Pointer arrivage" },
-  // 17/09/2026 — Demande d'Elinathan : module dédié aux commerciaux pour suivre l'état des
-  // arrivages du jour SANS pouvoir pointer/valider — juste consultation (voir
-  // ArrivagesApercuModule.tsx). Volontairement indépendant du module "arrivages" ci-dessus : un
-  // compte peut avoir l'un sans l'autre, dans les deux sens.
-  { key: "arrivages_apercu", label: "👀 Suivi arrivages (lecture)" },
+  // 17/09/2026 (bis) — Le module séparé "arrivages_apercu" / ArrivagesApercuModule.tsx (demande
+  // du 17/09/2026 : commerciaux en lecture seule) est abandonné (demande d'Elinathan : "elle est
+  // horrible cette page, oublie-la") — remplacé par le même principe que Stock ("compter" vs
+  // lecture seule) : un seul module "arrivages", avec un onglet "valider" qui bascule entre
+  // pointage normal et simple consultation grisée de la même page.
+  { key: "arrivages", label: "📋 Pointer arrivage", tabs: [
+    { key: "valider", label: "✅ Peut valider (sinon lecture seule : consultation du jour)" },
+  ] },
   { key: "rapports", label: "📊 Rapports" },
   { key: "litiges", label: "⚠️ Litiges" },
   { key: "stock", label: "📦 Stock", tabs: [

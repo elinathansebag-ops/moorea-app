@@ -11,7 +11,6 @@ import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID,
 import DroitsAccesModule from "./DroitsAccesModule";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
-import ArrivagesApercuModule from "./ArrivagesApercuModule";
 import { RHApp } from "./RHApp";
 import { EtiquetteModule } from "./EtiquetteModule";
 import { QrCodeDashboard } from "./QrCodeDashboard";
@@ -527,6 +526,11 @@ export default function App() {
   const [showPersonnaliserAccueil, setShowPersonnaliserAccueil] = useState(false);
   const monAccesReel = calculerAcces(user?.email, permRoles, permUsers);
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
+  // 17/09/2026 (bis) — Demande d'Elinathan : remplace le module séparé "Suivi arrivages" par le
+  // même principe que Stock ("compter" vs lecture seule) — un compte qui a "arrivages" mais pas
+  // l'onglet "valider" voit la même page "Pointer arrivage", juste grisée/sans possibilité de
+  // pointer (voir DateBlock/FournisseurBlock dans ArrivageModule.tsx).
+  const canValiderArrivages = monAcces.hasTab("arrivages.valider");
   // 17/09/2026 — Demande d'Elinathan : être prévenue (pas juste devoir aller vérifier) qu'un
   // nouveau compte vient d'apparaître sans aucun accès et attend qu'elle lui choisisse ses
   // modules — petit badge rouge sur "⚙️ Admin", visible dès l'accueil.
@@ -704,7 +708,6 @@ export default function App() {
   // un refus, bouton pour imprimer directement l'étiquette refus (QR vers le bon de retour).
   const [popupApresRapport, setPopupApresRapport] = useState<{ rapport: any; arrivageId: string | null } | null>(null);
   const [showStock, setShowStock] = useState(false);
-  const [showArrivagesApercu, setShowArrivagesApercu] = useState(false);
   const [showPalette, setShowPalette] = useState<string | null>(null);
   // Espace public reconditionneur (NLT / Andès), ouvert via ?portail=nlt|andes — voir
   // src/PortailReconditionneur.tsx et le lien envoyé dans le mail récap quotidien.
@@ -3292,7 +3295,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "prestataires", icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
       { key: "reconditionnement", icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       { key: "messagerie", icon: "📧", label: "Messagerie", color: "#0f766e", badge: null, stat: "Tri automatique par commercial", action: () => { setShowAccueil(false); setShowMessagerie(true); } },
-      { key: "arrivages_apercu", icon: "👀", label: "Suivi arrivages", color: "#6b7280", badge: null, stat: "Lecture seule — état du jour", action: () => { setShowAccueil(false); setShowArrivagesApercu(true); } },
       { key: "appro", icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
       { key: "chargement", icon: "🚛", label: "Optimisation chargement", color: "#0891b2", badge: null, stat: "Calculateur palettes & camion", action: () => { setShowAccueil(false); setShowChargement(true); } },
     ].filter(b => monAcces.hasModule(b.key));
@@ -3747,11 +3749,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       </div>
       </>
     );
-  }
-
-  if (showArrivagesApercu) {
-    if (!monAcces.hasModule("arrivages_apercu")) return <AccesRefuse onRetour={() => { setShowArrivagesApercu(false); setShowAccueil(true); }} />;
-    return <ArrivagesApercuModule onClose={() => { setShowArrivagesApercu(false); setShowAccueil(true); }} arrivages={arrivages} />;
   }
 
   if (showStock) {
@@ -4378,7 +4375,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     const isOpen = openWeeksArr.has(key);
                     const nbArrivages = g.dates.reduce((sum, [, arr]) => sum + arr.length, 0);
                     const nbEnAttenteSemaine = g.dates.reduce((sum, [, arr]) => sum + arr.filter((a: any) => a.statut === "en attente").length, 0);
-                    const peutNettoyer = idxSemaine >= 2 && nbEnAttenteSemaine > 0;
+                    const peutNettoyer = canValiderArrivages && idxSemaine >= 2 && nbEnAttenteSemaine > 0;
                     return (
                       <div key={key} style={{ marginBottom: 10 }}>
                         <div onClick={() => toggleWeekArr(key)} style={{ cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#faf8f3", border: `1.5px solid ${nbEnAttenteSemaine > 0 ? "#fcd34d" : "#e8e0d0"}`, borderRadius: 10, marginBottom: isOpen ? 8 : 0, flexWrap: "wrap", gap: 8 }}>
@@ -4415,7 +4412,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} />
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} />
                           );
                         })}
                       </div>

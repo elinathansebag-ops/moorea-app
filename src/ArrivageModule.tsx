@@ -26,6 +26,31 @@ export function BadgeArrivage({ status }: { status: string }) {
   );
 }
 
+// 17/09/2026 (bis) — Demande d'Elinathan : remplace l'ancien module séparé "Suivi arrivages"
+// (jugé "horrible") par le même principe que Stock — un compte sans l'onglet "arrivages.valider"
+// voit cette carte grisée/consultation à la place de ProduitRow (qui, elle, permet de pointer).
+// Reprend le même style que l'ancien ArrivagesApercuModule (grisé, sans aucune action).
+export function ArrivageLectureSeuleRow({ arrivage: a }: { arrivage: any }) {
+  return (
+    <div style={{ background: "#fafafa", border: "1px solid #e5e7eb", borderRadius: 12, padding: "12px 14px", marginBottom: 8, opacity: 0.9 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 13.5, color: "#374151" }}>
+            {a.produit || "-"}{a.variete ? ` · ${a.variete}` : ""}
+          </p>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb", padding: "2px 8px", borderRadius: 20 }}>📦 {a.quantite ?? "-"} {a.unite || ""}</span>
+            {a.lot_interne && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb", padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>🔖 Lot {a.lot_interne}</span>}
+          </div>
+        </div>
+        <div style={{ filter: "grayscale(0.6)", opacity: 0.85, flexShrink: 0 }}>
+          <BadgeArrivage status={a.statut || "en attente"} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PillArr({ children }: { children: React.ReactNode }) {
   return <span style={{ background: "#f4f7f5", border: "1px solid #d4edda", color: "#1a6b3a", fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 20 }}>{children}</span>;
 }
@@ -1078,7 +1103,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
   );
 }
 
-export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById }: any) {
+export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true }: any) {
   const [open, setOpen] = useState(false);
   // 09/09/2026 — Bug trouvé avec Elinathan : "je viens de valider un arrivage a 0 au lieux de 30
   // et aucun pop up". Le popup d'écart vivait dans le state local de ProduitRow — mais dès que
@@ -1185,9 +1210,11 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
               )}
             </div>
           )}
-          {isRetourRecondGroupe && produits.length > 0
-            ? <PointageGroupeNLT groupe={fournisseur} produits={produits} onValidate={onValidate} date={date} paletteAnnonceInfo={paletteAnnonceInfo} />
-            : produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} onEcartDetecte={(message) => setRecapEcart({ message })} />)}
+          {!canValider
+            ? produits.map((a: any) => <ArrivageLectureSeuleRow key={a.id} arrivage={a} />)
+            : isRetourRecondGroupe && produits.length > 0
+              ? <PointageGroupeNLT groupe={fournisseur} produits={produits} onValidate={onValidate} date={date} paletteAnnonceInfo={paletteAnnonceInfo} />
+              : produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} onEcartDetecte={(message) => setRecapEcart({ message })} />)}
           {nbTraites > 0 && (
             <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
               <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>📁 Traités · {nbTraites}</p>
@@ -2630,7 +2657,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
   );
 }
 
-export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById }: any) {
+export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById, canValider = true }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -2886,7 +2913,8 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect}
               gencodeArticles={gencodeArticles}
               date={date}
-              reconditionnementDemandesById={reconditionnementDemandesById} />
+              reconditionnementDemandesById={reconditionnementDemandesById}
+              canValider={canValider} />
           ))}
         </div>
       )}
