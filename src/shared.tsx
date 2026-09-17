@@ -424,6 +424,19 @@ export type AccesUser = {
   // qu'à la connexion, la Boîte de réception ne montre à cette personne QUE les mails attribués
   // à son propre commercial — pas besoin de compte email séparé, juste ce rattachement ici.
   commercialIds?: string[];
+  // 17/09/2026 — Demande d'Elinathan : "2 systèmes d'attribution qui marchent ensemble" — en plus
+  // de la vue par personne ("Utilisateurs" : je choisis quels modules elle a), une vue par module
+  // ("Par module" : je choisis qui le voit). "modeBase" dit d'où on part pour cette personne :
+  // "total" = accès à tout SAUF ce qui est listé dans denyModules/denyTabs (c'est le mode utilisé
+  // quand on restreint quelqu'un depuis la vue "Par module" sans avoir touché à ses autres
+  // modules) ; "restreint" (ou absent, comportement historique) = accès à RIEN sauf le rôle et
+  // extraModules/extraTabs (c'est le mode de la vue "Utilisateurs" existante). denyModules/
+  // denyTabs l'emportent toujours, quel que soit le mode — c'est ce qui permet aux deux vues de
+  // rester cohérentes entre elles : décocher quelqu'un dans un module depuis "Par module" doit
+  // avoir le même effet que le décocher depuis "Utilisateurs", peu importe par où on est passé.
+  modeBase?: "total" | "restreint";
+  denyModules?: Record<string, boolean>;
+  denyTabs?: Record<string, boolean>;
 };
 
 // hasModule/hasTab renvoient toujours true (accès total) tant que la base de droits est vide
@@ -444,8 +457,15 @@ export function calculerAcces(
     return { isAdmin, hasModule: () => true, hasTab: () => true };
   }
   const roleRec = userRec.role ? roles?.[userRec.role] : null;
-  const hasModule = (key: string) => !!(roleRec?.modules?.[key] || userRec.extraModules?.[key]);
-  const hasTab = (key: string) => !!(roleRec?.tabs?.[key] || userRec.extraTabs?.[key]);
+  if (userRec.modeBase === "total") {
+    // Accès à tout, sauf ce qui a été explicitement décoché (depuis "Par module" ou
+    // "Utilisateurs", peu importe).
+    const hasModule = (key: string) => !userRec.denyModules?.[key];
+    const hasTab = (key: string) => !userRec.denyTabs?.[key];
+    return { isAdmin: false, hasModule, hasTab };
+  }
+  const hasModule = (key: string) => !!(roleRec?.modules?.[key] || userRec.extraModules?.[key]) && !userRec.denyModules?.[key];
+  const hasTab = (key: string) => !!(roleRec?.tabs?.[key] || userRec.extraTabs?.[key]) && !userRec.denyTabs?.[key];
   return { isAdmin: false, hasModule, hasTab };
 }
 

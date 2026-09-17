@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { db, ref, onValue, remove } from "./firebase";
 import { set } from "firebase/database";
-import { PageHeader, styles, MODULE_DEFS, cleEmail, ADMIN_BOOTSTRAP, AccesRole, AccesUser } from "./shared";
+import { PageHeader, styles, MODULE_DEFS, cleEmail, ADMIN_BOOTSTRAP, calculerAcces, AccesRole, AccesUser } from "./shared";
 import { Commercial } from "./MessagerieModule";
 
 // ─── 09/09/2026 — Écran d'administration des droits d'accès (demande d'Elinathan : choisir
@@ -75,7 +75,8 @@ function formatDateFr(ts: number | null | undefined): string {
 }
 
 export default function DroitsAccesModule({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"roles" | "utilisateurs" | "comptes">("roles");
+  const [tab, setTab] = useState<"roles" | "utilisateurs" | "modules" | "comptes">("roles");
+  const [moduleOuvert, setModuleOuvert] = useState<string | null>(null);
   const [roles, setRoles] = useState<Record<string, AccesRole>>({});
   const [users, setUsers] = useState<Record<string, AccesUser>>({});
   const [chargeRoles, setChargeRoles] = useState(false);
@@ -177,6 +178,7 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <button onClick={() => setTab("roles")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "roles" ? "#7c3aed" : "#fff", color: tab === "roles" ? "#fff" : "#555" }}>🎭 Rôles</button>
           <button onClick={() => setTab("utilisateurs")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "utilisateurs" ? "#7c3aed" : "#fff", color: tab === "utilisateurs" ? "#fff" : "#555" }}>👤 Utilisateurs</button>
+          <button onClick={() => setTab("modules")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "modules" ? "#7c3aed" : "#fff", color: tab === "modules" ? "#fff" : "#555" }}>🧩 Par module</button>
           <button onClick={() => setTab("comptes")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "comptes" ? "#7c3aed" : "#fff", color: tab === "comptes" ? "#fff" : "#555" }}>📋 Comptes</button>
         </div>
 
@@ -310,7 +312,12 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                         onToggleModule={key => {
                           const extraModules = { ...(u.extraModules || {}) };
                           extraModules[key] = !extraModules[key];
-                          sauverUser(cle, { ...u, extraModules });
+                          // 17/09/2026 — Si ce module avait été décoché pour elle depuis "Par
+                          // module", on lève l'interdiction en même temps qu'on l'accorde ici,
+                          // sinon les deux vues se contrediraient.
+                          const denyModules = { ...(u.denyModules || {}) };
+                          if (extraModules[key]) delete denyModules[key];
+                          sauverUser(cle, { ...u, extraModules, denyModules });
                         }}
                         onToggleTab={key => {
                           const extraTabs = { ...(u.extraTabs || {}) };
@@ -325,6 +332,89 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
             })}
           </div>
         )}
+
+        {/* 17/09/2026 — Demande d'Elinathan : "2 systèmes d'attribution qui marchent ensemble" —
+            en plus de la vue par personne ("Utilisateurs"), une vue par module : pour CE module,
+            qui le voit. S'appuie sur calculerAcces() (shared.tsx), donc toujours cohérente avec
+            "Utilisateurs" : cocher/décocher ici a exactement le même effet que là-bas, quel que
+            soit l'endroit par lequel on modifie. */}
+        {tab === "modules" && (() => {
+          const emailsConnus = Array.from(new Set([
+            ...Object.values(comptes).map(c => c?.email).filter(Boolean),
+            ...Object.values(users).map(u => u?.email).filter(Boolean),
+          ] as string[])).sort((a, b) => a.localeCompare(b));
+
+          const toggleModulePourEmail = (moduleKey: string, email: string, visibleActuellement: boolean) => {
+            const cle = cleEmail(email);
+            const u = users[cle];
+            if (!u) {
+              // Pas encore configurée nulle part : elle a accès à tout par défaut. On la fait
+              // basculer en mode "accès total sauf exceptions" pour ne retirer QUE ce module —
+              // tout le reste continue de fonctionner comme avant pour elle.
+              sauverUser(cle, {
+                email, role: null, admin: false, modeBase: "total",
+                extraModules: {}, extraTabs: {}, denyModules: { [moduleKey]: true }, denyTabs: {},
+              });
+              return;
+            }
+            if (visibleActuellement) {
+              // On retire l'accès à ce module (quel que soit son mode par ailleurs).
+              const denyModules = { ...(u.denyModules || {}), [moduleKey]: true };
+              sauverUser(cle, { ...u, denyModules });
+            } else {
+              // On redonne l'accès : on lève l'interdiction, et si elle est en mode restreint
+              // (rôle + extras), on l'accorde aussi explicitement en extra.
+              const denyModules = { ...(u.denyModules || {}) };
+              delete denyModules[moduleKey];
+              const extraModules = { ...(u.extraModules || {}), [moduleKey]: true };
+              sauverUser(cle, { ...u, denyModules, extraModules });
+            }
+          };
+
+          return (
+            <div>
+              <p style={{ fontSize: 11.5, color: "#9ca3af", marginBottom: 12 }}>
+                Ici, choisis un module et coche qui a le droit de le voir — l'inverse de l'onglet "Utilisateurs" (qui part de la personne). Les deux vues modifient la même chose : cocher/décocher ici a exactement le même effet que dans "Utilisateurs".
+              </p>
+              {emailsConnus.length === 0 && <p style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucune adresse connue pour l'instant (personne ne s'est encore connectée, et personne n'a été ajoutée dans "Utilisateurs").</p>}
+              {emailsConnus.length > 0 && MODULE_DEFS.map(m => {
+                const ouvert = moduleOuvert === m.key;
+                return (
+                  <div key={m.key} className="card" style={{ padding: 14, marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setModuleOuvert(ouvert ? null : m.key)}>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{m.label}</span>
+                      <span>{ouvert ? "▲" : "▼"}</span>
+                    </div>
+                    {ouvert && (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f0ede6", display: "grid", gap: 4 }}>
+                        {emailsConnus.map(email => {
+                          const estAdmin = ADMIN_BOOTSTRAP.includes(email.toLowerCase()) || !!users[cleEmail(email)]?.admin;
+                          const visible = estAdmin || calculerAcces(email, roles, users).hasModule(m.key);
+                          return (
+                            <label key={email} style={{ display: "flex", alignItems: "center", gap: 8, cursor: estAdmin ? "default" : "pointer", fontSize: 12.5, color: "#555", background: "#faf8f3", borderRadius: 8, padding: "6px 10px", opacity: estAdmin ? 0.6 : 1 }}>
+                              <span className="mrq-case-conteneur">
+                                <input
+                                  type="checkbox"
+                                  className="mrq-case-native"
+                                  checked={visible}
+                                  disabled={estAdmin}
+                                  onChange={() => toggleModulePourEmail(m.key, email, visible)}
+                                />
+                                <span className="mrq-case-visuelle" />
+                              </span>
+                              {email}
+                              {estAdmin && <span style={{ fontSize: 10.5, color: "#9ca3af" }}>(admin — voit tout)</span>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {tab === "comptes" && (() => {
           const uids = Object.keys(comptes).sort((a, b) => (comptes[b].derniere_connexion || 0) - (comptes[a].derniere_connexion || 0));
