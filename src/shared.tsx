@@ -360,6 +360,11 @@ export const MODULE_DEFS: ModuleDef[] = [
   { key: "litiges", label: "⚠️ Litiges" },
   { key: "stock", label: "📦 Stock", tabs: [
     { key: "config", label: "⚙️ Configuration (répartition GMS/Prestige)" },
+    // 17/09/2026 — Demande d'Elinathan : seule la ou les personnes cochées ici peuvent compter
+    // (lancer/reprendre un inventaire) ; les autres gardent un accès en lecture seule (historique
+    // + état des stocks, écarts). Comme les autres droits, coché par défaut (personne n'est
+    // restreint tant qu'elle ne l'a pas explicitement décoché pour quelqu'un).
+    { key: "compter", label: "📋 Peut compter (sinon lecture seule : historique + état)" },
   ] },
   { key: "retours", label: "🚚 Retours clients" },
   { key: "preparation", label: "🏭 Préparation" },

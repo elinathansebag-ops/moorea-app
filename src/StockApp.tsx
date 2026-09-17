@@ -637,7 +637,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
   {article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"}
 ];
 
-export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[]; canConfig?: boolean }) {
+export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompter = true }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[]; canConfig?: boolean; canCompter?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mainRtdb = db; // DB principale (moorea-qualite) — c'est là que vivent les racks (rack_positions)
 
@@ -1013,12 +1013,12 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
       <div id="s-modal-stock-info" style="font-size:13px;color:#6b7280;margin-bottom:1.5rem"></div>
       <div style="font-size:13px;font-weight:600;margin-bottom:12px">Choisissez votre équipe pour compter :</div>
       <div class="team-grid">
-        <div class="team-card gms" onclick="sStartSession('GMS')">
+        <div class="team-card gms" ${canCompter ? "onclick=\"sStartSession('GMS')\"" : "style=\"opacity:.4;cursor:not-allowed\""}>
           <div class="ico">🌿</div><h2>GMS</h2>
           <p id="s-modal-gms-count">- articles</p>
           <p style="margin-top:3px;font-size:11px">19h00</p>
         </div>
-        <div class="team-card prestige" onclick="sStartSession('PRESTIGE')">
+        <div class="team-card prestige" ${canCompter ? "onclick=\"sStartSession('PRESTIGE')\"" : "style=\"opacity:.4;cursor:not-allowed\""}>
           <div class="ico">✨</div><h2>Prestige</h2>
           <p id="s-modal-prestige-count">- articles</p>
           <p style="margin-top:3px;font-size:11px">Nuit</p>
@@ -1474,6 +1474,12 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
 
       // Start session
       (window as any).sStartSession = (team: string) => {
+        // 17/09/2026 — Demande d'Elinathan : seule la ou les personnes cochées "Peut compter"
+        // (Droits d'accès > Utilisateurs/Par module > Stock) peuvent démarrer/reprendre un
+        // comptage ; les autres restent en lecture seule (historique + état des stocks). Garde
+        // posée ici en plus (pas seulement sur les boutons) au cas où la fonction serait
+        // appelée directement.
+        if (!canCompter) { alert("Accès en lecture seule : tu peux consulter l'historique et l'état des stocks, mais pas compter."); return; }
         currentTeam = team;
         document.getElementById("s-modal-team")?.classList.remove("open");
         currentSessionId = "CPT-" + team + "-" + TODAY + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -1517,6 +1523,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
 
       // Recompter depuis stock existant
       (window as any).sRecompterDepuis = async (stockId: string, team: string) => {
+        if (!canCompter) { alert("Accès en lecture seule : tu peux consulter l'historique et l'état des stocks, mais pas compter."); return; }
         setSyncStatus("loading", "Chargement...");
         try {
           const snap = await getDoc(doc(db, "stocks", stockId));
@@ -1653,7 +1660,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true }: { onEx
                 <div style="font-size:11px;color:#6b7280;margin-top:3px">${done}/${total} · ${pct}%</div>
               </div>
               <div class="stock-actions">
-                ${s.cloture ? "" : `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>`}
+                ${s.cloture ? "" : (canCompter ? `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>` : `<span style="font-size:11px;background:#f5f6f8;border:1px solid #e5e7eb;color:#9ca3af;padding:4px 10px;border-radius:8px;font-weight:600">🔒 Lecture seule</span>`)}
                 ${s.cloture
                   ? `<span style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 10px;border-radius:8px;font-weight:600">✓ Clôturé</span>
                      ${s.dureeComptageMs ? `<span style="font-size:11px;background:#faf8f3;border:1px solid #e8e0d0;color:#8a6f2e;padding:4px 10px;border-radius:8px;font-weight:600">⏱ ${formatDuree(s.dureeComptageMs)}</span>` : ""}
