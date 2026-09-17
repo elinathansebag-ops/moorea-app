@@ -425,6 +425,29 @@ export function cleEmail(email?: string | null): string {
   return (email || "").toLowerCase().trim().replace(/[.#$[\]/]/g, "_");
 }
 
+// 17/09/2026 — Demande d'Elinathan : "si un module n'est pas attribué à un compte, il ne doit
+// rien voir ; un compte flambant neuf commence sans accès à rien, et ça m'envoie une demande où
+// je décide quels modules lui donner." Un tout nouveau compte reçoit désormais, dès sa première
+// connexion (voir App.tsx), une entrée en mode "total" avec TOUS les modules actuels dans
+// denyModules — c'est-à-dire l'inverse exact du comportement par défaut d'avant (accès total
+// tant que personne n'y touchait). toutesLesClesModules() construit ce dictionnaire "tout
+// refusé" à partir du catalogue courant, une seule fois, au moment de la création du compte —
+// donc un module ajouté plus tard au catalogue n'est PAS automatiquement refusé aux comptes déjà
+// créés (seuls les nouveaux comptes créés après l'ajout du module le refusent par défaut).
+export function toutesLesClesModules(): Record<string, boolean> {
+  const d: Record<string, boolean> = {};
+  MODULE_DEFS.forEach(m => { d[m.key] = true; });
+  return d;
+}
+
+// Un compte est "en attente" (demande d'accès jamais traitée) quand il est en mode "total" et
+// que TOUS les modules du catalogue actuel lui sont refusés — c'est exactement l'état créé par
+// la première connexion ci-dessus. Sert à le mettre en avant dans Droits d'accès > Comptes.
+export function compteEnAttente(u: AccesUser | undefined): boolean {
+  if (!u || u.modeBase !== "total" || u.admin) return false;
+  return MODULE_DEFS.every(m => !!u.denyModules?.[m.key]);
+}
+
 export type AccesRole = { label: string; modules?: Record<string, boolean>; tabs?: Record<string, boolean> };
 export type AccesUser = {
   email: string; role?: string | null; admin?: boolean;

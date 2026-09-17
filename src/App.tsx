@@ -7,7 +7,7 @@ import { db, ref, push, onValue, update, remove, set, onDisconnect, serverTimest
 import RetoursModule from "./RetoursModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
-import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse } from "./shared";
+import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
 import DroitsAccesModule from "./DroitsAccesModule";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 import { StockApp } from "./StockApp";
@@ -502,6 +502,10 @@ export default function App() {
   }, []);
   const monAccesReel = calculerAcces(user?.email, permRoles, permUsers);
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
+  // 17/09/2026 — Demande d'Elinathan : être prévenue (pas juste devoir aller vérifier) qu'un
+  // nouveau compte vient d'apparaître sans aucun accès et attend qu'elle lui choisisse ses
+  // modules — petit badge rouge sur "⚙️ Admin", visible dès l'accueil.
+  const nbComptesEnAttente = monAccesReel.isAdmin ? Object.values(permUsers).filter(compteEnAttente).length : 0;
   // 17/09/2026 — Pour que la Messagerie sache filtrer la Boîte de réception : quelle adresse
   // "compte" pour ce filtre (celle aperçue si un aperçu admin est actif, sinon la vraie), et
   // quels commerciaux lui sont rattachés (voir Droits d'accès > Utilisateurs).
@@ -535,7 +539,25 @@ export default function App() {
       set(presenceRef, { online: true, lastSeen: serverTimestamp(), email, displayName });
     };
     onValue(ref(db, `comptes/${uid}/premiere_connexion`), snap => {
-      if (snap.val() == null) update(ref(db, `comptes/${uid}`), { premiere_connexion: Date.now() });
+      if (snap.val() == null) {
+        update(ref(db, `comptes/${uid}`), { premiere_connexion: Date.now() });
+        // 17/09/2026 — Demande d'Elinathan : un compte flambant neuf ne doit avoir accès à RIEN
+        // par défaut (avant : accès total tant que personne n'y touchait) — elle décide ensuite,
+        // dans Droits d'accès > Comptes, quels modules lui donner. Uniquement pour un compte qui
+        // vient littéralement de se connecter pour la première fois (ce bloc) — les comptes déjà
+        // connus ne sont jamais retouchés, rien ne change pour eux.
+        if (!ADMIN_BOOTSTRAP.includes(email.toLowerCase())) {
+          const cle = cleEmail(email);
+          onValue(ref(db, `acces_permissions/users/${cle}`), snap2 => {
+            if (snap2.val() == null) {
+              set(ref(db, `acces_permissions/users/${cle}`), {
+                email, role: null, admin: false, modeBase: "total",
+                extraModules: {}, extraTabs: {}, denyModules: toutesLesClesModules(), denyTabs: {},
+              });
+            }
+          }, { onlyOnce: true });
+        }
+      }
     }, { onlyOnce: true });
     const unsubConnected = onValue(ref(db, ".info/connected"), snap => {
       if (snap.val() !== true) return;
@@ -3243,8 +3265,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               </button>
               {monAccesReel.isAdmin && (
                 <button onClick={() => setShowAdmin(true)}
-                  style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
+                  style={{ position: "relative", padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
                   ⚙️ Admin
+                  {nbComptesEnAttente > 0 && (
+                    <span style={{ position: "absolute", top: -6, right: -6, background: "#dc2626", color: "#fff", fontSize: 9.5, fontWeight: 800, minWidth: 16, height: 16, borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>
+                      {nbComptesEnAttente}
+                    </span>
+                  )}
                 </button>
               )}
               <button onClick={() => setDarkMode(!darkMode)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
