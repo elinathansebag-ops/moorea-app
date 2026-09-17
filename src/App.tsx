@@ -604,9 +604,22 @@ export default function App() {
       const list = Object.entries(data).map(([id, v]: [string, any]) => ({ ...v, id }));
       list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       setActivityLog(list.slice(0, 300)); // dernière activité seulement, pas besoin de tout charger
+      // 17/09/2026 — Demande d'Elinathan : contrairement aux autres collections archivées
+      // (jamais supprimées, juste déplacées — voir COLLECTIONS_ARCHIVABLES), le journal
+      // d'activité est un simple historique opérationnel sans besoin de traçabilité longue
+      // durée : inutile de le garder indéfiniment quelque part. Un compte admin qui charge
+      // l'écran supprime donc directement (pas d'archive) les entrées de plus de 30 jours.
+      if (monAccesReel.isAdmin) {
+        const seuil = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const updates: Record<string, any> = {};
+        for (const [id, v] of Object.entries(data as Record<string, any>)) {
+          if (typeof v?.timestamp === "number" && v.timestamp < seuil) updates[id] = null;
+        }
+        if (Object.keys(updates).length > 0) update(ref(db, "activity_log"), updates);
+      }
     });
     return () => unsub();
-  }, []);
+  }, [monAccesReel.isAdmin]);
   useEffect(() => {
     const unsub = onValue(ref(db, "rack_mode_placement"), snap => {
       const v = snap.val();
@@ -1189,7 +1202,12 @@ export default function App() {
     }
 
     showToast(decision === "conforme" ? (colisRecusFinal > 0 ? "✅ Validé" : "✅ Validé (0 colis reçu — aucune étiquette)") : "📋 Litige créé");
-    logActivite(decision === "conforme" ? "Validation arrivage" : "Litige créé", `${arrivage.produit || "-"} · ${arrivage.fournisseur || "-"} · lot ${arrivage.lot_interne || "-"}`);
+    // 17/09/2026 — Demande d'Elinathan : les validations "conforme" ne sont plus loguées ici,
+    // ça remplissait le journal d'activité d'une liste sans fin qui ne servait à rien — "qui a
+    // validé" est déjà visible directement sur l'arrivage lui-même (rapport.agreeur, affiché
+    // dans le Rapport détaillé). Seuls les litiges (plus rares, plus utiles à tracer) restent
+    // loggés ici.
+    if (decision !== "conforme") logActivite("Litige créé", `${arrivage.produit || "-"} · ${arrivage.fournisseur || "-"} · lot ${arrivage.lot_interne || "-"}`);
     // Chaque article validé doit repartir avec son étiquette — impression automatique dès la
     // validation, sans popup à remplir. Si l'agréeur a réparti sur plusieurs palettes (champ
     // "🎫 Palettes" de la carte d'agréage), on imprime une étiquette par palette avec le bon
@@ -3125,7 +3143,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               {adminTab === "activite" && (
                 <div>
                   <p style={{ fontSize: 11.5, color: "#9ca3af", marginBottom: 12 }}>
-                    Dernières actions enregistrées (validations, imports, suppressions de doublons...). Utile pour comprendre "qui a fait quoi" après coup.
+                    Actions notables des 30 derniers jours (litiges, imports, suppressions de doublons...) — les validations classiques n'y sont plus listées, "qui a validé" reste visible directement sur chaque arrivage (rapport détaillé).
                   </p>
                   {activityLog.length === 0 ? (
                     <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 13, padding: "2rem 0" }}>Aucune activité enregistrée pour l'instant — elle s'accumule au fur et à mesure des actions futures.</p>
