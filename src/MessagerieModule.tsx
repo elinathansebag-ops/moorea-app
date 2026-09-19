@@ -752,15 +752,15 @@ export function MessagerieModule({
                             onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
                             onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                           >
-                            <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap" }}>{formatDateMail(m.date)}</td>
-                            <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 220 }}>
-                              {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
-                              <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400 }}>{m.expediteur}</div>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap", verticalAlign: "top" }}>{formatDateMail(m.date)}</td>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 220, verticalAlign: "top", overflow: "hidden" }}>
+                              {m.nomExpediteur ? <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nomExpediteur}</div> : null}
+                              <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.expediteur}</div>
                             </td>
-                            <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "top" }}>
                               {m.sujet}
                             </td>
-                            <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
+                            <td style={{ padding: "7px 10px", whiteSpace: "nowrap", verticalAlign: "top" }}>
                               {attribues.length > 0 ? (
                                 <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")}</span>
                               ) : (
