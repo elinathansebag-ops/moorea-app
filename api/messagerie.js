@@ -43,6 +43,14 @@ const UN_AN_MS = 365 * 24 * 60 * 60 * 1000;
 // connexion IMAP par appel, pas de connexions/refetch en boucle.
 const TAILLE_LOT_DECOUVERTE = 400;
 const TAILLE_LOT_FLAGS = 600;
+// 19/09/2026 (suite) — Demande d'Elinathan : "je prefere qu'il bosse a fond le week-end quand
+// personne est connecte". Le week-end, personne ne consulte la messagerie ni ne compte sur une
+// fraicheur "instantanee", donc autant en profiter pour rattraper l'historique d'un an beaucoup
+// plus vite -- on garde UNE SEULE connexion IMAP a la fois comme en semaine (c'est la frequence
+// et le nombre de connexions simultanees qui avait fait bloquer le compte par Gmail, pas la
+// taille d'un lot recupere en une fois), on augmente juste ce qui est demande a chaque passage.
+const TAILLE_LOT_DECOUVERTE_WEEKEND = 1500;
+const TAILLE_LOT_FLAGS_WEEKEND = 2000;
 // 19/09/2026 (suite) — toujours (re)decouvrir au minimum les N derniers mails d'un dossier, meme
 // si le rattrapage historique (ci-dessous) n'est pas encore arrive jusque-la. Sans ca, un mail
 // qui vient d'arriver aujourd'hui n'apparaissait dans l'appli qu'une fois que le rattrapage,
@@ -570,11 +578,23 @@ async function connecterImapSync() {
 // d'un an, 2) rafraichit le statut lu/pas lu d'un lot tournant de l'historique deja synchronise
 // (pas seulement les nouveaux), pour que meme un vieux mail lu depuis Gmail directement finisse
 // par se mettre a jour dans l'appli.
+// Week-end cote France (et non UTC) : c'est bien quand l'equipe de Moorea ne travaille pas que
+// l'on veut pousser plus fort, pas selon le jour UTC qui peut differer de quelques heures pres
+// des changements de jour.
+function estWeekEndFrance() {
+  const jour = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Paris", weekday: "short" }).format(new Date());
+  return jour === "Sat" || jour === "Sun";
+}
+
 async function actionSync(req, res) {
   const debut = Date.now();
   const adminDb = getAdminDb();
   const client = await connecterImapSync();
   const resultat = { parDossier: {}, nouveaux: 0, flagsRafraichis: 0, totalSuivi: 0 };
+  const weekend = estWeekEndFrance();
+  const tailleDecouverte = weekend ? TAILLE_LOT_DECOUVERTE_WEEKEND : TAILLE_LOT_DECOUVERTE;
+  const tailleFlags = weekend ? TAILLE_LOT_FLAGS_WEEKEND : TAILLE_LOT_FLAGS;
+  resultat.weekend = weekend;
 
   try {
     // Une seule connexion IMAP pour les 3 dossiers (all/spam/trash), l'un après l'autre --
@@ -601,7 +621,7 @@ async function actionSync(req, res) {
         // suite, meme si le rattrapage historique n'est pas encore arrive jusqu'a aujourd'hui.
         let idxDepart = uids.findIndex(u => u > curseurDecouverte);
         let nouveauCurseur = curseurDecouverte;
-        const lotDecouverte = idxDepart !== -1 ? uids.slice(idxDepart, idxDepart + TAILLE_LOT_DECOUVERTE) : [];
+        const lotDecouverte = idxDepart !== -1 ? uids.slice(idxDepart, idxDepart + tailleDecouverte) : [];
         const lotRecents = uids.slice(-TAILLE_RECENTS);
         const aTraiter = Array.from(new Set([...lotDecouverte, ...lotRecents])).sort((a, b) => a - b);
 
@@ -632,7 +652,7 @@ async function actionSync(req, res) {
         // fenetre au fil des passages successifs du robot sans jamais surcharger un seul appel.
         if (uids.length > 0) {
           const lotFlags = [];
-          for (let i = 0; i < Math.min(TAILLE_LOT_FLAGS, uids.length); i++) {
+          for (let i = 0; i < Math.min(tailleFlags, uids.length); i++) {
             lotFlags.push(uids[(indexFlags + i) % uids.length]);
           }
           for await (const msg of client.fetch(lotFlags, { uid: true, flags: true }, { uid: true })) {
@@ -649,7 +669,7 @@ async function actionSync(req, res) {
             resultat.flagsRafraichis++;
           }
         }
-        const nouvelIndexFlags = uids.length > 0 ? (indexFlags + TAILLE_LOT_FLAGS) % uids.length : 0;
+        const nouvelIndexFlags = uids.length > 0 ? (indexFlags + tailleFlags) % uids.length : 0;
 
         if (Object.keys(updates).length > 0) {
           await adminDb.ref("messagerie_boite").update(updates);

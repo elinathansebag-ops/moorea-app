@@ -9,15 +9,19 @@ name: Synchro boîte mail Messagerie (commercial@moorea.fr)
 # Firebase pour afficher la liste — instantané, comme le reste de l'appli. Vercel Cron n'est pas
 # utilisé (plan Hobby limité à 1x/jour), d'où GitHub Actions (gratuit sur ce repo).
 #
-# Fréquence et plage horaire : alignées sur nlt-bl-poll.yml pour la même raison (Gmail avait
-# bloqué le compte commercial@moorea.fr à cause de connexions IMAP trop fréquentes en 09/2026 —
-# voir les commentaires dans api/messagerie.js). Toutes les 3 minutes, 6h-18h UTC, ce qui couvre
-# 7h-19h à Paris en hiver et 8h-20h en été.
+# Fréquence et plage horaire en semaine : alignées sur nlt-bl-poll.yml pour la même raison (Gmail
+# avait bloqué le compte commercial@moorea.fr à cause de connexions IMAP trop fréquentes en
+# 09/2026 — voir les commentaires dans api/messagerie.js). Toutes les 3 minutes, 6h-18h UTC, ce
+# qui couvre 7h-19h à Paris en hiver et 8h-20h en été — les horaires où l'équipe travaille.
 #
-# IMPORTANT : ce robot REMPLACE l'ancien rafraîchissement automatique côté navigateur (qui se
-# connectait lui aussi à Gmail toutes les 90 secondes, potentiellement en plusieurs exemplaires
-# si plusieurs personnes avaient la messagerie ouverte en même temps). Un seul robot centralisé,
-# c'est donc en réalité MOINS de connexions à Gmail qu'avant, pas plus.
+# Week-end (19/09/2026, suite) — Demande d'Elinathan : "je préfère qu'il bosse à fond le week-end
+# quand personne est connecté". Personne ne consulte la messagerie le week-end, donc pas besoin
+# de fraîcheur "instantanée" — en revanche c'est le bon moment pour rattraper plus vite
+# l'historique d'un an (voir TAILLE_LOT_DECOUVERTE_WEEKEND dans api/messagerie.js, qui augmente
+# automatiquement la taille de chaque lot le samedi/dimanche). On tourne donc H24 le week-end,
+# mais à */5 (le minimum que GitHub Actions respecte pour un cron planifié) plutôt que */3 : une
+# seule connexion IMAP à la fois de toute façon, comme en semaine, donc pas de risque de
+# reblocage Gmail — juste plus de travail utile par connexion.
 #
 # Secrets requis (Settings → Secrets and variables → Actions, sur GitHub) :
 #   APP_URL                  → déjà présent (utilisé par nlt-bl-poll.yml)
@@ -25,7 +29,8 @@ name: Synchro boîte mail Messagerie (commercial@moorea.fr)
 #                              Vercel du même nom
 on:
   schedule:
-    - cron: "*/3 6-18 * * *"
+    - cron: "*/3 6-18 * * 1-5"
+    - cron: "*/5 * * * 0,6"
   workflow_dispatch: {}
 
 jobs:
