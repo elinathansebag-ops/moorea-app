@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, ref, push, onValue, update, remove, auth, get, set } from "./firebase";
-import { PageHeader, styles } from "./shared";
+import { PageHeader, styles, cleTab } from "./shared";
 
 // ── Module Messagerie (16/09/2026, démarrage du projet — demande d'Elinathan) ──
 //
@@ -68,6 +68,96 @@ export type Mail = {
 
 type TabKey = "boite" | "configuration";
 
+// ─── Champ destinataires façon "vraie boîte mail" (19/09/2026) ───
+// Demande d'Elinathan : "je veux que quand je tape un mail il me propose comme dans Gmail un
+// mail à qui on a déjà envoyé un truc + je veux que ça me sépare les mails quand y'a plusieurs
+// personnes à qui envoyer". Remplace le simple champ texte "adresses séparées par une virgule"
+// par des pastilles (une par destinataire, avec une croix pour la retirer) + une liste
+// d'auto-complétion qui s'affiche pendant la frappe, basée sur les adresses déjà connues.
+function ChampDestinataires({
+  valeurs,
+  onChange,
+  suggestions,
+  placeholder,
+}: {
+  valeurs: string[];
+  onChange: (v: string[]) => void;
+  suggestions: string[];
+  placeholder: string;
+}) {
+  const [saisie, setSaisie] = useState("");
+  const [ouvert, setOuvert] = useState(false);
+
+  const ajouter = (adresse: string) => {
+    const a = adresse.trim().replace(/,$/, "");
+    if (!a) return;
+    if (!valeurs.includes(a)) onChange([...valeurs, a]);
+    setSaisie("");
+  };
+  const retirer = (adresse: string) => onChange(valeurs.filter(v => v !== adresse));
+
+  const suggestionsFiltrees = saisie.trim()
+    ? suggestions.filter(s => !valeurs.includes(s) && s.toLowerCase().includes(saisie.trim().toLowerCase())).slice(0, 6)
+    : [];
+
+  return (
+    <div style={{ position: "relative", marginBottom: 8 }}>
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 8px", borderRadius: 8,
+        border: `1.5px solid ${COLORS.gray200}`, minHeight: 38, alignItems: "center", background: "#fff",
+      }}>
+        {valeurs.map(v => (
+          <span key={v} style={{
+            display: "inline-flex", alignItems: "center", gap: 4, background: COLORS.primaryLight,
+            color: COLORS.primary, borderRadius: 14, padding: "3px 6px 3px 10px", fontSize: 12, fontWeight: 700,
+          }}>
+            {v}
+            <button
+              type="button"
+              onClick={() => retirer(v)}
+              style={{ border: "none", background: "none", cursor: "pointer", color: COLORS.primary, fontWeight: 900, fontSize: 14, lineHeight: 1, padding: "0 2px" }}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          value={saisie}
+          onChange={e => { setSaisie(e.target.value); setOuvert(true); }}
+          onFocus={() => setOuvert(true)}
+          onBlur={() => setTimeout(() => setOuvert(false), 150)}
+          onKeyDown={e => {
+            if (e.key === "Enter" || e.key === "," ) {
+              if (saisie.trim()) { e.preventDefault(); ajouter(saisie); }
+            } else if (e.key === "Backspace" && !saisie && valeurs.length > 0) {
+              retirer(valeurs[valeurs.length - 1]);
+            }
+          }}
+          placeholder={valeurs.length === 0 ? placeholder : ""}
+          style={{ flex: 1, minWidth: 140, border: "none", outline: "none", fontSize: 13, padding: "4px 2px" }}
+        />
+      </div>
+      {ouvert && suggestionsFiltrees.length > 0 && (
+        <div style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: "#fff",
+          border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, marginTop: 4, boxShadow: "0 6px 16px rgba(0,0,0,0.12)",
+          maxHeight: 180, overflowY: "auto",
+        }}>
+          {suggestionsFiltrees.map(adresse => (
+            <div
+              key={adresse}
+              onMouseDown={() => ajouter(adresse)}
+              style={{ padding: "8px 12px", fontSize: 12.5, cursor: "pointer", color: COLORS.gray600, borderBottom: `1px solid ${COLORS.gray100}` }}
+            >
+              {adresse}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MessagerieModule({
   onClose,
   userName,
@@ -96,6 +186,9 @@ export function MessagerieModule({
 
   const [commerciaux, setCommerciaux] = useState<Commercial[]>([]);
   const [regles, setRegles] = useState<RegleAttribution[]>([]);
+  // Carnet d'adresses "déjà utilisées" (19/09/2026) -- alimenté à chaque envoi réussi
+  // (voir envoyerCompose), pour proposer une auto-complétion comme dans une vraie boîte mail.
+  const [contactsConnus, setContactsConnus] = useState<Record<string, { adresse: string }>>({});
 
   useEffect(() => {
     const u1 = onValue(ref(db, "messagerie_commerciaux"), snap => {
@@ -106,7 +199,10 @@ export function MessagerieModule({
       const d = snap.val();
       setRegles(d ? Object.entries(d).map(([id, v]: any) => ({ commercialIds: [], ...v, id })) : []);
     });
-    return () => { u1(); u2(); };
+    const u3 = onValue(ref(db, "messagerie_contacts"), snap => {
+      setContactsConnus(snap.val() || {});
+    });
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   const [nouveauCommercial, setNouveauCommercial] = useState("");
@@ -373,8 +469,8 @@ export function MessagerieModule({
 
   // ─── Répondre / Transférer ───
   const [modeCompose, setModeCompose] = useState<"repondre" | "transferer" | null>(null);
-  const [composeA, setComposeA] = useState("");
-  const [composeCc, setComposeCc] = useState("");
+  const [composeA, setComposeA] = useState<string[]>([]);
+  const [composeCc, setComposeCc] = useState<string[]>([]);
   const [composeSujet, setComposeSujet] = useState("");
   const [composeCorps, setComposeCorps] = useState("");
   const [composeEnvoiEnCours, setComposeEnvoiEnCours] = useState(false);
@@ -389,8 +485,8 @@ export function MessagerieModule({
   const ouvrirRepondre = () => {
     if (!detailMail) return;
     setModeCompose("repondre");
-    setComposeA(extraireAdresse(detailMail.de));
-    setComposeCc("");
+    setComposeA([extraireAdresse(detailMail.de)]);
+    setComposeCc([]);
     setComposeSujet(detailMail.sujet.toLowerCase().startsWith("re:") ? detailMail.sujet : `Re: ${detailMail.sujet}`);
     setComposeCorps(citationOriginale());
     setComposeInclurePieces(false);
@@ -400,8 +496,8 @@ export function MessagerieModule({
   const ouvrirTransferer = () => {
     if (!detailMail) return;
     setModeCompose("transferer");
-    setComposeA("");
-    setComposeCc("");
+    setComposeA([]);
+    setComposeCc([]);
     setComposeSujet(detailMail.sujet.toLowerCase().startsWith("tr:") || detailMail.sujet.toLowerCase().startsWith("fwd:") ? detailMail.sujet : `Tr: ${detailMail.sujet}`);
     setComposeCorps(citationOriginale());
     setComposeInclurePieces((detailMail.pieces || []).length > 0);
@@ -418,7 +514,7 @@ export function MessagerieModule({
 
   const envoyerCompose = async () => {
     if (!detailMail || !modeCompose) return;
-    const destinataires = composeA.split(",").map(s => s.trim()).filter(Boolean);
+    const destinataires = composeA;
     if (destinataires.length === 0) { setComposeErreur("Indique au moins un destinataire."); return; }
     setComposeEnvoiEnCours(true);
     setComposeErreur(null);
@@ -441,7 +537,7 @@ export function MessagerieModule({
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
           to: destinataires,
-          cc: composeCc.split(",").map(s => s.trim()).filter(Boolean),
+          cc: composeCc,
           sujet: composeSujet,
           texte: composeCorps,
           enReponseA: modeCompose === "repondre" ? detailMail.messageId : undefined,
@@ -452,6 +548,16 @@ export function MessagerieModule({
       const data = await reponse.json();
       if (!reponse.ok) { setComposeErreur(data?.error || "Envoi échoué."); return; }
       notify("success", modeCompose === "repondre" ? "✓ Réponse envoyée" : "✓ Mail transféré");
+      // Mémorise les adresses utilisées pour les proposer en suggestion la prochaine fois
+      // (19/09/2026 : "je veux que quand je tape un mail il me propose comme dans Gmail un
+      // mail à qui on a déjà envoyé un truc") — un vrai carnet d'adresses basé sur l'usage réel.
+      const memoriser: Record<string, any> = {};
+      for (const adresse of [...destinataires, ...composeCc]) {
+        memoriser[cleTab(adresse.toLowerCase())] = { adresse: adresse.toLowerCase(), derniereUtilisation: Date.now() };
+      }
+      if (Object.keys(memoriser).length > 0) {
+        update(ref(db, "messagerie_contacts"), memoriser).catch(() => {});
+      }
       setModeCompose(null);
     } catch (err: any) {
       setComposeErreur(err?.message || "Erreur réseau pendant l'envoi.");
@@ -511,6 +617,16 @@ export function MessagerieModule({
     .sort((a, b) => (b.nbMails || 0) - (a.nbMails || 0) || a.expediteur.localeCompare(b.expediteur));
 
   const nbNonAttribues = regles.filter(r => (r.commercialIds || []).length === 0).length;
+
+  // Carnet d'adresses pour l'auto-complétion (19/09/2026) : les adresses déjà utilisées pour
+  // envoyer un mail (messagerie_contacts) + les expéditeurs déjà vus dans la boîte -- comme
+  // dans une vraie boîte mail, où l'auto-complétion s'appuie sur tout l'historique connu.
+  const carnetAdresses = (() => {
+    const set = new Set<string>();
+    for (const c of Object.values(contactsConnus)) if (c?.adresse) set.add(c.adresse);
+    for (const m of mails) if (m.expediteur) set.add(m.expediteur);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  })();
 
   return (
     <div id="messagerie-root" style={{ minHeight: "100vh", background: COLORS.gray100, overflowX: "hidden", maxWidth: "100vw" }}>
@@ -749,17 +865,17 @@ export function MessagerieModule({
                         ⚠️ {composeErreur}
                       </div>
                     )}
-                    <input
-                      value={composeA}
-                      onChange={e => setComposeA(e.target.value)}
-                      placeholder="À (adresses séparées par une virgule)"
-                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
+                    <ChampDestinataires
+                      valeurs={composeA}
+                      onChange={setComposeA}
+                      suggestions={carnetAdresses}
+                      placeholder="À (tape une adresse, Entrée pour valider)"
                     />
-                    <input
-                      value={composeCc}
-                      onChange={e => setComposeCc(e.target.value)}
+                    <ChampDestinataires
+                      valeurs={composeCc}
+                      onChange={setComposeCc}
+                      suggestions={carnetAdresses}
                       placeholder="Cc (facultatif)"
-                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
                     />
                     <input
                       value={composeSujet}
