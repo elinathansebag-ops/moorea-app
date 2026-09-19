@@ -543,7 +543,15 @@ async function actionSync(req, res) {
           }
           for await (const msg of client.fetch(lotFlags, { uid: true, flags: true }, { uid: true })) {
             const lu = msg.flags ? msg.flags.has("\\Seen") : false;
-            updates[`${source.code}_${msg.uid}/lu`] = lu;
+            const cle = `${source.code}_${msg.uid}`;
+            // Si ce mail vient JUSTE d'etre ajoute au complet ci-dessus (etape 1), ne pas aussi
+            // ecrire un chemin imbrique "cle/lu" a cote -- Firebase refuse une mise a jour
+            // multi-chemins ou une meme cle porte a la fois un objet complet ET un sous-chemin
+            // ("Invalid data; couldn't parse JSON object", vu en prod le 19/09/2026). Le lu de
+            // l'objet complet est de toute facon deja a jour (vient d'etre lu a l'instant).
+            if (!(cle in updates)) {
+              updates[`${cle}/lu`] = lu;
+            }
             resultat.flagsRafraichis++;
           }
         }
