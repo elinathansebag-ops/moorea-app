@@ -1,5 +1,4 @@
 import { ImapFlow } from "imapflow";
-import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
 import { verifierTokenFirebase } from "./_verifyFirebaseToken.js";
 import { getAdminDb } from "./_firebaseAdmin.js";
@@ -96,8 +95,7 @@ async function trouverDossierParSpecialUse(client, specialUse, secours) {
   return chemin;
 }
 
-// Conserve pour compatibilite avec le code existant qui ouvrait explicitement "All Mail"
-// (telechargerMessageBrut, quand aucun dossier precis n'est fourni).
+// Conserve pour compatibilite : reste utilise quand aucun code de dossier precis n'est fourni.
 async function trouverBoiteTousLesMessages(client) {
   return trouverDossierParSpecialUse(client, "\\All", "[Gmail]/All Mail");
 }
@@ -158,34 +156,150 @@ async function connecterImap() {
   throw e;
 }
 
-async function telechargerMessageBrut(client, uid, boiteCode = "all") {
-  // Le dossier a rouvrir depend d'ou vient l'uid (19/09/2026) : depuis le passage a action=sync,
-  // les mails affiches dans l'appli peuvent venir de "Tous les messages", du Spam ou de la
-  // Corbeille (trois dossiers, trois espaces de numerotation d'uid distincts) -- un meme numero
-  // d'uid ne designe pas le meme message d'un dossier a l'autre, il faut donc rouvrir exactement
-  // le meme dossier que celui d'ou vient l'uid pour ne pas se tromper de message (ou echouer a
-  // le trouver). "all" par defaut pour rester compatible avec un ancien cache sans ce champ.
+// 19/09/2026 — Bug trouve avec Elinathan : ouvrir un mail avec piece jointe prenait jusqu'a
+// 30 secondes ("Chargement du mail..." qui ne finissait jamais vraiment). Cause : l'ancien code
+// telechargeait le message ENTIER (texte + TOUTES les pieces jointes, ex: un fichier Excel de
+// plusieurs Mo) juste pour afficher le texte + la liste des noms de pieces jointes -- puis
+// retelechargeait le message entier une deuxieme fois des qu'on cliquait sur UNE piece jointe.
+// Desormais on ne demande a Gmail QUE le "plan" du mail (BODYSTRUCTURE, quasi instantane, ne
+// contient aucun contenu) pour connaitre les parties du message, puis on ne telecharge que :
+// - le texte (html/brut) pour l'ouverture du mail (quelques Ko en general)
+// - une seule piece jointe, uniquement quand l'utilisateur clique dessus (telechargerPieceJointeParIndex)
+// Resultat attendu : ouverture quasi instantanee, meme si le mail a de grosses pieces jointes.
+
+function ouvrirMailboxPourUid(client, boiteCode) {
+  // Le dossier a rouvrir depend d'ou vient l'uid : depuis le passage a action=sync, les mails
+  // affiches dans l'appli peuvent venir de "Tous les messages", du Spam ou de la Corbeille (trois
+  // dossiers, trois espaces de numerotation d'uid distincts) -- un meme numero d'uid ne designe
+  // pas le meme message d'un dossier a l'autre, il faut donc rouvrir exactement le meme dossier
+  // que celui d'ou vient l'uid. "all" par defaut pour rester compatible avec un ancien cache sans
+  // ce champ.
+  return cheminDossierParCode(client, boiteCode).then(chemin => client.getMailboxLock(chemin));
+}
+
+// Aplatit l'arbre BODYSTRUCTURE d'un mail (les parties "multipart/..." sont des conteneurs, pas du
+// contenu) en deux listes : les parties de texte (corps du mail) et les pieces jointes. L'ordre de
+// parcours est toujours le meme pour un mail donne, donc l'index d'une piece jointe reste stable
+// entre l'appel qui affiche le mail (action=detail) et celui qui telecharge une piece precise
+// (action=piece-jointe).
+function aplatirStructureMime(noeud, resultat) {
+  if (!noeud) return;
+  const type = (noeud.type || "").toLowerCase();
+  if (type.startsWith("multipart/")) {
+    for (const enfant of noeud.childNodes || []) aplatirStructureMime(enfant, resultat);
+    return;
+  }
+  if (type === "message/rfc822") return; // mail transfere en piece jointe imbriquee : ignore pour l'instant
+  const dispositionParams = noeud.dispositionParameters || {};
+  const params = noeud.parameters || {};
+  const nomFichier = dispositionParams.filename || params.name || null;
+  const disposition = (noeud.disposition || "").toLowerCase();
+  const estCorpsDeTexte = (type === "text/plain" || type === "text/html") && disposition !== "attachment" && !nomFichier;
+  if (estCorpsDeTexte) {
+    resultat.corps.push(noeud);
+  } else {
+    resultat.pieces.push({
+      part: noeud.part,
+      nomFichier: nomFichier || `piece-jointe-${resultat.pieces.length + 1}`,
+      typeContenu: noeud.type || "application/octet-stream",
+      taille: noeud.size || 0,
+    });
+  }
+}
+
+// Rien a faire ici : imapflow decode deja lui-meme le texte (base64/quoted-printable ET le
+// charset d'origine, ex: iso-8859-1, windows-1252) en UTF-8 pour les parties text/plain et
+// text/html non "attachment" -- voir client.download() plus haut dans le fichier imapflow. Le
+// buffer recu est donc deja de l'UTF-8 pret a etre transforme en chaine directement.
+function decoderTexteMime(buffer) {
+  return buffer.toString("utf-8");
+}
+
+async function telechargerFluxComplet(client, uid, part) {
+  const dl = await client.download(uid, part, { uid: true });
+  if (!dl || !dl.content) throw new Error("Contenu introuvable (uid ou partie inconnue)");
+  const morceaux = [];
+  for await (const morceau of dl.content) morceaux.push(morceau);
+  return Buffer.concat(morceaux);
+}
+
+async function lireDetailMail(client, uid, boiteCode) {
   let lock;
   try {
-    lock = await client.getMailboxLock(await cheminDossierParCode(client, boiteCode));
+    lock = await ouvrirMailboxPourUid(client, boiteCode);
   } catch (err) {
     const e = new Error(`Connexion IMAP perdue avant la lecture du mail : ${err.message}`);
     e.status = 502;
     throw e;
   }
   try {
-    const dl = await client.download(uid, undefined, { uid: true });
-    if (!dl || !dl.content) throw new Error("Mail introuvable (uid inconnu)");
-    const morceaux = [];
-    for await (const morceau of dl.content) morceaux.push(morceau);
-    return Buffer.concat(morceaux);
+    const msg = await client.fetchOne(uid, { envelope: true, bodyStructure: true }, { uid: true });
+    if (!msg) {
+      const e = new Error("Mail introuvable (uid inconnu)");
+      e.status = 404;
+      throw e;
+    }
+    const structure = { corps: [], pieces: [] };
+    aplatirStructureMime(msg.bodyStructure, structure);
+
+    const noeudHtml = structure.corps.find(n => (n.type || "").toLowerCase() === "text/html");
+    const noeudTexte = structure.corps.find(n => (n.type || "").toLowerCase() === "text/plain");
+    let html = null;
+    let texte = null;
+    if (noeudHtml) {
+      const buffer = await telechargerFluxComplet(client, uid, noeudHtml.part);
+      html = decoderTexteMime(buffer);
+    }
+    if (noeudTexte) {
+      const buffer = await telechargerFluxComplet(client, uid, noeudTexte.part);
+      texte = decoderTexteMime(buffer);
+    }
+
+    const pieces = structure.pieces.map((p, index) => ({
+      index,
+      nomFichier: p.nomFichier,
+      typeContenu: p.typeContenu,
+      taille: p.taille,
+    }));
+
+    const env = msg.envelope || {};
+    const formaterAdresse = a => (a && a.name ? `${a.name} <${a.address}>` : a?.address || "");
+    return {
+      de: (env.from || []).map(formaterAdresse).filter(Boolean).join(", "),
+      a: (env.to || []).map(t => t.address).filter(Boolean),
+      cc: (env.cc || []).map(t => t.address).filter(Boolean),
+      sujet: env.subject || "(sans sujet)",
+      date: env.date ? new Date(env.date).toISOString() : null,
+      html,
+      texte,
+      pieces,
+      messageId: env.messageId || null,
+    };
+  } finally {
+    try { lock.release(); } catch { /* connexion deja perdue, sans consequence */ }
+  }
+}
+
+async function telechargerPieceJointeParIndex(client, uid, boiteCode, index) {
+  let lock;
+  try {
+    lock = await ouvrirMailboxPourUid(client, boiteCode);
   } catch (err) {
-    if (err && err.status) throw err;
-    const e = new Error(`Erreur pendant le téléchargement du mail : ${err.message}`);
+    const e = new Error(`Connexion IMAP perdue avant la lecture de la piece jointe : ${err.message}`);
     e.status = 502;
     throw e;
+  }
+  try {
+    const msg = await client.fetchOne(uid, { bodyStructure: true }, { uid: true });
+    if (!msg) return null;
+    const structure = { corps: [], pieces: [] };
+    aplatirStructureMime(msg.bodyStructure, structure);
+    const piece = structure.pieces[index];
+    if (!piece) return null;
+    const buffer = await telechargerFluxComplet(client, uid, piece.part);
+    return { piece, buffer };
   } finally {
-    try { lock.release(); } catch { /* connexion déjà perdue, sans conséquence */ }
+    try { lock.release(); } catch { /* connexion deja perdue, sans consequence */ }
   }
 }
 
@@ -338,43 +452,16 @@ async function actionDetail(req, res) {
   const boite = req.query?.boite || "all";
   if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
 
-  const messageBrut = await avecReessai(async () => {
+  const detail = await avecReessai(async () => {
     const client = await connecterImap();
     try {
-      return await telechargerMessageBrut(client, uid, boite);
+      return await lireDetailMail(client, uid, boite);
     } finally {
       try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
     }
   });
 
-  let analyse;
-  try {
-    analyse = await simpleParser(messageBrut);
-  } catch (err) {
-    const e = new Error(`Erreur pendant l'analyse du mail : ${err.message}`);
-    e.status = 500;
-    throw e;
-  }
-  const pieces = (analyse.attachments || []).map((piece, index) => ({
-    index,
-    nomFichier: piece.filename || `piece-jointe-${index + 1}`,
-    typeContenu: piece.contentType || "application/octet-stream",
-    taille: piece.size || 0,
-  }));
-
-  return res.status(200).json({
-    uid,
-    boite,
-    de: analyse.from?.text || "",
-    a: (analyse.to?.value || []).map(v => v.address).filter(Boolean),
-    cc: (analyse.cc?.value || []).map(v => v.address).filter(Boolean),
-    sujet: analyse.subject || "(sans sujet)",
-    date: analyse.date ? analyse.date.toISOString() : null,
-    html: analyse.html || null,
-    texte: analyse.text || null,
-    pieces,
-    messageId: analyse.messageId || null,
-  });
+  return res.status(200).json({ uid, boite, ...detail });
 }
 
 // ─── action=piece-jointe : téléchargement d'une pièce jointe precise ───
@@ -386,29 +473,21 @@ async function actionPieceJointe(req, res) {
     return res.status(400).json({ error: "uid ou index manquant/invalide" });
   }
 
-  const messageBrut = await avecReessai(async () => {
+  const resultat = await avecReessai(async () => {
     const client = await connecterImap();
     try {
-      return await telechargerMessageBrut(client, uid, boite);
+      return await telechargerPieceJointeParIndex(client, uid, boite, index);
     } finally {
       try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
     }
   });
 
-  let analyse;
-  try {
-    analyse = await simpleParser(messageBrut);
-  } catch (err) {
-    const e = new Error(`Erreur pendant l'analyse du mail : ${err.message}`);
-    e.status = 500;
-    throw e;
-  }
-  const piece = (analyse.attachments || [])[index];
-  if (!piece) return res.status(404).json({ error: "Pièce jointe introuvable à cet index" });
+  if (!resultat) return res.status(404).json({ error: "Pièce jointe introuvable à cet index" });
 
-  res.setHeader("Content-Type", piece.contentType || "application/octet-stream");
-  res.setHeader("Content-Disposition", `attachment; filename="${(piece.filename || "piece-jointe").replace(/"/g, "")}"`);
-  return res.status(200).send(piece.content);
+  const { piece, buffer } = resultat;
+  res.setHeader("Content-Type", piece.typeContenu || "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="${(piece.nomFichier || "piece-jointe").replace(/"/g, "")}"`);
+  return res.status(200).send(buffer);
 }
 
 // ─── action=envoyer : répondre/transférer depuis commercial@moorea.fr ───
