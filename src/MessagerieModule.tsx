@@ -556,101 +556,109 @@ export function MessagerieModule({
         </div>
 
         {activeTab === "boite" && (
-          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-              <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
-                📥 {mails.length > 0 ? `${mailsFiltres.length} mail(s)` : "Boîte de réception"}
-              </p>
-              <span style={{ fontSize: 11, color: COLORS.gray600 }}>
-                {derniereSyncRobot
-                  ? `🟢 Synchronisé — ${derniereSyncRobot.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
-                  : "🟡 En attente de la première synchro..."}
-              </span>
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+            {/* Colonne de gauche façon "vraie boîte mail" (19/09/2026, v3, demande d'Elinathan :
+                "mets tout les dossier comme dans une boite mail sur le côté") : liste verticale
+                des dossiers/libellés, au lieu des pastilles horizontales précédentes. */}
+            <div style={{
+              background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12,
+              padding: "10px 8px", width: 190, flexShrink: 0, position: "sticky", top: 70,
+            }}>
+              {["TOUS", ...dossiersDisponibles].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setDossierActif(d)}
+                  style={{
+                    display: "block", width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
+                    border: "none", background: dossierActif === d ? COLORS.primaryLight : "transparent",
+                    color: dossierActif === d ? COLORS.primary : COLORS.gray700,
+                    fontSize: 12.5, fontWeight: dossierActif === d ? 800 : 600, cursor: "pointer",
+                    marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}
+                >
+                  {d === "TOUS" ? "📬 Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : d}
+                </button>
+              ))}
             </div>
 
-            {dossiersDisponibles.length > 1 && (
-              <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-                {["TOUS", ...dossiersDisponibles].map(d => (
-                  <button
-                    key={d}
-                    onClick={() => setDossierActif(d)}
-                    style={{
-                      padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${dossierActif === d ? COLORS.primary : COLORS.gray200}`,
-                      background: dossierActif === d ? COLORS.primaryLight : "#fff", color: dossierActif === d ? COLORS.primary : COLORS.gray600,
-                      fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-                    }}
-                  >
-                    {d === "TOUS" ? "Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : d}
-                  </button>
-                ))}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
+                  📥 {mails.length > 0 ? `${mailsFiltres.length} mail(s)` : "Boîte de réception"}
+                </p>
+                <span style={{ fontSize: 11, color: COLORS.gray600 }}>
+                  {derniereSyncRobot
+                    ? `🟢 Synchronisé — ${derniereSyncRobot.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
+                    : "🟡 En attente de la première synchro..."}
+                </span>
               </div>
-            )}
 
-            {mails.length > 0 && (
-              <input
-                value={filtreMails}
-                onChange={e => setFiltreMails(e.target.value)}
-                placeholder="🔎 Filtrer (expéditeur, nom, sujet...)"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
-              />
-            )}
+              {mails.length > 0 && (
+                <input
+                  value={filtreMails}
+                  onChange={e => setFiltreMails(e.target.value)}
+                  placeholder="🔎 Filtrer (expéditeur, nom, sujet...)"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
+                />
+              )}
 
-            {!mailsDejaCharges && (
-              <div style={{ textAlign: "center", padding: "28px 0", color: COLORS.gray600, fontSize: 13 }}>
-                ⏳ Chargement des mails...
-              </div>
-            )}
+              {!mailsDejaCharges && (
+                <div style={{ textAlign: "center", padding: "28px 0", color: COLORS.gray600, fontSize: 13 }}>
+                  ⏳ Chargement des mails...
+                </div>
+              )}
 
-            {mailsDejaCharges && mails.length === 0 && (
-              <div style={{ textAlign: "center", padding: "28px 0", color: COLORS.gray600, fontSize: 13 }}>
-                📭 Aucun mail trouvé.
-              </div>
-            )}
+              {mailsDejaCharges && mails.length === 0 && (
+                <div style={{ textAlign: "center", padding: "28px 0", color: COLORS.gray600, fontSize: 13 }}>
+                  📭 Aucun mail trouvé.
+                </div>
+              )}
 
-            {mailsFiltres.length > 0 && (
-              <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-                  <thead>
-                    <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
-                      <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
-                      <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
-                      <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
-                      <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mailsFiltres.map(m => {
-                      const attribues = trouverAttribution(m.expediteur);
-                      return (
-                        <tr
-                          key={m.id}
-                          onClick={() => ouvrirMail(m)}
-                          style={{ borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400, cursor: "pointer" }}
-                          onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
-                          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                        >
-                          <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap" }}>{formatDateMail(m.date)}</td>
-                          <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 220 }}>
-                            {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
-                            <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400 }}>{m.expediteur}</div>
-                          </td>
-                          <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {m.sujet}
-                          </td>
-                          <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
-                            {attribues.length > 0 ? (
-                              <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")}</span>
-                            ) : (
-                              <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5 }}>Non attribué</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+              {mailsFiltres.length > 0 && (
+                <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                    <thead>
+                      <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
+                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mailsFiltres.map(m => {
+                        const attribues = trouverAttribution(m.expediteur);
+                        return (
+                          <tr
+                            key={m.id}
+                            onClick={() => ouvrirMail(m)}
+                            style={{ borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400, cursor: "pointer" }}
+                            onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
+                            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                          >
+                            <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap" }}>{formatDateMail(m.date)}</td>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 220 }}>
+                              {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
+                              <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400 }}>{m.expediteur}</div>
+                            </td>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {m.sujet}
+                            </td>
+                            <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
+                              {attribues.length > 0 ? (
+                                <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")}</span>
+                              ) : (
+                                <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5 }}>Non attribué</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
