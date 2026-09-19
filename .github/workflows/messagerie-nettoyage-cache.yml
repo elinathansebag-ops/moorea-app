@@ -1,0 +1,31 @@
+name: Nettoyage du cache des mails ouverts (Messagerie)
+
+# 19/09/2026 — Demande d'Elinathan : le cache des mails déjà ouverts (messagerieCache dans
+# Firebase, créé pour que rouvrir un mail déjà lu soit instantané) grossissait indéfiniment,
+# sans jamais rien effacer. Ici, une fois par jour, on supprime du cache tout mail qui n'a pas
+# été rouvert depuis 2 jours — il redevient alors "comme avant" : la prochaine ouverture repart
+# chercher le texte sur Gmail au lieu de lire le cache.
+#
+# Pourquoi un workflow séparé de messagerie-sync.yml (qui tourne toutes les 3 minutes) : ce
+# nettoyage ne touche jamais Gmail (uniquement de la lecture/écriture Firebase), donc aucune
+# contrainte de fréquence liée à Gmail ici — mais lire tout le cache toutes les 3 minutes serait
+# un travail inutile pour un cache censé ne garder que les 2 derniers jours. Une fois par jour
+# suffit largement.
+#
+# Secret requis (déjà créé pour messagerie-sync.yml, réutilisé ici) :
+#   APP_URL                  → déjà présent
+#   MESSAGERIE_SYNC_SECRET   → déjà présent
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  nettoyage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appelle l'endpoint de nettoyage du cache des mails
+        run: |
+          curl -sS -X POST "${{ secrets.APP_URL }}/api/messagerie?action=nettoyer-cache-mails&secret=${{ secrets.MESSAGERIE_SYNC_SECRET }}" \
+            --fail-with-body \
+            --max-time 55

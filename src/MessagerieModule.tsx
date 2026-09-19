@@ -367,6 +367,10 @@ export function MessagerieModule({
       if (snapshot.exists()) {
         setDetailMail(snapshot.val());
         setChargementDetail(false);
+        // 19/09/2026 — On note qu'il vient d'être relu : ça repousse son expiration de 2 jours
+        // (voir action=nettoyer-cache-mails côté serveur, qui supprime du cache tout mail non
+        // rouvert depuis 2 jours). Pas grave si ça échoue, ce n'est qu'un horodatage.
+        update(ref(db, cheminCacheMail(m.id)), { dernierAcces: Date.now() }).catch(() => {});
         return;
       }
     } catch {
@@ -383,11 +387,13 @@ export function MessagerieModule({
       setDetailMail(data);
       // On met en cache pour que les prochaines ouvertures soient instantanées. On limite
       // la taille (mails avec de très grosses images intégrées) pour rester raisonnable
-      // dans Firebase — un mail normal ne s'en approche jamais.
+      // dans Firebase — un mail normal ne s'en approche jamais. "dernierAcces" sert au nettoyage
+      // automatique quotidien : un mail non rouvert depuis 2 jours ressort du cache et repart
+      // comme avant (rechargé sur Gmail à la prochaine ouverture).
       try {
         const tailleApprox = JSON.stringify(data).length;
         if (tailleApprox < 800000) {
-          await set(ref(db, cheminCacheMail(m.id)), data);
+          await set(ref(db, cheminCacheMail(m.id)), { ...data, dernierAcces: Date.now() });
         }
       } catch {
         // La mise en cache est un bonus, pas grave si ça échoue.

@@ -662,6 +662,45 @@ async function actionSync(req, res) {
   return res.status(200).json(resultat);
 }
 
+// 19/09/2026 — Demande d'Elinathan : le cache des mails ouverts (messagerieCache, cree pour que
+// reouvrir un mail deja lu soit instantane) grossissait indefiniment, sans jamais rien effacer.
+// Ici on supprime du cache tout mail qui n'a pas ete rouvert depuis 2 jours -- il redevient alors
+// "comme avant" : la prochaine ouverture repart chercher le texte sur Gmail au lieu de lire le
+// cache. Aucune connexion IMAP necessaire ici (uniquement de la lecture/ecriture Firebase), donc
+// pas de contrainte de frequence liee a Gmail -- ce nettoyage tourne une fois par jour (voir
+// .github/workflows/messagerie-nettoyage-cache.yml), ce qui suffit largement pour un cache cense
+// ne garder que les 2 derniers jours.
+const DELAI_CACHE_MAIL_MS = 2 * 24 * 60 * 60 * 1000; // 2 jours
+
+async function actionNettoyerCacheMails(req, res) {
+  const adminDb = getAdminDb();
+  const snap = await adminDb.ref("messagerieCache").once("value");
+  const cache = snap.val() || {};
+  const seuil = Date.now() - DELAI_CACHE_MAIL_MS;
+
+  const suppressions = {};
+  let total = 0;
+  for (const [id, entree] of Object.entries(cache)) {
+    total++;
+    // "dernierAcces" est ecrit par l'appli a chaque fois qu'un mail est mis en cache ou relu
+    // depuis le cache (voir MessagerieModule.tsx) -- un mail sans ce champ (ancien cache d'avant
+    // cette fonctionnalite) est traite comme perime, pour ne pas rester bloque en cache pour
+    // toujours faute d'avoir jamais ete "vu" par ce nouveau mecanisme.
+    const dernierAcces = entree?.dernierAcces || 0;
+    if (dernierAcces < seuil) suppressions[id] = null;
+  }
+
+  if (Object.keys(suppressions).length > 0) {
+    await adminDb.ref("messagerieCache").update(suppressions);
+  }
+
+  return res.status(200).json({
+    total,
+    supprimes: Object.keys(suppressions).length,
+    restants: total - Object.keys(suppressions).length,
+  });
+}
+
 export default async function handler(req, res) {
   const action = req.query?.action;
 
@@ -680,7 +719,12 @@ export default async function handler(req, res) {
       if (!secretSyncOk) return res.status(401).json({ error: "Non autorise" });
       return await actionSync(req, res);
     }
-    return res.status(400).json({ error: "action inconnue (scan | inbox | detail | piece-jointe | envoyer | sync)" });
+    if (action === "nettoyer-cache-mails") {
+      const secretOk = req.query?.secret && req.query.secret === process.env.MESSAGERIE_SYNC_SECRET;
+      if (!secretOk) return res.status(401).json({ error: "Non autorise" });
+      return await actionNettoyerCacheMails(req, res);
+    }
+    return res.status(400).json({ error: "action inconnue (scan | inbox | detail | piece-jointe | envoyer | sync | nettoyer-cache-mails)" });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message });
   }
