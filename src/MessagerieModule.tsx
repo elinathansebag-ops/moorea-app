@@ -657,7 +657,7 @@ export function MessagerieModule({
         onHome={onClose}
       />
 
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px 16px 60px" }}>
+      <div style={{ maxWidth: 1500, margin: "0 auto", padding: "20px 16px 60px" }}>
         {notification && (
           <div style={{
             position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)", zIndex: 900,
@@ -753,8 +753,8 @@ export function MessagerieModule({
                 <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                     <colgroup>
-                      <col style={{ width: "9%" }} />
-                      <col style={{ width: "26%" }} />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "24%" }} />
                       <col style={{ width: "50%" }} />
                       <col style={{ width: "15%" }} />
                     </colgroup>
