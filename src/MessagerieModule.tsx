@@ -751,7 +751,13 @@ export function MessagerieModule({
 
               {mailsFiltres.length > 0 && (
                 <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
+                    <colgroup>
+                      <col style={{ width: "9%" }} />
+                      <col style={{ width: "26%" }} />
+                      <col style={{ width: "50%" }} />
+                      <col style={{ width: "15%" }} />
+                    </colgroup>
                     <thead>
                       <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
@@ -772,18 +778,18 @@ export function MessagerieModule({
                             onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                           >
                             <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap", verticalAlign: "top" }}>{formatDateMail(m.date)}</td>
-                            <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 220, verticalAlign: "top", overflow: "hidden" }}>
-                              {m.nomExpediteur ? <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nomExpediteur}</div> : null}
-                              <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.expediteur}</div>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere" }}>
+                              {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
+                              <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400 }}>{m.expediteur}</div>
                             </td>
-                            <td style={{ padding: "7px 10px", color: COLORS.gray700, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "top" }}>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>
                               {m.sujet}
                             </td>
-                            <td style={{ padding: "7px 10px", whiteSpace: "nowrap", verticalAlign: "top" }}>
+                            <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
                               {attribues.length > 0 ? (
                                 <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")}</span>
                               ) : (
-                                <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5 }}>Non attribué</span>
+                                <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>Non attribué</span>
                               )}
                             </td>
                           </tr>
