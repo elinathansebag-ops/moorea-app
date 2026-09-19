@@ -2,6 +2,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
 import { verifierTokenFirebase } from "./_verifyFirebaseToken.js";
+import { getAdminDb } from "./_firebaseAdmin.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -20,11 +21,36 @@ export const config = { runtime: "nodejs" };
 // action=detail        : contenu complet d'UN mail (par uid) — connexion @moorea.fr requise
 // action=piece-jointe  : téléchargement d'une pièce jointe précise — connexion @moorea.fr requise
 // action=envoyer       : répondre/transférer depuis commercial@moorea.fr — connexion @moorea.fr requise
+// action=sync           : robot de synchro en arriere-plan (GitHub Actions, voir
+//                        .github/workflows/messagerie-sync.yml) - protege par
+//                        MESSAGERIE_SYNC_SECRET. Recopie les en-tetes (pas le contenu complet)
+//                        de TOUS les dossiers/libelles Gmail sur 1 an d'historique dans Firebase
+//                        (messagerie_boite/{uid}), pour que la boite de reception s'affiche
+//                        instantanement dans l'appli au lieu d'attendre une connexion IMAP a
+//                        chaque ouverture (19/09/2026, demande d'Elinathan : "reactif a 200%").
+//                        Rafraichit aussi en continu le statut lu/pas lu de tout l'historique
+//                        d'1 an (pas seulement les nouveaux mails), par lots tournants, pour
+//                        rester fidele meme si un mail est lu depuis Gmail directement.
 
 const IMAP_HOST = "imap.gmail.com";
 const IMAP_PORT = 993;
 const BOITE_COMMERCIALE = "commercial@moorea.fr";
 const NOM_AFFICHE = "Moorea Commerce Fruits";
+
+// --- Constantes pour action=sync (robot de synchro boite -> Firebase) ---
+const UN_AN_MS = 365 * 24 * 60 * 60 * 1000;
+// Taille de lot par passage du robot, pour rester large sous le budget de temps de la fonction
+// (maxDuration 60s dans vercel.json) tout en respectant la lecon du 16/09/2026 : une seule
+// connexion IMAP par appel, pas de connexions/refetch en boucle.
+const TAILLE_LOT_DECOUVERTE = 400;
+const TAILLE_LOT_FLAGS = 600;
+
+function assainirCleFirebase(valeur) {
+  // Meme regle que cleTab() cote client (src/shared.tsx) : Firebase Realtime Database interdit
+  // ".", "#", "$", "[", "]", "/" dans une cle, or les libelles Gmail personnalises peuvent en
+  // contenir (ex: dossiers imbriques "Clients/Import").
+  return String(valeur).replace(/[.#$[\]/]/g, "__");
+}
 
 function motDePasseBoite() {
   const motDePasse = process.env.GMAIL_PASS_MESSAGERIE;
@@ -90,9 +116,14 @@ async function connecterImap() {
 }
 
 async function telechargerMessageBrut(client, uid) {
+  // "[Gmail]/All Mail" et pas "INBOX" : depuis le passage a action=sync (19/09/2026), les uid
+  // affiches dans l'appli viennent de All Mail (qui contient tous les dossiers/libelles en une
+  // seule fois, sans doublon) et pas de INBOX seule -- un uid INBOX et un uid All Mail ne
+  // designent pas forcement le meme numero, il faut rouvrir le mail depuis le meme dossier que
+  // celui d'ou vient l'uid pour ne pas se tromper de message (ou echouer a le trouver).
   let lock;
   try {
-    lock = await client.getMailboxLock("INBOX");
+    lock = await client.getMailboxLock("[Gmail]/All Mail");
   } catch (err) {
     const e = new Error(`Connexion IMAP perdue avant la lecture du mail : ${err.message}`);
     e.status = 502;
@@ -370,6 +401,121 @@ async function actionEnvoyer(req, res) {
   return res.status(200).json({ succes: true, messageId: info.messageId });
 }
 
+// --- Robot de synchro (action=sync) : connexion dediee avec un timeout plus long, car un
+// passage peut lire/ecrire des centaines d'en-tetes sur un mail volumineux. Meme regle
+// anti-blocage Gmail que le reste du fichier : NB_ESSAIS = 1, pas de retry agressif.
+function nouveauClientImapSync() {
+  return new ImapFlow({
+    host: IMAP_HOST,
+    port: IMAP_PORT,
+    secure: true,
+    auth: { user: BOITE_COMMERCIALE, pass: motDePasseBoite() },
+    logger: false,
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 45000,
+  });
+}
+
+async function connecterImapSync() {
+  const client = nouveauClientImapSync();
+  try {
+    await client.connect();
+    return client;
+  } catch (err) {
+    try { client.close(); } catch { /* deja ferme, sans consequence */ }
+    const e = new Error(`Connexion IMAP (sync) echouee : ${err.message}`);
+    e.status = 502;
+    throw e;
+  }
+}
+
+// action=sync : appele periodiquement par le robot GitHub Actions (voir
+// .github/workflows/messagerie-sync.yml). Un seul passage fait deux choses dans la meme
+// connexion IMAP : 1) decouvre les nouveaux mails (uid > curseur de decouverte) sur la fenetre
+// d'un an, 2) rafraichit le statut lu/pas lu d'un lot tournant de l'historique deja synchronise
+// (pas seulement les nouveaux), pour que meme un vieux mail lu depuis Gmail directement finisse
+// par se mettre a jour dans l'appli.
+async function actionSync(req, res) {
+  const debut = Date.now();
+  const adminDb = getAdminDb();
+
+  const etatSnap = await adminDb.ref("messagerie_sync_etat").once("value");
+  const etat = etatSnap.val() || {};
+  const curseurDecouverte = etat.curseurDecouverte || 0;
+  const indexFlags = etat.indexFlags || 0;
+
+  const client = await connecterImapSync();
+  const resultat = { nouveaux: 0, flagsRafraichis: 0, totalSuivi: 0 };
+  try {
+    const lock = await client.getMailboxLock("[Gmail]/All Mail");
+    try {
+      const seuilDate = new Date(Date.now() - UN_AN_MS);
+      const uidsBruts = await client.search({ since: seuilDate }, { uid: true });
+      const uids = Array.from(uidsBruts).sort((a, b) => a - b);
+      resultat.totalSuivi = uids.length;
+
+      const updates = {};
+
+      // 1) Decouverte des nouveaux mails (uid strictement superieur au curseur)
+      let idxDepart = uids.findIndex(u => u > curseurDecouverte);
+      let nouveauCurseur = curseurDecouverte;
+      if (idxDepart !== -1) {
+        const lotDecouverte = uids.slice(idxDepart, idxDepart + TAILLE_LOT_DECOUVERTE);
+        if (lotDecouverte.length > 0) {
+          for await (const msg of client.fetch(lotDecouverte, { uid: true, envelope: true, flags: true, labels: true, internalDate: true }, { uid: true })) {
+            const labels = {};
+            for (const l of (msg.labels || [])) labels[assainirCleFirebase(l)] = true;
+            updates[`${msg.uid}`] = {
+              de: (msg.envelope?.from?.[0]?.address || "").toLowerCase(),
+              deNom: msg.envelope?.from?.[0]?.name || "",
+              sujet: msg.envelope?.subject || "(sans sujet)",
+              date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
+              lu: msg.flags ? msg.flags.has("\\Seen") : false,
+              labels,
+            };
+            resultat.nouveaux++;
+            if (msg.uid > nouveauCurseur) nouveauCurseur = msg.uid;
+          }
+        }
+      }
+
+      // 2) Rafraichissement tournant du statut lu/pas lu sur tout l'historique d'un an (pas
+      // seulement les nouveaux), par lots, pour finir par couvrir toute la fenetre au fil des
+      // passages successifs du robot sans jamais surcharger un seul appel.
+      if (uids.length > 0) {
+        const lotFlags = [];
+        for (let i = 0; i < Math.min(TAILLE_LOT_FLAGS, uids.length); i++) {
+          lotFlags.push(uids[(indexFlags + i) % uids.length]);
+        }
+        for await (const msg of client.fetch(lotFlags, { uid: true, flags: true }, { uid: true })) {
+          const lu = msg.flags ? msg.flags.has("\\Seen") : false;
+          updates[`${msg.uid}/lu`] = lu;
+          resultat.flagsRafraichis++;
+        }
+      }
+      const nouvelIndexFlags = uids.length > 0 ? (indexFlags + TAILLE_LOT_FLAGS) % uids.length : 0;
+
+      if (Object.keys(updates).length > 0) {
+        await adminDb.ref("messagerie_boite").update(updates);
+      }
+      await adminDb.ref("messagerie_sync_etat").update({
+        curseurDecouverte: nouveauCurseur,
+        indexFlags: nouvelIndexFlags,
+        derniereSync: Date.now(),
+        totalSuivi: uids.length,
+      });
+    } finally {
+      lock.release();
+    }
+  } finally {
+    try { await client.logout(); } catch { /* deja deconnecte, sans consequence */ }
+  }
+
+  resultat.dureeMs = Date.now() - debut;
+  return res.status(200).json(resultat);
+}
+
 export default async function handler(req, res) {
   const action = req.query?.action;
 
@@ -383,7 +529,12 @@ export default async function handler(req, res) {
     if (action === "detail") { await exigerConnexionMoorea(req); return await actionDetail(req, res); }
     if (action === "piece-jointe") { await exigerConnexionMoorea(req); return await actionPieceJointe(req, res); }
     if (action === "envoyer") { await exigerConnexionMoorea(req); return await actionEnvoyer(req, res); }
-    return res.status(400).json({ error: "action inconnue (scan | inbox | detail | piece-jointe | envoyer)" });
+    if (action === "sync") {
+      const secretSyncOk = req.query?.secret && req.query.secret === process.env.MESSAGERIE_SYNC_SECRET;
+      if (!secretSyncOk) return res.status(401).json({ error: "Non autorise" });
+      return await actionSync(req, res);
+    }
+    return res.status(400).json({ error: "action inconnue (scan | inbox | detail | piece-jointe | envoyer | sync)" });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message });
   }

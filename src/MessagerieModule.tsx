@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { db, ref, push, onValue, update, remove, auth, get, set } from "./firebase";
 import { PageHeader, styles } from "./shared";
 
@@ -57,6 +57,7 @@ export type Mail = {
   sujet: string;
   date: string | null;
   lu: boolean | null;
+  labels?: Record<string, boolean>;
 };
 
 type TabKey = "boite" | "configuration";
@@ -153,79 +154,57 @@ export function MessagerieModule({
     await update(ref(db, `messagerie_regles/${r.id}`), { commercialIds: nouveaux });
   };
 
-  // ─── Boîte de réception réelle (16/09/2026, v2 : actualisation en temps réel demandée par
-  // Elinathan) — pas d'IMAP "IDLE" possible ici (fonctions Vercel = pas de connexion permanente),
-  // donc on relit la boîte toutes les 20s tant que l'onglet est ouvert. "silencieux" évite de
-  // réafficher le grand spinner à chaque relance automatique — seul le premier chargement et le
-  // bouton "Actualiser" manuel montrent l'état "Chargement...".
+  // ─── Boîte de réception : lue en direct depuis Firebase (19/09/2026, v3) ───
+  //
+  // Avant : à chaque ouverture de l'onglet + toutes les 90s, l'appli se connectait en direct à
+  // Gmail (IMAP) pour lister les mails, d'où un temps d'attente et un risque de reblocage Gmail
+  // si plusieurs personnes avaient la messagerie ouverte en même temps. Maintenant, un robot
+  // GitHub Actions (voir .github/workflows/messagerie-sync.yml + action=sync dans
+  // api/messagerie.js) se connecte tout seul en arrière-plan et recopie les en-têtes de TOUS les
+  // dossiers/libellés Gmail (1 an d'historique) dans Firebase (messagerie_boite). L'appli n'a
+  // plus qu'à lire Firebase, comme n'importe quel autre module — instantané, plus aucune
+  // connexion IMAP déclenchée par l'ouverture de l'appli elle-même.
   const [mails, setMails] = useState<Mail[]>([]);
-  const [chargementMails, setChargementMails] = useState(false);
-  const [erreurMails, setErreurMails] = useState<string | null>(null);
   const [mailsDejaCharges, setMailsDejaCharges] = useState(false);
   const [filtreMails, setFiltreMails] = useState("");
-  const [derniereActualisation, setDerniereActualisation] = useState<Date | null>(null);
+  const [derniereSyncRobot, setDerniereSyncRobot] = useState<Date | null>(null);
+  const [dossierActif, setDossierActif] = useState<string>("INBOX");
 
-  const chargerMails = async (limite = 150, silencieux = false) => {
-    if (!silencieux) setChargementMails(true);
-    if (!silencieux) setErreurMails(null);
-    try {
-      const utilisateur = auth.currentUser;
-      if (!utilisateur) {
-        if (!silencieux) setErreurMails("Tu dois être connectée pour voir la boîte de réception.");
-        return;
-      }
-      const idToken = await utilisateur.getIdToken();
-      const reponse = await fetch(`/api/messagerie?action=inbox&limite=${limite}`, {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      const data = await reponse.json();
-      if (!reponse.ok) {
-        // En actualisation silencieuse, une erreur ponctuelle (réseau, etc.) ne doit pas remplacer
-        // la liste déjà affichée par un message d'erreur — on retentera dans 20s.
-        if (!silencieux) setErreurMails(data?.error || "Erreur inconnue pendant le chargement des mails.");
-        return;
-      }
-      setMails(data.mails || []);
+  useEffect(() => {
+    const u1 = onValue(ref(db, "messagerie_boite"), snap => {
+      const d = snap.val();
+      const liste: Mail[] = d
+        ? Object.entries(d).map(([uid, v]: any) => ({
+            uid: parseInt(uid, 10),
+            expediteur: v.de || "",
+            nomExpediteur: v.deNom || "",
+            sujet: v.sujet || "(sans sujet)",
+            date: v.date ? new Date(v.date).toISOString() : null,
+            lu: typeof v.lu === "boolean" ? v.lu : null,
+            labels: v.labels || {},
+          }))
+        : [];
+      liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      setMails(liste);
       setMailsDejaCharges(true);
-      setDerniereActualisation(new Date());
-      if (!silencieux) setErreurMails(null);
-    } catch (err: any) {
-      if (!silencieux) setErreurMails(err?.message || "Erreur réseau pendant le chargement des mails.");
-    } finally {
-      if (!silencieux) setChargementMails(false);
-    }
-  };
+    });
+    const u2 = onValue(ref(db, "messagerie_sync_etat/derniereSync"), snap => {
+      const v = snap.val();
+      setDerniereSyncRobot(typeof v === "number" ? new Date(v) : null);
+    });
+    return () => { u1(); u2(); };
+  }, []);
 
-  useEffect(() => {
-    if (activeTab === "boite" && !mailsDejaCharges && !chargementMails) {
-      chargerMails();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  // Actualisation automatique en arrière-plan toutes les 90s tant que l'onglet "Boîte de
-  // réception" est affiché — coupée dès qu'on quitte l'onglet ou le module (pour ne pas cogner
-  // Gmail en IMAP inutilement en arrière-plan).
-  //
-  // IMPORTANT (16/09/2026) : c'était réglé sur 20s au départ, ce qui — combiné à d'autres
-  // tentatives de connexion — a fini par faire ressembler notre trafic IMAP à une activité
-  // suspecte pour Gmail, qui a bloqué les connexions du compte commercial@moorea.fr. On espace
-  // donc beaucoup plus l'actualisation pour rester largement sous le radar de Gmail.
-  const mailOuvertRef = useRef(false);
-
-  useEffect(() => {
-    if (activeTab !== "boite") return;
-    const intervalle = setInterval(() => {
-      // On coupe l'actualisation automatique pendant qu'un mail est ouvert : ça évite
-      // d'ouvrir une connexion IMAP en arrière-plan pile quand une autre est déjà en
-      // train de charger le détail du mail cliqué, ce qui pouvait faire échouer ou
-      // ralentir l'ouverture ("Connection not available").
-      if (mailOuvertRef.current) return;
-      chargerMails(150, true);
-    }, 90000);
-    return () => clearInterval(intervalle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  // Dossiers/libellés disponibles, calculés à partir de ce que le robot a réellement trouvé
+  // (les libellés Gmail personnalisés d'Elinathan varient d'une boîte à l'autre, pas de liste
+  // figée en dur). "INBOX" en premier par habitude (c'est ce qui était affiché avant), puis les
+  // autres par ordre alphabétique.
+  const dossiersDisponibles = (() => {
+    const set = new Set<string>();
+    for (const m of mails) for (const l of Object.keys(m.labels || {})) set.add(l);
+    const autres = [...set].filter(l => l !== "INBOX").sort((a, b) => a.localeCompare(b));
+    return ["INBOX", ...autres];
+  })();
 
   // ─── Ouvrir un mail : détail, pièces jointes, répondre/transférer, imprimer (16/09/2026, v3) ───
   type DetailMail = {
@@ -254,11 +233,18 @@ export function MessagerieModule({
   const cheminCacheMail = (uid: number) => `messagerieCache/${uid}`;
 
   const ouvrirMail = async (m: Mail) => {
-    mailOuvertRef.current = true;
     setMailOuvert(m);
     setDetailMail(null);
     setErreurDetail(null);
     setModeCompose(null);
+
+    // Marque le mail comme lu immédiatement dans Firebase (optimiste) — pas la peine d'attendre
+    // le prochain passage du robot de synchro pour que ça se voie dans la liste, ici ou sur un
+    // autre poste ouvert sur la même boîte. Pas grave si ça échoue (pas de connexion, etc.), le
+    // robot le rattrapera de toute façon lors de son prochain rafraîchissement de statut.
+    if (m.lu === false) {
+      update(ref(db, `messagerie_boite/${m.uid}`), { lu: true }).catch(() => {});
+    }
 
     // 1) Cache Firebase d'abord : si le mail a déjà été ouvert une fois, affichage immédiat.
     try {
@@ -299,7 +285,6 @@ export function MessagerieModule({
   };
 
   const fermerMail = () => {
-    mailOuvertRef.current = false;
     setMailOuvert(null);
     setDetailMail(null);
     setModeCompose(null);
@@ -495,6 +480,7 @@ export function MessagerieModule({
 
   const mailsFiltres = mails.filter(m => {
     if (!mailVisiblePourMoi(m.expediteur)) return false;
+    if (dossierActif !== "TOUS" && !(m.labels || {})[dossierActif]) return false;
     if (!filtreMails.trim()) return true;
     const q = filtreMails.trim().toLowerCase();
     return m.expediteur.includes(q) || m.nomExpediteur.toLowerCase().includes(q) || m.sujet.toLowerCase().includes(q);
@@ -554,27 +540,32 @@ export function MessagerieModule({
           <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
               <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
-                📥 {mails.length > 0 ? `${mails.length} derniers mails` : "Boîte de réception"}
+                📥 {mails.length > 0 ? `${mailsFiltres.length} mail(s)` : "Boîte de réception"}
               </p>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {derniereActualisation && (
-                  <span style={{ fontSize: 11, color: COLORS.gray600 }}>
-                    🟢 Auto — {derniereActualisation.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                  </span>
-                )}
-                <button
-                  onClick={() => chargerMails()}
-                  disabled={chargementMails}
-                  style={{
-                    padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`,
-                    background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700,
-                    cursor: chargementMails ? "default" : "pointer", opacity: chargementMails ? 0.6 : 1,
-                  }}
-                >
-                  {chargementMails ? "⏳ Chargement..." : "🔄 Actualiser"}
-                </button>
-              </div>
+              <span style={{ fontSize: 11, color: COLORS.gray600 }}>
+                {derniereSyncRobot
+                  ? `🟢 Synchronisé — ${derniereSyncRobot.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
+                  : "🟡 En attente de la première synchro..."}
+              </span>
             </div>
+
+            {dossiersDisponibles.length > 1 && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                {["TOUS", ...dossiersDisponibles].map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setDossierActif(d)}
+                    style={{
+                      padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${dossierActif === d ? COLORS.primary : COLORS.gray200}`,
+                      background: dossierActif === d ? COLORS.primaryLight : "#fff", color: dossierActif === d ? COLORS.primary : COLORS.gray600,
+                      fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                    }}
+                  >
+                    {d === "TOUS" ? "Tous" : d === "INBOX" ? "📥 Boîte de réception" : d}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {mails.length > 0 && (
               <input
@@ -585,19 +576,13 @@ export function MessagerieModule({
               />
             )}
 
-            {erreurMails && (
-              <div style={{ background: COLORS.dangerLight, border: "1.5px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 12.5, color: COLORS.danger }}>
-                ⚠️ {erreurMails}
-              </div>
-            )}
-
-            {chargementMails && mails.length === 0 && !erreurMails && (
+            {!mailsDejaCharges && (
               <div style={{ textAlign: "center", padding: "28px 0", color: COLORS.gray600, fontSize: 13 }}>
                 ⏳ Chargement des mails...
               </div>
             )}
 
-            {!chargementMails && mailsDejaCharges && mails.length === 0 && !erreurMails && (
+            {mailsDejaCharges && mails.length === 0 && (
               <div style={{ textAlign: "center", padding: "28px 0", color: COLORS.gray600, fontSize: 13 }}>
                 📭 Aucun mail trouvé.
               </div>

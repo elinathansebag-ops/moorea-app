@@ -1,0 +1,39 @@
+name: Synchro boîte mail Messagerie (commercial@moorea.fr)
+
+# 19/09/2026 — Demande d'Elinathan : la messagerie devait être "réactive à 200%, sans 0 attente,
+# comme une vraie boîte mail". Avant, l'appli se connectait en direct à Gmail (IMAP) à chaque
+# ouverture de la boîte de réception, d'où l'attente. Ici, exactement le même principe que pour
+# la détection du BL NLT (voir nlt-bl-poll.yml) : un robot GitHub Actions se connecte tout seul,
+# régulièrement, recopie les en-têtes (expéditeur, sujet, date, lu/pas lu, dossiers) de tous les
+# dossiers/libellés Gmail sur 1 an d'historique dans Firebase, et l'appli n'a plus qu'à lire
+# Firebase pour afficher la liste — instantané, comme le reste de l'appli. Vercel Cron n'est pas
+# utilisé (plan Hobby limité à 1x/jour), d'où GitHub Actions (gratuit sur ce repo).
+#
+# Fréquence et plage horaire : alignées sur nlt-bl-poll.yml pour la même raison (Gmail avait
+# bloqué le compte commercial@moorea.fr à cause de connexions IMAP trop fréquentes en 09/2026 —
+# voir les commentaires dans api/messagerie.js). Toutes les 3 minutes, 6h-18h UTC, ce qui couvre
+# 7h-19h à Paris en hiver et 8h-20h en été.
+#
+# IMPORTANT : ce robot REMPLACE l'ancien rafraîchissement automatique côté navigateur (qui se
+# connectait lui aussi à Gmail toutes les 90 secondes, potentiellement en plusieurs exemplaires
+# si plusieurs personnes avaient la messagerie ouverte en même temps). Un seul robot centralisé,
+# c'est donc en réalité MOINS de connexions à Gmail qu'avant, pas plus.
+#
+# Secrets requis (Settings → Secrets and variables → Actions, sur GitHub) :
+#   APP_URL                  → déjà présent (utilisé par nlt-bl-poll.yml)
+#   MESSAGERIE_SYNC_SECRET   → nouveau secret, à créer, même valeur que la variable d'environnement
+#                              Vercel du même nom
+on:
+  schedule:
+    - cron: "*/3 6-18 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appelle l'endpoint de synchro de la messagerie
+        run: |
+          curl -sS -X POST "${{ secrets.APP_URL }}/api/messagerie?action=sync&secret=${{ secrets.MESSAGERIE_SYNC_SECRET }}" \
+            --fail-with-body \
+            --max-time 55
