@@ -43,6 +43,14 @@ const UN_AN_MS = 365 * 24 * 60 * 60 * 1000;
 // connexion IMAP par appel, pas de connexions/refetch en boucle.
 const TAILLE_LOT_DECOUVERTE = 400;
 const TAILLE_LOT_FLAGS = 600;
+// 19/09/2026 (suite) — toujours (re)decouvrir au minimum les N derniers mails d'un dossier, meme
+// si le rattrapage historique (ci-dessous) n'est pas encore arrive jusque-la. Sans ca, un mail
+// qui vient d'arriver aujourd'hui n'apparaissait dans l'appli qu'une fois que le rattrapage,
+// parti du plus vieux mail de l'annee, avait fini par remonter jusqu'a aujourd'hui -- ce qui
+// pouvait prendre des jours sur une grosse boite. Bug trouve avec Elinathan : "j'ai pas
+// l'impression d'avoir les memes mails" (l'appli montrait des mails vieux de 2-3 jours en haut
+// de liste alors que Gmail avait des mails du jour meme).
+const TAILLE_RECENTS = 150;
 
 function assainirCleFirebase(valeur) {
   // Meme regle que cleTab() cote client (src/shared.tsx) : Firebase Realtime Database interdit
@@ -587,30 +595,37 @@ async function actionSync(req, res) {
 
         const updates = {};
 
-        // 1) Decouverte des nouveaux mails (uid strictement superieur au curseur de CE dossier)
+        // 1) Decouverte : rattrapage historique (le plus vieux mail pas encore vu, par lots de
+        // TAILLE_LOT_DECOUVERTE) + les tout derniers mails du dossier (TAILLE_RECENTS), toujours
+        // retentes a chaque passage pour qu'un mail qui vient d'arriver soit visible tout de
+        // suite, meme si le rattrapage historique n'est pas encore arrive jusqu'a aujourd'hui.
         let idxDepart = uids.findIndex(u => u > curseurDecouverte);
         let nouveauCurseur = curseurDecouverte;
-        if (idxDepart !== -1) {
-          const lotDecouverte = uids.slice(idxDepart, idxDepart + TAILLE_LOT_DECOUVERTE);
-          if (lotDecouverte.length > 0) {
-            for await (const msg of client.fetch(lotDecouverte, { uid: true, envelope: true, flags: true, labels: true, internalDate: true }, { uid: true })) {
-              const labels = {};
-              for (const l of (msg.labels || [])) labels[assainirCleFirebase(l)] = true;
-              updates[`${source.code}_${msg.uid}`] = {
-                boite: source.code,
-                uid: msg.uid,
-                de: (msg.envelope?.from?.[0]?.address || "").toLowerCase(),
-                deNom: msg.envelope?.from?.[0]?.name || "",
-                sujet: msg.envelope?.subject || "(sans sujet)",
-                date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
-                lu: msg.flags ? msg.flags.has("\\Seen") : false,
-                labels,
-              };
-              resultat.nouveaux++;
-              if (msg.uid > nouveauCurseur) nouveauCurseur = msg.uid;
-            }
+        const lotDecouverte = idxDepart !== -1 ? uids.slice(idxDepart, idxDepart + TAILLE_LOT_DECOUVERTE) : [];
+        const lotRecents = uids.slice(-TAILLE_RECENTS);
+        const aTraiter = Array.from(new Set([...lotDecouverte, ...lotRecents])).sort((a, b) => a - b);
+
+        if (aTraiter.length > 0) {
+          for await (const msg of client.fetch(aTraiter, { uid: true, envelope: true, flags: true, labels: true, internalDate: true }, { uid: true })) {
+            const labels = {};
+            for (const l of (msg.labels || [])) labels[assainirCleFirebase(l)] = true;
+            updates[`${source.code}_${msg.uid}`] = {
+              boite: source.code,
+              uid: msg.uid,
+              de: (msg.envelope?.from?.[0]?.address || "").toLowerCase(),
+              deNom: msg.envelope?.from?.[0]?.name || "",
+              sujet: msg.envelope?.subject || "(sans sujet)",
+              date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
+              lu: msg.flags ? msg.flags.has("\\Seen") : false,
+              labels,
+            };
+            resultat.nouveaux++;
           }
         }
+        // Le curseur de rattrapage historique n'avance que sur le lot "du plus vieux vers le
+        // plus recent" -- pas sur TAILLE_RECENTS, qui peut etre tres en avance sur lui -- sinon
+        // on croirait a tort avoir fini de remonter toute la periode intermediaire.
+        for (const u of lotDecouverte) if (u > nouveauCurseur) nouveauCurseur = u;
 
         // 2) Rafraichissement tournant du statut lu/pas lu sur tout l'historique d'un an de CE
         // dossier (pas seulement les nouveaux), par lots, pour finir par couvrir toute la
