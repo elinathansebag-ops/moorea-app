@@ -327,6 +327,7 @@ export function MessagerieModule({
   const [detailMail, setDetailMail] = useState<DetailMail | null>(null);
   const [chargementDetail, setChargementDetail] = useState(false);
   const [erreurDetail, setErreurDetail] = useState<string | null>(null);
+  const [destinatairesDeplies, setDestinatairesDeplies] = useState(false);
 
   const enTeteAuth = async () => {
     const utilisateur = auth.currentUser;
@@ -349,6 +350,7 @@ export function MessagerieModule({
     setMailOuvert(m);
     setDetailMail(null);
     setErreurDetail(null);
+    setDestinatairesDeplies(false);
     setModeCompose(null);
 
     // Marque le mail comme lu immédiatement dans Firebase (optimiste) — pas la peine d'attendre
@@ -428,11 +430,22 @@ export function MessagerieModule({
   // l'affiche directement pour une image ou un PDF, comme dans une vraie boîte mail.
   // Pour les types qu'il ne sait pas afficher (Word, Excel...), il proposera lui-même
   // de la télécharger, mais sans qu'on force ce comportement.
+  //
+  // 19/09/2026 — Bug trouvé avec Elinathan : le bouton "Aperçu" ne faisait rien. Cause : le
+  // fetch (via `await`) prend un peu de temps, et Chrome ne considère alors plus l'appel à
+  // window.open() qui suit comme déclenché directement par le clic -- il le bloque en
+  // silence (bloqueur de popups), sans aucune erreur visible. Le seul cas où ça marchait,
+  // c'était quand le mail était déjà en cache et que le fetch était donc instantané. On
+  // corrige comme pour "Imprimer" un peu plus bas : ouvrir l'onglet tout de suite (pendant
+  // que le clic compte encore comme une action de l'utilisateur), puis lui donner l'adresse
+  // du fichier une fois qu'il est prêt.
   const apercuPieceJointe = async (uid: number, index: number, boite: string = "all") => {
+    const fenetre = window.open("", "_blank");
     const blob = await recupererPieceJointe(uid, index, boite);
-    if (!blob) return;
+    if (!blob) { fenetre?.close(); return; }
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
+    if (fenetre) fenetre.location.href = url;
+    else window.open(url, "_blank"); // bloqueur de popups actif : on retente quand même
     // On laisse le temps au nouvel onglet de charger le fichier avant de libérer l'URL.
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
@@ -796,7 +809,19 @@ export function MessagerieModule({
                     De : {detailMail?.de || mailOuvert.expediteur} · {formatDateMail(detailMail?.date || mailOuvert.date)}
                   </p>
                   {detailMail && detailMail.a.length > 0 && (
-                    <p style={{ margin: "2px 0 0", fontSize: 11, color: COLORS.gray600 }}>À : {detailMail.a.join(", ")}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: COLORS.gray600, overflowWrap: "anywhere" }}>
+                      À : {destinatairesDeplies || detailMail.a.length <= 4
+                        ? detailMail.a.join(", ")
+                        : detailMail.a.slice(0, 4).join(", ")}
+                      {detailMail.a.length > 4 && (
+                        <button
+                          onClick={() => setDestinatairesDeplies(v => !v)}
+                          style={{ border: "none", background: "transparent", color: COLORS.primary, fontWeight: 700, fontSize: 11, cursor: "pointer", padding: "0 0 0 4px" }}
+                        >
+                          {destinatairesDeplies ? "réduire" : `et ${detailMail.a.length - 4} autre(s)`}
+                        </button>
+                      )}
+                    </p>
                   )}
                 </div>
                 <button onClick={fermerMail} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: COLORS.gray600, lineHeight: 1, flexShrink: 0 }}>✕</button>
