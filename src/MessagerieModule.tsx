@@ -51,7 +51,13 @@ export type RegleAttribution = {
 };
 
 export type Mail = {
+  id: string; // clé Firebase composite "<dossier>_<uid>" (19/09/2026, v2 : spam/corbeille) --
+  // un même numéro d'uid peut désigner un message différent selon le dossier IMAP d'origine
+  // (all/spam/trash ont chacun leur propre numérotation), donc "uid" seul ne suffit plus à
+  // identifier un mail de façon unique dans l'appli (clé React, cache, etc.).
   uid: number;
+  boite: string; // "all" | "spam" | "trash" -- dossier IMAP d'origine, nécessaire pour rouvrir
+  // exactement le bon dossier quand on va chercher le contenu complet du mail.
   expediteur: string;
   nomExpediteur: string;
   sujet: string;
@@ -174,8 +180,10 @@ export function MessagerieModule({
     const u1 = onValue(ref(db, "messagerie_boite"), snap => {
       const d = snap.val();
       const liste: Mail[] = d
-        ? Object.entries(d).map(([uid, v]: any) => ({
-            uid: parseInt(uid, 10),
+        ? Object.entries(d).map(([id, v]: any) => ({
+            id,
+            uid: v.uid ?? parseInt(id, 10),
+            boite: v.boite || "all",
             expediteur: v.de || "",
             nomExpediteur: v.deNom || "",
             sujet: v.sujet || "(sans sujet)",
@@ -203,12 +211,18 @@ export function MessagerieModule({
     const set = new Set<string>();
     for (const m of mails) for (const l of Object.keys(m.labels || {})) set.add(l);
     const autres = [...set].filter(l => l !== "INBOX").sort((a, b) => a.localeCompare(b));
-    return ["INBOX", ...autres];
+    const base = ["INBOX", ...autres];
+    // Spam et Corbeille (19/09/2026, v2) ne sont pas des libellés Gmail classiques -- ce sont
+    // des dossiers à part que Gmail exclut volontairement de "Tous les messages", donc on les
+    // distingue par leur dossier d'origine (boite) plutôt que par un libellé.
+    if (mails.some(m => m.boite === "spam")) base.push("SPAM");
+    if (mails.some(m => m.boite === "trash")) base.push("TRASH");
+    return base;
   })();
 
   // ─── Ouvrir un mail : détail, pièces jointes, répondre/transférer, imprimer (16/09/2026, v3) ───
   type DetailMail = {
-    uid: number; de: string; a: string[]; cc: string[]; sujet: string; date: string | null;
+    uid: number; boite?: string; de: string; a: string[]; cc: string[]; sujet: string; date: string | null;
     html: string | null; texte: string | null; messageId: string | null;
     pieces: { index: number; nomFichier: string; typeContenu: string; taille: number }[];
   };
@@ -230,7 +244,10 @@ export function MessagerieModule({
   // garde en cache — la réouverture est alors instantanée, sans repasser par Gmail. C'est
   // ce qui manquait pour que ça ressemble à "une vraie boîte" réactive : Gmail lui-même
   // n'est instantané que parce qu'il a déjà tout en cache après la première lecture.
-  const cheminCacheMail = (uid: number) => `messagerieCache/${uid}`;
+  // Clé composite ("<dossier>_<uid>") et pas juste l'uid (19/09/2026, v2) : un même numéro
+  // d'uid peut désigner un message différent selon qu'il vient de "Tous les messages", du Spam
+  // ou de la Corbeille -- utiliser l'uid seul ferait se mélanger le cache de mails différents.
+  const cheminCacheMail = (id: string) => `messagerieCache/${id}`;
 
   const ouvrirMail = async (m: Mail) => {
     setMailOuvert(m);
@@ -243,12 +260,12 @@ export function MessagerieModule({
     // autre poste ouvert sur la même boîte. Pas grave si ça échoue (pas de connexion, etc.), le
     // robot le rattrapera de toute façon lors de son prochain rafraîchissement de statut.
     if (m.lu === false) {
-      update(ref(db, `messagerie_boite/${m.uid}`), { lu: true }).catch(() => {});
+      update(ref(db, `messagerie_boite/${m.id}`), { lu: true }).catch(() => {});
     }
 
     // 1) Cache Firebase d'abord : si le mail a déjà été ouvert une fois, affichage immédiat.
     try {
-      const snapshot = await get(ref(db, cheminCacheMail(m.uid)));
+      const snapshot = await get(ref(db, cheminCacheMail(m.id)));
       if (snapshot.exists()) {
         setDetailMail(snapshot.val());
         setChargementDetail(false);
@@ -262,7 +279,7 @@ export function MessagerieModule({
     setChargementDetail(true);
     try {
       const headers = await enTeteAuth();
-      const reponse = await fetch(`/api/messagerie?action=detail&uid=${m.uid}`, { headers });
+      const reponse = await fetch(`/api/messagerie?action=detail&uid=${m.uid}&boite=${m.boite}`, { headers });
       const data = await reponse.json();
       if (!reponse.ok) { setErreurDetail(data?.error || "Erreur pendant le chargement du mail."); return; }
       setDetailMail(data);
@@ -272,7 +289,7 @@ export function MessagerieModule({
       try {
         const tailleApprox = JSON.stringify(data).length;
         if (tailleApprox < 800000) {
-          await set(ref(db, cheminCacheMail(m.uid)), data);
+          await set(ref(db, cheminCacheMail(m.id)), data);
         }
       } catch {
         // La mise en cache est un bonus, pas grave si ça échoue.
@@ -299,10 +316,10 @@ export function MessagerieModule({
 
   // Récupère une pièce jointe (16/09/2026) : renvoie le blob + son URL objet, sans décider
   // de ce qu'on en fait — aperçu ou téléchargement, c'est l'appelant qui choisit.
-  const recupererPieceJointe = async (uid: number, index: number): Promise<Blob | null> => {
+  const recupererPieceJointe = async (uid: number, index: number, boite: string = "all"): Promise<Blob | null> => {
     try {
       const headers = await enTeteAuth();
-      const reponse = await fetch(`/api/messagerie?action=piece-jointe&uid=${uid}&index=${index}`, { headers });
+      const reponse = await fetch(`/api/messagerie?action=piece-jointe&uid=${uid}&index=${index}&boite=${boite}`, { headers });
       if (!reponse.ok) { notify("error", "Ouverture de la pièce jointe échouée"); return null; }
       return await reponse.blob();
     } catch {
@@ -315,8 +332,8 @@ export function MessagerieModule({
   // l'affiche directement pour une image ou un PDF, comme dans une vraie boîte mail.
   // Pour les types qu'il ne sait pas afficher (Word, Excel...), il proposera lui-même
   // de la télécharger, mais sans qu'on force ce comportement.
-  const apercuPieceJointe = async (uid: number, index: number) => {
-    const blob = await recupererPieceJointe(uid, index);
+  const apercuPieceJointe = async (uid: number, index: number, boite: string = "all") => {
+    const blob = await recupererPieceJointe(uid, index, boite);
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
@@ -325,8 +342,8 @@ export function MessagerieModule({
   };
 
   // Téléchargement explicite (bouton ⬇️ séparé) : celui-là force bien l'enregistrement.
-  const telechargerPieceJointe = async (uid: number, index: number, nomFichier: string) => {
-    const blob = await recupererPieceJointe(uid, index);
+  const telechargerPieceJointe = async (uid: number, index: number, nomFichier: string, boite: string = "all") => {
+    const blob = await recupererPieceJointe(uid, index, boite);
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -411,7 +428,7 @@ export function MessagerieModule({
       let piecesJointes: { nomFichier: string; typeContenu: string; contenuBase64: string }[] = [];
       if (modeCompose === "transferer" && composeInclurePieces && detailMail.pieces.length > 0) {
         for (const piece of detailMail.pieces) {
-          const rep = await fetch(`/api/messagerie?action=piece-jointe&uid=${detailMail.uid}&index=${piece.index}`, { headers });
+          const rep = await fetch(`/api/messagerie?action=piece-jointe&uid=${detailMail.uid}&index=${piece.index}&boite=${detailMail.boite || "all"}`, { headers });
           if (!rep.ok) continue;
           const blob = await rep.blob();
           const contenuBase64 = await blobEnBase64(blob);
@@ -480,7 +497,9 @@ export function MessagerieModule({
 
   const mailsFiltres = mails.filter(m => {
     if (!mailVisiblePourMoi(m.expediteur)) return false;
-    if (dossierActif !== "TOUS" && !(m.labels || {})[dossierActif]) return false;
+    if (dossierActif === "SPAM") { if (m.boite !== "spam") return false; }
+    else if (dossierActif === "TRASH") { if (m.boite !== "trash") return false; }
+    else if (dossierActif !== "TOUS" && !(m.labels || {})[dossierActif]) return false;
     if (!filtreMails.trim()) return true;
     const q = filtreMails.trim().toLowerCase();
     return m.expediteur.includes(q) || m.nomExpediteur.toLowerCase().includes(q) || m.sujet.toLowerCase().includes(q);
@@ -561,7 +580,7 @@ export function MessagerieModule({
                       fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
                     }}
                   >
-                    {d === "TOUS" ? "Tous" : d === "INBOX" ? "📥 Boîte de réception" : d}
+                    {d === "TOUS" ? "Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : d}
                   </button>
                 ))}
               </div>
@@ -604,7 +623,7 @@ export function MessagerieModule({
                       const attribues = trouverAttribution(m.expediteur);
                       return (
                         <tr
-                          key={m.uid}
+                          key={m.id}
                           onClick={() => ouvrirMail(m)}
                           style={{ borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400, cursor: "pointer" }}
                           onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
@@ -679,14 +698,14 @@ export function MessagerieModule({
                             style={{ display: "flex", alignItems: "center", borderRadius: 20, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, overflow: "hidden" }}
                           >
                             <button
-                              onClick={() => apercuPieceJointe(detailMail.uid, p.index)}
+                              onClick={() => apercuPieceJointe(detailMail.uid, p.index, detailMail.boite || "all")}
                               title="Aperçu"
                               style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 6px 6px 12px", border: "none", background: "transparent", color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                             >
                               📎 {p.nomFichier} <span style={{ color: COLORS.gray600, fontWeight: 400 }}>({Math.round((p.taille || 0) / 1024)} Ko)</span>
                             </button>
                             <button
-                              onClick={() => telechargerPieceJointe(detailMail.uid, p.index, p.nomFichier)}
+                              onClick={() => telechargerPieceJointe(detailMail.uid, p.index, p.nomFichier, detailMail.boite || "all")}
                               title="Télécharger"
                               style={{ display: "flex", alignItems: "center", padding: "6px 12px 6px 6px", border: "none", borderLeft: `1.5px solid ${COLORS.primaryBorder}`, background: "transparent", color: COLORS.primary, fontSize: 13, cursor: "pointer" }}
                             >

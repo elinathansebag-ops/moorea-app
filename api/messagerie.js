@@ -66,6 +66,49 @@ function attendre(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Trouve dynamiquement un dossier Gmail via son attribut IMAP standard "special-use" (RFC 6154)
+// plutot que de deviner son nom en dur. Necessaire car ces noms dependent de la langue de
+// l'interface Gmail du compte ("[Gmail]/All Mail" en anglais, "[Gmail]/Tous les messages" en
+// francais, etc.) -- un nom fige aurait marche ou pas selon la langue choisie sur
+// commercial@moorea.fr, ce qui a fait echouer le premier essai de synchro (19/09/2026, erreur
+// generique "Command failed" a l'ouverture du dossier).
+//
+// SOURCES_SYNC (19/09/2026, v2) : demande d'Elinathan, "je veux que les spams, les messages
+// supprimes, que tout remonte" -- "Tous les messages" (All Mail) chez Gmail EXCLUT justement le
+// Spam et la Corbeille par definition (ce n'est pas un oubli de notre part, Gmail ne les y met
+// jamais). Il faut donc ouvrir ces deux dossiers en plus, separement, pour que leur contenu
+// remonte aussi dans l'appli. Chaque source a son propre "code" (utilise comme prefixe de cle
+// Firebase, puisque des uid peuvent se repeter d'un dossier IMAP a l'autre -- ce ne sont pas les
+// memes espaces de numerotation) et son propre curseur de synchro independant.
+const SOURCES_SYNC = [
+  { code: "all", specialUse: "\\All", secours: "[Gmail]/All Mail" },
+  { code: "spam", specialUse: "\\Junk", secours: "[Gmail]/Spam" },
+  { code: "trash", specialUse: "\\Trash", secours: "[Gmail]/Corbeille" },
+];
+
+const cacheDossiersSpecialUse = {};
+async function trouverDossierParSpecialUse(client, specialUse, secours) {
+  if (cacheDossiersSpecialUse[specialUse]) return cacheDossiersSpecialUse[specialUse];
+  const boites = await client.list();
+  const boite = boites.find(b => b.specialUse === specialUse);
+  const chemin = boite ? boite.path : secours;
+  cacheDossiersSpecialUse[specialUse] = chemin;
+  return chemin;
+}
+
+// Conserve pour compatibilite avec le code existant qui ouvrait explicitement "All Mail"
+// (telechargerMessageBrut, quand aucun dossier precis n'est fourni).
+async function trouverBoiteTousLesMessages(client) {
+  return trouverDossierParSpecialUse(client, "\\All", "[Gmail]/All Mail");
+}
+
+// Retrouve le chemin IMAP d'un dossier a partir de son "code" (all | spam | trash), utilise
+// pour rouvrir le bon dossier a l'ouverture d'un mail (action=detail / piece-jointe).
+async function cheminDossierParCode(client, code) {
+  const source = SOURCES_SYNC.find(s => s.code === code) || SOURCES_SYNC[0];
+  return trouverDossierParSpecialUse(client, source.specialUse, source.secours);
+}
+
 function nouveauClientImap() {
   return new ImapFlow({
     host: IMAP_HOST,
@@ -115,15 +158,16 @@ async function connecterImap() {
   throw e;
 }
 
-async function telechargerMessageBrut(client, uid) {
-  // "[Gmail]/All Mail" et pas "INBOX" : depuis le passage a action=sync (19/09/2026), les uid
-  // affiches dans l'appli viennent de All Mail (qui contient tous les dossiers/libelles en une
-  // seule fois, sans doublon) et pas de INBOX seule -- un uid INBOX et un uid All Mail ne
-  // designent pas forcement le meme numero, il faut rouvrir le mail depuis le meme dossier que
-  // celui d'ou vient l'uid pour ne pas se tromper de message (ou echouer a le trouver).
+async function telechargerMessageBrut(client, uid, boiteCode = "all") {
+  // Le dossier a rouvrir depend d'ou vient l'uid (19/09/2026) : depuis le passage a action=sync,
+  // les mails affiches dans l'appli peuvent venir de "Tous les messages", du Spam ou de la
+  // Corbeille (trois dossiers, trois espaces de numerotation d'uid distincts) -- un meme numero
+  // d'uid ne designe pas le meme message d'un dossier a l'autre, il faut donc rouvrir exactement
+  // le meme dossier que celui d'ou vient l'uid pour ne pas se tromper de message (ou echouer a
+  // le trouver). "all" par defaut pour rester compatible avec un ancien cache sans ce champ.
   let lock;
   try {
-    lock = await client.getMailboxLock("[Gmail]/All Mail");
+    lock = await client.getMailboxLock(await cheminDossierParCode(client, boiteCode));
   } catch (err) {
     const e = new Error(`Connexion IMAP perdue avant la lecture du mail : ${err.message}`);
     e.status = 502;
@@ -291,12 +335,13 @@ async function actionInbox(req, res) {
 // ─── action=detail : contenu complet d'un mail ───
 async function actionDetail(req, res) {
   const uid = parseInt(req.query?.uid, 10);
+  const boite = req.query?.boite || "all";
   if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
 
   const messageBrut = await avecReessai(async () => {
     const client = await connecterImap();
     try {
-      return await telechargerMessageBrut(client, uid);
+      return await telechargerMessageBrut(client, uid, boite);
     } finally {
       try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
     }
@@ -319,6 +364,7 @@ async function actionDetail(req, res) {
 
   return res.status(200).json({
     uid,
+    boite,
     de: analyse.from?.text || "",
     a: (analyse.to?.value || []).map(v => v.address).filter(Boolean),
     cc: (analyse.cc?.value || []).map(v => v.address).filter(Boolean),
@@ -335,6 +381,7 @@ async function actionDetail(req, res) {
 async function actionPieceJointe(req, res) {
   const uid = parseInt(req.query?.uid, 10);
   const index = parseInt(req.query?.index, 10);
+  const boite = req.query?.boite || "all";
   if (!uid || uid <= 0 || isNaN(index) || index < 0) {
     return res.status(400).json({ error: "uid ou index manquant/invalide" });
   }
@@ -342,7 +389,7 @@ async function actionPieceJointe(req, res) {
   const messageBrut = await avecReessai(async () => {
     const client = await connecterImap();
     try {
-      return await telechargerMessageBrut(client, uid);
+      return await telechargerMessageBrut(client, uid, boite);
     } finally {
       try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
     }
@@ -439,75 +486,87 @@ async function connecterImapSync() {
 async function actionSync(req, res) {
   const debut = Date.now();
   const adminDb = getAdminDb();
-
-  const etatSnap = await adminDb.ref("messagerie_sync_etat").once("value");
-  const etat = etatSnap.val() || {};
-  const curseurDecouverte = etat.curseurDecouverte || 0;
-  const indexFlags = etat.indexFlags || 0;
-
   const client = await connecterImapSync();
-  const resultat = { nouveaux: 0, flagsRafraichis: 0, totalSuivi: 0 };
+  const resultat = { parDossier: {}, nouveaux: 0, flagsRafraichis: 0, totalSuivi: 0 };
+
   try {
-    const lock = await client.getMailboxLock("[Gmail]/All Mail");
-    try {
-      const seuilDate = new Date(Date.now() - UN_AN_MS);
-      const uidsBruts = await client.search({ since: seuilDate }, { uid: true });
-      const uids = Array.from(uidsBruts).sort((a, b) => a - b);
-      resultat.totalSuivi = uids.length;
+    // Une seule connexion IMAP pour les 3 dossiers (all/spam/trash), l'un après l'autre --
+    // même logique et même regle anti-blocage Gmail que pour le seul dossier "all" avant
+    // (19/09/2026, v2 : "je veux que les spams, les messages supprimes, que tout remonte").
+    for (const source of SOURCES_SYNC) {
+      const cheminDossier = await trouverDossierParSpecialUse(client, source.specialUse, source.secours);
+      const etatSnap = await adminDb.ref(`messagerie_sync_etat/${source.code}`).once("value");
+      const etat = etatSnap.val() || {};
+      const curseurDecouverte = etat.curseurDecouverte || 0;
+      const indexFlags = etat.indexFlags || 0;
 
-      const updates = {};
+      const lock = await client.getMailboxLock(cheminDossier);
+      try {
+        const seuilDate = new Date(Date.now() - UN_AN_MS);
+        const uidsBruts = await client.search({ since: seuilDate }, { uid: true });
+        const uids = Array.from(uidsBruts).sort((a, b) => a - b);
 
-      // 1) Decouverte des nouveaux mails (uid strictement superieur au curseur)
-      let idxDepart = uids.findIndex(u => u > curseurDecouverte);
-      let nouveauCurseur = curseurDecouverte;
-      if (idxDepart !== -1) {
-        const lotDecouverte = uids.slice(idxDepart, idxDepart + TAILLE_LOT_DECOUVERTE);
-        if (lotDecouverte.length > 0) {
-          for await (const msg of client.fetch(lotDecouverte, { uid: true, envelope: true, flags: true, labels: true, internalDate: true }, { uid: true })) {
-            const labels = {};
-            for (const l of (msg.labels || [])) labels[assainirCleFirebase(l)] = true;
-            updates[`${msg.uid}`] = {
-              de: (msg.envelope?.from?.[0]?.address || "").toLowerCase(),
-              deNom: msg.envelope?.from?.[0]?.name || "",
-              sujet: msg.envelope?.subject || "(sans sujet)",
-              date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
-              lu: msg.flags ? msg.flags.has("\\Seen") : false,
-              labels,
-            };
-            resultat.nouveaux++;
-            if (msg.uid > nouveauCurseur) nouveauCurseur = msg.uid;
+        const updates = {};
+
+        // 1) Decouverte des nouveaux mails (uid strictement superieur au curseur de CE dossier)
+        let idxDepart = uids.findIndex(u => u > curseurDecouverte);
+        let nouveauCurseur = curseurDecouverte;
+        if (idxDepart !== -1) {
+          const lotDecouverte = uids.slice(idxDepart, idxDepart + TAILLE_LOT_DECOUVERTE);
+          if (lotDecouverte.length > 0) {
+            for await (const msg of client.fetch(lotDecouverte, { uid: true, envelope: true, flags: true, labels: true, internalDate: true }, { uid: true })) {
+              const labels = {};
+              for (const l of (msg.labels || [])) labels[assainirCleFirebase(l)] = true;
+              updates[`${source.code}_${msg.uid}`] = {
+                boite: source.code,
+                uid: msg.uid,
+                de: (msg.envelope?.from?.[0]?.address || "").toLowerCase(),
+                deNom: msg.envelope?.from?.[0]?.name || "",
+                sujet: msg.envelope?.subject || "(sans sujet)",
+                date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
+                lu: msg.flags ? msg.flags.has("\\Seen") : false,
+                labels,
+              };
+              resultat.nouveaux++;
+              if (msg.uid > nouveauCurseur) nouveauCurseur = msg.uid;
+            }
           }
         }
-      }
 
-      // 2) Rafraichissement tournant du statut lu/pas lu sur tout l'historique d'un an (pas
-      // seulement les nouveaux), par lots, pour finir par couvrir toute la fenetre au fil des
-      // passages successifs du robot sans jamais surcharger un seul appel.
-      if (uids.length > 0) {
-        const lotFlags = [];
-        for (let i = 0; i < Math.min(TAILLE_LOT_FLAGS, uids.length); i++) {
-          lotFlags.push(uids[(indexFlags + i) % uids.length]);
+        // 2) Rafraichissement tournant du statut lu/pas lu sur tout l'historique d'un an de CE
+        // dossier (pas seulement les nouveaux), par lots, pour finir par couvrir toute la
+        // fenetre au fil des passages successifs du robot sans jamais surcharger un seul appel.
+        if (uids.length > 0) {
+          const lotFlags = [];
+          for (let i = 0; i < Math.min(TAILLE_LOT_FLAGS, uids.length); i++) {
+            lotFlags.push(uids[(indexFlags + i) % uids.length]);
+          }
+          for await (const msg of client.fetch(lotFlags, { uid: true, flags: true }, { uid: true })) {
+            const lu = msg.flags ? msg.flags.has("\\Seen") : false;
+            updates[`${source.code}_${msg.uid}/lu`] = lu;
+            resultat.flagsRafraichis++;
+          }
         }
-        for await (const msg of client.fetch(lotFlags, { uid: true, flags: true }, { uid: true })) {
-          const lu = msg.flags ? msg.flags.has("\\Seen") : false;
-          updates[`${msg.uid}/lu`] = lu;
-          resultat.flagsRafraichis++;
-        }
-      }
-      const nouvelIndexFlags = uids.length > 0 ? (indexFlags + TAILLE_LOT_FLAGS) % uids.length : 0;
+        const nouvelIndexFlags = uids.length > 0 ? (indexFlags + TAILLE_LOT_FLAGS) % uids.length : 0;
 
-      if (Object.keys(updates).length > 0) {
-        await adminDb.ref("messagerie_boite").update(updates);
+        if (Object.keys(updates).length > 0) {
+          await adminDb.ref("messagerie_boite").update(updates);
+        }
+        await adminDb.ref(`messagerie_sync_etat/${source.code}`).update({
+          curseurDecouverte: nouveauCurseur,
+          indexFlags: nouvelIndexFlags,
+          derniereSync: Date.now(),
+          totalSuivi: uids.length,
+        });
+        resultat.parDossier[source.code] = { totalSuivi: uids.length };
+        resultat.totalSuivi += uids.length;
+      } finally {
+        lock.release();
       }
-      await adminDb.ref("messagerie_sync_etat").update({
-        curseurDecouverte: nouveauCurseur,
-        indexFlags: nouvelIndexFlags,
-        derniereSync: Date.now(),
-        totalSuivi: uids.length,
-      });
-    } finally {
-      lock.release();
     }
+    // Horodatage global (utilisé par l'appli pour le badge "Synchronisé — HH:MM"), écrit une
+    // fois les 3 dossiers traités.
+    await adminDb.ref("messagerie_sync_etat").update({ derniereSync: Date.now() });
   } finally {
     try { await client.logout(); } catch { /* deja deconnecte, sans consequence */ }
   }
