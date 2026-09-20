@@ -38,6 +38,28 @@ const COLORS = {
   dangerLight: "#fef2f2",
 };
 
+// 20/09/2026 — Demande d'Elinathan : donner un nom francais convivial aux dossiers/libellés
+// techniques Gmail dans la colonne de gauche, au lieu du nom brut IMAP (ex: "\Sent"). Les
+// libellés spéciaux ("\Draft", "\Sent"...) sont ceux que Gmail renvoie systématiquement avec
+// un antislash ; les libellés "CATEGORY_..." sont les vrais onglets Gmail (Promotions, Réseaux
+// sociaux...), présents seulement si un mail synchronisé en porte un.
+const NOMS_DOSSIERS: Record<string, { nom: string; icone: string }> = {
+  "\Draft": { nom: "Brouillons", icone: "📝" },
+  "\Sent": { nom: "Messages envoyés", icone: "📤" },
+  "\Important": { nom: "Important", icone: "⭐" },
+  "\Starred": { nom: "Suivis", icone: "🌟" },
+  CATEGORY_PERSONAL: { nom: "Principale", icone: "📥" },
+  CATEGORY_SOCIAL: { nom: "Réseaux sociaux", icone: "👥" },
+  CATEGORY_PROMOTIONS: { nom: "Promotions", icone: "🏷️" },
+  CATEGORY_UPDATES: { nom: "Notifications", icone: "🔔" },
+  CATEGORY_FORUMS: { nom: "Forums", icone: "💬" },
+};
+
+function libelleDossier(d: string): string {
+  const connu = NOMS_DOSSIERS[d];
+  return connu ? `${connu.icone} ${connu.nom}` : d;
+}
+
 export type Commercial = { id: string; nom: string };
 export type RegleAttribution = {
   id: string;
@@ -719,7 +741,7 @@ export function MessagerieModule({
                     marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                   }}
                 >
-                  {d === "TOUS" ? "📬 Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : d}
+                  {d === "TOUS" ? "📬 Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : libelleDossier(d)}
                 </button>
               ))}
             </div>
