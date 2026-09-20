@@ -150,6 +150,13 @@ export const styles = `
        en style inline (#presta-root / #recond-root), à toutes les tailles d'écran. */
     .presta-content { padding: 14px !important; }
   }
+
+  /* 20/09/2026 -- Messagerie : actions rapides (archiver/corbeille/marquer lu) affichées au
+     survol d'une ligne de mail, à la place de la date -- demande d'Elinathan : "quand tu survol
+     un mail ca te propose archiver supprimer marquer lue" (comme sur Gmail). */
+  .msg-actions-survol { display: none; gap: 2px; white-space: nowrap; }
+  .msg-ligne-mail:hover .msg-date-normale { display: none; }
+  .msg-ligne-mail:hover .msg-actions-survol { display: inline-flex; }
 `;
 
 

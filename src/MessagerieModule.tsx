@@ -182,6 +182,9 @@ export type Mail = {
   // devoir ouvrir le mail. Posé côté backend au moment de la découverte/rotation du mail
   // (jamais recalculé pour tout l'historique d'un coup -- voir api/messagerie.js).
   aPieceJointe?: boolean;
+  // 20/09/2026 — Demande d'Elinathan : "mets un signe [...] qui distingue les mail avec un
+  // pdf" -- même principe que aPieceJointe ci-dessus, mais spécifique aux PDF.
+  aPiecePdf?: boolean;
   // 20/09/2026 — Demande d'Elinathan : journal d'activité (qui a fait quoi et quand) --
   // statut posé et attribution changée. Clés générées par push(), donc pas d'ordre garanti :
   // on retrie par "le" à l'affichage.
@@ -621,6 +624,7 @@ export function MessagerieModule({
             ouvertPar: v.ouvertPar || null,
             reglesAutoAppliquees: v.reglesAutoAppliquees || null,
             aPieceJointe: v.aPieceJointe === true,
+            aPiecePdf: v.aPiecePdf === true,
             journal: v.journal || null,
           }))
         : [];
@@ -1396,6 +1400,36 @@ export function MessagerieModule({
     update(ref(db, `messagerie_boite/${m.id}/labels`), { "\Important": nouveauImportant ? true : null }).catch(() => {});
     enTeteAuth()
       .then(headers => fetch(`/api/messagerie?action=marquer-important&uid=${m.uid}&boite=${m.boite}&important=${nouveauImportant ? "1" : "0"}`, { headers }))
+      .catch(() => {});
+  };
+
+  // 20/09/2026 — Demande d'Elinathan : "quand tu survol un mail ca te propose archiver
+  // supprimer marquer lue" (comme sur Gmail) -- trois actions rapides sans ouvrir le mail,
+  // affichées au survol de la ligne à la place de la date (voir la classe CSS
+  // "msg-actions-survol" dans shared.tsx).
+  const archiverMail = (m: Mail, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    update(ref(db, `messagerie_boite/${m.id}/labels`), { "\Inbox": null }).catch(() => {});
+    enTeteAuth()
+      .then(headers => fetch(`/api/messagerie?action=archiver&uid=${m.uid}&boite=${m.boite}`, { headers }))
+      .then(() => notify("success", "✓ Mail archivé"))
+      .catch(() => {});
+  };
+  const mettreMailACorbeille = (m: Mail, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!window.confirm("Mettre ce mail à la corbeille ?")) return;
+    remove(ref(db, `messagerie_boite/${m.id}`)).catch(() => {});
+    enTeteAuth()
+      .then(headers => fetch(`/api/messagerie?action=supprimer&uid=${m.uid}&boite=${m.boite}`, { headers }))
+      .then(() => notify("success", "✓ Mail mis à la corbeille"))
+      .catch(() => {});
+  };
+  const basculerLuRapide = (m: Mail, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const nouveauLu = m.lu === false;
+    update(ref(db, `messagerie_boite/${m.id}`), { lu: nouveauLu }).catch(() => {});
+    enTeteAuth()
+      .then(headers => fetch(`/api/messagerie?action=marquer-lu&uid=${m.uid}&boite=${m.boite}&lu=${nouveauLu ? "1" : "0"}`, { headers }))
       .catch(() => {});
   };
 
@@ -2199,6 +2233,7 @@ export function MessagerieModule({
                           <tr
                             key={m.id}
                             onClick={() => ouvrirMail(m)}
+                            className="msg-ligne-mail"
                             style={{
                               borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400, cursor: "pointer",
                               background: m.statut === "Traité" ? COLORS.successLight : (m.lu === false ? "#fff" : COLORS.gray100),
@@ -2240,6 +2275,14 @@ export function MessagerieModule({
                               {surlignerRecherche(m.sujet, filtreMails)}
                               {m.aPieceJointe && (
                                 <span title="Ce mail a au moins une pièce jointe" style={{ marginLeft: 6, opacity: 0.7 }}>📎</span>
+                              )}
+                              {/* 20/09/2026 -- Demande d'Elinathan : "mets un signe [...] qui distingue les
+                                  mail avec un pdf" -- badge rouge distinct du 📎 générique. */}
+                              {m.aPiecePdf && (
+                                <span title="Contient un PDF" style={{
+                                  marginLeft: 5, fontSize: 9.5, fontWeight: 800, color: "#fff",
+                                  background: "#dc2626", borderRadius: 4, padding: "1px 5px", verticalAlign: "middle",
+                                }}>PDF</span>
                               )}
                               {!!m._nbFil && m._nbFil > 1 && (
                                 <button
@@ -2355,7 +2398,19 @@ export function MessagerieModule({
                                 <span style={{ color: COLORS.gray600, fontSize: 11 }}>—</span>
                               )}
                             </td>
-                            <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap", verticalAlign: "top", textAlign: "right" }}>{formatDateListe(m.date)}</td>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap", verticalAlign: "top", textAlign: "right" }} onClick={e => e.stopPropagation()}>
+                              <span className="msg-date-normale">{formatDateListe(m.date)}</span>
+                              {/* 20/09/2026 -- Demande d'Elinathan : "quand tu survol un mail ca te propose
+                                  archiver supprimer marquer lue" (comme sur Gmail). */}
+                              <span className="msg-actions-survol">
+                                <button onClick={e => archiverMail(m, e)} title="Archiver"
+                                  style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 14, padding: "2px 4px", lineHeight: 1 }}>📥</button>
+                                <button onClick={e => mettreMailACorbeille(m, e)} title="Mettre à la corbeille"
+                                  style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 14, padding: "2px 4px", lineHeight: 1 }}>🗑️</button>
+                                <button onClick={e => basculerLuRapide(m, e)} title={m.lu === false ? "Marquer comme lu" : "Marquer comme non lu"}
+                                  style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 14, padding: "2px 4px", lineHeight: 1 }}>{m.lu === false ? "✉️" : "📩"}</button>
+                              </span>
+                            </td>
                           </tr>
                         );
                       })}

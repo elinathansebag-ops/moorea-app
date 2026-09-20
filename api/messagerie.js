@@ -662,6 +662,9 @@ d'autre (pas de titre, pas de guillemets, pas de liste).`;
 async function actionMarquerLu(req, res) {
   const uid = parseInt(req.query?.uid, 10);
   const boite = req.query?.boite || "all";
+  // 20/09/2026 -- lu=0 pour repasser un mail en non-lu (bouton au survol de la ligne, comme
+  // Gmail) ; lu absent ou "1" garde le comportement historique (marquer lu).
+  const lu = req.query?.lu !== "0";
   if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
 
   await avecReessai(async () => {
@@ -669,7 +672,66 @@ async function actionMarquerLu(req, res) {
     try {
       const lock = await ouvrirMailboxPourUid(client, boite);
       try {
-        await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
+        if (lu) {
+          await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
+        } else {
+          await client.messageFlagsRemove(uid, ["\\Seen"], { uid: true });
+        }
+      } finally {
+        lock.release();
+      }
+    } finally {
+      try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+    }
+  });
+
+  return res.status(200).json({ ok: true });
+}
+
+// ─── action=archiver : retire le mail de la Boîte de réception Gmail, sans le supprimer ───
+// 20/09/2026 — Demande d'Elinathan : "quand tu survol un mail ca te propose archiver [...]"
+// (comme sur Gmail). Sur Gmail, "Boîte de réception" est un LIBELLÉ (\Inbox) et pas un vrai
+// dossier séparé -- archiver = retirer ce libellé (même mécanisme et même option useLabels que
+// action=marquer-important ci-dessus), le mail reste visible dans "Tous les messages".
+async function actionArchiverMail(req, res) {
+  const uid = parseInt(req.query?.uid, 10);
+  const boite = req.query?.boite || "all";
+  if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
+
+  await avecReessai(async () => {
+    const client = await connecterImap();
+    try {
+      const lock = await ouvrirMailboxPourUid(client, boite);
+      try {
+        await client.messageFlagsRemove(uid, ["\\Inbox"], { uid: true, useLabels: true });
+      } finally {
+        lock.release();
+      }
+    } finally {
+      try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+    }
+  });
+
+  return res.status(200).json({ ok: true });
+}
+
+// ─── action=supprimer : met le mail à la corbeille Gmail ───
+// 20/09/2026 — Demande d'Elinathan : "quand tu survol un mail ca te propose archiver
+// supprimer [...]" -- déplace réellement le message (commande IMAP MOVE, RFC 6851, prise en
+// charge par Gmail) vers son dossier Corbeille (voir cheminDossierParCode("trash") plus haut,
+// déjà utilisé par la synchro pour redécouvrir les mails de la corbeille).
+async function actionSupprimerMail(req, res) {
+  const uid = parseInt(req.query?.uid, 10);
+  const boite = req.query?.boite || "all";
+  if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
+
+  await avecReessai(async () => {
+    const client = await connecterImap();
+    try {
+      const lock = await ouvrirMailboxPourUid(client, boite);
+      try {
+        const cheminCorbeille = await cheminDossierParCode(client, "trash");
+        await client.messageMove(uid, cheminCorbeille, { uid: true });
       } finally {
         lock.release();
       }
@@ -897,6 +959,9 @@ async function actionSync(req, res) {
             updates[`${cleDecouverte}/favori`] = msg.flags ? msg.flags.has("\\Flagged") : false;
             updates[`${cleDecouverte}/labels`] = labels;
             updates[`${cleDecouverte}/aPieceJointe`] = structurePieces.pieces.length > 0;
+            updates[`${cleDecouverte}/aPiecePdf`] = structurePieces.pieces.some(p => (
+              p.typeContenu === "application/pdf" || (p.nomFichier || "").toLowerCase().endsWith(".pdf")
+            ));
             resultat.nouveaux++;
           }
         }
@@ -1024,6 +1089,8 @@ export default async function handler(req, res) {
     if (action === "piece-jointe") { await exigerConnexionMoorea(req); return await actionPieceJointe(req, res); }
     if (action === "envoyer") { await exigerConnexionMoorea(req); return await actionEnvoyer(req, res); }
     if (action === "marquer-lu") { await exigerConnexionMoorea(req); return await actionMarquerLu(req, res); }
+    if (action === "archiver") { await exigerConnexionMoorea(req); return await actionArchiverMail(req, res); }
+    if (action === "supprimer") { await exigerConnexionMoorea(req); return await actionSupprimerMail(req, res); }
     if (action === "marquer-favori") { await exigerConnexionMoorea(req); return await actionMarquerFavori(req, res); }
     if (action === "marquer-important") { await exigerConnexionMoorea(req); return await actionMarquerImportant(req, res); }
     if (action === "resumer") { await exigerConnexionMoorea(req); return await actionResumerMail(req, res); }
