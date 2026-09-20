@@ -933,6 +933,21 @@ export function MessagerieModule({
       .catch(() => {});
   };
 
+  // 20/09/2026 — Demande d'Elinathan : "et les mail clacée important peuvent remonter auussi ?"
+  // -- un bouton pour marquer/démarquer "Important" depuis l'appli, comme pour l'étoile. Le
+  // libellé Gmail "Important" (\Important) était déjà affiché en lecture (dossier "Important"
+  // dans la colonne de gauche, alimenté par le champ "labels" déjà synchronisé) -- ici on ajoute
+  // la possibilité de le POSER depuis l'appli, avec répercussion sur Gmail lui-même.
+  const estImportant = (m: Mail): boolean => Boolean((m.labels || {})["\Important"]);
+  const basculerImportant = (m: Mail, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const nouveauImportant = !estImportant(m);
+    update(ref(db, `messagerie_boite/${m.id}/labels`), { "\Important": nouveauImportant ? true : null }).catch(() => {});
+    enTeteAuth()
+      .then(headers => fetch(`/api/messagerie?action=marquer-important&uid=${m.uid}&boite=${m.boite}&important=${nouveauImportant ? "1" : "0"}`, { headers }))
+      .catch(() => {});
+  };
+
   // 20/09/2026 — Elinathan : "pourquoi j'ai des mail vide ?" -- un bug du robot de synchro (déjà
   // corrigé côté serveur) créait des enregistrements fantômes ne contenant que { lu: true },
   // sans sujet/date/expéditeur/uid/boîte -- affichés comme des lignes complètement vides dans la
@@ -1381,13 +1396,20 @@ export function MessagerieModule({
                             onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
                             onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                           >
-                            <td style={{ padding: "7px 4px", textAlign: "center", verticalAlign: "top" }}>
+                            <td style={{ padding: "7px 4px", textAlign: "center", verticalAlign: "top", whiteSpace: "nowrap" }}>
                               <button
                                 onClick={e => basculerFavori(m, e)}
                                 title={m.favori ? "Retirer des favoris" : "Ajouter aux favoris"}
                                 style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 15, padding: 2, lineHeight: 1, opacity: m.favori ? 1 : 0.35 }}
                               >
                                 {m.favori ? "⭐" : "☆"}
+                              </button>
+                              <button
+                                onClick={e => basculerImportant(m, e)}
+                                title={estImportant(m) ? "Retirer d'Important" : "Marquer comme important"}
+                                style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 13, padding: 2, lineHeight: 1, opacity: estImportant(m) ? 1 : 0.3 }}
+                              >
+                                {estImportant(m) ? "🔴" : "⚪"}
                               </button>
                             </td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap", verticalAlign: "top" }}>{formatDateMail(m.date)}</td>
@@ -1487,6 +1509,17 @@ export function MessagerieModule({
                     style={{ border: "none", background: "transparent", fontSize: 19, cursor: "pointer", padding: 2, lineHeight: 1, opacity: mailOuvert.favori ? 1 : 0.35 }}
                   >
                     {mailOuvert.favori ? "⭐" : "☆"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const nouveauImportant = !estImportant(mailOuvert);
+                      basculerImportant(mailOuvert);
+                      setMailOuvert({ ...mailOuvert, labels: { ...(mailOuvert.labels || {}), "\Important": nouveauImportant ? true : false } });
+                    }}
+                    title={estImportant(mailOuvert) ? "Retirer d'Important" : "Marquer comme important"}
+                    style={{ border: "none", background: "transparent", fontSize: 17, cursor: "pointer", padding: 2, lineHeight: 1, opacity: estImportant(mailOuvert) ? 1 : 0.3 }}
+                  >
+                    {estImportant(mailOuvert) ? "🔴" : "⚪"}
                   </button>
                   <button onClick={fermerMail} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: COLORS.gray600, lineHeight: 1, flexShrink: 0 }}>✕</button>
                 </div>

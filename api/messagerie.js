@@ -539,6 +539,39 @@ async function actionMarquerFavori(req, res) {
   return res.status(200).json({ ok: true });
 }
 
+// ─── action=marquer-important : ajoute/retire le libellé Gmail "Important" ───
+// 20/09/2026 — Demande d'Elinathan : "et les mail clacée important peuvent remonter auussi ?"
+// -> elle veut un bouton dans l'appli, comme pour l'étoile. Différence importante avec
+// \Seen/\Flagged : "Important" n'est PAS un flag IMAP standard mais un LIBELLÉ Gmail
+// (X-GM-LABELS, extension IMAP propre à Gmail) -- d'où l'option useLabels:true, qui fait
+// utiliser la commande STORE X-GM-LABELS au lieu de STORE FLAGS.
+async function actionMarquerImportant(req, res) {
+  const uid = parseInt(req.query?.uid, 10);
+  const boite = req.query?.boite || "all";
+  const important = req.query?.important === "1";
+  if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
+
+  await avecReessai(async () => {
+    const client = await connecterImap();
+    try {
+      const lock = await ouvrirMailboxPourUid(client, boite);
+      try {
+        if (important) {
+          await client.messageFlagsAdd(uid, ["\\Important"], { uid: true, useLabels: true });
+        } else {
+          await client.messageFlagsRemove(uid, ["\\Important"], { uid: true, useLabels: true });
+        }
+      } finally {
+        lock.release();
+      }
+    } finally {
+      try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+    }
+  });
+
+  return res.status(200).json({ ok: true });
+}
+
 // ─── action=marquer-lu : marque un mail comme lu sur Gmail lui-même (flag IMAP \Seen) ───
 // 20/09/2026 — Demande d'Elinathan : "mets un systeme pour savoir si un mail a etais lu [...]
 // ont peut savoir si le mail a etais lu ou pas sur gmail ?" -- jusqu'ici, ouvrir un mail dans
@@ -900,6 +933,7 @@ export default async function handler(req, res) {
     if (action === "envoyer") { await exigerConnexionMoorea(req); return await actionEnvoyer(req, res); }
     if (action === "marquer-lu") { await exigerConnexionMoorea(req); return await actionMarquerLu(req, res); }
     if (action === "marquer-favori") { await exigerConnexionMoorea(req); return await actionMarquerFavori(req, res); }
+    if (action === "marquer-important") { await exigerConnexionMoorea(req); return await actionMarquerImportant(req, res); }
     if (action === "suggerer-attribution") { await exigerConnexionMoorea(req); return await actionSuggererAttribution(req, res); }
     if (action === "sync") {
       const secretSyncOk = req.query?.secret && req.query.secret === process.env.MESSAGERIE_SYNC_SECRET;
