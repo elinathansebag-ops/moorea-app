@@ -536,6 +536,73 @@ async function actionMarquerLu(req, res) {
   return res.status(200).json({ ok: true });
 }
 
+// ─── action=suggerer-attribution : un agent IA propose un commercial pour les expéditeurs
+// sans règle d'attribution ("mets un agent ia pour aider ?", 20/09/2026). L'IA ne DÉCIDE jamais
+// toute seule -- elle propose seulement, en s'appuyant sur les règles déjà en place (pour capter
+// les habitudes de l'entreprise) et sur les sujets récents de chaque expéditeur ; Elinathan
+// accepte ou ignore chaque suggestion une par une côté appli, ce qui crée la vraie règle.
+async function actionSuggererAttribution(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const cleIa = process.env.ANTHROPIC_API_KEY;
+  if (!cleIa) {
+    return res.status(500).json({
+      error: "Clé ANTHROPIC_API_KEY manquante. Ajoute-la dans Vercel (Settings > Environment Variables) avec ta clé console.anthropic.com, puis redéploie.",
+    });
+  }
+
+  const { expediteurs, commerciaux, reglesExistantes } = req.body || {};
+  const listeExpediteurs = Array.isArray(expediteurs) ? expediteurs.slice(0, 40) : [];
+  const listeCommerciaux = Array.isArray(commerciaux) ? commerciaux : [];
+  const listeRegles = Array.isArray(reglesExistantes) ? reglesExistantes : [];
+  if (listeExpediteurs.length === 0) return res.status(200).json({ suggestions: [] });
+  if (listeCommerciaux.length === 0) return res.status(400).json({ error: "Aucun commercial connu (Droits d'accès > Utilisateurs)." });
+
+  const prompt = `Tu aides une entreprise d'agréage de fruits et légumes (Moorea) à ranger sa boîte mail.
+Voici les commerciaux disponibles (nom et identifiant) : ${listeCommerciaux.map(c => `${c.nom} (id=${c.id})`).join(", ")}.
+
+Voici des règles d'attribution déjà en place chez eux, pour comprendre leurs habitudes (qui gère quel client) :
+${listeRegles.length ? listeRegles.map(r => `- ${r.expediteur} -> ${r.commerciaux.join(", ")}`).join("\n") : "(aucune règle pour l'instant)"}
+
+Voici des expéditeurs de mails qui n'ont ENCORE AUCUN commercial attribué. Pour chacun, propose le commercial le plus probable en te basant sur son adresse mail, son nom affiché, et ses sujets de mails récents. Si tu n'as vraiment aucun indice, renvoie commercialId à null plutôt que de deviner au hasard.
+
+${listeExpediteurs.map((e, i) => `${i + 1}. adresse=${e.adresse} nom=${e.nom || "(inconnu)"} sujets_recents=${(e.exemplesSujets || []).join(" / ") || "(aucun)"}`).join("\n")}
+
+Réponds UNIQUEMENT avec un tableau JSON (rien d'autre, pas de texte avant/après), un objet par expéditeur dans le même ordre, sous la forme exacte :
+[{"adresse": "...", "commercialId": "id-ou-null", "raison": "courte explication en français, une phrase"}]`;
+
+  const modele = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+  const reponseIa = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": cleIa,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: modele,
+      max_tokens: 2000,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  const data = await reponseIa.json();
+  if (!reponseIa.ok) {
+    return res.status(502).json({ error: data?.error?.message || `Erreur de l'API IA (modèle "${modele}").` });
+  }
+
+  const texteBrut = data?.content?.[0]?.text || "[]";
+  let suggestions;
+  try {
+    const correspondance = texteBrut.match(/\[[\s\S]*\]/);
+    suggestions = JSON.parse(correspondance ? correspondance[0] : texteBrut);
+  } catch {
+    return res.status(502).json({ error: "Réponse de l'IA illisible (pas un JSON valide)." });
+  }
+
+  return res.status(200).json({ suggestions });
+}
+
 // ─── action=envoyer : répondre/transférer depuis commercial@moorea.fr ───
 async function actionEnvoyer(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -780,6 +847,7 @@ export default async function handler(req, res) {
     if (action === "piece-jointe") { await exigerConnexionMoorea(req); return await actionPieceJointe(req, res); }
     if (action === "envoyer") { await exigerConnexionMoorea(req); return await actionEnvoyer(req, res); }
     if (action === "marquer-lu") { await exigerConnexionMoorea(req); return await actionMarquerLu(req, res); }
+    if (action === "suggerer-attribution") { await exigerConnexionMoorea(req); return await actionSuggererAttribution(req, res); }
     if (action === "sync") {
       const secretSyncOk = req.query?.secret && req.query.secret === process.env.MESSAGERIE_SYNC_SECRET;
       if (!secretSyncOk) return res.status(401).json({ error: "Non autorise" });

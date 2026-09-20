@@ -771,11 +771,59 @@ export function MessagerieModule({
     mails.filter(m => mailVisiblePourMoi(m.expediteur) && mailAppartientAuDossier(m, d) && m.lu === false).length;
 
   const [filtreExpediteur, setFiltreExpediteur] = useState("");
+  // 20/09/2026 — Demande d'Elinathan : une vue "non attribués" pour repérer vite ce qui n'a
+  // encore été rattaché à aucun commercial, plus un agent IA qui propose (sans jamais décider
+  // tout seul) à qui attribuer chacun d'eux -- Elinathan accepte ou ignore chaque suggestion.
+  const [nonAttribuesUniquement, setNonAttribuesUniquement] = useState(false);
+  const [suggestionsIa, setSuggestionsIa] = useState<Record<string, { commercialId: string | null; raison: string }>>({});
+  const [chargementSuggestionsIa, setChargementSuggestionsIa] = useState(false);
+  const [erreurSuggestionsIa, setErreurSuggestionsIa] = useState<string | null>(null);
+
   const reglesFiltrees = regles
     .filter(r => !filtreExpediteur.trim() || r.expediteur.toLowerCase().includes(filtreExpediteur.trim().toLowerCase()))
+    .filter(r => !nonAttribuesUniquement || (r.commercialIds || []).length === 0)
     .sort((a, b) => (b.nbMails || 0) - (a.nbMails || 0) || a.expediteur.localeCompare(b.expediteur));
 
   const nbNonAttribues = regles.filter(r => (r.commercialIds || []).length === 0).length;
+
+  const demanderSuggestionsIa = async () => {
+    const nonAttribues = regles.filter(r => (r.commercialIds || []).length === 0);
+    if (nonAttribues.length === 0 || commerciaux.length === 0) return;
+    setChargementSuggestionsIa(true);
+    setErreurSuggestionsIa(null);
+    try {
+      const headers = await enTeteAuth();
+      const reponse = await fetch("/api/messagerie?action=suggerer-attribution", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expediteurs: nonAttribues.map(r => ({
+            adresse: r.expediteur,
+            exemplesSujets: r.dernierSujet ? [r.dernierSujet] : [],
+          })),
+          commerciaux: commerciaux.map(c => ({ id: c.id, nom: c.nom })),
+          reglesExistantes: regles
+            .filter(r => (r.commercialIds || []).length > 0)
+            .slice(0, 60)
+            .map(r => ({
+              expediteur: r.expediteur,
+              commerciaux: (r.commercialIds || []).map(id => commerciaux.find(c => c.id === id)?.nom).filter(Boolean),
+            })),
+        }),
+      });
+      const data = await reponse.json();
+      if (!reponse.ok) { setErreurSuggestionsIa(data?.error || "Erreur pendant la demande de suggestions."); return; }
+      const carte: Record<string, { commercialId: string | null; raison: string }> = {};
+      for (const s of data?.suggestions || []) {
+        if (s?.adresse) carte[s.adresse] = { commercialId: s.commercialId || null, raison: s.raison || "" };
+      }
+      setSuggestionsIa(carte);
+    } catch (err: any) {
+      setErreurSuggestionsIa(err?.message || "Erreur réseau pendant la demande de suggestions.");
+    } finally {
+      setChargementSuggestionsIa(false);
+    }
+  };
 
   // Carnet d'adresses pour l'auto-complétion (19/09/2026) : les adresses déjà utilisées pour
   // envoyer un mail (messagerie_contacts) + les expéditeurs déjà vus dans la boîte -- comme
@@ -1277,8 +1325,34 @@ export function MessagerieModule({
                 value={filtreExpediteur}
                 onChange={e => setFiltreExpediteur(e.target.value)}
                 placeholder="🔎 Filtrer la liste (ex: terreazur, monoprix...)"
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
               />
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLORS.gray700, cursor: "pointer" }}>
+                  <input type="checkbox" checked={nonAttribuesUniquement} onChange={e => setNonAttribuesUniquement(e.target.checked)} />
+                  Non attribués uniquement {nbNonAttribues > 0 ? `(${nbNonAttribues})` : ""}
+                </label>
+                <button
+                  onClick={demanderSuggestionsIa}
+                  disabled={nbNonAttribues === 0 || chargementSuggestionsIa}
+                  title={nbNonAttribues === 0 ? "Aucun expéditeur non attribué" : "Demander à l'IA de proposer un commercial pour chaque expéditeur non attribué"}
+                  style={{
+                    padding: "7px 14px", borderRadius: 8, border: "none",
+                    background: nbNonAttribues === 0 ? COLORS.gray200 : COLORS.primary,
+                    color: nbNonAttribues === 0 ? COLORS.gray600 : "#fff",
+                    fontSize: 12.5, fontWeight: 700, cursor: nbNonAttribues === 0 || chargementSuggestionsIa ? "default" : "pointer",
+                    opacity: chargementSuggestionsIa ? 0.6 : 1,
+                  }}
+                >
+                  {chargementSuggestionsIa ? "⏳ L'IA réfléchit..." : "🤖 Suggestions IA"}
+                </button>
+              </div>
+              {erreurSuggestionsIa && (
+                <div style={{ background: COLORS.dangerLight, border: "1.5px solid #fca5a5", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: COLORS.danger, marginBottom: 10 }}>
+                  ⚠️ {erreurSuggestionsIa}
+                </div>
+              )}
 
               {commerciaux.length === 0 ? (
                 <p style={{ fontSize: 12, color: "#999" }}>Ajoute d'abord au moins un commercial ci-dessus.</p>
@@ -1309,6 +1383,29 @@ export function MessagerieModule({
                                 {r.dernierSujet}
                               </div>
                             ) : null}
+                            {(r.commercialIds || []).length === 0 && suggestionsIa[r.expediteur] && (
+                              suggestionsIa[r.expediteur].commercialId ? (
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: 10.5, fontWeight: 400, color: COLORS.primary, maxWidth: 220 }}>
+                                    🤖 {commerciaux.find(c => c.id === suggestionsIa[r.expediteur].commercialId)?.nom || "?"}
+                                    {suggestionsIa[r.expediteur].raison ? ` — ${suggestionsIa[r.expediteur].raison}` : ""}
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      const id = suggestionsIa[r.expediteur].commercialId;
+                                      if (id) toggleCommercialSurRegle(r, id);
+                                    }}
+                                    style={{ border: "none", background: COLORS.primaryLight, color: COLORS.primary, borderRadius: 6, padding: "2px 8px", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}
+                                  >
+                                    Appliquer
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: 10.5, fontWeight: 400, color: COLORS.gray600, marginTop: 4 }}>
+                                  🤖 Pas d'idée pour celui-ci{suggestionsIa[r.expediteur].raison ? ` — ${suggestionsIa[r.expediteur].raison}` : ""}
+                                </div>
+                              )
+                            )}
                           </td>
                           <td style={{ padding: "7px 6px", textAlign: "right", color: COLORS.gray600 }}>{r.nbMails ?? "-"}</td>
                           {commerciaux.map(c => {
