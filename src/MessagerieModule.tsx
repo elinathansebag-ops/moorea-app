@@ -112,7 +112,17 @@ export type Mail = {
   date: string | null;
   lu: boolean | null;
   labels?: Record<string, boolean>;
+  // 20/09/2026 — Demande d'Elinathan : "un systeme pour voir quelle mail a etais tréter et par
+  // qui avec un commentaire" -- statut de traitement métier (liste personnalisable, voir
+  // Configuration > Statuts), qui l'a posé et un commentaire libre facultatif.
+  statut?: string | null;
+  statutPar?: string | null;
+  statutCommentaire?: string | null;
+  statutLe?: number | null;
 };
+
+// Liste par défaut si personne n'a encore personnalisé la liste dans Configuration > Statuts.
+const STATUTS_PAR_DEFAUT = ["À traiter", "Commande saisie", "Transféré à la compta", "En attente réponse", "Traité"];
 
 type TabKey = "boite" | "configuration";
 
@@ -309,6 +319,7 @@ export function MessagerieModule({
   }, []);
 
   const [nouveauCommercial, setNouveauCommercial] = useState("");
+  const [nouveauStatutSaisi, setNouveauStatutSaisi] = useState("");
   const ajouterCommercial = async () => {
     const nom = nouveauCommercial.trim();
     if (!nom) return;
@@ -375,6 +386,37 @@ export function MessagerieModule({
   const [derniereSyncRobot, setDerniereSyncRobot] = useState<Date | null>(null);
   const [dossierActif, setDossierActif] = useState<string>("INBOX");
 
+  // 20/09/2026 — brouillon du commentaire de statut en cours de saisie dans le mail ouvert.
+  const [commentaireStatutSaisi, setCommentaireStatutSaisi] = useState("");
+
+  // 20/09/2026 — Demande d'Elinathan : liste de statuts personnalisable ("ajoute dans configurer
+  // des cmap pour en mettre dautre") au lieu d'une liste figée en dur dans le code.
+  const [statutsConfigures, setStatutsConfigures] = useState<string[]>(STATUTS_PAR_DEFAUT);
+  const [statutsPersonnalises, setStatutsPersonnalises] = useState(false);
+
+  // 20/09/2026 — Demande d'Elinathan : "un bouton ail attribuet ou toute la boite" -- un
+  // utilisateur rattaché à un commercial ne voit d'habitude que ses mails attribués ; cette
+  // bascule lui permet de voir toute la boîte quand il en a besoin (avec une pastille "à moi"
+  // sur ses mails, voir plus bas). Sans effet pour un admin, qui voit déjà tout.
+  const [voirToutLaBoite, setVoirToutLaBoite] = useState(false);
+
+  // 20/09/2026 — Demande d'Elinathan : "un systeme de trie dans la boite"
+  const [triActif, setTriActif] = useState<"date_desc" | "date_asc" | "statut" | "expediteur">("date_desc");
+
+  useEffect(() => {
+    const uStatuts = onValue(ref(db, "messagerie_config/statuts"), snap => {
+      const v = snap.val();
+      if (Array.isArray(v) && v.length > 0) {
+        setStatutsConfigures(v);
+        setStatutsPersonnalises(true);
+      } else {
+        setStatutsConfigures(STATUTS_PAR_DEFAUT);
+        setStatutsPersonnalises(false);
+      }
+    });
+    return () => { uStatuts(); };
+  }, []);
+
   useEffect(() => {
     const u1 = onValue(ref(db, "messagerie_boite"), snap => {
       const d = snap.val();
@@ -389,6 +431,10 @@ export function MessagerieModule({
             date: v.date ? new Date(v.date).toISOString() : null,
             lu: typeof v.lu === "boolean" ? v.lu : null,
             labels: v.labels || {},
+            statut: v.statut || null,
+            statutPar: v.statutPar || null,
+            statutCommentaire: v.statutCommentaire || null,
+            statutLe: typeof v.statutLe === "number" ? v.statutLe : null,
           }))
         : [];
       liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -524,6 +570,7 @@ export function MessagerieModule({
     setMailOuvert(null);
     setDetailMail(null);
     setModeCompose(null);
+    setCommentaireStatutSaisi("");
   };
 
   // Extrait juste l'adresse d'un "Nom <adresse@exemple.com>" (ou renvoie la chaîne si elle est
@@ -754,8 +801,66 @@ export function MessagerieModule({
   // d'accès aux données (l'API renvoie toujours tous les mails, seul l'affichage change ici).
   const mailVisiblePourMoi = (adresse: string): boolean => {
     if (isAdmin || commercialIdsUtilisateur.length === 0) return true;
+    if (voirToutLaBoite) return true;
     const attribues = trouverAttributionIds(adresse);
     return attribues.some(id => commercialIdsUtilisateur.includes(id));
+  };
+
+  // Pastille "à moi" quand on regarde "toute la boîte" (20/09/2026, demande d'Elinathan).
+  const mailAttribueAMoi = (adresse: string): boolean => {
+    if (commercialIdsUtilisateur.length === 0) return false;
+    return trouverAttributionIds(adresse).some(id => commercialIdsUtilisateur.includes(id));
+  };
+
+  // 20/09/2026 — Demande d'Elinathan : "s'attribuuet le mail" -- en clair (confirmé) :
+  // "M'ajouter comme commercial pour CET expéditeur", un raccourci en un clic depuis la boîte
+  // vers le système d'attribution par expéditeur existant (Configuration > Expéditeurs).
+  const mAttribuerCommeCommercial = async (mail: Mail) => {
+    if (commercialIdsUtilisateur.length === 0) return;
+    const monId = commercialIdsUtilisateur[0];
+    const adresse = (mail.expediteur || "").toLowerCase();
+    const ligne = lignesExpediteurs.find(l => !l.estDomaine && l.adresse === adresse);
+    if (ligne) {
+      if (ligne.commercialIds.includes(monId)) return;
+      await toggleCommercialPourLigne(ligne, monId);
+    } else {
+      await push(ref(db, "messagerie_regles"), {
+        expediteur: mail.expediteur,
+        commercialIds: [monId],
+        nbMails: 1,
+        dernierSujet: mail.sujet,
+        creeLe: new Date().toLocaleString("fr-FR"),
+      });
+    }
+    notify("success", "✓ Tu es maintenant attribué à cet expéditeur");
+  };
+
+  // 20/09/2026 — Demande d'Elinathan : marquer le statut de traitement d'un mail, avec un
+  // commentaire facultatif -- qui l'a posé et quand sont enregistrés pour que les admins
+  // puissent voir "quelle mail a été traité et par qui".
+  const definirStatutMail = async (mail: Mail, statut: string, commentaire: string) => {
+    await update(ref(db, `messagerie_boite/${mail.id}`), {
+      statut,
+      statutPar: userName || "?",
+      statutCommentaire: commentaire || null,
+      statutLe: Date.now(),
+    });
+    notify("success", `✓ Statut mis à jour : ${statut}`);
+  };
+
+  const ajouterStatutConfigure = async (nom: string) => {
+    const propre = nom.trim();
+    if (!propre) return;
+    const liste = statutsPersonnalises ? statutsConfigures : STATUTS_PAR_DEFAUT;
+    if (liste.some(s => s.toLowerCase() === propre.toLowerCase())) {
+      notify("error", "Ce statut existe déjà");
+      return;
+    }
+    await update(ref(db, "messagerie_config"), { statuts: [...liste, propre] });
+  };
+  const supprimerStatutConfigure = async (nom: string) => {
+    const liste = statutsPersonnalises ? statutsConfigures : STATUTS_PAR_DEFAUT;
+    await update(ref(db, "messagerie_config"), { statuts: liste.filter(s => s !== nom) });
   };
 
   const formatDateMail = (iso: string | null) => {
@@ -772,12 +877,20 @@ export function MessagerieModule({
     return Boolean((m.labels || {})[d]);
   };
 
-  const mailsFiltres = mails.filter(m => {
+  const mailsFiltresBase = mails.filter(m => {
     if (!mailVisiblePourMoi(m.expediteur)) return false;
     if (!mailAppartientAuDossier(m, dossierActif)) return false;
     if (!filtreMails.trim()) return true;
     const q = filtreMails.trim().toLowerCase();
     return m.expediteur.includes(q) || m.nomExpediteur.toLowerCase().includes(q) || m.sujet.toLowerCase().includes(q);
+  });
+
+  // 20/09/2026 — Demande d'Elinathan : "un systeme de trie dans la boite"
+  const mailsFiltres = [...mailsFiltresBase].sort((a, b) => {
+    if (triActif === "date_asc") return (a.date || "").localeCompare(b.date || "");
+    if (triActif === "statut") return (a.statut || "").localeCompare(b.statut || "") || (b.date || "").localeCompare(a.date || "");
+    if (triActif === "expediteur") return (a.nomExpediteur || a.expediteur).localeCompare(b.nomExpediteur || b.expediteur);
+    return (b.date || "").localeCompare(a.date || ""); // date_desc, ordre habituel par défaut
   });
 
   // 20/09/2026 — Demande d'Elinathan : un vrai système lu/pas lu "comme dans Gmail" -- un badge
@@ -1107,8 +1220,35 @@ export function MessagerieModule({
                   value={filtreMails}
                   onChange={e => setFiltreMails(e.target.value)}
                   placeholder="🔎 Filtrer (expéditeur, nom, sujet...)"
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 12, boxSizing: "border-box" }}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
                 />
+              )}
+
+              {mails.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                  {/* 20/09/2026 — Demande d'Elinathan : un utilisateur rattaché à un commercial ne
+                      voit d'habitude que ses mails attribués -- cette bascule lui permet de voir
+                      toute la boîte quand il en a besoin (les admins voient déjà tout). */}
+                  {!isAdmin && commercialIdsUtilisateur.length > 0 ? (
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLORS.gray700, cursor: "pointer" }}>
+                      <input type="checkbox" checked={voirToutLaBoite} onChange={e => setVoirToutLaBoite(e.target.checked)} />
+                      Voir toute la boîte (pas seulement mes mails attribués)
+                    </label>
+                  ) : <span />}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.gray600 }}>
+                    Trier par
+                    <select
+                      value={triActif}
+                      onChange={e => setTriActif(e.target.value as typeof triActif)}
+                      style={{ padding: "5px 8px", borderRadius: 7, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12 }}
+                    >
+                      <option value="date_desc">Date (récent → ancien)</option>
+                      <option value="date_asc">Date (ancien → récent)</option>
+                      <option value="statut">Statut</option>
+                      <option value="expediteur">Expéditeur</option>
+                    </select>
+                  </label>
+                </div>
               )}
 
               {!mailsDejaCharges && (
@@ -1127,10 +1267,11 @@ export function MessagerieModule({
                 <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                     <colgroup>
-                      <col style={{ width: "11%" }} />
-                      <col style={{ width: "24%" }} />
-                      <col style={{ width: "50%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "21%" }} />
+                      <col style={{ width: "37%" }} />
                       <col style={{ width: "15%" }} />
+                      <col style={{ width: "17%" }} />
                     </colgroup>
                     <thead>
                       <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
@@ -1138,6 +1279,7 @@ export function MessagerieModule({
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Statut</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1155,6 +1297,12 @@ export function MessagerieModule({
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere" }}>
                               {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
                               <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400 }}>{m.expediteur}</div>
+                              {/* 20/09/2026 — pastille "à moi" quand on regarde toute la boîte (demande d'Elinathan). */}
+                              {voirToutLaBoite && mailAttribueAMoi(m.expediteur) && (
+                                <span style={{ display: "inline-block", marginTop: 3, background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, color: COLORS.primary, borderRadius: 999, fontSize: 10, fontWeight: 800, padding: "1px 7px" }}>
+                                  👤 à moi
+                                </span>
+                              )}
                             </td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>
                               {m.sujet}
@@ -1164,6 +1312,18 @@ export function MessagerieModule({
                                 <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")}</span>
                               ) : (
                                 <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>Non attribué</span>
+                              )}
+                            </td>
+                            <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
+                              {m.statut ? (
+                                <span
+                                  title={m.statutPar ? `Par ${m.statutPar}${m.statutCommentaire ? ` — ${m.statutCommentaire}` : ""}` : undefined}
+                                  style={{ display: "inline-block", background: m.statut === "Traité" ? COLORS.primaryLight : COLORS.gray100, border: `1.5px solid ${m.statut === "Traité" ? COLORS.primaryBorder : COLORS.gray200}`, color: m.statut === "Traité" ? COLORS.primary : COLORS.gray700, borderRadius: 8, fontSize: 10.5, fontWeight: 700, padding: "2px 8px", whiteSpace: "nowrap" }}
+                                >
+                                  {m.statut}
+                                </span>
+                              ) : (
+                                <span style={{ color: COLORS.gray600, fontSize: 11 }}>—</span>
                               )}
                             </td>
                           </tr>
@@ -1321,11 +1481,59 @@ export function MessagerieModule({
               </div>
 
               {detailMail && !modeCompose && (
-                <div style={{ padding: "12px 18px", borderTop: `1.5px solid ${COLORS.gray200}`, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={ouvrirRepondre} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>↩️ Répondre</button>
-                  <button onClick={ouvrirTransferer} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>➡️ Transférer</button>
-                  <button onClick={imprimerMail} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🖨️ Imprimer</button>
-                </div>
+                <>
+                  {/* 20/09/2026 — Demande d'Elinathan : statut de traitement (liste personnalisable,
+                      voir Configuration > Statuts) avec commentaire facultatif, visible de tous
+                      avec qui l'a posé -- "voir quelle mail a été traité et par qui avec un
+                      commentaire". */}
+                  <div style={{ padding: "12px 18px 0", borderTop: `1.5px solid ${COLORS.gray200}` }}>
+                    <p style={{ margin: "0 0 8px", fontWeight: 800, fontSize: 12, color: COLORS.gray700, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                      Statut de traitement
+                    </p>
+                    {mailOuvert.statut && (
+                      <p style={{ margin: "0 0 8px", fontSize: 11.5, color: COLORS.gray600 }}>
+                        Actuel : <strong style={{ color: COLORS.gray700 }}>{mailOuvert.statut}</strong>
+                        {mailOuvert.statutPar ? ` — posé par ${mailOuvert.statutPar}` : ""}
+                        {mailOuvert.statutLe ? ` (${new Date(mailOuvert.statutLe).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})` : ""}
+                        {mailOuvert.statutCommentaire ? <><br />💬 {mailOuvert.statutCommentaire}</> : null}
+                      </p>
+                    )}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                      <select
+                        value=""
+                        onChange={e => {
+                          if (e.target.value) definirStatutMail(mailOuvert, e.target.value, commentaireStatutSaisi);
+                          setCommentaireStatutSaisi("");
+                        }}
+                        style={{ padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5, minWidth: 170 }}
+                      >
+                        <option value="">Changer le statut...</option>
+                        {statutsConfigures.map(s => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      <input
+                        value={commentaireStatutSaisi}
+                        onChange={e => setCommentaireStatutSaisi(e.target.value)}
+                        placeholder="Commentaire (facultatif, rempli avant de choisir un statut)"
+                        style={{ flex: 1, minWidth: 200, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ padding: "0 18px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={ouvrirRepondre} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>↩️ Répondre</button>
+                    <button onClick={ouvrirTransferer} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>➡️ Transférer</button>
+                    <button onClick={imprimerMail} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🖨️ Imprimer</button>
+                    {/* 20/09/2026 — Demande d'Elinathan : "s'attribuuet le mail" = "M'ajouter comme
+                        commercial pour CET expéditeur", un raccourci vers l'attribution existante. */}
+                    {commercialIdsUtilisateur.length > 0 && !trouverAttributionIds(mailOuvert.expediteur).includes(commercialIdsUtilisateur[0]) && (
+                      <button onClick={() => mAttribuerCommeCommercial(mailOuvert)} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                        👤 M'attribuer cet expéditeur
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -1419,6 +1627,43 @@ export function MessagerieModule({
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* 20/09/2026 — Demande d'Elinathan : "ajoute dans configurer des cmap pour en
+                mettre dautre" -- gestion de la liste de statuts de traitement utilisée dans la
+                boîte de réception (voir le mail ouvert > "Statut de traitement"). L'ordre de la
+                liste ci-dessous est l'ordre proposé dans le menu déroulant du mail. */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 12px", fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
+                🏷️ Statuts de traitement ({statutsConfigures.length})
+              </p>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                <input
+                  value={nouveauStatutSaisi}
+                  onChange={e => setNouveauStatutSaisi(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { ajouterStatutConfigure(nouveauStatutSaisi); setNouveauStatutSaisi(""); } }}
+                  placeholder="Nom du statut (ex: En attente stock)"
+                  style={{ flex: 1, minWidth: 180, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13 }}
+                />
+                <button
+                  onClick={() => { ajouterStatutConfigure(nouveauStatutSaisi); setNouveauStatutSaisi(""); }}
+                  style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  ➕ Ajouter
+                </button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {statutsConfigures.map(s => (
+                  <div key={s} style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 20, padding: "6px 8px 6px 14px" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.primary }}>{s}</span>
+                    <button onClick={() => supprimerStatutConfigure(s)} title="Supprimer"
+                      style={{ border: "none", background: "transparent", color: COLORS.gray600, fontSize: 14, cursor: "pointer", lineHeight: 1, padding: "2px 4px" }}>×</button>
+                  </div>
+                ))}
+              </div>
+              <p style={{ margin: "10px 0 0", fontSize: 11, color: COLORS.gray600 }}>
+                Ordre = ordre affiché dans le menu déroulant "Changer le statut" d'un mail.
+              </p>
             </div>
 
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
