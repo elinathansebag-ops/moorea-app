@@ -26,6 +26,32 @@ import { PageHeader, styles, cleTab } from "./shared";
 // (api/messagerie-seed-expediteurs.js) à partir des vrais expéditeurs vus dans commercial@moorea.fr,
 // pour qu'Elinathan n'ait qu'à cocher plutôt qu'à retaper chaque adresse.
 
+// 20/09/2026 — Case à cocher dessinée à la main (même bug que celui documenté le 16/09/2026 sur
+// les cases de la table Expéditeurs : la case native <input type="checkbox"> se dessinait comme
+// un gros rectangle vide dans la webview de l'appli). Réutilisée partout où il fallait avant un
+// <input type="checkbox">.
+function CaseACocher({ coche, onChange, label }: { coche: boolean; onChange: (v: boolean) => void; label: React.ReactNode }) {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "inherit", color: "inherit", cursor: "pointer" }}>
+      <span
+        role="checkbox"
+        aria-checked={coche}
+        onClick={() => onChange(!coche)}
+        style={{
+          width: 16, height: 16, borderRadius: 4, flexShrink: 0, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          border: `2px solid ${coche ? COLORS.primary : COLORS.gray200}`,
+          background: coche ? COLORS.primary : "#fff",
+          color: "#fff", fontSize: 11, fontWeight: 900, lineHeight: 1, userSelect: "none",
+        }}
+      >
+        {coche ? "✓" : ""}
+      </span>
+      {label}
+    </label>
+  );
+}
+
 const COLORS = {
   primary: "#0f766e",
   primaryLight: "#f0fdfa",
@@ -125,6 +151,18 @@ export type Mail = {
 
 // Liste par défaut si personne n'a encore personnalisé la liste dans Configuration > Statuts.
 const STATUTS_PAR_DEFAUT = ["À traiter", "Commande saisie", "Transféré à la compta", "En attente réponse", "Traité"];
+
+// 20/09/2026 — Demande d'Elinathan : "faudrais metre une pastille ou un systeme de couleur pour
+// les mail fermée en focntion du statu" -- une couleur stable par nom de statut (calculée à
+// partir du texte, pas de sa position dans la liste, pour ne pas changer si la liste est
+// réordonnée/modifiée dans Configuration). "Traité" reste vert par convention.
+const PALETTE_STATUTS = ["#c2410c", "#0369a1", "#7c3aed", "#b45309", "#be185d", "#4d7c0f", "#0e7490"];
+function couleurStatut(statut: string): string {
+  if (statut === "Traité") return "#0f766e";
+  let h = 0;
+  for (let i = 0; i < statut.length; i++) h = (h * 31 + statut.charCodeAt(i)) >>> 0;
+  return PALETTE_STATUTS[h % PALETTE_STATUTS.length];
+}
 
 type TabKey = "boite" | "configuration";
 
@@ -1241,10 +1279,9 @@ export function MessagerieModule({
                       voit d'habitude que ses mails attribués -- cette bascule lui permet de voir
                       toute la boîte quand il en a besoin (les admins voient déjà tout). */}
                   {!isAdmin && commercialIdsUtilisateur.length > 0 ? (
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLORS.gray700, cursor: "pointer" }}>
-                      <input type="checkbox" checked={voirToutLaBoite} onChange={e => setVoirToutLaBoite(e.target.checked)} />
-                      Voir toute la boîte (pas seulement mes mails attribués)
-                    </label>
+                    <div style={{ fontSize: 12.5, color: COLORS.gray700 }}>
+                      <CaseACocher coche={voirToutLaBoite} onChange={setVoirToutLaBoite} label="Voir toute la boîte (pas seulement mes mails attribués)" />
+                    </div>
                   ) : <span />}
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.gray600 }}>
                     Trier par
@@ -1335,13 +1372,25 @@ export function MessagerieModule({
                               ) : (
                                 <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>Non attribué</span>
                               )}
+                              {/* 20/09/2026 — Demande d'Elinathan : le bouton "M'attribuer" doit être
+                                  accessible aussi mail fermé, pas seulement dans le mail ouvert. */}
+                              {commercialIdsUtilisateur.length > 0 && !attribues.includes(commerciaux.find(c => c.id === commercialIdsUtilisateur[0])?.nom || "\0") && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); mAttribuerCommeCommercial(m); }}
+                                  title="M'attribuer cet expéditeur"
+                                  style={{ display: "block", marginTop: 3, border: "none", background: "transparent", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}
+                                >
+                                  👤 M'attribuer
+                                </button>
+                              )}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
                               {m.statut ? (
                                 <span
                                   title={m.statutPar ? `Par ${m.statutPar}${m.statutCommentaire ? ` — ${m.statutCommentaire}` : ""}` : undefined}
-                                  style={{ display: "inline-block", background: m.statut === "Traité" ? COLORS.primaryLight : COLORS.gray100, border: `1.5px solid ${m.statut === "Traité" ? COLORS.primaryBorder : COLORS.gray200}`, color: m.statut === "Traité" ? COLORS.primary : COLORS.gray700, borderRadius: 8, fontSize: 10.5, fontWeight: 700, padding: "2px 8px", whiteSpace: "nowrap" }}
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 5, background: `${couleurStatut(m.statut)}1a`, border: `1.5px solid ${couleurStatut(m.statut)}55`, color: couleurStatut(m.statut), borderRadius: 8, fontSize: 10.5, fontWeight: 700, padding: "2px 8px", whiteSpace: "nowrap" }}
                                 >
+                                  <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: couleurStatut(m.statut), flexShrink: 0 }} />
                                   {m.statut}
                                 </span>
                               ) : (
@@ -1488,10 +1537,9 @@ export function MessagerieModule({
                     />
                     <EditeurCorps editeurRef={corpsEditableRef} />
                     {modeCompose === "transferer" && detailMail.pieces.length > 0 && (
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLORS.gray700, marginBottom: 10, cursor: "pointer" }}>
-                        <input type="checkbox" checked={composeInclurePieces} onChange={e => setComposeInclurePieces(e.target.checked)} />
-                        Inclure les {detailMail.pieces.length} pièce(s) jointe(s) du mail original
-                      </label>
+                      <div style={{ fontSize: 12.5, color: COLORS.gray700, marginBottom: 10 }}>
+                        <CaseACocher coche={composeInclurePieces} onChange={setComposeInclurePieces} label={`Inclure les ${detailMail.pieces.length} pièce(s) jointe(s) du mail original`} />
+                      </div>
                     )}
                     <div style={{ display: "flex", gap: 8 }}>
                       <button
@@ -1732,10 +1780,9 @@ export function MessagerieModule({
               />
 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLORS.gray700, cursor: "pointer" }}>
-                  <input type="checkbox" checked={nonAttribuesUniquement} onChange={e => setNonAttribuesUniquement(e.target.checked)} />
-                  Non attribués uniquement {nbNonAttribues > 0 ? `(${nbNonAttribues})` : ""}
-                </label>
+                <div style={{ fontSize: 12.5, color: COLORS.gray700 }}>
+                  <CaseACocher coche={nonAttribuesUniquement} onChange={setNonAttribuesUniquement} label={`Non attribués uniquement ${nbNonAttribues > 0 ? `(${nbNonAttribues})` : ""}`} />
+                </div>
                 <button
                   onClick={demanderSuggestionsIa}
                   disabled={nbNonAttribues === 0 || chargementSuggestionsIa}
