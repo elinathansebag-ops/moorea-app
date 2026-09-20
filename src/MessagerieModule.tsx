@@ -1500,8 +1500,15 @@ export function MessagerieModule({
                   par" qui était ici est monté à côté de "Synchronisé", plus haut. */}
               {mails.length > 0 && !isAdmin && commercialIdsUtilisateur.length > 0 && (
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 12.5, color: COLORS.gray700 }}>
-                    <CaseACocher coche={voirToutLaBoite} onChange={setVoirToutLaBoite} label="Voir toute la boîte (pas seulement mes mails attribués)" />
+                  <div
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700,
+                      color: voirToutLaBoite ? "#fff" : COLORS.primary,
+                      background: voirToutLaBoite ? COLORS.primary : COLORS.primaryLight,
+                      border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 999, padding: "6px 14px",
+                    }}
+                  >
+                    <CaseACocher coche={voirToutLaBoite} onChange={setVoirToutLaBoite} label="🔎 Voir toute la boîte (pas seulement mes mails attribués)" />
                   </div>
                 </div>
               )}
@@ -1586,46 +1593,68 @@ export function MessagerieModule({
                               {m.sujet}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word", position: "relative" }}>
-                              <button
-                                onClick={e => { e.stopPropagation(); setAttributionOuverteId(prev => (prev === m.id ? null : m.id)); }}
-                                style={{ display: "block", border: "none", background: "transparent", padding: 0, cursor: "pointer", textAlign: "left", width: "100%" }}
-                                title="Cliquer pour attribuer sans ouvrir le mail"
-                              >
-                                {attribues.length > 0 ? (
-                                  <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")} ▾</span>
-                                ) : (
-                                  <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>Non attribué ▾</span>
-                                )}
-                              </button>
-                              {attributionOuverteId === m.id && (
+                              {isAdmin ? (
                                 <>
-                                  {/* Fond invisible plein écran : cliquer n'importe où ailleurs ferme le menu. */}
-                                  <div
-                                    onClick={e => { e.stopPropagation(); setAttributionOuverteId(null); }}
-                                    style={{ position: "fixed", inset: 0, zIndex: 40 }}
-                                  />
-                                  <div
-                                    onClick={e => e.stopPropagation()}
-                                    style={{
-                                      position: "absolute", top: "100%", left: 0, marginTop: 4, background: "#fff",
-                                      border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
-                                      padding: 8, zIndex: 41, minWidth: 190, maxHeight: 220, overflowY: "auto",
-                                    }}
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setAttributionOuverteId(prev => (prev === m.id ? null : m.id)); }}
+                                    style={{ display: "block", border: "none", background: "transparent", padding: 0, cursor: "pointer", textAlign: "left", width: "100%" }}
+                                    title="Cliquer pour attribuer sans ouvrir le mail"
                                   >
-                                    {commerciaux.length === 0 ? (
-                                      <p style={{ margin: 0, fontSize: 11.5, color: COLORS.gray600 }}>Aucun commercial créé (Configuration).</p>
+                                    {attribues.length > 0 ? (
+                                      <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")} ▾</span>
                                     ) : (
-                                      commerciaux.map(c => {
-                                        const coche = attribues.includes(c.nom);
-                                        return (
-                                          <div key={c.id} style={{ padding: "3px 2px", fontSize: 12, color: COLORS.gray700, whiteSpace: "nowrap" }}>
-                                            <CaseACocher coche={coche} onChange={() => basculerAttributionMail(m, c.id)} label={c.nom} />
-                                          </div>
-                                        );
-                                      })
+                                      <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>Non attribué ▾</span>
                                     )}
-                                  </div>
+                                  </button>
+                                  {attributionOuverteId === m.id && (
+                                    <>
+                                      {/* Fond invisible plein écran : cliquer n'importe où ailleurs ferme le menu. */}
+                                      <div
+                                        onClick={e => { e.stopPropagation(); setAttributionOuverteId(null); }}
+                                        style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                                      />
+                                      <div
+                                        onClick={e => e.stopPropagation()}
+                                        style={{
+                                          position: "absolute", top: "100%", left: 0, marginTop: 4, background: "#fff",
+                                          border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+                                          padding: 8, zIndex: 41, minWidth: 190, maxHeight: 220, overflowY: "auto",
+                                        }}
+                                      >
+                                        {commerciaux.length === 0 ? (
+                                          <p style={{ margin: 0, fontSize: 11.5, color: COLORS.gray600 }}>Aucun commercial créé (Configuration).</p>
+                                        ) : (
+                                          commerciaux.map(c => {
+                                            const coche = attribues.includes(c.nom);
+                                            return (
+                                              <div key={c.id} style={{ padding: "3px 2px", fontSize: 12, color: COLORS.gray700, whiteSpace: "nowrap" }}>
+                                                <CaseACocher coche={coche} onChange={() => basculerAttributionMail(m, c.id)} label={c.nom} />
+                                              </div>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
                                 </>
+                              ) : commercialIdsUtilisateur.length === 0 ? (
+                                attribues.length > 0 ? (
+                                  <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")}</span>
+                                ) : (
+                                  <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>Non attribué</span>
+                                )
+                              ) : mailAttribueAMoi(m.expediteur) ? (
+                                // Déjà attribué à moi -- pas la peine de sortir la liste des noms, juste
+                                // dire que c'est bien à moi (demande d'Elinathan).
+                                <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>✅ Attribué</span>
+                              ) : (
+                                <button
+                                  onClick={e => { e.stopPropagation(); basculerAttributionMail(m, commercialIdsUtilisateur[0]); }}
+                                  title="M'attribuer cet expéditeur"
+                                  style={{ border: "none", background: "transparent", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}
+                                >
+                                  👤 M'attribuer
+                                </button>
                               )}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
