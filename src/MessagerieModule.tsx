@@ -1530,13 +1530,10 @@ export function MessagerieModule({
   // visibilité (mailVisiblePourMoi) que le reste de la boîte : un admin voit tout, un commercial
   // ne voit que ce qui lui est attribué.
   const [notifsOuvertes, setNotifsOuvertes] = useState(false);
-  // Le compteur du badge doit toujours être à jour (juste un filter, pas de tri) ; la liste
-  // triée/limitée à 20, elle, ne coûte quelque chose que quand le menu est effectivement ouvert.
-  const mailsNonLusPourMoi = mails.filter(m => mailVisiblePourMoi(m.expediteur) && m.lu === false);
-  const notifsRecentes: Mail[] = notifsOuvertes
-    ? [...mailsNonLusPourMoi].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 20)
-    : [];
-  const nbNotifsNonLus = mailsNonLusPourMoi.length;
+  const notifsRecentes: Mail[] = mails
+    .filter(m => mailVisiblePourMoi(m.expediteur) && m.lu === false)
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .slice(0, 20);
 
   // 20/09/2026 — Demande d'Elinathan : un résumé du matin, affiché une seule fois par jour et
   // par navigateur (clé datée dans localStorage), pour reprendre le fil sans avoir à cliquer
@@ -1554,15 +1551,9 @@ export function MessagerieModule({
     // aujourd'hui -- pas besoin de le redéclencher à chaque changement de mails.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Ces trois compteurs (notamment nbNonAttribuesResume, qui reparcourt les règles pour chaque
-  // mail) ne servent que pendant que l'encart est affiché -- inutile de les recalculer à chaque
-  // mise à jour Firebase le reste de la journée, d'autant que ce module reste monté en
-  // permanence en arrière-plan même une fois l'onglet Messagerie quitté.
-  const nbNonLusResume = resumeMatinVisible ? mailsNonLusPourMoi.length : 0;
-  const nbATraiterResume = resumeMatinVisible
-    ? mails.filter(m => mailVisiblePourMoi(m.expediteur) && !m.statut).length
-    : 0;
-  const nbNonAttribuesResume = resumeMatinVisible && isAdmin
+  const nbNonLusResume = mails.filter(m => mailVisiblePourMoi(m.expediteur) && m.lu === false).length;
+  const nbATraiterResume = mails.filter(m => mailVisiblePourMoi(m.expediteur) && !m.statut).length;
+  const nbNonAttribuesResume = isAdmin
     ? mails.filter(m => trouverAttributionIds(m.expediteur).length === 0).length
     : 0;
 
@@ -1791,13 +1782,13 @@ export function MessagerieModule({
           }}
         >
           🔔
-          {nbNotifsNonLus > 0 && (
+          {notifsRecentes.length > 0 && (
             <span style={{
               position: "absolute", top: -4, right: -4, background: "#dc2626", color: "#fff",
               borderRadius: 999, fontSize: 10.5, fontWeight: 800, minWidth: 17, height: 17,
               display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
             }}>
-              {nbNotifsNonLus > 9 ? "9+" : nbNotifsNonLus}
+              {notifsRecentes.length > 9 ? "9+" : notifsRecentes.length}
             </span>
           )}
         </button>
@@ -1814,7 +1805,7 @@ export function MessagerieModule({
               }}
             >
               <div style={{ padding: "10px 14px", borderBottom: `1px solid ${COLORS.gray200}`, fontSize: 12.5, fontWeight: 800, color: COLORS.gray700 }}>
-                🔔 Notifications {nbNotifsNonLus > 0 ? `(${nbNotifsNonLus})` : ""}
+                🔔 Notifications {notifsRecentes.length > 0 ? `(${notifsRecentes.length})` : ""}
               </div>
               {notifsRecentes.length === 0 ? (
                 <p style={{ margin: 0, padding: "16px 14px", fontSize: 12.5, color: COLORS.gray600 }}>
