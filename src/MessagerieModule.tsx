@@ -1466,6 +1466,14 @@ export function MessagerieModule({
     return (b.date || "").localeCompare(a.date || ""); // date_desc, ordre habituel par défaut
   });
 
+  const [limiteAffichage, setLimiteAffichage] = useState(150);
+  // La limite repart à 150 dès qu'un filtre/tri change, sinon on pourrait se retrouver à
+  // afficher "150 sur 3" après un filtrage très restrictif, ou à l'inverse ne jamais revoir le
+  // début de la liste après avoir cliqué plusieurs fois sur "Afficher plus".
+  useEffect(() => {
+    setLimiteAffichage(150);
+  }, [dossierActif, filtreMails, filtreStatutBoite, filtreCommercialBoite, filtrePeriodeBoite, triActif, voirToutLaBoite]);
+
   const cleFilDe = (m: Mail) =>
     `${(m.expediteur || "").toLowerCase()}||${(m.sujet || "").replace(/^(re|fwd|tr)\s*:\s*/gi, "").trim().toLowerCase()}`;
   const [vueConversation, setVueConversation] = useState(false);
@@ -2073,7 +2081,7 @@ export function MessagerieModule({
                       </tr>
                     </thead>
                     <tbody>
-                      {mailsAffiches.map(m => {
+                      {mailsAffiches.slice(0, limiteAffichage).map(m => {
                         const attribues = trouverAttribution(m.expediteur);
                         return (
                           <tr
@@ -2241,6 +2249,16 @@ export function MessagerieModule({
                       })}
                     </tbody>
                   </table>
+                  {mailsAffiches.length > limiteAffichage && (
+                    <div style={{ textAlign: "center", padding: "10px 0", borderTop: `1px solid ${COLORS.gray200}` }}>
+                      <button
+                        onClick={() => setLimiteAffichage(l => l + 150)}
+                        style={{ padding: "7px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Afficher plus ({mailsAffiches.length - limiteAffichage} restant(s))
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
