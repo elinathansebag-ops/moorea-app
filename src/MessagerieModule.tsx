@@ -1197,22 +1197,27 @@ export function MessagerieModule({
     if (!nouvelleRegleLibelle.trim() && nouvelleRegleCommercialIds.length === 0 && !nouvelleRegleImportant && !nouvelleRegleFavori && !nouvelleRegleStatut) {
       notify("error", "Coche au moins une action à déclencher"); return;
     }
-    await push(ref(db, "messagerie_regles_auto"), {
-      motCle: mot,
-      champSujet: nouvelleRegleChampSujet,
-      champExpediteur: nouvelleRegleChampExpediteur,
-      champCorps: nouvelleRegleChampCorps,
-      actionLibelle: nouvelleRegleLibelle.trim() || null,
-      actionCommercialIds: nouvelleRegleCommercialIds,
-      actionImportant: nouvelleRegleImportant,
-      actionFavori: nouvelleRegleFavori,
-      actionStatut: nouvelleRegleStatut || null,
-      actif: true,
-      creeLe: new Date().toLocaleString("fr-FR"),
-    });
-    setNouvelleRegleMotCle(""); setNouvelleRegleLibelle(""); setNouvelleRegleCommercialIds([]);
-    setNouvelleRegleImportant(false); setNouvelleRegleFavori(false); setNouvelleRegleStatut("");
-    notify("success", "✓ Règle créée — elle va s'appliquer automatiquement aux mails qui correspondent");
+    try {
+      await push(ref(db, "messagerie_regles_auto"), {
+        motCle: mot,
+        champSujet: nouvelleRegleChampSujet,
+        champExpediteur: nouvelleRegleChampExpediteur,
+        champCorps: nouvelleRegleChampCorps,
+        actionLibelle: nouvelleRegleLibelle.trim() || null,
+        actionCommercialIds: nouvelleRegleCommercialIds,
+        actionImportant: nouvelleRegleImportant,
+        actionFavori: nouvelleRegleFavori,
+        actionStatut: nouvelleRegleStatut || null,
+        actif: true,
+        creeLe: new Date().toLocaleString("fr-FR"),
+      });
+      setNouvelleRegleMotCle(""); setNouvelleRegleLibelle(""); setNouvelleRegleCommercialIds([]);
+      setNouvelleRegleImportant(false); setNouvelleRegleFavori(false); setNouvelleRegleStatut("");
+      notify("success", "✓ Règle créée — elle va s'appliquer automatiquement aux mails qui correspondent");
+    } catch (e: any) {
+      // 20/09/2026 — avant, une erreur ici (droits Firebase, réseau...) échouait en silence.
+      notify("error", `Échec de la création de la règle : ${e?.message || e}`);
+    }
   };
   const toggleActifRegleAuto = async (r: RegleAuto) => {
     await update(ref(db, `messagerie_regles_auto/${r.id}`), { actif: !r.actif });
