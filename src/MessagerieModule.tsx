@@ -306,7 +306,7 @@ const boutonBarreEditeur: React.CSSProperties = {
   fontSize: 12.5, color: COLORS.gray700, cursor: "pointer", minWidth: 26,
 };
 
-function EditeurCorps({ editeurRef }: { editeurRef: React.RefObject<HTMLDivElement> }) {
+function EditeurCorps({ editeurRef, onInput }: { editeurRef: React.RefObject<HTMLDivElement>; onInput?: () => void }) {
   // onMouseDown + preventDefault : sans ça, cliquer sur un bouton de la barre d'outils fait
   // perdre la sélection de texte dans la zone d'édition avant que la commande ne s'applique.
   const executer = (commande: string, valeur?: string) => (e: React.MouseEvent) => {
@@ -339,6 +339,7 @@ function EditeurCorps({ editeurRef }: { editeurRef: React.RefObject<HTMLDivEleme
         ref={editeurRef}
         contentEditable
         suppressContentEditableWarning
+        onInput={onInput}
         style={{ minHeight: 160, maxHeight: 360, overflowY: "auto", padding: "10px 12px", fontSize: 13, outline: "none", lineHeight: 1.5 }}
       />
     </div>
@@ -811,12 +812,51 @@ export function MessagerieModule({
     }
   };
 
+  // 20/09/2026 — Demande d'Elinathan : brouillons sauvegardés automatiquement (localStorage,
+  // propre à cet ordinateur/navigateur) pour ne pas perdre une réponse en cours de rédaction si
+  // on ferme le mail avant d'avoir cliqué sur Envoyer.
+  const cleBrouillon = () => `messagerie_brouillon_${modeCompose || "nouveau"}_${mailOuvert?.id || "sans_mail"}`;
+  const sauvegarderBrouillon = () => {
+    if (!modeCompose) return;
+    try {
+      window.localStorage.setItem(
+        cleBrouillon(),
+        JSON.stringify({ a: composeA, cc: composeCc, sujet: composeSujet, html: corpsEditableRef.current?.innerHTML || "" })
+      );
+    } catch {
+      // localStorage indisponible (navigation privée, quota...) -- pas grave, juste pas de brouillon.
+    }
+  };
+
   useEffect(() => {
-    if (modeCompose && corpsEditableRef.current) {
+    if (!modeCompose || !corpsEditableRef.current) return;
+    let brouillonRestaure = false;
+    try {
+      const brut = window.localStorage.getItem(cleBrouillon());
+      if (brut) {
+        const brouillon = JSON.parse(brut);
+        if (Array.isArray(brouillon.a)) setComposeA(brouillon.a);
+        if (Array.isArray(brouillon.cc)) setComposeCc(brouillon.cc);
+        if (typeof brouillon.sujet === "string") setComposeSujet(brouillon.sujet);
+        corpsEditableRef.current.innerHTML = brouillon.html || composeCorpsInitial;
+        brouillonRestaure = true;
+        notify("success", "📝 Brouillon restauré");
+      }
+    } catch {
+      // brouillon corrompu ou localStorage indisponible -- on repart du contenu de départ normal.
+    }
+    if (!brouillonRestaure) {
       corpsEditableRef.current.innerHTML = composeCorpsInitial;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modeCompose]);
+
+  // Ressauvegarde le brouillon dès que le sujet ou les destinataires changent (le corps du
+  // message, lui, se sauvegarde via onInput directement sur l'éditeur).
+  useEffect(() => {
+    sauvegarderBrouillon();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeA, composeCc, composeSujet]);
 
   const citationOriginaleHtml = () => {
     if (!detailMail) return "";
@@ -907,6 +947,7 @@ export function MessagerieModule({
       const data = await reponse.json();
       if (!reponse.ok) { setComposeErreur(data?.error || "Envoi échoué."); return; }
       notify("success", modeCompose === "repondre" ? "✓ Réponse envoyée" : modeCompose === "transferer" ? "✓ Mail transféré" : "✓ Message envoyé");
+      try { window.localStorage.removeItem(cleBrouillon()); } catch {}
       // Mémorise les adresses utilisées pour les proposer en suggestion la prochaine fois
       // (19/09/2026 : "je veux que quand je tape un mail il me propose comme dans Gmail un
       // mail à qui on a déjà envoyé un truc") — un vrai carnet d'adresses basé sur l'usage réel.
@@ -2340,7 +2381,7 @@ export function MessagerieModule({
                         ))}
                       </select>
                     )}
-                    <EditeurCorps editeurRef={corpsEditableRef} />
+                    <EditeurCorps editeurRef={corpsEditableRef} onInput={sauvegarderBrouillon} />
                     {modeCompose === "transferer" && detailMail.pieces.length > 0 && (
                       <div style={{ fontSize: 12.5, color: COLORS.gray700, marginBottom: 10 }}>
                         <CaseACocher coche={composeInclurePieces} onChange={setComposeInclurePieces} label={`Inclure les ${detailMail.pieces.length} pièce(s) jointe(s) du mail original`} />
@@ -2488,7 +2529,7 @@ export function MessagerieModule({
                     ))}
                   </select>
                 )}
-                <EditeurCorps editeurRef={corpsEditableRef} />
+                <EditeurCorps editeurRef={corpsEditableRef} onInput={sauvegarderBrouillon} />
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={envoyerCompose}
