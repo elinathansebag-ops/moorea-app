@@ -1519,6 +1519,17 @@ export function MessagerieModule({
   const nbNonLusParDossier = (d: string): number =>
     mails.filter(m => mailVisiblePourMoi(m.expediteur) && mailAppartientAuDossier(m, d) && m.lu === false).length;
 
+  // 20/09/2026 — Demande d'Elinathan : des notifications dans l'appli (jamais par mail --
+  // Elinathan a choisi "juste dans l'appli") pour voir d'un coup d'œil ce qui vient d'arriver et
+  // me concerne, sans avoir à parcourir chaque dossier. On réutilise le même critère de
+  // visibilité (mailVisiblePourMoi) que le reste de la boîte : un admin voit tout, un commercial
+  // ne voit que ce qui lui est attribué.
+  const [notifsOuvertes, setNotifsOuvertes] = useState(false);
+  const notifsRecentes: Mail[] = mails
+    .filter(m => mailVisiblePourMoi(m.expediteur) && m.lu === false)
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .slice(0, 20);
+
   const [filtreExpediteur, setFiltreExpediteur] = useState("");
   // 20/09/2026 — Demande d'Elinathan : une vue "non attribués" pour repérer vite ce qui n'a
   // encore été rattaché à aucun commercial, plus un agent IA qui propose (sans jamais décider
@@ -1693,6 +1704,67 @@ export function MessagerieModule({
         onBack={() => { if (activeTab !== "boite") setActiveTab("boite"); else onClose(); }}
         onHome={onClose}
       />
+
+      {/* 20/09/2026 — Cloche de notifications (mails non lus qui me concernent), au-dessus du
+          reste pour rester accessible depuis n'importe quel onglet. */}
+      <div style={{ position: "fixed", top: 14, right: 16, zIndex: 970 }}>
+        <button
+          onClick={() => setNotifsOuvertes(v => !v)}
+          title="Notifications"
+          style={{
+            position: "relative", width: 38, height: 38, borderRadius: 999, cursor: "pointer",
+            border: `1.5px solid ${COLORS.primaryBorder}`, background: "#fff", fontSize: 17,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          🔔
+          {notifsRecentes.length > 0 && (
+            <span style={{
+              position: "absolute", top: -4, right: -4, background: "#dc2626", color: "#fff",
+              borderRadius: 999, fontSize: 10.5, fontWeight: 800, minWidth: 17, height: 17,
+              display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+            }}>
+              {notifsRecentes.length > 9 ? "9+" : notifsRecentes.length}
+            </span>
+          )}
+        </button>
+        {notifsOuvertes && (
+          <>
+            {/* Fond invisible plein écran : cliquer n'importe où ailleurs ferme le menu. */}
+            <div onClick={() => setNotifsOuvertes(false)} style={{ position: "fixed", inset: 0, zIndex: 970 }} />
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: "absolute", top: "100%", right: 0, marginTop: 6, background: "#fff",
+                border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,0.18)",
+                width: 320, maxHeight: 380, overflowY: "auto", zIndex: 971,
+              }}
+            >
+              <div style={{ padding: "10px 14px", borderBottom: `1px solid ${COLORS.gray200}`, fontSize: 12.5, fontWeight: 800, color: COLORS.gray700 }}>
+                🔔 Notifications {notifsRecentes.length > 0 ? `(${notifsRecentes.length})` : ""}
+              </div>
+              {notifsRecentes.length === 0 ? (
+                <p style={{ margin: 0, padding: "16px 14px", fontSize: 12.5, color: COLORS.gray600 }}>
+                  Rien de nouveau — tu es à jour.
+                </p>
+              ) : (
+                notifsRecentes.map(m => (
+                  <div
+                    key={m.id}
+                    onClick={() => { setNotifsOuvertes(false); setActiveTab("boite"); ouvrirMail(m); }}
+                    style={{ padding: "9px 14px", borderBottom: `1px solid ${COLORS.gray100}`, cursor: "pointer" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray700 }}>{m.nomExpediteur || m.expediteur}</div>
+                    <div style={{ fontSize: 11.5, color: COLORS.gray700, marginTop: 1 }}>{m.sujet || "(sans sujet)"}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       <div style={{ maxWidth: 1500, margin: "0 auto", padding: "20px 16px 60px" }}>
         {notification && (
