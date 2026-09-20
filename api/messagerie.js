@@ -572,13 +572,22 @@ Réponds UNIQUEMENT avec un tableau JSON (rien d'autre, pas de texte avant/aprè
 [{"adresse": "...", "commercialId": "id-ou-null", "raison": "courte explication en français, une phrase"}]`;
 
   const modele = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+  // 20/09/2026 — Certaines clés API Anthropic (créées au niveau de l'organisation plutôt que
+  // dans un "workspace" précis sur console.anthropic.com) exigent cet en-tête supplémentaire,
+  // sinon l'API répond "This API key is not scoped to a workspace". On l'ajoute seulement si
+  // Elinathan a renseigné ANTHROPIC_WORKSPACE_ID -- sinon la clé fonctionne déjà telle quelle.
+  const enTetesIa = {
+    "x-api-key": cleIa,
+    "anthropic-version": "2023-06-01",
+    "Content-Type": "application/json",
+  };
+  if (process.env.ANTHROPIC_WORKSPACE_ID) {
+    enTetesIa["anthropic-workspace-id"] = process.env.ANTHROPIC_WORKSPACE_ID;
+  }
+
   const reponseIa = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "x-api-key": cleIa,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
+    headers: enTetesIa,
     body: JSON.stringify({
       model: modele,
       max_tokens: 2000,
