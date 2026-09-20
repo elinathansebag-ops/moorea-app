@@ -1239,8 +1239,31 @@ export function MessagerieModule({
     if (!mailAppartientAuDossier(m, dossierActif)) return false;
     if (!filtreMails.trim()) return true;
     const q = filtreMails.trim().toLowerCase();
-    return m.expediteur.includes(q) || m.nomExpediteur.toLowerCase().includes(q) || m.sujet.toLowerCase().includes(q);
+    return (
+      m.expediteur.includes(q) ||
+      m.nomExpediteur.toLowerCase().includes(q) ||
+      m.sujet.toLowerCase().includes(q) ||
+      (m.resume || "").toLowerCase().includes(q)
+    );
   });
+
+  // Surligne la première occurrence de la recherche dans un texte affiché dans la liste, pour
+  // voir tout de suite pourquoi un mail correspond à la recherche.
+  const surlignerRecherche = (texte: string, q: string) => {
+    const requete = q.trim();
+    if (!requete || !texte) return texte;
+    const idx = texte.toLowerCase().indexOf(requete.toLowerCase());
+    if (idx === -1) return texte;
+    return (
+      <>
+        {texte.slice(0, idx)}
+        <mark style={{ background: "#fde68a", color: "inherit", borderRadius: 3, padding: "0 1px" }}>
+          {texte.slice(idx, idx + requete.length)}
+        </mark>
+        {texte.slice(idx + requete.length)}
+      </>
+    );
+  };
 
   // 20/09/2026 — Demande d'Elinathan : "un systeme de trie dans la boite"
   const mailsFiltres = [...mailsFiltresBase].sort((a, b) => {
@@ -1655,7 +1678,7 @@ export function MessagerieModule({
                 <input
                   value={filtreMails}
                   onChange={e => setFiltreMails(e.target.value)}
-                  placeholder="🔎 Filtrer (expéditeur, nom, sujet...)"
+                  placeholder="🔎 Rechercher (expéditeur, nom, sujet, résumé...)"
                   style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
                 />
               )}
@@ -1746,7 +1769,7 @@ export function MessagerieModule({
                               </button>
                             </td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere" }}>
-                              {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
+                              {m.nomExpediteur ? <div>{surlignerRecherche(m.nomExpediteur, filtreMails)}</div> : null}
                               <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400 }}>{m.expediteur}</div>
                               {/* 20/09/2026 — pastille "à moi" quand on regarde toute la boîte (demande d'Elinathan). */}
                               {voirToutLaBoite && mailAttribueAMoi(m.expediteur) && (
@@ -1756,7 +1779,7 @@ export function MessagerieModule({
                               )}
                             </td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>
-                              {m.sujet}
+                              {surlignerRecherche(m.sujet, filtreMails)}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word", position: "relative" }}>
                               {isAdmin ? (
