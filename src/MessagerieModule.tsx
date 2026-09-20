@@ -1471,15 +1471,6 @@ export function MessagerieModule({
     return (b.date || "").localeCompare(a.date || ""); // date_desc, ordre habituel par défaut
   });
 
-  // 20/09/2026 — Demande d'Elinathan : mode compact (lignes resserrées), préférence propre à
-  // ce navigateur/ordinateur -- pas besoin d'être synchronisée entre commerciaux.
-  const [modeCompact, setModeCompact] = useState<boolean>(() => {
-    try { return window.localStorage.getItem("messagerie_mode_compact") === "1"; } catch { return false; }
-  });
-  useEffect(() => {
-    try { window.localStorage.setItem("messagerie_mode_compact", modeCompact ? "1" : "0"); } catch {}
-  }, [modeCompact]);
-
   const [limiteAffichage, setLimiteAffichage] = useState(150);
   // La limite repart à 150 dès qu'un filtre/tri change, sinon on pourrait se retrouver à
   // afficher "150 sur 3" après un filtrage très restrictif, ou à l'inverse ne jamais revoir le
@@ -1992,18 +1983,6 @@ export function MessagerieModule({
                   >
                     🧵 Vue conversation
                   </button>
-                  <button
-                    onClick={() => setModeCompact(v => !v)}
-                    title="Lignes resserrées pour voir plus de mails à l'écran"
-                    style={{
-                      padding: "5px 11px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                      border: `1.5px solid ${COLORS.primaryBorder}`,
-                      background: modeCompact ? COLORS.primary : "#fff",
-                      color: modeCompact ? "#fff" : COLORS.primary,
-                    }}
-                  >
-                    📏 Mode compact
-                  </button>
                 </div>
               )}
 
@@ -2077,14 +2056,7 @@ export function MessagerieModule({
 
               {mailsFiltres.length > 0 && (
                 <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
-                  {modeCompact && (
-                    <style>{`
-                      .messagerie-mode-compact td { padding: 2px 6px !important; }
-                      .messagerie-mode-compact th { padding: 4px 6px !important; }
-                      .messagerie-mode-compact { font-size: 11px !important; }
-                    `}</style>
-                  )}
-                  <table className={modeCompact ? "messagerie-mode-compact" : undefined} style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                     <colgroup>
                       <col style={{ width: "3%" }} />
                       <col style={{ width: "4%" }} />
