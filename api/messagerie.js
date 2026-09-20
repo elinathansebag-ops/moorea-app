@@ -572,6 +572,85 @@ async function actionMarquerImportant(req, res) {
   return res.status(200).json({ ok: true });
 }
 
+// ─── action=resumer : mini-résumé IA (2 phrases) d'un mail, pour savoir quoi en faire sans
+// l'ouvrir ─── 20/09/2026 — Demande d'Elinathan : "comment ont pourais crée des mini resuler de
+// 2 phrase sous chaque mail pour savoir a qui l'arttribuer ou quoi en faire meme fermée ?".
+async function actionResumerMail(req, res) {
+  const uid = parseInt(req.query?.uid, 10);
+  const boite = req.query?.boite || "all";
+  const id = req.query?.id || `${boite}_${uid}`;
+  if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
+
+  const cleIa = process.env.ANTHROPIC_API_KEY;
+  if (!cleIa) {
+    return res.status(500).json({
+      error: "Clé ANTHROPIC_API_KEY manquante. Ajoute-la dans Vercel (Settings > Environment Variables) avec ta clé console.anthropic.com, puis redéploie.",
+    });
+  }
+
+  const detail = await avecReessai(async () => {
+    const client = await connecterImap();
+    try {
+      return await lireDetailMail(client, uid, boite);
+    } finally {
+      try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+    }
+  });
+
+  const texteBrutMail = (detail.texte || detail.html || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 6000);
+  if (!texteBrutMail) {
+    return res.status(200).json({ resume: "(mail vide, rien à résumer)" });
+  }
+
+  const prompt = `Tu aides une entreprise d'agréage de fruits et légumes (Moorea) à traiter rapidement ses mails.
+Voici un mail reçu :
+Expéditeur : ${detail.de || "(inconnu)"}
+Sujet : ${detail.sujet || "(sans sujet)"}
+Contenu : ${texteBrutMail}
+
+Résume ce mail en EXACTEMENT 2 phrases courtes en français, pour qu'Elinathan sache tout de suite,
+sans l'ouvrir, de quoi il parle et ce qu'il faut probablement en faire (répondre, transmettre à
+la compta, saisir une commande, ignorer, etc.). Réponds UNIQUEMENT avec ces 2 phrases, rien
+d'autre (pas de titre, pas de guillemets, pas de liste).`;
+
+  const modele = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+  const enTetesIa = {
+    "x-api-key": cleIa,
+    "anthropic-version": "2023-06-01",
+    "Content-Type": "application/json",
+  };
+  if (process.env.ANTHROPIC_WORKSPACE_ID) {
+    enTetesIa["anthropic-workspace-id"] = process.env.ANTHROPIC_WORKSPACE_ID;
+  }
+
+  const reponseIa = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: enTetesIa,
+    body: JSON.stringify({
+      model: modele,
+      max_tokens: 300,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  const data = await reponseIa.json();
+  if (!reponseIa.ok) {
+    return res.status(502).json({ error: data?.error?.message || `Erreur de l'API IA (modèle "${modele}").` });
+  }
+
+  const resume = (data?.content?.[0]?.text || "").trim();
+  if (!resume) return res.status(502).json({ error: "Réponse vide de l'IA." });
+
+  const adminDb = getAdminDb();
+  await adminDb.ref(`messagerie_boite/${id}`).update({ resume, resumeLe: Date.now() });
+
+  return res.status(200).json({ resume });
+}
+
 // ─── action=marquer-lu : marque un mail comme lu sur Gmail lui-même (flag IMAP \Seen) ───
 // 20/09/2026 — Demande d'Elinathan : "mets un systeme pour savoir si un mail a etais lu [...]
 // ont peut savoir si le mail a etais lu ou pas sur gmail ?" -- jusqu'ici, ouvrir un mail dans
@@ -833,9 +912,11 @@ async function actionSync(req, res) {
           for (let i = 0; i < Math.min(tailleFlags, uidsDejaDecouverts.length); i++) {
             lotFlags.push(uidsDejaDecouverts[(indexFlags + i) % uidsDejaDecouverts.length]);
           }
-          for await (const msg of client.fetch(lotFlags, { uid: true, flags: true }, { uid: true })) {
+          for await (const msg of client.fetch(lotFlags, { uid: true, flags: true, labels: true }, { uid: true })) {
             const lu = msg.flags ? msg.flags.has("\\Seen") : false;
             const favori = msg.flags ? msg.flags.has("\\Flagged") : false;
+            const labelsActuels = {};
+            for (const l of (msg.labels || [])) labelsActuels[assainirCleFirebase(l)] = true;
             const cle = `${source.code}_${msg.uid}`;
             // Si ce mail vient JUSTE d'etre ajoute au complet ci-dessus (etape 1), ne pas aussi
             // ecrire un chemin imbrique "cle/lu" a cote -- Firebase refuse une mise a jour
@@ -847,6 +928,10 @@ async function actionSync(req, res) {
               // 20/09/2026 -- meme chose pour l'etoile (\Flagged), pour qu'un mail etoile ou
               // deseoile directement depuis Gmail (ou le telephone) finisse par se refleter ici.
               updates[`${cle}/favori`] = favori;
+              // 20/09/2026 -- et pour les labels (dont \Important) : un mail marqué important
+              // sur Gmail APRÈS avoir déjà été synchronisé ne l'était sinon jamais côté appli,
+              // puisque les labels n'étaient lus qu'une fois, à la découverte initiale.
+              updates[`${cle}/labels`] = labelsActuels;
             }
             resultat.flagsRafraichis++;
           }
@@ -934,6 +1019,7 @@ export default async function handler(req, res) {
     if (action === "marquer-lu") { await exigerConnexionMoorea(req); return await actionMarquerLu(req, res); }
     if (action === "marquer-favori") { await exigerConnexionMoorea(req); return await actionMarquerFavori(req, res); }
     if (action === "marquer-important") { await exigerConnexionMoorea(req); return await actionMarquerImportant(req, res); }
+    if (action === "resumer") { await exigerConnexionMoorea(req); return await actionResumerMail(req, res); }
     if (action === "suggerer-attribution") { await exigerConnexionMoorea(req); return await actionSuggererAttribution(req, res); }
     if (action === "sync") {
       const secretSyncOk = req.query?.secret && req.query.secret === process.env.MESSAGERIE_SYNC_SECRET;

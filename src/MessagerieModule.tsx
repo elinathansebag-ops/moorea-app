@@ -147,6 +147,11 @@ export type Mail = {
   statutLe?: number | null;
   // 20/09/2026 — Demande d'Elinathan : "ajoute le systeme d'etoiles pour les favoris"
   favori?: boolean;
+  // 20/09/2026 — Demande d'Elinathan : "comment ont pourais crée des mini resuler de 2 phrase
+  // sous chaque mail pour savoir a qui l'arttribuer ou quoi en faire meme fermée ?" -- mini-résumé
+  // IA (2 phrases), généré une fois puis mis en cache ici pour toujours (jamais régénéré).
+  resume?: string | null;
+  resumeLe?: number | null;
 };
 
 // Liste par défaut si personne n'a encore personnalisé la liste dans Configuration > Statuts.
@@ -965,6 +970,45 @@ export function MessagerieModule({
       .catch(() => {});
   };
 
+  // 20/09/2026 — Demande d'Elinathan : "comment ont pourais crée des mini resuler de 2 phrase
+  // sous chaque mail pour savoir a qui l'arttribuer ou quoi en faire meme fermée ?" -- mini-résumé
+  // IA (2 phrases) affiché sous chaque mail dans la liste, même fermé. Généré automatiquement en
+  // arrière-plan pour les mails non lus (donc "nouveaux" au sens large) qui n'en ont pas encore ;
+  // pour les mails déjà lus/anciens, un petit bouton permet de le générer à la demande. Une fois
+  // généré, mis en cache dans Firebase pour toujours (jamais régénéré, jamais recalculé).
+  const [resumesEnCours, setResumesEnCours] = useState<Set<string>>(new Set());
+  const demanderResume = async (m: Mail) => {
+    if (resumesEnCours.has(m.id)) return;
+    setResumesEnCours(prev => new Set(prev).add(m.id));
+    try {
+      const headers = await enTeteAuth();
+      const reponse = await fetch(`/api/messagerie?action=resumer&uid=${m.uid}&boite=${m.boite}&id=${encodeURIComponent(m.id)}`, { headers });
+      const data = await reponse.json();
+      if (reponse.ok && data?.resume) {
+        // Mise à jour locale immédiate (le listener Firebase la recevra aussi, mais pas
+        // forcément tout de suite) -- même principe que pour le statut ou l'étoile.
+        setMails(prev => prev.map(x => (x.id === m.id ? { ...x, resume: data.resume, resumeLe: Date.now() } : x)));
+      }
+    } catch {
+      /* échec silencieux -- le petit bouton "Résumer" reste affiché, elle peut retenter */
+    } finally {
+      setResumesEnCours(prev => {
+        const suivant = new Set(prev);
+        suivant.delete(m.id);
+        return suivant;
+      });
+    }
+  };
+
+  // File d'attente automatique : dès qu'un mail non lu arrive sans résumé, on le génère tout
+  // seul en arrière-plan, un par un (pas en rafale, pour ne pas surcharger l'IA d'un coup si
+  // beaucoup de mails non lus arrivent en même temps).
+  useEffect(() => {
+    const aFaire = mails.find(m => m.lu === false && m.resume === undefined && !resumesEnCours.has(m.id));
+    if (aFaire) demanderResume(aFaire);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mails, resumesEnCours]);
+
   // 20/09/2026 — Elinathan : "pourquoi j'ai des mail vide ?" -- un bug du robot de synchro (déjà
   // corrigé côté serveur) créait des enregistrements fantômes ne contenant que { lu: true },
   // sans sujet/date/expéditeur/uid/boîte -- affichés comme des lignes complètement vides dans la
@@ -1251,7 +1295,9 @@ export function MessagerieModule({
                 ✏️ Nouveau message
               </button>
 
-              {["TOUS", "FAVORIS", ...dossiersDisponibles.filter(estDossierSysteme)].map(d => {
+              {/* 20/09/2026 — "Suivis" (\Starred) retiré : doublon exact de "Favoris", Gmail pose
+                  les deux en même temps quand on clique sur l'étoile (demande d'Elinathan). */}
+              {["TOUS", "FAVORIS", ...dossiersDisponibles.filter(d => estDossierSysteme(d) && d !== "\\Starred")].map(d => {
                 const nbNonLus = nbNonLusParDossier(d);
                 return (
                   <button
@@ -1260,8 +1306,8 @@ export function MessagerieModule({
                     style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, width: "100%",
                       textAlign: "left", padding: "8px 10px", borderRadius: 8,
-                      border: "none", background: dossierActif === d ? COLORS.primaryLight : "transparent",
-                      color: dossierActif === d ? COLORS.primary : COLORS.gray700,
+                      border: "none", background: dossierActif === d ? COLORS.primary : "transparent",
+                      color: dossierActif === d ? "#fff" : COLORS.gray700,
                       fontSize: 12.5, fontWeight: dossierActif === d || nbNonLus > 0 ? 800 : 600, cursor: "pointer",
                       marginBottom: 2,
                     }}
@@ -1271,7 +1317,7 @@ export function MessagerieModule({
                     </span>
                     {nbNonLus > 0 && (
                       <span style={{
-                        background: dossierActif === d ? COLORS.primary : COLORS.gray600, color: "#fff", borderRadius: 999,
+                        background: dossierActif === d ? "#fff" : COLORS.gray600, color: dossierActif === d ? COLORS.primary : "#fff", borderRadius: 999,
                         fontSize: 10.5, fontWeight: 800, padding: "1px 6px", flexShrink: 0,
                       }}>
                         {nbNonLus}
@@ -1298,8 +1344,8 @@ export function MessagerieModule({
                         style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, width: "100%",
                           textAlign: "left", padding: "8px 10px", borderRadius: 8,
-                          border: "none", background: dossierActif === d ? COLORS.primaryLight : "transparent",
-                          color: dossierActif === d ? COLORS.primary : COLORS.gray700,
+                          border: "none", background: dossierActif === d ? COLORS.primary : "transparent",
+                          color: dossierActif === d ? "#fff" : COLORS.gray700,
                           fontSize: 12.5, fontWeight: dossierActif === d || nbNonLus > 0 ? 800 : 600, cursor: "pointer",
                           marginBottom: 2,
                         }}
@@ -1309,7 +1355,7 @@ export function MessagerieModule({
                         </span>
                         {nbNonLus > 0 && (
                           <span style={{
-                            background: dossierActif === d ? COLORS.primary : COLORS.gray600, color: "#fff", borderRadius: 999,
+                            background: dossierActif === d ? "#fff" : COLORS.gray600, color: dossierActif === d ? COLORS.primary : "#fff", borderRadius: 999,
                             fontSize: 10.5, fontWeight: 800, padding: "1px 6px", flexShrink: 0,
                           }}>
                             {nbNonLus}
@@ -1441,6 +1487,22 @@ export function MessagerieModule({
                             </td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>
                               {m.sujet}
+                              {m.resume ? (
+                                <div style={{ marginTop: 3, fontSize: 11, fontStyle: "italic", color: COLORS.gray600, fontWeight: 400 }}>
+                                  🧠 {m.resume}
+                                </div>
+                              ) : m.lu === false ? (
+                                <div style={{ marginTop: 3, fontSize: 11, fontStyle: "italic", color: COLORS.gray600, fontWeight: 400, opacity: 0.6 }}>
+                                  🧠 Résumé en cours…
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={e => { e.stopPropagation(); demanderResume(m); }}
+                                  style={{ display: "block", marginTop: 3, border: "none", background: "transparent", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline", fontStyle: "italic" }}
+                                >
+                                  🧠 Générer un résumé
+                                </button>
+                              )}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
                               {attribues.length > 0 ? (
