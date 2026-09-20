@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { db, ref, push, onValue, update, remove, auth, get, set } from "./firebase";
 import { PageHeader, styles, cleTab } from "./shared";
 
@@ -489,6 +489,14 @@ export function MessagerieModule({
   const [mails, setMails] = useState<Mail[]>([]);
   const [mailsDejaCharges, setMailsDejaCharges] = useState(false);
   const [filtreMails, setFiltreMails] = useState("");
+  // 20/09/2026 — la recherche elle-même reste instantanée à la frappe (juste une mise à jour
+  // d'état), mais le FILTRAGE réel (coûteux sur 10 961 mails) attend 200ms après la dernière
+  // frappe avant de se déclencher, pour ne pas relancer le calcul sur chaque lettre tapée.
+  const [filtreMailsDebounce, setFiltreMailsDebounce] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setFiltreMailsDebounce(filtreMails), 200);
+    return () => clearTimeout(t);
+  }, [filtreMails]);
   const [derniereSyncRobot, setDerniereSyncRobot] = useState<Date | null>(null);
   const [dossierActif, setDossierActif] = useState<string>("INBOX");
 
@@ -1420,7 +1428,9 @@ export function MessagerieModule({
   const [filtreCommercialBoite, setFiltreCommercialBoite] = useState("");
   const [filtrePeriodeBoite, setFiltrePeriodeBoite] = useState<"tout" | "aujourdhui" | "semaine" | "mois">("tout");
 
-  const mailsFiltresBase = mails.filter(m => {
+  // 20/09/2026 — useMemo : ne recalcule que si l'un de ces éléments change vraiment (pas à
+  // chaque render pour une raison sans rapport, comme ouvrir un menu ou survoler un bouton).
+  const mailsFiltresBase = useMemo(() => mails.filter(m => {
     if (!mailVisiblePourMoi(m.expediteur)) return false;
     if (!mailAppartientAuDossier(m, dossierActif)) return false;
     if (filtreStatutBoite === "non_traite" && m.statut) return false;
@@ -1435,15 +1445,15 @@ export function MessagerieModule({
       if (filtrePeriodeBoite === "semaine" && tempsMail < maintenant - 7 * unJour) return false;
       if (filtrePeriodeBoite === "mois" && tempsMail < maintenant - 30 * unJour) return false;
     }
-    if (!filtreMails.trim()) return true;
-    const q = filtreMails.trim().toLowerCase();
+    if (!filtreMailsDebounce.trim()) return true;
+    const q = filtreMailsDebounce.trim().toLowerCase();
     return (
       m.expediteur.includes(q) ||
       m.nomExpediteur.toLowerCase().includes(q) ||
       m.sujet.toLowerCase().includes(q) ||
       (m.resume || "").toLowerCase().includes(q)
     );
-  });
+  }), [mails, dossierActif, filtreStatutBoite, filtreCommercialBoite, filtrePeriodeBoite, filtreMailsDebounce, isAdmin, commercialIdsUtilisateur, voirToutLaBoite, regles]);
 
   // Surligne la première occurrence de la recherche dans un texte affiché dans la liste, pour
   // voir tout de suite pourquoi un mail correspond à la recherche.
@@ -1464,12 +1474,12 @@ export function MessagerieModule({
   };
 
   // 20/09/2026 — Demande d'Elinathan : "un systeme de trie dans la boite"
-  const mailsFiltres = [...mailsFiltresBase].sort((a, b) => {
+  const mailsFiltres = useMemo(() => [...mailsFiltresBase].sort((a, b) => {
     if (triActif === "date_asc") return (a.date || "").localeCompare(b.date || "");
     if (triActif === "statut") return (a.statut || "").localeCompare(b.statut || "") || (b.date || "").localeCompare(a.date || "");
     if (triActif === "expediteur") return (a.nomExpediteur || a.expediteur).localeCompare(b.nomExpediteur || b.expediteur);
     return (b.date || "").localeCompare(a.date || ""); // date_desc, ordre habituel par défaut
-  });
+  }), [mailsFiltresBase, triActif]);
 
   const [limiteAffichage, setLimiteAffichage] = useState(150);
   // La limite repart à 150 dès qu'un filtre/tri change, sinon on pourrait se retrouver à
@@ -1477,13 +1487,13 @@ export function MessagerieModule({
   // début de la liste après avoir cliqué plusieurs fois sur "Afficher plus".
   useEffect(() => {
     setLimiteAffichage(150);
-  }, [dossierActif, filtreMails, filtreStatutBoite, filtreCommercialBoite, filtrePeriodeBoite, triActif, voirToutLaBoite]);
+  }, [dossierActif, filtreMailsDebounce, filtreStatutBoite, filtreCommercialBoite, filtrePeriodeBoite, triActif, voirToutLaBoite]);
 
   const cleFilDe = (m: Mail) =>
     `${(m.expediteur || "").toLowerCase()}||${(m.sujet || "").replace(/^(re|fwd|tr)\s*:\s*/gi, "").trim().toLowerCase()}`;
   const [vueConversation, setVueConversation] = useState(false);
   const [filsDeplies, setFilsDeplies] = useState<Set<string>>(new Set());
-  const mailsAffiches: (Mail & { _nbFil?: number; _cleFil?: string })[] = (() => {
+  const mailsAffiches: (Mail & { _nbFil?: number; _cleFil?: string })[] = useMemo(() => {
     if (!vueConversation) return mailsFiltres;
     const parFil = new Map<string, Mail[]>();
     for (const m of mailsFiltres) {
@@ -1508,12 +1518,30 @@ export function MessagerieModule({
       }
     }
     return resultat;
-  })();
+  }, [mailsFiltres, vueConversation, filsDeplies]);
 
   // 20/09/2026 — Demande d'Elinathan : un vrai système lu/pas lu "comme dans Gmail" -- un badge
   // avec le nombre de mails non lus à côté de chaque dossier dans la colonne de gauche.
-  const nbNonLusParDossier = (d: string): number =>
-    mails.filter(m => mailVisiblePourMoi(m.expediteur) && mailAppartientAuDossier(m, d) && m.lu === false).length;
+  // 20/09/2026 (v2, correction perf) — avant : un .filter() sur la TOTALITÉ des mails PAR
+  // DOSSIER appelé (8-10 fois selon le nombre de libellés), donc 8-10 passages sur les 10 961
+  // mails à chaque render. Maintenant : un seul passage sur tous les mails, qui remplit un
+  // compteur par dossier d'un coup, mis en cache (useMemo) tant que les mails ne changent pas.
+  const compteursNonLusParDossier = useMemo(() => {
+    const compteurs: Record<string, number> = {};
+    const incrementer = (d: string) => { compteurs[d] = (compteurs[d] || 0) + 1; };
+    for (const m of mails) {
+      if (!mailVisiblePourMoi(m.expediteur) || m.lu !== false) continue;
+      incrementer("TOUS");
+      if (m.favori === true) incrementer("FAVORIS");
+      if (m.boite === "spam") incrementer("SPAM");
+      if (m.boite === "trash") incrementer("TRASH");
+      for (const label of Object.keys(m.labels || {})) {
+        incrementer(label === "\\Inbox" ? "INBOX" : label);
+      }
+    }
+    return compteurs;
+  }, [mails, isAdmin, commercialIdsUtilisateur, voirToutLaBoite, regles]);
+  const nbNonLusParDossier = (d: string): number => compteursNonLusParDossier[d] || 0;
 
   const [filtreExpediteur, setFiltreExpediteur] = useState("");
   // 20/09/2026 — Demande d'Elinathan : une vue "non attribués" pour repérer vite ce qui n'a
