@@ -1551,17 +1551,9 @@ export function MessagerieModule({
                                       commerciaux.map(c => {
                                         const coche = attribues.includes(c.nom);
                                         return (
-                                          <label
-                                            key={c.id}
-                                            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.gray700, padding: "3px 2px", cursor: "pointer", whiteSpace: "nowrap" }}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={coche}
-                                              onChange={() => basculerAttributionMail(m, c.id)}
-                                            />
-                                            {c.nom}
-                                          </label>
+                                          <div key={c.id} style={{ padding: "3px 2px", fontSize: 12, color: COLORS.gray700, whiteSpace: "nowrap" }}>
+                                            <CaseACocher coche={coche} onChange={() => basculerAttributionMail(m, c.id)} label={c.nom} />
+                                          </div>
                                         );
                                       })
                                     )}
