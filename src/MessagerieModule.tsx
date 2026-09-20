@@ -365,10 +365,10 @@ export function MessagerieModule({
   commercialIdsUtilisateur?: string[];
 }) {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab || "boite");
-  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const notify = (type: "success" | "error", message: string) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 3500);
+  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string; annuler?: () => void } | null>(null);
+  const notify = (type: "success" | "error", message: string, annuler?: () => void) => {
+    setNotification({ type, message, annuler });
+    setTimeout(() => setNotification(null), annuler ? 8000 : 3500);
   };
 
   const [commerciaux, setCommerciaux] = useState<Commercial[]>([]);
@@ -982,6 +982,13 @@ export function MessagerieModule({
   };
   const marquerTraiteEnMasse = async (mailsSel: Mail[]) => {
     if (mailsSel.length === 0) return;
+    const precedents = mailsSel.map(mail => ({
+      id: mail.id,
+      statut: mail.statut ?? null,
+      statutPar: mail.statutPar ?? null,
+      statutCommentaire: mail.statutCommentaire ?? null,
+      statutLe: mail.statutLe ?? null,
+    }));
     for (const mail of mailsSel) {
       await update(ref(db, `messagerie_boite/${mail.id}`), {
         statut: "Traité",
@@ -990,7 +997,14 @@ export function MessagerieModule({
         statutLe: Date.now(),
       });
     }
-    notify("success", `✓ ${mailsSel.length} mail(s) marqué(s) comme traité(s)`);
+    notify("success", `✓ ${mailsSel.length} mail(s) marqué(s) comme traité(s)`, async () => {
+      for (const p of precedents) {
+        await update(ref(db, `messagerie_boite/${p.id}`), {
+          statut: p.statut, statutPar: p.statutPar, statutCommentaire: p.statutCommentaire, statutLe: p.statutLe,
+        });
+      }
+      notify("success", `↩️ ${precedents.length} mail(s) restauré(s)`);
+    });
     setMailsSelectionnes(new Set());
   };
   const attribuerEnMasse = async (mailsSel: Mail[], commercialId: string) => {
@@ -1022,13 +1036,22 @@ export function MessagerieModule({
   // commentaire facultatif -- qui l'a posé et quand sont enregistrés pour que les admins
   // puissent voir "quelle mail a été traité et par qui".
   const definirStatutMail = async (mail: Mail, statut: string, commentaire: string) => {
+    const precedent = {
+      statut: mail.statut ?? null,
+      statutPar: mail.statutPar ?? null,
+      statutCommentaire: mail.statutCommentaire ?? null,
+      statutLe: mail.statutLe ?? null,
+    };
     await update(ref(db, `messagerie_boite/${mail.id}`), {
       statut,
       statutPar: userName || "?",
       statutCommentaire: commentaire || null,
       statutLe: Date.now(),
     });
-    notify("success", `✓ Statut mis à jour : ${statut}`);
+    notify("success", `✓ Statut mis à jour : ${statut}`, async () => {
+      await update(ref(db, `messagerie_boite/${mail.id}`), precedent);
+      notify("success", "↩️ Statut annulé");
+    });
   };
 
   const ajouterStatutConfigure = async (nom: string) => {
@@ -1538,6 +1561,14 @@ export function MessagerieModule({
             maxWidth: "90vw",
           }}>
             {notification.message}
+            {notification.annuler && (
+              <button
+                onClick={() => { notification.annuler!(); setNotification(null); }}
+                style={{ marginLeft: 12, border: "none", background: "transparent", color: "inherit", fontWeight: 800, fontSize: 12.5, textDecoration: "underline", cursor: "pointer" }}
+              >
+                ↩️ Annuler
+              </button>
+            )}
           </div>
         )}
 
