@@ -62,6 +62,9 @@ const COLORS = {
   gray700: "#374151",
   danger: "#dc2626",
   dangerLight: "#fef2f2",
+  success: "#16a34a",
+  successLight: "#dcfce7",
+  successHover: "#bbf7d0",
 };
 
 // 20/09/2026 — Demande d'Elinathan : donner un nom francais convivial aux dossiers/libellés
@@ -1484,10 +1487,11 @@ export function MessagerieModule({
                             onClick={() => ouvrirMail(m)}
                             style={{
                               borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400, cursor: "pointer",
-                              background: m.lu === false ? "#fff" : COLORS.gray100,
+                              background: m.statut === "Traité" ? COLORS.successLight : (m.lu === false ? "#fff" : COLORS.gray100),
+                              borderLeft: m.statut === "Traité" ? `4px solid ${COLORS.success}` : "4px solid transparent",
                             }}
-                            onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray200)}
-                            onMouseLeave={e => (e.currentTarget.style.background = m.lu === false ? "#fff" : COLORS.gray100)}
+                            onMouseEnter={e => (e.currentTarget.style.background = m.statut === "Traité" ? COLORS.successHover : COLORS.gray200)}
+                            onMouseLeave={e => (e.currentTarget.style.background = m.statut === "Traité" ? COLORS.successLight : (m.lu === false ? "#fff" : COLORS.gray100))}
                           >
                             <td style={{ padding: "7px 4px", textAlign: "center", verticalAlign: "top", whiteSpace: "nowrap" }}>
                               <button
