@@ -921,9 +921,47 @@ export function MessagerieModule({
 
   // 20/09/2026 — Demande d'Elinathan : "ajoute le systeme d'etoiles pour les favoris" -- toggle
   // l'étoile d'un mail sans ouvrir le mail (le clic sur l'étoile stoppe la propagation).
+  // 20/09/2026 (v2) -- "système d'étoiles favoris conecter a la vrais boite gmail ?" : en plus
+  // de Firebase (pour un affichage immédiat ici), pose/retire aussi la vraie étoile sur Gmail
+  // lui-même (flag IMAP \Flagged), même principe que le lu/pas lu déjà synchronisé plus haut.
   const basculerFavori = (m: Mail, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    update(ref(db, `messagerie_boite/${m.id}`), { favori: !m.favori }).catch(() => {});
+    const nouveauFavori = !m.favori;
+    update(ref(db, `messagerie_boite/${m.id}`), { favori: nouveauFavori }).catch(() => {});
+    enTeteAuth()
+      .then(headers => fetch(`/api/messagerie?action=marquer-favori&uid=${m.uid}&boite=${m.boite}&favori=${nouveauFavori ? "1" : "0"}`, { headers }))
+      .catch(() => {});
+  };
+
+  // 20/09/2026 — Elinathan : "pourquoi j'ai des mail vide ?" -- un bug du robot de synchro (déjà
+  // corrigé côté serveur) créait des enregistrements fantômes ne contenant que { lu: true },
+  // sans sujet/date/expéditeur/uid/boîte -- affichés comme des lignes complètement vides dans la
+  // liste. Nettoyage manuel (bouton admin ci-dessous) plutôt qu'automatique, pour qu'un humain
+  // valide avant une suppression en masse.
+  const [nettoyageEnCours, setNettoyageEnCours] = useState(false);
+  const [nettoyageResultat, setNettoyageResultat] = useState<string | null>(null);
+  const nettoyerMailsFantomes = async () => {
+    if (!confirm("Chercher et supprimer les mails fantômes (sans sujet, date, expéditeur ni boîte) ? Cette action est irréversible.")) return;
+    setNettoyageEnCours(true);
+    setNettoyageResultat(null);
+    try {
+      const snap = await get(ref(db, "messagerie_boite"));
+      const tout: Record<string, any> = snap.val() || {};
+      const cles = Object.entries(tout)
+        .filter(([, v]: [string, any]) => !v.sujet && !v.uid && !v.boite)
+        .map(([k]) => k);
+      for (let i = 0; i < cles.length; i += 300) {
+        const lot = cles.slice(i, i + 300);
+        const patch: Record<string, null> = {};
+        for (const k of lot) patch[k] = null;
+        await update(ref(db, "messagerie_boite"), patch);
+      }
+      setNettoyageResultat(cles.length > 0 ? `✓ ${cles.length} mail(s) fantôme(s) supprimé(s).` : "Aucun mail fantôme trouvé.");
+    } catch (e: any) {
+      setNettoyageResultat(`Erreur : ${e?.message || e}`);
+    } finally {
+      setNettoyageEnCours(false);
+    }
   };
 
   const mailsFiltresBase = mails.filter(m => {
@@ -1747,6 +1785,26 @@ export function MessagerieModule({
               <p style={{ margin: "10px 0 0", fontSize: 11, color: COLORS.gray600 }}>
                 Ordre = ordre affiché dans le menu déroulant "Changer le statut" d'un mail.
               </p>
+            </div>
+
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 6px", fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
+                🧹 Maintenance
+              </p>
+              <p style={{ margin: "0 0 12px", fontSize: 11.5, color: COLORS.gray600 }}>
+                Supprime les mails fantômes (lignes vides sans sujet, date ni expéditeur) laissés
+                par un bug de synchro déjà corrigé.
+              </p>
+              <button
+                onClick={nettoyerMailsFantomes}
+                disabled={nettoyageEnCours}
+                style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: nettoyageEnCours ? "default" : "pointer", opacity: nettoyageEnCours ? 0.6 : 1 }}
+              >
+                {nettoyageEnCours ? "Nettoyage en cours…" : "🧹 Nettoyer les mails fantômes"}
+              </button>
+              {nettoyageResultat && (
+                <p style={{ margin: "10px 0 0", fontSize: 12, color: COLORS.gray700 }}>{nettoyageResultat}</p>
+              )}
             </div>
 
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>

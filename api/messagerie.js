@@ -506,6 +506,39 @@ async function actionPieceJointe(req, res) {
   return res.status(200).send(buffer);
 }
 
+// ─── action=marquer-favori : ajoute/retire l'étoile sur Gmail lui-même (flag IMAP \Flagged) ───
+// 20/09/2026 — Demande d'Elinathan : "système d'étoiles favoris conecter a la vrais boite
+// gmail ?" -- même principe que action=marquer-lu ci-dessous pour \Seen : Gmail utilise le
+// flag standard \Flagged pour représenter son étoile, donc cliquer sur l'étoile dans l'appli
+// pose/retire ce flag directement sur Gmail (et dans l'autre sens, action=sync plus bas ramène
+// déjà les étoiles posées depuis Gmail lui-même ou un téléphone).
+async function actionMarquerFavori(req, res) {
+  const uid = parseInt(req.query?.uid, 10);
+  const boite = req.query?.boite || "all";
+  const favori = req.query?.favori === "1";
+  if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
+
+  await avecReessai(async () => {
+    const client = await connecterImap();
+    try {
+      const lock = await ouvrirMailboxPourUid(client, boite);
+      try {
+        if (favori) {
+          await client.messageFlagsAdd(uid, ["\\Flagged"], { uid: true });
+        } else {
+          await client.messageFlagsRemove(uid, ["\\Flagged"], { uid: true });
+        }
+      } finally {
+        lock.release();
+      }
+    } finally {
+      try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+    }
+  });
+
+  return res.status(200).json({ ok: true });
+}
+
 // ─── action=marquer-lu : marque un mail comme lu sur Gmail lui-même (flag IMAP \Seen) ───
 // 20/09/2026 — Demande d'Elinathan : "mets un systeme pour savoir si un mail a etais lu [...]
 // ont peut savoir si le mail a etais lu ou pas sur gmail ?" -- jusqu'ici, ouvrir un mail dans
@@ -743,6 +776,7 @@ async function actionSync(req, res) {
               sujet: msg.envelope?.subject || "(sans sujet)",
               date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
               lu: msg.flags ? msg.flags.has("\\Seen") : false,
+              favori: msg.flags ? msg.flags.has("\\Flagged") : false,
               labels,
             };
             resultat.nouveaux++;
@@ -756,13 +790,19 @@ async function actionSync(req, res) {
         // 2) Rafraichissement tournant du statut lu/pas lu sur tout l'historique d'un an de CE
         // dossier (pas seulement les nouveaux), par lots, pour finir par couvrir toute la
         // fenetre au fil des passages successifs du robot sans jamais surcharger un seul appel.
-        if (uids.length > 0) {
+        // 20/09/2026 -- IMPORTANT : uniquement sur les uids DEJA decouverts (uid <= nouveauCurseur),
+        // jamais au-dela, sinon on ecrit "{cle}/lu" pour un uid qui n'a pas encore d'enregistrement
+        // complet en base -- Firebase cree alors un mail fantome { lu: true } sans aucun autre champ
+        // (vu en prod le 20/09/2026 : ~2000 mails "(sans sujet)" sans date ni expediteur).
+        const uidsDejaDecouverts = uids.filter(u => u <= nouveauCurseur);
+        if (uidsDejaDecouverts.length > 0) {
           const lotFlags = [];
-          for (let i = 0; i < Math.min(tailleFlags, uids.length); i++) {
-            lotFlags.push(uids[(indexFlags + i) % uids.length]);
+          for (let i = 0; i < Math.min(tailleFlags, uidsDejaDecouverts.length); i++) {
+            lotFlags.push(uidsDejaDecouverts[(indexFlags + i) % uidsDejaDecouverts.length]);
           }
           for await (const msg of client.fetch(lotFlags, { uid: true, flags: true }, { uid: true })) {
             const lu = msg.flags ? msg.flags.has("\\Seen") : false;
+            const favori = msg.flags ? msg.flags.has("\\Flagged") : false;
             const cle = `${source.code}_${msg.uid}`;
             // Si ce mail vient JUSTE d'etre ajoute au complet ci-dessus (etape 1), ne pas aussi
             // ecrire un chemin imbrique "cle/lu" a cote -- Firebase refuse une mise a jour
@@ -771,11 +811,14 @@ async function actionSync(req, res) {
             // l'objet complet est de toute facon deja a jour (vient d'etre lu a l'instant).
             if (!(cle in updates)) {
               updates[`${cle}/lu`] = lu;
+              // 20/09/2026 -- meme chose pour l'etoile (\Flagged), pour qu'un mail etoile ou
+              // deseoile directement depuis Gmail (ou le telephone) finisse par se refleter ici.
+              updates[`${cle}/favori`] = favori;
             }
             resultat.flagsRafraichis++;
           }
         }
-        const nouvelIndexFlags = uids.length > 0 ? (indexFlags + tailleFlags) % uids.length : 0;
+        const nouvelIndexFlags = uidsDejaDecouverts.length > 0 ? (indexFlags + tailleFlags) % uidsDejaDecouverts.length : 0;
 
         if (Object.keys(updates).length > 0) {
           await adminDb.ref("messagerie_boite").update(updates);
@@ -856,6 +899,7 @@ export default async function handler(req, res) {
     if (action === "piece-jointe") { await exigerConnexionMoorea(req); return await actionPieceJointe(req, res); }
     if (action === "envoyer") { await exigerConnexionMoorea(req); return await actionEnvoyer(req, res); }
     if (action === "marquer-lu") { await exigerConnexionMoorea(req); return await actionMarquerLu(req, res); }
+    if (action === "marquer-favori") { await exigerConnexionMoorea(req); return await actionMarquerFavori(req, res); }
     if (action === "suggerer-attribution") { await exigerConnexionMoorea(req); return await actionSuggererAttribution(req, res); }
     if (action === "sync") {
       const secretSyncOk = req.query?.secret && req.query.secret === process.env.MESSAGERIE_SYNC_SECRET;
