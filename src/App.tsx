@@ -2930,7 +2930,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           onClose={() => { setShowMessagerie(false); setMessagerieInitialTab(undefined); setShowAccueil(true); }}
           userName={nomAfficheGarde}
           initialTab={messagerieInitialTab}
-          canConfig={monAcces.hasTab("messagerie.configuration")}
+          // 20/09/2026 — Demande d'Elinathan : "je veux que le bouton configuration soit
+          // reservé a l'admin" -- réservé aux comptes admin quoi qu'il en soit du réglage
+          // Droits d'accès (qui, par défaut, laisse ce sous-onglet ouvert à tout le monde).
+          canConfig={monAcces.isAdmin}
           isAdmin={monAcces.isAdmin}
           commercialIdsUtilisateur={monCommercialIds}
         />
