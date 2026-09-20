@@ -669,6 +669,14 @@ export function MessagerieModule({
     html: string | null; texte: string | null; messageId: string | null;
     pieces: { index: number; nomFichier: string; typeContenu: string; taille: number }[];
   };
+  // 20/09/2026 -- voir la note ci-dessus : Firebase ne stocke pas les tableaux vides, donc un
+  // detail relu depuis le cache peut avoir perdu a/cc/pieces -- on les remet à [] par défaut.
+  const normaliserDetailMail = (d: any): DetailMail => ({
+    ...d,
+    a: Array.isArray(d?.a) ? d.a : [],
+    cc: Array.isArray(d?.cc) ? d.cc : [],
+    pieces: Array.isArray(d?.pieces) ? d.pieces : [],
+  });
 
   const [mailOuvert, setMailOuvert] = useState<Mail | null>(null);
   const [detailMail, setDetailMail] = useState<DetailMail | null>(null);
@@ -723,7 +731,7 @@ export function MessagerieModule({
     try {
       const snapshot = await get(ref(db, cheminCacheMail(m.id)));
       if (snapshot.exists()) {
-        setDetailMail(snapshot.val());
+        setDetailMail(normaliserDetailMail(snapshot.val()));
         setChargementDetail(false);
         // 19/09/2026 — On note qu'il vient d'être relu : ça repousse son expiration de 2 jours
         // (voir action=nettoyer-cache-mails côté serveur, qui supprime du cache tout mail non
@@ -742,7 +750,7 @@ export function MessagerieModule({
       const reponse = await fetch(`/api/messagerie?action=detail&uid=${m.uid}&boite=${m.boite}`, { headers });
       const data = await reponse.json();
       if (!reponse.ok) { setErreurDetail(data?.error || "Erreur pendant le chargement du mail."); return; }
-      setDetailMail(data);
+      setDetailMail(normaliserDetailMail(data));
       // On met en cache pour que les prochaines ouvertures soient instantanées. On limite
       // la taille (mails avec de très grosses images intégrées) pour rester raisonnable
       // dans Firebase — un mail normal ne s'en approche jamais. "dernierAcces" sert au nettoyage
