@@ -883,6 +883,26 @@ export function MessagerieModule({
     notify("success", "✓ Tu es maintenant attribué à cet expéditeur");
   };
 
+  // 20/09/2026 — Demande d'Elinathan : "attribuer sans ouvrir le mail, comme une liste
+  // déroulante avec des cases à cocher" -- ouvre/ferme le petit menu de cases à cocher dans la
+  // colonne "Attribué à" de la liste (un seul mail à la fois ; null = aucun menu ouvert).
+  const [attributionOuverteId, setAttributionOuverteId] = useState<string | null>(null);
+  const basculerAttributionMail = async (mail: Mail, commercialId: string) => {
+    const adresse = (mail.expediteur || "").toLowerCase();
+    const ligne = lignesExpediteurs.find(l => !l.estDomaine && l.adresse === adresse);
+    if (ligne) {
+      await toggleCommercialPourLigne(ligne, commercialId);
+    } else {
+      await push(ref(db, "messagerie_regles"), {
+        expediteur: mail.expediteur,
+        commercialIds: [commercialId],
+        nbMails: 1,
+        dernierSujet: mail.sujet,
+        creeLe: new Date().toLocaleString("fr-FR"),
+      });
+    }
+  };
+
   // 20/09/2026 — Demande d'Elinathan : marquer le statut de traitement d'un mail, avec un
   // commentaire facultatif -- qui l'a posé et quand sont enregistrés pour que les admins
   // puissent voir "quelle mail a été traité et par qui".
@@ -1498,22 +1518,55 @@ export function MessagerieModule({
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>
                               {m.sujet}
                             </td>
-                            <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
-                              {attribues.length > 0 ? (
-                                <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")}</span>
-                              ) : (
-                                <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>Non attribué</span>
-                              )}
-                              {/* 20/09/2026 — Demande d'Elinathan : le bouton "M'attribuer" doit être
-                                  accessible aussi mail fermé, pas seulement dans le mail ouvert. */}
-                              {commercialIdsUtilisateur.length > 0 && !attribues.includes(commerciaux.find(c => c.id === commercialIdsUtilisateur[0])?.nom || "\0") && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); mAttribuerCommeCommercial(m); }}
-                                  title="M'attribuer cet expéditeur"
-                                  style={{ display: "block", marginTop: 3, border: "none", background: "transparent", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}
-                                >
-                                  👤 M'attribuer
-                                </button>
+                            <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word", position: "relative" }}>
+                              <button
+                                onClick={e => { e.stopPropagation(); setAttributionOuverteId(prev => (prev === m.id ? null : m.id)); }}
+                                style={{ display: "block", border: "none", background: "transparent", padding: 0, cursor: "pointer", textAlign: "left", width: "100%" }}
+                                title="Cliquer pour attribuer sans ouvrir le mail"
+                              >
+                                {attribues.length > 0 ? (
+                                  <span style={{ color: COLORS.primary, fontWeight: 700, fontSize: 11.5 }}>{attribues.join(", ")} ▾</span>
+                                ) : (
+                                  <span style={{ color: "#c2a44a", fontWeight: 700, fontSize: 11.5, whiteSpace: "nowrap" }}>Non attribué ▾</span>
+                                )}
+                              </button>
+                              {attributionOuverteId === m.id && (
+                                <>
+                                  {/* Fond invisible plein écran : cliquer n'importe où ailleurs ferme le menu. */}
+                                  <div
+                                    onClick={e => { e.stopPropagation(); setAttributionOuverteId(null); }}
+                                    style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                                  />
+                                  <div
+                                    onClick={e => e.stopPropagation()}
+                                    style={{
+                                      position: "absolute", top: "100%", left: 0, marginTop: 4, background: "#fff",
+                                      border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+                                      padding: 8, zIndex: 41, minWidth: 190, maxHeight: 220, overflowY: "auto",
+                                    }}
+                                  >
+                                    {commerciaux.length === 0 ? (
+                                      <p style={{ margin: 0, fontSize: 11.5, color: COLORS.gray600 }}>Aucun commercial créé (Configuration).</p>
+                                    ) : (
+                                      commerciaux.map(c => {
+                                        const coche = attribues.includes(c.nom);
+                                        return (
+                                          <label
+                                            key={c.id}
+                                            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.gray700, padding: "3px 2px", cursor: "pointer", whiteSpace: "nowrap" }}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={coche}
+                                              onChange={() => basculerAttributionMail(m, c.id)}
+                                            />
+                                            {c.nom}
+                                          </label>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                </>
                               )}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
