@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove, auth, get, set } from "./firebase";
 import { PageHeader, styles, cleTab } from "./shared";
 
@@ -176,6 +176,61 @@ function ChampDestinataires({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// 20/09/2026 — Demande d'Elinathan : "manque le bouton envoyer un mail avec un vrais editeur de
+// mail comme dans gmail". Petit éditeur de texte enrichi (gras/italique/souligné/lien/listes),
+// sans dépendance externe : une simple zone "contentEditable" pilotée par les commandes du
+// navigateur (document.execCommand). C'est la même technique que Gmail utilisait historiquement
+// pour son propre éditeur, donc un choix éprouvé, pas un raccourci.
+//
+// La zone est "non contrôlée" côté React (son contenu HTML vit dans le DOM, pas dans un state) :
+// plus simple et plus fiable pour un éditeur riche, où réconcilier le curseur à chaque frappe
+// avec un state contrôlé causerait des sauts de curseur. Le contenu initial (citation d'un mail
+// pour Répondre/Transférer, ou vide pour un nouveau message) est pausé dans la ref via un effet
+// dans le composant parent ; la lecture se fait à l'envoi via editeurRef.current.innerHTML.
+const boutonBarreEditeur: React.CSSProperties = {
+  border: "none", background: "transparent", borderRadius: 5, padding: "4px 8px",
+  fontSize: 12.5, color: COLORS.gray700, cursor: "pointer", minWidth: 26,
+};
+
+function EditeurCorps({ editeurRef }: { editeurRef: React.RefObject<HTMLDivElement> }) {
+  // onMouseDown + preventDefault : sans ça, cliquer sur un bouton de la barre d'outils fait
+  // perdre la sélection de texte dans la zone d'édition avant que la commande ne s'applique.
+  const executer = (commande: string, valeur?: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    editeurRef.current?.focus();
+    document.execCommand(commande, false, valeur);
+  };
+  const insererLien = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const url = window.prompt("Adresse du lien (https://...)");
+    if (url) {
+      editeurRef.current?.focus();
+      document.execCommand("createLink", false, url);
+    }
+  };
+  return (
+    <div style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, marginBottom: 8, overflow: "hidden" }}>
+      <div style={{ display: "flex", gap: 2, padding: "4px 6px", borderBottom: `1.5px solid ${COLORS.gray200}`, background: COLORS.gray100, flexWrap: "wrap" }}>
+        <button type="button" onMouseDown={executer("bold")} style={{ ...boutonBarreEditeur, fontWeight: 800 }} title="Gras">G</button>
+        <button type="button" onMouseDown={executer("italic")} style={{ ...boutonBarreEditeur, fontStyle: "italic" }} title="Italique">I</button>
+        <button type="button" onMouseDown={executer("underline")} style={{ ...boutonBarreEditeur, textDecoration: "underline" }} title="Souligné">S</button>
+        <span style={{ width: 1, background: COLORS.gray200, margin: "2px 4px" }} />
+        <button type="button" onMouseDown={insererLien} style={boutonBarreEditeur} title="Insérer un lien">🔗</button>
+        <button type="button" onMouseDown={executer("insertUnorderedList")} style={boutonBarreEditeur} title="Liste à puces">• ≡</button>
+        <button type="button" onMouseDown={executer("insertOrderedList")} style={boutonBarreEditeur} title="Liste numérotée">1. ≡</button>
+        <span style={{ width: 1, background: COLORS.gray200, margin: "2px 4px" }} />
+        <button type="button" onMouseDown={executer("removeFormat")} style={boutonBarreEditeur} title="Effacer la mise en forme">Tx</button>
+      </div>
+      <div
+        ref={editeurRef}
+        contentEditable
+        suppressContentEditableWarning
+        style={{ minHeight: 160, maxHeight: 360, overflowY: "auto", padding: "10px 12px", fontSize: 13, outline: "none", lineHeight: 1.5 }}
+      />
     </div>
   );
 }
@@ -516,40 +571,62 @@ export function MessagerieModule({
   };
 
   // ─── Répondre / Transférer ───
-  const [modeCompose, setModeCompose] = useState<"repondre" | "transferer" | null>(null);
+  const [modeCompose, setModeCompose] = useState<"repondre" | "transferer" | "nouveau" | null>(null);
   const [composeA, setComposeA] = useState<string[]>([]);
   const [composeCc, setComposeCc] = useState<string[]>([]);
   const [composeSujet, setComposeSujet] = useState("");
-  const [composeCorps, setComposeCorps] = useState("");
+  const [composeCorpsInitial, setComposeCorpsInitial] = useState("");
   const [composeEnvoiEnCours, setComposeEnvoiEnCours] = useState(false);
   const [composeErreur, setComposeErreur] = useState<string | null>(null);
   const [composeInclurePieces, setComposeInclurePieces] = useState(true);
+  // 20/09/2026 — l'éditeur de texte enrichi (EditeurCorps) est "non contrôlé" : son contenu HTML
+  // vit dans le DOM (cette ref), pas dans un state React. On ne fait qu'y déposer le contenu de
+  // départ (citation, ou vide pour un nouveau message) à l'ouverture, et le relire à l'envoi.
+  const corpsEditableRef = useRef<HTMLDivElement | null>(null);
 
-  const citationOriginale = () => {
+  useEffect(() => {
+    if (modeCompose && corpsEditableRef.current) {
+      corpsEditableRef.current.innerHTML = composeCorpsInitial;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeCompose]);
+
+  const citationOriginaleHtml = () => {
     if (!detailMail) return "";
-    return `\n\n--- Message original ---\nDe : ${detailMail.de}\nDate : ${formatDateMail(detailMail.date)}\nSujet : ${detailMail.sujet}\n\n${detailMail.texte || ""}`;
+    const texteOriginal = (detailMail.texte || "").replace(/</g, "&lt;");
+    return `<br><br><div style="border-left:2px solid #ccc;padding-left:10px;color:#555;">--- Message original ---<br>De : ${detailMail.de}<br>Date : ${formatDateMail(detailMail.date)}<br>Sujet : ${detailMail.sujet}<br><br><pre style="white-space:pre-wrap;font-family:inherit;margin:0;">${texteOriginal}</pre></div>`;
   };
 
-  const ouvrirRepondre = () => {
-    if (!detailMail) return;
-    setModeCompose("repondre");
-    setComposeA([extraireAdresse(detailMail.de)]);
+  const ouvrirNouveauMessage = () => {
+    setModeCompose("nouveau");
+    setComposeA([]);
     setComposeCc([]);
-    setComposeSujet(detailMail.sujet.toLowerCase().startsWith("re:") ? detailMail.sujet : `Re: ${detailMail.sujet}`);
-    setComposeCorps(citationOriginale());
+    setComposeSujet("");
+    setComposeCorpsInitial("");
     setComposeInclurePieces(false);
     setComposeErreur(null);
   };
 
+  const ouvrirRepondre = () => {
+    if (!detailMail) return;
+    setComposeA([extraireAdresse(detailMail.de)]);
+    setComposeCc([]);
+    setComposeSujet(detailMail.sujet.toLowerCase().startsWith("re:") ? detailMail.sujet : `Re: ${detailMail.sujet}`);
+    setComposeCorpsInitial(citationOriginaleHtml());
+    setComposeInclurePieces(false);
+    setComposeErreur(null);
+    setModeCompose("repondre");
+  };
+
   const ouvrirTransferer = () => {
     if (!detailMail) return;
-    setModeCompose("transferer");
     setComposeA([]);
     setComposeCc([]);
     setComposeSujet(detailMail.sujet.toLowerCase().startsWith("tr:") || detailMail.sujet.toLowerCase().startsWith("fwd:") ? detailMail.sujet : `Tr: ${detailMail.sujet}`);
-    setComposeCorps(citationOriginale());
+    setComposeCorpsInitial(citationOriginaleHtml());
     setComposeInclurePieces((detailMail.pieces || []).length > 0);
     setComposeErreur(null);
+    setModeCompose("transferer");
   };
 
   const blobEnBase64 = (blob: Blob): Promise<string> =>
@@ -561,16 +638,22 @@ export function MessagerieModule({
     });
 
   const envoyerCompose = async () => {
-    if (!detailMail || !modeCompose) return;
+    if (!modeCompose) return;
     const destinataires = composeA;
     if (destinataires.length === 0) { setComposeErreur("Indique au moins un destinataire."); return; }
+    if (modeCompose === "nouveau" && !composeSujet.trim()) { setComposeErreur("Indique un sujet."); return; }
     setComposeEnvoiEnCours(true);
     setComposeErreur(null);
     try {
       const headers = await enTeteAuth();
 
+      // 20/09/2026 — l'éditeur riche (EditeurCorps) est non contrôlé : on lit son contenu
+      // directement dans le DOM au moment de l'envoi plutôt que de le suivre dans un state React.
+      const html = corpsEditableRef.current?.innerHTML || "";
+      const texte = corpsEditableRef.current?.innerText || "";
+
       let piecesJointes: { nomFichier: string; typeContenu: string; contenuBase64: string }[] = [];
-      if (modeCompose === "transferer" && composeInclurePieces && detailMail.pieces.length > 0) {
+      if (modeCompose === "transferer" && composeInclurePieces && detailMail && detailMail.pieces.length > 0) {
         for (const piece of detailMail.pieces) {
           const rep = await fetch(`/api/messagerie?action=piece-jointe&uid=${detailMail.uid}&index=${piece.index}&boite=${detailMail.boite || "all"}`, { headers });
           if (!rep.ok) continue;
@@ -587,15 +670,16 @@ export function MessagerieModule({
           to: destinataires,
           cc: composeCc,
           sujet: composeSujet,
-          texte: composeCorps,
-          enReponseA: modeCompose === "repondre" ? detailMail.messageId : undefined,
-          references: modeCompose === "repondre" ? detailMail.messageId : undefined,
+          texte,
+          html,
+          enReponseA: modeCompose === "repondre" ? detailMail?.messageId : undefined,
+          references: modeCompose === "repondre" ? detailMail?.messageId : undefined,
           piecesJointes,
         }),
       });
       const data = await reponse.json();
       if (!reponse.ok) { setComposeErreur(data?.error || "Envoi échoué."); return; }
-      notify("success", modeCompose === "repondre" ? "✓ Réponse envoyée" : "✓ Mail transféré");
+      notify("success", modeCompose === "repondre" ? "✓ Réponse envoyée" : modeCompose === "transferer" ? "✓ Mail transféré" : "✓ Message envoyé");
       // Mémorise les adresses utilisées pour les proposer en suggestion la prochaine fois
       // (19/09/2026 : "je veux que quand je tape un mail il me propose comme dans Gmail un
       // mail à qui on a déjà envoyé un truc") — un vrai carnet d'adresses basé sur l'usage réel.
@@ -729,6 +813,17 @@ export function MessagerieModule({
               background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12,
               padding: "10px 8px", width: 190, flexShrink: 0, position: "sticky", top: 70,
             }}>
+              <button
+                onClick={ouvrirNouveauMessage}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%",
+                  padding: "10px 10px", borderRadius: 8, border: "none", background: COLORS.primary,
+                  color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer", marginBottom: 10,
+                }}
+              >
+                ✏️ Nouveau message
+              </button>
+
               {["TOUS", ...dossiersDisponibles].map(d => (
                 <button
                   key={d}
@@ -922,7 +1017,7 @@ export function MessagerieModule({
                   </>
                 )}
 
-                {modeCompose && detailMail && (
+                {modeCompose && modeCompose !== "nouveau" && detailMail && (
                   <div style={{ marginTop: 18, borderTop: `1.5px solid ${COLORS.gray200}`, paddingTop: 14 }}>
                     <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: COLORS.gray700 }}>
                       {modeCompose === "repondre" ? "↩️ Répondre" : "➡️ Transférer"}
@@ -950,12 +1045,7 @@ export function MessagerieModule({
                       placeholder="Sujet"
                       style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
                     />
-                    <textarea
-                      value={composeCorps}
-                      onChange={e => setComposeCorps(e.target.value)}
-                      rows={8}
-                      style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }}
-                    />
+                    <EditeurCorps editeurRef={corpsEditableRef} />
                     {modeCompose === "transferer" && detailMail.pieces.length > 0 && (
                       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLORS.gray700, marginBottom: 10, cursor: "pointer" }}>
                         <input type="checkbox" checked={composeInclurePieces} onChange={e => setComposeInclurePieces(e.target.checked)} />
@@ -988,6 +1078,63 @@ export function MessagerieModule({
                   <button onClick={imprimerMail} style={{ padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🖨️ Imprimer</button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {modeCompose === "nouveau" && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 950,
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 12,
+          }} onClick={() => setModeCompose(null)}>
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 700, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+            >
+              <div style={{ padding: "14px 18px", borderBottom: `1.5px solid ${COLORS.gray200}` }}>
+                <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: COLORS.gray700 }}>✏️ Nouveau message</p>
+              </div>
+              <div style={{ padding: "14px 18px", overflowY: "auto" }}>
+                {composeErreur && (
+                  <div style={{ background: COLORS.dangerLight, border: "1.5px solid #fca5a5", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: COLORS.danger, marginBottom: 10 }}>
+                    ⚠️ {composeErreur}
+                  </div>
+                )}
+                <ChampDestinataires
+                  valeurs={composeA}
+                  onChange={setComposeA}
+                  suggestions={carnetAdresses}
+                  placeholder="À (tape une adresse, Entrée pour valider)"
+                />
+                <ChampDestinataires
+                  valeurs={composeCc}
+                  onChange={setComposeCc}
+                  suggestions={carnetAdresses}
+                  placeholder="Cc (facultatif)"
+                />
+                <input
+                  value={composeSujet}
+                  onChange={e => setComposeSujet(e.target.value)}
+                  placeholder="Sujet"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
+                />
+                <EditeurCorps editeurRef={corpsEditableRef} />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={envoyerCompose}
+                    disabled={composeEnvoiEnCours}
+                    style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: composeEnvoiEnCours ? "default" : "pointer", opacity: composeEnvoiEnCours ? 0.6 : 1 }}
+                  >
+                    {composeEnvoiEnCours ? "⏳ Envoi..." : "📤 Envoyer"}
+                  </button>
+                  <button
+                    onClick={() => setModeCompose(null)}
+                    style={{ padding: "8px 18px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
