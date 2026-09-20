@@ -100,7 +100,8 @@ function estDossierSysteme(d: string): boolean {
   return d === "TOUS" || d === "INBOX" || d === "SPAM" || d === "TRASH" || Boolean(NOMS_DOSSIERS[d]);
 }
 
-export type Commercial = { id: string; nom: string };
+export type Commercial = { id: string; nom: string; equipeId?: string; enVacances?: boolean };
+export type Equipe = { id: string; nom: string };
 export type RegleAuto = {
   id: string;
   motCle: string;
@@ -378,6 +379,8 @@ export function MessagerieModule({
 
   const [commerciaux, setCommerciaux] = useState<Commercial[]>([]);
   const [regles, setRegles] = useState<RegleAttribution[]>([]);
+  // 20/09/2026 -- Équipes (demande d'Elinathan : "les commerciaux travaille par equipe").
+  const [equipes, setEquipes] = useState<Equipe[]>([]);
   // Carnet d'adresses "déjà utilisées" (19/09/2026) -- alimenté à chaque envoi réussi
   // (voir envoyerCompose), pour proposer une auto-complétion comme dans une vraie boîte mail.
   const [contactsConnus, setContactsConnus] = useState<Record<string, { adresse: string }>>({});
@@ -394,7 +397,11 @@ export function MessagerieModule({
     const u3 = onValue(ref(db, "messagerie_contacts"), snap => {
       setContactsConnus(snap.val() || {});
     });
-    return () => { u1(); u2(); u3(); };
+    const u4 = onValue(ref(db, "messagerie_equipes"), snap => {
+      const d = snap.val();
+      setEquipes(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.nom || "").localeCompare(b.nom || "")) : []);
+    });
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   // 20/09/2026 — Demande d'Elinathan : "amélioration générale de la boîte" -> modèles de réponse
@@ -446,6 +453,39 @@ export function MessagerieModule({
         commercialIds: (r.commercialIds || []).filter(id => id !== c.id),
       })),
     ]);
+  };
+
+  // 20/09/2026 -- Demande d'Elinathan : "les commerciaux travaille par equipe donc mets un
+  // systeme pour regrouper des gens". Une équipe est juste un nom ; chaque commercial peut être
+  // rattaché à une équipe (ou aucune) via le menu déroulant affiché sur sa fiche ci-dessous.
+  const [nouvelleEquipe, setNouvelleEquipe] = useState("");
+  const ajouterEquipe = async () => {
+    const nom = nouvelleEquipe.trim();
+    if (!nom) return;
+    if (equipes.some(eq => eq.nom.toLowerCase() === nom.toLowerCase())) {
+      notify("error", "Cette équipe existe déjà");
+      return;
+    }
+    await push(ref(db, "messagerie_equipes"), { nom });
+    setNouvelleEquipe("");
+    notify("success", `✓ Équipe "${nom}" créée`);
+  };
+  const supprimerEquipe = async (eq: Equipe) => {
+    const commerciauxConcernes = commerciaux.filter(c => c.equipeId === eq.id);
+    if (!window.confirm(`Supprimer l'équipe "${eq.nom}" ?${commerciauxConcernes.length > 0 ? ` (${commerciauxConcernes.length} commercial(aux) n'auront plus d'équipe)` : ""}`)) return;
+    await Promise.all([
+      remove(ref(db, `messagerie_equipes/${eq.id}`)),
+      ...commerciauxConcernes.map(c => update(ref(db, `messagerie_commerciaux/${c.id}`), { equipeId: null })),
+    ]);
+  };
+
+  // 20/09/2026 -- Demande d'Elinathan : "mets un mode vaccance ou ca bascule la boite chez tout
+  // le mont ejusqua desactivation" -- pendant que le mode vacances d'un commercial est actif, ses
+  // mails attribués redeviennent visibles par toute l'équipe (voir mailVisiblePourMoi ci-dessous),
+  // jusqu'à ce qu'on reclique sur 🏖️ pour désactiver.
+  const basculerVacances = async (c: Commercial) => {
+    await update(ref(db, `messagerie_commerciaux/${c.id}`), { enVacances: !c.enVacances });
+    notify("success", c.enVacances ? `✓ ${c.nom} n'est plus en vacances, sa boîte lui revient` : `✓ ${c.nom} est en vacances, sa boîte est visible par toute l'équipe`);
   };
 
   const [nouvelleRegleExpediteur, setNouvelleRegleExpediteur] = useState("");
@@ -1008,6 +1048,9 @@ export function MessagerieModule({
     if (isAdmin || commercialIdsUtilisateur.length === 0) return true;
     if (voirToutLaBoite) return true;
     const attribues = trouverAttributionIds(adresse);
+    // 20/09/2026 -- Mode vacances : si TOUS les commerciaux attribués à cette adresse sont en
+    // vacances, la boîte bascule chez tout le monde (sinon plus personne ne la verrait).
+    if (attribues.length > 0 && attribues.every(id => commerciaux.find(c => c.id === id)?.enVacances)) return true;
     return attribues.some(id => commercialIdsUtilisateur.includes(id));
   };
 
@@ -1428,6 +1471,7 @@ export function MessagerieModule({
 
   const [filtreStatutBoite, setFiltreStatutBoite] = useState("");
   const [filtreCommercialBoite, setFiltreCommercialBoite] = useState("");
+  const [filtreEquipeBoite, setFiltreEquipeBoite] = useState("");
   const [filtrePeriodeBoite, setFiltrePeriodeBoite] = useState<"tout" | "aujourdhui" | "semaine" | "mois">("tout");
 
   // 20/09/2026 — useMemo : ne recalcule que si l'un de ces éléments change vraiment (pas à
@@ -1438,6 +1482,10 @@ export function MessagerieModule({
     if (filtreStatutBoite === "non_traite" && m.statut) return false;
     if (filtreStatutBoite && filtreStatutBoite !== "non_traite" && m.statut !== filtreStatutBoite) return false;
     if (filtreCommercialBoite && !trouverAttributionIds(m.expediteur).includes(filtreCommercialBoite)) return false;
+    if (filtreEquipeBoite) {
+      const idsEquipe = commerciaux.filter(c => c.equipeId === filtreEquipeBoite).map(c => c.id);
+      if (!trouverAttributionIds(m.expediteur).some(id => idsEquipe.includes(id))) return false;
+    }
     if (filtrePeriodeBoite !== "tout") {
       if (!m.date) return false;
       const tempsMail = new Date(m.date).getTime();
@@ -1455,7 +1503,7 @@ export function MessagerieModule({
       m.sujet.toLowerCase().includes(q) ||
       (m.resume || "").toLowerCase().includes(q)
     );
-  }), [mails, dossierActif, filtreStatutBoite, filtreCommercialBoite, filtrePeriodeBoite, filtreMailsDebounce, isAdmin, commercialIdsUtilisateur, voirToutLaBoite, regles]);
+  }), [mails, dossierActif, filtreStatutBoite, filtreCommercialBoite, filtreEquipeBoite, filtrePeriodeBoite, filtreMailsDebounce, isAdmin, commercialIdsUtilisateur, voirToutLaBoite, regles, commerciaux]);
 
   // Surligne la première occurrence de la recherche dans un texte affiché dans la liste, pour
   // voir tout de suite pourquoi un mail correspond à la recherche.
@@ -1489,7 +1537,7 @@ export function MessagerieModule({
   // début de la liste après avoir cliqué plusieurs fois sur "Afficher plus".
   useEffect(() => {
     setLimiteAffichage(150);
-  }, [dossierActif, filtreMailsDebounce, filtreStatutBoite, filtreCommercialBoite, filtrePeriodeBoite, triActif, voirToutLaBoite]);
+  }, [dossierActif, filtreMailsDebounce, filtreStatutBoite, filtreCommercialBoite, filtreEquipeBoite, filtrePeriodeBoite, triActif, voirToutLaBoite]);
 
   const cleFilDe = (m: Mail) =>
     `${(m.expediteur || "").toLowerCase()}||${(m.sujet || "").replace(/^(re|fwd|tr)\s*:\s*/gi, "").trim().toLowerCase()}`;
@@ -1995,6 +2043,20 @@ export function MessagerieModule({
                       <option value="">Tous les commerciaux</option>
                       {commerciaux.map(c => (
                         <option key={c.id} value={c.id}>{c.nom}</option>
+                      ))}
+                    </select>
+                  )}
+                  {/* 20/09/2026 -- Filtre par équipe (demande d'Elinathan : "les commerciaux
+                      travaille par equipe donc mets un systeme pour regrouper des gens"). */}
+                  {isAdmin && equipes.length > 0 && (
+                    <select
+                      value={filtreEquipeBoite}
+                      onChange={e => setFiltreEquipeBoite(e.target.value)}
+                      style={{ width: "auto", padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtreEquipeBoite ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtreEquipeBoite ? COLORS.primaryLight : "#fff" }}
+                    >
+                      <option value="">Toutes les équipes</option>
+                      {equipes.map(eq => (
+                        <option key={eq.id} value={eq.id}>{eq.nom}</option>
                       ))}
                     </select>
                   )}
@@ -2672,9 +2734,60 @@ export function MessagerieModule({
               ) : (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {commerciaux.map(c => (
-                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 20, padding: "6px 8px 6px 14px" }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.primary }}>{c.nom}</span>
+                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 6, background: c.enVacances ? "#fef3c7" : COLORS.primaryLight, border: `1.5px solid ${c.enVacances ? "#f59e0b" : COLORS.primaryBorder}`, borderRadius: 20, padding: "6px 8px 6px 14px" }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: c.enVacances ? "#92400e" : COLORS.primary, whiteSpace: "nowrap" }}>{c.nom}{c.enVacances ? " 🏖️" : ""}</span>
+                      {/* 20/09/2026 -- rattachement à une équipe (voir bloc "Équipes" plus haut). */}
+                      <select
+                        value={c.equipeId || ""}
+                        onChange={e => update(ref(db, `messagerie_commerciaux/${c.id}`), { equipeId: e.target.value || null })}
+                        title="Équipe de ce commercial"
+                        style={{ width: "auto", fontSize: 11, padding: "2px 4px", borderRadius: 6, border: `1px solid ${COLORS.gray200}` }}
+                      >
+                        <option value="">Sans équipe</option>
+                        {equipes.map(eq => (
+                          <option key={eq.id} value={eq.id}>{eq.nom}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => basculerVacances(c)}
+                        title={c.enVacances ? "Désactiver le mode vacances" : "Activer le mode vacances (sa boîte devient visible par toute l'équipe)"}
+                        style={{ border: "none", background: "transparent", fontSize: 13, cursor: "pointer", lineHeight: 1, padding: "2px 4px" }}>🏖️</button>
                       <button onClick={() => supprimerCommercial(c)} title="Supprimer"
+                        style={{ border: "none", background: "transparent", color: COLORS.gray600, fontSize: 14, cursor: "pointer", lineHeight: 1, padding: "2px 4px" }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 20/09/2026 -- Demande d'Elinathan : "les commerciaux travaille par equipe donc
+                mets un systeme pour regrouper des gens" -- une équipe est un simple regroupement
+                de commerciaux, réutilisé comme filtre dans la boîte de réception ci-dessus et
+                pour l'attribution rapide (chaque commercial choisit son équipe sur sa fiche). */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 12px", fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
+                🧑‍🤝‍🧑 Équipes ({equipes.length})
+              </p>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                <input
+                  value={nouvelleEquipe}
+                  onChange={e => setNouvelleEquipe(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") ajouterEquipe(); }}
+                  placeholder="Nom de l'équipe"
+                  style={{ flex: 1, minWidth: 180, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13 }}
+                />
+                <button onClick={ajouterEquipe} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  ➕ Ajouter
+                </button>
+              </div>
+              {equipes.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#999" }}>Aucune équipe pour l'instant -- rattache un commercial à une équipe depuis sa fiche ci-dessous une fois qu'elle existe.</p>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {equipes.map(eq => (
+                    <div key={eq.id} style={{ display: "flex", alignItems: "center", gap: 8, background: COLORS.gray100, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 20, padding: "6px 8px 6px 14px" }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.gray700 }}>{eq.nom}</span>
+                      <span style={{ fontSize: 10.5, color: COLORS.gray600 }}>({commerciaux.filter(c => c.equipeId === eq.id).length})</span>
+                      <button onClick={() => supprimerEquipe(eq)} title="Supprimer"
                         style={{ border: "none", background: "transparent", color: COLORS.gray600, fontSize: 14, cursor: "pointer", lineHeight: 1, padding: "2px 4px" }}>×</button>
                     </div>
                   ))}
