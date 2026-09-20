@@ -1961,7 +1961,7 @@ export function MessagerieModule({
                   <select
                     value={filtreStatutBoite}
                     onChange={e => setFiltreStatutBoite(e.target.value)}
-                    style={{ padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtreStatutBoite ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtreStatutBoite ? COLORS.primaryLight : "#fff" }}
+                    style={{ width: "auto", padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtreStatutBoite ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtreStatutBoite ? COLORS.primaryLight : "#fff" }}
                   >
                     <option value="">Tous les statuts</option>
                     <option value="non_traite">Non traité</option>
@@ -1973,7 +1973,7 @@ export function MessagerieModule({
                     <select
                       value={filtreCommercialBoite}
                       onChange={e => setFiltreCommercialBoite(e.target.value)}
-                      style={{ padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtreCommercialBoite ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtreCommercialBoite ? COLORS.primaryLight : "#fff" }}
+                      style={{ width: "auto", padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtreCommercialBoite ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtreCommercialBoite ? COLORS.primaryLight : "#fff" }}
                     >
                       <option value="">Tous les commerciaux</option>
                       {commerciaux.map(c => (
@@ -1984,7 +1984,7 @@ export function MessagerieModule({
                   <select
                     value={filtrePeriodeBoite}
                     onChange={e => setFiltrePeriodeBoite(e.target.value as typeof filtrePeriodeBoite)}
-                    style={{ padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtrePeriodeBoite !== "tout" ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtrePeriodeBoite !== "tout" ? COLORS.primaryLight : "#fff" }}
+                    style={{ width: "auto", padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtrePeriodeBoite !== "tout" ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtrePeriodeBoite !== "tout" ? COLORS.primaryLight : "#fff" }}
                   >
                     <option value="tout">Toute période</option>
                     <option value="aujourdhui">Aujourd'hui</option>
