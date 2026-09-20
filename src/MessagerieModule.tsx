@@ -960,6 +960,59 @@ export function MessagerieModule({
     }
   };
 
+  // 20/09/2026 — Demande d'Elinathan : "amélioration générale de la boîte" -> actions groupées.
+  // Sélectionner plusieurs mails dans la liste (cases à cocher) puis les marquer traités ou les
+  // attribuer en une seule fois, plutôt qu'un par un.
+  const [mailsSelectionnes, setMailsSelectionnes] = useState<Set<string>>(new Set());
+  const basculerSelectionMail = (id: string) => {
+    setMailsSelectionnes(prev => {
+      const suivant = new Set(prev);
+      if (suivant.has(id)) suivant.delete(id);
+      else suivant.add(id);
+      return suivant;
+    });
+  };
+  const toutSelectionner = (idsVisibles: string[]) => {
+    setMailsSelectionnes(prev => (idsVisibles.length > 0 && idsVisibles.every(id => prev.has(id)) ? new Set() : new Set(idsVisibles)));
+  };
+  const marquerTraiteEnMasse = async (mailsSel: Mail[]) => {
+    if (mailsSel.length === 0) return;
+    for (const mail of mailsSel) {
+      await update(ref(db, `messagerie_boite/${mail.id}`), {
+        statut: "Traité",
+        statutPar: userName || "?",
+        statutCommentaire: null,
+        statutLe: Date.now(),
+      });
+    }
+    notify("success", `✓ ${mailsSel.length} mail(s) marqué(s) comme traité(s)`);
+    setMailsSelectionnes(new Set());
+  };
+  const attribuerEnMasse = async (mailsSel: Mail[], commercialId: string) => {
+    if (mailsSel.length === 0) return;
+    for (const mail of mailsSel) {
+      const adresse = (mail.expediteur || "").toLowerCase();
+      const ligne = lignesExpediteurs.find(l => !l.estDomaine && l.adresse === adresse);
+      if (ligne) {
+        if (!ligne.commercialIds.includes(commercialId)) await toggleCommercialPourLigne(ligne, commercialId);
+      } else {
+        await push(ref(db, "messagerie_regles"), {
+          expediteur: mail.expediteur,
+          commercialIds: [commercialId],
+          nbMails: 1,
+          dernierSujet: mail.sujet,
+          creeLe: new Date().toLocaleString("fr-FR"),
+        });
+      }
+    }
+    notify("success", `✓ ${mailsSel.length} mail(s) attribué(s)`);
+    setMailsSelectionnes(new Set());
+  };
+  const mAttribuerEnMasse = async (mailsSel: Mail[]) => {
+    if (commercialIdsUtilisateur.length === 0) return;
+    await attribuerEnMasse(mailsSel, commercialIdsUtilisateur[0]);
+  };
+
   // 20/09/2026 — Demande d'Elinathan : marquer le statut de traitement d'un mail, avec un
   // commentaire facultatif -- qui l'a posé et quand sont enregistrés pour que les admins
   // puissent voir "quelle mail a été traité et par qui".
@@ -1714,20 +1767,65 @@ export function MessagerieModule({
                 </div>
               )}
 
+              {mailsSelectionnes.size > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: COLORS.primaryLight, border: `1.5px solid ${COLORS.primaryBorder}`, borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+                  <strong style={{ fontSize: 12.5, color: COLORS.primary, whiteSpace: "nowrap" }}>{mailsSelectionnes.size} sélectionné(s)</strong>
+                  <button
+                    onClick={() => marquerTraiteEnMasse(mailsFiltres.filter(m => mailsSelectionnes.has(m.id)))}
+                    style={{ padding: "6px 12px", borderRadius: 7, border: "none", background: COLORS.success, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ✅ Marquer traité
+                  </button>
+                  {isAdmin ? (
+                    <select
+                      value=""
+                      onChange={e => { if (e.target.value) attribuerEnMasse(mailsFiltres.filter(m => mailsSelectionnes.has(m.id)), e.target.value); }}
+                      style={{ padding: "6px 10px", borderRadius: 7, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12 }}
+                    >
+                      <option value="">👤 Attribuer à...</option>
+                      {commerciaux.map(c => (
+                        <option key={c.id} value={c.id}>{c.nom}</option>
+                      ))}
+                    </select>
+                  ) : commercialIdsUtilisateur.length > 0 ? (
+                    <button
+                      onClick={() => mAttribuerEnMasse(mailsFiltres.filter(m => mailsSelectionnes.has(m.id)))}
+                      style={{ padding: "6px 12px", borderRadius: 7, border: `1.5px solid ${COLORS.primaryBorder}`, background: "#fff", color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      👤 M'attribuer
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => setMailsSelectionnes(new Set())}
+                    style={{ border: "none", background: "transparent", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+                  >
+                    Vider la sélection
+                  </button>
+                </div>
+              )}
+
               {mailsFiltres.length > 0 && (
                 <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                     <colgroup>
+                      <col style={{ width: "3%" }} />
                       <col style={{ width: "4%" }} />
                       <col style={{ width: "12%" }} />
                       <col style={{ width: "16%" }} />
                       <col style={{ width: "10%" }} />
-                      <col style={{ width: "40%" }} />
+                      <col style={{ width: "37%" }} />
                       <col style={{ width: "9%" }} />
                       <col style={{ width: "9%" }} />
                     </colgroup>
                     <thead>
                       <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
+                        <th style={{ padding: "8px 4px", textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                          <CaseACocher
+                            coche={mailsFiltres.length > 0 && mailsFiltres.every(m => mailsSelectionnes.has(m.id))}
+                            onChange={() => toutSelectionner(mailsFiltres.map(m => m.id))}
+                            label={null}
+                          />
+                        </th>
                         <th style={{ padding: "8px 6px" }}></th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
@@ -1752,6 +1850,9 @@ export function MessagerieModule({
                             onMouseEnter={e => (e.currentTarget.style.background = m.statut === "Traité" ? COLORS.successHover : COLORS.gray200)}
                             onMouseLeave={e => (e.currentTarget.style.background = m.statut === "Traité" ? COLORS.successLight : (m.lu === false ? "#fff" : COLORS.gray100))}
                           >
+                            <td style={{ padding: "7px 4px", textAlign: "center", verticalAlign: "top" }} onClick={e => e.stopPropagation()}>
+                              <CaseACocher coche={mailsSelectionnes.has(m.id)} onChange={() => basculerSelectionMail(m.id)} label={null} />
+                            </td>
                             <td style={{ padding: "7px 4px", textAlign: "center", verticalAlign: "top", whiteSpace: "nowrap" }}>
                               <button
                                 onClick={e => basculerFavori(m, e)}
