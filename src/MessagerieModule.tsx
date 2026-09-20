@@ -306,7 +306,14 @@ export function MessagerieModule({
   const dossiersDisponibles = (() => {
     const set = new Set<string>();
     for (const m of mails) for (const l of Object.keys(m.labels || {})) set.add(l);
-    const autres = [...set].filter(l => l !== "INBOX").sort((a, b) => a.localeCompare(b));
+    // 20/09/2026 — Bug trouvé avec Elinathan : "Boîte de réception" affichait toujours 0 mail.
+    // Cause : Gmail ne renvoie jamais le libellé système de la boîte de réception sous la forme
+    // "INBOX" via IMAP, mais sous la forme "\Inbox" (comme "\Sent", "\Important"...) -- le
+    // bouton "📥 Boîte de réception" comparait donc à une clé qui n'existait jamais, pendant que
+    // le vrai libellé "\Inbox" apparaissait tout seul, sans nom convivial, dans la liste. On le
+    // reconnaît ici pour qu'il aille nourrir le bouton "Boîte de réception" au lieu d'être listé
+    // deux fois.
+    const autres = [...set].filter(l => l !== "INBOX" && l !== "\\Inbox").sort((a, b) => a.localeCompare(b));
     const base = ["INBOX", ...autres];
     // Spam et Corbeille (19/09/2026, v2) ne sont pas des libellés Gmail classiques -- ce sont
     // des dossiers à part que Gmail exclut volontairement de "Tous les messages", donc on les
@@ -624,6 +631,7 @@ export function MessagerieModule({
     if (!mailVisiblePourMoi(m.expediteur)) return false;
     if (dossierActif === "SPAM") { if (m.boite !== "spam") return false; }
     else if (dossierActif === "TRASH") { if (m.boite !== "trash") return false; }
+    else if (dossierActif === "INBOX") { if (!(m.labels || {})["\\Inbox"]) return false; }
     else if (dossierActif !== "TOUS" && !(m.labels || {})[dossierActif]) return false;
     if (!filtreMails.trim()) return true;
     const q = filtreMails.trim().toLowerCase();
