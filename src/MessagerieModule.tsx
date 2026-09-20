@@ -481,6 +481,8 @@ export function MessagerieModule({
             statutCommentaire: v.statutCommentaire || null,
             statutLe: typeof v.statutLe === "number" ? v.statutLe : null,
             favori: v.favori === true,
+            resume: v.resume ?? null,
+            resumeLe: typeof v.resumeLe === "number" ? v.resumeLe : null,
           }))
         : [];
       liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -1004,7 +1006,7 @@ export function MessagerieModule({
   // seul en arrière-plan, un par un (pas en rafale, pour ne pas surcharger l'IA d'un coup si
   // beaucoup de mails non lus arrivent en même temps).
   useEffect(() => {
-    const aFaire = mails.find(m => m.lu === false && m.resume === undefined && !resumesEnCours.has(m.id));
+    const aFaire = mails.find(m => m.lu === false && !m.resume && !resumesEnCours.has(m.id));
     if (aFaire) demanderResume(aFaire);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mails, resumesEnCours]);
