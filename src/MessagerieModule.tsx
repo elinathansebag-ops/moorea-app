@@ -1370,6 +1370,37 @@ export function MessagerieModule({
     return (b.date || "").localeCompare(a.date || ""); // date_desc, ordre habituel par défaut
   });
 
+  const cleFilDe = (m: Mail) =>
+    `${(m.expediteur || "").toLowerCase()}||${(m.sujet || "").replace(/^(re|fwd|tr)\s*:\s*/gi, "").trim().toLowerCase()}`;
+  const [vueConversation, setVueConversation] = useState(false);
+  const [filsDeplies, setFilsDeplies] = useState<Set<string>>(new Set());
+  const mailsAffiches: (Mail & { _nbFil?: number; _cleFil?: string })[] = (() => {
+    if (!vueConversation) return mailsFiltres;
+    const parFil = new Map<string, Mail[]>();
+    for (const m of mailsFiltres) {
+      const cle = cleFilDe(m);
+      if (!parFil.has(cle)) parFil.set(cle, []);
+      parFil.get(cle)!.push(m);
+    }
+    const resultat: (Mail & { _nbFil?: number; _cleFil?: string })[] = [];
+    const dejaTraites = new Set<string>();
+    for (const m of mailsFiltres) {
+      const cle = cleFilDe(m);
+      if (dejaTraites.has(cle)) continue;
+      dejaTraites.add(cle);
+      const groupe = parFil.get(cle)!;
+      if (groupe.length === 1) {
+        resultat.push(m);
+      } else {
+        resultat.push({ ...groupe[0], _nbFil: groupe.length, _cleFil: cle });
+        if (filsDeplies.has(cle)) {
+          for (const autre of groupe.slice(1)) resultat.push(autre);
+        }
+      }
+    }
+    return resultat;
+  })();
+
   // 20/09/2026 — Demande d'Elinathan : un vrai système lu/pas lu "comme dans Gmail" -- un badge
   // avec le nombre de mails non lus à côté de chaque dossier dans la colonne de gauche.
   const nbNonLusParDossier = (d: string): number =>
@@ -1831,6 +1862,18 @@ export function MessagerieModule({
                       Réinitialiser les filtres
                     </button>
                   )}
+                  <button
+                    onClick={() => setVueConversation(v => !v)}
+                    title="Regrouper les mails d'un même sujet/expéditeur en un seul fil"
+                    style={{
+                      padding: "5px 11px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      border: `1.5px solid ${COLORS.primaryBorder}`,
+                      background: vueConversation ? COLORS.primary : "#fff",
+                      color: vueConversation ? "#fff" : COLORS.primary,
+                    }}
+                  >
+                    🧵 Vue conversation
+                  </button>
                 </div>
               )}
 
@@ -1934,7 +1977,7 @@ export function MessagerieModule({
                       </tr>
                     </thead>
                     <tbody>
-                      {mailsFiltres.map(m => {
+                      {mailsAffiches.map(m => {
                         const attribues = trouverAttribution(m.expediteur);
                         return (
                           <tr
@@ -1981,6 +2024,23 @@ export function MessagerieModule({
                               {surlignerRecherche(m.sujet, filtreMails)}
                               {m.aPieceJointe && (
                                 <span title="Ce mail a au moins une pièce jointe" style={{ marginLeft: 6, opacity: 0.7 }}>📎</span>
+                              )}
+                              {!!m._nbFil && m._nbFil > 1 && (
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    const cle = m._cleFil!;
+                                    setFilsDeplies(prev => {
+                                      const suivant = new Set(prev);
+                                      if (suivant.has(cle)) suivant.delete(cle);
+                                      else suivant.add(cle);
+                                      return suivant;
+                                    });
+                                  }}
+                                  style={{ marginLeft: 6, border: "none", background: COLORS.gray200, color: COLORS.primary, fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "1px 8px", cursor: "pointer" }}
+                                >
+                                  🧵 {m._nbFil} {filsDeplies.has(m._cleFil!) ? "▲" : "▼"}
+                                </button>
                               )}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word", position: "relative" }}>
