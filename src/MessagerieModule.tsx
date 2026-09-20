@@ -910,6 +910,23 @@ export function MessagerieModule({
     return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
   };
 
+  // 20/09/2026 — Demande d'Elinathan : "la date mets la tout a droite et ont s'en fou de la dat
+  // tu sait fait comme gmail par heur pour aujoursd'hui puis apres 15 sep 14 sep etc pas la peine
+  // d'avoir l'annee tout le temps" -- format compact façon Gmail pour la liste des mails : juste
+  // l'heure si le mail est d'aujourd'hui, sinon "15 sept.", et l'année seulement si elle diffère
+  // de l'année en cours (mail d'une année précédente).
+  const formatDateListe = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const maintenant = new Date();
+    if (d.toDateString() === maintenant.toDateString()) {
+      return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    }
+    const options: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short" };
+    if (d.getFullYear() !== maintenant.getFullYear()) options.year = "numeric";
+    return d.toLocaleDateString("fr-FR", options);
+  };
+
   const mailAppartientAuDossier = (m: Mail, d: string): boolean => {
     if (d === "TOUS") return true;
     if (d === "FAVORIS") return m.favori === true;
@@ -1378,11 +1395,11 @@ export function MessagerieModule({
                     <thead>
                       <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
                         <th style={{ padding: "8px 6px" }}></th>
-                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
                         <th style={{ textAlign:"left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Statut</th>
+                        <th style={{ textAlign: "right", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1412,7 +1429,6 @@ export function MessagerieModule({
                                 {estImportant(m) ? "🔴" : "⚪"}
                               </button>
                             </td>
-                            <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap", verticalAlign: "top" }}>{formatDateMail(m.date)}</td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere" }}>
                               {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
                               <div style={{ fontSize: 11, color: COLORS.gray600, fontWeight: 400 }}>{m.expediteur}</div>
@@ -1457,6 +1473,7 @@ export function MessagerieModule({
                                 <span style={{ color: COLORS.gray600, fontSize: 11 }}>—</span>
                               )}
                             </td>
+                            <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap", verticalAlign: "top", textAlign: "right" }}>{formatDateListe(m.date)}</td>
                           </tr>
                         );
                       })}
