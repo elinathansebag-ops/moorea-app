@@ -392,6 +392,33 @@ export function MessagerieModule({
     return () => { u1(); u2(); u3(); };
   }, []);
 
+  // 20/09/2026 — Demande d'Elinathan : "amélioration générale de la boîte" -> modèles de réponse
+  // rapide, réutilisables sans devoir retaper les mêmes phrases (accusé de réception, demande de
+  // pièce manquante, etc.).
+  const [modeles, setModeles] = useState<{ id: string; nom: string; corps: string }[]>([]);
+  useEffect(() => {
+    const u = onValue(ref(db, "messagerie_modeles"), snap => {
+      const d = snap.val();
+      setModeles(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.nom || "").localeCompare(b.nom || "")) : []);
+    });
+    return () => u();
+  }, []);
+  const [nouveauModeleNom, setNouveauModeleNom] = useState("");
+  const [nouveauModeleCorps, setNouveauModeleCorps] = useState("");
+  const ajouterModele = async () => {
+    const nom = nouveauModeleNom.trim();
+    const corps = nouveauModeleCorps.trim();
+    if (!nom || !corps) { notify("error", "Donne un nom et un texte au modèle."); return; }
+    await push(ref(db, "messagerie_modeles"), { nom, corps });
+    setNouveauModeleNom("");
+    setNouveauModeleCorps("");
+    notify("success", "✓ Modèle créé");
+  };
+  const supprimerModele = async (id: string) => {
+    if (!window.confirm("Supprimer ce modèle de réponse ?")) return;
+    await remove(ref(db, `messagerie_modeles/${id}`));
+  };
+
   const [nouveauCommercial, setNouveauCommercial] = useState("");
   const [nouveauStatutSaisi, setNouveauStatutSaisi] = useState("");
   const ajouterCommercial = async () => {
@@ -771,6 +798,18 @@ export function MessagerieModule({
   // vit dans le DOM (cette ref), pas dans un state React. On ne fait qu'y déposer le contenu de
   // départ (citation, ou vide pour un nouveau message) à l'ouverture, et le relire à l'envoi.
   const corpsEditableRef = useRef<HTMLDivElement | null>(null);
+
+  // 20/09/2026 — insère le texte d'un modèle de réponse à l'endroit du curseur dans l'éditeur
+  // (ou à la fin si l'éditeur n'a pas le focus).
+  const insererModele = (id: string) => {
+    const modele = modeles.find(m => m.id === id);
+    if (!modele || !corpsEditableRef.current) return;
+    corpsEditableRef.current.focus();
+    const inseréParSelection = document.execCommand("insertText", false, modele.corps);
+    if (!inseréParSelection) {
+      corpsEditableRef.current.innerHTML += modele.corps.replace(/</g, "&lt;").replace(/\n/g, "<br>");
+    }
+  };
 
   useEffect(() => {
     if (modeCompose && corpsEditableRef.current) {
@@ -2289,6 +2328,18 @@ export function MessagerieModule({
                       placeholder="Sujet"
                       style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
                     />
+                    {modeles.length > 0 && (
+                      <select
+                        value=""
+                        onChange={e => { if (e.target.value) insererModele(e.target.value); }}
+                        style={{ padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12, marginBottom: 8 }}
+                      >
+                        <option value="">📋 Insérer un modèle de réponse...</option>
+                        {modeles.map(mo => (
+                          <option key={mo.id} value={mo.id}>{mo.nom}</option>
+                        ))}
+                      </select>
+                    )}
                     <EditeurCorps editeurRef={corpsEditableRef} />
                     {modeCompose === "transferer" && detailMail.pieces.length > 0 && (
                       <div style={{ fontSize: 12.5, color: COLORS.gray700, marginBottom: 10 }}>
@@ -2425,6 +2476,18 @@ export function MessagerieModule({
                   placeholder="Sujet"
                   style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
                 />
+                {modeles.length > 0 && (
+                  <select
+                    value=""
+                    onChange={e => { if (e.target.value) insererModele(e.target.value); }}
+                    style={{ padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12, marginBottom: 8 }}
+                  >
+                    <option value="">📋 Insérer un modèle de réponse...</option>
+                    {modeles.map(mo => (
+                      <option key={mo.id} value={mo.id}>{mo.nom}</option>
+                    ))}
+                  </select>
+                )}
                 <EditeurCorps editeurRef={corpsEditableRef} />
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
@@ -2616,6 +2679,49 @@ export function MessagerieModule({
                           🗑️
                         </button>
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 6px", fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
+                📋 Modèles de réponse ({modeles.length})
+              </p>
+              <p style={{ margin: "0 0 12px", fontSize: 11.5, color: COLORS.gray600 }}>
+                Des réponses pré-écrites réutilisables en un clic depuis "Répondre" ou "Nouveau message" (accusé de réception, demande de pièce manquante...).
+              </p>
+              <input
+                value={nouveauModeleNom}
+                onChange={e => setNouveauModeleNom(e.target.value)}
+                placeholder="Nom du modèle (ex : Accusé de réception)"
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5, marginBottom: 6, boxSizing: "border-box" }}
+              />
+              <textarea
+                value={nouveauModeleCorps}
+                onChange={e => setNouveauModeleCorps(e.target.value)}
+                placeholder="Texte du modèle..."
+                rows={3}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5, marginBottom: 6, boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }}
+              />
+              <button
+                onClick={ajouterModele}
+                style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}
+              >
+                ➕ Créer le modèle
+              </button>
+              {modeles.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {modeles.map(mo => (
+                    <div key={mo.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, background: COLORS.gray100 }}>
+                      <div style={{ fontSize: 12, color: COLORS.gray700, minWidth: 0 }}>
+                        <strong>{mo.nom}</strong>
+                        <div style={{ fontSize: 11, color: COLORS.gray600, whiteSpace: "pre-wrap", marginTop: 2 }}>{mo.corps}</div>
+                      </div>
+                      <button onClick={() => supprimerModele(mo.id)} style={{ border: `1.5px solid ${COLORS.dangerLight}`, background: "#fff", color: COLORS.danger, borderRadius: 8, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+                        🗑️
+                      </button>
                     </div>
                   ))}
                 </div>
