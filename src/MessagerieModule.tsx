@@ -974,24 +974,30 @@ export function MessagerieModule({
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          {[
-            { key: "boite", label: "📥 Boîte de réception" },
-            ...(canConfig ? [{ key: "configuration", label: "⚙️ Configuration" }] : []),
-          ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key as TabKey)}
-              style={{
-                padding: "10px 16px", borderRadius: 10, border: `2px solid ${activeTab === t.key ? COLORS.primary : COLORS.gray200}`,
-                background: activeTab === t.key ? COLORS.primaryLight : "#fff", color: activeTab === t.key ? COLORS.primary : COLORS.gray600,
-                fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {/* 20/09/2026 — Demande d'Elinathan : "boite de reception enleve le pour tout le mnde
+            ca sert a rien" -- un seul onglet ("Boîte de réception") n'a rien à switcher, donc la
+            barre d'onglets ne s'affiche que quand il y a un vrai choix (Configuration, réservée
+            aux admins depuis peu). Un utilisateur non-admin va directement dans sa boîte. */}
+        {canConfig && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            {[
+              { key: "boite", label: "📥 Boîte de réception" },
+              { key: "configuration", label: "⚙️ Configuration" },
+            ].map(t => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key as TabKey)}
+                style={{
+                  padding: "10px 16px", borderRadius: 10, border: `2px solid ${activeTab === t.key ? COLORS.primary : COLORS.gray200}`,
+                  background: activeTab === t.key ? COLORS.primaryLight : "#fff", color: activeTab === t.key ? COLORS.primary : COLORS.gray600,
+                  fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {activeTab === "boite" && (
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
