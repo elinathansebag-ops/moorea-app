@@ -83,6 +83,21 @@ export type RegleAttribution = {
   creeLe?: string;
 };
 
+// 20/09/2026 — Demande d'Elinathan : "pourquoi ya que 18 expediteur sur 7000 mail" -- la liste
+// d'attribution ne contenait que les adresses ajoutées à la main une par une (messagerie_regles),
+// jamais reliée aux vrais expéditeurs des mails synchronisés (messagerie_boite). Une "ligne"
+// représente maintenant soit une adresse réellement vue dans les mails (avec ou sans règle
+// Firebase existante), soit une règle de domaine ("@exemple.com") gérée à part.
+type LigneExpediteur = {
+  adresse: string;
+  estDomaine: boolean;
+  regleId: string | null; // règle Firebase déjà créée pour CETTE adresse précise, si elle existe
+  commercialIds: string[]; // attribution effective (propre à l'adresse, ou héritée d'un domaine)
+  viaDomaine: string | null; // non-null si l'attribution vient d'une règle de domaine
+  nbMails: number;
+  dernierSujet: string;
+};
+
 export type Mail = {
   id: string; // clé Firebase composite "<dossier>_<uid>" (19/09/2026, v2 : spam/corbeille) --
   // un même numéro d'uid peut désigner un message différent selon le dossier IMAP d'origine
@@ -779,15 +794,115 @@ export function MessagerieModule({
   const [chargementSuggestionsIa, setChargementSuggestionsIa] = useState(false);
   const [erreurSuggestionsIa, setErreurSuggestionsIa] = useState<string | null>(null);
 
-  const reglesFiltrees = regles
-    .filter(r => !filtreExpediteur.trim() || r.expediteur.toLowerCase().includes(filtreExpediteur.trim().toLowerCase()))
-    .filter(r => !nonAttribuesUniquement || (r.commercialIds || []).length === 0)
-    .sort((a, b) => (b.nbMails || 0) - (a.nbMails || 0) || a.expediteur.localeCompare(b.expediteur));
+  // Statistiques réelles par adresse, calculées directement à partir des mails synchronisés
+  // (messagerie_boite) plutôt que d'une saisie manuelle -- voir LigneExpediteur ci-dessus.
+  const statsParExpediteur = (() => {
+    const carte = new Map<string, { nbMails: number; dernierSujet: string; derniereDate: string | null }>();
+    for (const m of mails) {
+      const adresse = (m.expediteur || "").toLowerCase();
+      if (!adresse) continue;
+      const existant = carte.get(adresse);
+      if (existant) {
+        existant.nbMails++;
+        if (m.date && (!existant.derniereDate || m.date > existant.derniereDate)) {
+          existant.dernierSujet = m.sujet;
+          existant.derniereDate = m.date;
+        }
+      } else {
+        carte.set(adresse, { nbMails: 1, dernierSujet: m.sujet, derniereDate: m.date });
+      }
+    }
+    return carte;
+  })();
 
-  const nbNonAttribues = regles.filter(r => (r.commercialIds || []).length === 0).length;
+  const lignesExpediteurs: LigneExpediteur[] = (() => {
+    const reglesExactes = new Map(regles.filter(r => !r.expediteur.startsWith("@")).map(r => [r.expediteur.toLowerCase(), r]));
+    const reglesDomaine = regles.filter(r => r.expediteur.startsWith("@"));
+    const adressesVues = new Set<string>();
+    const lignes: LigneExpediteur[] = [];
+
+    for (const [adresse, stats] of statsParExpediteur.entries()) {
+      adressesVues.add(adresse);
+      const regleExacte = reglesExactes.get(adresse);
+      const regleDomaine = !regleExacte ? reglesDomaine.find(r => adresse.endsWith(r.expediteur)) : undefined;
+      lignes.push({
+        adresse,
+        estDomaine: false,
+        regleId: regleExacte?.id || null,
+        commercialIds: regleExacte?.commercialIds || regleDomaine?.commercialIds || [],
+        viaDomaine: !regleExacte && regleDomaine ? regleDomaine.expediteur : null,
+        nbMails: stats.nbMails,
+        dernierSujet: stats.dernierSujet,
+      });
+    }
+
+    // Règles d'adresse créées à la main mais dont on n'a encore synchronisé aucun mail (rare) --
+    // gardées telles quelles pour ne rien perdre.
+    for (const r of regles) {
+      if (r.expediteur.startsWith("@")) continue;
+      const adresse = r.expediteur.toLowerCase();
+      if (adressesVues.has(adresse)) continue;
+      lignes.push({
+        adresse: r.expediteur,
+        estDomaine: false,
+        regleId: r.id,
+        commercialIds: r.commercialIds || [],
+        viaDomaine: null,
+        nbMails: r.nbMails || 0,
+        dernierSujet: r.dernierSujet || "",
+      });
+    }
+
+    // Règles de domaine ("@exemple.com") : toujours affichées comme leur propre ligne, pour
+    // pouvoir les créer/modifier/supprimer -- le nombre de mails est la somme de ce qu'on a vu
+    // pour les adresses qui en dépendent (et qui n'ont pas de règle propre plus spécifique).
+    for (const r of reglesDomaine) {
+      let nbMails = 0;
+      for (const [adresse, stats] of statsParExpediteur.entries()) {
+        if (adresse.endsWith(r.expediteur) && !reglesExactes.has(adresse)) nbMails += stats.nbMails;
+      }
+      lignes.push({
+        adresse: r.expediteur,
+        estDomaine: true,
+        regleId: r.id,
+        commercialIds: r.commercialIds || [],
+        viaDomaine: null,
+        nbMails,
+        dernierSujet: "",
+      });
+    }
+
+    return lignes;
+  })();
+
+  const lignesFiltrees = lignesExpediteurs
+    .filter(l => !filtreExpediteur.trim() || l.adresse.toLowerCase().includes(filtreExpediteur.trim().toLowerCase()))
+    .filter(l => !nonAttribuesUniquement || l.commercialIds.length === 0)
+    .sort((a, b) => (b.nbMails || 0) - (a.nbMails || 0) || a.adresse.localeCompare(b.adresse));
+
+  const nbNonAttribues = lignesExpediteurs.filter(l => !l.estDomaine && l.commercialIds.length === 0).length;
+
+  const toggleCommercialPourLigne = async (ligne: LigneExpediteur, commercialId: string) => {
+    if (ligne.regleId) {
+      const r = regles.find(x => x.id === ligne.regleId);
+      if (r) await toggleCommercialSurRegle(r, commercialId);
+      return;
+    }
+    // Première attribution pour cette adresse : crée sa règle maintenant, plutôt que d'exiger
+    // qu'elle ait été ajoutée à la main au préalable ("➕ Ajouter").
+    await push(ref(db, "messagerie_regles"), {
+      expediteur: ligne.adresse,
+      commercialIds: [commercialId],
+      nbMails: ligne.nbMails,
+      dernierSujet: ligne.dernierSujet,
+      creeLe: new Date().toLocaleString("fr-FR"),
+    });
+  };
 
   const demanderSuggestionsIa = async () => {
-    const nonAttribues = regles.filter(r => (r.commercialIds || []).length === 0);
+    const nonAttribues = lignesExpediteurs
+      .filter(l => !l.estDomaine && l.commercialIds.length === 0)
+      .sort((a, b) => b.nbMails - a.nbMails);
     if (nonAttribues.length === 0 || commerciaux.length === 0) return;
     setChargementSuggestionsIa(true);
     setErreurSuggestionsIa(null);
@@ -797,9 +912,9 @@ export function MessagerieModule({
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          expediteurs: nonAttribues.map(r => ({
-            adresse: r.expediteur,
-            exemplesSujets: r.dernierSujet ? [r.dernierSujet] : [],
+          expediteurs: nonAttribues.map(l => ({
+            adresse: l.adresse,
+            exemplesSujets: l.dernierSujet ? [l.dernierSujet] : [],
           })),
           commerciaux: commerciaux.map(c => ({ id: c.id, nom: c.nom })),
           reglesExistantes: regles
@@ -1302,11 +1417,13 @@ export function MessagerieModule({
 
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
               <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
-                📬 Expéditeurs & qui les voit ({regles.length}{nbNonAttribues > 0 ? `, ${nbNonAttribues} non attribué(s)` : ""})
+                📬 Expéditeurs & qui les voit ({lignesExpediteurs.filter(l => !l.estDomaine).length}{nbNonAttribues > 0 ? `, ${nbNonAttribues} non attribué(s)` : ""})
               </p>
               <p style={{ margin: "0 0 12px", fontSize: 11.5, color: COLORS.gray600 }}>
                 Coche un ou plusieurs commerciaux par expéditeur — plusieurs personnes peuvent voir le
-                même mail (ex: Jennifer + l'assistante en charge du dossier).
+                même mail (ex: Jennifer + l'assistante en charge du dossier). La liste vient directement
+                des mails synchronisés (plus besoin de les ajouter un par un) ; "➕ Ajouter" reste utile
+                pour créer une règle par domaine entier ("@exemple.com").
               </p>
 
               <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
@@ -1356,8 +1473,8 @@ export function MessagerieModule({
 
               {commerciaux.length === 0 ? (
                 <p style={{ fontSize: 12, color: "#999" }}>Ajoute d'abord au moins un commercial ci-dessus.</p>
-              ) : regles.length === 0 ? (
-                <p style={{ fontSize: 12, color: "#999" }}>Aucun expéditeur pour l'instant.</p>
+              ) : lignesExpediteurs.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#999" }}>Aucun expéditeur pour l'instant (en attente de la synchro des mails).</p>
               ) : (
                 <div style={{ overflowX: "auto", maxHeight: 520, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
@@ -1374,26 +1491,29 @@ export function MessagerieModule({
                       </tr>
                     </thead>
                     <tbody>
-                      {reglesFiltrees.map(r => (
-                        <tr key={r.id} style={{ borderTop: `1px solid ${COLORS.gray200}` }}>
+                      {lignesFiltrees.map(l => (
+                        <tr key={l.adresse} style={{ borderTop: `1px solid ${COLORS.gray200}`, background: l.estDomaine ? COLORS.gray100 : "transparent" }}>
                           <td style={{ padding: "7px 10px", color: COLORS.gray700, fontWeight: 700 }}>
-                            {r.expediteur}
-                            {r.dernierSujet ? (
+                            {l.estDomaine ? `🌐 ${l.adresse}` : l.adresse}
+                            {l.viaDomaine ? (
+                              <span style={{ fontSize: 10, fontWeight: 400, color: COLORS.gray600 }}> (via {l.viaDomaine})</span>
+                            ) : null}
+                            {l.dernierSujet ? (
                               <div style={{ fontSize: 10.5, color: COLORS.gray600, fontWeight: 400, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {r.dernierSujet}
+                                {l.dernierSujet}
                               </div>
                             ) : null}
-                            {(r.commercialIds || []).length === 0 && suggestionsIa[r.expediteur] && (
-                              suggestionsIa[r.expediteur].commercialId ? (
+                            {l.commercialIds.length === 0 && suggestionsIa[l.adresse] && (
+                              suggestionsIa[l.adresse].commercialId ? (
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                                   <span style={{ fontSize: 10.5, fontWeight: 400, color: COLORS.primary, maxWidth: 220 }}>
-                                    🤖 {commerciaux.find(c => c.id === suggestionsIa[r.expediteur].commercialId)?.nom || "?"}
-                                    {suggestionsIa[r.expediteur].raison ? ` — ${suggestionsIa[r.expediteur].raison}` : ""}
+                                    🤖 {commerciaux.find(c => c.id === suggestionsIa[l.adresse].commercialId)?.nom || "?"}
+                                    {suggestionsIa[l.adresse].raison ? ` — ${suggestionsIa[l.adresse].raison}` : ""}
                                   </span>
                                   <button
                                     onClick={() => {
-                                      const id = suggestionsIa[r.expediteur].commercialId;
-                                      if (id) toggleCommercialSurRegle(r, id);
+                                      const id = suggestionsIa[l.adresse].commercialId;
+                                      if (id) toggleCommercialPourLigne(l, id);
                                     }}
                                     style={{ border: "none", background: COLORS.primaryLight, color: COLORS.primary, borderRadius: 6, padding: "2px 8px", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}
                                   >
@@ -1402,14 +1522,14 @@ export function MessagerieModule({
                                 </div>
                               ) : (
                                 <div style={{ fontSize: 10.5, fontWeight: 400, color: COLORS.gray600, marginTop: 4 }}>
-                                  🤖 Pas d'idée pour celui-ci{suggestionsIa[r.expediteur].raison ? ` — ${suggestionsIa[r.expediteur].raison}` : ""}
+                                  🤖 Pas d'idée pour celui-ci{suggestionsIa[l.adresse].raison ? ` — ${suggestionsIa[l.adresse].raison}` : ""}
                                 </div>
                               )
                             )}
                           </td>
-                          <td style={{ padding: "7px 6px", textAlign: "right", color: COLORS.gray600 }}>{r.nbMails ?? "-"}</td>
+                          <td style={{ padding: "7px 6px", textAlign: "right", color: COLORS.gray600 }}>{l.nbMails || "-"}</td>
                           {commerciaux.map(c => {
-                            const estCoche = (r.commercialIds || []).includes(c.id);
+                            const estCoche = l.commercialIds.includes(c.id);
                             return (
                               <td key={c.id} style={{ padding: "7px 6px", textAlign: "center" }}>
                                 {/* 16/09/2026 — Bug trouvé avec Elinathan : la case native <input type="checkbox">
@@ -1419,7 +1539,7 @@ export function MessagerieModule({
                                 <div
                                   role="checkbox"
                                   aria-checked={estCoche}
-                                  onClick={() => toggleCommercialSurRegle(r, c.id)}
+                                  onClick={() => toggleCommercialPourLigne(l, c.id)}
                                   title={estCoche ? `Décocher ${c.nom}` : `Cocher ${c.nom}`}
                                   style={{
                                     width: 20, height: 20, borderRadius: 5, margin: "0 auto", cursor: "pointer",
@@ -1435,10 +1555,18 @@ export function MessagerieModule({
                             );
                           })}
                           <td style={{ padding: "7px 6px" }}>
-                            <button onClick={() => supprimerRegle(r)} title="Supprimer cet expéditeur"
-                              style={{ border: "1px solid #fca5a5", background: "#fff", color: COLORS.danger, borderRadius: 7, padding: "3px 8px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                              Suppr.
-                            </button>
+                            {l.regleId ? (
+                              <button
+                                onClick={() => {
+                                  const r = regles.find(x => x.id === l.regleId);
+                                  if (r) supprimerRegle(r);
+                                }}
+                                title="Supprimer cette règle"
+                                style={{ border: "1px solid #fca5a5", background: "#fff", color: COLORS.danger, borderRadius: 7, padding: "3px 8px", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                              >
+                                Suppr.
+                              </button>
+                            ) : null}
                           </td>
                         </tr>
                       ))}
@@ -1449,9 +1577,9 @@ export function MessagerieModule({
             </div>
 
             <div style={{ background: "#fffbeb", border: "1.5px solid #fde3a8", borderRadius: 12, padding: "12px 16px", fontSize: 12, color: "#92400e" }}>
-              💡 Les mails qui ne correspondront à aucun expéditeur ci-dessus apparaîtront dans une liste
-              "non attribué" (à venir avec la connexion à la boîte mail) — tu pourras les assigner en un
-              clic, ce qui créera automatiquement l'entrée pour la prochaine fois.
+              💡 La liste ci-dessus reflète maintenant tous les expéditeurs réellement vus dans tes mails
+              synchronisés — coche un commercial sur une adresse qui n'a encore aucune règle pour créer
+              sa règle automatiquement (plus besoin de l'ajouter à la main avant).
             </div>
           </>
         )}
