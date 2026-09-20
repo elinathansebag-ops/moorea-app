@@ -155,6 +155,10 @@ export type Mail = {
   // IA (2 phrases), généré une fois puis mis en cache ici pour toujours (jamais régénéré).
   resume?: string | null;
   resumeLe?: number | null;
+  // 20/09/2026 — Demande d'Elinathan : "systeme pour que admin sache quelle mail a etais
+  // ouvert" -- qui (quel commercial), et quand, a réellement ouvert CE mail dans l'appli.
+  // Distinct de "lu" (le flag Gmail \Seen, partagé par toute la boîte, qui ne dit pas qui).
+  ouvertPar?: Record<string, number> | null;
 };
 
 // Liste par défaut si personne n'a encore personnalisé la liste dans Configuration > Statuts.
@@ -486,6 +490,7 @@ export function MessagerieModule({
             favori: v.favori === true,
             resume: v.resume ?? null,
             resumeLe: typeof v.resumeLe === "number" ? v.resumeLe : null,
+            ouvertPar: v.ouvertPar || null,
           }))
         : [];
       liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -571,6 +576,12 @@ export function MessagerieModule({
       enTeteAuth()
         .then(headers => fetch(`/api/messagerie?action=marquer-lu&uid=${m.uid}&boite=${m.boite}`, { headers }))
         .catch(() => {});
+    }
+    // 20/09/2026 — Demande d'Elinathan : traçabilité "qui a ouvert quel mail" pour l'admin --
+    // n'écrase jamais les autres commerciaux déjà notés ici (update sur le sous-chemin, pas sur
+    // le mail entier), et ne s'applique qu'aux utilisateurs rattachés à un commercial.
+    if (commercialIdsUtilisateur.length > 0) {
+      update(ref(db, `messagerie_boite/${m.id}/ouvertPar`), { [commercialIdsUtilisateur[0]]: Date.now() }).catch(() => {});
     }
 
     // 1) Cache Firebase d'abord : si le mail a déjà été ouvert une fois, affichage immédiat.
@@ -1394,6 +1405,24 @@ export function MessagerieModule({
             </div>
 
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", flex: 1, minWidth: 0 }}>
+              {/* 20/09/2026 — Demande d'Elinathan : "ajoute des stat en haut des boite pour
+                  chaque compte combien de mail ajd combien il reste a traitée" */}
+              {isAdmin && commerciaux.length > 0 && mails.length > 0 && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                  {commerciaux.map(c => {
+                    const mailsDuCommercial = mails.filter(m => trouverAttributionIds(m.expediteur).includes(c.id));
+                    const aujourdHui = new Date().toLocaleDateString("fr-FR");
+                    const nbAujourdHui = mailsDuCommercial.filter(m => m.date && new Date(m.date).toLocaleDateString("fr-FR") === aujourdHui).length;
+                    const nbAtraiter = mailsDuCommercial.filter(m => !m.statut).length;
+                    return (
+                      <div key={c.id} style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, color: COLORS.gray700, background: COLORS.gray100 }}>
+                        <strong style={{ color: COLORS.primary }}>{c.nom}</strong>
+                        {" — "}📅 {nbAujourdHui} aujourd'hui · 📋 {nbAtraiter} à traiter
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
                 <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
                   📥 {mails.length > 0 ? `${mailsFiltres.length} mail(s)` : "Boîte de réception"}
@@ -1777,6 +1806,19 @@ export function MessagerieModule({
                       voir Configuration > Statuts) avec commentaire facultatif, visible de tous
                       avec qui l'a posé -- "voir quelle mail a été traité et par qui avec un
                       commentaire". */}
+                  {isAdmin && (
+                    <div style={{ padding: "12px 18px 0" }}>
+                      <p style={{ margin: 0, fontSize: 11, color: COLORS.gray600 }}>
+                        👁️ {(() => {
+                          const ouvertures = Object.entries(mailOuvert.ouvertPar || {})
+                            .map(([id, le]) => ({ nom: commerciaux.find(c => c.id === id)?.nom || "?", le: le as number }))
+                            .sort((a, b) => a.le - b.le);
+                          if (ouvertures.length === 0) return "Pas encore ouvert dans l'appli par un commercial.";
+                          return "Ouvert par : " + ouvertures.map(o => `${o.nom} (${new Date(o.le).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})`).join(", ");
+                        })()}
+                      </p>
+                    </div>
+                  )}
                   <div style={{ padding: "12px 18px 0", borderTop: `1.5px solid ${COLORS.gray200}` }}>
                     <p style={{ margin: "0 0 8px", fontWeight: 800, fontSize: 12, color: COLORS.gray700, textTransform: "uppercase", letterSpacing: 0.3 }}>
                       Statut de traitement
