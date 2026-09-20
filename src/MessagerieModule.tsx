@@ -1520,6 +1520,26 @@ export function MessagerieModule({
                   >
                     <CaseACocher coche={voirToutLaBoite} onChange={setVoirToutLaBoite} label="🔎 Voir toute la boîte (pas seulement mes mails attribués)" />
                   </div>
+                  {(() => {
+                    const mesMails = mails.filter(m => trouverAttributionIds(m.expediteur).some(id => commercialIdsUtilisateur.includes(id)));
+                    const aujourdHui = new Date().toLocaleDateString("fr-FR");
+                    const mesMailsAujourdHui = mesMails.filter(m => m.date && new Date(m.date).toLocaleDateString("fr-FR") === aujourdHui);
+                    const nbAujourdHui = mesMailsAujourdHui.length;
+                    const nbTraitesAujourdHui = mesMailsAujourdHui.filter(m => m.statut).length;
+                    const pourcentage = nbAujourdHui > 0 ? Math.round((nbTraitesAujourdHui / nbAujourdHui) * 100) : 100;
+                    const nbAtraiter = mesMails.filter(m => !m.statut && (!m.date || new Date(m.date).getTime() >= depuisLeTraitement)).length;
+                    return (
+                      <div style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", fontSize: 11.5, color: COLORS.gray700, background: COLORS.gray100, marginTop: 8, maxWidth: 260 }}>
+                        <div style={{ marginBottom: 5 }}>
+                          📅 {nbAujourdHui} reçu{nbAujourdHui > 1 ? "s" : ""} · ✅ {nbTraitesAujourdHui} traité{nbTraitesAujourdHui > 1 ? "s" : ""} aujourd'hui
+                        </div>
+                        <div title={`${pourcentage}% des mails d'aujourd'hui traités`} style={{ height: 7, borderRadius: 999, background: COLORS.gray200, overflow: "hidden", marginBottom: 5 }}>
+                          <div style={{ height: "100%", width: `${pourcentage}%`, background: COLORS.success, borderRadius: 999, transition: "width 0.3s" }} />
+                        </div>
+                        <div style={{ fontSize: 10.5, color: COLORS.gray600 }}>📋 {nbAtraiter} à traiter (total)</div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
