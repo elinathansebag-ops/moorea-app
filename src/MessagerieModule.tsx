@@ -101,6 +101,20 @@ function estDossierSysteme(d: string): boolean {
 }
 
 export type Commercial = { id: string; nom: string };
+export type RegleAuto = {
+  id: string;
+  motCle: string;
+  champSujet: boolean;
+  champExpediteur: boolean;
+  champCorps: boolean;
+  actionLibelle: string | null;
+  actionCommercialIds: string[];
+  actionImportant: boolean;
+  actionFavori: boolean;
+  actionStatut: string | null;
+  actif: boolean;
+  creeLe?: string;
+};
 export type RegleAttribution = {
   id: string;
   expediteur: string; // adresse mail complète ("client@exemple.com") ou domaine ("@exemple.com")
@@ -159,6 +173,10 @@ export type Mail = {
   // ouvert" -- qui (quel commercial), et quand, a réellement ouvert CE mail dans l'appli.
   // Distinct de "lu" (le flag Gmail \Seen, partagé par toute la boîte, qui ne dit pas qui).
   ouvertPar?: Record<string, number> | null;
+  // 20/09/2026 — Demande d'Elinathan : règles automatiques ("tous les mails avec ce mot, mets
+  // les dans un dossier automatiquement") -- ids des règles déjà évaluées pour CE mail, pour ne
+  // jamais réévaluer/réappliquer la même règle deux fois (qu'elle ait matché ou pas).
+  reglesAutoAppliquees?: Record<string, boolean> | null;
 };
 
 // Liste par défaut si personne n'a encore personnalisé la liste dans Configuration > Statuts.
@@ -515,6 +533,7 @@ export function MessagerieModule({
             resume: v.resume ?? null,
             resumeLe: typeof v.resumeLe === "number" ? v.resumeLe : null,
             ouvertPar: v.ouvertPar || null,
+            reglesAutoAppliquees: v.reglesAutoAppliquees || null,
           }))
         : [];
       liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -968,6 +987,121 @@ export function MessagerieModule({
     const liste = statutsPersonnalises ? statutsConfigures : STATUTS_PAR_DEFAUT;
     await update(ref(db, "messagerie_config"), { statuts: liste.filter(s => s !== nom) });
   };
+
+  // 20/09/2026 — Demande d'Elinathan : "comment ont pourais crée des regle en mode tout les
+  // mail avec ce mot mets les dans un dossier automatiquement et plein dautre" -- règles
+  // automatiques façon "filtres Gmail" : un mot-clé (cherché dans le sujet et/ou l'expéditeur
+  // et/ou le corps) déclenche une ou plusieurs actions sur tout mail qui correspond.
+  const [reglesAuto, setReglesAuto] = useState<RegleAuto[]>([]);
+  useEffect(() => {
+    const u = onValue(ref(db, "messagerie_regles_auto"), snap => {
+      const d = snap.val();
+      setReglesAuto(d ? Object.entries(d).map(([id, v]: any) => ({ actionCommercialIds: [], ...v, id })) : []);
+    });
+    return () => u();
+  }, []);
+
+  const [nouvelleRegleMotCle, setNouvelleRegleMotCle] = useState("");
+  const [nouvelleRegleChampSujet, setNouvelleRegleChampSujet] = useState(true);
+  const [nouvelleRegleChampExpediteur, setNouvelleRegleChampExpediteur] = useState(true);
+  const [nouvelleRegleChampCorps, setNouvelleRegleChampCorps] = useState(false);
+  const [nouvelleRegleLibelle, setNouvelleRegleLibelle] = useState("");
+  const [nouvelleRegleCommercialIds, setNouvelleRegleCommercialIds] = useState<string[]>([]);
+  const [nouvelleRegleImportant, setNouvelleRegleImportant] = useState(false);
+  const [nouvelleRegleFavori, setNouvelleRegleFavori] = useState(false);
+  const [nouvelleRegleStatut, setNouvelleRegleStatut] = useState("");
+
+  const ajouterRegleAuto = async () => {
+    const mot = nouvelleRegleMotCle.trim();
+    if (!mot) { notify("error", "Il manque le mot à chercher"); return; }
+    if (!nouvelleRegleChampSujet && !nouvelleRegleChampExpediteur && !nouvelleRegleChampCorps) {
+      notify("error", "Coche au moins un endroit où chercher le mot"); return;
+    }
+    if (!nouvelleRegleLibelle.trim() && nouvelleRegleCommercialIds.length === 0 && !nouvelleRegleImportant && !nouvelleRegleFavori && !nouvelleRegleStatut) {
+      notify("error", "Coche au moins une action à déclencher"); return;
+    }
+    await push(ref(db, "messagerie_regles_auto"), {
+      motCle: mot,
+      champSujet: nouvelleRegleChampSujet,
+      champExpediteur: nouvelleRegleChampExpediteur,
+      champCorps: nouvelleRegleChampCorps,
+      actionLibelle: nouvelleRegleLibelle.trim() || null,
+      actionCommercialIds: nouvelleRegleCommercialIds,
+      actionImportant: nouvelleRegleImportant,
+      actionFavori: nouvelleRegleFavori,
+      actionStatut: nouvelleRegleStatut || null,
+      actif: true,
+      creeLe: new Date().toLocaleString("fr-FR"),
+    });
+    setNouvelleRegleMotCle(""); setNouvelleRegleLibelle(""); setNouvelleRegleCommercialIds([]);
+    setNouvelleRegleImportant(false); setNouvelleRegleFavori(false); setNouvelleRegleStatut("");
+    notify("success", "✓ Règle créée — elle va s'appliquer automatiquement aux mails qui correspondent");
+  };
+  const toggleActifRegleAuto = async (r: RegleAuto) => {
+    await update(ref(db, `messagerie_regles_auto/${r.id}`), { actif: !r.actif });
+  };
+  const supprimerRegleAuto = async (r: RegleAuto) => {
+    if (!window.confirm(`Supprimer cette règle ("${r.motCle}") ? Les actions déjà appliquées aux mails ne seront pas annulées.`)) return;
+    await remove(ref(db, `messagerie_regles_auto/${r.id}`));
+  };
+
+  // Application automatique : dès qu'un mail correspond à une règle active, on lui applique les
+  // actions configurées, une seule fois pour toujours (voir reglesAutoAppliquees sur le mail).
+  // Un seul admin à la fois suffit à déclencher ça (pas besoin que chaque commercial le fasse,
+  // et ça évite que tout le monde écrive en même temps sur les mêmes mails).
+  useEffect(() => {
+    if (!isAdmin || reglesAuto.length === 0 || mails.length === 0) return;
+    let annule = false;
+    (async () => {
+      for (const regleAuto of reglesAuto) {
+        if (annule || !regleAuto.actif || !regleAuto.motCle) continue;
+        const mot = regleAuto.motCle.toLowerCase();
+        for (const m of mails) {
+          if (annule) return;
+          if ((m.reglesAutoAppliquees || {})[regleAuto.id]) continue;
+          let correspond = false;
+          if (regleAuto.champSujet && (m.sujet || "").toLowerCase().includes(mot)) correspond = true;
+          if (!correspond && regleAuto.champExpediteur && `${m.expediteur || ""} ${m.nomExpediteur || ""}`.toLowerCase().includes(mot)) correspond = true;
+          // Le corps n'est vérifié que si le mail a déjà été ouvert au moins une fois (mis en
+          // cache) -- pas question d'aller chercher le corps de milliers de mails jamais ouverts
+          // juste pour une règle, ça surchargerait Gmail pour rien.
+          if (!correspond && regleAuto.champCorps) {
+            try {
+              const snap = await get(ref(db, cheminCacheMail(m.id)));
+              if (snap.exists()) {
+                const detail = snap.val();
+                const texte = `${detail?.texte || detail?.html || ""}`.toLowerCase();
+                if (texte.includes(mot)) correspond = true;
+              }
+            } catch { /* pas grave, on retente au prochain passage */ }
+          }
+          if (correspond) {
+            if (regleAuto.actionLibelle) {
+              const cle = regleAuto.actionLibelle.trim().replace(/[.#$\[\]/]/g, "_");
+              if (cle) update(ref(db, `messagerie_boite/${m.id}/labels`), { [cle]: true }).catch(() => {});
+            }
+            if (regleAuto.actionImportant && !estImportant(m)) basculerImportant(m);
+            if (regleAuto.actionFavori && !m.favori) basculerFavori(m);
+            if (regleAuto.actionStatut && !m.statut) {
+              update(ref(db, `messagerie_boite/${m.id}`), {
+                statut: regleAuto.actionStatut, statutPar: "Règle automatique", statutCommentaire: `Règle : "${regleAuto.motCle}"`, statutLe: Date.now(),
+              }).catch(() => {});
+            }
+            if (regleAuto.actionCommercialIds.length > 0 && m.expediteur) {
+              const ligne = lignesExpediteurs.find(l => !l.estDomaine && l.adresse === m.expediteur.toLowerCase());
+              for (const cid of regleAuto.actionCommercialIds) {
+                if (ligne) { if (!ligne.commercialIds.includes(cid)) toggleCommercialPourLigne(ligne, cid); }
+                else push(ref(db, "messagerie_regles"), { expediteur: m.expediteur, commercialIds: [cid], nbMails: 1, dernierSujet: m.sujet, creeLe: new Date().toLocaleString("fr-FR") }).catch(() => {});
+              }
+            }
+          }
+          update(ref(db, `messagerie_boite/${m.id}/reglesAutoAppliquees`), { [regleAuto.id]: true }).catch(() => {});
+        }
+      }
+    })();
+    return () => { annule = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reglesAuto, mails, isAdmin]);
 
   const formatDateMail = (iso: string | null) => {
     if (!iso) return "";
@@ -2095,6 +2229,112 @@ export function MessagerieModule({
               <p style={{ margin: "10px 0 0", fontSize: 11, color: COLORS.gray600 }}>
                 Ordre = ordre affiché dans le menu déroulant "Changer le statut" d'un mail.
               </p>
+            </div>
+
+            {/* 20/09/2026 — Demande d'Elinathan : "comment ont pourais crée des regle en mode
+                tout les mail avec ce mot mets les dans un dossier automatiquement et plein
+                dautre" -- règles automatiques façon "filtres Gmail". */}
+            <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 6px", fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
+                🤖 Règles automatiques ({reglesAuto.length})
+              </p>
+              <p style={{ margin: "0 0 12px", fontSize: 11.5, color: COLORS.gray600 }}>
+                Un mot-clé à chercher, et une ou plusieurs actions posées automatiquement sur
+                tout mail qui correspond (une seule fois par mail). La recherche dans le corps
+                du mail ne fonctionne que sur les mails déjà ouverts au moins une fois dans
+                l'appli (pour ne pas surcharger Gmail en allant chercher le contenu de milliers
+                de mails jamais ouverts).
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14, padding: 12, background: COLORS.gray100, borderRadius: 8 }}>
+                <input
+                  value={nouvelleRegleMotCle}
+                  onChange={e => setNouvelleRegleMotCle(e.target.value)}
+                  placeholder="Mot ou expression à chercher (ex: facture)"
+                  style={{ padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13 }}
+                />
+                <div>
+                  <p style={{ margin: "0 0 6px", fontSize: 11.5, fontWeight: 700, color: COLORS.gray700 }}>Chercher dans :</p>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <CaseACocher coche={nouvelleRegleChampSujet} onChange={setNouvelleRegleChampSujet} label="Sujet" />
+                    <CaseACocher coche={nouvelleRegleChampExpediteur} onChange={setNouvelleRegleChampExpediteur} label="Expéditeur" />
+                    <CaseACocher coche={nouvelleRegleChampCorps} onChange={setNouvelleRegleChampCorps} label="Corps du mail (mails déjà ouverts)" />
+                  </div>
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 6px", fontSize: 11.5, fontWeight: 700, color: COLORS.gray700 }}>Actions à déclencher :</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <input
+                      value={nouvelleRegleLibelle}
+                      onChange={e => setNouvelleRegleLibelle(e.target.value)}
+                      placeholder="📁 Mettre dans un dossier (nom du dossier, ex: Litiges)"
+                      style={{ padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5 }}
+                    />
+                    {commerciaux.length > 0 && (
+                      <div>
+                        <p style={{ margin: "0 0 4px", fontSize: 11, color: COLORS.gray600 }}>👤 Attribuer à :</p>
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                          {commerciaux.map(c => (
+                            <CaseACocher
+                              key={c.id}
+                              coche={nouvelleRegleCommercialIds.includes(c.id)}
+                              onChange={() => setNouvelleRegleCommercialIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+                              label={c.nom}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                      <CaseACocher coche={nouvelleRegleImportant} onChange={setNouvelleRegleImportant} label="⭐ Marquer important" />
+                      <CaseACocher coche={nouvelleRegleFavori} onChange={setNouvelleRegleFavori} label="☆ Marquer favori" />
+                    </div>
+                    <select
+                      value={nouvelleRegleStatut}
+                      onChange={e => setNouvelleRegleStatut(e.target.value)}
+                      style={{ padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5, maxWidth: 260 }}
+                    >
+                      <option value="">🏷️ Poser un statut (facultatif)...</option>
+                      {statutsConfigures.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  onClick={ajouterRegleAuto}
+                  style={{ alignSelf: "flex-start", padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                >
+                  ➕ Créer la règle
+                </button>
+              </div>
+              {reglesAuto.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {reglesAuto.map(r => (
+                    <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, padding: "8px 12px", opacity: r.actif ? 1 : 0.5 }}>
+                      <div style={{ fontSize: 12, color: COLORS.gray700 }}>
+                        <strong>"{r.motCle}"</strong>
+                        {" "}({[r.champSujet && "sujet", r.champExpediteur && "expéditeur", r.champCorps && "corps"].filter(Boolean).join(", ") || "aucun champ"})
+                        {" → "}
+                        {[
+                          r.actionLibelle && `📁 ${r.actionLibelle}`,
+                          r.actionCommercialIds.length > 0 && `👤 ${r.actionCommercialIds.map(id => commerciaux.find(c => c.id === id)?.nom).filter(Boolean).join(", ")}`,
+                          r.actionImportant && "⭐ Important",
+                          r.actionFavori && "☆ Favori",
+                          r.actionStatut && `🏷️ ${r.actionStatut}`,
+                        ].filter(Boolean).join(" · ") || "aucune action"}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                        <button onClick={() => toggleActifRegleAuto(r)} style={{ border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, borderRadius: 8, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                          {r.actif ? "⏸️ Désactiver" : "▶️ Activer"}
+                        </button>
+                        <button onClick={() => supprimerRegleAuto(r)} style={{ border: `1.5px solid ${COLORS.dangerLight}`, background: "#fff", color: COLORS.danger, borderRadius: 8, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
