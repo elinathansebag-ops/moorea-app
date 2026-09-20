@@ -499,6 +499,8 @@ export function MessagerieModule({
   }, [filtreMails]);
   const [derniereSyncRobot, setDerniereSyncRobot] = useState<Date | null>(null);
   const [dossierActif, setDossierActif] = useState<string>("INBOX");
+  // 20/09/2026 -- repliable par défaut pour ne pas prendre toute la place en haut de la boîte.
+  const [statsCommOuvert, setStatsCommOuvert] = useState(false);
 
   // 20/09/2026 — brouillon du commentaire de statut en cours de saisie dans le mail ouvert.
   const [commentaireStatutSaisi, setCommentaireStatutSaisi] = useState("");
@@ -1862,39 +1864,54 @@ export function MessagerieModule({
               {/* 20/09/2026 — Demande d'Elinathan : "ajoute des stat en haut des boite pour
                   chaque compte combien de mail ajd combien il reste a traitée" */}
               {isAdmin && commerciaux.length > 0 && mails.length > 0 && (
-                <div style={{ display: "flex", alignItems: "stretch", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                  {commerciaux.map(c => {
-                    const mailsDuCommercial = mails.filter(m => trouverAttributionIds(m.expediteur).includes(c.id));
-                    const aujourdHui = new Date().toLocaleDateString("fr-FR");
-                    const mailsAujourdHui = mailsDuCommercial.filter(m => m.date && new Date(m.date).toLocaleDateString("fr-FR") === aujourdHui);
-                    const nbAujourdHui = mailsAujourdHui.length;
-                    const nbTraitesAujourdHui = mailsAujourdHui.filter(m => m.statut).length;
-                    const pourcentage = nbAujourdHui > 0 ? Math.round((nbTraitesAujourdHui / nbAujourdHui) * 100) : 100;
-                    // Ne compte que les mails reçus depuis le dernier "remettre à 0" -- pas tout
-                    // l'historique d'un an, sinon ce chiffre n'a aucun sens pour le suivi au jour
-                    // le jour (voir remettreCompteurAZero ci-dessus).
-                    const nbAtraiter = mailsDuCommercial.filter(m => !m.statut && (!m.date || new Date(m.date).getTime() >= depuisLeTraitement)).length;
-                    return (
-                      <div key={c.id} style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", fontSize: 11.5, color: COLORS.gray700, background: COLORS.gray100, minWidth: 168 }}>
-                        <div style={{ fontWeight: 800, color: COLORS.primary, marginBottom: 4, whiteSpace: "nowrap" }}>{c.nom}</div>
-                        <div style={{ marginBottom: 5, whiteSpace: "nowrap" }}>
-                          📅 {nbAujourdHui} reçu{nbAujourdHui > 1 ? "s" : ""} · ✅ {nbTraitesAujourdHui} traité{nbTraitesAujourdHui > 1 ? "s" : ""}
-                        </div>
-                        {/* Barre de progression du jour (demande d'Elinathan : "une barre de progretion"). */}
-                        <div title={`${pourcentage}% des mails d'aujourd'hui traités`} style={{ height: 7, borderRadius: 999, background: COLORS.gray200, overflow: "hidden", marginBottom: 5 }}>
-                          <div style={{ height: "100%", width: `${pourcentage}%`, background: COLORS.success, borderRadius: 999, transition: "width 0.3s" }} />
-                        </div>
-                        <div style={{ fontSize: 10.5, color: COLORS.gray600, whiteSpace: "nowrap" }}>📋 {nbAtraiter} à traiter (total)</div>
-                      </div>
-                    );
-                  })}
+                <div style={{ marginBottom: 12 }}>
                   <button
-                    onClick={remettreCompteurAZero}
-                    title="Remettre le compteur &quot;à traiter&quot; à 0 pour tout le monde (les mails déjà en attente ne compteront plus)"
-                    style={{ alignSelf: "flex-start", border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                    onClick={() => setStatsCommOuvert(v => !v)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
+                      border: `1.5px solid ${COLORS.gray200}`, background: COLORS.gray100, color: COLORS.gray700,
+                      borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    }}
                   >
-                    🔄 Remettre à 0
+                    <span>{statsCommOuvert ? "▾" : "▸"}</span>
+                    <span>📊 Stats de l'équipe ({commerciaux.length} commercial{commerciaux.length > 1 ? "aux" : ""})</span>
                   </button>
+                  {statsCommOuvert && (
+                    <div style={{ display: "flex", alignItems: "stretch", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                      {commerciaux.map(c => {
+                        const mailsDuCommercial = mails.filter(m => trouverAttributionIds(m.expediteur).includes(c.id));
+                        const aujourdHui = new Date().toLocaleDateString("fr-FR");
+                        const mailsAujourdHui = mailsDuCommercial.filter(m => m.date && new Date(m.date).toLocaleDateString("fr-FR") === aujourdHui);
+                        const nbAujourdHui = mailsAujourdHui.length;
+                        const nbTraitesAujourdHui = mailsAujourdHui.filter(m => m.statut).length;
+                        const pourcentage = nbAujourdHui > 0 ? Math.round((nbTraitesAujourdHui / nbAujourdHui) * 100) : 100;
+                        // Ne compte que les mails reçus depuis le dernier "remettre à 0" -- pas tout
+                        // l'historique d'un an, sinon ce chiffre n'a aucun sens pour le suivi au jour
+                        // le jour (voir remettreCompteurAZero ci-dessus).
+                        const nbAtraiter = mailsDuCommercial.filter(m => !m.statut && (!m.date || new Date(m.date).getTime() >= depuisLeTraitement)).length;
+                        return (
+                          <div key={c.id} style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", fontSize: 11.5, color: COLORS.gray700, background: COLORS.gray100, minWidth: 168 }}>
+                            <div style={{ fontWeight: 800, color: COLORS.primary, marginBottom: 4, whiteSpace: "nowrap" }}>{c.nom}</div>
+                            <div style={{ marginBottom: 5, whiteSpace: "nowrap" }}>
+                              📅 {nbAujourdHui} reçu{nbAujourdHui > 1 ? "s" : ""} · ✅ {nbTraitesAujourdHui} traité{nbTraitesAujourdHui > 1 ? "s" : ""}
+                            </div>
+                            {/* Barre de progression du jour (demande d'Elinathan : "une barre de progretion"). */}
+                            <div title={`${pourcentage}% des mails d'aujourd'hui traités`} style={{ height: 7, borderRadius: 999, background: COLORS.gray200, overflow: "hidden", marginBottom: 5 }}>
+                              <div style={{ height: "100%", width: `${pourcentage}%`, background: COLORS.success, borderRadius: 999, transition: "width 0.3s" }} />
+                            </div>
+                            <div style={{ fontSize: 10.5, color: COLORS.gray600, whiteSpace: "nowrap" }}>📋 {nbAtraiter} à traiter (total)</div>
+                          </div>
+                        );
+                      })}
+                      <button
+                        onClick={remettreCompteurAZero}
+                        title="Remettre le compteur &quot;à traiter&quot; à 0 pour tout le monde (les mails déjà en attente ne compteront plus)"
+                        style={{ alignSelf: "flex-start", border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        🔄 Remettre à 0
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, marginBottom: 12, flexWrap: "wrap" }}>
