@@ -455,6 +455,30 @@ export function MessagerieModule({
   // 20/09/2026 — Demande d'Elinathan : "un systeme de trie dans la boite"
   const [triActif, setTriActif] = useState<"date_desc" | "date_asc" | "statut" | "expediteur">("date_desc");
 
+  // 20/09/2026 — Demande d'Elinathan : point de départ du compteur "à traiter" des stats admin
+  // (voir plus bas) -- les mails reçus avant ce point ne comptent plus dans le retard de
+  // personne. 0 tant qu'il n'a pas encore été initialisé (le useEffect ci-dessous le fixe alors
+  // à "maintenant" une bonne fois pour toutes).
+  const [depuisLeTraitement, setDepuisLeTraitement] = useState<number>(0);
+  useEffect(() => {
+    const u = onValue(ref(db, "messagerie_config/depuisLeTraitement"), snap => {
+      const v = snap.val();
+      if (typeof v === "number") {
+        setDepuisLeTraitement(v);
+      } else {
+        const maintenant = Date.now();
+        setDepuisLeTraitement(maintenant);
+        set(ref(db, "messagerie_config/depuisLeTraitement"), maintenant).catch(() => {});
+      }
+    });
+    return () => u();
+  }, []);
+  const remettreCompteurAZero = async () => {
+    if (!window.confirm("Remettre le compteur \"à traiter\" à zéro pour tout le monde ?\n\nLes mails déjà en attente avant maintenant ne compteront plus dans le retard de personne (ils restent bien dans la boîte, juste plus dans ce compteur).")) return;
+    await set(ref(db, "messagerie_config/depuisLeTraitement"), Date.now());
+    notify("success", "✓ Compteur \"à traiter\" remis à zéro pour tout le monde");
+  };
+
   useEffect(() => {
     const uStatuts = onValue(ref(db, "messagerie_config/statuts"), snap => {
       const v = snap.val();
@@ -1408,12 +1432,15 @@ export function MessagerieModule({
               {/* 20/09/2026 — Demande d'Elinathan : "ajoute des stat en haut des boite pour
                   chaque compte combien de mail ajd combien il reste a traitée" */}
               {isAdmin && commerciaux.length > 0 && mails.length > 0 && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
                   {commerciaux.map(c => {
                     const mailsDuCommercial = mails.filter(m => trouverAttributionIds(m.expediteur).includes(c.id));
                     const aujourdHui = new Date().toLocaleDateString("fr-FR");
                     const nbAujourdHui = mailsDuCommercial.filter(m => m.date && new Date(m.date).toLocaleDateString("fr-FR") === aujourdHui).length;
-                    const nbAtraiter = mailsDuCommercial.filter(m => !m.statut).length;
+                    // Ne compte que les mails reçus depuis le dernier "remettre à 0" -- pas tout
+                    // l'historique d'un an, sinon ce chiffre n'a aucun sens pour le suivi au jour
+                    // le jour (voir remettreCompteurAZero ci-dessus).
+                    const nbAtraiter = mailsDuCommercial.filter(m => !m.statut && (!m.date || new Date(m.date).getTime() >= depuisLeTraitement)).length;
                     return (
                       <div key={c.id} style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, color: COLORS.gray700, background: COLORS.gray100 }}>
                         <strong style={{ color: COLORS.primary }}>{c.nom}</strong>
@@ -1421,6 +1448,13 @@ export function MessagerieModule({
                       </div>
                     );
                   })}
+                  <button
+                    onClick={remettreCompteurAZero}
+                    title="Remettre le compteur &quot;à traiter&quot; à 0 pour tout le monde (les mails déjà en attente ne compteront plus)"
+                    style={{ border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    🔄 Remettre à 0
+                  </button>
                 </div>
               )}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
