@@ -1375,11 +1375,28 @@ export function MessagerieModule({
                 <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
                   📥 {mails.length > 0 ? `${mailsFiltres.length} mail(s)` : "Boîte de réception"}
                 </p>
-                <span style={{ fontSize: 11, color: COLORS.gray600 }}>
-                  {derniereSyncRobot
-                    ? `🟢 Synchronisé — ${derniereSyncRobot.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
-                    : "🟡 En attente de la première synchro..."}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: COLORS.gray600 }}>
+                    {derniereSyncRobot
+                      ? `🟢 Synchronisé — ${derniereSyncRobot.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`
+                      : "🟡 En attente de la première synchro..."}
+                  </span>
+                  {mails.length > 0 && (
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.gray600 }}>
+                      Trier par
+                      <select
+                        value={triActif}
+                        onChange={e => setTriActif(e.target.value as typeof triActif)}
+                        style={{ padding: "5px 8px", borderRadius: 7, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12 }}
+                      >
+                        <option value="date_desc">Date (récent → ancien)</option>
+                        <option value="date_asc">Date (ancien → récent)</option>
+                        <option value="statut">Statut</option>
+                        <option value="expediteur">Expéditeur</option>
+                      </select>
+                    </label>
+                  )}
+                </div>
               </div>
 
               {mails.length > 0 && (
@@ -1391,29 +1408,15 @@ export function MessagerieModule({
                 />
               )}
 
-              {mails.length > 0 && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-                  {/* 20/09/2026 — Demande d'Elinathan : un utilisateur rattaché à un commercial ne
-                      voit d'habitude que ses mails attribués -- cette bascule lui permet de voir
-                      toute la boîte quand il en a besoin (les admins voient déjà tout). */}
-                  {!isAdmin && commercialIdsUtilisateur.length > 0 ? (
-                    <div style={{ fontSize: 12.5, color: COLORS.gray700 }}>
-                      <CaseACocher coche={voirToutLaBoite} onChange={setVoirToutLaBoite} label="Voir toute la boîte (pas seulement mes mails attribués)" />
-                    </div>
-                  ) : <span />}
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.gray600 }}>
-                    Trier par
-                    <select
-                      value={triActif}
-                      onChange={e => setTriActif(e.target.value as typeof triActif)}
-                      style={{ padding: "5px 8px", borderRadius: 7, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12 }}
-                    >
-                      <option value="date_desc">Date (récent → ancien)</option>
-                      <option value="date_asc">Date (ancien → récent)</option>
-                      <option value="statut">Statut</option>
-                      <option value="expediteur">Expéditeur</option>
-                    </select>
-                  </label>
+              {/* 20/09/2026 — Demande d'Elinathan : un utilisateur rattaché à un commercial ne
+                  voit d'habitude que ses mails attribués -- cette bascule lui permet de voir
+                  toute la boîte quand il en a besoin (les admins voient déjà tout). Le "Trier
+                  par" qui était ici est monté à côté de "Synchronisé", plus haut. */}
+              {mails.length > 0 && !isAdmin && commercialIdsUtilisateur.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12.5, color: COLORS.gray700 }}>
+                    <CaseACocher coche={voirToutLaBoite} onChange={setVoirToutLaBoite} label="Voir toute la boîte (pas seulement mes mails attribués)" />
+                  </div>
                 </div>
               )}
 
