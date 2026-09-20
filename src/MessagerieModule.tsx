@@ -1467,10 +1467,32 @@ export function MessagerieModule({
                   </button>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-                <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
-                  📥 {mails.length > 0 ? `${mailsFiltres.length} mail(s)` : "Boîte de réception"}
-                </p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, marginBottom: 12, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                  <p style={{ margin: 0, fontWeight: 800, fontSize: 13.5, color: COLORS.gray700 }}>
+                    📥 {mails.length > 0 ? `${mailsFiltres.length} mail(s)` : "Boîte de réception"}
+                  </p>
+                  {!isAdmin && commercialIdsUtilisateur.length > 0 && mails.length > 0 && (() => {
+                    const mesMails = mails.filter(m => trouverAttributionIds(m.expediteur).some(id => commercialIdsUtilisateur.includes(id)));
+                    const aujourdHui = new Date().toLocaleDateString("fr-FR");
+                    const mesMailsAujourdHui = mesMails.filter(m => m.date && new Date(m.date).toLocaleDateString("fr-FR") === aujourdHui);
+                    const nbAujourdHui = mesMailsAujourdHui.length;
+                    const nbTraitesAujourdHui = mesMailsAujourdHui.filter(m => m.statut).length;
+                    const pourcentage = nbAujourdHui > 0 ? Math.round((nbTraitesAujourdHui / nbAujourdHui) * 100) : 100;
+                    const message = nbAujourdHui === 0 ? "Aucun mail aujourd'hui" : pourcentage >= 100 ? "🎉 Journée terminée, bravo !" : `${nbTraitesAujourdHui}/${nbAujourdHui} traités aujourd'hui`;
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, background: COLORS.successLight, border: `2px solid ${COLORS.success}`, borderRadius: 999, padding: "6px 16px 6px 12px" }}>
+                        <span style={{ fontSize: 24, fontWeight: 900, color: COLORS.success, lineHeight: 1 }}>{pourcentage}%</span>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray700, whiteSpace: "nowrap" }}>{message}</div>
+                          <div style={{ height: 8, width: 150, borderRadius: 999, background: "#fff", overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${pourcentage}%`, background: COLORS.success, borderRadius: 999, transition: "width 0.3s" }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 11, color: COLORS.gray600 }}>
                     {derniereSyncRobot
@@ -1520,26 +1542,6 @@ export function MessagerieModule({
                   >
                     <CaseACocher coche={voirToutLaBoite} onChange={setVoirToutLaBoite} label="🔎 Voir toute la boîte (pas seulement mes mails attribués)" />
                   </div>
-                  {(() => {
-                    const mesMails = mails.filter(m => trouverAttributionIds(m.expediteur).some(id => commercialIdsUtilisateur.includes(id)));
-                    const aujourdHui = new Date().toLocaleDateString("fr-FR");
-                    const mesMailsAujourdHui = mesMails.filter(m => m.date && new Date(m.date).toLocaleDateString("fr-FR") === aujourdHui);
-                    const nbAujourdHui = mesMailsAujourdHui.length;
-                    const nbTraitesAujourdHui = mesMailsAujourdHui.filter(m => m.statut).length;
-                    const pourcentage = nbAujourdHui > 0 ? Math.round((nbTraitesAujourdHui / nbAujourdHui) * 100) : 100;
-                    const nbAtraiter = mesMails.filter(m => !m.statut && (!m.date || new Date(m.date).getTime() >= depuisLeTraitement)).length;
-                    return (
-                      <div style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px", fontSize: 11.5, color: COLORS.gray700, background: COLORS.gray100, marginTop: 8, maxWidth: 260 }}>
-                        <div style={{ marginBottom: 5 }}>
-                          📅 {nbAujourdHui} reçu{nbAujourdHui > 1 ? "s" : ""} · ✅ {nbTraitesAujourdHui} traité{nbTraitesAujourdHui > 1 ? "s" : ""} aujourd'hui
-                        </div>
-                        <div title={`${pourcentage}% des mails d'aujourd'hui traités`} style={{ height: 7, borderRadius: 999, background: COLORS.gray200, overflow: "hidden", marginBottom: 5 }}>
-                          <div style={{ height: "100%", width: `${pourcentage}%`, background: COLORS.success, borderRadius: 999, transition: "width 0.3s" }} />
-                        </div>
-                        <div style={{ fontSize: 10.5, color: COLORS.gray600 }}>📋 {nbAtraiter} à traiter (total)</div>
-                      </div>
-                    );
-                  })()}
                 </div>
               )}
 
