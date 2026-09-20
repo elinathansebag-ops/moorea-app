@@ -1433,9 +1433,10 @@ export function MessagerieModule({
                     <colgroup>
                       <col style={{ width: "5%" }} />
                       <col style={{ width: "9%" }} />
+                      <col style={{ width: "18%" }} />
                       <col style={{ width: "20%" }} />
-                      <col style={{ width: "32%" }} />
-                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "16%" }} />
+                      <col style={{ width: "14%" }} />
                       <col style={{ width: "17%" }} />
                     </colgroup>
                     <thead>
@@ -1444,6 +1445,7 @@ export function MessagerieModule({
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
                         <th style={{ textAlign:"left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Résumé</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Statut</th>
                         <th style={{ textAlign: "right", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
                       </tr>
@@ -1455,9 +1457,12 @@ export function MessagerieModule({
                           <tr
                             key={m.id}
                             onClick={() => ouvrirMail(m)}
-                            style={{ borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400, cursor: "pointer" }}
-                            onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
-                            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                            style={{
+                              borderTop: `1px solid ${COLORS.gray200}`, fontWeight: m.lu === false ? 800 : 400, cursor: "pointer",
+                              background: m.lu === false ? "#fff" : COLORS.gray100,
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray200)}
+                            onMouseLeave={e => (e.currentTarget.style.background = m.lu === false ? "#fff" : COLORS.gray100)}
                           >
                             <td style={{ padding: "7px 4px", textAlign: "center", verticalAlign: "top", whiteSpace: "nowrap" }}>
                               <button
@@ -1487,22 +1492,6 @@ export function MessagerieModule({
                             </td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>
                               {m.sujet}
-                              {m.resume ? (
-                                <div style={{ marginTop: 3, fontSize: 11, fontStyle: "italic", color: COLORS.gray600, fontWeight: 400 }}>
-                                  🧠 {m.resume}
-                                </div>
-                              ) : m.lu === false ? (
-                                <div style={{ marginTop: 3, fontSize: 11, fontStyle: "italic", color: COLORS.gray600, fontWeight: 400, opacity: 0.6 }}>
-                                  🧠 Résumé en cours…
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={e => { e.stopPropagation(); demanderResume(m); }}
-                                  style={{ display: "block", marginTop: 3, border: "none", background: "transparent", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline", fontStyle: "italic" }}
-                                >
-                                  🧠 Générer un résumé
-                                </button>
-                              )}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
                               {attribues.length > 0 ? (
@@ -1519,6 +1508,24 @@ export function MessagerieModule({
                                   style={{ display: "block", marginTop: 3, border: "none", background: "transparent", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}
                                 >
                                   👤 M'attribuer
+                                </button>
+                              )}
+                            </td>
+                            <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
+                              {m.resume ? (
+                                <span style={{ fontSize: 11, fontStyle: "italic", color: COLORS.gray600 }}>
+                                  🧠 {m.resume}
+                                </span>
+                              ) : m.lu === false ? (
+                                <span style={{ fontSize: 11, fontStyle: "italic", color: COLORS.gray600, opacity: 0.6 }}>
+                                  🧠 Résumé en cours…
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={e => { e.stopPropagation(); demanderResume(m); }}
+                                  style={{ border: "none", background: "transparent", color: COLORS.gray600, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline", fontStyle: "italic" }}
+                                >
+                                  🧠 Générer un résumé
                                 </button>
                               )}
                             </td>
