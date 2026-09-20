@@ -454,6 +454,11 @@ export function MessagerieModule({
     // robot le rattrapera de toute façon lors de son prochain rafraîchissement de statut.
     if (m.lu === false) {
       update(ref(db, `messagerie_boite/${m.id}`), { lu: true }).catch(() => {});
+      // 20/09/2026 — marque aussi comme lu sur Gmail lui-même (flag IMAP \Seen), pas seulement
+      // dans Firebase, pour que le statut lu/pas lu reste le même partout (appli, Gmail, téléphone).
+      enTeteAuth()
+        .then(headers => fetch(`/api/messagerie?action=marquer-lu&uid=${m.uid}&boite=${m.boite}`, { headers }))
+        .catch(() => {});
     }
 
     // 1) Cache Firebase d'abord : si le mail a déjà été ouvert une fois, affichage immédiat.
@@ -744,16 +749,26 @@ export function MessagerieModule({
     return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
   };
 
+  const mailAppartientAuDossier = (m: Mail, d: string): boolean => {
+    if (d === "TOUS") return true;
+    if (d === "SPAM") return m.boite === "spam";
+    if (d === "TRASH") return m.boite === "trash";
+    if (d === "INBOX") return Boolean((m.labels || {})["\\Inbox"]);
+    return Boolean((m.labels || {})[d]);
+  };
+
   const mailsFiltres = mails.filter(m => {
     if (!mailVisiblePourMoi(m.expediteur)) return false;
-    if (dossierActif === "SPAM") { if (m.boite !== "spam") return false; }
-    else if (dossierActif === "TRASH") { if (m.boite !== "trash") return false; }
-    else if (dossierActif === "INBOX") { if (!(m.labels || {})["\\Inbox"]) return false; }
-    else if (dossierActif !== "TOUS" && !(m.labels || {})[dossierActif]) return false;
+    if (!mailAppartientAuDossier(m, dossierActif)) return false;
     if (!filtreMails.trim()) return true;
     const q = filtreMails.trim().toLowerCase();
     return m.expediteur.includes(q) || m.nomExpediteur.toLowerCase().includes(q) || m.sujet.toLowerCase().includes(q);
   });
+
+  // 20/09/2026 — Demande d'Elinathan : un vrai système lu/pas lu "comme dans Gmail" -- un badge
+  // avec le nombre de mails non lus à côté de chaque dossier dans la colonne de gauche.
+  const nbNonLusParDossier = (d: string): number =>
+    mails.filter(m => mailVisiblePourMoi(m.expediteur) && mailAppartientAuDossier(m, d) && m.lu === false).length;
 
   const [filtreExpediteur, setFiltreExpediteur] = useState("");
   const reglesFiltrees = regles
@@ -835,21 +850,35 @@ export function MessagerieModule({
                 ✏️ Nouveau message
               </button>
 
-              {["TOUS", ...dossiersDisponibles.filter(estDossierSysteme)].map(d => (
-                <button
-                  key={d}
-                  onClick={() => setDossierActif(d)}
-                  style={{
-                    display: "block", width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
-                    border: "none", background: dossierActif === d ? COLORS.primaryLight : "transparent",
-                    color: dossierActif === d ? COLORS.primary : COLORS.gray700,
-                    fontSize: 12.5, fontWeight: dossierActif === d ? 800 : 600, cursor: "pointer",
-                    marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                  }}
-                >
-                  {d === "TOUS" ? "📬 Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : libelleDossier(d)}
-                </button>
-              ))}
+              {["TOUS", ...dossiersDisponibles.filter(estDossierSysteme)].map(d => {
+                const nbNonLus = nbNonLusParDossier(d);
+                return (
+                  <button
+                    key={d}
+                    onClick={() => setDossierActif(d)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, width: "100%",
+                      textAlign: "left", padding: "8px 10px", borderRadius: 8,
+                      border: "none", background: dossierActif === d ? COLORS.primaryLight : "transparent",
+                      color: dossierActif === d ? COLORS.primary : COLORS.gray700,
+                      fontSize: 12.5, fontWeight: dossierActif === d || nbNonLus > 0 ? 800 : 600, cursor: "pointer",
+                      marginBottom: 2,
+                    }}
+                  >
+                    <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {d === "TOUS" ? "📬 Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : libelleDossier(d)}
+                    </span>
+                    {nbNonLus > 0 && (
+                      <span style={{
+                        background: dossierActif === d ? COLORS.primary : COLORS.gray600, color: "#fff", borderRadius: 999,
+                        fontSize: 10.5, fontWeight: 800, padding: "1px 6px", flexShrink: 0,
+                      }}>
+                        {nbNonLus}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
 
               {dossiersDisponibles.some(d => !estDossierSysteme(d)) && (
                 <>
@@ -859,21 +888,35 @@ export function MessagerieModule({
                   }}>
                     Libellés
                   </p>
-                  {dossiersDisponibles.filter(d => !estDossierSysteme(d)).map(d => (
-                    <button
-                      key={d}
-                      onClick={() => setDossierActif(d)}
-                      style={{
-                        display: "block", width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
-                        border: "none", background: dossierActif === d ? COLORS.primaryLight : "transparent",
-                        color: dossierActif === d ? COLORS.primary : COLORS.gray700,
-                        fontSize: 12.5, fontWeight: dossierActif === d ? 800 : 600, cursor: "pointer",
-                        marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                      }}
-                    >
-                      {libelleDossier(d)}
-                    </button>
-                  ))}
+                  {dossiersDisponibles.filter(d => !estDossierSysteme(d)).map(d => {
+                    const nbNonLus = nbNonLusParDossier(d);
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => setDossierActif(d)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, width: "100%",
+                          textAlign: "left", padding: "8px 10px", borderRadius: 8,
+                          border: "none", background: dossierActif === d ? COLORS.primaryLight : "transparent",
+                          color: dossierActif === d ? COLORS.primary : COLORS.gray700,
+                          fontSize: 12.5, fontWeight: dossierActif === d || nbNonLus > 0 ? 800 : 600, cursor: "pointer",
+                          marginBottom: 2,
+                        }}
+                      >
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {libelleDossier(d)}
+                        </span>
+                        {nbNonLus > 0 && (
+                          <span style={{
+                            background: dossierActif === d ? COLORS.primary : COLORS.gray600, color: "#fff", borderRadius: 999,
+                            fontSize: 10.5, fontWeight: 800, padding: "1px 6px", flexShrink: 0,
+                          }}>
+                            {nbNonLus}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </>
               )}
             </div>

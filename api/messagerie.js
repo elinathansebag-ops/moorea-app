@@ -506,6 +506,36 @@ async function actionPieceJointe(req, res) {
   return res.status(200).send(buffer);
 }
 
+// ─── action=marquer-lu : marque un mail comme lu sur Gmail lui-même (flag IMAP \Seen) ───
+// 20/09/2026 — Demande d'Elinathan : "mets un systeme pour savoir si un mail a etais lu [...]
+// ont peut savoir si le mail a etais lu ou pas sur gmail ?" -- jusqu'ici, ouvrir un mail dans
+// l'appli ne marquait "lu" que dans Firebase (pour l'affichage ici), sans jamais poser le flag
+// \Seen sur Gmail lui-même : le mail restait donc affiché comme non lu si on ouvrait Gmail
+// directement. Cette action pose le vrai flag IMAP, pour que le statut lu/pas lu reste identique
+// des deux côtés (et dans le sens inverse : le rafraîchissement tournant de action=sync, plus
+// haut, ramène déjà dans l'appli un mail lu ailleurs -- sur le téléphone, sur Gmail...).
+async function actionMarquerLu(req, res) {
+  const uid = parseInt(req.query?.uid, 10);
+  const boite = req.query?.boite || "all";
+  if (!uid || uid <= 0) return res.status(400).json({ error: "uid manquant ou invalide" });
+
+  await avecReessai(async () => {
+    const client = await connecterImap();
+    try {
+      const lock = await ouvrirMailboxPourUid(client, boite);
+      try {
+        await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
+      } finally {
+        lock.release();
+      }
+    } finally {
+      try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
+    }
+  });
+
+  return res.status(200).json({ ok: true });
+}
+
 // ─── action=envoyer : répondre/transférer depuis commercial@moorea.fr ───
 async function actionEnvoyer(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -749,6 +779,7 @@ export default async function handler(req, res) {
     if (action === "detail") { await exigerConnexionMoorea(req); return await actionDetail(req, res); }
     if (action === "piece-jointe") { await exigerConnexionMoorea(req); return await actionPieceJointe(req, res); }
     if (action === "envoyer") { await exigerConnexionMoorea(req); return await actionEnvoyer(req, res); }
+    if (action === "marquer-lu") { await exigerConnexionMoorea(req); return await actionMarquerLu(req, res); }
     if (action === "sync") {
       const secretSyncOk = req.query?.secret && req.query.secret === process.env.MESSAGERIE_SYNC_SECRET;
       if (!secretSyncOk) return res.status(401).json({ error: "Non autorise" });
