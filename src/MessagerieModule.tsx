@@ -119,6 +119,8 @@ export type Mail = {
   statutPar?: string | null;
   statutCommentaire?: string | null;
   statutLe?: number | null;
+  // 20/09/2026 — Demande d'Elinathan : "ajoute le systeme d'etoiles pour les favoris"
+  favori?: boolean;
 };
 
 // Liste par défaut si personne n'a encore personnalisé la liste dans Configuration > Statuts.
@@ -435,6 +437,7 @@ export function MessagerieModule({
             statutPar: v.statutPar || null,
             statutCommentaire: v.statutCommentaire || null,
             statutLe: typeof v.statutLe === "number" ? v.statutLe : null,
+            favori: v.favori === true,
           }))
         : [];
       liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -871,10 +874,18 @@ export function MessagerieModule({
 
   const mailAppartientAuDossier = (m: Mail, d: string): boolean => {
     if (d === "TOUS") return true;
+    if (d === "FAVORIS") return m.favori === true;
     if (d === "SPAM") return m.boite === "spam";
     if (d === "TRASH") return m.boite === "trash";
     if (d === "INBOX") return Boolean((m.labels || {})["\\Inbox"]);
     return Boolean((m.labels || {})[d]);
+  };
+
+  // 20/09/2026 — Demande d'Elinathan : "ajoute le systeme d'etoiles pour les favoris" -- toggle
+  // l'étoile d'un mail sans ouvrir le mail (le clic sur l'étoile stoppe la propagation).
+  const basculerFavori = (m: Mail, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    update(ref(db, `messagerie_boite/${m.id}`), { favori: !m.favori }).catch(() => {});
   };
 
   const mailsFiltresBase = mails.filter(m => {
@@ -1132,7 +1143,7 @@ export function MessagerieModule({
                 ✏️ Nouveau message
               </button>
 
-              {["TOUS", ...dossiersDisponibles.filter(estDossierSysteme)].map(d => {
+              {["TOUS", "FAVORIS", ...dossiersDisponibles.filter(estDossierSysteme)].map(d => {
                 const nbNonLus = nbNonLusParDossier(d);
                 return (
                   <button
@@ -1148,7 +1159,7 @@ export function MessagerieModule({
                     }}
                   >
                     <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {d === "TOUS" ? "📬 Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : libelleDossier(d)}
+                      {d === "TOUS" ? "📬 Tous" : d === "FAVORIS" ? "⭐ Favoris" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : libelleDossier(d)}
                     </span>
                     {nbNonLus > 0 && (
                       <span style={{
@@ -1267,18 +1278,20 @@ export function MessagerieModule({
                 <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                     <colgroup>
-                      <col style={{ width: "10%" }} />
-                      <col style={{ width: "21%" }} />
-                      <col style={{ width: "37%" }} />
+                      <col style={{ width: "5%" }} />
+                      <col style={{ width: "9%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "32%" }} />
                       <col style={{ width: "15%" }} />
                       <col style={{ width: "17%" }} />
                     </colgroup>
                     <thead>
                       <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
+                        <th style={{ padding: "8px 6px" }}></th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
-                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
+                        <th style={{ textAlign:"left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Statut</th>
                       </tr>
                     </thead>
@@ -1293,6 +1306,15 @@ export function MessagerieModule({
                             onMouseEnter={e => (e.currentTarget.style.background = COLORS.gray100)}
                             onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                           >
+                            <td style={{ padding: "7px 4px", textAlign: "center", verticalAlign: "top" }}>
+                              <button
+                                onClick={e => basculerFavori(m, e)}
+                                title={m.favori ? "Retirer des favoris" : "Ajouter aux favoris"}
+                                style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 15, padding: 2, lineHeight: 1, opacity: m.favori ? 1 : 0.35 }}
+                              >
+                                {m.favori ? "⭐" : "☆"}
+                              </button>
+                            </td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray600, whiteSpace: "nowrap", verticalAlign: "top" }}>{formatDateMail(m.date)}</td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere" }}>
                               {m.nomExpediteur ? <div>{m.nomExpediteur}</div> : null}
@@ -1370,7 +1392,17 @@ export function MessagerieModule({
                     </p>
                   )}
                 </div>
-                <button onClick={fermerMail} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: COLORS.gray600, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  {/* 20/09/2026 — Demande d'Elinathan : "ajoute le systeme d'etoiles pour les favoris" */}
+                  <button
+                    onClick={() => { basculerFavori(mailOuvert); setMailOuvert({ ...mailOuvert, favori: !mailOuvert.favori }); }}
+                    title={mailOuvert.favori ? "Retirer des favoris" : "Ajouter aux favoris"}
+                    style={{ border: "none", background: "transparent", fontSize: 19, cursor: "pointer", padding: 2, lineHeight: 1, opacity: mailOuvert.favori ? 1 : 0.35 }}
+                  >
+                    {mailOuvert.favori ? "⭐" : "☆"}
+                  </button>
+                  <button onClick={fermerMail} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: COLORS.gray600, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                </div>
               </div>
 
               <div style={{ padding: "14px 18px", overflowY: "auto", flex: 1 }}>
@@ -1502,7 +1534,10 @@ export function MessagerieModule({
                       <select
                         value=""
                         onChange={e => {
-                          if (e.target.value) definirStatutMail(mailOuvert, e.target.value, commentaireStatutSaisi);
+                          if (e.target.value) {
+                            definirStatutMail(mailOuvert, e.target.value, commentaireStatutSaisi);
+                            setMailOuvert({ ...mailOuvert, statut: e.target.value, statutPar: userName || "?", statutCommentaire: commentaireStatutSaisi || null, statutLe: Date.now() });
+                          }
                           setCommentaireStatutSaisi("");
                         }}
                         style={{ padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5, minWidth: 170 }}
