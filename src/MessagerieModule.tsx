@@ -1287,9 +1287,25 @@ export function MessagerieModule({
     }
   };
 
+  const [filtreStatutBoite, setFiltreStatutBoite] = useState("");
+  const [filtreCommercialBoite, setFiltreCommercialBoite] = useState("");
+  const [filtrePeriodeBoite, setFiltrePeriodeBoite] = useState<"tout" | "aujourdhui" | "semaine" | "mois">("tout");
+
   const mailsFiltresBase = mails.filter(m => {
     if (!mailVisiblePourMoi(m.expediteur)) return false;
     if (!mailAppartientAuDossier(m, dossierActif)) return false;
+    if (filtreStatutBoite === "non_traite" && m.statut) return false;
+    if (filtreStatutBoite && filtreStatutBoite !== "non_traite" && m.statut !== filtreStatutBoite) return false;
+    if (filtreCommercialBoite && !trouverAttributionIds(m.expediteur).includes(filtreCommercialBoite)) return false;
+    if (filtrePeriodeBoite !== "tout") {
+      if (!m.date) return false;
+      const tempsMail = new Date(m.date).getTime();
+      const maintenant = Date.now();
+      const unJour = 24 * 60 * 60 * 1000;
+      if (filtrePeriodeBoite === "aujourdhui" && new Date(m.date).toLocaleDateString("fr-FR") !== new Date().toLocaleDateString("fr-FR")) return false;
+      if (filtrePeriodeBoite === "semaine" && tempsMail < maintenant - 7 * unJour) return false;
+      if (filtrePeriodeBoite === "mois" && tempsMail < maintenant - 30 * unJour) return false;
+    }
     if (!filtreMails.trim()) return true;
     const q = filtreMails.trim().toLowerCase();
     return (
@@ -1734,6 +1750,52 @@ export function MessagerieModule({
                   placeholder="🔎 Rechercher (expéditeur, nom, sujet, résumé...)"
                   style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
                 />
+              )}
+
+              {mails.length > 0 && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                  <select
+                    value={filtreStatutBoite}
+                    onChange={e => setFiltreStatutBoite(e.target.value)}
+                    style={{ padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtreStatutBoite ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtreStatutBoite ? COLORS.primaryLight : "#fff" }}
+                  >
+                    <option value="">Tous les statuts</option>
+                    <option value="non_traite">Non traité</option>
+                    {statutsConfigures.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  {isAdmin && commerciaux.length > 0 && (
+                    <select
+                      value={filtreCommercialBoite}
+                      onChange={e => setFiltreCommercialBoite(e.target.value)}
+                      style={{ padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtreCommercialBoite ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtreCommercialBoite ? COLORS.primaryLight : "#fff" }}
+                    >
+                      <option value="">Tous les commerciaux</option>
+                      {commerciaux.map(c => (
+                        <option key={c.id} value={c.id}>{c.nom}</option>
+                      ))}
+                    </select>
+                  )}
+                  <select
+                    value={filtrePeriodeBoite}
+                    onChange={e => setFiltrePeriodeBoite(e.target.value as typeof filtrePeriodeBoite)}
+                    style={{ padding: "6px 9px", borderRadius: 7, border: `1.5px solid ${filtrePeriodeBoite !== "tout" ? COLORS.primaryBorder : COLORS.gray200}`, fontSize: 12, background: filtrePeriodeBoite !== "tout" ? COLORS.primaryLight : "#fff" }}
+                  >
+                    <option value="tout">Toute période</option>
+                    <option value="aujourdhui">Aujourd'hui</option>
+                    <option value="semaine">7 derniers jours</option>
+                    <option value="mois">30 derniers jours</option>
+                  </select>
+                  {(filtreStatutBoite || filtreCommercialBoite || filtrePeriodeBoite !== "tout") && (
+                    <button
+                      onClick={() => { setFiltreStatutBoite(""); setFiltreCommercialBoite(""); setFiltrePeriodeBoite("tout"); }}
+                      style={{ border: "none", background: "transparent", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+                    >
+                      Réinitialiser les filtres
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* 20/09/2026 — Demande d'Elinathan : un utilisateur rattaché à un commercial ne
