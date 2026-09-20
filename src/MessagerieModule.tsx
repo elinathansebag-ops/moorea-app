@@ -1436,13 +1436,13 @@ export function MessagerieModule({
                 <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                     <colgroup>
-                      <col style={{ width: "5%" }} />
-                      <col style={{ width: "9%" }} />
-                      <col style={{ width: "18%" }} />
-                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "4%" }} />
+                      <col style={{ width: "12%" }} />
                       <col style={{ width: "16%" }} />
-                      <col style={{ width: "14%" }} />
-                      <col style={{ width: "17%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "40%" }} />
+                      <col style={{ width: "9%" }} />
+                      <col style={{ width: "9%" }} />
                     </colgroup>
                     <thead>
                       <tr style={{ background: COLORS.gray100, position: "sticky", top: 0 }}>
