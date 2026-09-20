@@ -181,6 +181,10 @@ export type Mail = {
   // devoir ouvrir le mail. Posé côté backend au moment de la découverte/rotation du mail
   // (jamais recalculé pour tout l'historique d'un coup -- voir api/messagerie.js).
   aPieceJointe?: boolean;
+  // 20/09/2026 — Demande d'Elinathan : journal d'activité (qui a fait quoi et quand) --
+  // statut posé et attribution changée. Clés générées par push(), donc pas d'ordre garanti :
+  // on retrie par "le" à l'affichage.
+  journal?: Record<string, { texte: string; par: string; le: number }> | null;
 };
 
 // Liste par défaut si personne n'a encore personnalisé la liste dans Configuration > Statuts.
@@ -567,6 +571,7 @@ export function MessagerieModule({
             ouvertPar: v.ouvertPar || null,
             reglesAutoAppliquees: v.reglesAutoAppliquees || null,
             aPieceJointe: v.aPieceJointe === true,
+            journal: v.journal || null,
           }))
         : [];
       liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -1029,9 +1034,17 @@ export function MessagerieModule({
   // déroulante avec des cases à cocher" -- ouvre/ferme le petit menu de cases à cocher dans la
   // colonne "Attribué à" de la liste (un seul mail à la fois ; null = aucun menu ouvert).
   const [attributionOuverteId, setAttributionOuverteId] = useState<string | null>(null);
+  // 20/09/2026 — Demande d'Elinathan : journal d'activité par mail -- une entrée à chaque
+  // statut posé ou attribution changée, pour savoir qui a fait quoi et quand.
+  const journaliser = async (mailId: string, texte: string) => {
+    await push(ref(db, `messagerie_boite/${mailId}/journal`), { texte, par: userName || "?", le: Date.now() });
+  };
+
   const basculerAttributionMail = async (mail: Mail, commercialId: string) => {
     const adresse = (mail.expediteur || "").toLowerCase();
     const ligne = lignesExpediteurs.find(l => !l.estDomaine && l.adresse === adresse);
+    const nomCommercial = commerciaux.find(c => c.id === commercialId)?.nom || "?";
+    const dejaAttribue = !!ligne && ligne.commercialIds.includes(commercialId);
     if (ligne) {
       await toggleCommercialPourLigne(ligne, commercialId);
     } else {
@@ -1043,6 +1056,7 @@ export function MessagerieModule({
         creeLe: new Date().toLocaleString("fr-FR"),
       });
     }
+    journaliser(mail.id, dejaAttribue ? `Retiré de ${nomCommercial}` : `Attribué à ${nomCommercial}`).catch(() => {});
   };
 
   // 20/09/2026 — Demande d'Elinathan : "amélioration générale de la boîte" -> actions groupées.
@@ -1076,6 +1090,7 @@ export function MessagerieModule({
         statutCommentaire: null,
         statutLe: Date.now(),
       });
+      journaliser(mail.id, `Statut → "Traité" (en masse)`).catch(() => {});
     }
     notify("success", `✓ ${mailsSel.length} mail(s) marqué(s) comme traité(s)`, async () => {
       for (const p of precedents) {
@@ -1128,6 +1143,7 @@ export function MessagerieModule({
       statutCommentaire: commentaire || null,
       statutLe: Date.now(),
     });
+    journaliser(mail.id, `Statut → "${statut}"${commentaire ? ` (${commentaire})` : ""}`).catch(() => {});
     notify("success", `✓ Statut mis à jour : ${statut}`, async () => {
       await update(ref(db, `messagerie_boite/${mail.id}`), precedent);
       notify("success", "↩️ Statut annulé");
@@ -2423,6 +2439,21 @@ export function MessagerieModule({
                           return "Ouvert par : " + ouvertures.map(o => `${o.nom} (${new Date(o.le).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})`).join(", ");
                         })()}
                       </p>
+                      {mailOuvert.journal && Object.keys(mailOuvert.journal).length > 0 && (
+                        <div style={{ marginTop: 6 }}>
+                          <p style={{ margin: "0 0 2px", fontSize: 10.5, fontWeight: 800, color: COLORS.gray600, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                            🕓 Historique
+                          </p>
+                          {Object.values(mailOuvert.journal)
+                            .sort((a, b) => b.le - a.le)
+                            .slice(0, 8)
+                            .map((entree, i) => (
+                              <p key={i} style={{ margin: "0 0 1px", fontSize: 11, color: COLORS.gray600 }}>
+                                {new Date(entree.le).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} — <strong>{entree.par}</strong> : {entree.texte}
+                              </p>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   )}
                   <div style={{ padding: "12px 18px 0", borderTop: `1.5px solid ${COLORS.gray200}` }}>
