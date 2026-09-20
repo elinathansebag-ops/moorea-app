@@ -877,10 +877,12 @@ async function actionSync(req, res) {
         const aTraiter = Array.from(new Set([...lotDecouverte, ...lotRecents])).sort((a, b) => a - b);
 
         if (aTraiter.length > 0) {
-          for await (const msg of client.fetch(aTraiter, { uid: true, envelope: true, flags: true, labels: true, internalDate: true }, { uid: true })) {
+          for await (const msg of client.fetch(aTraiter, { uid: true, envelope: true, flags: true, labels: true, internalDate: true, bodyStructure: true }, { uid: true })) {
             const labels = {};
             for (const l of (msg.labels || [])) labels[assainirCleFirebase(l)] = true;
             const cleDecouverte = `${source.code}_${msg.uid}`;
+            const structurePieces = { corps: [], pieces: [] };
+            aplatirStructureMime(msg.bodyStructure, structurePieces);
             // Champ par champ (et non plus un objet complet) pour ne jamais écraser resume/
             // resumeLe/statut/statutPar/statutCommentaire/statutLe déjà enregistrés sur ce
             // mail lors d'un passage précédent -- ces champs n'apparaissent nulle part ici,
@@ -894,6 +896,7 @@ async function actionSync(req, res) {
             updates[`${cleDecouverte}/lu`] = msg.flags ? msg.flags.has("\\Seen") : false;
             updates[`${cleDecouverte}/favori`] = msg.flags ? msg.flags.has("\\Flagged") : false;
             updates[`${cleDecouverte}/labels`] = labels;
+            updates[`${cleDecouverte}/aPieceJointe`] = structurePieces.pieces.length > 0;
             resultat.nouveaux++;
           }
         }

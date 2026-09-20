@@ -177,6 +177,10 @@ export type Mail = {
   // les dans un dossier automatiquement") -- ids des règles déjà évaluées pour CE mail, pour ne
   // jamais réévaluer/réappliquer la même règle deux fois (qu'elle ait matché ou pas).
   reglesAutoAppliquees?: Record<string, boolean> | null;
+  // 20/09/2026 — Demande d'Elinathan : indicateur de pièce jointe visible dans la liste, sans
+  // devoir ouvrir le mail. Posé côté backend au moment de la découverte/rotation du mail
+  // (jamais recalculé pour tout l'historique d'un coup -- voir api/messagerie.js).
+  aPieceJointe?: boolean;
 };
 
 // Liste par défaut si personne n'a encore personnalisé la liste dans Configuration > Statuts.
@@ -534,6 +538,7 @@ export function MessagerieModule({
             resumeLe: typeof v.resumeLe === "number" ? v.resumeLe : null,
             ouvertPar: v.ouvertPar || null,
             reglesAutoAppliquees: v.reglesAutoAppliquees || null,
+            aPieceJointe: v.aPieceJointe === true,
           }))
         : [];
       liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -1943,6 +1948,9 @@ export function MessagerieModule({
                             </td>
                             <td style={{ padding: "7px 10px", color: COLORS.gray700, verticalAlign: "top", wordBreak: "break-word", overflowWrap: "anywhere", whiteSpace: "normal" }}>
                               {surlignerRecherche(m.sujet, filtreMails)}
+                              {m.aPieceJointe && (
+                                <span title="Ce mail a au moins une pièce jointe" style={{ marginLeft: 6, opacity: 0.7 }}>📎</span>
+                              )}
                             </td>
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word", position: "relative" }}>
                               {isAdmin ? (
