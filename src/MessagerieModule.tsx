@@ -683,6 +683,8 @@ export function MessagerieModule({
   const [chargementDetail, setChargementDetail] = useState(false);
   const [erreurDetail, setErreurDetail] = useState<string | null>(null);
   const [destinatairesDeplies, setDestinatairesDeplies] = useState(false);
+  // 20/09/2026 -- aperçu de pièce jointe DANS l'appli (plus de nouvel onglet Chrome).
+  const [apercuOuvert, setApercuOuvert] = useState<{ url: string; nomFichier: string; typeContenu: string } | null>(null);
 
   const enTeteAuth = async () => {
     const utilisateur = auth.currentUser;
@@ -799,28 +801,20 @@ export function MessagerieModule({
     }
   };
 
-  // Aperçu (16/09/2026) : ouvre la pièce jointe dans un nouvel onglet — le navigateur
-  // l'affiche directement pour une image ou un PDF, comme dans une vraie boîte mail.
-  // Pour les types qu'il ne sait pas afficher (Word, Excel...), il proposera lui-même
-  // de la télécharger, mais sans qu'on force ce comportement.
-  //
-  // 19/09/2026 — Bug trouvé avec Elinathan : le bouton "Aperçu" ne faisait rien. Cause : le
-  // fetch (via `await`) prend un peu de temps, et Chrome ne considère alors plus l'appel à
-  // window.open() qui suit comme déclenché directement par le clic -- il le bloque en
-  // silence (bloqueur de popups), sans aucune erreur visible. Le seul cas où ça marchait,
-  // c'était quand le mail était déjà en cache et que le fetch était donc instantané. On
-  // corrige comme pour "Imprimer" un peu plus bas : ouvrir l'onglet tout de suite (pendant
-  // que le clic compte encore comme une action de l'utilisateur), puis lui donner l'adresse
-  // du fichier une fois qu'il est prêt.
-  const apercuPieceJointe = async (uid: number, index: number, boite: string = "all") => {
-    const fenetre = window.open("", "_blank");
+  // Aperçu (16/09/2026, v2 le 20/09/2026) : affiche la pièce jointe DANS l'appli, dans une
+  // fenêtre modale (voir apercuOuvert plus haut et sa modale plus bas), au lieu d'un nouvel
+  // onglet Chrome -- demande d'Elinathan : "de les ouvrire en mode appercu sans ouvrire un
+  // nouvelle ongelet chrome ?". Ça évite aussi le souci de bloqueur de popups qui rendait le
+  // bouton peu fiable (voir l'historique de ce commentaire avant le 20/09/2026).
+  const apercuPieceJointe = async (uid: number, index: number, boite: string, nomFichier: string, typeContenu: string) => {
     const blob = await recupererPieceJointe(uid, index, boite);
-    if (!blob) { fenetre?.close(); return; }
+    if (!blob) return;
     const url = URL.createObjectURL(blob);
-    if (fenetre) fenetre.location.href = url;
-    else window.open(url, "_blank"); // bloqueur de popups actif : on retente quand même
-    // On laisse le temps au nouvel onglet de charger le fichier avant de libérer l'URL.
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    setApercuOuvert({ url, nomFichier, typeContenu });
+  };
+  const fermerApercu = () => {
+    if (apercuOuvert) URL.revokeObjectURL(apercuOuvert.url);
+    setApercuOuvert(null);
   };
 
   // Téléchargement explicite (bouton ⬇️ séparé) : celui-là force bien l'enregistrement.
@@ -2517,7 +2511,7 @@ export function MessagerieModule({
                             style={{ display: "flex", alignItems: "center", borderRadius: 20, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, overflow: "hidden" }}
                           >
                             <button
-                              onClick={() => apercuPieceJointe(detailMail.uid, p.index, detailMail.boite || "all")}
+                              onClick={() => apercuPieceJointe(detailMail.uid, p.index, detailMail.boite || "all", p.nomFichier, p.typeContenu)}
                               title="Aperçu"
                               style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 6px 6px 12px", border: "none", background: "transparent", color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                             >
@@ -2701,6 +2695,49 @@ export function MessagerieModule({
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* 20/09/2026 -- Modale d'aperçu de pièce jointe, dans l'appli (voir apercuPieceJointe
+            plus haut). Image et PDF s'affichent directement ; les autres types (Word, Excel...)
+            proposent juste le téléchargement, comme le ferait un nouvel onglet Chrome. */}
+        {apercuOuvert && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 970,
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+          }} onClick={fermerApercu}>
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 900, maxHeight: "92vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+            >
+              <div style={{ padding: "10px 16px", borderBottom: `1.5px solid ${COLORS.gray200}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <strong style={{ fontSize: 13, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  📎 {apercuOuvert.nomFichier}
+                </strong>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <a
+                    href={apercuOuvert.url}
+                    download={apercuOuvert.nomFichier}
+                    style={{ padding: "6px 12px", borderRadius: 7, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}
+                  >
+                    ⬇️ Télécharger
+                  </a>
+                  <button onClick={fermerApercu} style={{ border: "none", background: "transparent", color: COLORS.gray600, fontSize: 20, cursor: "pointer", lineHeight: 1, padding: "2px 6px" }}>×</button>
+                </div>
+              </div>
+              <div style={{ flex: 1, overflow: "auto", background: COLORS.gray100, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 }}>
+                {apercuOuvert.typeContenu.startsWith("image/") ? (
+                  <img src={apercuOuvert.url} alt={apercuOuvert.nomFichier} style={{ maxWidth: "100%", maxHeight: "85vh", objectFit: "contain" }} />
+                ) : apercuOuvert.typeContenu === "application/pdf" ? (
+                  <iframe src={apercuOuvert.url} title={apercuOuvert.nomFichier} style={{ width: "100%", height: "85vh", border: "none" }} />
+                ) : (
+                  <div style={{ textAlign: "center", padding: 30, color: COLORS.gray600, fontSize: 13 }}>
+                    Aperçu non disponible pour ce type de fichier ({apercuOuvert.typeContenu}).<br />
+                    Utilise le bouton "⬇️ Télécharger" ci-dessus.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
