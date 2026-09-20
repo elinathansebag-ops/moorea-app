@@ -880,17 +880,20 @@ async function actionSync(req, res) {
           for await (const msg of client.fetch(aTraiter, { uid: true, envelope: true, flags: true, labels: true, internalDate: true }, { uid: true })) {
             const labels = {};
             for (const l of (msg.labels || [])) labels[assainirCleFirebase(l)] = true;
-            updates[`${source.code}_${msg.uid}`] = {
-              boite: source.code,
-              uid: msg.uid,
-              de: (msg.envelope?.from?.[0]?.address || "").toLowerCase(),
-              deNom: msg.envelope?.from?.[0]?.name || "",
-              sujet: msg.envelope?.subject || "(sans sujet)",
-              date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
-              lu: msg.flags ? msg.flags.has("\\Seen") : false,
-              favori: msg.flags ? msg.flags.has("\\Flagged") : false,
-              labels,
-            };
+            const cleDecouverte = `${source.code}_${msg.uid}`;
+            // Champ par champ (et non plus un objet complet) pour ne jamais écraser resume/
+            // resumeLe/statut/statutPar/statutCommentaire/statutLe déjà enregistrés sur ce
+            // mail lors d'un passage précédent -- ces champs n'apparaissent nulle part ici,
+            // donc une mise à jour par sous-chemin les laisse intacts.
+            updates[`${cleDecouverte}/boite`] = source.code;
+            updates[`${cleDecouverte}/uid`] = msg.uid;
+            updates[`${cleDecouverte}/de`] = (msg.envelope?.from?.[0]?.address || "").toLowerCase();
+            updates[`${cleDecouverte}/deNom`] = msg.envelope?.from?.[0]?.name || "";
+            updates[`${cleDecouverte}/sujet`] = msg.envelope?.subject || "(sans sujet)";
+            updates[`${cleDecouverte}/date`] = msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now();
+            updates[`${cleDecouverte}/lu`] = msg.flags ? msg.flags.has("\\Seen") : false;
+            updates[`${cleDecouverte}/favori`] = msg.flags ? msg.flags.has("\\Flagged") : false;
+            updates[`${cleDecouverte}/labels`] = labels;
             resultat.nouveaux++;
           }
         }
@@ -918,11 +921,12 @@ async function actionSync(req, res) {
             const labelsActuels = {};
             for (const l of (msg.labels || [])) labelsActuels[assainirCleFirebase(l)] = true;
             const cle = `${source.code}_${msg.uid}`;
-            // Si ce mail vient JUSTE d'etre ajoute au complet ci-dessus (etape 1), ne pas aussi
-            // ecrire un chemin imbrique "cle/lu" a cote -- Firebase refuse une mise a jour
-            // multi-chemins ou une meme cle porte a la fois un objet complet ET un sous-chemin
-            // ("Invalid data; couldn't parse JSON object", vu en prod le 19/09/2026). Le lu de
-            // l'objet complet est de toute facon deja a jour (vient d'etre lu a l'instant).
+            // 20/09/2026 -- depuis le passage de l'etape 1 a des ecritures champ par champ,
+            // "cle" (la cle nue, sans sous-chemin) n'est plus jamais posee dans updates : ce
+            // garde-fou est donc toujours vrai, mais on le garde pour rester robuste si l'etape 1
+            // change a nouveau -- ecrire deux fois le meme sous-chemin (ex: "cle/lu") avec la
+            // meme valeur ne pose aucun probleme a Firebase, contrairement a un objet complet et
+            // un sous-chemin sur la meme cle en meme temps.
             if (!(cle in updates)) {
               updates[`${cle}/lu`] = lu;
               // 20/09/2026 -- meme chose pour l'etoile (\Flagged), pour qu'un mail etoile ou
