@@ -57,7 +57,18 @@ const NOMS_DOSSIERS: Record<string, { nom: string; icone: string }> = {
 
 function libelleDossier(d: string): string {
   const connu = NOMS_DOSSIERS[d];
-  return connu ? `${connu.icone} ${connu.nom}` : d;
+  if (connu) return `${connu.icone} ${connu.nom}`;
+  // Libellé Gmail personnalisé (ex: dossier imbriqué "Clients/Import", stocké "Clients__Import"
+  // côté Firebase car "/" y est interdit dans une clé -- voir assainirCleFirebase côté serveur).
+  return `🏷️ ${d.replace(/__/g, " / ")}`;
+}
+
+// 20/09/2026 — Demande d'Elinathan : "separt les dossier des truc clasique comme dans gmail" --
+// distingue les dossiers Gmail classiques (Boîte de réception, Brouillons, Suivis, Catégories...)
+// des libellés personnalisés d'Elinathan (ex: "Carrefour litiges"), affichés à part sous un
+// séparateur "Libellés", comme dans la vraie interface Gmail.
+function estDossierSysteme(d: string): boolean {
+  return d === "TOUS" || d === "INBOX" || d === "SPAM" || d === "TRASH" || Boolean(NOMS_DOSSIERS[d]);
 }
 
 export type Commercial = { id: string; nom: string };
@@ -824,7 +835,7 @@ export function MessagerieModule({
                 ✏️ Nouveau message
               </button>
 
-              {["TOUS", ...dossiersDisponibles].map(d => (
+              {["TOUS", ...dossiersDisponibles.filter(estDossierSysteme)].map(d => (
                 <button
                   key={d}
                   onClick={() => setDossierActif(d)}
@@ -839,6 +850,32 @@ export function MessagerieModule({
                   {d === "TOUS" ? "📬 Tous" : d === "INBOX" ? "📥 Boîte de réception" : d === "SPAM" ? "🚫 Spam" : d === "TRASH" ? "🗑️ Corbeille" : libelleDossier(d)}
                 </button>
               ))}
+
+              {dossiersDisponibles.some(d => !estDossierSysteme(d)) && (
+                <>
+                  <p style={{
+                    margin: "10px 4px 6px", fontSize: 10.5, fontWeight: 800, color: COLORS.gray600,
+                    textTransform: "uppercase", letterSpacing: 0.4, borderTop: `1.5px solid ${COLORS.gray200}`, paddingTop: 10,
+                  }}>
+                    Libellés
+                  </p>
+                  {dossiersDisponibles.filter(d => !estDossierSysteme(d)).map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setDossierActif(d)}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
+                        border: "none", background: dossierActif === d ? COLORS.primaryLight : "transparent",
+                        color: dossierActif === d ? COLORS.primary : COLORS.gray700,
+                        fontSize: 12.5, fontWeight: dossierActif === d ? 800 : 600, cursor: "pointer",
+                        marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                      }}
+                    >
+                      {libelleDossier(d)}
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
 
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: "16px 18px", flex: 1, minWidth: 0 }}>
