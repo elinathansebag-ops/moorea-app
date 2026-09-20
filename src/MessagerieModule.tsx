@@ -1530,6 +1530,28 @@ export function MessagerieModule({
     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
     .slice(0, 20);
 
+  // 20/09/2026 — Demande d'Elinathan : un résumé du matin, affiché une seule fois par jour et
+  // par navigateur (clé datée dans localStorage), pour reprendre le fil sans avoir à cliquer
+  // dans chaque dossier. "Non lus" et "à traiter" suivent le même filtre de visibilité que le
+  // reste de la boîte ; "non attribués" n'a de sens que pour l'admin (qui voit tout le monde).
+  const [resumeMatinVisible, setResumeMatinVisible] = useState(false);
+  useEffect(() => {
+    try {
+      const cleJour = `messagerie_resume_matin_vu_${new Date().toISOString().slice(0, 10)}`;
+      if (window.localStorage.getItem(cleJour) === "1") return;
+      setResumeMatinVisible(true);
+      window.localStorage.setItem(cleJour, "1");
+    } catch {}
+    // Ne dépend de rien : on veut juste savoir une fois, au montage, si l'encart a déjà été vu
+    // aujourd'hui -- pas besoin de le redéclencher à chaque changement de mails.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const nbNonLusResume = mails.filter(m => mailVisiblePourMoi(m.expediteur) && m.lu === false).length;
+  const nbATraiterResume = mails.filter(m => mailVisiblePourMoi(m.expediteur) && !m.statut).length;
+  const nbNonAttribuesResume = isAdmin
+    ? mails.filter(m => trouverAttributionIds(m.expediteur).length === 0).length
+    : 0;
+
   const [filtreExpediteur, setFiltreExpediteur] = useState("");
   // 20/09/2026 — Demande d'Elinathan : une vue "non attribués" pour repérer vite ce qui n'a
   // encore été rattaché à aucun commercial, plus un agent IA qui propose (sans jamais décider
@@ -1704,6 +1726,43 @@ export function MessagerieModule({
         onBack={() => { if (activeTab !== "boite") setActiveTab("boite"); else onClose(); }}
         onHome={onClose}
       />
+
+      {resumeMatinVisible && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 960,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 12,
+        }} onClick={() => setResumeMatinVisible(false)}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 380, padding: "20px 22px" }}
+          >
+            <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 16, color: COLORS.gray700 }}>☀️ Bonjour{userName ? `, ${userName}` : ""}</p>
+            <p style={{ margin: "0 0 14px", fontSize: 12.5, color: COLORS.gray600 }}>Voici où en est la boîte mail ce matin.</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: COLORS.gray100 }}>
+                <span style={{ fontSize: 13, color: COLORS.gray700 }}>📬 Mails non lus</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.primary }}>{nbNonLusResume}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: COLORS.gray100 }}>
+                <span style={{ fontSize: 13, color: COLORS.gray700 }}>🕓 À traiter</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.primary }}>{nbATraiterResume}</span>
+              </div>
+              {isAdmin && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: COLORS.gray100 }}>
+                  <span style={{ fontSize: 13, color: COLORS.gray700 }}>❓ Non attribués</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.primary }}>{nbNonAttribuesResume}</span>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setResumeMatinVisible(false)}
+              style={{ marginTop: 16, width: "100%", padding: "9px 0", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+            >
+              Allons-y
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 20/09/2026 — Cloche de notifications (mails non lus qui me concernent), au-dessus du
           reste pour rester accessible depuis n'importe quel onglet. */}
