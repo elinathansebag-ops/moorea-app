@@ -1096,9 +1096,6 @@ export default async function handler(req, res) {
     if (action === "resumer") { await exigerConnexionMoorea(req); return await actionResumerMail(req, res); }
     if (action === "suggerer-attribution") { await exigerConnexionMoorea(req); return await actionSuggererAttribution(req, res); }
     if (action === "sync") {
-      const secretRecu = req.query?.secret;
-      const secretAttendu = process.env.MESSAGERIE_SYNC_SECRET;
-      console.log("[debug sync] longueur secret recu:", secretRecu ? secretRecu.length : 0, "longueur secret attendu (env):", secretAttendu ? secretAttendu.length : 0, "egaux:", secretRecu === secretAttendu);
       const secretSyncOk = req.query?.secret && req.query.secret === process.env.MESSAGERIE_SYNC_SECRET;
       if (!secretSyncOk) return res.status(401).json({ error: "Non autorise" });
       return await actionSync(req, res);

@@ -27,10 +27,17 @@ name: Synchro boîte mail Messagerie (commercial@moorea.fr)
 #   APP_URL                  → déjà présent (utilisé par nlt-bl-poll.yml)
 #   MESSAGERIE_SYNC_SECRET   → nouveau secret, à créer, même valeur que la variable d'environnement
 #                              Vercel du même nom
+# 21/09/2026 -- Le declenchement automatique GitHub Actions est desactive : GitHub ralentit /
+# saute une bonne partie des executions programmees frequentes sur ce repo (verifie via
+# l'API GitHub : seulement 5 executions en ~17h au lieu des ~200 attendues), ce qui faisait
+# prendre du retard a "Messages envoyes". La synchro est maintenant declenchee par un service
+# externe (cron-job.org, toutes les 5 min) qui appelle le meme endpoint. On garde
+# workflow_dispatch pour pouvoir relancer une synchro a la main si besoin, et le schedule reste
+# en commentaire ci-dessous si jamais on veut le reactiver un jour.
 on:
-  schedule:
-    - cron: "*/3 6-18 * * 1-5"
-    - cron: "*/5 * * * 0,6"
+  # schedule:
+  #   - cron: "*/3 6-18 * * 1-5"
+  #   - cron: "*/5 * * * 0,6"
   workflow_dispatch: {}
 
 jobs:
