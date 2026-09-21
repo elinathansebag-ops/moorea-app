@@ -685,6 +685,14 @@ export function MessagerieModule({
   const [destinatairesDeplies, setDestinatairesDeplies] = useState(false);
   // 20/09/2026 -- aperçu de pièce jointe DANS l'appli (plus de nouvel onglet Chrome).
   const [apercuOuvert, setApercuOuvert] = useState<{ url: string; nomFichier: string; typeContenu: string } | null>(null);
+  // 21/09/2026 -- voir la note plus bas (garde-fou mail volumineux) : true si on a explicitement
+  // choisi d'afficher un mail trop gros malgré l'avertissement. Remis à false à chaque nouvelle
+  // ouverture de mail (dans ouvrirMail ci-dessous).
+  const [afficherHtmlVolumineuxQuandMeme, setAfficherHtmlVolumineuxQuandMeme] = useState(false);
+  // Seuil au-delà duquel on considère qu'afficher le HTML tel quel risque de planter le
+  // navigateur (mails avec images/PDF encodés directement dedans). 1.5 Mo de HTML est déjà
+  // énorme pour un mail normal -- un mail "propre" fait quelques Ko à quelques dizaines de Ko.
+  const SEUIL_HTML_VOLUMINEUX = 1_500_000;
 
   const enTeteAuth = async () => {
     const utilisateur = auth.currentUser;
@@ -709,6 +717,7 @@ export function MessagerieModule({
     setErreurDetail(null);
     setDestinatairesDeplies(false);
     setModeCompose(null);
+    setAfficherHtmlVolumineuxQuandMeme(false);
 
     // Marque le mail comme lu immédiatement dans Firebase (optimiste) — pas la peine d'attendre
     // le prochain passage du robot de synchro pour que ça se voie dans la liste, ici ou sur un
@@ -2529,7 +2538,28 @@ export function MessagerieModule({
                       </div>
                     )}
 
-                    {detailMail.html ? (
+                    {detailMail.html && detailMail.html.length > SEUIL_HTML_VOLUMINEUX && !afficherHtmlVolumineuxQuandMeme ? (
+                      // 21/09/2026 -- garde-fou : ce mail contient un HTML anormalement gros
+                      // (souvent des images/PDF encodés directement dedans), ce qui a déjà fait
+                      // planter le navigateur. On prévient au lieu d'injecter directement.
+                      <div style={{ background: COLORS.dangerLight, border: "1.5px solid #fca5a5", borderRadius: 10, padding: "14px 16px", fontSize: 12.5, color: COLORS.danger }}>
+                        ⚠️ Ce mail contient énormément de contenu ({Math.round(detailMail.html.length / 1_000_000)} Mo), probablement des images
+                        intégrées directement dedans. L'afficher risque de ralentir ou de faire planter le navigateur.
+                        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => setAfficherHtmlVolumineuxQuandMeme(true)}
+                            style={{ padding: "6px 12px", borderRadius: 7, border: "1.5px solid #fca5a5", background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                          >
+                            Afficher quand même
+                          </button>
+                          {detailMail.texte && (
+                            <span style={{ fontSize: 11.5, color: COLORS.gray600, alignSelf: "center" }}>
+                              (la version texte est visible plus bas si besoin)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : detailMail.html ? (
                       <iframe
                         title="contenu-mail"
                         sandbox=""
