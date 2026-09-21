@@ -262,13 +262,25 @@ async function lireDetailMail(client, uid, boiteCode) {
     const noeudTexte = structure.corps.find(n => (n.type || "").toLowerCase() === "text/plain");
     let html = null;
     let texte = null;
+    // Au-delà de cette taille, le HTML n'est plus un mail "normal" (souvent des images ou un
+    // PDF encodés en base64 directement dedans) -- on tronque avant de renvoyer, pour ne
+    // jamais faire télécharger/parser un contenu énorme au navigateur de l'utilisateur.
+    const LIMITE_HTML_OCTETS = 2_000_000;
+    let htmlTronque = false;
     if (noeudHtml) {
       const buffer = await telechargerFluxComplet(client, uid, noeudHtml.part);
       html = decoderTexteMime(buffer);
+      if (html && html.length > LIMITE_HTML_OCTETS) {
+        html = html.slice(0, LIMITE_HTML_OCTETS);
+        htmlTronque = true;
+      }
     }
     if (noeudTexte) {
       const buffer = await telechargerFluxComplet(client, uid, noeudTexte.part);
       texte = decoderTexteMime(buffer);
+      if (texte && texte.length > LIMITE_HTML_OCTETS) {
+        texte = texte.slice(0, LIMITE_HTML_OCTETS);
+      }
     }
 
     const pieces = structure.pieces.map((p, index) => ({
@@ -288,6 +300,7 @@ async function lireDetailMail(client, uid, boiteCode) {
       date: env.date ? new Date(env.date).toISOString() : null,
       html,
       texte,
+      htmlTronque,
       pieces,
       messageId: env.messageId || null,
     };

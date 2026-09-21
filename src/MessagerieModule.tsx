@@ -668,6 +668,7 @@ export function MessagerieModule({
     uid: number; boite?: string; de: string; a: string[]; cc: string[]; sujet: string; date: string | null;
     html: string | null; texte: string | null; messageId: string | null;
     pieces: { index: number; nomFichier: string; typeContenu: string; taille: number }[];
+    htmlTronque?: boolean;
   };
   // 20/09/2026 -- voir la note ci-dessus : Firebase ne stocke pas les tableaux vides, donc un
   // detail relu depuis le cache peut avoir perdu a/cc/pieces -- on les remet à [] par défaut.
@@ -692,7 +693,7 @@ export function MessagerieModule({
   // Seuil au-delà duquel on considère qu'afficher le HTML tel quel risque de planter le
   // navigateur (mails avec images/PDF encodés directement dedans). 1.5 Mo de HTML est déjà
   // énorme pour un mail normal -- un mail "propre" fait quelques Ko à quelques dizaines de Ko.
-  const SEUIL_HTML_VOLUMINEUX = 1_500_000;
+  const SEUIL_HTML_VOLUMINEUX = 2_500_000;
 
   const enTeteAuth = async () => {
     const utilisateur = auth.currentUser;
@@ -2560,12 +2561,20 @@ export function MessagerieModule({
                         </div>
                       </div>
                     ) : detailMail.html ? (
-                      <iframe
-                        title="contenu-mail"
-                        sandbox=""
-                        srcDoc={detailMail.html}
-                        style={{ width: "100%", minHeight: 320, border: `1px solid ${COLORS.gray200}`, borderRadius: 8 }}
-                      />
+                      <>
+                        {detailMail.htmlTronque && (
+                          <div style={{ marginBottom: 8, fontSize: 11.5, color: COLORS.gray600, fontStyle: "italic" }}>
+                            ⚠️ Ce mail est très volumineux (images/PDF intégrés) — le contenu affiché a été tronqué pour éviter un plantage.
+                            Utilise les pièces jointes ci-dessus ou le bouton "Télécharger" pour le contenu complet.
+                          </div>
+                        )}
+                        <iframe
+                          title="contenu-mail"
+                          sandbox=""
+                          srcDoc={detailMail.html}
+                          style={{ width: "100%", minHeight: 320, border: `1px solid ${COLORS.gray200}`, borderRadius: 8 }}
+                        />
+                      </>
                     ) : (
                       <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13, color: COLORS.gray700, margin: 0 }}>
                         {detailMail.texte || "(mail vide)"}
