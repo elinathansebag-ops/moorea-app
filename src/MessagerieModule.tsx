@@ -1478,8 +1478,20 @@ export function MessagerieModule({
   // File d'attente automatique : dès qu'un mail non lu arrive sans résumé, on le génère tout
   // seul en arrière-plan, un par un (pas en rafale, pour ne pas surcharger l'IA d'un coup si
   // beaucoup de mails non lus arrivent en même temps).
+  // 21/09/2026 -- Limité aux mails RÉCENTS uniquement : après une synchro complète d'un an de
+  // boîte mail, des milliers de mails historiques non lus sans résumé faisaient tourner cette
+  // file en continu (chaque résumé généré met à jour "mails", ce qui redéclenche l'effet), ce
+  // qui saturait le fil principal et figeait complètement la page. Les mails anciens sans résumé
+  // restent accessibles via le bouton manuel "🧠 Générer un résumé" sur chaque ligne.
+  const LIMITE_AGE_RESUME_AUTO_MS = 5 * 24 * 60 * 60 * 1000; // 5 jours
   useEffect(() => {
-    const aFaire = mails.find(m => m.lu === false && !m.resume && !resumesEnCours.has(m.id));
+    const maintenant = Date.now();
+    const aFaire = mails.find(m => {
+      if (m.lu !== false || m.resume || resumesEnCours.has(m.id)) return false;
+      if (!m.date) return false;
+      const age = maintenant - new Date(m.date).getTime();
+      return age >= 0 && age <= LIMITE_AGE_RESUME_AUTO_MS;
+    });
     if (aFaire) demanderResume(aFaire);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mails, resumesEnCours]);
