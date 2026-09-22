@@ -601,7 +601,10 @@ export function MessagerieModule({
   }, []);
 
   useEffect(() => {
+    let nbSnapshots = 0;
     const u1 = onValue(ref(db, "messagerie_boite"), snap => {
+      const debutTraitement = performance.now();
+      nbSnapshots += 1;
       const d = snap.val();
       const liste: Mail[] = d
         ? Object.entries(d).map(([id, v]: any) => ({
@@ -631,6 +634,7 @@ export function MessagerieModule({
       liste.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
       setMails(liste);
       setMailsDejaCharges(true);
+      console.log(`[diag messagerie] reception n°${nbSnapshots} — ${liste.length} mails — traites en ${Math.round(performance.now() - debutTraitement)} ms`);
     });
     const u2 = onValue(ref(db, "messagerie_sync_etat/derniereSync"), snap => {
       const v = snap.val();
@@ -1491,7 +1495,11 @@ export function MessagerieModule({
   // Filet de securite pur -- en usage normal on est tres loin du compte sur une seule journee.
   const PLAFOND_RESUMES_AUTO = 40;
   const nbResumesAutoRef = useRef(0);
+  // 22/09/2026 -- COUPE-CIRCUIT : resume automatique desactive le temps de confirmer la cause
+  // du gel. Le bouton manuel sur chaque ligne reste disponible.
+  const RESUME_AUTO_ACTIF = false;
   useEffect(() => {
+    if (!RESUME_AUTO_ACTIF) return;
     if (resumeAutoEnVolRef.current) return;
     if (nbResumesAutoRef.current >= PLAFOND_RESUMES_AUTO) return;
     const aujourdhui = new Date().toDateString();
