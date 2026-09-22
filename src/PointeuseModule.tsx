@@ -438,17 +438,15 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
 
     return Object.entries(employes).map(([id, emp]) => {
       const pointagesEmp = Object.values(pointagesTous[id] || {});
-      // Pour éviter de compter en "absence" les jours d'avant l'arrivée d'un employé récent
-      // (aucun pointage car pas encore embauché, pas parce qu'il a séché), on ignore les jours
-      // antérieurs à son tout premier pointage jamais enregistré (pas seulement dans la période).
-      const premierPointageMs = pointagesEmp.length ? Math.min(...pointagesEmp.map(p => p.timestamp)) : null;
-      let minutesTravaillees = 0, minutesPrevues = 0, minutesRetard = 0, joursPointes = 0, joursAbsents = 0;
+      let minutesTravaillees = 0, minutesPrevues = 0, minutesRetard = 0, joursPointes = 0;
       const detailJours: { jour: string; travaillees: number; retard: number; oubli: boolean; pointe: boolean; absent: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
 
       // 25/09/2026 -- Demande d'Elinathan : historique jour par jour visible pour CHAQUE jour de
       // la période (pas seulement ceux pointés), pour pouvoir les modifier comme sur TimeMoto.
-      // Un jour du lundi au vendredi sans aucun pointage compte comme une absence (0h faites
-      // contre les 7h prévues) ; un samedi/dimanche sans pointage reste ignoré.
+      // 22/09/2026 -- Elinathan a essayé compter les jours sans pointage en absence, mais ça
+      // donnait n'importe quoi pour les employés à temps partiel / saisonniers (des dizaines
+      // d'"absences" pour des gens qui ne sont juste pas prévus tous les jours). Retour au calcul
+      // simple : un jour sans pointage n'est ni compté en heures, ni en absence -- il est ignoré.
       const hhmm = (ms: number | null) => (ms == null ? "" : new Date(ms).toTimeString().slice(0, 5));
       joursListe.forEach(jour => {
         const debutJourMs = new Date(`${jour}T00:00:00`).getTime();
@@ -466,13 +464,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         const departs = parType("depart");
         const departMs = departs.length ? departs[departs.length - 1].timestamp : null;
         if (pointagesJour.length === 0) {
-          const avantEmbauche = premierPointageMs != null && debutJourMs < premierPointageMs;
-          const estAbsence = jourEstPlanifie && !avantEmbauche;
-          if (estAbsence) {
-            minutesPrevues += PREVUE_MINUTES_JOUR;
-            joursAbsents++;
-          }
-          detailJours.push({ jour, travaillees: 0, retard: 0, oubli: false, pointe: false, absent: estAbsence, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
+          detailJours.push({ jour, travaillees: 0, retard: 0, oubli: false, pointe: false, absent: false, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
           return;
         }
         const pointagesJourObj = { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs };
@@ -485,7 +477,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         detailJours.push({ jour, travaillees: r.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart, pointe: true, absent: false, arriveeStr: hhmm(arriveeMs), pauseDebutStr: hhmm(pauseDebutMs), pauseFinStr: hhmm(pauseFinMs), departStr: hhmm(departMs) });
       });
 
-      return { id, emp, joursPointes, joursAbsents, minutesTravaillees, minutesPrevues, ecart: minutesTravaillees - minutesPrevues, minutesRetard, detailJours };
+      return { id, emp, joursPointes, minutesTravaillees, minutesPrevues, ecart: minutesTravaillees - minutesPrevues, minutesRetard, detailJours };
     }).sort((a, b) => a.ecart - b.ecart);
   }, [employes, pointagesTous, rapportDebut, rapportFin]);
 
@@ -581,7 +573,6 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       return `<tr>
         <td style="padding:8px 12px;font-weight:700;font-size:13px;border-bottom:1px solid #f0f0f0">${r.emp.nom}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${r.joursPointes}</td>
-        <td style="padding:8px 10px;text-align:center;font-size:12px;color:${r.joursAbsents > 0 ? "#dc2626" : "#9ca3af"};font-weight:${r.joursAbsents > 0 ? 700 : 400};border-bottom:1px solid #f0f0f0">${r.joursAbsents > 0 ? r.joursAbsents : "-"}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${fmtMinutesPointeuse(r.minutesPrevues)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;font-weight:600;border-bottom:1px solid #f0f0f0">${fmtMinutesPointeuse(r.minutesTravaillees)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px;font-weight:800;color:${ecartColor};border-bottom:1px solid #f0f0f0">${r.ecart >= 0 ? "+" : "-"}${fmtMinutesPointeuse(Math.abs(r.ecart))}</td>
@@ -602,7 +593,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       <h1 style="font-size:20px;font-weight:900;margin-bottom:3px">MOOREA · Pointeuse — Rapport d'heures</h1>
       <p style="font-size:12px;color:#6b7280">Période : ${rapportDebut} → ${rapportFin} · ${rapport.length} employés · Imprimé le ${new Date().toLocaleString("fr-FR")}</p>
     </div>
-    <table><thead><tr><th>Employé</th><th class="center">Jours pointés</th><th class="center">Absences</th><th class="center">Prévu</th><th class="center">Fait</th><th class="center">Écart</th><th class="center">Retard cumulé</th></tr></thead>
+    <table><thead><tr><th>Employé</th><th class="center">Jours pointés</th><th class="center">Prévu</th><th class="center">Fait</th><th class="center">Écart</th><th class="center">Retard cumulé</th></tr></thead>
     <tbody>${rows}</tbody></table>
     </body></html>`);
     w.document.close();
@@ -740,7 +731,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
               {/* 22/09/2026 -- Demande d'Elinathan : "fait simple" -- plus de tolérance 15min, plus
                   de pause minimum obligatoire, plus d'horaire perso par employé. Règle fixe pour
                   tout le monde : 35h, lundi-vendredi, 7h/jour. "Fait" = heures réellement pointées. */}
-              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Prévu : 7h/jour, du lundi au vendredi, pour tout le monde. Un jour de semaine sans aucun pointage est compté comme absence (0h face aux 7h prévues). Un samedi/dimanche travaillé compte entièrement en heures sup.</p>
+              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Prévu : 7h/jour, du lundi au vendredi, pour tout le monde. Seuls les jours pointés comptent (un jour sans pointage est ignoré, pas traité comme absence). Un samedi/dimanche travaillé compte entièrement en heures sup.</p>
             </div>
 
             <div style={{ background: "#fff", borderRadius: 14, overflow: "auto", WebkitOverflowScrolling: "touch", border: "1.5px solid #e8e0d0" }}>
@@ -752,7 +743,6 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                     <tr style={{ background: "#1a2e1a" }}>
                       <th style={{ padding: "10px 12px", textAlign: "left", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Employé</th>
                       <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Jours pointés</th>
-                      <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: 11 }}>Absences</th>
                       <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Prévu</th>
                       <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Fait</th>
                       <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Écart</th>
@@ -766,9 +756,6 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                       <td style={{ padding: "9px 12px", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>TOTAL</td>
                       <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>
                         {rapport.reduce((s, r) => s + r.joursPointes, 0)}
-                      </td>
-                      <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#dc2626" }}>
-                        {rapport.reduce((s, r) => s + r.joursAbsents, 0)}
                       </td>
                       <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>
                         {fmtMinutesPointeuse(rapport.reduce((s, r) => s + r.minutesPrevues, 0))}
@@ -793,7 +780,6 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                           style={{ background: empDetail === r.id ? "#f0f9ff" : idx % 2 === 0 ? "#fff" : "#fafaf9", cursor: "pointer" }}>
                           <td style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0", fontWeight: 700 }}>{r.emp.nom}</td>
                           <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280" }}>{r.joursPointes}</td>
-                          <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: r.joursAbsents > 0 ? "#dc2626" : "#9ca3af", fontWeight: r.joursAbsents > 0 ? 700 : 400 }}>{r.joursAbsents > 0 ? r.joursAbsents : "-"}</td>
                           <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280" }}>{fmtMinutesPointeuse(r.minutesPrevues)}</td>
                           <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 600 }}>{fmtMinutesPointeuse(r.minutesTravaillees)}</td>
                           <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 800, color: r.ecart < 0 ? "#dc2626" : r.ecart > 0 ? "#16a34a" : "#374151" }}>
