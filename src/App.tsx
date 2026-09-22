@@ -745,6 +745,10 @@ export default function App() {
   // par mail (action explicite, plus d'envoi automatique en silence), et si le rapport est
   // un refus, bouton pour imprimer directement l'étiquette refus (QR vers le bon de retour).
   const [popupApresRapport, setPopupApresRapport] = useState<{ rapport: any; arrivageId: string | null } | null>(null);
+  // 22/09/2026 -- id du dernier rapport envoyé avec succès, pour afficher "✅ Rapport envoyé !"
+  // directement sur le bouton (en plus du petit toast, facile à manquer). Remis à null dès
+  // qu'un nouvel envoi démarre.
+  const [dernierEnvoiReussiId, setDernierEnvoiReussiId] = useState<string | null>(null);
   const [showStock, setShowStock] = useState(false);
   const [showPalette, setShowPalette] = useState<string | null>(null);
   // Espace public reconditionneur (NLT / Andès), ouvert via ?portail=nlt|andes — voir
@@ -2307,6 +2311,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // ─── ENVOYER EMAIL (via /api/send-email — nodemailer/Gmail) ───
   const envoyerEmail = async (r: any) => {
     setSendingId(r.id || r.firebaseKey || "new");
+    setDernierEnvoiReussiId(null);
     try {
       const htmlContent = buildEmailHTML(r);
       const subject = `${r.numeroRapport ? "[" + r.numeroRapport + "] " : ""}Rapport Agréage Moorea - ${r.produit} | ${r.fournisseur} | ${r.date}`;
@@ -2359,6 +2364,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       showToast(pdfRetire
         ? "✉ Email envoyé — PDF trop lourd, non joint"
         : "✉ Email envoyé avec PDF !");
+      setDernierEnvoiReussiId(r.id || r.firebaseKey || "new");
     } catch (err: any) {
       console.error("Email error:", err);
       showToast(`Erreur : ${err.message || JSON.stringify(err)}`, "error");
@@ -3305,6 +3311,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const nbTraitesAujourdHui = arrivages.filter(a => a.date === today && a.statut !== "en attente").length;
     const nbLitigesOuverts = arrivages.filter(a => a.litige && a.litige.statut === "ouvert").length;
     const nbRapports = rapports.length;
+    const comptesMailCassesAccueil = monAccesReel.isAdmin
+      ? Object.values(santeComptesMail).filter(c => c && c.ok === false)
+      : [];
 
     const bg = darkMode ? "#0f1117" : "#f5f3ee";
     const cardBg = darkMode ? "#1a1d27" : "#fff";
@@ -3459,6 +3468,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "1.5px solid #fde68a", background: darkMode ? "#2d2410" : "#fef9e6", color: "#a16207", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                   🍋 {nbTachesActives} tâche{nbTachesActives > 1 ? "s" : ""} active{nbTachesActives > 1 ? "s" : ""}
                 </button>
+              )}
+              {monAccesReel.isAdmin && Object.keys(santeComptesMail).length > 0 && (
+                comptesMailCassesAccueil.length > 0 ? (
+                  <span title={comptesMailCassesAccueil.map((c: any) => c.email).join(", ")}
+                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "1.5px solid #f87171", background: darkMode ? "#2a1414" : "#fef2f2", color: "#dc2626", fontWeight: 700, fontSize: 12 }}>
+                    ⚠️ {comptesMailCassesAccueil.length} compte{comptesMailCassesAccueil.length > 1 ? "s" : ""} mail déconnecté{comptesMailCassesAccueil.length > 1 ? "s" : ""}
+                  </span>
+                ) : (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: "1.5px solid #86efac", background: darkMode ? "#0f2d14" : "#f0fdf4", color: "#15803d", fontWeight: 700, fontSize: 12 }}>
+                    ✅ Comptes mail connectés
+                  </span>
+                )
               )}
             </div>
           </div>
@@ -3839,17 +3860,24 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             </div>
             <p style={{ margin: "4px 0 18px", fontSize: 13, color: "#6b7280" }}>{popupApresRapport.rapport.produit} · {popupApresRapport.rapport.fournisseur}</p>
 
-            <button
-              onClick={() => envoyerEmail(popupApresRapport.rapport)}
-              disabled={sendingId === (popupApresRapport.rapport.id || popupApresRapport.rapport.firebaseKey || "new")}
-              style={{
-                width: "100%", padding: "12px", borderRadius: 10, border: "none",
-                background: sendingId === (popupApresRapport.rapport.id || popupApresRapport.rapport.firebaseKey || "new") ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)",
-                color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10,
-              }}
-            >
-              {sendingId === (popupApresRapport.rapport.id || popupApresRapport.rapport.firebaseKey || "new") ? "⏳ Envoi en cours…" : "✉️ Envoyer le rapport par mail"}
-            </button>
+            {(() => {
+              const idRapportPopup = popupApresRapport.rapport.id || popupApresRapport.rapport.firebaseKey || "new";
+              const enCours = sendingId === idRapportPopup;
+              const vientDetreEnvoye = dernierEnvoiReussiId === idRapportPopup;
+              return (
+                <button
+                  onClick={() => envoyerEmail(popupApresRapport.rapport)}
+                  disabled={enCours || vientDetreEnvoye}
+                  style={{
+                    width: "100%", padding: "12px", borderRadius: 10, border: "none",
+                    background: vientDetreEnvoye ? "#16a34a" : enCours ? "#d1d5db" : "linear-gradient(135deg, #c8a84b, #a8882b)",
+                    color: "#fff", fontWeight: 700, fontSize: 14, cursor: vientDetreEnvoye ? "default" : "pointer", fontFamily: "'Syne', sans-serif", marginBottom: 10,
+                  }}
+                >
+                  {vientDetreEnvoye ? "✅ Rapport envoyé !" : enCours ? "⏳ Envoi en cours…" : "✉️ Envoyer le rapport par mail"}
+                </button>
+              );
+            })()}
 
             {popupApresRapport.rapport.decision === "refus" && popupApresRapport.arrivageId && (
               <button
