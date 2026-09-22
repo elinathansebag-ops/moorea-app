@@ -592,6 +592,19 @@ export default function App() {
                 email, role: null, admin: false, modeBase: "total",
                 extraModules: {}, extraTabs: {}, denyModules: toutesLesClesModules(), denyTabs: {},
               });
+              // 22/09/2026 -- Alerte mail à Elinathan : sans ça, une demande d'accès pouvait
+              // rester invisible tant qu'elle n'allait pas vérifier "Droits d'accès > Comptes"
+              // de son propre chef. Best-effort (pas grave si ça échoue, le compte reste de
+              // toute façon visible avec le badge "🆕 Demande d'accès" dans l'appli).
+              fetch("/api/send-email", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  to: ["elinathan.sebag@moorea.fr"], // pas de 'sender' -> compte agreage par defaut (plus fiable que le sien)
+                  subject: `🆕 Nouveau compte à valider — ${displayName || email}`,
+                  html: `<p><b>${displayName || email}</b> (${email}) vient de se connecter à l'appli Moorea pour la première fois.</p><p>Son compte est en attente : aucun module ne lui est accessible tant qu'aucun accès ne lui est donné dans <b>Droits d'accès &gt; Comptes</b>.</p>`,
+                }),
+              }).catch(() => { /* pas grave, best-effort */ });
             }
           }, { onlyOnce: true });
         }
@@ -2915,6 +2928,33 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // (`if (!arrivagesCharges) return <ChargementEcran .../>`) — seule cette page-là attend les
   // arrivages, pas toute l'appli.
   if (!rtdbPret) return <EcranChargementInitial />;
+
+  // 22/09/2026 -- Écran dédié pour un compte flambant neuf, en attente qu'un admin lui donne
+  // des modules (voir la note plus haut). Se referme tout seul dès que l'accès est donné,
+  // grâce au listener temps réel sur "permUsers".
+  if (!monAccesReel.isAdmin && compteEnAttente(permUsers[cleEmail(user?.email || "")])) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #1a3a1a 0%, #2d5a1e 40%, #8a6f2e 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ background: "#fff", borderRadius: 20, padding: "36px 28px", maxWidth: 380, width: "100%", textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+          <div style={{ fontSize: 44, marginBottom: 14 }}>👋</div>
+          <h1 style={{ fontSize: 19, fontWeight: 800, margin: "0 0 8px", fontFamily: "'Syne', sans-serif", color: "#1a2e1a" }}>
+            Bienvenue{user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""} !
+          </h1>
+          <p style={{ fontSize: 13.5, color: "#6b7280", margin: "0 0 18px", lineHeight: 1.5 }}>
+            Ton compte a bien été créé. Un administrateur doit maintenant t'ouvrir l'accès aux
+            pages dont tu as besoin — cette page se mettra à jour toute seule dès que ce sera fait,
+            pas besoin de revenir vérifier.
+          </p>
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 20px" }}>
+            Si ça prend du temps, préviens directement la personne qui gère les accès chez Moorea.
+          </p>
+          <button onClick={() => signOut(auth)} style={{ padding: "10px 22px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+            Se déconnecter
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // 15/09/2026 — Demande d'Elinathan : "j'aimerai que toute les donnée charge au debut et que
   // tout sois dispo apres pas a attendre sur chaque page". Avant, chaque module était démonté
