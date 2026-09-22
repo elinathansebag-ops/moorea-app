@@ -30,8 +30,18 @@ import { calculerHeuresJour, fmtMinutesPointeuse, type HoraireJour } from "./poi
 interface Employe {
   nom: string; email: string; pin: string;
   heureArrivee?: string; heureDepart?: string; pauseMinutes?: number;
+  // 22/09/2026 -- Demande d'Elinathan : jours de la semaine où l'employé est censé travailler
+  // (0=dimanche ... 6=samedi, comme Date.getDay()), pour que "Prévu" ne compte que les jours
+  // réellement planifiés -- comme TimeMoto -- et pas chaque jour où il a pointé (week-end compris).
+  // Non défini = comportement par défaut, lundi à vendredi.
+  joursTravailles?: number[];
   actif?: boolean;
 }
+const JOURS_SEMAINE_DEFAUT = [1, 2, 3, 4, 5];
+const LABELS_JOURS = [
+  { v: 1, l: "Lun" }, { v: 2, l: "Mar" }, { v: 3, l: "Mer" }, { v: 4, l: "Jeu" },
+  { v: 5, l: "Ven" }, { v: 6, l: "Sam" }, { v: 0, l: "Dim" },
+];
 interface Pointage { type: "arrivee" | "pause_debut" | "pause_fin" | "depart"; timestamp: number }
 
 function todayISO(offsetJours = 0): string {
@@ -61,7 +71,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   const [empDetail, setEmpDetail] = useState<string | null>(null);
   const [editionJour, setEditionJour] = useState<{ id: string; jour: string; arrivee: string; pauseDebut: string; pauseFin: string; depart: string } | null>(null);
   const [horaireEnEdition, setHoraireEnEdition] = useState<string | null>(null);
-  const [brouillonHoraire, setBrouillonHoraire] = useState<{ arrivee: string; depart: string; pause: string }>({ arrivee: "", depart: "", pause: "" });
+  const [brouillonHoraire, setBrouillonHoraire] = useState<{ arrivee: string; depart: string; pause: string; jours: number[] }>({ arrivee: "", depart: "", pause: "", jours: JOURS_SEMAINE_DEFAUT });
   const [editionCellule, setEditionCellule] = useState<{ id: string; jour: string; champ: "arrivee" | "pauseDebut" | "pauseFin" | "depart" } | null>(null);
   const [valeurCellule, setValeurCellule] = useState("");
   // 25/09/2026 -- Demande d'Elinathan : pouvoir changer de date sur la frise de l'onglet Suivi
@@ -299,7 +309,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   // clavier : il faut cliquer sur "Modifier l'horaire" puis confirmer, pour éviter un changement
   // accidentel qui fausserait le calcul des heures.
   const ouvrirEditionHoraire = (id: string, emp: Employe) => {
-    setBrouillonHoraire({ arrivee: emp.heureArrivee || "", depart: emp.heureDepart || "", pause: String(emp.pauseMinutes ?? "") });
+    setBrouillonHoraire({ arrivee: emp.heureArrivee || "", depart: emp.heureDepart || "", pause: String(emp.pauseMinutes ?? ""), jours: emp.joursTravailles ?? JOURS_SEMAINE_DEFAUT });
     setHoraireEnEdition(id);
   };
 
@@ -308,6 +318,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
     await majEmploye(id, "heureArrivee", brouillonHoraire.arrivee || null);
     await majEmploye(id, "heureDepart", brouillonHoraire.depart || null);
     await majEmploye(id, "pauseMinutes", brouillonHoraire.pause ? Number(brouillonHoraire.pause) : null);
+    await majEmploye(id, "joursTravailles", brouillonHoraire.jours.length ? brouillonHoraire.jours : null);
     setHoraireEnEdition(null);
   };
 
@@ -455,10 +466,18 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
           return; // pas de pointage ce jour-là : ignoré du calcul, pas compté en absence (on ne connaît pas ses jours de travail attendus)
         }
         const pointagesJourObj = { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs };
-        const rAvecRegles = calculerHeuresJour(jour, horaire, pointagesJourObj, true);
-        const rBrut = calculerHeuresJour(jour, horaire, pointagesJourObj, false);
+        // 22/09/2026 -- Demande d'Elinathan : "Prévu" (et les règles de tolérance/pause qui en
+        // dépendent) ne s'appliquent que sur les jours réellement planifiés pour cet employé,
+        // comme sur TimeMoto -- pas sur chaque jour où il a pointé (un samedi travaillé en plus
+        // ne doit pas compter d'heures "prévues").
+        const jourSemaine = new Date(`${jour}T00:00:00`).getDay();
+        const joursTravailles = emp.joursTravailles && emp.joursTravailles.length ? emp.joursTravailles : JOURS_SEMAINE_DEFAUT;
+        const jourEstPlanifie = joursTravailles.includes(jourSemaine);
+        const horaireDuJour: HoraireJour = jourEstPlanifie ? horaire : { heureArrivee: undefined, heureDepart: undefined, pauseMinutes: 0 };
+        const rAvecRegles = calculerHeuresJour(jour, horaireDuJour, pointagesJourObj, true);
+        const rBrut = calculerHeuresJour(jour, horaireDuJour, pointagesJourObj, false);
         const r = appliquerRegles ? rAvecRegles : rBrut;
-        const prevueJour = horaire.heureArrivee && horaire.heureDepart
+        const prevueJour = jourEstPlanifie && horaire.heureArrivee && horaire.heureDepart
           ? Math.max(0, (new Date(`${jour}T${horaire.heureDepart}`).getTime() - new Date(`${jour}T${horaire.heureArrivee}`).getTime()) / 60000 - (horaire.pauseMinutes || 0))
           : 0;
         minutesTravaillees += r.minutesTravaillees;
@@ -894,12 +913,28 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                     <label style={{ fontSize: 11, color: "#6b7280" }}>Pause obligatoire (min)
                       <input type="number" min={0} step={5} value={brouillonHoraire.pause} onChange={e => setBrouillonHoraire({ ...brouillonHoraire, pause: e.target.value })} style={{ display: "block", marginTop: 3, ...champStyle, width: 90 }} />
                     </label>
+                    <div style={{ fontSize: 11, color: "#6b7280" }}>
+                      Jours travaillés
+                      <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
+                        {LABELS_JOURS.map(({ v, l }) => {
+                          const actif = brouillonHoraire.jours.includes(v);
+                          return (
+                            <button key={v} type="button"
+                              onClick={() => setBrouillonHoraire({ ...brouillonHoraire, jours: actif ? brouillonHoraire.jours.filter(j => j !== v) : [...brouillonHoraire.jours, v] })}
+                              style={{ padding: "5px 8px", borderRadius: 6, border: `1.5px solid ${actif ? "#16a34a" : "#e5e7eb"}`, background: actif ? "#f0fdf4" : "#fff", color: actif ? "#16a34a" : "#9ca3af", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
+                              {l}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <button onClick={() => enregistrerHoraireEmploye(id)} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✅ Enregistrer</button>
                     <button onClick={() => setHoraireEnEdition(null)} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✕ Annuler</button>
                   </div>
                 ) : (
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: "#374151" }}>🕐 {emp.heureArrivee || "—"} → {emp.heureDepart || "—"} · pause {emp.pauseMinutes ?? "—"}min</span>
+                    <span style={{ fontSize: 11, color: "#9ca3af" }}>· {LABELS_JOURS.filter(({ v }) => (emp.joursTravailles ?? JOURS_SEMAINE_DEFAUT).includes(v)).map(({ l }) => l).join(" ")}</span>
                     <button onClick={() => ouvrirEditionHoraire(id, emp)} style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", color: "#6b7280", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>🔒 Modifier l'horaire</button>
                   </div>
                 )}
