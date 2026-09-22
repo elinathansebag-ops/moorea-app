@@ -54,10 +54,16 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   const [nouveauMessageUrgent, setNouveauMessageUrgent] = useState(false);
   const [rapportDebut, setRapportDebut] = useState(todayISO(-6));
   const [rapportFin, setRapportFin] = useState(todayISO());
+  // 25/09/2026 -- Demande d'Elinathan : voir les VRAIES heures (brutes, sans règles) à côté de
+  // celles calculées avec les règles, avec une case à cocher pour choisir laquelle compte dans
+  // le total du rapport.
+  const [appliquerRegles, setAppliquerRegles] = useState(true);
   const [empDetail, setEmpDetail] = useState<string | null>(null);
   const [editionJour, setEditionJour] = useState<{ id: string; jour: string; arrivee: string; pauseDebut: string; pauseFin: string; depart: string } | null>(null);
   const [horaireEnEdition, setHoraireEnEdition] = useState<string | null>(null);
   const [brouillonHoraire, setBrouillonHoraire] = useState<{ arrivee: string; depart: string; pause: string }>({ arrivee: "", depart: "", pause: "" });
+  const [editionCellule, setEditionCellule] = useState<{ id: string; jour: string; champ: "arrivee" | "pauseDebut" | "pauseFin" | "depart" } | null>(null);
+  const [valeurCellule, setValeurCellule] = useState("");
   const [importEnCours, setImportEnCours] = useState(false);
   const [importMessage, setImportMessage] = useState("");
 
@@ -332,6 +338,11 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
 
   const demandesOuvertes = Object.entries(demandes).filter(([, d]: [string, any]) => d.statut !== "traitee");
   const champStyle: React.CSSProperties = { padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 };
+  // 25/09/2026 -- Demande d'Elinathan : "mets une police qui se lit bien" -- le reste de l'appli
+  // utilise Syne (police "display", stylisée) qui est moins lisible pour des chiffres/heures. On
+  // bascule sur une police système classique + chiffres alignés (tabular-nums) partout où on
+  // affiche des heures ou des durées dans ce module.
+  const policeHeures: React.CSSProperties = { fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif", fontVariantNumeric: "tabular-nums" };
 
   // ─── Statut en direct (qui travaille, qui est en pause, qui est parti, qui n'a rien pointé) ───
   // 23/09/2026 -- 4 pointages par jour (arrivee → pause_debut → pause_fin → depart, voir
@@ -400,7 +411,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       const horaire: HoraireJour = { heureArrivee: emp.heureArrivee, heureDepart: emp.heureDepart, pauseMinutes: emp.pauseMinutes };
       const pointagesEmp = Object.values(pointagesTous[id] || {});
       let minutesTravaillees = 0, minutesPrevues = 0, minutesRetard = 0, joursPointes = 0;
-      const detailJours: { jour: string; travaillees: number; retard: number; oubli: boolean; pointe: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
+      const detailJours: { jour: string; travaillees: number; travailleesAvecRegles: number; travailleesBrut: number; retard: number; oubli: boolean; pointe: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
 
       // 25/09/2026 -- Demande d'Elinathan : historique jour par jour visible pour CHAQUE jour de
       // la période (pas seulement ceux pointés), pour pouvoir les modifier comme sur TimeMoto.
@@ -421,10 +432,13 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         const departs = parType("depart");
         const departMs = departs.length ? departs[departs.length - 1].timestamp : null;
         if (pointagesJour.length === 0) {
-          detailJours.push({ jour, travaillees: 0, retard: 0, oubli: false, pointe: false, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
+          detailJours.push({ jour, travaillees: 0, travailleesAvecRegles: 0, travailleesBrut: 0, retard: 0, oubli: false, pointe: false, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
           return; // pas de pointage ce jour-là : ignoré du calcul, pas compté en absence (on ne connaît pas ses jours de travail attendus)
         }
-        const r = calculerHeuresJour(jour, horaire, { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs });
+        const pointagesJourObj = { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs };
+        const rAvecRegles = calculerHeuresJour(jour, horaire, pointagesJourObj, true);
+        const rBrut = calculerHeuresJour(jour, horaire, pointagesJourObj, false);
+        const r = appliquerRegles ? rAvecRegles : rBrut;
         const prevueJour = horaire.heureArrivee && horaire.heureDepart
           ? Math.max(0, (new Date(`${jour}T${horaire.heureDepart}`).getTime() - new Date(`${jour}T${horaire.heureArrivee}`).getTime()) / 60000 - (horaire.pauseMinutes || 0))
           : 0;
@@ -432,12 +446,12 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         minutesPrevues += prevueJour;
         minutesRetard += r.minutesRetard;
         joursPointes++;
-        detailJours.push({ jour, travaillees: r.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart, pointe: true, arriveeStr: hhmm(arriveeMs), pauseDebutStr: hhmm(pauseDebutMs), pauseFinStr: hhmm(pauseFinMs), departStr: hhmm(departMs) });
+        detailJours.push({ jour, travaillees: r.minutesTravaillees, travailleesAvecRegles: rAvecRegles.minutesTravaillees, travailleesBrut: rBrut.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart, pointe: true, arriveeStr: hhmm(arriveeMs), pauseDebutStr: hhmm(pauseDebutMs), pauseFinStr: hhmm(pauseFinMs), departStr: hhmm(departMs) });
       });
 
       return { id, emp, joursPointes, minutesTravaillees, minutesPrevues, ecart: minutesTravaillees - minutesPrevues, minutesRetard, detailJours };
     }).sort((a, b) => a.ecart - b.ecart);
-  }, [employes, pointagesTous, rapportDebut, rapportFin]);
+  }, [employes, pointagesTous, rapportDebut, rapportFin, appliquerRegles]);
 
   // 25/09/2026 -- Edition manuelle des pointages d'une journée (comme la fenêtre "Editer /
   // Enregistrer présence" de TimeMoto) : retrouve les pointages existants ce jour-là pour un
@@ -465,6 +479,49 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
     const timestamp = new Date(`${jour}T${valeurHHMM}:00`).getTime();
     if (cleExistante) await update(ref(db, `pointeuse_pointages/${employeId}/${cleExistante}`), { timestamp });
     else await push(ref(db, `pointeuse_pointages/${employeId}`), { type, timestamp });
+  };
+
+  // 25/09/2026 -- Demande d'Elinathan : "je puisse cliquer sur une heure et la modifier" --
+  // édition directe d'UN SEUL champ (clic sur "10:34" par exemple) sans passer par la fenêtre
+  // avec les 4 champs. Écrit dans Firebase via le même enregistrerChampJour que la fenêtre
+  // complète, donc le rapport et les heures se recalculent tout seuls (pointagesTous vient d'un
+  // onValue en direct -- pas besoin de forcer quoi que ce soit ici).
+  const TYPE_PAR_CHAMP: Record<"arrivee" | "pauseDebut" | "pauseFin" | "depart", Pointage["type"]> = {
+    arrivee: "arrivee", pauseDebut: "pause_debut", pauseFin: "pause_fin", depart: "depart",
+  };
+  const ouvrirEditionCellule = (id: string, jour: string, champ: "arrivee" | "pauseDebut" | "pauseFin" | "depart", valeurActuelle: string) => {
+    setValeurCellule(valeurActuelle);
+    setEditionCellule({ id, jour, champ });
+  };
+  const enregistrerCellule = async () => {
+    if (!editionCellule) return;
+    const { id, jour, champ } = editionCellule;
+    const cles = trouverClesJour(id, jour);
+    await enregistrerChampJour(id, jour, TYPE_PAR_CHAMP[champ], valeurCellule, cles[champ]?.[0]);
+    setEditionCellule(null);
+  };
+
+  // Rendu d'UNE heure cliquable dans l'historique jour par jour : au clic elle devient un champ
+  // <input type="time"> directement à sa place, sans ouvrir de fenêtre. Enter/perte de focus
+  // enregistre, Échap annule.
+  const rendreCelluleHeure = (id: string, jour: string, champ: "arrivee" | "pauseDebut" | "pauseFin" | "depart", valeurStr: string) => {
+    const enEdition = editionCellule && editionCellule.id === id && editionCellule.jour === jour && editionCellule.champ === champ;
+    if (enEdition) {
+      return (
+        <input type="time" autoFocus value={valeurCellule} onClick={e => e.stopPropagation()}
+          onChange={e => setValeurCellule(e.target.value)}
+          onBlur={enregistrerCellule}
+          onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditionCellule(null); }}
+          style={{ ...policeHeures, fontSize: 12.5, fontWeight: 700, padding: "1px 4px", borderRadius: 5, border: "1.5px solid #0ea5e9" }} />
+      );
+    }
+    return (
+      <span onClick={e => { e.stopPropagation(); ouvrirEditionCellule(id, jour, champ, valeurStr); }}
+        title="Cliquer pour modifier cette heure"
+        style={{ fontWeight: 700, cursor: "pointer", borderBottom: "1.5px dashed #93c5fd", padding: "0 1px" }}>
+        {valeurStr || "—"}
+      </span>
+    );
   };
 
   const enregistrerJourEdite = async () => {
@@ -623,6 +680,14 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                   📄 Générer le PDF
                 </button>
               </div>
+              {/* 25/09/2026 -- Demande d'Elinathan : case à cocher pour choisir si le total du
+                  rapport applique les règles (tolérance 15min, pause minimum) ou compte les
+                  heures brutes telles que pointées. Le détail jour par jour affiche toujours
+                  les deux, quel que soit ce choix. */}
+              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#374151", cursor: "pointer", marginTop: 4 }}>
+                <input type="checkbox" checked={appliquerRegles} onChange={e => setAppliquerRegles(e.target.checked)} />
+                Appliquer les règles (tolérance 15 min d'avance, pause minimum obligatoire) au total du rapport
+              </label>
               <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Seuls les jours où l'employé a pointé au moins une fois sont comptés (les jours sans aucun pointage sont ignorés, pas traités comme absence).</p>
             </div>
 
@@ -646,13 +711,13 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                         <tr key={r.id} onClick={() => setEmpDetail(empDetail === r.id ? null : r.id)}
                           style={{ background: empDetail === r.id ? "#f0f9ff" : idx % 2 === 0 ? "#fff" : "#fafaf9", cursor: "pointer" }}>
                           <td style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0", fontWeight: 700 }}>{r.emp.nom}</td>
-                          <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280" }}>{r.joursPointes}</td>
-                          <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280" }}>{fmtMinutesPointeuse(r.minutesPrevues)}</td>
-                          <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 600 }}>{fmtMinutesPointeuse(r.minutesTravaillees)}</td>
-                          <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 800, color: r.ecart < 0 ? "#dc2626" : r.ecart > 0 ? "#16a34a" : "#374151" }}>
+                          <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280" }}>{r.joursPointes}</td>
+                          <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280" }}>{fmtMinutesPointeuse(r.minutesPrevues)}</td>
+                          <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 600 }}>{fmtMinutesPointeuse(r.minutesTravaillees)}</td>
+                          <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 800, color: r.ecart < 0 ? "#dc2626" : r.ecart > 0 ? "#16a34a" : "#374151" }}>
                             {r.ecart >= 0 ? "+" : "-"}{fmtMinutesPointeuse(Math.abs(r.ecart))}
                           </td>
-                          <td style={{ padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: r.minutesRetard > 0 ? "#dc2626" : "#9ca3af" }}>{r.minutesRetard > 0 ? fmtMinutesPointeuse(r.minutesRetard) : "-"}</td>
+                          <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: r.minutesRetard > 0 ? "#dc2626" : "#9ca3af" }}>{r.minutesRetard > 0 ? fmtMinutesPointeuse(r.minutesRetard) : "-"}</td>
                         </tr>,
                         empDetail === r.id && (
                           <tr key={`${r.id}_detail`}>
@@ -668,25 +733,26 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                                       background: !j.pointe ? "#fff" : j.retard > 0 ? "#fff5f5" : "#f0fdf4",
                                       border: `1px solid ${!j.pointe ? "#e8e0d0" : j.retard > 0 ? "#fecaca" : "#bbf7d0"}`,
                                     }}>
-                                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#374151", minWidth: 78, textTransform: "capitalize", flexShrink: 0 }}>
+                                    <span style={{ ...policeHeures, fontSize: 11.5, fontWeight: 700, color: "#374151", minWidth: 78, textTransform: "capitalize", flexShrink: 0 }}>
                                       {new Date(`${j.jour}T00:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" })}
                                     </span>
                                     {j.pointe ? (
-                                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-                                        <div style={{ display: "flex", gap: 6, fontSize: 12, color: "#374151" }}>
-                                          <span style={{ color: "#9ca3af", minWidth: 92 }}>🟢 Entrée → 🍽️ Pause</span>
-                                          <span style={{ fontWeight: 700 }}>{j.arriveeStr || "?"}</span>
+                                      <div style={{ ...policeHeures, flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                                          <span style={{ color: "#9ca3af", minWidth: 92, fontSize: 11.5 }}>🟢 Entrée → 🍽️ Pause</span>
+                                          {rendreCelluleHeure(r.id, j.jour, "arrivee", j.arriveeStr)}
                                           <span style={{ color: "#9ca3af" }}>→</span>
-                                          <span style={{ fontWeight: 700 }}>{j.pauseDebutStr || "-"}</span>
+                                          {rendreCelluleHeure(r.id, j.jour, "pauseDebut", j.pauseDebutStr)}
                                         </div>
-                                        <div style={{ display: "flex", gap: 6, fontSize: 12, color: "#374151" }}>
-                                          <span style={{ color: "#9ca3af", minWidth: 92 }}>👍 Retour → 🏁 Départ</span>
-                                          <span style={{ fontWeight: 700 }}>{j.pauseFinStr || "-"}</span>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                                          <span style={{ color: "#9ca3af", minWidth: 92, fontSize: 11.5 }}>👍 Retour → 🏁 Départ</span>
+                                          {rendreCelluleHeure(r.id, j.jour, "pauseFin", j.pauseFinStr)}
                                           <span style={{ color: "#9ca3af" }}>→</span>
-                                          <span style={{ fontWeight: 700 }}>{j.departStr || "?"}</span>
+                                          {rendreCelluleHeure(r.id, j.jour, "depart", j.departStr)}
                                         </div>
-                                        <div style={{ fontSize: 10.5, color: j.retard > 0 ? "#dc2626" : "#9ca3af", marginTop: 1 }}>
-                                          {fmtMinutesPointeuse(j.travaillees)} travaillées{j.retard > 0 ? ` · ⏰ ${j.retard}min retard` : ""}{j.oubli ? " · 🌙 départ non pointé" : ""}
+                                        <div style={{ ...policeHeures, fontSize: 10.5, color: j.retard > 0 ? "#dc2626" : "#9ca3af", marginTop: 1 }}>
+                                          <b>{fmtMinutesPointeuse(j.travailleesAvecRegles)}</b> avec règles · <b>{fmtMinutesPointeuse(j.travailleesBrut)}</b> brutes
+                                          {j.retard > 0 ? ` · ⏰ ${j.retard}min retard` : ""}{j.oubli ? " · 🌙 départ non pointé" : ""}
                                         </div>
                                       </div>
                                     ) : (
@@ -836,16 +902,16 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
                 <label style={{ fontSize: 11, color: "#6b7280" }}>Arrivée
-                  <input type="time" value={editionJour.arrivee} onChange={e => setEditionJour({ ...editionJour, arrivee: e.target.value })} style={{ display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                  <input type="time" value={editionJour.arrivee} onChange={e => setEditionJour({ ...editionJour, arrivee: e.target.value })} style={{ ...policeHeures, display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
                 </label>
                 <label style={{ fontSize: 11, color: "#6b7280" }}>Départ pause
-                  <input type="time" value={editionJour.pauseDebut} onChange={e => setEditionJour({ ...editionJour, pauseDebut: e.target.value })} style={{ display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                  <input type="time" value={editionJour.pauseDebut} onChange={e => setEditionJour({ ...editionJour, pauseDebut: e.target.value })} style={{ ...policeHeures, display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
                 </label>
                 <label style={{ fontSize: 11, color: "#6b7280" }}>Retour pause
-                  <input type="time" value={editionJour.pauseFin} onChange={e => setEditionJour({ ...editionJour, pauseFin: e.target.value })} style={{ display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                  <input type="time" value={editionJour.pauseFin} onChange={e => setEditionJour({ ...editionJour, pauseFin: e.target.value })} style={{ ...policeHeures, display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
                 </label>
                 <label style={{ fontSize: 11, color: "#6b7280" }}>Départ
-                  <input type="time" value={editionJour.depart} onChange={e => setEditionJour({ ...editionJour, depart: e.target.value })} style={{ display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                  <input type="time" value={editionJour.depart} onChange={e => setEditionJour({ ...editionJour, depart: e.target.value })} style={{ ...policeHeures, display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
                 </label>
               </div>
               <p style={{ margin: "0 0 14px", fontSize: 10.5, color: "#9ca3af" }}>Laisse un champ vide pour supprimer ce pointage.</p>

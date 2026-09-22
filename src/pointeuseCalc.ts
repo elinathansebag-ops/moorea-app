@@ -51,19 +51,25 @@ function parseHeureSurJour(jourISO: string, heureHHMM: string): number {
   return d.getTime();
 }
 
+// 25/09/2026 -- Demande d'Elinathan : pouvoir voir les heures BRUTES (les pointages tels
+// quels, sans aucune règle) à côté des heures calculées AVEC les règles, avec une case à cocher
+// pour choisir laquelle compte dans le rapport. `avecRegles=false` désactive la tolérance de 15
+// min sur l'avance ET le plancher de pause obligatoire (on déduit la pause réellement prise).
 export function calculerHeuresJour(
   jourISO: string, // "2026-09-22"
   horaire: HoraireJour,
-  pointages: PointagesJour
+  pointages: PointagesJour,
+  avecRegles: boolean = true
 ): ResultatJour {
-  const pauseMinutesObligatoire = horaire.pauseMinutes || 0;
+  const pauseMinutesObligatoire = avecRegles ? (horaire.pauseMinutes || 0) : 0;
   const prevueArriveeMs = horaire.heureArrivee ? parseHeureSurJour(jourISO, horaire.heureArrivee) : null;
   const prevueDepartMs = horaire.heureDepart ? parseHeureSurJour(jourISO, horaire.heureDepart) : null;
 
   // Règle 1+2 : jusqu'à 15 min d'avance créditées, au-delà le compteur ne descend pas plus
-  // bas que (heure prévue - 15 min) ; un retard démarre bien au pointage réel.
+  // bas que (heure prévue - 15 min) ; un retard démarre bien au pointage réel. Désactivée en
+  // mode brut : l'arrivée réelle compte telle quelle, même très en avance.
   let arriveeEffectiveMs = pointages.arrivee ?? prevueArriveeMs ?? 0;
-  if (prevueArriveeMs != null) {
+  if (avecRegles && prevueArriveeMs != null) {
     const plancherAvecTolerance = prevueArriveeMs - TOLERANCE_AVANCE_MS;
     if (arriveeEffectiveMs < plancherAvecTolerance) arriveeEffectiveMs = plancherAvecTolerance;
   }
@@ -76,11 +82,12 @@ export function calculerHeuresJour(
   const minutesBrutes = Math.max(0, (departEffectiveMs - arriveeEffectiveMs) / 60000);
 
   // Règle 3 : pause réelle (départ pause → retour pause) si les deux pointages existent et sont
-  // cohérents, sinon on ne connaît que l'obligatoire.
+  // cohérents, sinon on ne connaît que l'obligatoire. En mode brut, seule la pause réellement
+  // prise est déduite (pas de plancher obligatoire).
   const pauseReelleMinutes = pointages.pauseDebut != null && pointages.pauseFin != null && pointages.pauseFin > pointages.pauseDebut
     ? (pointages.pauseFin - pointages.pauseDebut) / 60000
     : 0;
-  const minutesPause = Math.max(pauseMinutesObligatoire, pauseReelleMinutes);
+  const minutesPause = avecRegles ? Math.max(pauseMinutesObligatoire, pauseReelleMinutes) : pauseReelleMinutes;
 
   const minutesTravaillees = Math.max(0, minutesBrutes - minutesPause);
 
