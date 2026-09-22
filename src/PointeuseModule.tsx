@@ -440,18 +440,27 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
     return Object.entries(employes).map(([id, emp]) => {
       const horaire: HoraireJour = { heureArrivee: emp.heureArrivee, heureDepart: emp.heureDepart, pauseMinutes: emp.pauseMinutes };
       const pointagesEmp = Object.values(pointagesTous[id] || {});
-      let minutesTravaillees = 0, minutesPrevues = 0, minutesRetard = 0, joursPointes = 0;
-      const detailJours: { jour: string; travaillees: number; travailleesAvecRegles: number; travailleesBrut: number; retard: number; oubli: boolean; pointe: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
+      let minutesTravaillees = 0, minutesPrevues = 0, minutesRetard = 0, joursPointes = 0, joursAbsents = 0;
+      const detailJours: { jour: string; travaillees: number; travailleesAvecRegles: number; travailleesBrut: number; retard: number; oubli: boolean; pointe: boolean; absent: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
 
       // 25/09/2026 -- Demande d'Elinathan : historique jour par jour visible pour CHAQUE jour de
       // la période (pas seulement ceux pointés), pour pouvoir les modifier comme sur TimeMoto.
-      // Les jours sans pointage restent exclus du calcul (joursPointes/minutes...) mais
-      // apparaissent quand même dans detailJours pour l'affichage et l'édition manuelle.
+      // 22/09/2026 -- Demande d'Elinathan : un jour PLANIFIÉ (coché dans "Jours travaillés") sans
+      // aucun pointage doit être compté comme une absence (0h faites contre les heures prévues,
+      // ce qui baisse l'écart) -- et non plus simplement ignoré. Un jour NON planifié (ex: un
+      // week-end pour quelqu'un qui ne travaille pas le week-end) reste ignoré, ce n'est pas une
+      // absence si on ne l'attendait pas ce jour-là.
+      const joursTravailles = emp.joursTravailles && emp.joursTravailles.length ? emp.joursTravailles : JOURS_SEMAINE_DEFAUT;
       const hhmm = (ms: number | null) => (ms == null ? "" : new Date(ms).toTimeString().slice(0, 5));
       joursListe.forEach(jour => {
         const debutJourMs = new Date(`${jour}T00:00:00`).getTime();
         const finJourMs = debutJourMs + 86400000;
         const pointagesJour = pointagesEmp.filter(p => p.timestamp >= debutJourMs && p.timestamp < finJourMs);
+        const jourSemaine = new Date(`${jour}T00:00:00`).getDay();
+        const jourEstPlanifie = joursTravailles.includes(jourSemaine);
+        const prevueJourPlein = horaire.heureArrivee && horaire.heureDepart
+          ? Math.max(0, (new Date(`${jour}T${horaire.heureDepart}`).getTime() - new Date(`${jour}T${horaire.heureArrivee}`).getTime()) / 60000 - (horaire.pauseMinutes || 0))
+          : 0;
         // 23/09/2026 -- 4 pointages/jour : premier de chaque type dans l'ordre chronologique
         // (le premier "arrivee" du jour, le premier "pause_debut" après, etc.), pour rester
         // cohérent même si un pointage a été refait par erreur.
@@ -462,32 +471,31 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         const departs = parType("depart");
         const departMs = departs.length ? departs[departs.length - 1].timestamp : null;
         if (pointagesJour.length === 0) {
-          detailJours.push({ jour, travaillees: 0, travailleesAvecRegles: 0, travailleesBrut: 0, retard: 0, oubli: false, pointe: false, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
-          return; // pas de pointage ce jour-là : ignoré du calcul, pas compté en absence (on ne connaît pas ses jours de travail attendus)
+          if (jourEstPlanifie) {
+            minutesPrevues += prevueJourPlein;
+            joursAbsents++;
+          }
+          detailJours.push({ jour, travaillees: 0, travailleesAvecRegles: 0, travailleesBrut: 0, retard: 0, oubli: false, pointe: false, absent: jourEstPlanifie, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
+          return;
         }
         const pointagesJourObj = { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs };
         // 22/09/2026 -- Demande d'Elinathan : "Prévu" (et les règles de tolérance/pause qui en
         // dépendent) ne s'appliquent que sur les jours réellement planifiés pour cet employé,
         // comme sur TimeMoto -- pas sur chaque jour où il a pointé (un samedi travaillé en plus
         // ne doit pas compter d'heures "prévues").
-        const jourSemaine = new Date(`${jour}T00:00:00`).getDay();
-        const joursTravailles = emp.joursTravailles && emp.joursTravailles.length ? emp.joursTravailles : JOURS_SEMAINE_DEFAUT;
-        const jourEstPlanifie = joursTravailles.includes(jourSemaine);
         const horaireDuJour: HoraireJour = jourEstPlanifie ? horaire : { heureArrivee: undefined, heureDepart: undefined, pauseMinutes: 0 };
         const rAvecRegles = calculerHeuresJour(jour, horaireDuJour, pointagesJourObj, true);
         const rBrut = calculerHeuresJour(jour, horaireDuJour, pointagesJourObj, false);
         const r = appliquerRegles ? rAvecRegles : rBrut;
-        const prevueJour = jourEstPlanifie && horaire.heureArrivee && horaire.heureDepart
-          ? Math.max(0, (new Date(`${jour}T${horaire.heureDepart}`).getTime() - new Date(`${jour}T${horaire.heureArrivee}`).getTime()) / 60000 - (horaire.pauseMinutes || 0))
-          : 0;
+        const prevueJour = jourEstPlanifie ? prevueJourPlein : 0;
         minutesTravaillees += r.minutesTravaillees;
         minutesPrevues += prevueJour;
         minutesRetard += r.minutesRetard;
         joursPointes++;
-        detailJours.push({ jour, travaillees: r.minutesTravaillees, travailleesAvecRegles: rAvecRegles.minutesTravaillees, travailleesBrut: rBrut.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart, pointe: true, arriveeStr: hhmm(arriveeMs), pauseDebutStr: hhmm(pauseDebutMs), pauseFinStr: hhmm(pauseFinMs), departStr: hhmm(departMs) });
+        detailJours.push({ jour, travaillees: r.minutesTravaillees, travailleesAvecRegles: rAvecRegles.minutesTravaillees, travailleesBrut: rBrut.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart, pointe: true, absent: false, arriveeStr: hhmm(arriveeMs), pauseDebutStr: hhmm(pauseDebutMs), pauseFinStr: hhmm(pauseFinMs), departStr: hhmm(departMs) });
       });
 
-      return { id, emp, joursPointes, minutesTravaillees, minutesPrevues, ecart: minutesTravaillees - minutesPrevues, minutesRetard, detailJours };
+      return { id, emp, joursPointes, joursAbsents, minutesTravaillees, minutesPrevues, ecart: minutesTravaillees - minutesPrevues, minutesRetard, detailJours };
     }).sort((a, b) => a.ecart - b.ecart);
   }, [employes, pointagesTous, rapportDebut, rapportFin, appliquerRegles]);
 
@@ -583,6 +591,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       return `<tr>
         <td style="padding:8px 12px;font-weight:700;font-size:13px;border-bottom:1px solid #f0f0f0">${r.emp.nom}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${r.joursPointes}</td>
+        <td style="padding:8px 10px;text-align:center;font-size:12px;color:${r.joursAbsents > 0 ? "#dc2626" : "#9ca3af"};font-weight:${r.joursAbsents > 0 ? 700 : 400};border-bottom:1px solid #f0f0f0">${r.joursAbsents > 0 ? r.joursAbsents : "-"}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;color:#6b7280;border-bottom:1px solid #f0f0f0">${fmtMinutesPointeuse(r.minutesPrevues)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;font-weight:600;border-bottom:1px solid #f0f0f0">${fmtMinutesPointeuse(r.minutesTravaillees)}</td>
         <td style="padding:8px 10px;text-align:center;font-size:14px;font-weight:800;color:${ecartColor};border-bottom:1px solid #f0f0f0">${r.ecart >= 0 ? "+" : "-"}${fmtMinutesPointeuse(Math.abs(r.ecart))}</td>
@@ -603,7 +612,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       <h1 style="font-size:20px;font-weight:900;margin-bottom:3px">MOOREA · Pointeuse — Rapport d'heures</h1>
       <p style="font-size:12px;color:#6b7280">Période : ${rapportDebut} → ${rapportFin} · ${rapport.length} employés · Imprimé le ${new Date().toLocaleString("fr-FR")}</p>
     </div>
-    <table><thead><tr><th>Employé</th><th class="center">Jours pointés</th><th class="center">Prévu</th><th class="center">Fait</th><th class="center">Écart</th><th class="center">Retard cumulé</th></tr></thead>
+    <table><thead><tr><th>Employé</th><th class="center">Jours pointés</th><th class="center">Absences</th><th class="center">Prévu</th><th class="center">Fait</th><th class="center">Écart</th><th class="center">Retard cumulé</th></tr></thead>
     <tbody>${rows}</tbody></table>
     </body></html>`);
     w.document.close();
@@ -746,7 +755,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                 <input type="checkbox" checked={appliquerRegles} onChange={e => setAppliquerRegles(e.target.checked)} style={{ width: 16, height: 16, flexShrink: 0, appearance: "auto", WebkitAppearance: "checkbox", padding: 0, border: "revert", borderRadius: "revert" }} />
                 Appliquer les règles (tolérance 15 min d'avance, pause minimum obligatoire) au total du rapport
               </label>
-              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Seuls les jours où l'employé a pointé au moins une fois sont comptés (les jours sans aucun pointage sont ignorés, pas traités comme absence).</p>
+              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Un jour "Jours travaillés" de l'employé sans aucun pointage est compté comme absence (0h face aux heures prévues). Un jour non planifié pour lui sans pointage est simplement ignoré.</p>
             </div>
 
             <div style={{ background: "#fff", borderRadius: 14, overflow: "auto", WebkitOverflowScrolling: "touch", border: "1.5px solid #e8e0d0" }}>
@@ -758,6 +767,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                     <tr style={{ background: "#1a2e1a" }}>
                       <th style={{ padding: "10px 12px", textAlign: "left", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Employé</th>
                       <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Jours pointés</th>
+                      <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: 11 }}>Absences</th>
                       <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Prévu</th>
                       <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Fait</th>
                       <th style={{ padding: "10px 8px", textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 11 }}>Écart</th>
@@ -771,6 +781,9 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                       <td style={{ padding: "9px 12px", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>TOTAL</td>
                       <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>
                         {rapport.reduce((s, r) => s + r.joursPointes, 0)}
+                      </td>
+                      <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#dc2626" }}>
+                        {rapport.reduce((s, r) => s + r.joursAbsents, 0)}
                       </td>
                       <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>
                         {fmtMinutesPointeuse(rapport.reduce((s, r) => s + r.minutesPrevues, 0))}
@@ -795,6 +808,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                           style={{ background: empDetail === r.id ? "#f0f9ff" : idx % 2 === 0 ? "#fff" : "#fafaf9", cursor: "pointer" }}>
                           <td style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0", fontWeight: 700 }}>{r.emp.nom}</td>
                           <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280" }}>{r.joursPointes}</td>
+                          <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: r.joursAbsents > 0 ? "#dc2626" : "#9ca3af", fontWeight: r.joursAbsents > 0 ? 700 : 400 }}>{r.joursAbsents > 0 ? r.joursAbsents : "-"}</td>
                           <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", color: "#6b7280" }}>{fmtMinutesPointeuse(r.minutesPrevues)}</td>
                           <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 600 }}>{fmtMinutesPointeuse(r.minutesTravaillees)}</td>
                           <td style={{ ...policeHeures, padding: "10px 8px", textAlign: "center", borderBottom: "1px solid #f0f0f0", fontWeight: 800, color: r.ecart < 0 ? "#dc2626" : r.ecart > 0 ? "#16a34a" : "#374151" }}>
@@ -815,8 +829,8 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                                   <div key={j.jour} onClick={() => setEditionJour({ id: r.id, jour: j.jour, arrivee: j.arriveeStr, pauseDebut: j.pauseDebutStr, pauseFin: j.pauseFinStr, depart: j.departStr })}
                                     style={{
                                       display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
-                                      background: !j.pointe ? "#fff" : j.retard > 0 ? "#fff5f5" : "#f0fdf4",
-                                      border: `1px solid ${!j.pointe ? "#e8e0d0" : j.retard > 0 ? "#fecaca" : "#bbf7d0"}`,
+                                      background: j.absent ? "#fff5f5" : !j.pointe ? "#fff" : j.retard > 0 ? "#fff5f5" : "#f0fdf4",
+                                      border: `1px solid ${j.absent ? "#fecaca" : !j.pointe ? "#e8e0d0" : j.retard > 0 ? "#fecaca" : "#bbf7d0"}`,
                                     }}>
                                     <span style={{ ...policeHeures, fontSize: 11.5, fontWeight: 700, color: "#374151", minWidth: 78, textTransform: "capitalize", flexShrink: 0 }}>
                                       {new Date(`${j.jour}T00:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" })}
@@ -840,8 +854,10 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                                           {j.retard > 0 ? ` · ⏰ ${j.retard}min retard` : ""}{j.oubli ? " · 🌙 départ non pointé" : ""}
                                         </div>
                                       </div>
+                                    ) : j.absent ? (
+                                      <span style={{ fontSize: 11.5, color: "#dc2626", fontWeight: 700, flex: 1 }}>🔴 Absent (jour travaillé prévu, aucun pointage)</span>
                                     ) : (
-                                      <span style={{ fontSize: 11.5, color: "#9ca3af", flex: 1 }}>Aucun pointage</span>
+                                      <span style={{ fontSize: 11.5, color: "#9ca3af", flex: 1 }}>Aucun pointage (jour non planifié)</span>
                                     )}
                                     <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0369a1", flexShrink: 0, alignSelf: "flex-start" }}>✏️ {j.pointe ? "Modifier" : "Ajouter"}</span>
                                   </div>
