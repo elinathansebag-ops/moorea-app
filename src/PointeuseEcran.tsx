@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { styles } from "./shared";
 
 // ─── Écran mural de pointage (public, accessible via ?pointeuse=ecran) ───
@@ -48,6 +48,18 @@ export function PointeuseEcran() {
     if (touche === "valider") { valider(code); return; }
     if (code.length < 6) setCode(c => c + touche);
   };
+
+  // Pavé numérique externe (USB/Bluetooth) branché sur la tablette murale, tactile cassé.
+  useEffect(() => {
+    const surTouche = (e: KeyboardEvent) => {
+      if (enCours) return;
+      if (/^[0-9]$/.test(e.key)) { appuyer(e.key); return; }
+      if (e.key === "Backspace" || e.key === "Delete") { appuyer("effacer"); return; }
+      if (e.key === "Enter") { appuyer("valider"); return; }
+    };
+    window.addEventListener("keydown", surTouche);
+    return () => window.removeEventListener("keydown", surTouche);
+  }, [code, enCours]);
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0a1f0a 0%, #1a3a1a 60%, #2d5a1e 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Syne', sans-serif" }}>
