@@ -32,7 +32,7 @@ interface Employe {
   heureArrivee?: string; heureDepart?: string; pauseMinutes?: number;
   actif?: boolean;
 }
-interface Pointage { type: "arrivee" | "depart"; timestamp: number }
+interface Pointage { type: "arrivee" | "pause_debut" | "pause_fin" | "depart"; timestamp: number }
 
 function todayISO(offsetJours = 0): string {
   const d = new Date();
@@ -137,21 +137,26 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   const demandesOuvertes = Object.entries(demandes).filter(([, d]: [string, any]) => d.statut !== "traitee");
   const champStyle: React.CSSProperties = { padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 };
 
-  // ─── Statut en direct (qui travaille, qui est parti, qui n'a rien pointé aujourd'hui) ───
+  // ─── Statut en direct (qui travaille, qui est en pause, qui est parti, qui n'a rien pointé) ───
+  // 23/09/2026 -- 4 pointages par jour (arrivee → pause_debut → pause_fin → depart, voir
+  // api/pointeuse-pointer.js) : le dernier pointage du jour indique l'état actuel.
   const debutAujourdhui = new Date(); debutAujourdhui.setHours(0, 0, 0, 0);
   const statutsDirect = useMemo(() => {
     return Object.entries(employes).map(([id, emp]) => {
       const pointagesEmp = Object.values(pointagesTous[id] || {});
       const aujourdhui = pointagesEmp.filter(p => p.timestamp >= debutAujourdhui.getTime()).sort((a, b) => b.timestamp - a.timestamp);
       const dernier = aujourdhui[0];
-      const statut: "present" | "parti" | "absent" = !dernier ? "absent" : dernier.type === "arrivee" ? "present" : "parti";
+      const statut: "present" | "pause" | "parti" | "absent" = !dernier ? "absent"
+        : dernier.type === "arrivee" || dernier.type === "pause_fin" ? "present"
+        : dernier.type === "pause_debut" ? "pause" : "parti";
       return { id, emp, statut, heureDernier: dernier ? new Date(dernier.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : null };
     }).sort((a, b) => {
-      const ordre = { present: 0, parti: 1, absent: 2 };
+      const ordre = { present: 0, pause: 1, parti: 2, absent: 3 };
       return ordre[a.statut] - ordre[b.statut] || a.emp.nom.localeCompare(b.emp.nom);
     });
   }, [employes, pointagesTous]);
   const nbPresents = statutsDirect.filter(s => s.statut === "present").length;
+  const nbEnPause = statutsDirect.filter(s => s.statut === "pause").length;
   const nbAbsents = statutsDirect.filter(s => s.statut === "absent").length;
 
   // ─── Rapport heures / retard / heures sup sur la période choisie ───
@@ -173,11 +178,16 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         const finJourMs = debutJourMs + 86400000;
         const pointagesJour = pointagesEmp.filter(p => p.timestamp >= debutJourMs && p.timestamp < finJourMs);
         if (pointagesJour.length === 0) return; // pas de pointage ce jour-là : ignoré, pas compté en absence (on ne connaît pas ses jours de travail attendus)
-        const arrivees = pointagesJour.filter(p => p.type === "arrivee").sort((a, b) => a.timestamp - b.timestamp);
-        const departs = pointagesJour.filter(p => p.type === "depart").sort((a, b) => b.timestamp - a.timestamp);
-        const arriveeMs = arrivees[0]?.timestamp ?? null;
-        const departMs = departs[0]?.timestamp ?? null;
-        const r = calculerHeuresJour(jour, horaire, arriveeMs, departMs);
+        // 23/09/2026 -- 4 pointages/jour : premier de chaque type dans l'ordre chronologique
+        // (le premier "arrivee" du jour, le premier "pause_debut" après, etc.), pour rester
+        // cohérent même si un pointage a été refait par erreur.
+        const parType = (t: string) => pointagesJour.filter(p => p.type === t).sort((a, b) => a.timestamp - b.timestamp);
+        const arriveeMs = parType("arrivee")[0]?.timestamp ?? null;
+        const pauseDebutMs = parType("pause_debut")[0]?.timestamp ?? null;
+        const pauseFinMs = parType("pause_fin")[0]?.timestamp ?? null;
+        const departs = parType("depart");
+        const departMs = departs.length ? departs[departs.length - 1].timestamp : null;
+        const r = calculerHeuresJour(jour, horaire, { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs });
         const prevueJour = horaire.heureArrivee && horaire.heureDepart
           ? Math.max(0, (new Date(`${jour}T${horaire.heureDepart}`).getTime() - new Date(`${jour}T${horaire.heureArrivee}`).getTime()) / 60000 - (horaire.pauseMinutes || 0))
           : 0;
@@ -255,18 +265,22 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         {tab === "suivi" && (
           <div>
             {/* Présence en direct */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-              <div style={{ background: "#f0fdf4", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #bbf7d0", textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#16a34a" }}>{nbPresents}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>En poste</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+              <div style={{ background: "#f0fdf4", borderRadius: 12, padding: "12px 10px", border: "1.5px solid #bbf7d0", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#16a34a" }}>{nbPresents}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#9ca3af", textTransform: "uppercase" }}>En poste</p>
               </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #e8e0d0", textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#6b7280" }}>{statutsDirect.length - nbPresents - nbAbsents}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>Partis</p>
+              <div style={{ background: "#fffbeb", borderRadius: 12, padding: "12px 10px", border: "1.5px solid #fde68a", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#d97706" }}>{nbEnPause}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#9ca3af", textTransform: "uppercase" }}>En pause</p>
               </div>
-              <div style={{ background: "#fff5f5", borderRadius: 12, padding: "12px 14px", border: "1.5px solid #fecaca", textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#dc2626" }}>{nbAbsents}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>Rien pointé auj.</p>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "12px 10px", border: "1.5px solid #e8e0d0", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#6b7280" }}>{statutsDirect.length - nbPresents - nbEnPause - nbAbsents}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#9ca3af", textTransform: "uppercase" }}>Partis</p>
+              </div>
+              <div style={{ background: "#fff5f5", borderRadius: 12, padding: "12px 10px", border: "1.5px solid #fecaca", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#dc2626" }}>{nbAbsents}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#9ca3af", textTransform: "uppercase" }}>Rien pointé</p>
               </div>
             </div>
 
@@ -278,9 +292,9 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                   <span style={{ fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{emp.nom}</span>
                   <span style={{
                     display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700,
-                    color: statut === "present" ? "#16a34a" : statut === "parti" ? "#6b7280" : "#dc2626",
+                    color: statut === "present" ? "#16a34a" : statut === "pause" ? "#d97706" : statut === "parti" ? "#6b7280" : "#dc2626",
                   }}>
-                    {statut === "present" ? `🟢 En poste depuis ${heureDernier}` : statut === "parti" ? `⚪ Parti à ${heureDernier}` : "🔴 Rien pointé aujourd'hui"}
+                    {statut === "present" ? `🟢 En poste depuis ${heureDernier}` : statut === "pause" ? `🍽️ En pause depuis ${heureDernier}` : statut === "parti" ? `⚪ Parti à ${heureDernier}` : "🔴 Rien pointé aujourd'hui"}
                   </span>
                 </div>
               ))}

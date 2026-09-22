@@ -49,12 +49,13 @@ export function PointeuseEcran() {
       const data = await reponse.json();
       if (reponse.ok && data?.ok) {
         const prenom = (data.nom || "").split(" ")[0];
-        setResultat({
-          ok: true,
-          message: data.type === "arrivee"
-            ? `👋 Bonjour ${prenom} — arrivée enregistrée à ${data.heure}`
-            : `🏁 À bientôt ${prenom} — départ enregistré à ${data.heure}`,
-        });
+        const messagesParType: Record<string, string> = {
+          arrivee: `👋 Bonjour ${prenom} — arrivée enregistrée à ${data.heure}`,
+          pause_debut: `🍽️ Bonne pause ${prenom} — départ en pause à ${data.heure}`,
+          pause_fin: `👍 ${prenom}, retour de pause enregistré à ${data.heure}`,
+          depart: `🏁 À bientôt ${prenom} — départ enregistré à ${data.heure}`,
+        };
+        setResultat({ ok: true, message: messagesParType[data.type] || `✅ Pointage enregistré à ${data.heure}` });
       } else {
         setResultat({ ok: false, message: data?.error === "Code inconnu" ? "Code inconnu — vérifie ton code" : "Erreur, réessaie" });
       }

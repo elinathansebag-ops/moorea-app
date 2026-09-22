@@ -12,9 +12,16 @@ export const config = { runtime: "nodejs" };
 //   - "pointeuse_pointages" (écriture seule) : { [employeId]: { [id]: { type, timestamp } } }
 // Voir le message donné à l'utilisateur avec le JSON exact à ajouter aux règles.
 //
-// POST { pin: "1234" } → cherche l'employé correspondant, détermine si c'est une arrivée ou un
-// départ (en regardant le dernier pointage du jour pour cet employé), l'enregistre, renvoie
-// { ok: true, nom, type: "arrivee"|"depart", heure: "08:03" }.
+// 23/09/2026 -- Demande d'Elinathan : "un employé doit taper son code 4 fois par jour : le matin
+// en arrivant, quand il part manger, quand il revient, et quand il part le soir". Le type de
+// pointage est déterminé par le NOMBRE de pointages déjà faits aujourd'hui pour cet employé, en
+// cycle fixe (arrivee → pause_debut → pause_fin → depart → arrivee...) -- voir
+// src/pointeuseCalc.ts pour le calcul des heures qui utilise ces 4 pointages.
+//
+// POST { pin: "1234" } → cherche l'employé correspondant, détermine lequel des 4 pointages du
+// jour c'est, l'enregistre, renvoie { ok: true, nom, type, heure }.
+
+const CYCLE_TYPES = ["arrivee", "pause_debut", "pause_fin", "depart"];
 
 function corsHeaders() {
   return {
@@ -41,15 +48,13 @@ export default async function handler(req, res) {
     const { employeId, nom } = infos;
     const maintenant = Date.now();
 
-    // Dernier pointage du jour pour cet employé, pour savoir si c'est une arrivée ou un départ.
+    // Nombre de pointages déjà faits AUJOURD'HUI pour cet employé → détermine lequel des 4
+    // c'est (cycle fixe, voir CYCLE_TYPES ci-dessus).
     const jourSnap = await dbAdmin.ref(`pointeuse_pointages/${employeId}`).once();
     const pointagesExistants = jourSnap.val() || {};
     const debutAujourdhui = new Date(); debutAujourdhui.setHours(0, 0, 0, 0);
     const dejaAujourdhui = Object.values(pointagesExistants).filter((p) => p && p.timestamp >= debutAujourdhui.getTime());
-    const dernierType = dejaAujourdhui.length
-      ? dejaAujourdhui.sort((a, b) => b.timestamp - a.timestamp)[0].type
-      : null;
-    const type = dernierType === "arrivee" ? "depart" : "arrivee";
+    const type = CYCLE_TYPES[dejaAujourdhui.length % CYCLE_TYPES.length];
 
     await dbAdmin.ref(`pointeuse_pointages/${employeId}`).push({ type, timestamp: maintenant });
 

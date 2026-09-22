@@ -136,13 +136,17 @@ export function EspaceEmployeModule({ employeIdInvite, emailInvite }: { employeI
             )}
 
             {(() => {
+              // 23/09/2026 -- 4 pointages/jour (arrivée, départ pause, retour pause, départ) --
+              // voir src/pointeuseCalc.ts.
               const horaire: HoraireJour = { heureArrivee: infosPubliques?.heureArrivee, heureDepart: infosPubliques?.heureDepart, pauseMinutes: infosPubliques?.pauseMinutes };
-              const parJour: Record<string, { arrivee: number | null; depart: number | null }> = {};
+              const parJour: Record<string, { arrivee: number | null; pauseDebut: number | null; pauseFin: number | null; depart: number | null }> = {};
               Object.values(pointages).forEach((p: any) => {
                 const jour = new Date(p.timestamp).toISOString().slice(0, 10);
-                if (!parJour[jour]) parJour[jour] = { arrivee: null, depart: null };
+                if (!parJour[jour]) parJour[jour] = { arrivee: null, pauseDebut: null, pauseFin: null, depart: null };
                 if (p.type === "arrivee") parJour[jour].arrivee = p.timestamp;
-                else parJour[jour].depart = p.timestamp;
+                else if (p.type === "pause_debut") parJour[jour].pauseDebut = p.timestamp;
+                else if (p.type === "pause_fin") parJour[jour].pauseFin = p.timestamp;
+                else if (p.type === "depart") parJour[jour].depart = p.timestamp;
               });
               const jours = Object.keys(parJour).sort().reverse().slice(0, 14);
               if (jours.length === 0) return null;
@@ -150,13 +154,18 @@ export function EspaceEmployeModule({ employeIdInvite, emailInvite }: { employeI
                 <div style={carte}>
                   <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>⏱ Mes 14 derniers jours pointés</p>
                   {jours.map(jour => {
-                    const { arrivee, depart } = parJour[jour];
-                    const r = calculerHeuresJour(jour, horaire, arrivee, depart);
+                    const p = parJour[jour];
+                    const r = calculerHeuresJour(jour, horaire, p);
+                    const fmt = (ms: number | null) => ms ? new Date(ms).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "-";
                     return (
-                      <div key={jour} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #f0f0f0", fontSize: 12.5 }}>
-                        <span style={{ fontWeight: 600 }}>{new Date(jour).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}</span>
-                        <span style={{ color: "#9ca3af" }}>{arrivee ? new Date(arrivee).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "-"} → {depart ? new Date(depart).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : (r.oubliDepart ? "oublié" : "-")}</span>
-                        <span style={{ fontWeight: 700 }}>{fmtMinutesPointeuse(r.minutesTravaillees)}</span>
+                      <div key={jour} style={{ padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontWeight: 600, fontSize: 12.5 }}>{new Date(jour).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}</span>
+                          <span style={{ fontWeight: 700, fontSize: 12.5 }}>{fmtMinutesPointeuse(r.minutesTravaillees)}</span>
+                        </div>
+                        <p style={{ margin: "3px 0 0", fontSize: 11, color: "#9ca3af" }}>
+                          {fmt(p.arrivee)} → {fmt(p.pauseDebut)} pause → {fmt(p.pauseFin)} → {p.depart ? fmt(p.depart) : (r.oubliDepart ? "oublié" : "-")}
+                        </p>
                       </div>
                     );
                   })}
