@@ -134,13 +134,22 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
+      // 25/09/2026 -- Fix : le fichier TimeMoto donne la date en "JJ-MM-AAAA" (ex "27-04-2026"),
+      // pas au format ISO "AAAA-MM-JJ" utilisé partout ailleurs dans l'app -- sans conversion,
+      // `new Date("27-04-2026T09:00:00")` est invalide et donne des timestamps NaN à l'écriture
+      // Firebase ("Erreur : update failed: values argument contains NaN...").
+      const normaliserDateTimeMoto = (s: string): string => {
+        const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        return m ? `${m[3]}-${m[2]}-${m[1]}` : s;
+      };
+
       const parEmploye: Record<string, { jours: Record<string, [string, string][]> }> = {};
       let dernierNom = "";
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
         const prenom = String(r[0] || "").trim();
         const nom = String(r[1] || "").trim();
-        const date = String(r[2] || "").trim();
+        const date = normaliserDateTimeMoto(String(r[2] || "").trim());
         const entree = String(r[3] || "").trim();
         const sortie = String(r[5] || "").trim();
         if (prenom && nom) dernierNom = `${prenom} ${nom}`.trim();
@@ -240,7 +249,9 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
           }
           if (derniereSortie) aEcrire.push({ type: "depart", timestamp: aHoraireMs(jour, derniereSortie) });
 
-          aEcrire.forEach(p => {
+          // Filet de sécurité : une ligne mal formée ne doit jamais faire planter tout
+          // l'import avec un timestamp NaN envoyé à Firebase.
+          aEcrire.filter(p => Number.isFinite(p.timestamp)).forEach(p => {
             const clePointage = push(ref(db, `pointeuse_pointages/${employeId}`)).key;
             if (clePointage) maj[`pointeuse_pointages/${employeId}/${clePointage}`] = p;
           });
