@@ -685,7 +685,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                   heures brutes telles que pointées. Le détail jour par jour affiche toujours
                   les deux, quel que soit ce choix. */}
               <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#374151", cursor: "pointer", marginTop: 4 }}>
-                <input type="checkbox" checked={appliquerRegles} onChange={e => setAppliquerRegles(e.target.checked)} />
+                <input type="checkbox" checked={appliquerRegles} onChange={e => setAppliquerRegles(e.target.checked)} style={{ width: 16, height: 16, flexShrink: 0, appearance: "auto", WebkitAppearance: "checkbox", padding: 0, border: "revert", borderRadius: "revert" }} />
                 Appliquer les règles (tolérance 15 min d'avance, pause minimum obligatoire) au total du rapport
               </label>
               <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Seuls les jours où l'employé a pointé au moins une fois sont comptés (les jours sans aucun pointage sont ignorés, pas traités comme absence).</p>
@@ -874,7 +874,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                 style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8, resize: "vertical" }} />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#6b7280", cursor: "pointer" }}>
-                  <input type="checkbox" checked={nouveauMessageUrgent} onChange={e => setNouveauMessageUrgent(e.target.checked)} />
+                  <input type="checkbox" checked={nouveauMessageUrgent} onChange={e => setNouveauMessageUrgent(e.target.checked)} style={{ width: 16, height: 16, flexShrink: 0, appearance: "auto", WebkitAppearance: "checkbox", padding: 0, border: "revert", borderRadius: "revert" }} />
                   ⚠️ Avertissement qualité (bandeau rouge sur l'écran)
                 </label>
                 <button onClick={ajouterMessage} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Publier</button>
