@@ -1483,14 +1483,14 @@ export function MessagerieModule({
   // file en continu (chaque résumé généré met à jour "mails", ce qui redéclenche l'effet), ce
   // qui saturait le fil principal et figeait complètement la page. Les mails anciens sans résumé
   // restent accessibles via le bouton manuel "🧠 Générer un résumé" sur chaque ligne.
-  const LIMITE_AGE_RESUME_AUTO_MS = 5 * 24 * 60 * 60 * 1000; // 5 jours
   useEffect(() => {
-    const maintenant = Date.now();
+    const aujourdhui = new Date().toDateString();
     const aFaire = mails.find(m => {
       if (m.lu !== false || m.resume || resumesEnCours.has(m.id)) return false;
       if (!m.date) return false;
-      const age = maintenant - new Date(m.date).getTime();
-      return age >= 0 && age <= LIMITE_AGE_RESUME_AUTO_MS;
+      const dateMail = new Date(m.date);
+      if (isNaN(dateMail.getTime())) return false;
+      return dateMail.toDateString() === aujourdhui;
     });
     if (aFaire) demanderResume(aFaire);
     // eslint-disable-next-line react-hooks/exhaustive-deps
