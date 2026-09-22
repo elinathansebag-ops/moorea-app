@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { db, ref, onValue, update, remove, set } from "./firebase";
+import { db, ref, onValue, update, remove, set, push } from "./firebase";
 import { PageHeader, styles } from "./shared";
 
 // ─── Module "🕐 Pointeuse" (admin) ───
@@ -26,19 +26,30 @@ interface Employe {
 }
 
 export function PointeuseModule({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"config" | "demandes">("config");
+  const [tab, setTab] = useState<"config" | "demandes" | "messages">("config");
   const [employes, setEmployes] = useState<Record<string, Employe>>({});
   const [demandes, setDemandes] = useState<Record<string, any>>({});
+  const [messages, setMessages] = useState<Record<string, { texte: string; urgent?: boolean; timestamp: number }>>({});
   const [nouveauNom, setNouveauNom] = useState("");
   const [nouveauEmail, setNouveauEmail] = useState("");
   const [erreurAjout, setErreurAjout] = useState("");
   const [invitationEnvoyee, setInvitationEnvoyee] = useState<string | null>(null);
+  const [nouveauMessage, setNouveauMessage] = useState("");
+  const [nouveauMessageUrgent, setNouveauMessageUrgent] = useState(false);
 
   useEffect(() => {
     const unsub1 = onValue(ref(db, "pointeuse_employes"), snap => setEmployes(snap.val() || {}));
     const unsub2 = onValue(ref(db, "pointeuse_demandes"), snap => setDemandes(snap.val() || {}));
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = onValue(ref(db, "pointeuse_messages"), snap => setMessages(snap.val() || {}));
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, []);
+
+  const ajouterMessage = async () => {
+    if (!nouveauMessage.trim()) return;
+    await push(ref(db, "pointeuse_messages"), { texte: nouveauMessage.trim(), urgent: nouveauMessageUrgent, timestamp: Date.now() });
+    setNouveauMessage(""); setNouveauMessageUrgent(false);
+  };
+  const supprimerMessage = (id: string) => remove(ref(db, `pointeuse_messages/${id}`));
 
   const genererPinLibre = (): string => {
     const pinsExistants = new Set(Object.values(employes).map(e => e.pin));
@@ -129,6 +140,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
           <button onClick={() => setTab("demandes")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${tab === "demandes" ? "#0ea5e9" : "#e5e7eb"}`, background: tab === "demandes" ? "#f0f9ff" : "#fff", fontWeight: 700, fontSize: 13, color: tab === "demandes" ? "#0369a1" : "#9ca3af", cursor: "pointer" }}>
             ✋ Demandes{demandesOuvertes.length > 0 ? ` (${demandesOuvertes.length})` : ""}
           </button>
+          <button onClick={() => setTab("messages")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${tab === "messages" ? "#0ea5e9" : "#e5e7eb"}`, background: tab === "messages" ? "#f0f9ff" : "#fff", fontWeight: 700, fontSize: 13, color: tab === "messages" ? "#0369a1" : "#9ca3af", cursor: "pointer" }}>📢 Messages</button>
         </div>
 
         {tab === "config" && (
@@ -194,6 +206,31 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                 {d.statut !== "traitee" && (
                   <button onClick={() => marquerTraitee(id)} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 11.5, cursor: "pointer" }}>✓ Marquer traitée</button>
                 )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "messages" && (
+          <div>
+            <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, border: "1.5px solid #e8e0d0" }}>
+              <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>➕ Nouveau message pour l'écran mural</p>
+              <textarea value={nouveauMessage} onChange={e => setNouveauMessage(e.target.value)} rows={2} placeholder="Ex : Attention, port des gants obligatoire cette semaine en zone froide"
+                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8, resize: "vertical" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#6b7280", cursor: "pointer" }}>
+                  <input type="checkbox" checked={nouveauMessageUrgent} onChange={e => setNouveauMessageUrgent(e.target.checked)} />
+                  ⚠️ Avertissement qualité (bandeau rouge sur l'écran)
+                </label>
+                <button onClick={ajouterMessage} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Publier</button>
+              </div>
+            </div>
+            {Object.keys(messages).length === 0 ? (
+              <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 13, padding: "2rem 0" }}>Aucun message publié — l'écran affiche un message par défaut.</p>
+            ) : Object.entries(messages).sort(([, a]: [string, any], [, b]: [string, any]) => b.timestamp - a.timestamp).map(([id, m]: [string, any]) => (
+              <div key={id} style={{ background: "#fff", border: `1.5px solid ${m.urgent ? "#fecaca" : "#e8e0d0"}`, borderRadius: 12, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <p style={{ margin: 0, fontSize: 13, color: "#374151" }}>{m.urgent ? "⚠️ " : "🌿 "}{m.texte}</p>
+                <button onClick={() => supprimerMessage(id)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontWeight: 700, fontSize: 11, cursor: "pointer", flexShrink: 0 }}>🗑️</button>
               </div>
             ))}
           </div>
