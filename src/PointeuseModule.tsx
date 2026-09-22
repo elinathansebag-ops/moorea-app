@@ -157,7 +157,15 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         }
       }
 
-      const nomsExistants = new Set(Object.values(employes).map(e => e.nom));
+      // 25/09/2026 -- Demande d'Elinathan : "l'export prend toutes les données pour les
+      // attribuer dans le passé à chaque employé ? -- oui" : en plus de créer les fiches
+      // employé manquantes, on importe maintenant aussi l'historique réel de chaque jour
+      // (entrée/sortie du fichier) comme de vrais pointages horodatés, pour CHAQUE employé
+      // (nouveau ou déjà existant dans l'app, retrouvé par nom). Un jour où l'employé a déjà
+      // au moins un pointage réel (écran mural, saisie manuelle...) n'est jamais touché, pour
+      // ne jamais écraser une vraie donnée ni faire de doublons si le fichier est réimporté.
+      const nomVersId: Record<string, string> = {};
+      Object.entries(employes).forEach(([id, e]) => { nomVersId[e.nom] = id; });
       const pinsUtilises = new Set(Object.values(employes).map(e => e.pin));
       const genererPinLocal = (): string => {
         let pin = "";
@@ -165,36 +173,87 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         pinsUtilises.add(pin);
         return pin;
       };
+      const aHoraireMs = (jour: string, hhmm: string) => new Date(`${jour}T${hhmm}:00`).getTime();
 
+      // Toutes les écritures sont regroupées dans un seul objet et envoyées en UNE fois à la
+      // fin (multi-path update) : avec potentiellement des milliers de pointages historiques,
+      // un push() séparé et attendu par entrée serait beaucoup trop lent.
+      const maj: Record<string, any> = {};
       let nbCrees = 0;
+      let nbJoursImportes = 0;
+
       for (const [nom, d] of Object.entries(parEmploye)) {
-        if (nomsExistants.has(nom)) continue;
-        const compteArrivee: Record<string, number> = {};
-        const compteDepart: Record<string, number> = {};
-        Object.values(d.jours).forEach(creneaux => {
+        let employeId = nomVersId[nom];
+        if (!employeId) {
+          const compteArrivee: Record<string, number> = {};
+          const compteDepart: Record<string, number> = {};
+          Object.values(d.jours).forEach(creneaux => {
+            const valides = creneaux.filter(c => c[0]);
+            if (!valides.length) return;
+            const tries = [...valides].sort((a, b) => a[0].localeCompare(b[0]));
+            compteArrivee[tries[0][0]] = (compteArrivee[tries[0][0]] || 0) + 1;
+            const sorties = valides.map(c => c[1]).filter(Boolean).sort();
+            if (sorties.length) {
+              const derniere = sorties[sorties.length - 1];
+              compteDepart[derniere] = (compteDepart[derniere] || 0) + 1;
+            }
+          });
+          const plusFrequent = (compte: Record<string, number>) => Object.entries(compte).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+
+          const cle = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${nbCrees}`;
+          const emp: Employe = {
+            nom, email: "", pin: genererPinLocal(),
+            heureArrivee: plusFrequent(compteArrivee), heureDepart: plusFrequent(compteDepart),
+            pauseMinutes: 60, actif: true,
+          };
+          maj[`pointeuse_employes/${cle}`] = emp;
+          maj[`pointeuse_public/${cle}`] = { nom: emp.nom, heureArrivee: emp.heureArrivee || null, heureDepart: emp.heureDepart || null, pauseMinutes: emp.pauseMinutes ?? null };
+          maj[`pointeuse_pins/${emp.pin}`] = { employeId: cle, nom: emp.nom };
+          employeId = cle;
+          nomVersId[nom] = cle;
+          nbCrees++;
+        }
+
+        const pointagesExistantsEmp = Object.values(pointagesTous[employeId] || {});
+        Object.entries(d.jours).forEach(([jour, creneaux]) => {
+          const debutJourMs = new Date(`${jour}T00:00:00`).getTime();
+          const finJourMs = debutJourMs + 86400000;
+          const dejaPointeCeJour = pointagesExistantsEmp.some(p => p.timestamp >= debutJourMs && p.timestamp < finJourMs);
+          if (dejaPointeCeJour) return; // jamais écraser un vrai pointage déjà présent
+
           const valides = creneaux.filter(c => c[0]);
           if (!valides.length) return;
           const tries = [...valides].sort((a, b) => a[0].localeCompare(b[0]));
-          compteArrivee[tries[0][0]] = (compteArrivee[tries[0][0]] || 0) + 1;
+          const premiereEntree = tries[0][0];
           const sorties = valides.map(c => c[1]).filter(Boolean).sort();
-          if (sorties.length) {
-            const derniere = sorties[sorties.length - 1];
-            compteDepart[derniere] = (compteDepart[derniere] || 0) + 1;
-          }
-        });
-        const plusFrequent = (compte: Record<string, number>) => Object.entries(compte).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+          const derniereSortie = sorties.length ? sorties[sorties.length - 1] : null;
 
-        const cle = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${nbCrees}`;
-        const emp: Employe = {
-          nom, email: "", pin: genererPinLocal(),
-          heureArrivee: plusFrequent(compteArrivee), heureDepart: plusFrequent(compteDepart),
-          pauseMinutes: 60, actif: true,
-        };
-        await set(ref(db, `pointeuse_employes/${cle}`), emp);
-        await synchroniserMiroirs(cle, emp);
-        nbCrees++;
+          // 1 seul créneau ce jour-là -> arrivée + départ (pas de pause connue). 2 créneaux ou
+          // plus (matin + après-midi typiquement) -> la fin du 1er créneau devient le départ en
+          // pause, le début du dernier créneau le retour de pause.
+          const aEcrire: { type: Pointage["type"]; timestamp: number }[] = [{ type: "arrivee", timestamp: aHoraireMs(jour, premiereEntree) }];
+          if (tries.length >= 2) {
+            const finPremierCreneau = tries[0][1];
+            const debutDernierCreneau = tries[tries.length - 1][0];
+            if (finPremierCreneau) aEcrire.push({ type: "pause_debut", timestamp: aHoraireMs(jour, finPremierCreneau) });
+            if (debutDernierCreneau && debutDernierCreneau !== premiereEntree) aEcrire.push({ type: "pause_fin", timestamp: aHoraireMs(jour, debutDernierCreneau) });
+          }
+          if (derniereSortie) aEcrire.push({ type: "depart", timestamp: aHoraireMs(jour, derniereSortie) });
+
+          aEcrire.forEach(p => {
+            const clePointage = push(ref(db, `pointeuse_pointages/${employeId}`)).key;
+            if (clePointage) maj[`pointeuse_pointages/${employeId}/${clePointage}`] = p;
+          });
+          nbJoursImportes++;
+        });
       }
-      setImportMessage(nbCrees > 0 ? `✅ ${nbCrees} employé(s) créé(s) — ajoute leur email ci-dessous quand tu l'auras.` : "Aucun nouvel employé importé (déjà tous présents).");
+
+      if (Object.keys(maj).length > 0) await update(ref(db), maj);
+      setImportMessage(
+        nbCrees > 0 || nbJoursImportes > 0
+          ? `✅ ${nbCrees} employé(s) créé(s), ${nbJoursImportes} jour(s) de pointages importés dans l'historique.`
+          : "Rien à importer (employés et jours déjà tous présents)."
+      );
     } catch (e: any) {
       setImportMessage("Erreur : " + (e?.message || String(e)));
     } finally {
