@@ -1304,7 +1304,12 @@ export function MessagerieModule({
   // actions configurées, une seule fois pour toujours (voir reglesAutoAppliquees sur le mail).
   // Un seul admin à la fois suffit à déclencher ça (pas besoin que chaque commercial le fasse,
   // et ça évite que tout le monde écrive en même temps sur les mêmes mails).
+  // 22/09/2026 -- COUPE-CIRCUIT, voir la note ci-dessus : cet effet provoquait une tempete
+  // d'ecritures qui figeait l'application pour tout le monde. Remettre a true seulement une
+  // fois la boucle reecrite (ecritures regroupees + marquage des seuls mails correspondants).
+  const REGLES_AUTO_ACTIVES = false;
   useEffect(() => {
+    if (!REGLES_AUTO_ACTIVES) return;
     if (!isAdmin || reglesAuto.length === 0 || mails.length === 0) return;
     let annule = false;
     (async () => {
