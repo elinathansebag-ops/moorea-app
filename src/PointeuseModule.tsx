@@ -724,9 +724,11 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                             <td colSpan={6} style={{ padding: "10px 14px", background: "#faf9f6", borderBottom: "1px solid #f0f0f0" }}>
                               {/* 25/09/2026 -- Demande d'Elinathan : reprendre l'affichage de TimeMoto -- la date, puis
                                   sur 2 lignes "heure d'entrée - heure de départ en pause" et "heure de retour de
-                                  pause - heure de départ", jour après jour. */}
+                                  pause - heure de départ", jour après jour. Ordre chronologique (du plus ancien
+                                  au plus récent, comme TimeMoto) : elle a signalé ne pas retrouver le "Du"
+                                  choisi parce qu'il se retrouvait tout en bas quand la liste était inversée. */}
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                {[...r.detailJours].reverse().map(j => (
+                                {r.detailJours.map(j => (
                                   <div key={j.jour} onClick={() => setEditionJour({ id: r.id, jour: j.jour, arrivee: j.arriveeStr, pauseDebut: j.pauseDebutStr, pauseFin: j.pauseFinStr, depart: j.departStr })}
                                     style={{
                                       display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
