@@ -30,18 +30,11 @@ import { calculerHeuresJour, fmtMinutesPointeuse, type HoraireJour } from "./poi
 interface Employe {
   nom: string; email: string; pin: string;
   heureArrivee?: string; heureDepart?: string; pauseMinutes?: number;
-  // 22/09/2026 -- Demande d'Elinathan : jours de la semaine où l'employé est censé travailler
-  // (0=dimanche ... 6=samedi, comme Date.getDay()), pour que "Prévu" ne compte que les jours
-  // réellement planifiés -- comme TimeMoto -- et pas chaque jour où il a pointé (week-end compris).
-  // Non défini = comportement par défaut, lundi à vendredi.
-  joursTravailles?: number[];
   actif?: boolean;
 }
+// 22/09/2026 -- Demande d'Elinathan : "fait simple" -- tout le monde est en 35h, du lundi au
+// vendredi, sans réglage par employé (un samedi/dimanche travaillé compte en heures sup).
 const JOURS_SEMAINE_DEFAUT = [1, 2, 3, 4, 5];
-const LABELS_JOURS = [
-  { v: 1, l: "Lun" }, { v: 2, l: "Mar" }, { v: 3, l: "Mer" }, { v: 4, l: "Jeu" },
-  { v: 5, l: "Ven" }, { v: 6, l: "Sam" }, { v: 0, l: "Dim" },
-];
 interface Pointage { type: "arrivee" | "pause_debut" | "pause_fin" | "depart"; timestamp: number }
 
 function todayISO(offsetJours = 0): string {
@@ -67,11 +60,10 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   // 25/09/2026 -- Demande d'Elinathan : voir les VRAIES heures (brutes, sans règles) à côté de
   // celles calculées avec les règles, avec une case à cocher pour choisir laquelle compte dans
   // le total du rapport.
-  const [appliquerRegles, setAppliquerRegles] = useState(true);
   const [empDetail, setEmpDetail] = useState<string | null>(null);
   const [editionJour, setEditionJour] = useState<{ id: string; jour: string; arrivee: string; pauseDebut: string; pauseFin: string; depart: string } | null>(null);
   const [horaireEnEdition, setHoraireEnEdition] = useState<string | null>(null);
-  const [brouillonHoraire, setBrouillonHoraire] = useState<{ arrivee: string; depart: string; pause: string; jours: number[] }>({ arrivee: "", depart: "", pause: "", jours: JOURS_SEMAINE_DEFAUT });
+  const [brouillonHoraire, setBrouillonHoraire] = useState<{ arrivee: string; depart: string; pause: string }>({ arrivee: "", depart: "", pause: "" });
   const [editionCellule, setEditionCellule] = useState<{ id: string; jour: string; champ: "arrivee" | "pauseDebut" | "pauseFin" | "depart" } | null>(null);
   const [valeurCellule, setValeurCellule] = useState("");
   // 25/09/2026 -- Demande d'Elinathan : pouvoir changer de date sur la frise de l'onglet Suivi
@@ -309,7 +301,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   // clavier : il faut cliquer sur "Modifier l'horaire" puis confirmer, pour éviter un changement
   // accidentel qui fausserait le calcul des heures.
   const ouvrirEditionHoraire = (id: string, emp: Employe) => {
-    setBrouillonHoraire({ arrivee: emp.heureArrivee || "", depart: emp.heureDepart || "", pause: String(emp.pauseMinutes ?? ""), jours: emp.joursTravailles ?? JOURS_SEMAINE_DEFAUT });
+    setBrouillonHoraire({ arrivee: emp.heureArrivee || "", depart: emp.heureDepart || "", pause: String(emp.pauseMinutes ?? "") });
     setHoraireEnEdition(id);
   };
 
@@ -318,7 +310,6 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
     await majEmploye(id, "heureArrivee", brouillonHoraire.arrivee || null);
     await majEmploye(id, "heureDepart", brouillonHoraire.depart || null);
     await majEmploye(id, "pauseMinutes", brouillonHoraire.pause ? Number(brouillonHoraire.pause) : null);
-    await majEmploye(id, "joursTravailles", brouillonHoraire.jours.length ? brouillonHoraire.jours : null);
     setHoraireEnEdition(null);
   };
 
@@ -437,36 +428,34 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
     const joursListe: string[] = [];
     for (let t = debutMs; t <= finMs; t += 86400000) joursListe.push(new Date(t).toISOString().slice(0, 10));
 
+    // 22/09/2026 -- Demande d'Elinathan : "oublie les horaires de chacun et les 15 minutes de
+    // tolérance, fait simple" -- on abandonne l'horaire personnalisé par employé et la tolérance
+    // d'avance / pause minimum obligatoire. Règle simple et fixe pour tout le monde : 35h, du
+    // lundi au vendredi, 7h par jour travaillé. "Fait" = les heures réellement pointées
+    // (arrivée → départ, moins la vraie pause). Un samedi ou dimanche travaillé compte donc
+    // entièrement en heures sup, sans "prévu" en face.
+    const PREVUE_MINUTES_JOUR = 7 * 60;
+
     return Object.entries(employes).map(([id, emp]) => {
-      const horaire: HoraireJour = { heureArrivee: emp.heureArrivee, heureDepart: emp.heureDepart, pauseMinutes: emp.pauseMinutes };
       const pointagesEmp = Object.values(pointagesTous[id] || {});
-      // 22/09/2026 -- Demande d'Elinathan : tout le monde est en 35h, du lundi au vendredi (un
-      // samedi travaillé compte en heures sup, jamais en "prévu"). Pour éviter de compter en
-      // "absence" les jours d'avant l'arrivée d'un employé récent (aucun pointage car pas encore
-      // embauché, pas parce qu'il a séché), on ignore les jours antérieurs à son tout premier
-      // pointage jamais enregistré (pas seulement dans la période choisie).
+      // Pour éviter de compter en "absence" les jours d'avant l'arrivée d'un employé récent
+      // (aucun pointage car pas encore embauché, pas parce qu'il a séché), on ignore les jours
+      // antérieurs à son tout premier pointage jamais enregistré (pas seulement dans la période).
       const premierPointageMs = pointagesEmp.length ? Math.min(...pointagesEmp.map(p => p.timestamp)) : null;
       let minutesTravaillees = 0, minutesPrevues = 0, minutesRetard = 0, joursPointes = 0, joursAbsents = 0;
-      const detailJours: { jour: string; travaillees: number; travailleesAvecRegles: number; travailleesBrut: number; retard: number; oubli: boolean; pointe: boolean; absent: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
+      const detailJours: { jour: string; travaillees: number; retard: number; oubli: boolean; pointe: boolean; absent: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
 
       // 25/09/2026 -- Demande d'Elinathan : historique jour par jour visible pour CHAQUE jour de
       // la période (pas seulement ceux pointés), pour pouvoir les modifier comme sur TimeMoto.
-      // 22/09/2026 -- Demande d'Elinathan : un jour PLANIFIÉ (coché dans "Jours travaillés") sans
-      // aucun pointage doit être compté comme une absence (0h faites contre les heures prévues,
-      // ce qui baisse l'écart) -- et non plus simplement ignoré. Un jour NON planifié (ex: un
-      // week-end pour quelqu'un qui ne travaille pas le week-end) reste ignoré, ce n'est pas une
-      // absence si on ne l'attendait pas ce jour-là.
-      const joursTravailles = emp.joursTravailles && emp.joursTravailles.length ? emp.joursTravailles : JOURS_SEMAINE_DEFAUT;
+      // Un jour du lundi au vendredi sans aucun pointage compte comme une absence (0h faites
+      // contre les 7h prévues) ; un samedi/dimanche sans pointage reste ignoré.
       const hhmm = (ms: number | null) => (ms == null ? "" : new Date(ms).toTimeString().slice(0, 5));
       joursListe.forEach(jour => {
         const debutJourMs = new Date(`${jour}T00:00:00`).getTime();
         const finJourMs = debutJourMs + 86400000;
         const pointagesJour = pointagesEmp.filter(p => p.timestamp >= debutJourMs && p.timestamp < finJourMs);
         const jourSemaine = new Date(`${jour}T00:00:00`).getDay();
-        const jourEstPlanifie = joursTravailles.includes(jourSemaine);
-        const prevueJourPlein = horaire.heureArrivee && horaire.heureDepart
-          ? Math.max(0, (new Date(`${jour}T${horaire.heureDepart}`).getTime() - new Date(`${jour}T${horaire.heureArrivee}`).getTime()) / 60000 - (horaire.pauseMinutes || 0))
-          : 0;
+        const jourEstPlanifie = JOURS_SEMAINE_DEFAUT.includes(jourSemaine);
         // 23/09/2026 -- 4 pointages/jour : premier de chaque type dans l'ordre chronologique
         // (le premier "arrivee" du jour, le premier "pause_debut" après, etc.), pour rester
         // cohérent même si un pointage a été refait par erreur.
@@ -480,32 +469,25 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
           const avantEmbauche = premierPointageMs != null && debutJourMs < premierPointageMs;
           const estAbsence = jourEstPlanifie && !avantEmbauche;
           if (estAbsence) {
-            minutesPrevues += prevueJourPlein;
+            minutesPrevues += PREVUE_MINUTES_JOUR;
             joursAbsents++;
           }
-          detailJours.push({ jour, travaillees: 0, travailleesAvecRegles: 0, travailleesBrut: 0, retard: 0, oubli: false, pointe: false, absent: estAbsence, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
+          detailJours.push({ jour, travaillees: 0, retard: 0, oubli: false, pointe: false, absent: estAbsence, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
           return;
         }
         const pointagesJourObj = { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs };
-        // 22/09/2026 -- Demande d'Elinathan : "Prévu" (et les règles de tolérance/pause qui en
-        // dépendent) ne s'appliquent que sur les jours réellement planifiés pour cet employé,
-        // comme sur TimeMoto -- pas sur chaque jour où il a pointé (un samedi travaillé en plus
-        // ne doit pas compter d'heures "prévues").
-        const horaireDuJour: HoraireJour = jourEstPlanifie ? horaire : { heureArrivee: undefined, heureDepart: undefined, pauseMinutes: 0 };
-        const rAvecRegles = calculerHeuresJour(jour, horaireDuJour, pointagesJourObj, true);
-        const rBrut = calculerHeuresJour(jour, horaireDuJour, pointagesJourObj, false);
-        const r = appliquerRegles ? rAvecRegles : rBrut;
-        const prevueJour = jourEstPlanifie ? prevueJourPlein : 0;
+        const r = calculerHeuresJour(jour, {}, pointagesJourObj, false);
+        const prevueJour = jourEstPlanifie ? PREVUE_MINUTES_JOUR : 0;
         minutesTravaillees += r.minutesTravaillees;
         minutesPrevues += prevueJour;
         minutesRetard += r.minutesRetard;
         joursPointes++;
-        detailJours.push({ jour, travaillees: r.minutesTravaillees, travailleesAvecRegles: rAvecRegles.minutesTravaillees, travailleesBrut: rBrut.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart, pointe: true, absent: false, arriveeStr: hhmm(arriveeMs), pauseDebutStr: hhmm(pauseDebutMs), pauseFinStr: hhmm(pauseFinMs), departStr: hhmm(departMs) });
+        detailJours.push({ jour, travaillees: r.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart, pointe: true, absent: false, arriveeStr: hhmm(arriveeMs), pauseDebutStr: hhmm(pauseDebutMs), pauseFinStr: hhmm(pauseFinMs), departStr: hhmm(departMs) });
       });
 
       return { id, emp, joursPointes, joursAbsents, minutesTravaillees, minutesPrevues, ecart: minutesTravaillees - minutesPrevues, minutesRetard, detailJours };
     }).sort((a, b) => a.ecart - b.ecart);
-  }, [employes, pointagesTous, rapportDebut, rapportFin, appliquerRegles]);
+  }, [employes, pointagesTous, rapportDebut, rapportFin]);
 
   // 25/09/2026 -- Edition manuelle des pointages d'une journée (comme la fenêtre "Editer /
   // Enregistrer présence" de TimeMoto) : retrouve les pointages existants ce jour-là pour un
@@ -755,15 +737,10 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                   📄 Générer le PDF
                 </button>
               </div>
-              {/* 25/09/2026 -- Demande d'Elinathan : case à cocher pour choisir si le total du
-                  rapport applique les règles (tolérance 15min, pause minimum) ou compte les
-                  heures brutes telles que pointées. Le détail jour par jour affiche toujours
-                  les deux, quel que soit ce choix. */}
-              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#374151", cursor: "pointer", marginTop: 4 }}>
-                <input type="checkbox" checked={appliquerRegles} onChange={e => setAppliquerRegles(e.target.checked)} style={{ width: 16, height: 16, flexShrink: 0, appearance: "auto", WebkitAppearance: "checkbox", padding: 0, border: "revert", borderRadius: "revert" }} />
-                Appliquer les règles (tolérance 15 min d'avance, pause minimum obligatoire) au total du rapport
-              </label>
-              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Un jour "Jours travaillés" de l'employé sans aucun pointage est compté comme absence (0h face aux heures prévues). Un jour non planifié pour lui sans pointage est simplement ignoré.</p>
+              {/* 22/09/2026 -- Demande d'Elinathan : "fait simple" -- plus de tolérance 15min, plus
+                  de pause minimum obligatoire, plus d'horaire perso par employé. Règle fixe pour
+                  tout le monde : 35h, lundi-vendredi, 7h/jour. "Fait" = heures réellement pointées. */}
+              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Prévu : 7h/jour, du lundi au vendredi, pour tout le monde. Un jour de semaine sans aucun pointage est compté comme absence (0h face aux 7h prévues). Un samedi/dimanche travaillé compte entièrement en heures sup.</p>
             </div>
 
             <div style={{ background: "#fff", borderRadius: 14, overflow: "auto", WebkitOverflowScrolling: "touch", border: "1.5px solid #e8e0d0" }}>
@@ -858,7 +835,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                                           {rendreCelluleHeure(r.id, j.jour, "depart", j.departStr)}
                                         </div>
                                         <div style={{ ...policeHeures, fontSize: 10.5, color: j.retard > 0 ? "#dc2626" : "#9ca3af", marginTop: 1 }}>
-                                          <b>{fmtMinutesPointeuse(j.travailleesAvecRegles)}</b> avec règles · <b>{fmtMinutesPointeuse(j.travailleesBrut)}</b> brutes
+                                          <b>{fmtMinutesPointeuse(j.travaillees)}</b> travaillées
                                           {j.retard > 0 ? ` · ⏰ ${j.retard}min retard` : ""}{j.oubli ? " · 🌙 départ non pointé" : ""}
                                         </div>
                                       </div>
@@ -937,28 +914,12 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                     <label style={{ fontSize: 11, color: "#6b7280" }}>Pause obligatoire (min)
                       <input type="number" min={0} step={5} value={brouillonHoraire.pause} onChange={e => setBrouillonHoraire({ ...brouillonHoraire, pause: e.target.value })} style={{ display: "block", marginTop: 3, ...champStyle, width: 90 }} />
                     </label>
-                    <div style={{ fontSize: 11, color: "#6b7280" }}>
-                      Jours travaillés
-                      <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
-                        {LABELS_JOURS.map(({ v, l }) => {
-                          const actif = brouillonHoraire.jours.includes(v);
-                          return (
-                            <button key={v} type="button"
-                              onClick={() => setBrouillonHoraire({ ...brouillonHoraire, jours: actif ? brouillonHoraire.jours.filter(j => j !== v) : [...brouillonHoraire.jours, v] })}
-                              style={{ padding: "5px 8px", borderRadius: 6, border: `1.5px solid ${actif ? "#16a34a" : "#e5e7eb"}`, background: actif ? "#f0fdf4" : "#fff", color: actif ? "#16a34a" : "#9ca3af", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>
-                              {l}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
                     <button onClick={() => enregistrerHoraireEmploye(id)} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✅ Enregistrer</button>
                     <button onClick={() => setHoraireEnEdition(null)} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✕ Annuler</button>
                   </div>
                 ) : (
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: "#374151" }}>🕐 {emp.heureArrivee || "—"} → {emp.heureDepart || "—"} · pause {emp.pauseMinutes ?? "—"}min</span>
-                    <span style={{ fontSize: 11, color: "#9ca3af" }}>· {LABELS_JOURS.filter(({ v }) => (emp.joursTravailles ?? JOURS_SEMAINE_DEFAUT).includes(v)).map(({ l }) => l).join(" ")}</span>
                     <button onClick={() => ouvrirEditionHoraire(id, emp)} style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", color: "#6b7280", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>🔒 Modifier l'horaire</button>
                   </div>
                 )}
