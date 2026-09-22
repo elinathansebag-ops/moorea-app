@@ -26,6 +26,9 @@ import { PortailReconditionneur } from "./PortailReconditionneur";
 import { DashboardModule } from "./DashboardModule";
 import { ApproModule } from "./ApproModule";
 import { ChargementModule } from "./ChargementModule";
+import { PointeuseModule } from "./PointeuseModule";
+import { PointeuseEcran } from "./PointeuseEcran";
+import { EspaceEmployeModule } from "./EspaceEmployeModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
 // passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
@@ -779,6 +782,12 @@ export default function App() {
   // Espace public reconditionneur (NLT / Andès), ouvert via ?portail=nlt|andes — voir
   // src/PortailReconditionneur.tsx et le lien envoyé dans le mail récap quotidien.
   const [portailDepot, setPortailDepot] = useState<"nlt" | "andes" | null>(null);
+  // 22/09/2026 -- écran mural de pointage (public) + espace personnel employé (public) -- voir
+  // src/PointeuseEcran.tsx et src/EspaceEmployeModule.tsx. Même principe que portailDepot
+  // ci-dessus : détecté avant la connexion @moorea.fr, aucune des deux pages n'en a besoin.
+  const [pointeuseEcranPublic, setPointeuseEcranPublic] = useState(false);
+  const [espaceEmployePublic, setEspaceEmployePublic] = useState<{ id: string | null; email: string } | null>(null);
+  const [showPointeuse, setShowPointeuse] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState<"palette" | "rapport">("palette");
   const [stockPage, setStockPage] = useState<"home"|"comptage"|"ecarts"|"config">("home");
@@ -1043,6 +1052,10 @@ export default function App() {
     // Espace reconditionneur public — voir déclaration de portailDepot plus haut.
     const portail = params.get("portail");
     if (portail === "nlt" || portail === "andes") setPortailDepot(portail);
+    // Écran mural (?pointeuse=ecran) et espace employé (?espace=<id ou "1">&email=...).
+    if (params.get("pointeuse") === "ecran") setPointeuseEcranPublic(true);
+    const espace = params.get("espace");
+    if (espace) setEspaceEmployePublic({ id: espace === "1" ? null : espace, email: params.get("email") || "" });
     // 02/09/2026 — Demande d'Elinathan : accès direct au module Tâches via ?taches=1, pour
     // pouvoir le mettre en favori/onglet à part sur son ordinateur, sans repasser par l'accueil
     // et le reste de l'appli à chaque fois (connexion @moorea.fr toujours requise, elle reste
@@ -2878,7 +2891,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   };
 
   // ─── FAB SCANNER GLOBAL ───
-  const fabScanner = !showScanner && !showPalette && !showStock && !showRH && (
+  const fabScanner = !showScanner && !showPalette && !showStock && !showRH && !showPointeuse && (
     <button
       onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
       style={{ position: "fixed", bottom: 24, right: 24, width: 58, height: 58, borderRadius: "50%", background: "#0a0a0a", border: "2.5px solid #c8a84b", cursor: "pointer", fontSize: 24, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", zIndex: 9999, transition: "transform 0.15s" }}
@@ -2895,6 +2908,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   if (portailDepot) {
     return <PortailReconditionneur depot={portailDepot} />;
+  }
+
+  if (pointeuseEcranPublic) {
+    return <PointeuseEcran />;
+  }
+
+  if (espaceEmployePublic) {
+    return <EspaceEmployeModule employeIdInvite={espaceEmployePublic.id} emailInvite={espaceEmployePublic.email} />;
   }
 
   if (user === undefined) return (
@@ -3189,6 +3210,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <>{fabScanner}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} isAdmin={monAccesReel.isAdmin} currentUserEmail={user?.email || ""} currentUserName={user?.displayName || ""} /></>;
   }
 
+  // 22/09/2026 -- Nouveau module "Pointeuse" (écran mural + configuration des employés), séparé
+  // du module RH existant -- voir la note plus haut. Réservé aux admins (créer/supprimer des
+  // employés, changer les codes de pointage n'est pas anodin).
+  if (showPointeuse) {
+    if (!monAccesReel.isAdmin) return <AccesRefuse onRetour={() => { setShowPointeuse(false); setShowAccueil(true); }} />;
+    return <>{fabScanner}<PointeuseModule onClose={() => { setShowPointeuse(false); setShowAccueil(true); }} /></>;
+  }
+
   if (showCatalogue) {
     if (!monAcces.hasModule("catalogue")) return <AccesRefuse onRetour={() => { setShowCatalogue(false); setShowAccueil(true); }} />;
     return <CatalogueModule onClose={() => { setShowCatalogue(false); setShowAccueil(true); }} />;
@@ -3439,6 +3468,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "dashboard_tv", icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowAccueil(false); setShowDashboard(true); } },
       { key: "gencodes", icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
       { key: "rh", icon: "👥", label: "RH · Pointeuse", color: "#0ea5e9", stat: "Temps & présences", action: () => { setShowAccueil(false); setShowRH(true); } },
+      ...(monAccesReel.isAdmin ? [{ key: "pointeuse", icon: "🕐", label: "Pointeuse", color: "#0ea5e9", stat: "Écran mural & employés", action: () => { setShowAccueil(false); setShowPointeuse(true); } }] : []),
       { key: "yukon", icon: "🌿", label: "Besoins Yukon", color: "#16a34a", stat: "Légumes Afrique du Sud", action: () => { setShowAccueil(false); setShowYukon(true); } },
       { key: "taches", icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowAccueil(false); setShowTaches(true); } },
       // 17/09/2026 — "Archiver" et "Historique" retirés d'ici (demande d'Elinathan : ça ne
