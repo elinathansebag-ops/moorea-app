@@ -440,6 +440,12 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
     return Object.entries(employes).map(([id, emp]) => {
       const horaire: HoraireJour = { heureArrivee: emp.heureArrivee, heureDepart: emp.heureDepart, pauseMinutes: emp.pauseMinutes };
       const pointagesEmp = Object.values(pointagesTous[id] || {});
+      // 22/09/2026 -- Demande d'Elinathan : tout le monde est en 35h, du lundi au vendredi (un
+      // samedi travaillé compte en heures sup, jamais en "prévu"). Pour éviter de compter en
+      // "absence" les jours d'avant l'arrivée d'un employé récent (aucun pointage car pas encore
+      // embauché, pas parce qu'il a séché), on ignore les jours antérieurs à son tout premier
+      // pointage jamais enregistré (pas seulement dans la période choisie).
+      const premierPointageMs = pointagesEmp.length ? Math.min(...pointagesEmp.map(p => p.timestamp)) : null;
       let minutesTravaillees = 0, minutesPrevues = 0, minutesRetard = 0, joursPointes = 0, joursAbsents = 0;
       const detailJours: { jour: string; travaillees: number; travailleesAvecRegles: number; travailleesBrut: number; retard: number; oubli: boolean; pointe: boolean; absent: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
 
@@ -471,11 +477,13 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         const departs = parType("depart");
         const departMs = departs.length ? departs[departs.length - 1].timestamp : null;
         if (pointagesJour.length === 0) {
-          if (jourEstPlanifie) {
+          const avantEmbauche = premierPointageMs != null && debutJourMs < premierPointageMs;
+          const estAbsence = jourEstPlanifie && !avantEmbauche;
+          if (estAbsence) {
             minutesPrevues += prevueJourPlein;
             joursAbsents++;
           }
-          detailJours.push({ jour, travaillees: 0, travailleesAvecRegles: 0, travailleesBrut: 0, retard: 0, oubli: false, pointe: false, absent: jourEstPlanifie, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
+          detailJours.push({ jour, travaillees: 0, travailleesAvecRegles: 0, travailleesBrut: 0, retard: 0, oubli: false, pointe: false, absent: estAbsence, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
           return;
         }
         const pointagesJourObj = { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs };
