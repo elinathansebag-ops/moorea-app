@@ -1483,7 +1483,17 @@ export function MessagerieModule({
   // file en continu (chaque résumé généré met à jour "mails", ce qui redéclenche l'effet), ce
   // qui saturait le fil principal et figeait complètement la page. Les mails anciens sans résumé
   // restent accessibles via le bouton manuel "🧠 Générer un résumé" sur chaque ligne.
+  // Verrou : true tant qu'un resume automatique est en cours. Un useRef (et pas un useState)
+  // parce qu'il doit etre lu/ecrit immediatement, sans attendre le prochain rendu -- c'est
+  // precisement ce decalage qui provoquait la rafale.
+  const resumeAutoEnVolRef = useRef(false);
+  // Plafond de securite : au-dela, on arrete la generation automatique pour cette session.
+  // Filet de securite pur -- en usage normal on est tres loin du compte sur une seule journee.
+  const PLAFOND_RESUMES_AUTO = 40;
+  const nbResumesAutoRef = useRef(0);
   useEffect(() => {
+    if (resumeAutoEnVolRef.current) return;
+    if (nbResumesAutoRef.current >= PLAFOND_RESUMES_AUTO) return;
     const aujourdhui = new Date().toDateString();
     const aFaire = mails.find(m => {
       if (m.lu !== false || m.resume || resumesEnCours.has(m.id)) return false;
@@ -1492,7 +1502,13 @@ export function MessagerieModule({
       if (isNaN(dateMail.getTime())) return false;
       return dateMail.toDateString() === aujourdhui;
     });
-    if (aFaire) demanderResume(aFaire);
+    if (!aFaire) return;
+    resumeAutoEnVolRef.current = true;
+    nbResumesAutoRef.current += 1;
+    // Le resume suivant sera lance par le rendu declenche a la fin de celui-ci.
+    demanderResume(aFaire).finally(() => {
+      resumeAutoEnVolRef.current = false;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mails, resumesEnCours]);
 
