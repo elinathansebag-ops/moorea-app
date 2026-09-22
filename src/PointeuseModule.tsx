@@ -55,6 +55,8 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   const [rapportDebut, setRapportDebut] = useState(todayISO(-6));
   const [rapportFin, setRapportFin] = useState(todayISO());
   const [empDetail, setEmpDetail] = useState<string | null>(null);
+  const [importEnCours, setImportEnCours] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
 
   useEffect(() => {
     const unsub1 = onValue(ref(db, "pointeuse_employes"), snap => setEmployes(snap.val() || {}));
@@ -91,12 +93,106 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
 
   const ajouterEmploye = async () => {
     setErreurAjout("");
-    if (!nouveauNom.trim() || !nouveauEmail.trim()) { setErreurAjout("Nom et email requis."); return; }
+    if (!nouveauNom.trim()) { setErreurAjout("Le nom est requis (email possible à ajouter plus tard)."); return; }
     const cle = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const emp: Employe = { nom: nouveauNom.trim(), email: nouveauEmail.trim().toLowerCase(), pin: genererPinLibre(), actif: true };
     await set(ref(db, `pointeuse_employes/${cle}`), emp);
     await synchroniserMiroirs(cle, emp);
     setNouveauNom(""); setNouveauEmail("");
+  };
+
+  // 23/09/2026 -- Demande d'Elinathan : import automatique des employés depuis un export
+  // TimeMoto ("si je te donne un export des heures passées, tu as moyen de les intégrer ? donc
+  // ça crée automatiquement les employés et je mettrai leur mail plus tard") -- même format que
+  // RHApp.tsx (Prénom, Nom, Date, Entrée, Sortie...). On ne crée que les employés qui n'existent
+  // pas déjà (comparaison par nom complet), avec l'heure d'arrivée/départ la plus fréquente dans
+  // l'historique et une pause obligatoire par défaut de 1h (ajustable ensuite). Email laissé
+  // vide -- à compléter plus tard dans la liste, l'invitation restera grisée en attendant.
+  const importerDepuisTimeMoto = async (file: File) => {
+    setImportEnCours(true);
+    setImportMessage("");
+    try {
+      let XLSX = (window as any).XLSX;
+      if (!XLSX) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          s.onload = () => resolve(); s.onerror = () => reject();
+          document.head.appendChild(s);
+        });
+        XLSX = (window as any).XLSX;
+      }
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+      const parEmploye: Record<string, { jours: Record<string, [string, string][]> }> = {};
+      let dernierNom = "";
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const prenom = String(r[0] || "").trim();
+        const nom = String(r[1] || "").trim();
+        const date = String(r[2] || "").trim();
+        const entree = String(r[3] || "").trim();
+        const sortie = String(r[5] || "").trim();
+        if (prenom && nom) dernierNom = `${prenom} ${nom}`.trim();
+        if (!dernierNom) continue;
+        if (!parEmploye[dernierNom]) parEmploye[dernierNom] = { jours: {} };
+        const emp = parEmploye[dernierNom];
+        if (date) {
+          if (!emp.jours[date]) emp.jours[date] = [];
+          if (entree) emp.jours[date].push([entree, sortie]);
+        } else if (entree) {
+          const dates = Object.keys(emp.jours);
+          const derniereDate = dates[dates.length - 1];
+          if (derniereDate) emp.jours[derniereDate].push([entree, sortie]);
+        }
+      }
+
+      const nomsExistants = new Set(Object.values(employes).map(e => e.nom));
+      const pinsUtilises = new Set(Object.values(employes).map(e => e.pin));
+      const genererPinLocal = (): string => {
+        let pin = "";
+        do { pin = String(Math.floor(1000 + Math.random() * 9000)); } while (pinsUtilises.has(pin));
+        pinsUtilises.add(pin);
+        return pin;
+      };
+
+      let nbCrees = 0;
+      for (const [nom, d] of Object.entries(parEmploye)) {
+        if (nomsExistants.has(nom)) continue;
+        const compteArrivee: Record<string, number> = {};
+        const compteDepart: Record<string, number> = {};
+        Object.values(d.jours).forEach(creneaux => {
+          const valides = creneaux.filter(c => c[0]);
+          if (!valides.length) return;
+          const tries = [...valides].sort((a, b) => a[0].localeCompare(b[0]));
+          compteArrivee[tries[0][0]] = (compteArrivee[tries[0][0]] || 0) + 1;
+          const sorties = valides.map(c => c[1]).filter(Boolean).sort();
+          if (sorties.length) {
+            const derniere = sorties[sorties.length - 1];
+            compteDepart[derniere] = (compteDepart[derniere] || 0) + 1;
+          }
+        });
+        const plusFrequent = (compte: Record<string, number>) => Object.entries(compte).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+
+        const cle = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${nbCrees}`;
+        const emp: Employe = {
+          nom, email: "", pin: genererPinLocal(),
+          heureArrivee: plusFrequent(compteArrivee), heureDepart: plusFrequent(compteDepart),
+          pauseMinutes: 60, actif: true,
+        };
+        await set(ref(db, `pointeuse_employes/${cle}`), emp);
+        await synchroniserMiroirs(cle, emp);
+        nbCrees++;
+      }
+      setImportMessage(nbCrees > 0 ? `✅ ${nbCrees} employé(s) créé(s) — ajoute leur email ci-dessous quand tu l'auras.` : "Aucun nouvel employé importé (déjà tous présents).");
+    } catch (e: any) {
+      setImportMessage("Erreur : " + (e?.message || String(e)));
+    } finally {
+      setImportEnCours(false);
+    }
   };
 
   const majEmploye = async (id: string, champ: keyof Employe, valeur: any) => {
@@ -379,6 +475,15 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
               </div>
               {erreurAjout && <p style={{ color: "#dc2626", fontSize: 12, margin: 0 }}>{erreurAjout}</p>}
               <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Un code à 4 chiffres est généré automatiquement pour pointer sur l'écran mural.</p>
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f0ece0" }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 8, border: "1.5px dashed #c8a84b", background: "#fffdf7", color: "#8a6d1f", fontWeight: 700, fontSize: 12.5, cursor: importEnCours ? "default" : "pointer" }}>
+                  {importEnCours ? "⏳ Import en cours…" : "📥 Importer depuis un export TimeMoto (.xlsx)"}
+                  <input type="file" accept=".xlsx,.xls" disabled={importEnCours} style={{ display: "none" }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) importerDepuisTimeMoto(f); e.target.value = ""; }} />
+                </label>
+                {importMessage && <p style={{ margin: "8px 0 0", fontSize: 12, color: importMessage.startsWith("Erreur") ? "#dc2626" : "#16a34a" }}>{importMessage}</p>}
+                <p style={{ margin: "6px 0 0", fontSize: 11, color: "#9ca3af" }}>Crée automatiquement les employés absents de la liste, avec leurs horaires les plus fréquents. Ajoute leur email ensuite ci-dessous.</p>
+              </div>
             </div>
 
             {Object.keys(employes).length === 0 ? (
@@ -388,7 +493,12 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div>
                     <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{emp.nom}</p>
-                    <p style={{ margin: 0, fontSize: 11.5, color: "#9ca3af" }}>{emp.email} · code {emp.pin}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <input defaultValue={emp.email} placeholder="email@... (à ajouter)" onBlur={e => { const v = e.target.value.trim().toLowerCase(); if (v !== emp.email) majEmploye(id, "email", v); }}
+                        style={{ fontSize: 11.5, color: "#374151", border: "1px solid transparent", borderRadius: 6, padding: "2px 4px", background: "transparent", width: 190 }}
+                        onFocus={e => (e.target.style.border = "1px solid #e5e7eb")} onBlurCapture={e => (e.target.style.border = "1px solid transparent")} />
+                      <span style={{ fontSize: 11.5, color: "#9ca3af" }}>· code {emp.pin}</span>
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => envoyerInvitation(id, emp)}
