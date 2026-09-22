@@ -77,9 +77,8 @@ function motDePasseBoite() {
   // Un mot de passe d'application Google ne contient jamais d'espace : on nettoie ce que
   // Google affiche (4 groupes de 4) pour qu'un copier-coller tel quel fonctionne quand meme.
   const motDePasse = brut.replace(/\s+/g, "");
-  if (motDePasse.length !== 16) {
-    console.warn(`[imap] GMAIL_PASS_MESSAGERIE fait ${motDePasse.length} caracteres apres nettoyage (16 attendus pour un mot de passe d'application Google) — secret probablement tronque ou incomplet.`);
-  }
+  const espacesRetires = brut.length - motDePasse.length;
+  console.log(`[imap] GMAIL_PASS_MESSAGERIE : ${motDePasse.length} caracteres (16 attendus)${espacesRetires > 0 ? `, ${espacesRetires} espace(s) retire(s)` : ""}${motDePasse.length !== 16 ? " — SECRET TRONQUE OU INCOMPLET" : ""}`);
   return motDePasse;
 }
 
