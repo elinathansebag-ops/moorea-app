@@ -59,6 +59,12 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   const [importEnCours, setImportEnCours] = useState(false);
   const [importMessage, setImportMessage] = useState("");
 
+  const [heureActuelle, setHeureActuelle] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setHeureActuelle(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
   useEffect(() => {
     const unsub1 = onValue(ref(db, "pointeuse_employes"), snap => setEmployes(snap.val() || {}));
     const unsub2 = onValue(ref(db, "pointeuse_demandes"), snap => setDemandes(snap.val() || {}));
@@ -252,6 +258,39 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       return ordre[a.statut] - ordre[b.statut] || a.emp.nom.localeCompare(b.emp.nom);
     });
   }, [employes, pointagesTous]);
+  // 25/09/2026 -- Demande d'Elinathan : "je veux que l'écran d'accueil ressemble à ça [capture
+  // TimeMoto] avec la liste de tout le monde et un rectangle qui montre où ils en sont dans
+  // leur journée, en pause, au travail ou absent" -- frise horaire par employé sur la journée.
+  const HEURE_AXE_DEBUT = 6;
+  const HEURE_AXE_FIN = 20;
+  const timelineAujourdhui = useMemo(() => {
+    const debutAxeMs = new Date(); debutAxeMs.setHours(HEURE_AXE_DEBUT, 0, 0, 0);
+    const finAxeMs = new Date(); finAxeMs.setHours(HEURE_AXE_FIN, 0, 0, 0);
+    const largeurMs = finAxeMs.getTime() - debutAxeMs.getTime();
+    const pct = (ms: number) => Math.max(0, Math.min(100, ((ms - debutAxeMs.getTime()) / largeurMs) * 100));
+
+    const lignes = statutsDirect.map(({ id, emp, statut }) => {
+      const pointagesEmp = Object.values(pointagesTous[id] || {}).filter(p => p.timestamp >= debutAujourdhui.getTime());
+      const parType = (t: string) => pointagesEmp.filter(p => p.type === t).sort((a, b) => a.timestamp - b.timestamp);
+      const arriveeMs = parType("arrivee")[0]?.timestamp ?? null;
+      const pauseDebutMs = parType("pause_debut")[0]?.timestamp ?? null;
+      const pauseFinMs = parType("pause_fin")[0]?.timestamp ?? null;
+      const departsArr = parType("depart");
+      const departMs = departsArr.length ? departsArr[departsArr.length - 1].timestamp : null;
+      const finSiEnCours = departMs ?? heureActuelle;
+
+      const segments: { pctDebut: number; pctFin: number; type: "travail" | "pause" }[] = [];
+      if (arriveeMs != null) {
+        segments.push({ pctDebut: pct(arriveeMs), pctFin: pct(pauseDebutMs ?? finSiEnCours), type: "travail" });
+        if (pauseDebutMs != null) {
+          segments.push({ pctDebut: pct(pauseDebutMs), pctFin: pct(pauseFinMs ?? finSiEnCours), type: "pause" });
+          if (pauseFinMs != null) segments.push({ pctDebut: pct(pauseFinMs), pctFin: pct(finSiEnCours), type: "travail" });
+        }
+      }
+      return { id, emp, statut, segments };
+    });
+    return { lignes, pctMaintenant: pct(heureActuelle) };
+  }, [statutsDirect, pointagesTous, heureActuelle]);
   const nbPresents = statutsDirect.filter(s => s.statut === "present").length;
   const nbEnPause = statutsDirect.filter(s => s.statut === "pause").length;
   const nbAbsents = statutsDirect.filter(s => s.statut === "absent").length;
@@ -431,19 +470,49 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
             </div>
 
             <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", border: "1.5px solid #e8e0d0", marginBottom: 20 }}>
-              {statutsDirect.length === 0 ? (
+              {/* Axe des heures, comme la vue "Présence" de TimeMoto */}
+              <div style={{ display: "flex", padding: "10px 14px 6px" }}>
+                <div style={{ width: 128, flexShrink: 0 }} />
+                <div style={{ flex: 1, position: "relative", height: 12 }}>
+                  {Array.from({ length: HEURE_AXE_FIN - HEURE_AXE_DEBUT + 1 }).map((_, i) => (
+                    <span key={i} style={{ position: "absolute", left: `${(i / (HEURE_AXE_FIN - HEURE_AXE_DEBUT)) * 100}%`, transform: i === 0 ? "none" : i === HEURE_AXE_FIN - HEURE_AXE_DEBUT ? "translateX(-100%)" : "translateX(-50%)", fontSize: 9.5, color: "#9ca3af", fontWeight: 600 }}>
+                      {HEURE_AXE_DEBUT + i}h
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {timelineAujourdhui.lignes.length === 0 ? (
                 <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 13, padding: "2rem 0" }}>Aucun employé configuré.</p>
-              ) : statutsDirect.map(({ id, emp, statut, heureDernier }, idx) => (
-                <div key={id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: idx < statutsDirect.length - 1 ? "1px solid #f0f0f0" : "none" }}>
-                  <span style={{ fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{emp.nom}</span>
-                  <span style={{
-                    display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700,
-                    color: statut === "present" ? "#16a34a" : statut === "pause" ? "#d97706" : statut === "parti" ? "#6b7280" : "#dc2626",
-                  }}>
-                    {statut === "present" ? `🟢 En poste depuis ${heureDernier}` : statut === "pause" ? `🍽️ En pause depuis ${heureDernier}` : statut === "parti" ? `⚪ Parti à ${heureDernier}` : "🔴 Rien pointé aujourd'hui"}
-                  </span>
+              ) : timelineAujourdhui.lignes.map(({ id, emp, statut, segments }, idx) => (
+                <div key={id} title={statut === "absent" ? "Rien pointé aujourd'hui" : undefined}
+                  style={{ display: "flex", alignItems: "center", padding: "7px 14px", borderBottom: idx < timelineAujourdhui.lignes.length - 1 ? "1px solid #f5f5f0" : "none" }}>
+                  <div style={{ width: 128, flexShrink: 0, display: "flex", alignItems: "center", gap: 6, paddingRight: 8 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: statut === "present" ? "#16a34a" : statut === "pause" ? "#d97706" : statut === "parti" ? "#9ca3af" : "#dc2626" }} />
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{emp.nom}</span>
+                  </div>
+                  <div style={{ flex: 1, position: "relative", height: 24, background: "#f5f3ee", borderRadius: 6 }}>
+                    {segments.map((s, i) => (
+                      <div key={i} style={{
+                        position: "absolute", top: 0, bottom: 0,
+                        left: `${s.pctDebut}%`, width: `${Math.max(0.8, s.pctFin - s.pctDebut)}%`,
+                        borderRadius: 4,
+                        background: s.type === "travail" ? "#4ade80" : "repeating-linear-gradient(45deg, #fed7aa, #fed7aa 4px, #fdba74 4px, #fdba74 8px)",
+                      }} />
+                    ))}
+                    <div style={{ position: "absolute", top: -3, bottom: -3, left: `${timelineAujourdhui.pctMaintenant}%`, width: 1.5, background: "#0ea5e9", borderRadius: 1 }} />
+                  </div>
                 </div>
               ))}
+
+              {timelineAujourdhui.lignes.length > 0 && (
+                <div style={{ display: "flex", gap: 16, alignItems: "center", padding: "8px 14px 12px", flexWrap: "wrap" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#4ade80" }} />Au travail</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "repeating-linear-gradient(45deg, #fed7aa, #fed7aa 4px, #fdba74 4px, #fdba74 8px)" }} />En pause</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#f5f3ee", border: "1px solid #e5e7eb" }} />Absent / pas encore arrivé</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 2, height: 10, background: "#0ea5e9" }} />Maintenant</span>
+                </div>
+              )}
             </div>
 
             {/* Rapport sur période */}
