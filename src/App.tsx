@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import jsPDF from "jspdf";
-import { db, ref, push, onValue, update, remove, set, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
+import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import RetoursModule from "./RetoursModule";
 import GencodeModule from "./GencodeModule";
 import CatalogueModule from "./CatalogueModule";
@@ -613,6 +613,35 @@ export default function App() {
     });
     return () => unsub();
   }, []);
+  // 22/09/2026 -- Indicateur de sante des comptes mail (voir la note plus haut). Un admin qui
+  // ouvre l'appli declenche le test si ca fait plus de 20h que le dernier a eu lieu.
+  const [santeComptesMail, setSanteComptesMail] = useState<Record<string, { email: string; ok: boolean | null; erreur?: string }>>({});
+  useEffect(() => {
+    const unsub = onValue(ref(db, "sante_comptes_mail"), snap => {
+      const d = snap.val() || {};
+      const { derniereVerification, ...comptes } = d;
+      setSanteComptesMail(comptes);
+    });
+    return () => unsub();
+  }, []);
+  useEffect(() => {
+    if (!monAccesReel.isAdmin || !user) return;
+    (async () => {
+      try {
+        const derniereSnap = await get(ref(db, "sante_comptes_mail/derniereVerification"));
+        const derniere = typeof derniereSnap.val() === "number" ? derniereSnap.val() : 0;
+        if (Date.now() - derniere < 20 * 60 * 60 * 1000) return; // testé il y a moins de 20h
+        const idToken = await user.getIdToken();
+        const reponse = await fetch("/api/sante-comptes-mail", { headers: { Authorization: `Bearer ${idToken}` } });
+        const data = await reponse.json();
+        if (reponse.ok && data?.comptes) {
+          await update(ref(db, "sante_comptes_mail"), { ...data.comptes, derniereVerification: Date.now() });
+        }
+      } catch {
+        // échec silencieux -- pas grave, on retentera à la prochaine ouverture de l'appli.
+      }
+    })();
+  }, [monAccesReel.isAdmin, user]);
   useEffect(() => {
     const unsub = onValue(ref(db, "activity_log"), snap => {
       const data = snap.val();
@@ -3768,9 +3797,21 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   if (vue === "historique" && !monAcces.hasModule("rapports")) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
   if (vue !== "historique" && !monAcces.hasModule("arrivages")) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
 
+  // 22/09/2026 -- Bandeau d'alerte si un compte mail est casse (voir la note plus haut sur
+  // santeComptesMail). Visible seulement par un admin : elle seule peut le corriger dans Vercel.
+  const comptesMailCasses = monAccesReel.isAdmin
+    ? Object.values(santeComptesMail).filter(c => c && c.ok === false)
+    : [];
+
   return (
     <div className="app">
       <style>{styles}</style>
+
+      {comptesMailCasses.length > 0 && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 5000, background: "#7f1d1d", color: "#fff", padding: "8px 16px", fontSize: 12.5, textAlign: "center", fontWeight: 700 }}>
+          ⚠️ {comptesMailCasses.length > 1 ? "Plusieurs comptes mail sont" : "Un compte mail est"} déconnecté(s) — {comptesMailCasses.map(c => c.email).join(", ")}. Vérifier le mot de passe d'application dans Vercel.
+        </div>
+      )}
 
       {popupEtiquette && (
         <PopupEtiquetteMulti arrivage={popupEtiquette} onClose={() => setPopupEtiquette(null)} />
