@@ -67,6 +67,10 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
     return () => clearInterval(t);
   }, []);
 
+  // 25/09/2026 -- Fermer le detail ouvert d'un employe quand on change la periode du rapport :
+  // sinon la mise a jour du tableau peut passer inapercue si on est scrolle dans le detail.
+  useEffect(() => { setEmpDetail(null); }, [rapportDebut, rapportFin]);
+
   useEffect(() => {
     const unsub1 = onValue(ref(db, "pointeuse_employes"), snap => setEmployes(snap.val() || {}));
     const unsub2 = onValue(ref(db, "pointeuse_demandes"), snap => setDemandes(snap.val() || {}));
@@ -653,23 +657,42 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                         empDetail === r.id && (
                           <tr key={`${r.id}_detail`}>
                             <td colSpan={6} style={{ padding: "10px 14px", background: "#faf9f6", borderBottom: "1px solid #f0f0f0" }}>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                              {/* 25/09/2026 -- Demande d'Elinathan : reprendre l'affichage de TimeMoto -- la date, puis
+                                  sur 2 lignes "heure d'entrée - heure de départ en pause" et "heure de retour de
+                                  pause - heure de départ", jour après jour. */}
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 {[...r.detailJours].reverse().map(j => (
                                   <div key={j.jour} onClick={() => setEditionJour({ id: r.id, jour: j.jour, arrivee: j.arriveeStr, pauseDebut: j.pauseDebutStr, pauseFin: j.pauseFinStr, depart: j.departStr })}
                                     style={{
-                                      display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 8, cursor: "pointer",
+                                      display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
                                       background: !j.pointe ? "#fff" : j.retard > 0 ? "#fff5f5" : "#f0fdf4",
                                       border: `1px solid ${!j.pointe ? "#e8e0d0" : j.retard > 0 ? "#fecaca" : "#bbf7d0"}`,
                                     }}>
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: "#374151", minWidth: 78, textTransform: "capitalize" }}>
+                                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#374151", minWidth: 78, textTransform: "capitalize", flexShrink: 0 }}>
                                       {new Date(`${j.jour}T00:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" })}
                                     </span>
-                                    <span style={{ fontSize: 11, color: j.pointe ? "#374151" : "#9ca3af", flex: 1 }}>
-                                      {j.pointe
-                                        ? `${j.arriveeStr || "?"} → ${j.pauseDebutStr || "-"} pause ${j.pauseFinStr || "-"} → ${j.departStr || "?"} · ${fmtMinutesPointeuse(j.travaillees)}${j.retard > 0 ? ` · ⏰ ${j.retard}min retard` : ""}${j.oubli ? " · 🌙 oubli" : ""}`
-                                        : "Aucun pointage"}
-                                    </span>
-                                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0369a1", flexShrink: 0 }}>✏️ {j.pointe ? "Modifier" : "Ajouter"}</span>
+                                    {j.pointe ? (
+                                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                                        <div style={{ display: "flex", gap: 6, fontSize: 12, color: "#374151" }}>
+                                          <span style={{ color: "#9ca3af", minWidth: 92 }}>🟢 Entrée → 🍽️ Pause</span>
+                                          <span style={{ fontWeight: 700 }}>{j.arriveeStr || "?"}</span>
+                                          <span style={{ color: "#9ca3af" }}>→</span>
+                                          <span style={{ fontWeight: 700 }}>{j.pauseDebutStr || "-"}</span>
+                                        </div>
+                                        <div style={{ display: "flex", gap: 6, fontSize: 12, color: "#374151" }}>
+                                          <span style={{ color: "#9ca3af", minWidth: 92 }}>👍 Retour → 🏁 Départ</span>
+                                          <span style={{ fontWeight: 700 }}>{j.pauseFinStr || "-"}</span>
+                                          <span style={{ color: "#9ca3af" }}>→</span>
+                                          <span style={{ fontWeight: 700 }}>{j.departStr || "?"}</span>
+                                        </div>
+                                        <div style={{ fontSize: 10.5, color: j.retard > 0 ? "#dc2626" : "#9ca3af", marginTop: 1 }}>
+                                          {fmtMinutesPointeuse(j.travaillees)} travaillées{j.retard > 0 ? ` · ⏰ ${j.retard}min retard` : ""}{j.oubli ? " · 🌙 départ non pointé" : ""}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span style={{ fontSize: 11.5, color: "#9ca3af", flex: 1 }}>Aucun pointage</span>
+                                    )}
+                                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0369a1", flexShrink: 0, alignSelf: "flex-start" }}>✏️ {j.pointe ? "Modifier" : "Ajouter"}</span>
                                   </div>
                                 ))}
                               </div>
