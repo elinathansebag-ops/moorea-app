@@ -38,7 +38,16 @@ import { ChargementModule } from "./ChargementModule";
 // devient same-origin et se convertit sans problème.
 async function chargerImageEnDataUrl(url: string): Promise<string> {
   try {
-    const resp = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
+    // 22/09/2026 -- Timeout côté navigateur aussi (voir la note sur api/fetch-image.ts) : sans
+    // ça, une seule photo lente pouvait bloquer l'envoi du rapport entier pendant 30-40s.
+    const controleur = new AbortController();
+    const delai = setTimeout(() => controleur.abort(), 8000);
+    let resp: Response;
+    try {
+      resp = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`, { signal: controleur.signal });
+    } finally {
+      clearTimeout(delai);
+    }
     if (!resp.ok) return "";
     const blob = await resp.blob();
     return await new Promise<string>((resolve) => {

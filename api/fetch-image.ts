@@ -22,7 +22,20 @@ export default async function handler(req: Request) {
     if (!/^https:\/\/(i\.)?ibb\.co\//.test(url)) {
       return new Response('URL non autorisée', { status: 403, headers: corsHeaders });
     }
-    const resp = await fetch(url);
+    // Timeout court : mieux vaut échouer vite et proprement (le navigateur continue sans
+    // cette photo) que de laisser la fonction tourner jusqu'à ce que Vercel la tue de force
+    // après ~30-40s (ce qui arrivait avec certaines images imgBB lentes ou injoignables).
+    const controleur = new AbortController();
+    const delai = setTimeout(() => controleur.abort(), 8000);
+    let resp: Response;
+    try {
+      resp = await fetch(url, { signal: controleur.signal });
+    } catch (err: any) {
+      const timeout = err?.name === "AbortError";
+      return new Response(timeout ? "Image trop lente à récupérer (timeout 8s)" : "Erreur réseau : " + (err?.message || String(err)), { status: timeout ? 504 : 502, headers: corsHeaders });
+    } finally {
+      clearTimeout(delai);
+    }
     if (!resp.ok) return new Response('Erreur récupération image', { status: 502, headers: corsHeaders });
     const buf = await resp.arrayBuffer();
     return new Response(buf, {
