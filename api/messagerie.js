@@ -153,6 +153,17 @@ function nouveauClientImap() {
 // systématiquement les connexions IMAP de ce compte. On repasse donc à 1 seul
 // essai : mieux vaut un échec occasionnel affiché clairement que déclencher un
 // blocage complet du compte côté Google.
+// Rassemble tout ce que le serveur IMAP a reellement dit, pas seulement "Command failed".
+function detaillerErreurImap(err) {
+  return [
+    err?.message,
+    err?.responseText,
+    err?.serverResponseCode ? `code=${err.serverResponseCode}` : null,
+    err?.authenticationFailed ? "authentification refusee par le serveur" : null,
+    err?.code ? `errcode=${err.code}` : null,
+  ].filter(Boolean).join(" — ");
+}
+
 async function connecterImap() {
   const NB_ESSAIS = 1;
   let derniereErreur;
@@ -167,7 +178,9 @@ async function connecterImap() {
       if (essai < NB_ESSAIS) await attendre(400 * essai);
     }
   }
-  const e = new Error(`Connexion IMAP échouée : ${derniereErreur.message}`);
+  const detail = detaillerErreurImap(derniereErreur);
+  console.error("[imap] connexion echouee —", detail);
+  const e = new Error(`Connexion IMAP échouée : ${detail}`);
   e.status = 502;
   throw e;
 }
@@ -892,7 +905,9 @@ async function connecterImapSync() {
     return client;
   } catch (err) {
     try { client.close(); } catch { /* deja ferme, sans consequence */ }
-    const e = new Error(`Connexion IMAP (sync) echouee : ${err.message}`);
+    const detail = detaillerErreurImap(err);
+    console.error("[imap sync] connexion echouee —", detail);
+    const e = new Error(`Connexion IMAP (sync) echouee : ${detail}`);
     e.status = 502;
     throw e;
   }
