@@ -68,11 +68,17 @@ function assainirCleFirebase(valeur) {
 }
 
 function motDePasseBoite() {
-  const motDePasse = process.env.GMAIL_PASS_MESSAGERIE;
-  if (!motDePasse) {
+  const brut = process.env.GMAIL_PASS_MESSAGERIE;
+  if (!brut) {
     const err = new Error("GMAIL_PASS_MESSAGERIE manquant (variable d'env Vercel)");
     err.status = 500;
     throw err;
+  }
+  // Un mot de passe d'application Google ne contient jamais d'espace : on nettoie ce que
+  // Google affiche (4 groupes de 4) pour qu'un copier-coller tel quel fonctionne quand meme.
+  const motDePasse = brut.replace(/\s+/g, "");
+  if (motDePasse.length !== 16) {
+    console.warn(`[imap] GMAIL_PASS_MESSAGERIE fait ${motDePasse.length} caracteres apres nettoyage (16 attendus pour un mot de passe d'application Google) — secret probablement tronque ou incomplet.`);
   }
   return motDePasse;
 }
