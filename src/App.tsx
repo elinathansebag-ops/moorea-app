@@ -638,31 +638,43 @@ export default function App() {
   // 22/09/2026 -- Indicateur de sante des comptes mail (voir la note plus haut). Un admin qui
   // ouvre l'appli declenche le test si ca fait plus de 20h que le dernier a eu lieu.
   const [santeComptesMail, setSanteComptesMail] = useState<Record<string, { email: string; ok: boolean | null; erreur?: string }>>({});
+  const [derniereVerifMail, setDerniereVerifMail] = useState<number | null>(null);
+  const [verifMailEnCours, setVerifMailEnCours] = useState(false);
   useEffect(() => {
     const unsub = onValue(ref(db, "sante_comptes_mail"), snap => {
       const d = snap.val() || {};
       const { derniereVerification, ...comptes } = d;
       setSanteComptesMail(comptes);
+      setDerniereVerifMail(typeof derniereVerification === "number" ? derniereVerification : null);
     });
     return () => unsub();
   }, []);
-  useEffect(() => {
+  // 22/09/2026 -- extrait de l'effet ci-dessous pour pouvoir être aussi déclenché à la demande
+  // par le bouton "🔄 Tester maintenant" dans Admin > Réglages (forcer=true ignore les 20h).
+  const verifierSanteComptesMail = async (forcer: boolean) => {
     if (!monAccesReel.isAdmin || !user) return;
-    (async () => {
-      try {
+    setVerifMailEnCours(true);
+    try {
+      if (!forcer) {
         const derniereSnap = await get(ref(db, "sante_comptes_mail/derniereVerification"));
         const derniere = typeof derniereSnap.val() === "number" ? derniereSnap.val() : 0;
         if (Date.now() - derniere < 20 * 60 * 60 * 1000) return; // testé il y a moins de 20h
-        const idToken = await user.getIdToken();
-        const reponse = await fetch("/api/sante-comptes-mail", { headers: { Authorization: `Bearer ${idToken}` } });
-        const data = await reponse.json();
-        if (reponse.ok && data?.comptes) {
-          await update(ref(db, "sante_comptes_mail"), { ...data.comptes, derniereVerification: Date.now() });
-        }
-      } catch {
-        // échec silencieux -- pas grave, on retentera à la prochaine ouverture de l'appli.
       }
-    })();
+      const idToken = await user.getIdToken();
+      const reponse = await fetch("/api/sante-comptes-mail", { headers: { Authorization: `Bearer ${idToken}` } });
+      const data = await reponse.json();
+      if (reponse.ok && data?.comptes) {
+        await update(ref(db, "sante_comptes_mail"), { ...data.comptes, derniereVerification: Date.now() });
+      }
+    } catch {
+      // échec silencieux -- pas grave, on retentera à la prochaine ouverture de l'appli (ou au
+      // prochain clic sur "Tester maintenant").
+    } finally {
+      setVerifMailEnCours(false);
+    }
+  };
+  useEffect(() => {
+    verifierSanteComptesMail(false);
   }, [monAccesReel.isAdmin, user]);
   useEffect(() => {
     const unsub = onValue(ref(db, "activity_log"), snap => {
@@ -3304,6 +3316,34 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </CarteReglage>
                     <CarteReglage titre="📧 Messagerie" desc="Rattachement des adresses aux commerciaux, tri automatique.">
                       <BoutonReglage label="Ouvrir la configuration →" onClick={() => { setShowAdmin(false); setMessagerieInitialTab("configuration"); setShowMessagerie(true); }} />
+                    </CarteReglage>
+
+                    {/* 22/09/2026 -- Demande d'Elinathan : voir d'un coup d'œil lequel des 6
+                        comptes mail est déconnecté, pas juste "1 compte mail déconnecté" sans
+                        savoir lequel. */}
+                    <TitreSection>✉️ Comptes mail</TitreSection>
+                    <CarteReglage titre="✉️ État des comptes mail" desc="Testé automatiquement une fois par jour (IMAP pour la messagerie, SMTP pour les envois de rapports).">
+                      {Object.keys(santeComptesMail).length === 0 ? (
+                        <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 10px" }}>Pas encore testé.</p>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                          {Object.entries(santeComptesMail).map(([cle, c]: [string, any]) => (
+                            <div key={cle} title={c?.erreur || ""} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: darkMode ? "#1a1a1a" : "#faf8f3", border: "1px solid #e8e0d0" }}>
+                              <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: c?.ok === true ? "#22c55e" : c?.ok === false ? "#dc2626" : "#9ca3af" }} />
+                              <span style={{ fontSize: 12.5, fontWeight: 600, color: darkMode ? "#e5e7eb" : "#1a2e1a" }}>{c?.email || cle}</span>
+                              <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: c?.ok === true ? "#16a34a" : c?.ok === false ? "#dc2626" : "#9ca3af" }}>
+                                {c?.ok === true ? "OK" : c?.ok === false ? "Déconnecté" : "?"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <BoutonReglage label={verifMailEnCours ? "⏳ Test en cours…" : "🔄 Tester maintenant"} onClick={() => verifierSanteComptesMail(true)} />
+                        {derniereVerifMail && (
+                          <span style={{ fontSize: 11, color: "#9ca3af" }}>Dernier test : {new Date(derniereVerifMail).toLocaleString("fr-FR")}</span>
+                        )}
+                      </div>
                     </CarteReglage>
 
                     <TitreSection>🔐 Accès & sécurité</TitreSection>
