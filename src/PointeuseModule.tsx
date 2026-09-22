@@ -64,6 +64,9 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   const [brouillonHoraire, setBrouillonHoraire] = useState<{ arrivee: string; depart: string; pause: string }>({ arrivee: "", depart: "", pause: "" });
   const [editionCellule, setEditionCellule] = useState<{ id: string; jour: string; champ: "arrivee" | "pauseDebut" | "pauseFin" | "depart" } | null>(null);
   const [valeurCellule, setValeurCellule] = useState("");
+  // 25/09/2026 -- Demande d'Elinathan : pouvoir changer de date sur la frise de l'onglet Suivi
+  // (avant, elle montrait toujours "aujourd'hui" en dur).
+  const [jourAffiche, setJourAffiche] = useState(todayISO());
   const [importEnCours, setImportEnCours] = useState(false);
   const [importMessage, setImportMessage] = useState("");
 
@@ -344,15 +347,20 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   // affiche des heures ou des durées dans ce module.
   const policeHeures: React.CSSProperties = { fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif", fontVariantNumeric: "tabular-nums" };
 
-  // ─── Statut en direct (qui travaille, qui est en pause, qui est parti, qui n'a rien pointé) ───
-  // 23/09/2026 -- 4 pointages par jour (arrivee → pause_debut → pause_fin → depart, voir
-  // api/pointeuse-pointer.js) : le dernier pointage du jour indique l'état actuel.
-  const debutAujourdhui = new Date(); debutAujourdhui.setHours(0, 0, 0, 0);
-  const statutsDirect = useMemo(() => {
+  // ─── Statut sur le jour affiché (qui travaille, qui est en pause, qui est parti, qui n'a rien
+  // pointé) -- 23/09/2026 : 4 pointages par jour (arrivee → pause_debut → pause_fin → depart,
+  // voir api/pointeuse-pointer.js), le dernier pointage du jour indique l'état.
+  // 25/09/2026 -- Demande d'Elinathan : pouvoir changer de date au lieu d'être bloqué sur
+  // "aujourd'hui". `jourEstAujourdhui` sert juste à savoir si on peut parler d'un statut "en
+  // direct" (present/pause) ou d'un état déjà figé (un jour passé).
+  const jourEstAujourdhui = jourAffiche === todayISO();
+  const debutJourAffiche = new Date(`${jourAffiche}T00:00:00`).getTime();
+  const finJourAffiche = debutJourAffiche + 86400000;
+  const statutsJour = useMemo(() => {
     return Object.entries(employes).map(([id, emp]) => {
       const pointagesEmp = Object.values(pointagesTous[id] || {});
-      const aujourdhui = pointagesEmp.filter(p => p.timestamp >= debutAujourdhui.getTime()).sort((a, b) => b.timestamp - a.timestamp);
-      const dernier = aujourdhui[0];
+      const ceJourLa = pointagesEmp.filter(p => p.timestamp >= debutJourAffiche && p.timestamp < finJourAffiche).sort((a, b) => b.timestamp - a.timestamp);
+      const dernier = ceJourLa[0];
       const statut: "present" | "pause" | "parti" | "absent" = !dernier ? "absent"
         : dernier.type === "arrivee" || dernier.type === "pause_fin" ? "present"
         : dernier.type === "pause_debut" ? "pause" : "parti";
@@ -361,43 +369,54 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       const ordre = { present: 0, pause: 1, parti: 2, absent: 3 };
       return ordre[a.statut] - ordre[b.statut] || a.emp.nom.localeCompare(b.emp.nom);
     });
-  }, [employes, pointagesTous]);
+  }, [employes, pointagesTous, debutJourAffiche, finJourAffiche]);
   // 25/09/2026 -- Demande d'Elinathan : "je veux que l'écran d'accueil ressemble à ça [capture
   // TimeMoto] avec la liste de tout le monde et un rectangle qui montre où ils en sont dans
   // leur journée, en pause, au travail ou absent" -- frise horaire par employé sur la journée.
+  // Complété ensuite : changer de date, survoler un segment pour voir sa durée, cliquer pour
+  // modifier une heure de ce jour-là.
   const HEURE_AXE_DEBUT = 6;
   const HEURE_AXE_FIN = 20;
-  const timelineAujourdhui = useMemo(() => {
-    const debutAxeMs = new Date(); debutAxeMs.setHours(HEURE_AXE_DEBUT, 0, 0, 0);
-    const finAxeMs = new Date(); finAxeMs.setHours(HEURE_AXE_FIN, 0, 0, 0);
-    const largeurMs = finAxeMs.getTime() - debutAxeMs.getTime();
-    const pct = (ms: number) => Math.max(0, Math.min(100, ((ms - debutAxeMs.getTime()) / largeurMs) * 100));
+  const timelineJour = useMemo(() => {
+    const debutAxeMs = debutJourAffiche + HEURE_AXE_DEBUT * 3600000;
+    const finAxeMs = debutJourAffiche + HEURE_AXE_FIN * 3600000;
+    const largeurMs = finAxeMs - debutAxeMs;
+    const pct = (ms: number) => Math.max(0, Math.min(100, ((ms - debutAxeMs) / largeurMs) * 100));
+    const hhmm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
 
-    const lignes = statutsDirect.map(({ id, emp, statut }) => {
-      const pointagesEmp = Object.values(pointagesTous[id] || {}).filter(p => p.timestamp >= debutAujourdhui.getTime());
+    const lignes = statutsJour.map(({ id, emp, statut }) => {
+      const pointagesEmp = Object.values(pointagesTous[id] || {}).filter(p => p.timestamp >= debutJourAffiche && p.timestamp < finJourAffiche);
       const parType = (t: string) => pointagesEmp.filter(p => p.type === t).sort((a, b) => a.timestamp - b.timestamp);
       const arriveeMs = parType("arrivee")[0]?.timestamp ?? null;
       const pauseDebutMs = parType("pause_debut")[0]?.timestamp ?? null;
       const pauseFinMs = parType("pause_fin")[0]?.timestamp ?? null;
       const departsArr = parType("depart");
       const departMs = departsArr.length ? departsArr[departsArr.length - 1].timestamp : null;
-      const finSiEnCours = departMs ?? heureActuelle;
+      // Un jour passé sans départ pointé : on arrête le trait au dernier pointage connu (on ne
+      // sait pas quand il est vraiment parti). Aujourd'hui : le trait continue jusqu'à "maintenant".
+      const finSiEnCours = departMs ?? (jourEstAujourdhui ? heureActuelle : (pauseFinMs ?? pauseDebutMs ?? arriveeMs ?? debutAxeMs));
 
-      const segments: { pctDebut: number; pctFin: number; type: "travail" | "pause" }[] = [];
+      const segments: { pctDebut: number; pctFin: number; type: "travail" | "pause"; debutMs: number; finMs: number }[] = [];
       if (arriveeMs != null) {
-        segments.push({ pctDebut: pct(arriveeMs), pctFin: pct(pauseDebutMs ?? finSiEnCours), type: "travail" });
+        const finTravail1 = pauseDebutMs ?? finSiEnCours;
+        segments.push({ pctDebut: pct(arriveeMs), pctFin: pct(finTravail1), type: "travail", debutMs: arriveeMs, finMs: finTravail1 });
         if (pauseDebutMs != null) {
-          segments.push({ pctDebut: pct(pauseDebutMs), pctFin: pct(pauseFinMs ?? finSiEnCours), type: "pause" });
-          if (pauseFinMs != null) segments.push({ pctDebut: pct(pauseFinMs), pctFin: pct(finSiEnCours), type: "travail" });
+          const finPause = pauseFinMs ?? finSiEnCours;
+          segments.push({ pctDebut: pct(pauseDebutMs), pctFin: pct(finPause), type: "pause", debutMs: pauseDebutMs, finMs: finPause });
+          if (pauseFinMs != null) segments.push({ pctDebut: pct(pauseFinMs), pctFin: pct(finSiEnCours), type: "travail", debutMs: pauseFinMs, finMs: finSiEnCours });
         }
       }
-      return { id, emp, statut, segments };
+      return {
+        id, emp, statut, segments,
+        arriveeStr: arriveeMs != null ? hhmm(arriveeMs) : "", pauseDebutStr: pauseDebutMs != null ? hhmm(pauseDebutMs) : "",
+        pauseFinStr: pauseFinMs != null ? hhmm(pauseFinMs) : "", departStr: departMs != null ? hhmm(departMs) : "",
+      };
     });
-    return { lignes, pctMaintenant: pct(heureActuelle) };
-  }, [statutsDirect, pointagesTous, heureActuelle]);
-  const nbPresents = statutsDirect.filter(s => s.statut === "present").length;
-  const nbEnPause = statutsDirect.filter(s => s.statut === "pause").length;
-  const nbAbsents = statutsDirect.filter(s => s.statut === "absent").length;
+    return { lignes, pctMaintenant: jourEstAujourdhui ? pct(heureActuelle) : null };
+  }, [statutsJour, pointagesTous, heureActuelle, jourEstAujourdhui, debutJourAffiche, finJourAffiche]);
+  const nbPresents = statutsJour.filter(s => s.statut === "present").length;
+  const nbEnPause = statutsJour.filter(s => s.statut === "pause").length;
+  const nbAbsents = statutsJour.filter(s => s.statut === "absent").length;
 
   // ─── Rapport heures / retard / heures sup sur la période choisie ───
   const rapport = useMemo(() => {
@@ -599,18 +618,32 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
 
         {tab === "suivi" && (
           <div>
+            {/* 22/09/2026 -- Demande d'Elinathan : pouvoir changer de date pour revoir la
+                journée d'un autre jour (pas seulement aujourd'hui). */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Journée du</label>
+              <input type="date" value={jourAffiche} onChange={e => setJourAffiche(e.target.value)}
+                style={{ ...champStyle, width: "auto", padding: "6px 10px", fontSize: 13 }} />
+              {!jourEstAujourdhui && (
+                <button onClick={() => setJourAffiche(todayISO())}
+                  style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #0ea5e9", background: "#f0f9ff", color: "#0369a1", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  Revenir à aujourd'hui
+                </button>
+              )}
+            </div>
+
             {/* Présence en direct */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
               <div style={{ background: "#f0fdf4", borderRadius: 12, padding: "12px 10px", border: "1.5px solid #bbf7d0", textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#16a34a" }}>{nbPresents}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#9ca3af", textTransform: "uppercase" }}>En poste</p>
+                <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#9ca3af", textTransform: "uppercase" }}>{jourEstAujourdhui ? "En poste" : "Ont travaillé"}</p>
               </div>
               <div style={{ background: "#fffbeb", borderRadius: 12, padding: "12px 10px", border: "1.5px solid #fde68a", textAlign: "center" }}>
                 <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#d97706" }}>{nbEnPause}</p>
                 <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#9ca3af", textTransform: "uppercase" }}>En pause</p>
               </div>
               <div style={{ background: "#fff", borderRadius: 12, padding: "12px 10px", border: "1.5px solid #e8e0d0", textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#6b7280" }}>{statutsDirect.length - nbPresents - nbEnPause - nbAbsents}</p>
+                <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#6b7280" }}>{statutsJour.length - nbPresents - nbEnPause - nbAbsents}</p>
                 <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "#9ca3af", textTransform: "uppercase" }}>Partis</p>
               </div>
               <div style={{ background: "#fff5f5", borderRadius: 12, padding: "12px 10px", border: "1.5px solid #fecaca", textAlign: "center" }}>
@@ -632,35 +665,41 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {timelineAujourdhui.lignes.length === 0 ? (
+              {timelineJour.lignes.length === 0 ? (
                 <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 13, padding: "2rem 0" }}>Aucun employé configuré.</p>
-              ) : timelineAujourdhui.lignes.map(({ id, emp, statut, segments }, idx) => (
-                <div key={id} title={statut === "absent" ? "Rien pointé aujourd'hui" : undefined}
-                  style={{ display: "flex", alignItems: "center", padding: "7px 14px", borderBottom: idx < timelineAujourdhui.lignes.length - 1 ? "1px solid #f5f5f0" : "none" }}>
+              ) : timelineJour.lignes.map(({ id, emp, statut, segments, arriveeStr, pauseDebutStr, pauseFinStr, departStr }, idx) => (
+                <div key={id} title={statut === "absent" ? "Rien pointé ce jour-là" : undefined}
+                  onClick={() => setEditionJour({ id, jour: jourAffiche, arrivee: arriveeStr, pauseDebut: pauseDebutStr, pauseFin: pauseFinStr, depart: departStr })}
+                  style={{ display: "flex", alignItems: "center", padding: "7px 14px", borderBottom: idx < timelineJour.lignes.length - 1 ? "1px solid #f5f5f0" : "none", cursor: "pointer" }}>
                   <div style={{ width: 128, flexShrink: 0, display: "flex", alignItems: "center", gap: 6, paddingRight: 8 }}>
                     <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: statut === "present" ? "#16a34a" : statut === "pause" ? "#d97706" : statut === "parti" ? "#9ca3af" : "#dc2626" }} />
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{emp.nom}</span>
                   </div>
                   <div style={{ flex: 1, position: "relative", height: 24, background: "#f5f3ee", borderRadius: 6 }}>
                     {segments.map((s, i) => (
-                      <div key={i} style={{
-                        position: "absolute", top: 0, bottom: 0,
-                        left: `${s.pctDebut}%`, width: `${Math.max(0.8, s.pctFin - s.pctDebut)}%`,
-                        borderRadius: 4,
-                        background: s.type === "travail" ? "#4ade80" : "repeating-linear-gradient(45deg, #fed7aa, #fed7aa 4px, #fdba74 4px, #fdba74 8px)",
-                      }} />
+                      <div key={i}
+                        title={`${s.type === "travail" ? "🟢 Travail" : "🍽️ Pause"} : ${new Date(s.debutMs).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} → ${new Date(s.finMs).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} (${fmtMinutesPointeuse(Math.round((s.finMs - s.debutMs) / 60000))})`}
+                        style={{
+                          position: "absolute", top: 0, bottom: 0,
+                          left: `${s.pctDebut}%`, width: `${Math.max(0.8, s.pctFin - s.pctDebut)}%`,
+                          borderRadius: 4,
+                          background: s.type === "travail" ? "#4ade80" : "repeating-linear-gradient(45deg, #fed7aa, #fed7aa 4px, #fdba74 4px, #fdba74 8px)",
+                        }} />
                     ))}
-                    <div style={{ position: "absolute", top: -3, bottom: -3, left: `${timelineAujourdhui.pctMaintenant}%`, width: 1.5, background: "#0ea5e9", borderRadius: 1 }} />
+                    {timelineJour.pctMaintenant !== null && (
+                      <div style={{ position: "absolute", top: -3, bottom: -3, left: `${timelineJour.pctMaintenant}%`, width: 1.5, background: "#0ea5e9", borderRadius: 1 }} />
+                    )}
                   </div>
                 </div>
               ))}
 
-              {timelineAujourdhui.lignes.length > 0 && (
+              {timelineJour.lignes.length > 0 && (
                 <div style={{ display: "flex", gap: 16, alignItems: "center", padding: "8px 14px 12px", flexWrap: "wrap" }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#4ade80" }} />Au travail</span>
                   <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "repeating-linear-gradient(45deg, #fed7aa, #fed7aa 4px, #fdba74 4px, #fdba74 8px)" }} />En pause</span>
                   <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 10, height: 10, borderRadius: 3, background: "#f5f3ee", border: "1px solid #e5e7eb" }} />Absent / pas encore arrivé</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 2, height: 10, background: "#0ea5e9" }} />Maintenant</span>
+                  {jourEstAujourdhui && <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "#9ca3af" }}><span style={{ width: 2, height: 10, background: "#0ea5e9" }} />Maintenant</span>}
+                  <span style={{ fontSize: 10.5, color: "#9ca3af" }}>· Cliquer une ligne pour modifier les heures du jour</span>
                 </div>
               )}
             </div>
@@ -707,6 +746,31 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                     </tr>
                   </thead>
                   <tbody>
+                    {/* 22/09/2026 -- Demande d'Elinathan : ligne de total de tous les employés,
+                        juste sous l'en-tête noire du tableau. */}
+                    <tr style={{ background: "#f3f4f1" }}>
+                      <td style={{ padding: "9px 12px", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>TOTAL</td>
+                      <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>
+                        {rapport.reduce((s, r) => s + r.joursPointes, 0)}
+                      </td>
+                      <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>
+                        {fmtMinutesPointeuse(rapport.reduce((s, r) => s + r.minutesPrevues, 0))}
+                      </td>
+                      <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>
+                        {fmtMinutesPointeuse(rapport.reduce((s, r) => s + r.minutesTravaillees, 0))}
+                      </td>
+                      {(() => {
+                        const ecartTotal = rapport.reduce((s, r) => s + r.ecart, 0);
+                        return (
+                          <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: ecartTotal < 0 ? "#dc2626" : ecartTotal > 0 ? "#16a34a" : "#1a2e1a" }}>
+                            {ecartTotal >= 0 ? "+" : "-"}{fmtMinutesPointeuse(Math.abs(ecartTotal))}
+                          </td>
+                        );
+                      })()}
+                      <td style={{ ...policeHeures, padding: "9px 8px", textAlign: "center", borderBottom: "2px solid #1a2e1a", fontWeight: 800, color: "#1a2e1a" }}>
+                        {fmtMinutesPointeuse(rapport.reduce((s, r) => s + r.minutesRetard, 0))}
+                      </td>
+                    </tr>
                     {rapport.map((r, idx) => [
                         <tr key={r.id} onClick={() => setEmpDetail(empDetail === r.id ? null : r.id)}
                           style={{ background: empDetail === r.id ? "#f0f9ff" : idx % 2 === 0 ? "#fff" : "#fafaf9", cursor: "pointer" }}>
