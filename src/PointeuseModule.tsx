@@ -55,6 +55,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   const [rapportDebut, setRapportDebut] = useState(todayISO(-6));
   const [rapportFin, setRapportFin] = useState(todayISO());
   const [empDetail, setEmpDetail] = useState<string | null>(null);
+  const [editionJour, setEditionJour] = useState<{ id: string; jour: string; arrivee: string; pauseDebut: string; pauseFin: string; depart: string } | null>(null);
   const [importEnCours, setImportEnCours] = useState(false);
   const [importMessage, setImportMessage] = useState("");
 
@@ -267,13 +268,17 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
       const horaire: HoraireJour = { heureArrivee: emp.heureArrivee, heureDepart: emp.heureDepart, pauseMinutes: emp.pauseMinutes };
       const pointagesEmp = Object.values(pointagesTous[id] || {});
       let minutesTravaillees = 0, minutesPrevues = 0, minutesRetard = 0, joursPointes = 0;
-      const detailJours: { jour: string; travaillees: number; retard: number; oubli: boolean }[] = [];
+      const detailJours: { jour: string; travaillees: number; retard: number; oubli: boolean; pointe: boolean; arriveeStr: string; pauseDebutStr: string; pauseFinStr: string; departStr: string }[] = [];
 
+      // 25/09/2026 -- Demande d'Elinathan : historique jour par jour visible pour CHAQUE jour de
+      // la période (pas seulement ceux pointés), pour pouvoir les modifier comme sur TimeMoto.
+      // Les jours sans pointage restent exclus du calcul (joursPointes/minutes...) mais
+      // apparaissent quand même dans detailJours pour l'affichage et l'édition manuelle.
+      const hhmm = (ms: number | null) => (ms == null ? "" : new Date(ms).toTimeString().slice(0, 5));
       joursListe.forEach(jour => {
         const debutJourMs = new Date(`${jour}T00:00:00`).getTime();
         const finJourMs = debutJourMs + 86400000;
         const pointagesJour = pointagesEmp.filter(p => p.timestamp >= debutJourMs && p.timestamp < finJourMs);
-        if (pointagesJour.length === 0) return; // pas de pointage ce jour-là : ignoré, pas compté en absence (on ne connaît pas ses jours de travail attendus)
         // 23/09/2026 -- 4 pointages/jour : premier de chaque type dans l'ordre chronologique
         // (le premier "arrivee" du jour, le premier "pause_debut" après, etc.), pour rester
         // cohérent même si un pointage a été refait par erreur.
@@ -283,6 +288,10 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         const pauseFinMs = parType("pause_fin")[0]?.timestamp ?? null;
         const departs = parType("depart");
         const departMs = departs.length ? departs[departs.length - 1].timestamp : null;
+        if (pointagesJour.length === 0) {
+          detailJours.push({ jour, travaillees: 0, retard: 0, oubli: false, pointe: false, arriveeStr: "", pauseDebutStr: "", pauseFinStr: "", departStr: "" });
+          return; // pas de pointage ce jour-là : ignoré du calcul, pas compté en absence (on ne connaît pas ses jours de travail attendus)
+        }
         const r = calculerHeuresJour(jour, horaire, { arrivee: arriveeMs, pauseDebut: pauseDebutMs, pauseFin: pauseFinMs, depart: departMs });
         const prevueJour = horaire.heureArrivee && horaire.heureDepart
           ? Math.max(0, (new Date(`${jour}T${horaire.heureDepart}`).getTime() - new Date(`${jour}T${horaire.heureArrivee}`).getTime()) / 60000 - (horaire.pauseMinutes || 0))
@@ -291,12 +300,53 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         minutesPrevues += prevueJour;
         minutesRetard += r.minutesRetard;
         joursPointes++;
-        detailJours.push({ jour, travaillees: r.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart });
+        detailJours.push({ jour, travaillees: r.minutesTravaillees, retard: r.minutesRetard, oubli: r.oubliDepart, pointe: true, arriveeStr: hhmm(arriveeMs), pauseDebutStr: hhmm(pauseDebutMs), pauseFinStr: hhmm(pauseFinMs), departStr: hhmm(departMs) });
       });
 
       return { id, emp, joursPointes, minutesTravaillees, minutesPrevues, ecart: minutesTravaillees - minutesPrevues, minutesRetard, detailJours };
     }).sort((a, b) => a.ecart - b.ecart);
   }, [employes, pointagesTous, rapportDebut, rapportFin]);
+
+  // 25/09/2026 -- Edition manuelle des pointages d'une journée (comme la fenêtre "Editer /
+  // Enregistrer présence" de TimeMoto) : retrouve les pointages existants ce jour-là pour un
+  // employé (même logique premier/dernier que le rapport, pour rester cohérent), afin de les
+  // mettre à jour plutôt que d'en recréer en double.
+  const trouverClesJour = (employeId: string, jour: string) => {
+    const debutJourMs = new Date(`${jour}T00:00:00`).getTime();
+    const finJourMs = debutJourMs + 86400000;
+    const entrees = Object.entries(pointagesTous[employeId] || {}).filter(([, p]) => p.timestamp >= debutJourMs && p.timestamp < finJourMs);
+    const parType = (t: string) => entrees.filter(([, p]) => p.type === t).sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const dep = parType("depart");
+    return {
+      arrivee: parType("arrivee")[0] as [string, Pointage] | undefined,
+      pauseDebut: parType("pause_debut")[0] as [string, Pointage] | undefined,
+      pauseFin: parType("pause_fin")[0] as [string, Pointage] | undefined,
+      depart: (dep.length ? dep[dep.length - 1] : undefined) as [string, Pointage] | undefined,
+    };
+  };
+
+  const enregistrerChampJour = async (employeId: string, jour: string, type: Pointage["type"], valeurHHMM: string, cleExistante?: string) => {
+    if (!valeurHHMM) {
+      if (cleExistante) await remove(ref(db, `pointeuse_pointages/${employeId}/${cleExistante}`));
+      return;
+    }
+    const timestamp = new Date(`${jour}T${valeurHHMM}:00`).getTime();
+    if (cleExistante) await update(ref(db, `pointeuse_pointages/${employeId}/${cleExistante}`), { timestamp });
+    else await push(ref(db, `pointeuse_pointages/${employeId}`), { type, timestamp });
+  };
+
+  const enregistrerJourEdite = async () => {
+    if (!editionJour) return;
+    const { id, jour, arrivee, pauseDebut, pauseFin, depart } = editionJour;
+    const cles = trouverClesJour(id, jour);
+    await Promise.all([
+      enregistrerChampJour(id, jour, "arrivee", arrivee, cles.arrivee?.[0]),
+      enregistrerChampJour(id, jour, "pause_debut", pauseDebut, cles.pauseDebut?.[0]),
+      enregistrerChampJour(id, jour, "pause_fin", pauseFin, cles.pauseFin?.[0]),
+      enregistrerChampJour(id, jour, "depart", depart, cles.depart?.[0]),
+    ]);
+    setEditionJour(null);
+  };
 
   const genererPDFRapport = () => {
     const w = window.open("", "_blank");
@@ -445,12 +495,24 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                         empDetail === r.id && (
                           <tr key={`${r.id}_detail`}>
                             <td colSpan={6} style={{ padding: "10px 14px", background: "#faf9f6", borderBottom: "1px solid #f0f0f0" }}>
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                {r.detailJours.map((j, i) => (
-                                  <span key={i} title={j.oubli ? "Départ non pointé — journée plafonnée à l'heure prévue" : ""}
-                                    style={{ fontSize: 11, padding: "3px 8px", borderRadius: 8, background: j.retard > 0 ? "#fff5f5" : "#f0fdf4", border: `1px solid ${j.retard > 0 ? "#fecaca" : "#bbf7d0"}` }}>
-                                    {j.jour} · {fmtMinutesPointeuse(j.travaillees)}{j.retard > 0 ? ` · ⏰ ${j.retard}min retard` : ""}{j.oubli ? " · 🌙 oubli" : ""}
-                                  </span>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                                {[...r.detailJours].reverse().map(j => (
+                                  <div key={j.jour} onClick={() => setEditionJour({ id: r.id, jour: j.jour, arrivee: j.arriveeStr, pauseDebut: j.pauseDebutStr, pauseFin: j.pauseFinStr, depart: j.departStr })}
+                                    style={{
+                                      display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 8, cursor: "pointer",
+                                      background: !j.pointe ? "#fff" : j.retard > 0 ? "#fff5f5" : "#f0fdf4",
+                                      border: `1px solid ${!j.pointe ? "#e8e0d0" : j.retard > 0 ? "#fecaca" : "#bbf7d0"}`,
+                                    }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: "#374151", minWidth: 78, textTransform: "capitalize" }}>
+                                      {new Date(`${j.jour}T00:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" })}
+                                    </span>
+                                    <span style={{ fontSize: 11, color: j.pointe ? "#374151" : "#9ca3af", flex: 1 }}>
+                                      {j.pointe
+                                        ? `${j.arriveeStr || "?"} → ${j.pauseDebutStr || "-"} pause ${j.pauseFinStr || "-"} → ${j.departStr || "?"} · ${fmtMinutesPointeuse(j.travaillees)}${j.retard > 0 ? ` · ⏰ ${j.retard}min retard` : ""}${j.oubli ? " · 🌙 oubli" : ""}`
+                                        : "Aucun pointage"}
+                                    </span>
+                                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0369a1", flexShrink: 0 }}>✏️ {j.pointe ? "Modifier" : "Ajouter"}</span>
+                                  </div>
                                 ))}
                               </div>
                             </td>
@@ -568,6 +630,40 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                 <button onClick={() => supprimerMessage(id)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontWeight: 700, fontSize: 11, cursor: "pointer", flexShrink: 0 }}>🗑️</button>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* 25/09/2026 -- Edition manuelle d'une journée de pointage (comme la fenêtre TimeMoto
+            "Editer / Enregistrer présence") : ouverte depuis l'historique jour par jour du
+            rapport, dans l'onglet Suivi. */}
+        {editionJour && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,20,10,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}
+            onClick={() => setEditionJour(null)}>
+            <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, padding: 20, maxWidth: 380, width: "100%", boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
+              <p style={{ margin: "0 0 2px", fontWeight: 800, fontSize: 15, color: "#1a2e1a" }}>{employes[editionJour.id]?.nom}</p>
+              <p style={{ margin: "0 0 14px", fontSize: 12, color: "#9ca3af", textTransform: "capitalize" }}>
+                {new Date(`${editionJour.jour}T00:00:00`).toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <label style={{ fontSize: 11, color: "#6b7280" }}>Arrivée
+                  <input type="time" value={editionJour.arrivee} onChange={e => setEditionJour({ ...editionJour, arrivee: e.target.value })} style={{ display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                </label>
+                <label style={{ fontSize: 11, color: "#6b7280" }}>Départ pause
+                  <input type="time" value={editionJour.pauseDebut} onChange={e => setEditionJour({ ...editionJour, pauseDebut: e.target.value })} style={{ display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                </label>
+                <label style={{ fontSize: 11, color: "#6b7280" }}>Retour pause
+                  <input type="time" value={editionJour.pauseFin} onChange={e => setEditionJour({ ...editionJour, pauseFin: e.target.value })} style={{ display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                </label>
+                <label style={{ fontSize: 11, color: "#6b7280" }}>Départ
+                  <input type="time" value={editionJour.depart} onChange={e => setEditionJour({ ...editionJour, depart: e.target.value })} style={{ display: "block", marginTop: 3, width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                </label>
+              </div>
+              <p style={{ margin: "0 0 14px", fontSize: 10.5, color: "#9ca3af" }}>Laisse un champ vide pour supprimer ce pointage.</p>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={() => setEditionJour(null)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Annuler</button>
+                <button onClick={enregistrerJourEdite} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Enregistrer</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
