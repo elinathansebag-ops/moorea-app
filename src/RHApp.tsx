@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, onValue, update } from "./firebase";
-import { PageHeader, styles } from "./shared";
+import { PageHeader, styles, cleEmail } from "./shared";
 
 // ─── RH APP ───
 const RH_PIN = "1709";
@@ -21,7 +21,7 @@ export function fmtMins(mins: number): string {
   return `${neg ? "-" : "+"}${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-export function RHApp({ onClose }: { onClose: () => void }) {
+export function RHApp({ onClose, isAdmin, currentUserEmail, currentUserName }: { onClose: () => void; isAdmin: boolean; currentUserEmail: string; currentUserName: string }) {
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
@@ -29,6 +29,11 @@ export function RHApp({ onClose }: { onClose: () => void }) {
   const [periode, setPeriode] = useState("");
   const [sortBy, setSortBy] = useState<"nom" | "balance" | "sup">("balance");
   const [selectedEmp, setSelectedEmp] = useState<any | null>(null);
+  // 22/09/2026 -- horaires programmés par employé + comptes Moorea (pour la liste à configurer
+  // dans l'onglet Planning). Voir la note plus haut.
+  const [rhTab, setRhTab] = useState<"suivi" | "planning">("suivi");
+  const [planning, setPlanning] = useState<Record<string, { heureArrivee?: string; heureDepart?: string; pauseMinutes?: number; nomTimeMoto?: string }>>({});
+  const [comptesMoorea, setComptesMoorea] = useState<Record<string, any>>({});
 
   // Charger données RH depuis Firebase
   useEffect(() => {
@@ -41,6 +46,14 @@ export function RHApp({ onClose }: { onClose: () => void }) {
     });
     return () => unsub();
   }, []);
+  useEffect(() => {
+    const unsub1 = onValue(ref(db, "rh_planning"), snap => setPlanning(snap.val() || {}));
+    const unsub2 = onValue(ref(db, "acces_permissions/users"), snap => setComptesMoorea(snap.val() || {}));
+    return () => { unsub1(); unsub2(); };
+  }, []);
+  const majPlanning = (cle: string, champ: string, valeur: any) => {
+    update(ref(db, `rh_planning/${cle}`), { [champ]: valeur });
+  };
 
   const handleFileUpload = async (file: File) => {
     try {
@@ -304,6 +317,61 @@ export function RHApp({ onClose }: { onClose: () => void }) {
     w.document.close();
   };
 
+  // 22/09/2026 -- Espace personnel, sans code PIN : un compte non-admin voit directement SES
+  // heures (jamais le tableau de tous les employés, qui reste derrière le code RH_PIN).
+  if (!isAdmin) {
+    const clePlanningMoi = cleEmail(currentUserEmail);
+    const monPlanning = planning[clePlanningMoi];
+    const nomNormalise = (currentUserName || "").toLowerCase().trim();
+    const monSuiviTimeMoto = employes.find(e => {
+      if (monPlanning?.nomTimeMoto) return e.nom === monPlanning.nomTimeMoto;
+      return nomNormalise && e.nom.toLowerCase().trim() === nomNormalise;
+    });
+    return (
+      <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
+        <style>{styles}</style>
+        <PageHeader titre="🕐 Mes heures" couleur="#0ea5e9" onBack={onClose} onHome={onClose} />
+        <div style={{ maxWidth: 600, margin: "0 auto", padding: "16px 12px 100px", boxSizing: "border-box" }}>
+          {(monPlanning?.heureArrivee || monPlanning?.heureDepart || monPlanning?.pauseMinutes) && (
+            <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, border: "1.5px solid #e8e0d0" }}>
+              <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>📅 Horaires prévus</p>
+              <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                <div><p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Arrivée</p><p style={{ margin: 0, fontWeight: 800, fontSize: 18 }}>{monPlanning?.heureArrivee || "-"}</p></div>
+                <div><p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Départ</p><p style={{ margin: 0, fontWeight: 800, fontSize: 18 }}>{monPlanning?.heureDepart || "-"}</p></div>
+                <div><p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Pause obligatoire</p><p style={{ margin: 0, fontWeight: 800, fontSize: 18 }}>{monPlanning?.pauseMinutes ? `${monPlanning.pauseMinutes} min` : "-"}</p></div>
+              </div>
+            </div>
+          )}
+          {monSuiviTimeMoto ? (
+            <div style={{ background: "#fff", borderRadius: 14, padding: 16, border: "1.5px solid #e8e0d0" }}>
+              <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>⏱ Mon suivi{periode ? ` (${periode})` : ""}</p>
+              <div style={{ display: "flex", gap: 20, marginBottom: 12 }}>
+                <div><p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Planifié</p><p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{fmtMins(monSuiviTimeMoto.totalPlanifie)}</p></div>
+                <div><p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Travaillé</p><p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>{fmtMins(monSuiviTimeMoto.totalTravaille)}</p></div>
+                <div><p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>Balance</p><p style={{ margin: 0, fontWeight: 800, fontSize: 16, color: monSuiviTimeMoto.totalBalance < 0 ? "#dc2626" : "#16a34a" }}>{fmtMins(monSuiviTimeMoto.totalBalance)}</p></div>
+              </div>
+              {monSuiviTimeMoto.semaines.map((sem: any, i: number) => (
+                <div key={i} style={{ marginBottom: 8, background: "#faf9f6", borderRadius: 10, padding: "8px 12px", border: "1px solid #e8e0d0" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: 700, fontSize: 12.5 }}>{sem.label}</span>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <span style={{ fontSize: 11.5, color: "#6b7280" }}>Trav. {fmtMins(sem.travaille)}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: sem.balance < 0 ? "#dc2626" : "#16a34a" }}>{fmtMins(sem.balance)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 13, padding: "2rem 0" }}>
+              Pas encore de suivi disponible pour toi. Dès qu'un rapport TimeMoto est importé (et ton compte rattaché si besoin), tes heures s'affichent ici automatiquement.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (!unlocked) {
     return (
       <div style={{ minHeight: "100vh", background: "#0a0a0a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24 }}>
@@ -347,6 +415,53 @@ export function RHApp({ onClose }: { onClose: () => void }) {
 
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 12px 100px", boxSizing: "border-box" }}>
 
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button onClick={() => setRhTab("suivi")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${rhTab === "suivi" ? "#0ea5e9" : "#e5e7eb"}`, background: rhTab === "suivi" ? "#f0f9ff" : "#fff", fontWeight: 700, fontSize: 13, color: rhTab === "suivi" ? "#0369a1" : "#9ca3af", cursor: "pointer" }}>📊 Suivi</button>
+          <button onClick={() => setRhTab("planning")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${rhTab === "planning" ? "#0ea5e9" : "#e5e7eb"}`, background: rhTab === "planning" ? "#f0f9ff" : "#fff", fontWeight: 700, fontSize: 13, color: rhTab === "planning" ? "#0369a1" : "#9ca3af", cursor: "pointer" }}>📅 Planning</button>
+        </div>
+
+        {/* 22/09/2026 -- Onglet Planning : horaires prévus + pause obligatoire par employé,
+            programmés à la main (indépendant de l'import TimeMoto) -- voir la note plus haut. */}
+        {rhTab === "planning" && (
+          <div>
+            <p style={{ fontSize: 11.5, color: "#9ca3af", marginBottom: 12 }}>
+              Heures d'arrivée/départ prévues et pause obligatoire, par employé. "Nom TimeMoto" relie le compte à sa ligne dans l'import (onglet Suivi) — à remplir seulement si le rattachement automatique par nom ne fonctionne pas.
+            </p>
+            {Object.entries(comptesMoorea).filter(([, c]: [string, any]) => c?.email).sort(([, a]: [string, any], [, b]: [string, any]) => (a.email || "").localeCompare(b.email || "")).map(([cle, compte]: [string, any]) => {
+              const p = planning[cle] || {};
+              return (
+                <div key={cle} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+                  <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{compte.email}</p>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                    <label style={{ fontSize: 11, color: "#6b7280" }}>Arrivée
+                      <input type="time" defaultValue={p.heureArrivee || ""} onBlur={e => majPlanning(cle, "heureArrivee", e.target.value)}
+                        style={{ display: "block", marginTop: 3, padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                    </label>
+                    <label style={{ fontSize: 11, color: "#6b7280" }}>Départ
+                      <input type="time" defaultValue={p.heureDepart || ""} onBlur={e => majPlanning(cle, "heureDepart", e.target.value)}
+                        style={{ display: "block", marginTop: 3, padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }} />
+                    </label>
+                    <label style={{ fontSize: 11, color: "#6b7280" }}>Pause obligatoire (min)
+                      <input type="number" min={0} step={5} defaultValue={p.pauseMinutes ?? ""} onBlur={e => majPlanning(cle, "pauseMinutes", e.target.value ? Number(e.target.value) : null)}
+                        style={{ display: "block", marginTop: 3, padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13, width: 100 }} />
+                    </label>
+                  </div>
+                  {employes.length > 0 && (
+                    <label style={{ fontSize: 11, color: "#6b7280" }}>Nom TimeMoto (si différent du rattachement automatique)
+                      <select defaultValue={p.nomTimeMoto || ""} onChange={e => majPlanning(cle, "nomTimeMoto", e.target.value || null)}
+                        style={{ display: "block", marginTop: 3, padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13, maxWidth: 260 }}>
+                        <option value="">— rattachement automatique par nom —</option>
+                        {employes.map((e: any) => <option key={e.nom} value={e.nom}>{e.nom}</option>)}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {rhTab === "suivi" && (<>
         {/* Import fichier */}
         <div style={{ background: "#fff", borderRadius: 14, padding: 16, marginBottom: 16, border: "1.5px solid #e8e0d0" }}>
           <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 14, color: "#1a2e1a" }}>📂 Importer un rapport TimeMoto</p>
@@ -489,6 +604,7 @@ export function RHApp({ onClose }: { onClose: () => void }) {
             <p style={{ fontSize: 13, color: "#9ca3af" }}>Importe le fichier Excel exporté depuis TimeMoto</p>
           </div>
         )}
+        </>)}
       </div>
     </div>
   );

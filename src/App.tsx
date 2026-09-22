@@ -3186,7 +3186,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   if (showRH) {
     if (!monAcces.hasModule("rh")) return <AccesRefuse onRetour={() => { setShowRH(false); setShowAccueil(true); }} />;
-    return <>{fabScanner}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} /></>;
+    return <>{fabScanner}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} isAdmin={monAccesReel.isAdmin} currentUserEmail={user?.email || ""} currentUserName={user?.displayName || ""} /></>;
   }
 
   if (showCatalogue) {
