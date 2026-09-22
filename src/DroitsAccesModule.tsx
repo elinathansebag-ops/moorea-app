@@ -412,10 +412,14 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ width: 9, height: 9, borderRadius: "50%", background: enLigne ? "#16a34a" : "#d1d5db", display: "inline-block" }} />
-                          <span style={{ fontWeight: 700, fontSize: 14 }}>{c.displayName || c.email}</span>
+                          <span style={{ fontWeight: 700, fontSize: 14, ...(c.email ? {} : { color: "#c1c9d6", fontStyle: "italic" }) }}>
+                            {c.displayName || c.email || "Connexion incomplète"}
+                          </span>
                           {enAttente && <span className="pill" style={{ background: "#fef3c7", color: "#92400e" }}>🆕 Demande d'accès</span>}
                         </div>
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>{c.email}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+                          {c.email || "aucun e-mail reçu — tentative de connexion interrompue ou incomplète"}
+                        </p>
                       </div>
                       <div style={{ textAlign: "right" }}>
                         <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: enLigne ? "#16a34a" : "#9ca3af" }}>{enLigne ? "🟢 En ligne" : "⚪ Hors ligne"}</p>
@@ -423,15 +427,26 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                           {enLigne ? "Depuis le " : "Dernière connexion : "}{formatDateFr(enLigne ? c.derniere_connexion : (p?.lastSeen || c.derniere_connexion))}
                         </p>
                         <p style={{ margin: "3px 0 0", fontSize: 10.5, color: "#c1c9d6" }}>Premier accès : {formatDateFr(c.premiere_connexion)}</p>
-                        <button
-                          onClick={() => ouvrirPanneau(c.email)}
-                          style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e9d8fd", background: ouvert ? "#7c3aed" : "#faf5ff", color: ouvert ? "#fff" : "#7c3aed", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}
-                        >
-                          {ouvert ? "▲ Fermer" : "⚙️ Choisir ses modules"}
-                        </button>
+                        {c.email ? (
+                          <button
+                            onClick={() => ouvrirPanneau(c.email)}
+                            style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e9d8fd", background: ouvert ? "#7c3aed" : "#faf5ff", color: ouvert ? "#fff" : "#7c3aed", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}
+                          >
+                            {ouvert ? "▲ Fermer" : "⚙️ Choisir ses modules"}
+                          </button>
+                        ) : (
+                          // Fiche sans email : rien à configurer (elle n'a de toute façon aucun
+                          // accès), seule la suppression a un sens.
+                          <button
+                            onClick={() => { if (window.confirm("Retirer cette fiche de connexion incomplète (sans email) ? Elle n'a aucun accès de toute façon.")) remove(ref(db, `comptes/${uid}`)); }}
+                            style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}
+                          >
+                            🗑️ Retirer
+                          </button>
+                        )}
                       </div>
                     </div>
-                    {ouvert && <PanneauEdition cle={cle} email={c.email} />}
+                    {ouvert && c.email && <PanneauEdition cle={cle} email={c.email} />}
                   </div>
                 );
               })}
