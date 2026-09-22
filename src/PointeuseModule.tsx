@@ -56,6 +56,8 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
   const [rapportFin, setRapportFin] = useState(todayISO());
   const [empDetail, setEmpDetail] = useState<string | null>(null);
   const [editionJour, setEditionJour] = useState<{ id: string; jour: string; arrivee: string; pauseDebut: string; pauseFin: string; depart: string } | null>(null);
+  const [horaireEnEdition, setHoraireEnEdition] = useState<string | null>(null);
+  const [brouillonHoraire, setBrouillonHoraire] = useState<{ arrivee: string; depart: string; pause: string }>({ arrivee: "", depart: "", pause: "" });
   const [importEnCours, setImportEnCours] = useState(false);
   const [importMessage, setImportMessage] = useState("");
 
@@ -277,6 +279,23 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
     const ancienPin = champ === "pin" ? employes[id]?.pin : undefined;
     await update(ref(db, `pointeuse_employes/${id}`), { [champ]: valeur });
     await synchroniserMiroirs(id, emp, ancienPin);
+  };
+
+  // 25/09/2026 -- Demande d'Elinathan : "je veux que les horaires de chacun soit pas un truc à
+  // changer facilement" -- l'horaire (arrivée/départ/pause) n'est plus modifiable en direct au
+  // clavier : il faut cliquer sur "Modifier l'horaire" puis confirmer, pour éviter un changement
+  // accidentel qui fausserait le calcul des heures.
+  const ouvrirEditionHoraire = (id: string, emp: Employe) => {
+    setBrouillonHoraire({ arrivee: emp.heureArrivee || "", depart: emp.heureDepart || "", pause: String(emp.pauseMinutes ?? "") });
+    setHoraireEnEdition(id);
+  };
+
+  const enregistrerHoraireEmploye = async (id: string) => {
+    if (!confirm("Confirmer le nouvel horaire ? Ça va changer le calcul de ses heures et heures sup.")) return;
+    await majEmploye(id, "heureArrivee", brouillonHoraire.arrivee || null);
+    await majEmploye(id, "heureDepart", brouillonHoraire.depart || null);
+    await majEmploye(id, "pauseMinutes", brouillonHoraire.pause ? Number(brouillonHoraire.pause) : null);
+    setHoraireEnEdition(null);
   };
 
   const supprimerEmploye = async (id: string) => {
@@ -709,20 +728,29 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
                     <button onClick={() => supprimerEmploye(id)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff5f5", color: "#dc2626", fontWeight: 700, fontSize: 11.5, cursor: "pointer" }}>🗑️</button>
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <label style={{ fontSize: 11, color: "#6b7280" }}>Arrivée
-                    <input type="time" defaultValue={emp.heureArrivee || ""} onBlur={e => majEmploye(id, "heureArrivee", e.target.value)} style={{ display: "block", marginTop: 3, ...champStyle }} />
-                  </label>
-                  <label style={{ fontSize: 11, color: "#6b7280" }}>Départ
-                    <input type="time" defaultValue={emp.heureDepart || ""} onBlur={e => majEmploye(id, "heureDepart", e.target.value)} style={{ display: "block", marginTop: 3, ...champStyle }} />
-                  </label>
-                  <label style={{ fontSize: 11, color: "#6b7280" }}>Pause obligatoire (min)
-                    <input type="number" min={0} step={5} defaultValue={emp.pauseMinutes ?? ""} onBlur={e => majEmploye(id, "pauseMinutes", e.target.value ? Number(e.target.value) : null)} style={{ display: "block", marginTop: 3, ...champStyle, width: 90 }} />
-                  </label>
-                  <label style={{ fontSize: 11, color: "#6b7280" }}>Code de pointage
-                    <input defaultValue={emp.pin} maxLength={6} onBlur={e => { const v = e.target.value.trim(); if (/^\d{4,6}$/.test(v)) majEmploye(id, "pin", v); else e.target.value = emp.pin; }} style={{ display: "block", marginTop: 3, ...champStyle, width: 80 }} />
-                  </label>
-                </div>
+                {horaireEnEdition === id ? (
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", background: "#fffdf7", border: "1.5px dashed #c8a84b", borderRadius: 10, padding: 10 }}>
+                    <label style={{ fontSize: 11, color: "#6b7280" }}>Arrivée
+                      <input type="time" value={brouillonHoraire.arrivee} onChange={e => setBrouillonHoraire({ ...brouillonHoraire, arrivee: e.target.value })} style={{ display: "block", marginTop: 3, ...champStyle }} />
+                    </label>
+                    <label style={{ fontSize: 11, color: "#6b7280" }}>Départ
+                      <input type="time" value={brouillonHoraire.depart} onChange={e => setBrouillonHoraire({ ...brouillonHoraire, depart: e.target.value })} style={{ display: "block", marginTop: 3, ...champStyle }} />
+                    </label>
+                    <label style={{ fontSize: 11, color: "#6b7280" }}>Pause obligatoire (min)
+                      <input type="number" min={0} step={5} value={brouillonHoraire.pause} onChange={e => setBrouillonHoraire({ ...brouillonHoraire, pause: e.target.value })} style={{ display: "block", marginTop: 3, ...champStyle, width: 90 }} />
+                    </label>
+                    <button onClick={() => enregistrerHoraireEmploye(id)} style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✅ Enregistrer</button>
+                    <button onClick={() => setHoraireEnEdition(null)} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✕ Annuler</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: "#374151" }}>🕐 {emp.heureArrivee || "—"} → {emp.heureDepart || "—"} · pause {emp.pauseMinutes ?? "—"}min</span>
+                    <button onClick={() => ouvrirEditionHoraire(id, emp)} style={{ padding: "4px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", color: "#6b7280", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>🔒 Modifier l'horaire</button>
+                  </div>
+                )}
+                <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginTop: 8 }}>Code de pointage
+                  <input defaultValue={emp.pin} maxLength={6} onBlur={e => { const v = e.target.value.trim(); if (/^\d{4,6}$/.test(v)) majEmploye(id, "pin", v); else e.target.value = emp.pin; }} style={{ display: "block", marginTop: 3, ...champStyle, width: 80 }} />
+                </label>
               </div>
             ))}
           </div>

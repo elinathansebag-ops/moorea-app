@@ -3,8 +3,10 @@
 // Un employé pointe 4 fois par jour : arrivée le matin, départ en pause déjeuner, retour de
 // pause, départ le soir (voir api/pointeuse-pointer.js pour le cycle sur l'écran mural).
 //
-//  1. Arrivée en avance (avant l'heure prévue) : pas de crédit, le compteur démarre à l'heure
-//     prévue quoi qu'il arrive ("si il arrive plus tôt que prévu c'est pas compté").
+//  1. Arrivée en avance (avant l'heure prévue) : tolérance de 15 min, créditées comme heures
+//     sup ("si il arrive 15 min avant on lui compte les 15 minutes comme heures sup") -- mais
+//     au-delà de 15 min d'avance, le surplus n'est pas compté ("au-delà de 15 minutes avant on
+//     ne compte pas en heures sup") : le compteur démarre au plus tôt à (heure prévue - 15 min).
 //  2. Retard : compte contre l'employé, le compteur démarre au pointage réel.
 //  3. Pause obligatoire : toujours déduite au moins intégralement, même si l'employé prend
 //     moins que le temps prévu ("si il prend moins on lui compte quand même") -- et si sa pause
@@ -15,6 +17,10 @@
 //     pile à l'heure de départ prévue ("sa journée s'arrête à 17h comme prévu").
 //
 // Utilisé à la fois pour l'espace personnel de l'employé (Mes heures) et pour la vue Admin.
+
+// 25/09/2026 -- Tolérance d'avance donnée par Elinathan : 15 min d'arrivée en avance sont
+// créditées comme heures sup, au-delà le surplus est ignoré.
+const TOLERANCE_AVANCE_MS = 15 * 60000;
 
 export interface HoraireJour {
   heureArrivee?: string;   // "09:00"
@@ -54,9 +60,13 @@ export function calculerHeuresJour(
   const prevueArriveeMs = horaire.heureArrivee ? parseHeureSurJour(jourISO, horaire.heureArrivee) : null;
   const prevueDepartMs = horaire.heureDepart ? parseHeureSurJour(jourISO, horaire.heureDepart) : null;
 
-  // Règle 1+2 : jamais avant l'heure prévue, mais un retard démarre bien au pointage réel.
+  // Règle 1+2 : jusqu'à 15 min d'avance créditées, au-delà le compteur ne descend pas plus
+  // bas que (heure prévue - 15 min) ; un retard démarre bien au pointage réel.
   let arriveeEffectiveMs = pointages.arrivee ?? prevueArriveeMs ?? 0;
-  if (prevueArriveeMs != null && arriveeEffectiveMs < prevueArriveeMs) arriveeEffectiveMs = prevueArriveeMs;
+  if (prevueArriveeMs != null) {
+    const plancherAvecTolerance = prevueArriveeMs - TOLERANCE_AVANCE_MS;
+    if (arriveeEffectiveMs < plancherAvecTolerance) arriveeEffectiveMs = plancherAvecTolerance;
+  }
 
   // Règle 4+5 : pointage réel si présent, sinon repli sur l'heure de départ prévue (pas de sup,
   // pas de pénalité pour un oubli).
