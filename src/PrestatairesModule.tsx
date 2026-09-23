@@ -291,6 +291,11 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   // de Mariane) et non chez Moorea : l'arrivage créé n'a alors pas à être pointé par l'agréage.
   const [livraisonHorsSite, setLivraisonHorsSite] = useState(false);
   const [emailPresta, setEmailPresta] = useState("");
+  // 23/09/2026 -- Demande d'Elinathan : "un bouton pour entrer une palette de carton dans le
+  // passé sans envoyer de mail de commande" -- pour rattraper une livraison déjà reçue (donc pas
+  // besoin de prévenir Go-Embal ni le prestataire par mail), sans fausser l'historique en
+  // laissant la commande "en attente" alors qu'elle est déjà arrivée.
+  const [saisieRetroactive, setSaisieRetroactive] = useState(false);
 
   // Palettes IFCO form (commande fournisseur)
   const [lignesIfco, setLignesIfco] = useState<LignePaletteIFCO[]>([{ type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
@@ -1700,7 +1705,10 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       dateLivraisonPrevue: dateLivraison,
       creneau,
       lieuLivraison,
-      statut: "commandé" as const,
+      // Saisie rétroactive : déjà livrée, on la crée directement "reçue" plutôt que "commandé"
+      // -- sinon elle resterait affichée comme en attente d'une livraison déjà passée.
+      statut: saisieRetroactive ? ("reçu" as const) : ("commandé" as const),
+      ...(saisieRetroactive ? { dateReception: dateLivraison } : {}),
       ...(livraisonHorsSite ? { horsSite: true, emailPresta: emailPresta.trim() } : {}),
     };
 
@@ -1729,7 +1737,10 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             // Livraison directe chez le prestataire (ex: Andes - Potager de Mariane) : l'arrivage
             // reste tracé mais n'a pas à être pointé par l'agréage, contrairement à une livraison
             // chez Moorea qui doit apparaître dans "Pointer arrivage".
-            statut: livraisonHorsSite ? "hors site" : "en attente",
+            // Saisie rétroactive : déjà livrée, pas besoin d'être pointée par l'agréage --
+            // même statut "hors site" que les livraisons hors Moorea, pour qu'elle n'apparaisse
+            // pas comme "en attente" dans l'écran de pointage.
+            statut: (saisieRetroactive || livraisonHorsSite) ? "hors site" : "en attente",
             timestamp: Date.now(),
             carton_commande_id: commandeId,
             origine: lieuLivraison,
@@ -1739,8 +1750,9 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
           console.error("Erreur lors de la création de l'arrivage:", arrivageError);
         }
 
-        // Envoie l'email de confirmation à Go-Embal
-        try {
+        // Envoie l'email de confirmation à Go-Embal -- sauté en saisie rétroactive (la
+        // livraison a déjà eu lieu, inutile et trompeur de "confirmer" une commande après coup).
+        if (!saisieRetroactive) try {
           const lignesHtml = lignes
             .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? "s" : ""}</li>`)
             .join("");
@@ -1773,8 +1785,9 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         }
 
         // Livraison directe chez le prestataire : envoie un email avec un lien qu'il clique
-        // lui-même pour confirmer la réception (pas de passage par l'agréage).
-        if (livraisonHorsSite && emailPresta.trim()) {
+        // lui-même pour confirmer la réception (pas de passage par l'agréage). Sauté en saisie
+        // rétroactive, pour la même raison que ci-dessus.
+        if (!saisieRetroactive && livraisonHorsSite && emailPresta.trim()) {
           try {
             const lignesHtml = lignes
               .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? "s" : ""}</li>`)
@@ -1820,8 +1833,11 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       setLieuLivraison("Moorea Commerce Fruit - Bat D3");
       setLivraisonHorsSite(false);
       setEmailPresta("");
+      setSaisieRetroactive(false);
       setActiveTab("cartons");
-      setNotification({ type: "success", message: livraisonHorsSite ? "✓ Commande de cartons créée, email de confirmation envoyé au prestataire" : "✓ Commande de cartons créée, arrivage ajouté et email envoyé" });
+      setNotification({ type: "success", message: saisieRetroactive
+        ? "✓ Palette entrée dans l'historique, aucun mail envoyé"
+        : livraisonHorsSite ? "✓ Commande de cartons créée, email de confirmation envoyé au prestataire" : "✓ Commande de cartons créée, arrivage ajouté et email envoyé" });
     } catch (error) {
       setNotification({ type: "error", message: "✗ Erreur" });
     }
@@ -2812,6 +2828,21 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               />
             </div>
 
+            {/* 23/09/2026 -- Demande d'Elinathan : rattraper une palette de cartons déjà reçue
+                (donc une date dans le passé) sans notifier Go-Embal ni le prestataire par mail
+                d'une commande qui, en réalité, est déjà arrivée depuis longtemps. */}
+            <label style={{
+              display: "flex", alignItems: "flex-start", gap: 10, marginBottom: "16px",
+              padding: "12px 14px", background: saisieRetroactive ? `${COLORS.tertiary}15` : COLORS.gray100,
+              border: `1px solid ${saisieRetroactive ? COLORS.tertiary : COLORS.gray200}`, borderRadius: "8px", cursor: "pointer",
+            }}>
+              <input type="checkbox" checked={saisieRetroactive} onChange={(e) => setSaisieRetroactive(e.target.checked)}
+                style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2, appearance: "auto", WebkitAppearance: "checkbox", padding: 0, border: "revert", borderRadius: "revert" }} />
+              <div style={{ fontSize: "12.5px", color: COLORS.gray700 }}>
+                <strong>📅 Saisie rétroactive</strong> — la palette a déjà été livrée (entrée dans le passé pour l'historique). Aucun mail de commande n'est envoyé à Go-Embal ni au prestataire, et la commande est créée directement comme "reçue".
+              </div>
+            </label>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>🕐 Créneau</label>
@@ -2957,7 +2988,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                   fontSize: "14px",
                 }}
               >
-                ✓ Créer la commande
+                {saisieRetroactive ? "✓ Enregistrer dans l'historique (sans mail)" : "✓ Créer la commande"}
               </button>
               <button
                 onClick={() => setActiveTab("cartons")}
