@@ -4166,7 +4166,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       } catch {
                         notify("error", "⚠️ Demande enregistrée, mais l'impression automatique du bordereau a échoué");
                       }
-                      setPdfApercu({ titre: `Bordereau d'envoi — ${numero}`, base64: pdfBase64 });
+                      // 23/09/2026 — Demande d'Elinathan : plus d'aperçu du bon ouvert
+                      // automatiquement à la validation ("je m'en fous, je veux pas voir le
+                      // bon") — seule l'impression auto à l'entrepôt compte. Le bon reste
+                      // consultable à tout moment via "Bon de prépa" sur la demande créée.
                     } catch (errPdf: any) {
                       notify("error", `⚠️ Demande enregistrée, mais la génération du bordereau a échoué : ${errPdf?.message || "erreur inconnue"}`);
                     }
