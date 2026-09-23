@@ -418,7 +418,13 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // supplémentaires (extra) pour d'éventuels cas particuliers.
   async function marquerPartiSilencieux(id: string, extra?: Record<string, any>) {
     const demande = demandes.find(d => d.id === id);
-    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "parti", departDate: nowFr(), ...(extra || {}) });
+    // 23/09/2026 — Demande d'Elinathan : un envoi sans retour attendu (nbColisAEntrer null — ex.
+    // "Palette IFCO vide" envoyée à NLT) restait coincé sur "parti" pour toujours, puisque rien
+    // ne le fait jamais passer à "reçu" (ça se fait normalement en pointant le retour dans
+    // "Pointer arrivage", qui n'existe pas pour ces envois à sens unique). On le valide donc
+    // directement "reçu" dès le départ, plutôt que de le laisser affiché comme en transit.
+    const statutFinal = demande && demande.nbColisAEntrer == null ? "reçu" : "parti";
+    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: statutFinal, departDate: nowFr(), ...(extra || {}) });
 
     // Le retour n'est plus pointé depuis une modale ici : on crée l'arrivage attendu
     // correspondant, comme n'importe quelle livraison, pour qu'il apparaisse directement dans

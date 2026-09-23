@@ -2214,7 +2214,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // Même logique que marquerPartiSilencieux (PreparationModule.tsx) : on marque la demande
   // "parti" et on crée l'arrivage retour attendu, pour qu'il apparaisse dans « Pointer arrivage ».
   async function validerDepart(d: Demande) {
-    await update(ref(db, `reconditionnement_demandes/${d.id}`), { statut: "parti", departDate: nowFr() });
+    // 23/09/2026 — Même correction que marquerPartiSilencieux (PreparationModule.tsx) : un envoi
+    // sans retour attendu (nbColisAEntrer null, ex. "Palette IFCO vide") passe directement
+    // "reçu" au lieu de rester coincé sur "parti" pour toujours (rien ne le fait jamais avancer
+    // ensuite, puisqu'il n'y a pas de retour à pointer dans "Pointer arrivage").
+    const statutFinal = d.nbColisAEntrer == null ? "reçu" : "parti";
+    await update(ref(db, `reconditionnement_demandes/${d.id}`), { statut: statutFinal, departDate: nowFr() });
 
     const quantitePrevue = typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : null;
     const quantiteDeclareePresta = typeof d.retourPresta?.quantiteDeclaree === "number" ? d.retourPresta.quantiteDeclaree : null;
@@ -2223,7 +2228,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // si un clic précédent en a déjà créé un pour cette demande.
     const arrivageDejaCree = arrivagesData.some(a => a.reconditionnement_demande_id === d.id);
     if (d.nbColisAEntrer == null || arrivageDejaCree) {
-      notify("success", "🚚 Marqué parti");
+      notify("success", d.nbColisAEntrer == null ? "✅ Marqué parti et validé — aucun retour attendu pour cet envoi" : "🚚 Marqué parti");
       return;
     }
     try {
@@ -3209,6 +3214,23 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         </button>
                         <button onClick={() => supprimerDemande(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           🗑️ Supprimer
+                        </button>
+                      </div>
+                    )}
+                    {/* 23/09/2026 — Demande d'Elinathan : pouvoir supprimer une demande même déjà
+                        "reçu — terminé" (partout : la demande, l'arrivage lié s'il existe encore,
+                        et le stock IFCO/carton consommé est remis à jour en conséquence) —
+                        supprimerDemandeTerminee existait déjà (utilisée pour nettoyer les jeux de
+                        test) mais n'était reliée à aucun bouton pour une vraie demande. */}
+                    {d.statut === "reçu" && (
+                      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                        <button
+                          onClick={() => {
+                            if (!window.confirm(`Supprimer définitivement "${d.numero || d.id}" ? Cette demande est déjà "reçu — terminé" : le stock IFCO/carton qu'elle a consommé sera remis à jour en conséquence, et tout sera retiré (y compris l'historique).`)) return;
+                            supprimerDemandeTerminee(d);
+                          }}
+                          style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          🗑️ Supprimer (même terminé)
                         </button>
                       </div>
                     )}
