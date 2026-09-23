@@ -4130,7 +4130,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       creePar: userName || "Moorea",
                       depot: "nlt",
                       articleVrac: "Palette IFCO vide",
-                      articleFini: "NLT",
+                      // 23/09/2026 — Correction (demande d'Elinathan) : "NLT" ici était le nom du
+                      // dépôt réutilisé par erreur comme nom de "produit" — ça faisait ressortir
+                      // "NLT" comme ligne de récap incompréhensible sur l'étiquette de départ
+                      // groupé. Ce champ doit décrire ce qui part physiquement, comme pour
+                      // n'importe quelle autre ligne.
+                      articleFini: "Palette(s) IFCO vide(s)",
                       caissesIfcoEnvoyees: qte,
                       retourEnIfco: false,
                       // 11/09/2026 — Elinathan a remarqué que la palette apparaissait tout de suite

@@ -362,7 +362,10 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
         await push(ref(db, "printQueue"), {
           type: "etiquette_ifco_moorea",
           titre: "MOOREA",
-          mention: "IFCO",
+          // 23/09/2026 — Demande d'Elinathan : "IFCO" ne voulait rien dire sur l'étiquette (le
+          // nom du destinataire réel du départ doit apparaître en grand) — on affiche le nom du
+          // reconditionneur (NLT / Andès) à la place.
+          mention: DEPOT_LABEL[depot],
           depot: DEPOT_LABEL[depot],
           dateProd,
           transporteur,
@@ -392,7 +395,12 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     const recap = [...idsAvecPalette, ...idsSansPalette]
       .map(id => demandes.find(d => d.id === id))
       .filter((d): d is Demande => !!d)
-      .map(d => ({ produit: d.articleFini, qte: typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : null }));
+      .map(d => ({
+        produit: d.articleFini,
+        qte: typeof d.nbColisAEntrer === "number"
+          ? d.nbColisAEntrer
+          : (typeof d.caissesIfcoEnvoyees === "number" ? d.caissesIfcoEnvoyees : null),
+      }));
     for (const id of idsAvecPalette) {
       await marquerPartiSilencieux(id, { nbPalettesDepart: { grandes, demi }, nbPalettesDepartGroupeId: groupeId });
     }
@@ -518,7 +526,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       : [demande];
     const recap = (memeGroupe.length > 0 ? memeGroupe : [demande]).map(d => ({
       produit: d.articleFini,
-      qte: typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : null,
+      qte: typeof d.nbColisAEntrer === "number"
+        ? d.nbColisAEntrer
+        : (typeof d.caissesIfcoEnvoyees === "number" ? d.caissesIfcoEnvoyees : null),
     }));
     await envoyerEtiquetteIfcoMooreaPourImpressionPC(demande.depot, totalPalettes, demande.transporteurNom || "", recap);
     notify("success", "🖨️ Étiquette(s) renvoyée(s) à l'impression");
