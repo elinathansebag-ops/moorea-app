@@ -2631,19 +2631,25 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       const imgW=(CW-8)/3;
       const imgH=imgW*0.75;
       const totalRows2 = Math.ceil(allPhotos.length / 3);
-      // Précharge chaque photo en data URL avant de l'ajouter — voir chargerImageEnDataUrl.
+      // 23/09/2026 -- Demande d'Elinathan : l'envoi du rapport moulinait très longtemps (voire
+      // semblait bloqué). Cause : chaque photo était préchargée l'UNE APRÈS L'AUTRE, avec
+      // jusqu'à 8s de timeout par photo (voir chargerImageEnDataUrl / api/fetch-image.ts) --
+      // un rapport avec 6 photos pouvait donc attendre jusqu'à 48s en série avant même
+      // d'envoyer le mail. On précharge maintenant toutes les photos EN PARALLÈLE (Promise.all) :
+      // le temps total tombe au pire au temps de la photo la plus lente (~8s), pas à la somme.
+      const dataUrlsPhotos = await Promise.all(allPhotos.map(async ({ url }) => {
+        // Une data-URL est déjà utilisable telle quelle : la passer au proxy
+        // /api/fetch-image échouait et la photo disparaissait silencieusement.
+        const brut = url.startsWith("data:") ? url : await chargerImageEnDataUrl(url);
+        return brut ? await compressPhotoForPDF(brut) : "";
+      }));
       for (let rowI = 0; rowI < totalRows2; rowI++) {
         checkY(imgH + 4);
         for (let col = 0; col < 3; col++) {
           const i = rowI * 3 + col;
           if (i >= allPhotos.length) break;
           const px = M + col * (imgW + 4);
-          // Une data-URL est déjà utilisable telle quelle : la passer au proxy
-          // /api/fetch-image échouait et la photo disparaissait silencieusement.
-          const brut = allPhotos[i].url.startsWith("data:")
-            ? allPhotos[i].url
-            : await chargerImageEnDataUrl(allPhotos[i].url);
-          const dataUrl = brut ? await compressPhotoForPDF(brut) : "";
+          const dataUrl = dataUrlsPhotos[i];
           if (dataUrl) {
             try { doc.addImage(dataUrl, "JPEG", px, y, imgW, imgH, "photo"+i, "MEDIUM"); }
             catch (e) { console.warn("Photo non embarquée dans le PDF:", e); }
