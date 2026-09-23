@@ -3494,13 +3494,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
     function CardCarré({ icon, label, color, badge, stat, action }: any) {
       return (
-        <button onClick={action} style={{ background: cardBg, border: `1.5px solid ${cardBorder}`, borderRadius: 16, padding: "12px 6px 10px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", position: "relative", width: "100%", transition: "border-color .15s, box-shadow .15s", WebkitTapHighlightColor: "transparent" }}
+        <button onClick={action} style={{ background: cardBg, border: `1.5px solid ${cardBorder}`, borderRadius: 16, padding: "12px 6px 10px", cursor: "pointer", textAlign: "center", fontFamily: "'Syne', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: "6px", position: "relative", width: "100%", minWidth: 0, boxSizing: "border-box" as const, transition: "border-color .15s, box-shadow .15s", WebkitTapHighlightColor: "transparent" }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = color; (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 16px ${color}22`; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = cardBorder; (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}>
           {badge && <span style={{ position: "absolute", top: 6, right: 6, background: color, color: "#fff", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 20 }}>{badge}</span>}
           <span style={{ fontSize: "22px", width: "44px", height: "44px", display: "flex", alignItems: "center", justifyContent: "center", background: color + "18", borderRadius: 12 }}>{icon}</span>
-          <span style={{ fontSize: "11px", fontWeight: 800, color: textMain, lineHeight: 1.2 }}>{label}</span>
-          <span style={{ fontSize: "10px", color: color, fontWeight: 600, background: color + "15", padding: "2px 6px", borderRadius: 20 }}>{stat}</span>
+          <span style={{ fontSize: "11px", fontWeight: 800, color: textMain, lineHeight: 1.2, overflowWrap: "break-word", wordBreak: "break-word", maxWidth: "100%" }}>{label}</span>
+          <span style={{ fontSize: "10px", color: color, fontWeight: 600, background: color + "15", padding: "2px 6px", borderRadius: 20, maxWidth: "100%", boxSizing: "border-box" as const, overflowWrap: "break-word", wordBreak: "break-word" }}>{stat}</span>
         </button>
       );
     }
@@ -3706,7 +3706,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 )}
 
                 {modulesAffiches.length > 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 16 }}>
                     {modulesAffiches.map((b, i) => <CardCarré key={i} {...b} />)}
                   </div>
                 )}
