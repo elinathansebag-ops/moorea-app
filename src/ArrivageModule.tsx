@@ -763,10 +763,13 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               "Valider" tout en bas (voir handleValider(forcerLitige)). */}
           {/* 09/09/2026 — Un écart de colis (sans "⚠️ Litige" coché), quel que soit le type
               d'arrivage, n'est plus un litige — voir hasLitige plus haut — donc pas de rapport à
-              détailler ; un popup avec un message WhatsApp prêt à envoyer s'ouvre automatiquement
-              juste après la validation (voir setRecap dans handleValider). */}
+              détailler.
+              28/08/2026 — Plus de popup WhatsApp par article validé (regroupé en un seul message
+              par jour, voir alerterEcartsJourWhatsApp) : le texte ci-dessous disait encore
+              "automatiquement" alors que ça demande un clic sur "📲 Prévenir écarts" (bandeau du
+              jour) — corrigé le 23/09/2026 pour ne pas laisser croire que rien n'est à faire. */}
           {hasLitige && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#dc2626", fontStyle: "italic" }}>Le litige sera à détailler dans le rapport →</p>}
-          {!hasLitige && hasEcartColis && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#b45309", fontStyle: "italic" }}>L'écart sera signalé automatiquement (popup WhatsApp) — pas de rapport de litige.</p>}
+          {!hasLitige && hasEcartColis && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#b45309", fontStyle: "italic" }}>Écart enregistré — pas de rapport de litige. Pense à "📲 Prévenir écarts" (bandeau du jour) pour le signaler par WhatsApp.</p>}
         </>
       )}
 
@@ -2881,6 +2884,16 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
             style={{ padding: "4px 10px", borderRadius: 20, border: "1px solid #c8a84b", background: "#fffbf0", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
             🖨 Traçabilité
           </button>
+          {/* 23/09/2026 — Remis (bug remonté par Elinathan : "plus aucun message WhatsApp
+              automatique pour prévenir les écarts") — ce bouton avait été retiré le 09/09/2026
+              en pensant à tort qu'il n'était "jamais utilisé" ; alerterEcartsJourWhatsApp
+              existait toujours, juste plus reliée à rien. Remis à côté de "Traçabilité". */}
+          <button
+            onClick={e => { e.stopPropagation(); alerterEcartsJourWhatsApp(); }}
+            title="Envoyer un message WhatsApp récapitulant tous les écarts de colis du jour"
+            style={{ padding: "4px 10px", borderRadius: 20, border: "1px solid #25d366", background: "#f0fdf4", color: "#128c7e", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+            📲 Prévenir écarts
+          </button>
           {arrivages.length > 0 && (
             <span style={{ fontSize: 12, background: "#d97706", color: "#fff", padding: "4px 10px", borderRadius: 20, fontWeight: 700 }}>
               {arrivages.length} en attente
@@ -2896,12 +2909,13 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
       </div>
       {open && (
         <div style={{ background: "#1a2e1a", borderRadius: "0 0 14px 14px", padding: "10px 14px 14px", marginBottom: 8 }}>
-          {/* 09/09/2026 — L'ancienne "Barre d'actions" ne contenait plus que le bouton
-              "🖨 Traçabilité", déplacé dans l'en-tête du jour (à côté des badges "en attente" /
-              "traités") à la demande d'Elinathan. Rien d'autre à afficher ici pour l'instant :
-              "✅ Tout valider (nettoyage en masse)", "📲 Récap WA", "Prévenir écarts" et "Scanner
-              une étiquette" restent tous retirés (demandes précédentes d'Elinathan, jamais
-              utilisés) — leurs fonctions restent définies plus haut, juste non appelées ici. */}
+          {/* 09/09/2026 — L'ancienne "Barre d'actions" ne contenait plus que les boutons
+              "🖨 Traçabilité" et "📲 Prévenir écarts", tous deux déplacés dans l'en-tête du jour
+              (à côté des badges "en attente" / "traités") à la demande d'Elinathan.
+              23/09/2026 — "Prévenir écarts" avait été retiré à tort en pensant qu'il n'était
+              jamais utilisé (voir plus haut) : remis. "✅ Tout valider (nettoyage en masse)" et
+              "Scanner une étiquette" restent retirés (demandes précédentes d'Elinathan) — leurs
+              fonctions restent définies plus haut, juste non appelées ici. */}
           {/* Fournisseurs - en attente + traités regroupés */}
           {allFourn.map(f => (
             <FournisseurBlock key={f} fournisseur={f}
