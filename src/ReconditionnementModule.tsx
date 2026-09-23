@@ -2184,6 +2184,54 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     notify("success", "Demande annulée");
   }
 
+  // 23/09/2026 — Demande d'Elinathan : pouvoir valider un départ ("prêt" → "parti") directement
+  // depuis Reconditionnement, sans passer par le module Préparation entrepôt (qui gère en plus
+  // la saisie du nombre de palettes IFCO — pas toujours pertinente ici, ex : Andès en cartons).
+  // Même logique que marquerPartiSilencieux (PreparationModule.tsx) : on marque la demande
+  // "parti" et on crée l'arrivage retour attendu, pour qu'il apparaisse dans « Pointer arrivage ».
+  async function validerDepart(d: Demande) {
+    await update(ref(db, `reconditionnement_demandes/${d.id}`), { statut: "parti", departDate: nowFr() });
+
+    const quantitePrevue = typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : null;
+    const quantiteDeclareePresta = typeof d.retourPresta?.quantiteDeclaree === "number" ? d.retourPresta.quantiteDeclaree : null;
+    const quantiteArrivage = quantiteDeclareePresta != null ? quantiteDeclareePresta : (quantitePrevue ?? 0);
+    // Garde-fou contre les doublons (même précaution que côté Préparation) : pas de 2e arrivage
+    // si un clic précédent en a déjà créé un pour cette demande.
+    const arrivageDejaCree = arrivagesData.some(a => a.reconditionnement_demande_id === d.id);
+    if (d.nbColisAEntrer == null || arrivageDejaCree) {
+      notify("success", "🚚 Marqué parti");
+      return;
+    }
+    try {
+      await push(ref(db, "arrivages"), {
+        fournisseur: "Reconditionnement",
+        fournisseur_origine: d.origineFournisseur || null,
+        produit: d.articleFini,
+        variete: d.articleVrac,
+        lot_interne: d.lot || d.numero || d.id,
+        lot_fournisseur: d.origineLotFournisseur || "",
+        quantite: quantiteArrivage,
+        unite: "colis",
+        date: new Date().toLocaleDateString("fr-FR"),
+        statut: "en attente",
+        timestamp: Date.now(),
+        reconditionnement_demande_id: d.id,
+        depot: d.depot,
+        qteConditionnementAttendue: d.qteConditionnement ?? null,
+        caissesIfcoEnvoyees: d.caissesIfcoEnvoyees ?? null,
+        origine: `${DEPOT_LABEL[d.depot]}${d.transporteurNom ? ` · ${d.transporteurNom}` : ""}`,
+        transporteurNom: d.transporteurNom || null,
+        retour_en_ifco: d.retourEnIfco ?? false,
+        quantiteDemandeeInitiale: quantitePrevue,
+        quantiteDeclareePresta,
+        ecartPresta: quantitePrevue != null && quantiteDeclareePresta != null ? quantiteDeclareePresta - quantitePrevue : null,
+      });
+      notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
+    } catch (err: any) {
+      notify("error", `❌ Marqué parti mais l'arrivage attendu n'a pas pu être créé (${err?.message || "erreur"}) — repasse à « prêt » puis reclique « Valider » pour réessayer.`);
+    }
+  }
+
   async function ajouterTransporteur() {
     if (!nvNom.trim()) { notify("error", "✗ Indique un nom"); return; }
     const champs = {
@@ -3103,6 +3151,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         commercial, même une fois la demande passée "prêt" ou "parti". */}
                     {(d.statut === "prêt" || d.statut === "parti") && (
                       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                        {d.statut === "prêt" && (
+                          <button onClick={() => validerDepart(d)} title="Marquer cette demande partie — crée le retour attendu dans « Pointer arrivage »"
+                            style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                            ✅ Valider — marquer parti
+                          </button>
+                        )}
                         {d.statut === "prêt" && (
                           <button onClick={() => chargerPourEdition(d)} title="Corriger une information de cette demande (ex : quantité de caisses IFCO) sans annuler la préparation déjà faite par l'entrepôt"
                             style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
