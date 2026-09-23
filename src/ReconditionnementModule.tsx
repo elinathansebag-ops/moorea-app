@@ -195,6 +195,10 @@ export type Demande = {
   pdfGeslotNom?: string;
   pdfGeslotBase64?: string;
   statut: "en attente" | "prêt" | "parti" | "reçu" | "annulé";
+  // 23/09/2026 — Vrai quand la demande a été créée directement "déjà chez le reconditionneur"
+  // (case à cocher "Nouvelle demande") : rien n'a été physiquement transporté, donc le badge de
+  // statut ne doit pas parler de transporteur/camion pour cette demande (voir StatutBadge).
+  dejaChezReconditionneur?: boolean;
   entrepotPretPar?: string;
   entrepotPretDate?: string;
   nbPalettesDepart?: NbPalettes;
@@ -406,7 +410,7 @@ const LIEU_LABEL_IFCO: Record<string, string> = {
 // 02/09/2026 — Couleurs revues (même correction que PreparationModule.tsx) : "reçu" (vraiment
 // terminé) était en gris neutre, moins visible que "parti" (encore en cours) qui lui était en
 // vert — ça inversait visuellement ce qui est fini et ce qui ne l'est pas.
-function StatutBadge({ statut }: { statut: Demande["statut"] }) {
+function StatutBadge({ statut, dejaChezReconditionneur }: { statut: Demande["statut"]; dejaChezReconditionneur?: boolean }) {
   const map: Record<Demande["statut"], { bg: string; color: string; label: string }> = {
     "en attente": { bg: "#fffbeb", color: "#b45309", label: "🕐 En attente entrepôt" },
     "prêt": { bg: "#eff6ff", color: "#1d4ed8", label: "📦 Prêt — attend transporteur" },
@@ -414,7 +418,13 @@ function StatutBadge({ statut }: { statut: Demande["statut"] }) {
     "reçu": { bg: "#dcfce7", color: "#15803d", label: "✅ Reçu — terminé" },
     "annulé": { bg: "#fef2f2", color: "#b91c1c", label: "✕ Annulé" },
   };
-  const s = map[statut];
+  // 23/09/2026 — "Déjà chez le reconditionneur" : rien n'a été transporté (pas de camion, pas de
+  // transporteur), donc le badge "🚚 Parti chez le reconditionneur" (qui laisse croire à un envoi
+  // en cours) est trompeur pour cette demande précise — même remarque qu'Elinathan avait déjà
+  // faite le 11/09/2026 sur les palettes IFCO envoyées direct en "parti".
+  const s = (statut === "parti" && dejaChezReconditionneur)
+    ? { bg: "#f0fdf4", color: "#15803d", label: "📍 Déjà chez le reconditionneur" }
+    : map[statut];
   return (
     <span style={{ background: s.bg, color: s.color, borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700, display: "inline-block" }}>
       {s.label}
@@ -2005,6 +2015,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       // l'entrepôt pour un envoi qui n'a pas lieu d'être.
       statut: dejaChezReconditionneur ? "parti" : (original?.statut || "en attente"),
       departDate: dejaChezReconditionneur ? nowFr() : original?.departDate,
+      dejaChezReconditionneur: dejaChezReconditionneur || original?.dejaChezReconditionneur || undefined,
       // @ts-ignore — champ interne pour le tri, non typé dans Demande
       ts: original?.ts ?? now.getTime(),
     } as any;
@@ -3023,7 +3034,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                           {d.origineFournisseur ? ` · ${d.origineFournisseur}` : ""}
                         </div>
                       </div>
-                      <StatutBadge statut={d.statut} />
+                      <StatutBadge statut={d.statut} dejaChezReconditionneur={d.dejaChezReconditionneur} />
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, fontSize: 12, color: COLORS.gray600, marginBottom: 10 }}>
@@ -3903,7 +3914,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                         <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>{formatPalettes(d.retour?.nbPalettes)}</td>
                                       </>
                                     )}
-                                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}><StatutBadge statut={d.statut} /></td>
+                                    <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}><StatutBadge statut={d.statut} dejaChezReconditionneur={d.dejaChezReconditionneur} /></td>
                                     <td style={{ padding: "6px 4px", whiteSpace: "nowrap" }}>
                                       {enEdition ? (
                                         <div style={{ display: "flex", gap: 4 }}>
