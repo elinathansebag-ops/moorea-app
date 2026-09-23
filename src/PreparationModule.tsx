@@ -354,7 +354,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // seule fois, quand tout le lot est validé (voir finaliserDepartGroupe plus bas) — plus une
   // étiquette par ligne à chaque "prêt" comme avant. Un seul type d'étiquette (`printQueue.type
   // === "etiquette_ifco_moorea"`), à adapter côté relais PC d'impression.
-  async function envoyerEtiquetteIfcoMooreaPourImpressionPC(depot: Depot, totalPalettes: number, transporteur: string) {
+  async function envoyerEtiquetteIfcoMooreaPourImpressionPC(depot: Depot, totalPalettes: number, transporteur: string, recap: { produit: string; qte: number | null }[]) {
     if (totalPalettes <= 0) return;
     const dateProd = new Date().toLocaleDateString("fr-FR");
     for (let i = 1; i <= totalPalettes; i++) {
@@ -368,6 +368,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           transporteur,
           paletteIndex: i,
           paletteTotal: totalPalettes,
+          recap,
           status: "pending",
           createdAt: Date.now(),
         });
@@ -385,13 +386,20 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // palette physique — le tout en une seule action, plus de bouton "marquer parti" séparé.
   async function finaliserDepartGroupe(depot: Depot, idsAvecPalette: string[], idsSansPalette: string[], grandes: number, demi: number, transporteur: string) {
     const groupeId = idsAvecPalette.length > 0 ? `grp_${Date.now()}_${idsAvecPalette[0]}` : undefined;
+    // 23/09/2026 — Demande d'Elinathan : l'étiquette MOOREA/IFCO imprimée ci-dessous doit
+    // récapituler tous les produits de ce départ groupé (pas juste MOOREA/IFCO/X-Y) — même liste
+    // sur chaque palette du lot, pour que le chauffeur/destinataire voie tout ce qui part.
+    const recap = [...idsAvecPalette, ...idsSansPalette]
+      .map(id => demandes.find(d => d.id === id))
+      .filter((d): d is Demande => !!d)
+      .map(d => ({ produit: d.articleFini, qte: typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : null }));
     for (const id of idsAvecPalette) {
       await marquerPartiSilencieux(id, { nbPalettesDepart: { grandes, demi }, nbPalettesDepartGroupeId: groupeId });
     }
     for (const id of idsSansPalette) {
       await marquerPartiSilencieux(id);
     }
-    await envoyerEtiquetteIfcoMooreaPourImpressionPC(depot, grandes + demi, transporteur);
+    await envoyerEtiquetteIfcoMooreaPourImpressionPC(depot, grandes + demi, transporteur, recap);
     const total = idsAvecPalette.length + idsSansPalette.length;
     notify("success", `🚚 ${total} demande${total > 1 ? "s" : ""} validée${total > 1 ? "s" : ""} et partie${total > 1 ? "s" : ""} — étiquette(s) envoyée(s) à l'impression, les retours apparaîtront dans « Pointer arrivage »`);
   }
@@ -501,7 +509,18 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       return;
     }
     const totalPalettes = demande.nbPalettesDepart.grandes + demande.nbPalettesDepart.demi;
-    await envoyerEtiquetteIfcoMooreaPourImpressionPC(demande.depot, totalPalettes, demande.transporteurNom || "");
+    // 23/09/2026 — Le récap produits doit reprendre tout le départ groupé d'origine, pas juste
+    // cette ligne : on retrouve les autres demandes du même groupe via nbPalettesDepartGroupeId
+    // (posé par finaliserDepartGroupe) ; si absent (vieux départ ou départ solo), on retombe sur
+    // le produit de cette seule demande.
+    const memeGroupe = demande.nbPalettesDepartGroupeId
+      ? demandes.filter(d => d.nbPalettesDepartGroupeId === demande.nbPalettesDepartGroupeId)
+      : [demande];
+    const recap = (memeGroupe.length > 0 ? memeGroupe : [demande]).map(d => ({
+      produit: d.articleFini,
+      qte: typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : null,
+    }));
+    await envoyerEtiquetteIfcoMooreaPourImpressionPC(demande.depot, totalPalettes, demande.transporteurNom || "", recap);
     notify("success", "🖨️ Étiquette(s) renvoyée(s) à l'impression");
   }
 
