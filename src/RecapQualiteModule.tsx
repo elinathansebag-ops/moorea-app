@@ -14,6 +14,13 @@ import { PageHeader } from "./shared";
 // rapport d'heures de la Pointeuse. La plage de dates réellement couverte (le plus ancien rapport
 // -> le plus récent) est affichée en haut : comme aucun filtre de date n'est appliqué par défaut
 // et que "rapports" n'est jamais purgé/archivé, c'est tout ce qui existe dans la base.
+// 23/09/2026 (ter) -- "je veux pas le poids brut mais le poids qui est rentré comme les
+// températures" : le champ "poids" du formulaire de rapport (Poids (kg), à côté de Calibre) est en
+// fait le poids DÉCLARÉ/de référence du produit, pas une vraie pesée. Le vrai poids pesé à la
+// réception (poids net) vient de l'agréage de l'arrivage (ArrivageModule), stocké sur l'arrivage
+// lié (arrivage.rapport.poids_net ou arrivage.poids_net) -- on retrouve cet arrivage via
+// rapport.arrivage_id (présent quand le rapport a été créé depuis un arrivage pointé). Sans lien
+// ou sans pesée enregistrée, on affiche "—" plutôt que d'inventer une valeur.
 
 type RapportRecap = {
   id?: string; firebaseKey?: string; numeroRapport?: string;
@@ -23,6 +30,14 @@ type RapportRecap = {
   poids?: string; poidsStatut?: string; poidsEcart?: string;
   date?: string; heure?: string; timestamp?: number;
   decision?: string; conformite?: string;
+  arrivage_id?: string;
+};
+
+type ArrivageRecap = {
+  id?: string;
+  poids_net?: string;
+  poids_brut?: string;
+  rapport?: { poids_net?: string; poids_brut?: string };
 };
 
 function decisionColor(decision?: string): string {
@@ -36,11 +51,19 @@ function decisionAbrege(decision?: string): string {
   return "OK";
 }
 
-export function RecapQualiteModule({ rapports, onClose }: { rapports: RapportRecap[]; onClose: () => void }) {
+export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports: RapportRecap[]; arrivages: ArrivageRecap[]; onClose: () => void }) {
   const [rechercheLot, setRechercheLot] = useState("");
   const [du, setDu] = useState("");
   const [au, setAu] = useState("");
   const [lotOuvert, setLotOuvert] = useState<string | null>(null);
+
+  // Poids net réellement pesé à l'agréage, retrouvé via l'arrivage lié au rapport.
+  const poidsNetDe = (r: RapportRecap): string => {
+    if (!r.arrivage_id) return "";
+    const a = arrivages.find(x => x.id === r.arrivage_id);
+    if (!a) return "";
+    return a.rapport?.poids_net || a.poids_net || "";
+  };
 
   const plageComplete = useMemo(() => {
     if (rapports.length === 0) return null;
@@ -149,16 +172,19 @@ export function RecapQualiteModule({ rapports, onClose }: { rapports: RapportRec
                       <tr key={`${lot}_detail`}>
                         <td colSpan={5} style={{ padding: "6px 10px 10px", background: "#faf9f6", borderBottom: "1px solid #f0f0f0" }}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                            {items.map((r, i) => (
-                              <div key={r.id || r.firebaseKey || i}
-                                style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 8px", borderRadius: 6, background: "#fff", border: "1px solid #f0f0f0", fontSize: 11.5, flexWrap: "wrap" }}>
-                                <span style={{ fontWeight: 700, color: "#374151", minWidth: 100 }}>{r.date || "-"}{r.heure ? ` · ${r.heure}` : ""}</span>
-                                <span style={{ color: r.numeroTracabilite ? "#374151" : "#d1d5db" }}>🏷️ {r.numeroTracabilite || "—"}</span>
-                                <span style={{ color: r.temperature ? "#374151" : "#d1d5db" }}>🌡️ {r.temperature ? `${r.temperature}°C` : "—"}</span>
-                                <span style={{ color: r.poids ? "#374151" : "#d1d5db" }}>⚖️ {r.poids ? `${r.poids}kg` : "—"}</span>
-                                <span style={{ marginLeft: "auto", fontWeight: 700, color: decisionColor(r.decision) }}>{decisionAbrege(r.decision)}</span>
-                              </div>
-                            ))}
+                            {items.map((r, i) => {
+                              const poidsNet = poidsNetDe(r);
+                              return (
+                                <div key={r.id || r.firebaseKey || i}
+                                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 8px", borderRadius: 6, background: "#fff", border: "1px solid #f0f0f0", fontSize: 11.5, flexWrap: "wrap" }}>
+                                  <span style={{ fontWeight: 700, color: "#374151", minWidth: 100 }}>{r.date || "-"}{r.heure ? ` · ${r.heure}` : ""}</span>
+                                  <span style={{ color: r.numeroTracabilite ? "#374151" : "#d1d5db" }}>🏷️ {r.numeroTracabilite || "—"}</span>
+                                  <span style={{ color: r.temperature ? "#374151" : "#d1d5db" }}>🌡️ {r.temperature ? `${r.temperature}°C` : "—"}</span>
+                                  <span style={{ color: poidsNet ? "#374151" : "#d1d5db" }}>⚖️ {poidsNet ? `${poidsNet}kg` : "—"}</span>
+                                  <span style={{ marginLeft: "auto", fontWeight: 700, color: decisionColor(r.decision) }}>{decisionAbrege(r.decision)}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </td>
                       </tr>

@@ -3226,7 +3226,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // du module RH existant -- voir la note plus haut. Réservé aux admins (créer/supprimer des
   // employés, changer les codes de pointage n'est pas anodin).
   if (showRecapQualite) {
-    return <>{fabScanner}<RecapQualiteModule rapports={rapports} onClose={() => { setShowRecapQualite(false); setShowAccueil(true); }} /></>;
+    return <>{fabScanner}<RecapQualiteModule rapports={rapports} arrivages={arrivages} onClose={() => { setShowRecapQualite(false); setShowAccueil(true); }} /></>;
   }
   if (showPointeuse) {
     if (!monAccesReel.isAdmin) return <AccesRefuse onRetour={() => { setShowPointeuse(false); setShowAccueil(true); }} />;
