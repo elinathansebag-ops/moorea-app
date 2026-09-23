@@ -770,6 +770,14 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [popupEtiquetteRefus, setPopupEtiquetteRefus] = useState<any>(null);
+  // 23/09/2026 — Demande d'Elinathan : "plus aucun message whatsapp automatique pour prévenir
+  // les écarts d'entrée agréage". Le popup d'écart (né dans ProduitRow, puis remonté dans
+  // FournisseurBlock le 09/09 pour survivre à la validation) pouvait quand même disparaître si
+  // le composant qui le portait finissait par se démonter (plus aucun fournisseur "en attente"
+  // ce jour-là, etc.). Remonté ici, au niveau le plus haut de l'app — App.tsx ne se démonte
+  // jamais pendant une validation — pour garantir que le popup s'affiche à chaque écart détecté,
+  // quel que soit ce qui se passe dans la liste en dessous.
+  const [ecartPopup, setEcartPopup] = useState<null | { message: string }>(null);
   // Popup affiché juste après la validation d'un rapport : bouton pour envoyer le rapport
   // par mail (action explicite, plus d'envoi automatique en silence), et si le rapport est
   // un refus, bouton pour imprimer directement l'étiquette refus (QR vers le bon de retour).
@@ -3977,6 +3985,25 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         <PopupEtiquetteRefusMulti arrivage={popupEtiquetteRefus} onClose={() => setPopupEtiquetteRefus(null)} />
       )}
 
+      {ecartPopup && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 22, maxWidth: 420, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>⚠️ Arrivage validé — écart détecté</p>
+            <textarea readOnly value={ecartPopup.message} rows={5}
+              style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, fontFamily: "monospace", boxSizing: "border-box", marginBottom: 12, resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setEcartPopup(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                Fermer
+              </button>
+              <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(ecartPopup.message)}`, "_blank"); setEcartPopup(null); }}
+                style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                📲 Envoyer par WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {popupApresRapport && (
         <div style={{ position: "fixed", inset: 0, zIndex: 4000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 380, boxSizing: "border-box" }}>
@@ -4619,7 +4646,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} />
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => setEcartPopup({ message })} />
                           );
                         })}
                       </div>
