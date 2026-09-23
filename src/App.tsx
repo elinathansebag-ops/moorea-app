@@ -29,6 +29,7 @@ import { ChargementModule } from "./ChargementModule";
 import { PointeuseModule } from "./PointeuseModule";
 import { PointeuseEcran } from "./PointeuseEcran";
 import { EspaceEmployeModule } from "./EspaceEmployeModule";
+import { RecapQualiteModule } from "./RecapQualiteModule";
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
 // passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
@@ -788,6 +789,11 @@ export default function App() {
   const [pointeuseEcranPublic, setPointeuseEcranPublic] = useState(false);
   const [espaceEmployePublic, setEspaceEmployePublic] = useState<{ id: string | null; email: string } | null>(null);
   const [showPointeuse, setShowPointeuse] = useState(false);
+  // 23/09/2026 -- Demande d'Elinathan : module "Récap Qualité" -- le récap de tous les numéros
+  // de traçabilité, températures et poids pesés des rapports qualité, rangés par lot puis par
+  // date (voir src/RecapQualiteModule.tsx). Réutilise directement les "rapports" déjà chargés
+  // ici, aucune nouvelle donnée Firebase nécessaire.
+  const [showRecapQualite, setShowRecapQualite] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState<"palette" | "rapport">("palette");
   const [stockPage, setStockPage] = useState<"home"|"comptage"|"ecarts"|"config">("home");
@@ -2897,7 +2903,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   };
 
   // ─── FAB SCANNER GLOBAL ───
-  const fabScanner = !showScanner && !showPalette && !showStock && !showRH && !showPointeuse && (
+  const fabScanner = !showScanner && !showPalette && !showStock && !showRH && !showPointeuse && !showRecapQualite && (
     <button
       onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
       style={{ position: "fixed", bottom: 24, right: 24, width: 58, height: 58, borderRadius: "50%", background: "#0a0a0a", border: "2.5px solid #c8a84b", cursor: "pointer", fontSize: 24, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", zIndex: 9999, transition: "transform 0.15s" }}
@@ -3219,6 +3225,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // 22/09/2026 -- Nouveau module "Pointeuse" (écran mural + configuration des employés), séparé
   // du module RH existant -- voir la note plus haut. Réservé aux admins (créer/supprimer des
   // employés, changer les codes de pointage n'est pas anodin).
+  if (showRecapQualite) {
+    return <>{fabScanner}<RecapQualiteModule rapports={rapports} onClose={() => { setShowRecapQualite(false); setShowAccueil(true); }} /></>;
+  }
   if (showPointeuse) {
     if (!monAccesReel.isAdmin) return <AccesRefuse onRetour={() => { setShowPointeuse(false); setShowAccueil(true); }} />;
     return <>{fabScanner}<PointeuseModule onClose={() => { setShowPointeuse(false); setShowAccueil(true); }} /></>;
@@ -3444,6 +3453,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const row1 = [
       { key: "arrivages", icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, stat: nbAttente > 0 ? `${nbAttente} en attente auj.` : nbTraitesAujourdHui > 0 ? `${nbTraitesAujourdHui} traités auj.` : "Aucun arrivage auj.", action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
       { key: "rapports", icon: "📊", label: "Rapports", color: "#16a34a", badge: null, stat: `${nbRapports} total`, action: () => { setShowAccueil(false); setVue("historique"); setPageMode("arrivages"); } },
+      { key: "qualite", icon: "🧪", label: "Récap Qualité", color: "#16a34a", badge: null, stat: "Traçabilité, températures, poids", action: () => { setShowAccueil(false); setShowRecapQualite(true); } },
       { key: "stock", icon: "📦", label: "Stock", color: "#0891b2", badge: null, stat: "GMS & Prestige", action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
     ].filter(b => monAcces.hasModule(b.key));
 

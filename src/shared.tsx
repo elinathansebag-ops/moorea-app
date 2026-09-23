@@ -371,6 +371,7 @@ export const MODULE_DEFS: ModuleDef[] = [
     { key: "valider", label: "✅ Peut valider (sinon lecture seule : consultation du jour)" },
   ] },
   { key: "rapports", label: "📊 Rapports" },
+  { key: "qualite", label: "🧪 Récap Qualité" },
   { key: "litiges", label: "⚠️ Litiges" },
   { key: "stock", label: "📦 Stock", tabs: [
     { key: "config", label: "⚙️ Configuration (répartition GMS/Prestige)" },
