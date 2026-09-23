@@ -1731,6 +1731,16 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // "prêt" déjà validée — trop radical pour une simple erreur de clic sur "Marquer parti". Ce
   // bouton-ci ne défait QUE le départ : la demande repasse à "prêt" en gardant les palettes déjà
   // saisies par l'entrepôt, prête à être revalidée correctement.
+  // 23/09/2026 — Bouton de secours (bug remonté par Elinathan : une ligne "déjà chez le
+  // reconditionneur" était marquée à tort emailEnvoye:true dès sa création, donc jamais reprise
+  // dans le récap du jour envoyé par email — voir creerDemande). Permet de forcer une demande à
+  // réapparaître dans "Fichiers en attente" et donc dans le prochain récap envoyé, quelle que
+  // soit la raison pour laquelle emailEnvoye était passé à true trop tôt.
+  async function inclureDansProchainRecap(id: string) {
+    await update(ref(db, `reconditionnement_demandes/${id}`), { emailEnvoye: false });
+    notify("success", "↩️ Demande remise dans « Fichiers en attente » — elle partira dans le prochain récap envoyé");
+  }
+
   async function repasserAPret(id: string) {
     if (!window.confirm("Repasser cette demande de « parti » à « prêt » ? Le retour attendu dans « Pointer arrivage » sera annulé, mais le nombre de palettes déjà saisi est conservé.")) return;
     const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
@@ -2081,11 +2091,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
 
           if (dejaChezReconditionneur) {
-            // 23/09/2026 -- Rien à envoyer : pas d'impression à l'entrepôt, et le bon reste
-            // marqué "emailEnvoye: true" pour ne JAMAIS être repris dans le récap envoyé au
-            // transporteur/reconditionneur (api/recap-reconditionnement.js ne prend que les
-            // demandes à "false").
-            await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: true });
+            // 23/09/2026 -- Correction (bug remonté par Elinathan) : "pas de mail au
+            // transporteur" pour ces lignes-là ne veut PAS dire "pas de bon dans le récap envoyé
+            // au reconditionneur" -- confusion faite ici à tort la première fois, qui a fait
+            // sauter une ligne du récap du jour. Il n'y a juste rien à IMPRIMER à l'entrepôt
+            // (pas de préparation physique, le produit est déjà sur place), mais le bon doit
+            // quand même partir dans le prochain récap email comme n'importe quelle autre
+            // demande -- donc emailEnvoye reste "false" ici aussi.
+            await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
           } else {
             // Impression automatique du bon à l'entrepôt (relais PC) — sur le bon propre généré,
             // pas sur le scan Geslot d'origine.
@@ -3183,6 +3196,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         {d.statut === "parti" && (
                           <button onClick={() => repasserAPret(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: "#fff", color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                             ↩️ Repasser à « prêt »
+                          </button>
+                        )}
+                        {d.emailEnvoye === true && (
+                          <button onClick={() => inclureDansProchainRecap(d.id)} title="Cette demande ne partira pas dans le prochain récap envoyé par email — cliquer pour l'y inclure"
+                            style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.amber}`, background: COLORS.amberLight, color: "#92400e", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            📧 Inclure dans le prochain récap
                           </button>
                         )}
                         <button onClick={() => reinitialiserDemande(d.id)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
