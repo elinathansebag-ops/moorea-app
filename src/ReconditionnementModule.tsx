@@ -951,6 +951,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [commentaireEan, setCommentaireEan] = useState("");
   const [fournirEtiquettes, setFournirEtiquettes] = useState(false);
   const [transporteurId, setTransporteurId] = useState("");
+  // 23/09/2026 -- Demande d'Elinathan : une demande peut concerner un produit déjà présent
+  // chez le reconditionneur (ex : resté sur place depuis un précédent reconditionnement) --
+  // dans ce cas, pas besoin de l'envoyer physiquement (donc pas de bon à imprimer à
+  // l'entrepôt, pas de mail récap au transporteur/reconditionneur), mais le retour attendu
+  // doit quand même apparaître dans "Pointer arrivage" comme n'importe quelle autre demande.
+  // Un même jour peut mélanger des demandes normales et des demandes "déjà là-bas" : c'est
+  // donc une case par demande (une demande = une ligne produit), pas un réglage global.
+  const [dejaChezReconditionneur, setDejaChezReconditionneur] = useState(false);
   const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
   const [editDemandeId, setEditDemandeId] = useState<string | null>(null);
   const [lectureEnCours, setLectureEnCours] = useState(false);
@@ -1601,6 +1609,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     setCommentaireEan("");
     setFournirEtiquettes(false);
     setTransporteurId("");
+    setDejaChezReconditionneur(false);
     setPdfFile(null);
     setEditDemandeId(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -1915,7 +1924,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         return;
       }
     }
-    if (!transporteurId) {
+    if (!transporteurId && !dejaChezReconditionneur) {
       notify("error", "✗ Choisis un transporteur");
       return;
     }
@@ -1990,7 +1999,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       // (nécessaire pour le QR code de suivi).
       pdfGeslotNom: pdfFile?.nom,
       pdfGeslotBase64: pdfFile?.base64,
-      statut: original?.statut || "en attente",
+      // 23/09/2026 -- "Déjà chez le reconditionneur" : rien à expédier, donc on saute
+      // directement à "parti" (comme si l'entrepôt venait de le faire partir) au lieu de
+      // "en attente" -- ça évite que la demande traîne dans la file de préparation de
+      // l'entrepôt pour un envoi qui n'a pas lieu d'être.
+      statut: dejaChezReconditionneur ? "parti" : (original?.statut || "en attente"),
+      departDate: dejaChezReconditionneur ? nowFr() : original?.departDate,
       // @ts-ignore — champ interne pour le tri, non typé dans Demande
       ts: original?.ts ?? now.getTime(),
     } as any;
@@ -2055,27 +2069,71 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
           await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
 
-          // Impression automatique du bon à l'entrepôt (relais PC) — sur le bon propre généré,
-          // pas sur le scan Geslot d'origine.
-          try {
-            await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
-          } catch {
-            notify("error", "⚠️ Demande envoyée, mais l'envoi à l'impression automatique a échoué");
-          }
+          if (dejaChezReconditionneur) {
+            // 23/09/2026 -- Rien à envoyer : pas d'impression à l'entrepôt, et le bon reste
+            // marqué "emailEnvoye: true" pour ne JAMAIS être repris dans le récap envoyé au
+            // transporteur/reconditionneur (api/recap-reconditionnement.js ne prend que les
+            // demandes à "false").
+            await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: true });
+          } else {
+            // Impression automatique du bon à l'entrepôt (relais PC) — sur le bon propre généré,
+            // pas sur le scan Geslot d'origine.
+            try {
+              await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
+            } catch {
+              notify("error", "⚠️ Demande envoyée, mais l'envoi à l'impression automatique a échoué");
+            }
 
-          // NLT et Andès sont tous les deux livrés hors site, mais le bon n'est PLUS envoyé par
-          // email individuellement à chaque demande créée (trop de mails séparés quand plusieurs
-          // références sont faites le même jour) : chaque demande reste simplement marquée
-          // "emailEnvoye: false", et c'est api/recap-reconditionnement.js (déclenché manuellement
-          // par le bouton "Envoyer le récap" du module Préparation entrepôt) qui
-          // regroupe toutes les demandes en attente d'un dépôt dans UN seul mail récapitulatif (un
-          // bon en pièce jointe par référence, un seul lien pour déclarer un problème sur
-          // n'importe laquelle). Le bon reste imprimé sur place via le relais impression pour NLT
-          // (voir envoyerBonReconditionnementPourImpressionPC ci-dessus) — ça, ça continue à se
-          // faire immédiatement à la création.
-          await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
+            // NLT et Andès sont tous les deux livrés hors site, mais le bon n'est PLUS envoyé par
+            // email individuellement à chaque demande créée (trop de mails séparés quand plusieurs
+            // références sont faites le même jour) : chaque demande reste simplement marquée
+            // "emailEnvoye: false", et c'est api/recap-reconditionnement.js (déclenché manuellement
+            // par le bouton "Envoyer le récap" du module Préparation entrepôt) qui
+            // regroupe toutes les demandes en attente d'un dépôt dans UN seul mail récapitulatif (un
+            // bon en pièce jointe par référence, un seul lien pour déclarer un problème sur
+            // n'importe laquelle). Le bon reste imprimé sur place via le relais impression pour NLT
+            // (voir envoyerBonReconditionnementPourImpressionPC ci-dessus) — ça, ça continue à se
+            // faire immédiatement à la création.
+            await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
+          }
         } catch (errPdf: any) {
           notify("error", `⚠️ Demande envoyée, mais la génération du bon a échoué : ${errPdf?.message || "erreur inconnue"}`);
+        }
+
+        // 23/09/2026 -- "Déjà chez le reconditionneur" : comme la demande est créée directement
+        // "parti" (rien n'attend l'entrepôt pour ça), on crée ici le retour attendu dans
+        // "arrivages" nous-mêmes -- exactement ce que fait marquerPartiSilencieux
+        // (PreparationModule.tsx) au moment normal du départ -- pour qu'il apparaisse tout de
+        // suite dans « Pointer arrivage », sans attendre une action de l'entrepôt qui n'aura
+        // jamais lieu pour cette ligne-là.
+        if (dejaChezReconditionneur) {
+          try {
+            await push(ref(db, "arrivages"), {
+              fournisseur: "Reconditionnement",
+              fournisseur_origine: demande.origineFournisseur || null,
+              produit: demande.articleFini,
+              variete: demande.articleVrac,
+              lot_interne: demande.lot || demande.numero || demandeId,
+              lot_fournisseur: demande.origineLotFournisseur || "",
+              quantite: demande.qteConditionnement ?? demande.nbColisAEntrer ?? 0,
+              unite: "colis",
+              date: new Date().toLocaleDateString("fr-FR"),
+              statut: "en attente",
+              timestamp: Date.now(),
+              reconditionnement_demande_id: demandeId,
+              depot: demande.depot,
+              qteConditionnementAttendue: demande.qteConditionnement ?? null,
+              caissesIfcoEnvoyees: demande.caissesIfcoEnvoyees ?? null,
+              origine: `${DEPOT_LABEL[demande.depot]} · déjà sur place`,
+              transporteurNom: null,
+              retour_en_ifco: demande.retourEnIfco ?? false,
+              quantiteDemandeeInitiale: demande.nbColisAEntrer ?? null,
+              quantiteDeclareePresta: null,
+              ecartPresta: null,
+            });
+          } catch (errArrivage: any) {
+            notify("error", `❌ Demande créée mais l'arrivage attendu n'a pas pu être créé (${errArrivage?.message || "erreur"}) — préviens-nous si « Pointer arrivage » reste vide pour cette ligne.`);
+          }
         }
       }
 
@@ -2111,7 +2169,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         });
       }
 
-      notify("success", "✅ Demande envoyée à l'entrepôt");
+      notify("success", dejaChezReconditionneur
+        ? "✅ Ligne enregistrée — déjà chez le reconditionneur, aucun envoi ni mail, le retour apparaît dans « Pointer arrivage »"
+        : "✅ Demande envoyée à l'entrepôt");
       resetForm();
       setActiveTab("en_cours");
     } catch (err: any) {
@@ -3378,21 +3438,48 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               )}
             </div>
 
-            <div className="card" style={{ padding: "12px 16px", marginBottom: 10 }}>
-              <div className="section-title" style={{ marginBottom: 10 }}>🚚 Transport</div>
-              <F label="Transporteur" required>
-                <div style={{ position: "relative" }}>
-                  <select value={transporteurId} onChange={e => setTransporteurId(e.target.value)} style={{ paddingRight: 30, color: transporteurId ? undefined : "#9ca3af" }}>
-                    <option value="">— Choisir —</option>
-                    {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-                  </select>
-                  <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 11, color: COLORS.gray600 }}>▾</span>
-                </div>
-              </F>
-              {transporteurs.length === 0 && (
-                <p style={{ margin: "-6px 0 0", fontSize: 11, color: COLORS.danger }}>Aucun transporteur configuré — ajoute-en un dans l'onglet Configuration.</p>
-              )}
+            {/* 23/09/2026 -- Demande d'Elinathan : produit déjà chez le reconditionneur --
+                pas d'envoi (donc pas de bon à l'entrepôt ni de mail transporteur), mais le
+                retour attendu doit quand même apparaître dans "Pointer arrivage". */}
+            <div
+              onClick={() => setDejaChezReconditionneur(v => !v)}
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10, padding: "12px 16px",
+                borderRadius: 14, cursor: "pointer",
+                border: `2px solid ${dejaChezReconditionneur ? COLORS.secondary : COLORS.gray200}`,
+                background: dejaChezReconditionneur ? COLORS.secondaryLight : "#fff",
+                transition: "background 0.15s, border-color 0.15s",
+              }}
+            >
+              <input type="checkbox" checked={dejaChezReconditionneur} onChange={e => setDejaChezReconditionneur(e.target.checked)}
+                style={{ width: 18, height: 18, flexShrink: 0, marginTop: 2, appearance: "auto", WebkitAppearance: "checkbox", padding: 0, border: "revert", borderRadius: "revert" }} />
+              <div>
+                <span style={{ fontSize: 13.5, color: dejaChezReconditionneur ? "#15803d" : COLORS.gray700, fontWeight: 800, display: "block" }}>
+                  {dejaChezReconditionneur ? "✓" : "📍"} Produit déjà chez le reconditionneur
+                </span>
+                <span style={{ fontSize: 11, color: dejaChezReconditionneur ? "#15803d" : "#9ca3af" }}>
+                  Rien à envoyer : pas de bon à l'entrepôt, pas de mail au transporteur. Le retour attendu apparaîtra quand même dans « Pointer arrivage ».
+                </span>
+              </div>
             </div>
+
+            {!dejaChezReconditionneur && (
+              <div className="card" style={{ padding: "12px 16px", marginBottom: 10 }}>
+                <div className="section-title" style={{ marginBottom: 10 }}>🚚 Transport</div>
+                <F label="Transporteur" required>
+                  <div style={{ position: "relative" }}>
+                    <select value={transporteurId} onChange={e => setTransporteurId(e.target.value)} style={{ paddingRight: 30, color: transporteurId ? undefined : "#9ca3af" }}>
+                      <option value="">— Choisir —</option>
+                      {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                    </select>
+                    <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 11, color: COLORS.gray600 }}>▾</span>
+                  </div>
+                </F>
+                {transporteurs.length === 0 && (
+                  <p style={{ margin: "-6px 0 0", fontSize: 11, color: COLORS.danger }}>Aucun transporteur configuré — ajoute-en un dans l'onglet Configuration.</p>
+                )}
+              </div>
+            )}
 
             <button className="btn-primary" onClick={creerDemande}>
               {editDemandeId ? "✏️ Enregistrer les modifications" : "✓ Envoyer la demande à l'entrepôt"}
