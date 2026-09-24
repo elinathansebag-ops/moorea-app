@@ -24,10 +24,12 @@ const PX_PAR_MM = 96 / 25.4;
 
 // Design validé le 23/09 (mêmes valeurs que les défauts de print-relay.js).
 const DESIGN_ORIGINE: ConfigEtiquette = {
-  produitSize: 60, qtySize: 170, dlcValueSize: 55, dlcLabelSize: 15, metaCellSize: 21, qrSize: 75, lotMooreaSize: 21, produitLargeur: 168, produitHauteur: 17,
+  // 24/09/2026 — Design validé par Elinathan (capture « je veux un truc comme ça ») : nom en
+  // haut, gros nombre de colis à gauche, DLC en haut à droite, QR en bas à droite.
+  produitSize: 60, qtySize: 220, dlcValueSize: 57, dlcLabelSize: 15, metaCellSize: 31, qrSize: 59.5, lotMooreaSize: 21, produitLargeur: 150, produitHauteur: 16,
   positions: {
-    produit: { x: 6, y: 5 }, qr: { x: 6, y: 22 }, dlc: { x: 83.6, y: 75.6 }, qty: { x: 84.8, y: 22.5 },
-    lot: { x: 84, y: 65.9 }, ar: { x: 117.7, y: 66 }, lotMoorea: { x: 84, y: 56 },
+    produit: { x: 6.4, y: 4.9 }, qty: { x: 15.3, y: 26.8 }, dlc: { x: 100.7, y: 22.4 }, qr: { x: 116.1, y: 47.8 },
+    lot: { x: 84.1, y: 75.2 }, ar: { x: 49.8, y: 91.1 }, lotMoorea: { x: 15.3, y: 80 },
   },
   masques: { lotMoorea: true },
 };
@@ -259,7 +261,7 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
             <button onClick={enregistrer} disabled={!modifie} style={{ ...btn(modifie ? "#1a2e1a" : "#9ca3af"), cursor: modifie ? "pointer" : "default" }}>💾 {modifie ? "Enregistrer" : "Enregistré"}</button>
             <button onClick={imprimerTest} style={btn("#c8a84b", "#0a0a0a")}>🖨️ Imprimer une étiquette de test</button>
             {modifie && <button onClick={() => setCfg(enregistree)} style={btn("#fff", "#6b7280")}>↩️ Annuler mes changements</button>}
-            <button onClick={() => { if (window.confirm("Revenir au design du 23/09 ? (il faudra ensuite cliquer Enregistrer)")) setCfg(DESIGN_ORIGINE); }} style={{ ...btn("#fff", "#9ca3af"), border: "1px solid #e5e7eb", fontSize: 12 }}>Revenir au design d'origine</button>
+            <button onClick={() => { if (window.confirm("Revenir au design validé du 24/09 ? (il faudra ensuite cliquer Enregistrer)")) setCfg(DESIGN_ORIGINE); }} style={{ ...btn("#fff", "#9ca3af"), border: "1px solid #e5e7eb", fontSize: 12 }}>Revenir au design d'origine</button>
           </div>
         </div>
       </div>
