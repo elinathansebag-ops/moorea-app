@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
+import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
 import emailjs from "@emailjs/browser";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { PageHeader, NoteSelector, ScoreCircle, F, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, DESTINATAIRES, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, CRITERES, styles } from "./shared";
@@ -158,6 +159,9 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   const isPaletteIFCO = arrivage.palette_ifco_commande_id || arrivage.fournisseur === "IFCO";
   const isRetourRecond = !!arrivage.reconditionnement_demande_id;
   const isSimple = isGoEmbal || isPaletteIFCO || isRetourRecond;
+  // 24/09/2026 — Saisie enregistrée au fil de l'eau (voir brouillon.ts) : rien n'est perdu si la
+  // page est rafraîchie avant « Valider », et la saisie est retrouvée depuis un autre poste.
+  const brouillonArrivage = arrivage.id ? cheminBrouillon("arrivage", arrivage.id) : null;
   // Un retour de reconditionnement ne revient pas forcément en caisses IFCO (ex : la passion
   // repart dans son carton d'origine) — on utilise la case cochée à la création de la demande
   // (retour_en_ifco, la source la plus fiable), et seulement pour les demandes créées avant ce
@@ -177,26 +181,26 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   // rapport, ce qui polluait aussi bien l'affichage sur la carte que la moyenne par
   // fournisseur (d'où le "3,5" observé, qui n'était en fait qu'une moyenne entre une vraie
   // note et une note fantôme).
-  const [qualite, setQualite] = useState(0);
-  const [tempOk, setTempOk] = useState(true);
-  const [poidsOk, setPoidsOk] = useState(true);
-  const [litige, setLitige] = useState(false);
-  const [colisRecus, setColisRecus] = useState<string>("");
+  const [qualite, setQualite] = useBrouillon(brouillonArrivage, "qualite", 0);
+  const [tempOk, setTempOk] = useBrouillon(brouillonArrivage, "tempOk", true);
+  const [poidsOk, setPoidsOk] = useBrouillon(brouillonArrivage, "poidsOk", true);
+  const [litige, setLitige] = useBrouillon(brouillonArrivage, "litige", false);
+  const [colisRecus, setColisRecus] = useBrouillon<string>(brouillonArrivage, "colisRecus", "");
   // 04/09/2026 — Pour un arrivage "normal" (pas Go-Embal/IFCO/retour reconditionnement), l'agréeur
   // saisit directement la quantité DANS chaque case palette plutôt que de taper un total "Colis"
   // puis de choisir séparément un nombre de palettes — comme pour le pointage groupé NLT
   // (PointageGroupeNLT) et la correction de stock. Le total reçu est la somme des cases, et
   // c'est cette répartition qui détermine directement le nombre d'étiquettes imprimées à la
   // validation (une étiquette par case remplie, avec sa propre quantité).
-  const [cases, setCases] = useState<string[]>([""]);
+  const [cases, setCases] = useBrouillon<string[]>(brouillonArrivage, "cases", [""]);
   const setCase = (idx: number, val: string) => setCases(prev => { const arr = [...prev]; arr[idx] = val; return arr; });
   const ajouterCase = () => setCases(prev => [...prev, ""]);
   const retirerCase = (idx: number) => setCases(prev => { const arr = prev.filter((_, i) => i !== idx); return arr.length ? arr : [""]; });
   // Champs spécifiques au retour d'une demande de reconditionnement (NLT/Andès) — remplacent
   // l'ancienne modale "Pointage du retour" du module Reconditionnement, désormais pointée ici.
-  const [retourQte, setRetourQte] = useState<string>(arrivage.qteConditionnementAttendue != null ? String(arrivage.qteConditionnementAttendue) : "");
-  const [retourGrandes, setRetourGrandes] = useState<string>("");
-  const [retourDemi, setRetourDemi] = useState<string>("");
+  const [retourQte, setRetourQte] = useBrouillon<string>(brouillonArrivage, "retourQte", arrivage.qteConditionnementAttendue != null ? String(arrivage.qteConditionnementAttendue) : "");
+  const [retourGrandes, setRetourGrandes] = useBrouillon<string>(brouillonArrivage, "retourGrandes", "");
+  const [retourDemi, setRetourDemi] = useBrouillon<string>(brouillonArrivage, "retourDemi", "");
   // 01/09/2026 — Elinathan : pas de champ séparé pour les "caisses IFCO pleines" — pour un
   // article qui revient en caisses IFCO (retourEnIfco), un colis EST une caisse IFCO pleine, un
   // pour un. Le nombre de caisses pleines reçues est donc directement le nombre de colis reçus
@@ -205,16 +209,16 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   // colisRecusNum plus bas, utilisé directement dans handleValider).
   // Colis contenant les pièces écartées au tri (jamais 100% récupérable) — reviennent avec le
   // lot reconditionné, à détruire plutôt qu'à remettre en stock.
-  const [retourColisADetruire, setRetourColisADetruire] = useState<string>("");
-  const [retourCommentaire, setRetourCommentaire] = useState<string>("");
-  const [poidsBrut, setPoidsBrut] = useState<string>(arrivage.poids_brut || "");
-  const [poidsNet, setPoidsNet] = useState<string>(arrivage.poids_net || arrivage.poids_colis || "");
-  const [dlc, setDlc] = useState<string>(arrivage.dlc || "");
+  const [retourColisADetruire, setRetourColisADetruire] = useBrouillon<string>(brouillonArrivage, "retourColisADetruire", "");
+  const [retourCommentaire, setRetourCommentaire] = useBrouillon<string>(brouillonArrivage, "retourCommentaire", "");
+  const [poidsBrut, setPoidsBrut] = useBrouillon<string>(brouillonArrivage, "poidsBrut", arrivage.poids_brut || "");
+  const [poidsNet, setPoidsNet] = useBrouillon<string>(brouillonArrivage, "poidsNet", arrivage.poids_net || arrivage.poids_colis || "");
+  const [dlc, setDlc] = useBrouillon<string>(brouillonArrivage, "dlc", arrivage.dlc || "");
   // Un article peut arriver avec plusieurs n° de traçabilité fournisseur (mélange de lots
   // dans une même palette) — on garde donc une LISTE plutôt qu'un simple texte. On reprend
   // l'existant si déjà enregistré en liste (lot_fournisseur_liste), sinon on repart de l'ancien
   // champ texte unique (lot_fournisseur) pour rester compatible avec les arrivages existants.
-  const [tracaList, setTracaList] = useState<string[]>(() => {
+  const [tracaList, setTracaList] = useBrouillon<string[]>(brouillonArrivage, "tracaList", () => {
     if (Array.isArray(arrivage.lot_fournisseur_liste) && arrivage.lot_fournisseur_liste.length) return arrivage.lot_fournisseur_liste;
     return [arrivage.lot_fournisseur || ""];
   });
@@ -255,8 +259,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   // Listes de mesures — vides par défaut : ces contrôles sont optionnels, seuls les
   // produits qui le nécessitent en auront. L'horodatage est posé à la création de la ligne
   // (donc au moment de la pesée / du relevé) et n'est plus touché ensuite.
-  const [poidsBarquettes, setPoidsBarquettes] = useState<Mesure[]>(() => lireMesures(arrivage.poids_barquettes));
-  const [temperatures, setTemperatures] = useState<Mesure[]>(() => lireMesures(arrivage.temperatures));
+  const [poidsBarquettes, setPoidsBarquettes] = useBrouillon<Mesure[]>(brouillonArrivage, "poidsBarquettes", () => lireMesures(arrivage.poids_barquettes));
+  const [temperatures, setTemperatures] = useBrouillon<Mesure[]>(brouillonArrivage, "temperatures", () => lireMesures(arrivage.temperatures));
 
   const ajouterMesure = (setter: React.Dispatch<React.SetStateAction<Mesure[]>>) =>
     setter(prev => [...prev, { valeur: "", at: Date.now() }]);
@@ -341,8 +345,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
   // ─── Palettes pour l'étiquette imprimée automatiquement à la validation ───
   // Par défaut : 1 palette avec la totalité des colis. Si l'agréeur répartit sur plusieurs
   // palettes, une étiquette distincte sera imprimée pour chacune (bon nombre de colis chacune).
-  const [nbPalettes, setNbPalettesState] = useState(1);
-  const [repartitionPalettes, setRepartitionPalettes] = useState<number[]>([colisAttendu]);
+  const [nbPalettes, setNbPalettesState] = useBrouillon(brouillonArrivage, "nbPalettes", 1);
+  const [repartitionPalettes, setRepartitionPalettes] = useBrouillon<number[]>(brouillonArrivage, "repartitionPalettes", [colisAttendu]);
   const dejaAjusteManuel = useRef(false);
   // Cas rare (>2 palettes) : les boutons rapides s'arrêtent à 2 (99% des cas), un petit "+"
   // discret ouvre une saisie libre du nombre de palettes pour les cas exceptionnels.
@@ -392,7 +396,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
 
   // Cas rare (~5%) : valider sans déclencher l'impression automatique de l'étiquette — option
   // discrète, désactivée par défaut, pour ne pas concurrencer le comportement normal.
-  const [sansEtiquette, setSansEtiquette] = useState(false);
+  const [sansEtiquette, setSansEtiquette] = useBrouillon(brouillonArrivage, "sansEtiquette", false);
 
   // Un arrivage reporté à une date future n'a pas encore de palette physique sur le quai —
   // on ne peut donc ni valider ni imprimer l'étiquette tant que le jour J n'est pas arrivé.
@@ -447,6 +451,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     // (PointageGroupeNLT.validerTout, voir plus bas) — même correction ici.
     try {
       await onValidate(arrivage, ctrl, hasLitige ? "non_conforme" : "conforme", hasLitige ? "sous réserve" : "", raisonFinal, "", nbPalettes > 1 ? repartitionPalettes : null, sansEtiquette);
+      effacerBrouillon(brouillonArrivage);
       if (hasEcartColis) {
         const signe = ecartColis > 0 ? "+" : "";
         const message = `⚠️ ÉCART DE COLIS\n${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""} — ${arrivage.fournisseur || "-"}\nReçu ${colisRecusNum}/${colisAttendu} (${signe}${ecartColis})`;
@@ -906,10 +911,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
 // cliqué, un popup s'ouvre avec le récap des écarts et un message WhatsApp déjà rédigé, à
 // envoyer d'un clic (plus d'ouverture automatique de fenêtre, on laisse relire avant).
 function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceInfo, onEcartDetecte }: { groupe: string; produits: any[]; onValidate: any; date: string; paletteAnnonceInfo: { grandes: number; demi: number } | null; onEcartDetecte?: (message: string) => void }) {
-  const [cases, setCases] = useState<Record<string, string[]>>({});
-  const [problemes, setProblemes] = useState<Record<string, boolean>>({});
-  const [commentaires, setCommentaires] = useState<Record<string, string>>({});
-  const [sansEtiquette, setSansEtiquette] = useState(false);
+  // 24/09/2026 — Saisie du pointage enregistrée au fil de l'eau (voir brouillon.ts).
+  const brouillonPointage = cheminBrouillon("pointage", groupe, date);
+  const [cases, setCases] = useBrouillon<Record<string, string[]>>(brouillonPointage, "cases", {});
+  const [problemes, setProblemes] = useBrouillon<Record<string, boolean>>(brouillonPointage, "problemes", {});
+  const [commentaires, setCommentaires] = useBrouillon<Record<string, string>>(brouillonPointage, "commentaires", {});
+  const [sansEtiquette, setSansEtiquette] = useBrouillon(brouillonPointage, "sansEtiquette", false);
   const [saving, setSaving] = useState(false);
   const [recap, setRecap] = useState<null | { lignes: { produit: string; lot: string; attendu: number; recu: number; ecart: number }[]; message: string; totalEcart: number }>(null);
 
@@ -971,6 +978,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
         await onValidate(a, ctrl, litige ? "non_conforme" : "conforme", litige ? "sous réserve" : "", raison, "", palettesArr, sansEtiquette);
         recapLignes.push({ produit: a.produit, lot: a.lot_interne, attendu, recu, ecart });
       }
+      effacerBrouillon(brouillonPointage);
       const lignesMsg = recapLignes.map(r => `${r.ecart !== 0 ? "⚠️" : "✅"} ${r.produit || "-"}${r.lot ? ` · lot ${r.lot}` : ""} — reçu ${r.recu}/${r.attendu}${r.ecart !== 0 ? ` (${r.ecart > 0 ? "+" : ""}${r.ecart})` : ""}`);
       const message = `POINTAGE ${groupe} - ${date}\nTotal reçu : ${totalRecu}/${totalAttendu}${totalEcart !== 0 ? ` — écart ${totalEcart > 0 ? "+" : ""}${totalEcart}` : ""}\n\n${lignesMsg.join("\n")}`;
       // 24/09/2026 — Même bug que ProduitRow le 09/09 : une fois tout validé, les lignes quittent

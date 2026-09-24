@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
+import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
@@ -935,32 +936,35 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [photoApercu, setPhotoApercu] = useState<string | null>(null);
 
   // Formulaire nouvelle demande
+  // 24/09/2026 — Saisie enregistrée au fil de l'eau (voir brouillon.ts), une par utilisateur :
+  // un rafraîchissement ou un changement de poste ne fait plus perdre la demande en cours.
+  const brouillonDemande = cheminBrouillon("nouvelle_demande", userName || "moorea");
   // Pas de dépôt présélectionné par défaut : on force un choix explicite plutôt que de risquer
   // qu'une demande soit créée pour "NLT" sans que personne n'ait vraiment vérifié.
-  const [depot, setDepot] = useState<Depot | "">("");
-  const [articleVrac, setArticleVrac] = useState("");
-  const [lot, setLot] = useState("");
-  const [nbColisASortir, setNbColisASortir] = useState("");
-  const [articleFini, setArticleFini] = useState("");
-  const [nbColisAEntrer, setNbColisAEntrer] = useState("");
+  const [depot, setDepot] = useBrouillon<Depot | "">(brouillonDemande, "depot", "");
+  const [articleVrac, setArticleVrac] = useBrouillon(brouillonDemande, "articleVrac", "");
+  const [lot, setLot] = useBrouillon(brouillonDemande, "lot", "");
+  const [nbColisASortir, setNbColisASortir] = useBrouillon(brouillonDemande, "nbColisASortir", "");
+  const [articleFini, setArticleFini] = useBrouillon(brouillonDemande, "articleFini", "");
+  const [nbColisAEntrer, setNbColisAEntrer] = useBrouillon(brouillonDemande, "nbColisAEntrer", "");
   // On saisit la quantité par colis (ex: par filet) plutôt que le total — le total
   // (qteConditionnement, envoyé/affiché partout ailleurs) est calculé automatiquement à partir
   // de nbColisAEntrer × qtePerColis.
-  const [qtePerColis, setQtePerColis] = useState("");
-  const [caissesIfcoEnvoyees, setCaissesIfcoEnvoyees] = useState("");
-  const [cartonsBabyBlancEnvoyes, setCartonsBabyBlancEnvoyes] = useState("");
+  const [qtePerColis, setQtePerColis] = useBrouillon(brouillonDemande, "qtePerColis", "");
+  const [caissesIfcoEnvoyees, setCaissesIfcoEnvoyees] = useBrouillon(brouillonDemande, "caissesIfcoEnvoyees", "");
+  const [cartonsBabyBlancEnvoyes, setCartonsBabyBlancEnvoyes] = useBrouillon(brouillonDemande, "cartonsBabyBlancEnvoyes", "");
   // Coché automatiquement dès que "IFCO" apparaît dans le nom de l'article à fabriquer (voir
   // l'effet ci-dessous), mais reste modifiable à la main si jamais le nom ne suffit pas.
   // 31/08/2026 — Passé en choix Oui/Non obligatoire (comme l'envoi de caisses IFCO) : la
   // détection automatique sur le nom de l'article pouvait se tromper silencieusement, sans que
   // personne ne la revérifie. "" = pas encore choisi.
-  const [retourIfco, setRetourIfco] = useState<"" | "oui" | "non">("");
+  const [retourIfco, setRetourIfco] = useBrouillon<"" | "oui" | "non">(brouillonDemande, "retourIfco", "");
   // Commentaire libre (typiquement un EAN à utiliser) transmis à la fois à l'entrepôt Moorea et
   // au reconditionneur — imprimé sur le bon dans les deux zones (voir genererBonPdf) puisque les
   // deux parties le lisent séparément.
-  const [commentaireEan, setCommentaireEan] = useState("");
-  const [fournirEtiquettes, setFournirEtiquettes] = useState(false);
-  const [transporteurId, setTransporteurId] = useState("");
+  const [commentaireEan, setCommentaireEan] = useBrouillon(brouillonDemande, "commentaireEan", "");
+  const [fournirEtiquettes, setFournirEtiquettes] = useBrouillon(brouillonDemande, "fournirEtiquettes", false);
+  const [transporteurId, setTransporteurId] = useBrouillon(brouillonDemande, "transporteurId", "");
   // 23/09/2026 -- Demande d'Elinathan : une demande peut concerner un produit déjà présent
   // chez le reconditionneur (ex : resté sur place depuis un précédent reconditionnement) --
   // dans ce cas, pas besoin de l'envoyer physiquement (donc pas de bon à imprimer à
@@ -968,9 +972,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // doit quand même apparaître dans "Pointer arrivage" comme n'importe quelle autre demande.
   // Un même jour peut mélanger des demandes normales et des demandes "déjà là-bas" : c'est
   // donc une case par demande (une demande = une ligne produit), pas un réglage global.
-  const [dejaChezReconditionneur, setDejaChezReconditionneur] = useState(false);
-  const [pdfFile, setPdfFile] = useState<{ nom: string; base64: string } | null>(null);
-  const [editDemandeId, setEditDemandeId] = useState<string | null>(null);
+  const [dejaChezReconditionneur, setDejaChezReconditionneur] = useBrouillon(brouillonDemande, "dejaChezReconditionneur", false);
+  const [pdfFile, setPdfFile] = useBrouillon<{ nom: string; base64: string } | null>(brouillonDemande, "pdfFile", null);
+  const [editDemandeId, setEditDemandeId] = useBrouillon<string | null>(brouillonDemande, "editDemandeId", null);
   const [lectureEnCours, setLectureEnCours] = useState(false);
   // Retient la dernière valeur d'emballage suggérée automatiquement (règle générale : 1 caisse
   // IFCO par colis fini à entrer), pour ne pas écraser une correction manuelle du commercial
@@ -1652,6 +1656,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     setPdfFile(null);
     setEditDemandeId(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    effacerBrouillon(brouillonDemande);
   }
 
   // Charge une demande "en attente" dans le formulaire pour la modifier, plutôt que d'en créer
