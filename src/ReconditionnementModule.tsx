@@ -1365,7 +1365,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     try {
       const pdfjsLib: any = await import("pdfjs-dist");
       pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-      const doc = await pdfjsLib.getDocument({ data: bytes, useWasm: false }).promise;
+      const doc = await pdfjsLib.getDocument({ data: bytes, wasmUrl: "/pdfjs-wasm/" }).promise;
       const page = await doc.getPage(1);
       const viewport = page.getViewport({ scale: 2.5 });
       const canvas = document.createElement("canvas");
@@ -1511,7 +1511,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const arrayBuffer = await file.arrayBuffer();
       const pdfjsLib: any = await import("pdfjs-dist");
       pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer), useWasm: false }).promise;
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer), wasmUrl: "/pdfjs-wasm/" }).promise;
       const page = await doc.getPage(1);
       const viewport = page.getViewport({ scale: 2.5 });
       const canvas = document.createElement("canvas");
