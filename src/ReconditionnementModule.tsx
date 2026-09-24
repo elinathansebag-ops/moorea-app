@@ -1019,7 +1019,29 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // 28/08/2026 — Fichiers issus du découpage d'un PDF Geslot multi-pages (voir
   // importerPdfMultiPages), en attente d'être rattachés à une demande via "Utiliser" dans le
   // formulaire de création. Chaque entrée disparaît de cette liste une fois utilisée.
-  const [pdfsEnAttente, setPdfsEnAttente] = useState<{ id: string; nom: string; base64: string; dateFr: string; ts: number; article?: string }[]>([]);
+  const [pdfsEnAttente, setPdfsEnAttente] = useState<{ id: string; nom: string; base64: string; dateFr: string; ts: number; article?: string; apercuFait?: boolean }[]>([]);
+  // 24/09/2026 — La reconnaissance de l'article des « Fichiers en attente » tourne maintenant ici,
+  // pour TOUT fichier encore sans article (et plus seulement juste après l'import) : les fichiers
+  // importés pendant que la lecture PDF était cassée restaient bloqués à vie sur « ⏳ reconnaissance
+  // de l'article… ». Chaque fichier n'est tenté qu'une fois par session ; en cas d'échec on marque
+  // apercuFait pour ne plus afficher un sablier qui ne finira jamais.
+  const apercuTentesRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const aFaire = pdfsEnAttente.filter(p => !p.article && !p.apercuFait && !apercuTentesRef.current.has(p.id));
+    if (aFaire.length === 0) return;
+    aFaire.forEach(p => apercuTentesRef.current.add(p.id));
+    (async () => {
+      for (const p of aFaire) {
+        try {
+          const bytes = new Uint8Array(await (await fetch(p.base64)).arrayBuffer());
+          const article = await extraireArticleApercu(bytes);
+          await update(ref(db, `reconditionnement_pdfs_en_attente/${p.id}`), article ? { article, apercuFait: true } : { apercuFait: true });
+        } catch {
+          // fichier supprimé/utilisé entre-temps : rien à faire
+        }
+      }
+    })();
+  }, [pdfsEnAttente]);
   const [importMultiEnCours, setImportMultiEnCours] = useState(false);
   const [afficherPdfsEnAttente, setAfficherPdfsEnAttente] = useState(false);
 
@@ -1457,14 +1479,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       }
       notify("success", `✅ ${nbPages} pages enregistrées — disponibles dans « Fichiers en attente »`);
       setAfficherPdfsEnAttente(true);
-      // Reconnaissance des articles en arrière-plan, une page après l'autre (voir
-      // extraireArticleApercu plus haut) — ne bloque jamais l'import lui-même.
-      (async () => {
-        for (const { cle, bytes } of pagesPourApercu) {
-          const article = await extraireArticleApercu(bytes);
-          if (article) await update(ref(db, `reconditionnement_pdfs_en_attente/${cle}`), { article });
-        }
-      })();
+      // Reconnaissance des articles : faite en arrière-plan par l'effet sur pdfsEnAttente
+      // (voir apercuTentesRef) — ne bloque jamais l'import lui-même.
+      void pagesPourApercu;
     } catch (err: any) {
       notify("error", `❌ Erreur lors de l'import du PDF : ${err?.message || "erreur inconnue"}`);
     } finally {
@@ -2909,7 +2926,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       <span style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.article || p.nom}</span>
                         {p.article && <span style={{ fontSize: 10, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>}
-                        {!p.article && <span style={{ fontSize: 10, color: "#9ca3af" }}>⏳ reconnaissance de l'article…</span>}
+                        {!p.article && <span style={{ fontSize: 10, color: "#9ca3af" }}>{p.apercuFait ? "article non reconnu — voir Aperçu" : "⏳ reconnaissance de l'article…"}</span>}
                       </span>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                         <button type="button" onClick={() => setPdfApercu({ titre: p.nom, base64: p.base64 })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e9d8fd", background: "#fff", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -3304,7 +3321,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       <span style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.article || p.nom}</span>
                         {p.article && <span style={{ fontSize: 10, color: COLORS.gray600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>}
-                        {!p.article && <span style={{ fontSize: 10, color: "#9ca3af" }}>⏳ reconnaissance de l'article…</span>}
+                        {!p.article && <span style={{ fontSize: 10, color: "#9ca3af" }}>{p.apercuFait ? "article non reconnu — voir Aperçu" : "⏳ reconnaissance de l'article…"}</span>}
                       </span>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                         <button type="button" onClick={() => setPdfApercu({ titre: p.nom, base64: p.base64 })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e9d8fd", background: "#fff", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
