@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, styles } from "./shared";
+import { ReglageEtiquetteArrivage } from "./ReglageEtiquetteArrivage";
 
 // ── Module Étiquettes — mini éditeur d'étiquettes ──
 // 01/09/2026 — Recréé à la demande d'Elinathan (l'ancien fichier avait été perdu sur GitHub,
@@ -121,7 +122,7 @@ type ModeleEtiquette = EtatEtiquette & {
   depuisImpression?: boolean;
 };
 
-type Vue = "liste" | "editeur";
+type Vue = "liste" | "editeur" | "reglageArrivage";
 
 const FORMATS_PREDEFINIS: (FormatEtiquette & { label: string })[] = [
   { label: "Palette reconditionnement (18 × 11 cm)", largeurCm: 18, hauteurCm: 11 },
@@ -703,7 +704,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
       <style>{styles}</style>
       <PageHeader
         titre="🏷️ Étiquettes"
-        onBack={() => (vue === "editeur" ? setVue("liste") : onClose())}
+        onBack={() => (vue !== "liste" ? setVue("liste") : onClose())}
         onHome={onClose}
       />
 
@@ -713,9 +714,18 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {vue === "reglageArrivage" && <ReglageEtiquetteArrivage onRetour={() => setVue("liste")} />}
+
       {/* ── PAGE D'ACCUEIL — liste des étiquettes déjà créées ── */}
       {vue === "liste" && (
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "20px 16px 100px" }}>
+          {/* 24/09/2026 — Réglage de l'étiquette palette imprimée automatiquement à l'agréage. */}
+          <button
+            onClick={() => setVue("reglageArrivage")}
+            style={{ width: "100%", padding: "14px", borderRadius: 14, border: `2px solid ${COLORS.primary}`, background: "#fffbeb", color: COLORS.dark, fontSize: 14, fontWeight: 800, cursor: "pointer", marginBottom: 12 }}
+          >
+            🎛️ Réglage de l'étiquette d'arrivage (palette)
+          </button>
           <button
             onClick={nouvelleEtiquette}
             style={{ width: "100%", padding: "16px", borderRadius: 14, border: "none", background: COLORS.dark, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", marginBottom: 22 }}
