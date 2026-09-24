@@ -1086,6 +1086,18 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const u6 = onValue(ref(db, "arrivages"), snap => {
       const d = snap.val();
       setArrivagesData(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+      // 24/09/2026 — Rattrapage des retours « déjà sur place » créés avec la quantité
+      // conditionnée (filets/kg) au lieu du nombre de colis : on remet le nombre de colis
+      // tant que l'arrivage n'est pas encore pointé.
+      if (d) {
+        Object.entries(d).forEach(([id, v]: any) => {
+          if (v && v.statut === "en attente" && typeof v.origine === "string" && v.origine.endsWith("déjà sur place")
+            && typeof v.quantiteDemandeeInitiale === "number" && v.qteConditionnementAttendue != null
+            && v.quantite === v.qteConditionnementAttendue && v.quantite !== v.quantiteDemandeeInitiale) {
+            update(ref(db, `arrivages/${id}`), { quantite: v.quantiteDemandeeInitiale }).catch(() => {});
+          }
+        });
+      }
     });
     const u7 = onValue(ref(db, "reconditionnement_stock_mouvements"), snap => {
       const d = snap.val();
@@ -2156,7 +2168,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               variete: demande.articleVrac,
               lot_interne: demande.lot || demande.numero || demandeId,
               lot_fournisseur: demande.origineLotFournisseur || "",
-              quantite: demande.qteConditionnement ?? demande.nbColisAEntrer ?? 0,
+              // 24/09/2026 — Fix : c'est le nombre de COLIS attendus (comme tous les autres
+              // retours), pas la quantité conditionnée (filets/kg) — sinon « Attendu » affichait
+              // 1030 filets au lieu de 103 colis dans le pointage.
+              quantite: demande.nbColisAEntrer ?? 0,
               unite: "colis",
               date: new Date().toLocaleDateString("fr-FR"),
               statut: "en attente",
