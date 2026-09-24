@@ -26,9 +26,9 @@ const PX_PAR_MM = 96 / 25.4;
 const DESIGN_ORIGINE: ConfigEtiquette = {
   // 24/09/2026 — Design validé par Elinathan (capture « je veux un truc comme ça ») : nom en
   // haut, gros nombre de colis à gauche, DLC en haut à droite, QR en bas à droite.
-  produitSize: 36, qtySize: 220, dlcValueSize: 57, dlcLabelSize: 15, metaCellSize: 31, qrSize: 59.5, lotMooreaSize: 21, produitLargeur: 172, produitHauteur: 16,
+  produitSize: 36, qtySize: 220, dlcValueSize: 54, dlcLabelSize: 20, metaCellSize: 31, qrSize: 59.5, lotMooreaSize: 21, produitLargeur: 172, produitHauteur: 16,
   positions: {
-    produit: { x: 6.4, y: 4.9 }, qty: { x: 15.3, y: 26.8 }, dlc: { x: 96, y: 27 }, qr: { x: 116.1, y: 47.8 },
+    produit: { x: 6.4, y: 4.9 }, qty: { x: 15.3, y: 26.8 }, dlc: { x: 92, y: 27 }, qr: { x: 116.1, y: 47.8 },
     lot: { x: 84.1, y: 75.2 }, ar: { x: 49.8, y: 91.1 }, lotMoorea: { x: 15.3, y: 80 },
   },
   masques: { lotMoorea: true },
