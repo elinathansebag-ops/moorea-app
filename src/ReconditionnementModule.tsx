@@ -1365,7 +1365,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     try {
       const pdfjsLib: any = await import("pdfjs-dist");
       pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-      const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const doc = await pdfjsLib.getDocument({ data: bytes, useWasm: false }).promise;
       const page = await doc.getPage(1);
       const viewport = page.getViewport({ scale: 2.5 });
       const canvas = document.createElement("canvas");
@@ -1511,7 +1511,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const arrayBuffer = await file.arrayBuffer();
       const pdfjsLib: any = await import("pdfjs-dist");
       pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer), useWasm: false }).promise;
       const page = await doc.getPage(1);
       const viewport = page.getViewport({ scale: 2.5 });
       const canvas = document.createElement("canvas");
@@ -3454,7 +3454,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0 14px" }}>
                 <F label="Nb colis à sortir"><input type="number" value={nbColisASortir} onChange={e => setNbColisASortir(e.target.value)} /></F>
                 <F label="Nb colis à entrer"><input type="number" value={nbColisAEntrer} onChange={e => setNbColisAEntrer(e.target.value)} /></F>
-                <F label={`Quantité par colis (${UNITE_QTE[depot]})`}>
+                <F label={depot ? `Quantité par colis (${UNITE_QTE[depot]})` : "Quantité par colis"}>
                   <input type="number" value={qtePerColis} onChange={e => setQtePerColis(e.target.value)} placeholder={depot === "nlt" ? "ex: 8 filets/colis" : "ex: 8 kg/colis"} />
                 </F>
               </div>
@@ -3463,7 +3463,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   colis — l'unité affichée doit donc suivre le dépôt sélectionné. */}
               {qtePerColis && nbColisAEntrer ? (
                 <p style={{ margin: "4px 0 10px", fontSize: 12, color: COLORS.secondary, fontWeight: 700 }}>
-                  → {Math.round((parseFloat(qtePerColis) || 0) * (parseInt(nbColisAEntrer) || 0))} {UNITE_QTE[depot]} à produire au total
+                  → {Math.round((parseFloat(qtePerColis) || 0) * (parseInt(nbColisAEntrer) || 0))} {depot ? UNITE_QTE[depot] : ""} à produire au total
                 </p>
               ) : (
                 <p style={{ margin: "4px 0 10px", fontSize: 11, color: "#9ca3af" }}>
