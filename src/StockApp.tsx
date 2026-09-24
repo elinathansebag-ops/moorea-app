@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { db, ref, onValue, update, push } from "./firebase";
+import { db, db as rtdb, ref, onValue, update, push, get } from "./firebase";
 import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, documentId } from "firebase/firestore";
 import { PageHeader, styles } from "./shared";
 import { Html5Qrcode } from "html5-qrcode";
@@ -2848,11 +2848,21 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         if (titleEl) titleEl.textContent = sScanModeComplet ? "📷 Palette complète → comptage auto" : "📷 Scanner palette → Stock";
         sScanActive = true;
         try {
-          const handleRaw = (raw: string) => {
+          const handleRaw = async (raw: string) => {
             sScanActive = false;
             if (/^\d{8,13}$/.test(raw)) { (window as any).sVerifierEANDansStock(raw); return; }
             let lot = "";
-            try { const u = new URL(raw); lot = u.searchParams.get("id") || u.searchParams.get("lot") || ""; } catch {}
+            try { const u = new URL(raw); lot = u.searchParams.get("lot") || u.searchParams.get("id") || ""; } catch {}
+            // 24/09/2026 — Le QR des étiquettes palette contient l'identifiant Firebase de
+            // l'ARRIVAGE (?id=-Nxxxx), pas le n° de lot : il n'était donc jamais trouvé dans les
+            // lots du stock (« introuvable »). On retrouve le n° de lot interne de l'arrivage.
+            if (lot && !/^\d{3,6}(-\d+)?$/.test(lot)) {
+              try {
+                const snap = await get(ref(rtdb, `arrivages/${lot}`)); // rtdb : ici « db » désigne Firestore
+                const a = snap.val();
+                if (a && a.lot_interne) lot = String(a.lot_interne);
+              } catch {}
+            }
             if (!lot && /^\d{3,6}$/.test(raw)) lot = raw;
             if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
             if (sScanModeComplet) { (window as any).sCompterPaletteComplete(lot); return; }
