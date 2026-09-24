@@ -28,7 +28,7 @@ const DESIGN_ORIGINE: ConfigEtiquette = {
   // haut, gros nombre de colis à gauche, DLC en haut à droite, QR en bas à droite.
   produitSize: 36, qtySize: 220, dlcValueSize: 57, dlcLabelSize: 15, metaCellSize: 31, qrSize: 59.5, lotMooreaSize: 21, produitLargeur: 172, produitHauteur: 16,
   positions: {
-    produit: { x: 6.4, y: 4.9 }, qty: { x: 15.3, y: 26.8 }, dlc: { x: 100.7, y: 22.4 }, qr: { x: 116.1, y: 47.8 },
+    produit: { x: 6.4, y: 4.9 }, qty: { x: 15.3, y: 26.8 }, dlc: { x: 96, y: 27 }, qr: { x: 116.1, y: 47.8 },
     lot: { x: 84.1, y: 75.2 }, ar: { x: 49.8, y: 91.1 }, lotMoorea: { x: 15.3, y: 80 },
   },
   masques: { lotMoorea: true },
@@ -197,7 +197,7 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
               style={{ position: "relative", width: `${LARGEUR_MM}mm`, height: `${HAUTEUR_MM}mm`, background: "#fff", overflow: "hidden", transform: `scale(${echelle})`, transformOrigin: "top left", userSelect: "none", fontFamily: "'Times New Roman', Times, serif" }}>
               {visible("produit") && <div onPointerDown={debutGlisse("produit")} style={{ ...at("produit"), fontSize: cfg.produitSize, fontWeight: 900, color: "#000", lineHeight: 1.05, whiteSpace: "normal", overflowWrap: "break-word", width: `${cfg.produitLargeur}mm`, background: selection === "produit" ? "rgba(37,99,235,.06)" : undefined }}>{exemple.produit.toUpperCase()}</div>}
               {visible("qr") && <div onPointerDown={debutGlisse("qr")} style={at("qr")}><img src={FAUX_QR} alt="" draggable={false} style={{ width: `${cfg.qrSize}mm`, height: `${cfg.qrSize}mm`, display: "block", pointerEvents: "none" }} /></div>}
-              {visible("dlc") && <div onPointerDown={debutGlisse("dlc")} style={{ ...at("dlc"), display: "flex", flexDirection: "column", background: "#000", borderRadius: "1.5mm", padding: "1mm 4mm 1.5mm", width: "fit-content" }}>
+              {visible("dlc") && <div onPointerDown={debutGlisse("dlc")} style={{ ...at("dlc"), display: "flex", flexDirection: "row", alignItems: "center", gap: "3mm", background: "#000", borderRadius: "1.5mm", padding: "1mm 4mm", width: "fit-content" }}>
                 <span style={{ fontSize: cfg.dlcLabelSize, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>DLC</span>
                 <span style={{ fontSize: cfg.dlcValueSize, fontWeight: 900, color: "#fff", lineHeight: 1, whiteSpace: "nowrap" }}>{exemple.dlc}</span>
               </div>}
