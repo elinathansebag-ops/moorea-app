@@ -905,7 +905,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
 // sur les arrivages normaux (voir repartitionPalettes dans ProduitRow). Une fois "Valider tout"
 // cliqué, un popup s'ouvre avec le récap des écarts et un message WhatsApp déjà rédigé, à
 // envoyer d'un clic (plus d'ouverture automatique de fenêtre, on laisse relire avant).
-function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceInfo }: { groupe: string; produits: any[]; onValidate: any; date: string; paletteAnnonceInfo: { grandes: number; demi: number } | null }) {
+function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceInfo, onEcartDetecte }: { groupe: string; produits: any[]; onValidate: any; date: string; paletteAnnonceInfo: { grandes: number; demi: number } | null; onEcartDetecte?: (message: string) => void }) {
   const [cases, setCases] = useState<Record<string, string[]>>({});
   const [problemes, setProblemes] = useState<Record<string, boolean>>({});
   const [commentaires, setCommentaires] = useState<Record<string, string>>({});
@@ -973,7 +973,12 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
       }
       const lignesMsg = recapLignes.map(r => `${r.ecart !== 0 ? "⚠️" : "✅"} ${r.produit || "-"}${r.lot ? ` · lot ${r.lot}` : ""} — reçu ${r.recu}/${r.attendu}${r.ecart !== 0 ? ` (${r.ecart > 0 ? "+" : ""}${r.ecart})` : ""}`);
       const message = `POINTAGE ${groupe} - ${date}\nTotal reçu : ${totalRecu}/${totalAttendu}${totalEcart !== 0 ? ` — écart ${totalEcart > 0 ? "+" : ""}${totalEcart}` : ""}\n\n${lignesMsg.join("\n")}`;
-      setRecap({ lignes: recapLignes, message, totalEcart });
+      // 24/09/2026 — Même bug que ProduitRow le 09/09 : une fois tout validé, les lignes quittent
+      // « en attente », ce composant est démonté et son popup local ne s'affichait jamais
+      // (« 0 pop up pour les messages aux commerciaux »). On remonte donc le message jusqu'à
+      // App.tsx dès qu'il y a au moins un écart.
+      if (onEcartDetecte && recapLignes.some(r => r.ecart !== 0)) onEcartDetecte(message);
+      else setRecap({ lignes: recapLignes, message, totalEcart });
     } catch (err: any) {
       const dejaValidees = recapLignes.length;
       alert(
@@ -1219,7 +1224,7 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
           {!canValider
             ? produits.map((a: any) => <ArrivageLectureSeuleRow key={a.id} arrivage={a} />)
             : isRetourRecondGroupe && produits.length > 0
-              ? <PointageGroupeNLT groupe={fournisseur} produits={produits} onValidate={onValidate} date={date} paletteAnnonceInfo={paletteAnnonceInfo} />
+              ? <PointageGroupeNLT groupe={fournisseur} produits={produits} onValidate={onValidate} date={date} paletteAnnonceInfo={paletteAnnonceInfo} onEcartDetecte={onEcartDetecte} />
               : produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} onEcartDetecte={onEcartDetecte} />)}
           {nbTraites > 0 && (
             <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
