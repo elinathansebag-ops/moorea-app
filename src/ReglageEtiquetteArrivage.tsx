@@ -14,7 +14,7 @@ type Cle = "produit" | "qr" | "qty" | "dlc" | "lot" | "ar" | "lotMoorea";
 type Pos = { x: number; y: number };
 export type ConfigEtiquette = {
   produitSize: number; qtySize: number; dlcValueSize: number; dlcLabelSize: number;
-  metaCellSize: number; qrSize: number; lotMooreaSize: number;
+  metaCellSize: number; qrSize: number; lotMooreaSize: number; produitLargeur: number; produitHauteur: number;
   positions: Record<Cle, Pos>;
   masques: Partial<Record<Cle, boolean>>;
 };
@@ -24,7 +24,7 @@ const PX_PAR_MM = 96 / 25.4;
 
 // Design validé le 23/09 (mêmes valeurs que les défauts de print-relay.js).
 const DESIGN_ORIGINE: ConfigEtiquette = {
-  produitSize: 60, qtySize: 170, dlcValueSize: 55, dlcLabelSize: 15, metaCellSize: 21, qrSize: 75, lotMooreaSize: 21,
+  produitSize: 60, qtySize: 170, dlcValueSize: 55, dlcLabelSize: 15, metaCellSize: 21, qrSize: 75, lotMooreaSize: 21, produitLargeur: 168, produitHauteur: 17,
   positions: {
     produit: { x: 6, y: 5 }, qr: { x: 6, y: 22 }, dlc: { x: 83.6, y: 75.6 }, qty: { x: 84.8, y: 22.5 },
     lot: { x: 84, y: 65.9 }, ar: { x: 117.7, y: 66 }, lotMoorea: { x: 84, y: 56 },
@@ -39,8 +39,10 @@ const NOMS: Record<Cle, string> = {
 
 const TAILLES: { cle: keyof ConfigEtiquette; nom: string; min: number; max: number; unite: string; pour: Cle }[] = [
   { cle: "produitSize", nom: "Nom du produit", min: 30, max: 110, unite: "px", pour: "produit" },
+  { cle: "produitLargeur", nom: "Largeur du nom (passe à la ligne au-delà)", min: 40, max: 175, unite: "mm", pour: "produit" },
+  { cle: "produitHauteur", nom: "Hauteur du nom (nb de lignes possibles)", min: 8, max: 60, unite: "mm", pour: "produit" },
   { cle: "qrSize", nom: "QR code", min: 30, max: 100, unite: "mm", pour: "qr" },
-  { cle: "qtySize", nom: "Nombre de colis", min: 60, max: 220, unite: "px", pour: "qty" },
+  { cle: "qtySize", nom: "Nombre de colis", min: 60, max: 420, unite: "px", pour: "qty" },
   { cle: "dlcValueSize", nom: "Date DLC", min: 25, max: 90, unite: "px", pour: "dlc" },
   { cle: "dlcLabelSize", nom: "Mot « DLC »", min: 8, max: 30, unite: "px", pour: "dlc" },
   { cle: "metaCellSize", nom: "Lot fournisseur / date d'arrivée", min: 10, max: 40, unite: "px", pour: "lot" },
@@ -55,11 +57,23 @@ function fusionner(c: any): ConfigEtiquette {
   };
 }
 
-// Même calcul que print-relay.js (réduction des noms longs + plafond pour tenir en largeur).
-function tailleProduit(produit: string, base: number) {
-  const ratio = produit.length <= 18 ? 1 : produit.length <= 30 ? 37 / 46 : produit.length <= 45 ? 29 / 46 : produit.length <= 65 ? 23 / 46 : 18 / 46;
-  const max = Math.floor(635 / (Math.max(produit.length, 1) * 0.75));
-  return Math.min(Math.round(base * ratio), max);
+
+// Même calcul que tailleNomProduit dans print-relay.js — à garder identiques : le nom revient à
+// la ligne dans sa zone et n'est réduit que s'il ne tient pas dedans.
+function tailleNomProduit(texte: string, base: number, largeurMm: number, hauteurMm: number) {
+  const largeurPx = largeurMm * PX_PAR_MM, hauteurPx = hauteurMm * PX_PAR_MM;
+  const mots = String(texte || "").split(/\s+/).filter(Boolean);
+  for (let t = base; t > 12; t--) {
+    const lettre = t * 0.72, espace = t * 0.3;
+    let lignes = 1, courant = 0;
+    for (const m of mots) {
+      const w = m.length * lettre;
+      if (courant && courant + espace + w > largeurPx) { lignes++; courant = w; } else courant += (courant ? espace : 0) + w;
+      if (w > largeurPx) lignes += Math.ceil(w / largeurPx) - 1;
+    }
+    if (lignes * t * 1.05 <= hauteurPx) return t;
+  }
+  return 12;
 }
 
 // Petit motif façon QR pour l'aperçu (le vrai QR est généré au moment de l'impression).
@@ -172,7 +186,6 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
     outline: selection === cle ? "2px solid #2563eb" : "1px dashed rgba(37,99,235,.35)", outlineOffset: 2,
   });
   const visible = (cle: Cle) => !cfg.masques[cle];
-  const taillePx = tailleProduit(exemple.produit.toUpperCase(), cfg.produitSize);
   const cell: React.CSSProperties = { background: "#eee", borderRadius: "1.5mm", padding: "1mm 2.5mm", fontSize: cfg.metaCellSize, fontWeight: 900, color: "#000", lineHeight: 1.2, whiteSpace: "nowrap" };
 
   const lab: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: "#374151", display: "flex", justifyContent: "space-between", marginBottom: 4 };
@@ -197,7 +210,7 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
               onPointerMove={pendantGlisse} onPointerUp={finGlisse} onPointerCancel={finGlisse}
               onPointerDown={e => { if (e.target === e.currentTarget) setSelection(null); }}
               style={{ position: "relative", width: `${LARGEUR_MM}mm`, height: `${HAUTEUR_MM}mm`, background: "#fff", overflow: "hidden", transform: `scale(${echelle})`, transformOrigin: "top left", userSelect: "none", fontFamily: "'Times New Roman', Times, serif" }}>
-              {visible("produit") && <div onPointerDown={debutGlisse("produit")} style={{ ...at("produit"), fontSize: taillePx, fontWeight: 900, color: "#000", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", maxWidth: "168mm" }}>{exemple.produit.toUpperCase()}</div>}
+              {visible("produit") && <div onPointerDown={debutGlisse("produit")} style={{ ...at("produit"), fontSize: tailleNomProduit(exemple.produit.toUpperCase(), cfg.produitSize, cfg.produitLargeur, cfg.produitHauteur), fontWeight: 900, color: "#000", lineHeight: 1.05, whiteSpace: "normal", overflowWrap: "break-word", width: `${cfg.produitLargeur}mm`, height: `${cfg.produitHauteur}mm`, overflow: "hidden", background: selection === "produit" ? "rgba(37,99,235,.06)" : undefined }}>{exemple.produit.toUpperCase()}</div>}
               {visible("qr") && <div onPointerDown={debutGlisse("qr")} style={at("qr")}><img src={FAUX_QR} alt="" draggable={false} style={{ width: `${cfg.qrSize}mm`, height: `${cfg.qrSize}mm`, display: "block", pointerEvents: "none" }} /></div>}
               {visible("dlc") && <div onPointerDown={debutGlisse("dlc")} style={{ ...at("dlc"), display: "flex", flexDirection: "column", background: "#000", borderRadius: "1.5mm", padding: "1mm 4mm 1.5mm", width: "fit-content" }}>
                 <span style={{ fontSize: cfg.dlcLabelSize, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>DLC</span>
