@@ -14,7 +14,7 @@ type Cle = "produit" | "qr" | "qty" | "dlc" | "lot" | "ar" | "lotMoorea";
 type Pos = { x: number; y: number };
 export type ConfigEtiquette = {
   produitSize: number; qtySize: number; dlcValueSize: number; dlcLabelSize: number;
-  metaCellSize: number; qrSize: number; lotMooreaSize: number; produitLargeur: number; produitHauteur: number;
+  metaCellSize: number; qrSize: number; lotMooreaSize: number; produitLargeur: number; produitHauteur: number; qtyLargeur: number;
   positions: Record<Cle, Pos>;
   masques: Partial<Record<Cle, boolean>>;
 };
@@ -26,7 +26,7 @@ const PX_PAR_MM = 96 / 25.4;
 const DESIGN_ORIGINE: ConfigEtiquette = {
   // 24/09/2026 — Design validé par Elinathan (capture « je veux un truc comme ça ») : nom en
   // haut, gros nombre de colis à gauche, DLC en haut à droite, QR en bas à droite.
-  produitSize: 36, qtySize: 220, dlcValueSize: 54, dlcLabelSize: 20, metaCellSize: 31, qrSize: 59.5, lotMooreaSize: 21, produitLargeur: 172, produitHauteur: 16,
+  produitSize: 36, qtySize: 220, dlcValueSize: 54, dlcLabelSize: 20, metaCellSize: 31, qrSize: 59.5, lotMooreaSize: 21, produitLargeur: 172, produitHauteur: 16, qtyLargeur: 74,
   positions: {
     produit: { x: 6.4, y: 4.9 }, qty: { x: 15.3, y: 26.8 }, dlc: { x: 92, y: 27 }, qr: { x: 116.1, y: 47.8 },
     lot: { x: 84.1, y: 75.2 }, ar: { x: 49.8, y: 91.1 }, lotMoorea: { x: 15.3, y: 80 },
@@ -44,6 +44,7 @@ const TAILLES: { cle: keyof ConfigEtiquette; nom: string; min: number; max: numb
   { cle: "produitLargeur", nom: "Largeur du nom (passe à la ligne au-delà)", min: 40, max: 175, unite: "mm", pour: "produit" },
   { cle: "qrSize", nom: "QR code", min: 30, max: 100, unite: "mm", pour: "qr" },
   { cle: "qtySize", nom: "Nombre de colis", min: 60, max: 420, unite: "px", pour: "qty" },
+  { cle: "qtyLargeur", nom: "Largeur max du nombre (réduit si 100, 1000…)", min: 30, max: 170, unite: "mm", pour: "qty" },
   { cle: "dlcValueSize", nom: "Date DLC", min: 25, max: 90, unite: "px", pour: "dlc" },
   { cle: "dlcLabelSize", nom: "Mot « DLC »", min: 8, max: 30, unite: "px", pour: "dlc" },
   { cle: "metaCellSize", nom: "Lot fournisseur / date d'arrivée", min: 10, max: 40, unite: "px", pour: "lot" },
@@ -171,6 +172,10 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
     outline: selection === cle ? "2px solid #2563eb" : "1px dashed rgba(37,99,235,.35)", outlineOffset: 2,
   });
   const visible = (cle: Cle) => !cfg.masques[cle];
+  // Même calcul que print-relay.js : le nombre de colis est réduit pour tenir dans sa largeur.
+  const qteTexte = String(exemple.qte || "-");
+  const qtyFont = Math.min(cfg.qtySize, Math.floor(cfg.qtyLargeur * PX_PAR_MM / (Math.max(qteTexte.length, 1) * 0.5)));
+  const qtyDecalage = Math.round((cfg.qtySize - qtyFont) * 0.45);
   const cell: React.CSSProperties = { background: "#eee", borderRadius: "1.5mm", padding: "1mm 2.5mm", fontSize: cfg.metaCellSize, fontWeight: 900, color: "#000", lineHeight: 1.2, whiteSpace: "nowrap" };
 
   const lab: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: "#374151", display: "flex", justifyContent: "space-between", marginBottom: 4 };
@@ -201,7 +206,7 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
                 <span style={{ fontSize: cfg.dlcLabelSize, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>DLC</span>
                 <span style={{ fontSize: cfg.dlcValueSize, fontWeight: 900, color: "#fff", lineHeight: 1, whiteSpace: "nowrap" }}>{exemple.dlc}</span>
               </div>}
-              {visible("qty") && <div onPointerDown={debutGlisse("qty")} style={{ ...at("qty"), fontSize: cfg.qtySize, fontWeight: 900, color: "#000", lineHeight: 0.9, whiteSpace: "nowrap" }}>{exemple.qte || "-"}</div>}
+              {visible("qty") && <div onPointerDown={debutGlisse("qty")} style={{ ...at("qty"), fontSize: qtyFont, marginTop: qtyDecalage, fontWeight: 900, color: "#000", lineHeight: 0.9, whiteSpace: "nowrap" }}>{qteTexte}</div>}
               {visible("lot") && <div onPointerDown={debutGlisse("lot")} style={{ ...at("lot"), ...cell }}>{exemple.lotFournisseur.toUpperCase()}</div>}
               {visible("ar") && <div onPointerDown={debutGlisse("ar")} style={{ ...at("ar"), ...cell }}><span style={{ fontWeight: 700 }}>AR :</span> {exemple.ar}</div>}
               {visible("lotMoorea") && <div onPointerDown={debutGlisse("lotMoorea")} style={{ ...at("lotMoorea"), fontSize: cfg.lotMooreaSize, fontWeight: 900, color: "#000", border: "0.6mm solid #000", borderRadius: "1.5mm", padding: "0.5mm 2mm", whiteSpace: "nowrap", lineHeight: 1.2 }}>{exemple.lotMoorea}</div>}
