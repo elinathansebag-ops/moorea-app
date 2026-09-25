@@ -273,6 +273,62 @@ async function handleConfirmerRepartie(adminDb, depot, id, body) {
   return { success: true };
 }
 
+// 25/09/2026 — Rattachement d'un BL NLT (numéro de LOT + nb de colis lus sur le BL) à une
+// demande. Utilisé par la détection automatique (api/nlt-bl-poll.js) ET par le bouton
+// « 🔗 Rattacher » de la liste « BL NLT à vérifier » (action rattacherBlNlt ci-dessous).
+// Une demande déjà partie chez NLT (« parti », cas normal quand le BL arrive) ou « prête » garde
+// son statut ; seule une demande encore « en attente » passe « prête » (ancien comportement).
+export function lotsIdentiques(a, b) {
+  const n = (x) => String(x ?? "").trim().replace(/^MRA\.?/i, "").replace(/^0+(?=\d)/, "");
+  return n(a) !== "" && n(a) === n(b);
+}
+export const STATUTS_RATTACHABLES_BL = ["en attente", "prêt", "parti"];
+export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { blNumero, blPdfDataUri, commentaire } = {}) {
+  const attendu = typeof demande.nbColisAEntrer === "number" ? demande.nbColisAEntrer : null;
+  const ecart = attendu != null && typeof colis === "number" ? colis - attendu : null;
+  const date = nowFr();
+  const transporteur = demande.transporteurNom || "";
+  const texte = commentaire || `Détecté depuis le BL NLT reçu par mail (${blNumero || "n° BL inconnu"})`;
+  const maj = {
+    retourPresta: {
+      confirme: true, date, quantiteDeclaree: colis, ecart, commentaire: texte,
+      parti: { confirme: true, date, transporteur: transporteur || "-" },
+    },
+    blNltNumero: blNumero || null,
+    blNltDate: date,
+  };
+  if (blPdfDataUri) maj.blNltPdfBase64 = blPdfDataUri;
+  if (demande.statut === "en attente") {
+    maj.statut = "prêt";
+    maj.entrepotPretPar = "NLT (BL mail détecté automatiquement)";
+    maj.entrepotPretDate = date;
+    maj.nbPalettesDepart = null;
+  }
+  await adminDb.ref(`reconditionnement_demandes/${id}`).update(maj);
+  // Déjà reçue à Moorea (rattachement fait après coup) : on garde juste la trace du BL, sans
+  // prévenir le transporteur d'une prod « prête » qui est en fait déjà arrivée.
+  if (demande.statut === "reçu") return;
+  await notifierProdPrete(adminDb, "nlt", demande, id, { quantite: colis, ecart, attendu, transporteur, nbPalettes: null, commentaire: texte });
+}
+
+async function handleRattacherBlNlt(adminDb, body) {
+  const { aVerifierId, demandeId } = body;
+  if (!aVerifierId || !demandeId) { const e = new Error("aVerifierId et demandeId requis"); e.statusCode = 400; throw e; }
+  const [snapBl, snapD] = await Promise.all([
+    adminDb.ref(`nlt_bl_a_verifier/${aVerifierId}`).once("value"),
+    adminDb.ref(`reconditionnement_demandes/${demandeId}`).once("value"),
+  ]);
+  const bl = snapBl.val(), demande = snapD.val();
+  if (!bl) { const e = new Error("BL introuvable (déjà traité ?)"); e.statusCode = 404; throw e; }
+  if (!demande || demande.depot !== "nlt") { const e = new Error("Demande NLT introuvable"); e.statusCode = 404; throw e; }
+  await appliquerBlNltSurDemande(adminDb, demandeId, demande, typeof bl.colisDetectes === "number" ? bl.colisDetectes : null, {
+    blNumero: bl.blNumero,
+    commentaire: `Rattaché à la main depuis le BL NLT ${bl.blNumero || ""} (lot ${bl.lot || "?"})`.trim(),
+  });
+  await adminDb.ref(`nlt_bl_a_verifier/${aVerifierId}`).remove();
+  return { success: true };
+}
+
 // 15/09/2026 — Extrait de handleConfirmerRepartie (le code était identique à ce qu'il faut
 // refaire quand une demande passe "prête" par un autre chemin que le portail — voir
 // api/nlt-bl-poll.js, qui détecte automatiquement le BL envoyé par mail par le reconditionneur
@@ -755,6 +811,10 @@ export default async function handler(req, res) {
       }
       if (action === "demanderReajustement") {
         const out = await handleDemanderReajustement(adminDb, depot, body);
+        return res.status(200).json(out);
+      }
+      if (action === "rattacherBlNlt") {
+        const out = await handleRattacherBlNlt(adminDb, body);
         return res.status(200).json(out);
       }
       if (action === "confirmerLivraisonCarton") {

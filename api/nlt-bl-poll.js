@@ -3,7 +3,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { PDFParse } from "pdf-parse";
 import { getAdminDb } from "./_firebaseAdmin.js";
-import { notifierProdPrete } from "./portail-reconditionneur.js";
+import { appliquerBlNltSurDemande, lotsIdentiques, STATUTS_RATTACHABLES_BL } from "./portail-reconditionneur.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -189,8 +189,12 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
   const { blPdfDataUri, ...contexteSansPdf } = contexteMail;
   const snap = await adminDb.ref("reconditionnement_demandes").once("value");
   const toutes = snap.val() || {};
+  // 25/09/2026 — « le rattachement doit se faire avec le numéro de lot » : c'était bien le cas,
+  // mais seulement avec les demandes encore « en attente » — or quand NLT envoie son BL, la
+  // marchandise est déjà partie chez lui (« parti »). On cherche maintenant par numéro de lot
+  // parmi toutes les demandes NLT pas encore reçues ni annulées.
   const correspondantes = Object.entries(toutes).filter(
-    ([, d]) => d && d.depot === "nlt" && d.lot === lot && d.statut === "en attente"
+    ([, d]) => d && d.depot === "nlt" && lotsIdentiques(d.lot, lot) && STATUTS_RATTACHABLES_BL.includes(d.statut)
   );
 
   if (correspondantes.length !== 1) {
@@ -202,49 +206,14 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
       colisDetectes: colis,
       raison:
         correspondantes.length === 0
-          ? "aucune demande NLT \"en attente\" avec ce numéro de lot"
-          : `${correspondantes.length} demandes NLT "en attente" ont ce même numéro de lot — ambigu`,
+          ? "aucune demande NLT en cours (pas encore reçue) avec ce numéro de lot"
+          : `${correspondantes.length} demandes NLT en cours ont ce même numéro de lot — ambigu`,
       ...contexteSansPdf,
     });
     return "a_verifier";
   }
 
   const [id, demande] = correspondantes[0];
-  const attendu = typeof demande.nbColisAEntrer === "number" ? demande.nbColisAEntrer : null;
-  const ecart = attendu != null ? colis - attendu : null;
-  const date = nowFr();
-  const transporteur = demande.transporteurNom || "";
-
-  // 15/09/2026 — Demande d'Elinathan : "si tout est ok faudrait garder le BL avec le
-  // reconditionnement" — le PDF du BL est attaché à la demande (même principe que pdfBase64
-  // pour le bon de prépa), consultable ensuite depuis Reconditionnement/Préparation via un
-  // bouton "📄 BL NLT" (voir ReconditionnementModule.tsx).
-  await adminDb.ref(`reconditionnement_demandes/${id}`).update({
-    retourPresta: {
-      confirme: true,
-      date,
-      quantiteDeclaree: colis,
-      ecart,
-      commentaire: `Détecté automatiquement depuis le BL reçu par mail (${contexteMail.blNumero || "n° BL inconnu"})`,
-      parti: { confirme: true, date, transporteur: transporteur || "-" },
-    },
-    statut: "prêt",
-    entrepotPretPar: "NLT (BL mail détecté automatiquement)",
-    entrepotPretDate: date,
-    nbPalettesDepart: null,
-    blNltPdfBase64: blPdfDataUri || null,
-    blNltNumero: contexteMail.blNumero || null,
-    blNltDate: date,
-  });
-
-  await notifierProdPrete(adminDb, "nlt", demande, id, {
-    quantite: colis,
-    ecart,
-    attendu,
-    transporteur,
-    nbPalettes: null,
-    commentaire: `Détecté automatiquement depuis le BL reçu par mail (${contexteMail.blNumero || "n° BL inconnu"})`,
-  });
-
+  await appliquerBlNltSurDemande(adminDb, id, demande, colis, { blNumero: contexteMail.blNumero, blPdfDataUri });
   return "applique";
 }

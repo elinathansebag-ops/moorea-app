@@ -1072,6 +1072,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // 15/09/2026 — Détection automatique du BL NLT par mail (voir api/nlt-bl-poll.js) : quand un
   // lot détecté dans le PDF ne correspond pas à EXACTEMENT une seule demande NLT "en attente",
   // rien n'est appliqué automatiquement — le cas est juste noté ici pour vérification manuelle.
+  const [rattachementEnCours, setRattachementEnCours] = useState<string | null>(null);
   const [blNltAVerifier, setBlNltAVerifier] = useState<{ id: string; date: string; lot?: string; colisDetectes?: number; raison: string; sujetMail?: string; blNumero?: string }[]>([]);
 
   // 16/09/2026 — Ne s'abonne plus directement à "reconditionnement_demandes" (voir App.tsx) :
@@ -1648,6 +1649,31 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       notify("error", "⚠️ Impossible de lire automatiquement ce PDF — remplis les champs manuellement");
     } finally {
       setLectureEnCours(false);
+    }
+  }
+
+  // 25/09/2026 — Demandes NLT candidates pour un BL « à vérifier », par numéro de lot (même
+  // comparaison que lotsIdentiques côté serveur : espaces, préfixe MRA., zéros en tête ignorés).
+  function candidatsBlNlt(lotBl?: string) {
+    const n = (x: any) => String(x ?? "").trim().replace(/^MRA\.?/i, "").replace(/^0+(?=\d)/, "");
+    if (!lotBl || !n(lotBl)) return [] as Demande[];
+    return demandes.filter(d => d.depot === "nlt" && d.statut !== "annulé" && n(d.lot) === n(lotBl));
+  }
+  async function rattacherBlNlt(aVerifierId: string, d: Demande) {
+    if (d.statut === "reçu" && !window.confirm(`${d.numero || d.id} est déjà reçue — rattacher quand même le BL (juste pour garder la trace) ?`)) return;
+    setRattachementEnCours(aVerifierId);
+    try {
+      const r = await fetch("/api/portail-reconditionneur?depot=nlt", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rattacherBlNlt", aVerifierId, demandeId: d.id }),
+      });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(out?.error || `erreur ${r.status}`);
+      notify("success", `🔗 BL rattaché à ${d.numero || d.id}`);
+    } catch (e: any) {
+      notify("error", `❌ Rattachement impossible : ${e?.message || "erreur inconnue"}`);
+    } finally {
+      setRattachementEnCours(null);
     }
   }
 
@@ -2820,10 +2846,24 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   {b.blNumero ? ` (BL ${b.blNumero})` : ""}
                   <span style={{ color: "#b45309", marginLeft: 6 }}>· {b.date}</span>
                 </div>
-                <button onClick={() => remove(ref(db, `nlt_bl_a_verifier/${b.id}`))}
-                  style={{ flexShrink: 0, border: "1px solid #fde3a8", background: "#fff", color: "#92400e", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                  ✓ Traité
-                </button>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", flexShrink: 0 }}>
+                  {/* 25/09/2026 — Rattachement par NUMÉRO DE LOT : on propose les demandes NLT qui
+                      ont ce lot (pas annulées) — un clic applique le BL comme la détection auto. */}
+                  {candidatsBlNlt(b.lot).map(d => (
+                    <button key={d.id} disabled={rattachementEnCours === b.id} onClick={() => rattacherBlNlt(b.id, d)}
+                      title={`${d.articleFini || ""} · ${d.statut}`}
+                      style={{ border: "none", background: "#92400e", color: "#fff", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: rattachementEnCours === b.id ? 0.5 : 1 }}>
+                      🔗 Rattacher à {d.numero || d.id}{d.statut === "reçu" ? " (déjà reçue)" : ""}
+                    </button>
+                  ))}
+                  {b.lot && candidatsBlNlt(b.lot).length === 0 && (
+                    <span style={{ fontSize: 11, color: "#b45309", alignSelf: "center" }}>aucune demande NLT avec le lot {b.lot}</span>
+                  )}
+                  <button onClick={() => remove(ref(db, `nlt_bl_a_verifier/${b.id}`))}
+                    style={{ border: "1px solid #fde3a8", background: "#fff", color: "#92400e", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    ✓ Traité
+                  </button>
+                </div>
               </div>
             ))}
           </div>
