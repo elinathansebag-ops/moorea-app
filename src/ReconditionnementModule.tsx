@@ -1029,10 +1029,16 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // importés pendant que la lecture PDF était cassée restaient bloqués à vie sur « ⏳ reconnaissance
   // de l'article… ». Chaque fichier n'est tenté qu'une fois par session ; en cas d'échec on marque
   // apercuFait pour ne plus afficher un sablier qui ne finira jamais.
+  const [afficherPdfsEnAttente, setAfficherPdfsEnAttente] = useState(false);
   const apercuTentesRef = useRef<Set<string>>(new Set());
+  // 25/09/2026 — Ne tourne plus à l'ouverture du module (lecture PDF + OCR = gros calcul qui
+  // ralentissait l'affichage) : seulement quand le panneau « Fichiers en attente » est ouvert,
+  // et après un court délai pour laisser l'écran s'afficher d'abord.
   useEffect(() => {
+    if (!afficherPdfsEnAttente) return;
     const aFaire = pdfsEnAttente.filter(p => !p.article && !p.apercuFait && !apercuTentesRef.current.has(p.id));
     if (aFaire.length === 0) return;
+    const minuteur = setTimeout(() => {
     aFaire.forEach(p => apercuTentesRef.current.add(p.id));
     (async () => {
       for (const p of aFaire) {
@@ -1045,9 +1051,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         }
       }
     })();
-  }, [pdfsEnAttente]);
+    }, 1500);
+    return () => clearTimeout(minuteur);
+  }, [pdfsEnAttente, afficherPdfsEnAttente]);
   const [importMultiEnCours, setImportMultiEnCours] = useState(false);
-  const [afficherPdfsEnAttente, setAfficherPdfsEnAttente] = useState(false);
 
   // 04/09/2026 — Demandes de réajustement de stock envoyées par le reconditionneur depuis son
   // espace public (voir src/PortailReconditionneur.tsx) — auparavant visibles/validables
@@ -1144,7 +1151,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     (async () => {
       try {
         const { initializeApp, getApps } = await import("firebase/app");
-        const { getFirestore, collection, getDocs } = await import("firebase/firestore");
+        const { getFirestore, collection, getDocs, query, where, orderBy, documentId } = await import("firebase/firestore");
         const stockCfg = {
           apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8",
           authDomain: "moorea-stock.firebaseapp.com",
@@ -1156,7 +1163,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         const existing = getApps().find((a: any) => a.name === "moorea-stock");
         const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
         const stockDb = getFirestore(stockApp);
-        const snap = await getDocs(collection(stockDb, "stocks"));
+        // 25/09/2026 — « le module met des heures à s'ouvrir » : on téléchargeait ici TOUS les
+        // stocks jamais faits (tout l'historique, chaque stock avec tous ses articles) à chaque
+        // ouverture. On se limite aux 14 derniers jours, comme la page Stock (même filtre par id
+        // horodaté, sans index Firestore) — largement assez pour proposer l'article d'un lot.
+        const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+        const cutoffId = cutoff.toISOString().slice(0, 10) + "_00-00";
+        const snap = await getDocs(query(collection(stockDb, "stocks"), where(documentId(), ">=", cutoffId), orderBy(documentId())));
         const paires: { lot: string; article: string }[] = [];
         snap.forEach(docSnap => {
           const d: any = docSnap.data();
