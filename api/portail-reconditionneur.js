@@ -283,7 +283,7 @@ export function lotsIdentiques(a, b) {
   return n(a) !== "" && n(a) === n(b);
 }
 export const STATUTS_RATTACHABLES_BL = ["en attente", "prêt", "parti"];
-export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { blNumero, blPdfDataUri, commentaire } = {}) {
+export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { blNumero, blPdfDataUri, blPdfDe, commentaire } = {}) {
   const attendu = typeof demande.nbColisAEntrer === "number" ? demande.nbColisAEntrer : null;
   const ecart = attendu != null && typeof colis === "number" ? colis - attendu : null;
   const date = nowFr();
@@ -297,8 +297,13 @@ export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { bl
     blNltNumero: blNumero || null,
     blNltDate: date,
   };
+  // Lot absent du BL (rattachement « BL du jour ») : on joint seulement le BL, sans toucher à la
+  // quantité déclarée ni au statut de la demande.
+  if (typeof colis !== "number") { delete maj.retourPresta; }
   if (blPdfDataUri) maj.blNltPdfBase64 = blPdfDataUri;
-  if (demande.statut === "en attente") {
+  // PDF du BL stocké une seule fois (sur une demande du jour) : les autres pointent vers elle.
+  if (blPdfDe) maj.blNltPdfDe = blPdfDe;
+  if (demande.statut === "en attente" && typeof colis === "number") {
     maj.statut = "prêt";
     maj.entrepotPretPar = "NLT (BL mail détecté automatiquement)";
     maj.entrepotPretDate = date;
@@ -307,7 +312,7 @@ export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { bl
   await adminDb.ref(`reconditionnement_demandes/${id}`).update(maj);
   // Déjà reçue à Moorea (rattachement fait après coup) : on garde juste la trace du BL, sans
   // prévenir le transporteur d'une prod « prête » qui est en fait déjà arrivée.
-  if (demande.statut === "reçu") return;
+  if (demande.statut === "reçu" || typeof colis !== "number") return;
   await notifierProdPrete(adminDb, "nlt", demande, id, { quantite: colis, ecart, attendu, transporteur, nbPalettes: null, commentaire: texte });
 }
 

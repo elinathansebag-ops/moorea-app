@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
-import { db, ref, push, onValue, update, remove } from "./firebase";
+import { db, ref, push, onValue, update, remove, get } from "./firebase";
 import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent, ChargementEcran } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -189,6 +189,8 @@ export type Demande = {
   // original envoyé par NLT, attaché à la demande pour rester consultable ("faudrait garder
   // le bl avec le reconditionnement" — demande d'Elinathan).
   blNltPdfBase64?: string;
+  // 25/09/2026 — BL du jour stocké une seule fois : id de la demande qui porte le PDF.
+  blNltPdfDe?: string;
   blNltNumero?: string;
   blNltDate?: string;
   // Le scan Geslot d'origine, tel qu'uploadé par le commercial — gardé uniquement comme archive
@@ -1694,6 +1696,15 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     } finally {
       setRattachementEnCours(null);
     }
+  }
+
+  async function ouvrirBlNlt(d: Demande) {
+    let base64 = d.blNltPdfBase64;
+    if (!base64 && d.blNltPdfDe) {
+      try { base64 = (await get(ref(db, `reconditionnement_demandes/${d.blNltPdfDe}/blNltPdfBase64`))).val() || undefined; } catch { /* ignore */ }
+    }
+    if (!base64) { notify("error", "❌ PDF du BL introuvable"); return; }
+    setPdfApercu({ titre: `BL NLT — ${d.numero || d.id}${d.blNltNumero ? ` (BL ${d.blNltNumero})` : ""}`, base64 });
   }
 
   function resetForm() {
@@ -3238,7 +3249,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       </div>
                     )}
 
-                    {(d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64) && (
+                    {(d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64 || d.blNltPdfDe) && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         {d.pdfGeslotBase64 && (
                           <button type="button" onClick={() => setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: d.pdfGeslotBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -3250,8 +3261,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                             📄 Bon de prépa (avec QR)
                           </button>
                         )}
-                        {d.blNltPdfBase64 && (
-                          <button type="button" onClick={() => setPdfApercu({ titre: `BL NLT — ${d.numero || d.id}`, base64: d.blNltPdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {(d.blNltPdfBase64 || d.blNltPdfDe) && (
+                          <button type="button" onClick={() => ouvrirBlNlt(d)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                             📄 BL NLT
                           </button>
                         )}
@@ -3855,7 +3866,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                       cours" : une fois la demande passée en Historique (terminée), il disparaissait
                                       complètement, alors que le BL rattaché (automatiquement ou via le rattrapage
                                       historique) reste consultable. On l'affiche donc ici aussi. */}
-                                  {(d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64) && (
+                                  {(d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64 || d.blNltPdfDe) && (
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
                                       {d.pdfGeslotBase64 && (
                                         <button type="button" onClick={() => setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: d.pdfGeslotBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -3867,8 +3878,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                           📄 Bon de prépa (avec QR)
                                         </button>
                                       )}
-                                      {d.blNltPdfBase64 && (
-                                        <button type="button" onClick={() => setPdfApercu({ titre: `BL NLT — ${d.numero || d.id}`, base64: d.blNltPdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                      {(d.blNltPdfBase64 || d.blNltPdfDe) && (
+                                        <button type="button" onClick={() => ouvrirBlNlt(d)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                           📄 BL NLT
                                         </button>
                                       )}

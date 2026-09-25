@@ -135,6 +135,38 @@ export default async function handler(req, res) {
             // bloque pas les autres lots du même BL). Le PDF du BL est joint à CHAQUE demande
             // ainsi mise à jour, pour qu'il reste consultable depuis chacune.
             const blPdfDataUri = `data:application/pdf;base64,${piece.content.toString("base64")}`;
+            // 25/09/2026 — Règle d'Elinathan : « le BL est toujours daté du jour de prod — tu prends
+            // le ou les BL du jour et tu rattaches ». Le BL est rattaché à TOUTES les demandes NLT
+            // du jour du mail ; chaque demande reçoit le nb de colis de son lot quand il figure sur
+            // le BL. Un lot du BL sans demande du jour reste signalé « à vérifier ».
+            const jourDe = (t) => new Date(t).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
+            const jourBl = jourDe(parsed.date ? new Date(parsed.date).getTime() : Date.now());
+            const toutes = (await adminDb.ref("reconditionnement_demandes").once("value")).val() || {};
+            const duJour = Object.entries(toutes).filter(([, d]) => d && d.depot === "nlt" && d.statut !== "annulé" && typeof d.ts === "number" && jourDe(d.ts) === jourBl);
+            if (duJour.length > 0) {
+              let porteurPdf = null;
+              for (const [id, d] of duJour) {
+                const ligne = lots.find(l => lotsIdentiques(l.lot, d.lot));
+                // Plusieurs BL le même jour : une demande dont le lot n'est pas sur CE BL garde le
+                // BL qu'elle a déjà (celui qui contient son lot, ou le premier du jour).
+                if (!ligne && d.blNltNumero) continue;
+                await appliquerBlNltSurDemande(adminDb, id, d, ligne ? ligne.colis : null, porteurPdf
+                  ? { blNumero, blPdfDe: porteurPdf }
+                  : { blNumero, blPdfDataUri });
+                if (!porteurPdf) porteurPdf = id;
+                if (ligne) resume.lotsAppliques++;
+              }
+              for (const { lot, colis } of lots) {
+                if (duJour.some(([, d]) => lotsIdentiques(lot, d.lot))) continue;
+                await adminDb.ref("nlt_bl_a_verifier").push({
+                  date: nowFr(), lot, colisDetectes: colis, sujetMail: parsed.subject || "", blNumero,
+                  raison: `lot présent sur le BL du ${jourBl} mais sur aucune demande NLT de ce jour`,
+                });
+                resume.lotsAVerifier++;
+              }
+              continue;
+            }
+            // Aucune demande NLT ce jour-là : on retombe sur le rapprochement lot par lot.
             for (const { lot, colis } of lots) {
               const resultat = await traiterUnLot(adminDb, lot, colis, { sujetMail: parsed.subject || "", blNumero, blPdfDataUri });
               if (resultat === "applique") resume.lotsAppliques++;
