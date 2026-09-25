@@ -1239,6 +1239,16 @@ export default function App() {
       try {
         const rr = ctrl.retourRecond || {};
         const caissesPleines = parseInt(rr.caissesIfco) || 0;
+        // 25/09/2026 — « pas le même total de production » : la quantité conditionnée (filets/kg)
+        // reprenait toujours la valeur PRÉVUE (ex : 60 colis × 12 = 720 filets) même quand on
+        // recevait un autre nombre de colis (62 → 744 filets sur le BL NLT). Si l'agréeur n'a pas
+        // modifié ce champ, on la recalcule à partir des colis réellement reçus.
+        const qteAttendue = typeof arrivage.qteConditionnementAttendue === "number" ? arrivage.qteConditionnementAttendue : null;
+        const colisPrevus = typeof arrivage.quantiteDemandeeInitiale === "number" && arrivage.quantiteDemandeeInitiale > 0 ? arrivage.quantiteDemandeeInitiale : null;
+        const qteSaisie = rr.qteConditionnement != null && String(rr.qteConditionnement).trim() !== "" ? parseFloat(rr.qteConditionnement) : null;
+        if (qteAttendue != null && colisPrevus != null && typeof ctrl.colisRecus === "number" && (qteSaisie == null || qteSaisie === qteAttendue)) {
+          rr.qteConditionnement = String(Math.round(ctrl.colisRecus * (qteAttendue / colisPrevus)));
+        }
         const retour: any = {
           date: now2.toLocaleDateString("fr-FR") + " " + now2.toTimeString().slice(0, 5),
           qualite: decision === "conforme" ? "conforme" : "probleme",
