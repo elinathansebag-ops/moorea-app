@@ -900,8 +900,12 @@ export default function App() {
   // par ~4 sans rien changer au comportement visible.
   const [reconditionnementDemandesById, setReconditionnementDemandesById] = useState<Record<string, any>>({});
   const [reconditionnementDemandesListe, setReconditionnementDemandesListe] = useState<any[]>([]);
+  // 25/09/2026 — Permet au module d'afficher « Chargement… » tant que la liste n'est pas arrivée
+  // (avant : écran vide « Aucune demande », impossible de savoir si ça chargeait ou avait planté).
+  const [reconditionnementDemandesChargees, setReconditionnementDemandesChargees] = useState(false);
   useEffect(() => {
     const unsub = onValue(ref(db, "reconditionnement_demandes"), snap => {
+      setReconditionnementDemandesChargees(true);
       const d = snap.val();
       setReconditionnementDemandesById(d || {});
       setReconditionnementDemandesListe(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
@@ -3049,6 +3053,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     <div key="garde-reconditionnement" style={{ display: showReconditionnement ? "contents" : "none" }}>
       {monAcces.hasModule("reconditionnement") ? (
         <ReconditionnementModule
+          demandesRecondChargees={reconditionnementDemandesChargees}
           onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
           userName={nomAfficheGarde}
           onOpenPrestatairesConfig={() => { setShowReconditionnement(false); setPrestatairesInitialTab("configuration"); setShowPrestataires(true); }}

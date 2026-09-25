@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
+import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent, ChargementEcran } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import jsPDF from "jspdf";
@@ -854,7 +854,7 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
   );
 }
 
-export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne }: {
+export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne, demandesRecondChargees }: {
   onClose: () => void;
   userName?: string;
   // 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : la Configuration vit
@@ -865,7 +865,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // "reconditionnement_demandes") au lieu de s'y abonner ici en plus. Optionnel pour ne pas
   // casser un appel qui ne le passerait pas encore.
   demandesRecondExterne?: any[];
+  demandesRecondChargees?: boolean;
 }) {
+  const [stockIfcoCharge, setStockIfcoCharge] = useState(false);
   const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "suivi_ifco" | "configuration">("en_cours");
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
@@ -1089,6 +1091,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       setTransporteurs(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     const u3 = onValue(ref(db, "ifco_stock/levels"), snap => {
+      setStockIfcoCharge(true);
       const v = snap.val();
       setStockIfco(v ? { moorea: v.moorea || 0, transit: v.transit || 0, nlt: v.nlt || 0 } : { moorea: 0, transit: 0, nlt: 0 });
     });
@@ -2822,7 +2825,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         onHome={onClose}
       />
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px" }}>
+      {/* 25/09/2026 — « il faut un truc qui tourne pendant que ça charge » : tant que les demandes
+          et le stock IFCO ne sont pas arrivés, on affiche un chargement (avec les secondes qui
+          défilent) au lieu d'un écran « 0 caisse / Aucune demande » trompeur. */}
+      {(demandesRecondChargees === false || !stockIfcoCharge) && (
+        <ChargementEcran texte="Chargement des demandes de reconditionnement…" />
+      )}
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px", display: (demandesRecondChargees === false || !stockIfcoCharge) ? "none" : undefined }}>
         {notification && (
           <div style={{
             position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)", zIndex: 900,
