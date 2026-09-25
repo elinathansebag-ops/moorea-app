@@ -444,6 +444,18 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     // génère toujours une nouvelle clé. On vérifie donc qu'aucun arrivage n'existe déjà pour
     // cette demande avant d'en créer un nouveau.
     const arrivageDejaCree = demande && arrivagesData.some(a => a.reconditionnement_demande_id === demande.id);
+    // 25/09/2026 — L'arrivage existe maintenant dès la création de la demande : au départ, on
+    // le met juste à jour (quantité déclarée par le presta, transporteur) s'il est encore à pointer.
+    const arrivageAMaj = demande ? arrivagesData.find(a => a.reconditionnement_demande_id === demande.id && a.statut === "en attente") : null;
+    if (demande && arrivageAMaj) {
+      await update(ref(db, `arrivages/${arrivageAMaj.id}`), {
+        quantite: quantiteArrivage,
+        origine: `${DEPOT_LABEL[demande.depot]}${demande.transporteurNom ? ` · ${demande.transporteurNom}` : ""}`,
+        transporteurNom: demande.transporteurNom || null,
+        quantiteDeclareePresta,
+        ecartPresta: quantitePrevue != null && quantiteDeclareePresta != null ? quantiteDeclareePresta - quantitePrevue : null,
+      }).catch(() => {});
+    }
     // 16/09/2026 — Bug trouvé avec Elinathan : un envoi de palette IFCO vide vers NLT (bouton
     // "📦 Envoyer une palette IFCO à NLT", Reconditionnement) n'a jamais de retour attendu — c'est
     // un aller simple (voir le commentaire plus bas sur `repasserAPret`, qui utilise déjà
@@ -495,11 +507,8 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
   // Ne défait QUE le départ : la demande repasse à "prêt" en gardant les palettes déjà
   // saisies, prête à être revalidée avec "🚚 Marquer parti" (qui recréera l'arrivage).
   async function repasserAPret(id: string) {
-    if (!window.confirm("Repasser cette demande de « parti » à « prêt » ? Le retour attendu dans « Pointer arrivage » sera annulé, mais le nombre de palettes déjà saisi est conservé.")) return;
-    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
-    if (arrivageLie) {
-      await remove(ref(db, `arrivages/${arrivageLie.id}`));
-    }
+    if (!window.confirm("Repasser cette demande de « parti » à « prêt » ? Le nombre de palettes déjà saisi est conservé.")) return;
+    // 25/09/2026 — Le retour attendu reste dans « Pointer arrivage » (il existe dès la création).
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "prêt",
       departDate: null,

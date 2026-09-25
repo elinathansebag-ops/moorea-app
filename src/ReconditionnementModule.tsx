@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
-import { db, ref, push, onValue, update, remove, get } from "./firebase";
+import { db, ref, push, onValue, update, remove, get, set } from "./firebase";
 import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent, ChargementEcran } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -870,6 +870,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   demandesRecondChargees?: boolean;
 }) {
   const [stockIfcoCharge, setStockIfcoCharge] = useState(false);
+  const [arrivagesCharges, setArrivagesCharges] = useState(false);
   const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "suivi_ifco" | "configuration">("en_cours");
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
@@ -1103,6 +1104,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       setCatalogueArticles(d ? (Object.values(d) as any[]).map((v: any) => ({ code: v.code, libelle: v.libelle })).sort((a, b) => a.libelle.localeCompare(b.libelle)) : []);
     });
     const u6 = onValue(ref(db, "arrivages"), snap => {
+      setArrivagesCharges(true);
       const d = snap.val();
       setArrivagesData(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
       // 24/09/2026 — Rattrapage des retours « déjà sur place » créés avec la quantité
@@ -1664,6 +1666,44 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     }
   }
 
+  // 25/09/2026 — Rattrapage : les demandes récentes encore « en attente » / « prêt » (créées
+  // avant que l'arrivage soit créé dès la demande) reçoivent leur retour attendu. Clé fixe
+  // recond_<id> : si deux postes le font en même temps, ça écrit le même arrivage, sans doublon.
+  const rattrapageArrivagesFait = useRef(false);
+  useEffect(() => {
+    if (rattrapageArrivagesFait.current || !arrivagesCharges || demandesRecondChargees === false || demandes.length === 0) return;
+    rattrapageArrivagesFait.current = true;
+    const limite = Date.now() - 14 * 24 * 3600 * 1000;
+    demandes
+      .filter(d => (d.statut === "en attente" || d.statut === "prêt") && d.nbColisAEntrer != null && ((d as any).ts || 0) > limite)
+      .filter(d => !arrivagesData.some(a => a.reconditionnement_demande_id === d.id))
+      .forEach(d => {
+        set(ref(db, `arrivages/recond_${d.id}`), {
+          fournisseur: "Reconditionnement",
+          fournisseur_origine: d.origineFournisseur || null,
+          produit: d.articleFini,
+          variete: d.articleVrac,
+          lot_interne: d.lot || d.numero || d.id,
+          lot_fournisseur: d.origineLotFournisseur || "",
+          quantite: d.nbColisAEntrer ?? 0,
+          unite: "colis",
+          date: new Date().toLocaleDateString("fr-FR"),
+          statut: "en attente",
+          timestamp: Date.now(),
+          reconditionnement_demande_id: d.id,
+          depot: d.depot,
+          qteConditionnementAttendue: d.qteConditionnement ?? null,
+          caissesIfcoEnvoyees: d.caissesIfcoEnvoyees ?? null,
+          origine: `${DEPOT_LABEL[d.depot]}${d.transporteurNom ? ` · ${d.transporteurNom}` : ""}`,
+          transporteurNom: d.transporteurNom || null,
+          retour_en_ifco: d.retourEnIfco ?? false,
+          quantiteDemandeeInitiale: d.nbColisAEntrer ?? null,
+          quantiteDeclareePresta: null,
+          ecartPresta: null,
+        }).catch(() => {});
+      });
+  }, [arrivagesCharges, demandesRecondChargees, demandes, arrivagesData]);
+
   // 25/09/2026 — Demandes NLT candidates pour un BL « à vérifier », par numéro de lot (même
   // comparaison que lotsIdentiques côté serveur : espaces, préfixe MRA., zéros en tête ignorés).
   function candidatsBlNlt(lotBl?: string) {
@@ -1814,11 +1854,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // une demande "prêt" ou "parti" à l'étape "en attente" est une décision commerciale (annuler ce
   // qui a été engagé), pas une action physique d'entrepôt.
   async function reinitialiserDemande(id: string) {
-    if (!window.confirm("Remettre cette demande à l'étape « en attente » ? Si elle était marquée partie, le retour attendu dans « Pointer arrivage » sera annulé.")) return;
-    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
-    if (arrivageLie) {
-      await remove(ref(db, `arrivages/${arrivageLie.id}`));
-    }
+    if (!window.confirm("Remettre cette demande à l'étape « en attente » ?")) return;
+    // 25/09/2026 — Le retour attendu reste dans « Pointer arrivage » (il existe dès la création).
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "en attente",
       entrepotPretPar: null,
@@ -1845,11 +1882,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   }
 
   async function repasserAPret(id: string) {
-    if (!window.confirm("Repasser cette demande de « parti » à « prêt » ? Le retour attendu dans « Pointer arrivage » sera annulé, mais le nombre de palettes déjà saisi est conservé.")) return;
-    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id);
-    if (arrivageLie) {
-      await remove(ref(db, `arrivages/${arrivageLie.id}`));
-    }
+    if (!window.confirm("Repasser cette demande de « parti » à « prêt » ? Le nombre de palettes déjà saisi est conservé.")) return;
+    // 25/09/2026 — Le retour attendu reste dans « Pointer arrivage » (il existe dès la création).
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "prêt",
       departDate: null,
@@ -2149,6 +2183,17 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const deltaCartons = cartons - cartonsAvant;
       try {
         await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), demande);
+        // 25/09/2026 — Le retour attendu existant (encore à pointer) suit la modification.
+        const arrivageEdite = arrivagesData.find(a => a.reconditionnement_demande_id === editDemandeId && a.statut === "en attente");
+        if (arrivageEdite && demande.nbColisAEntrer != null) {
+          await update(ref(db, `arrivages/${arrivageEdite.id}`), {
+            produit: demande.articleFini, variete: demande.articleVrac,
+            lot_interne: demande.lot || demande.numero || editDemandeId,
+            quantite: demande.nbColisAEntrer, quantiteDemandeeInitiale: demande.nbColisAEntrer,
+            qteConditionnementAttendue: demande.qteConditionnement ?? null,
+            retour_en_ifco: demande.retourEnIfco ?? false,
+          }).catch(() => {});
+        }
         try {
           const pdfBase64 = await genererBonPdf({ ...demande, id: editDemandeId } as Demande);
           const pdfNom = `bon-reconditionnement-${editDemandeId}.pdf`;
@@ -2233,9 +2278,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         // (PreparationModule.tsx) au moment normal du départ -- pour qu'il apparaisse tout de
         // suite dans « Pointer arrivage », sans attendre une action de l'entrepôt qui n'aura
         // jamais lieu pour cette ligne-là.
-        if (dejaChezReconditionneur) {
+        // 25/09/2026 — Demande d'Elinathan : « même si pas déjà marquée partie dans Préparation,
+        // mets-la quand même dans arrivage » — le retour attendu est créé dès la création de la
+        // demande (plus seulement pour « déjà chez le reconditionneur »), avec une clé fixe
+        // (recond_<id>) pour ne jamais créer de doublon. « Marquer parti » met ensuite juste à
+        // jour cet arrivage (quantité déclarée par le presta, transporteur).
+        if (demande.nbColisAEntrer != null) {
           try {
-            await push(ref(db, "arrivages"), {
+            await set(ref(db, `arrivages/recond_${demandeId}`), {
               fournisseur: "Reconditionnement",
               fournisseur_origine: demande.origineFournisseur || null,
               produit: demande.articleFini,
@@ -2254,8 +2304,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               depot: demande.depot,
               qteConditionnementAttendue: demande.qteConditionnement ?? null,
               caissesIfcoEnvoyees: demande.caissesIfcoEnvoyees ?? null,
-              origine: `${DEPOT_LABEL[demande.depot]} · déjà sur place`,
-              transporteurNom: null,
+              origine: dejaChezReconditionneur ? `${DEPOT_LABEL[demande.depot]} · déjà sur place` : `${DEPOT_LABEL[demande.depot]}${transporteur?.nom ? ` · ${transporteur.nom}` : ""}`,
+              transporteurNom: dejaChezReconditionneur ? null : (transporteur?.nom || null),
               retour_en_ifco: demande.retourEnIfco ?? false,
               quantiteDemandeeInitiale: demande.nbColisAEntrer ?? null,
               quantiteDeclareePresta: null,
@@ -2311,6 +2361,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 
   async function annulerDemande(id: string) {
     await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "annulé" });
+    // 25/09/2026 — L'arrivage existant dès la création : une demande annulée ne doit plus rien
+    // attendre dans « Pointer arrivage ».
+    const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id && a.statut === "en attente");
+    if (arrivageLie) await remove(ref(db, `arrivages/${arrivageLie.id}`)).catch(() => {});
     notify("success", "Demande annulée");
   }
 
@@ -2333,6 +2387,17 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // Garde-fou contre les doublons (même précaution que côté Préparation) : pas de 2e arrivage
     // si un clic précédent en a déjà créé un pour cette demande.
     const arrivageDejaCree = arrivagesData.some(a => a.reconditionnement_demande_id === d.id);
+    // 25/09/2026 — Arrivage créé dès la demande : au départ on le met juste à jour s'il est à pointer.
+    const arrivageAMaj = arrivagesData.find(a => a.reconditionnement_demande_id === d.id && a.statut === "en attente");
+    if (arrivageAMaj) {
+      await update(ref(db, `arrivages/${arrivageAMaj.id}`), {
+        quantite: quantiteArrivage,
+        origine: `${DEPOT_LABEL[d.depot]}${d.transporteurNom ? ` · ${d.transporteurNom}` : ""}`,
+        transporteurNom: d.transporteurNom || null,
+        quantiteDeclareePresta,
+        ecartPresta: quantitePrevue != null && quantiteDeclareePresta != null ? quantiteDeclareePresta - quantitePrevue : null,
+      }).catch(() => {});
+    }
     if (d.nbColisAEntrer == null || arrivageDejaCree) {
       notify("success", d.nbColisAEntrer == null ? "✅ Marqué parti et validé — aucun retour attendu pour cet envoi" : "🚚 Marqué parti");
       return;
