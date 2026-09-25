@@ -1073,7 +1073,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // lot détecté dans le PDF ne correspond pas à EXACTEMENT une seule demande NLT "en attente",
   // rien n'est appliqué automatiquement — le cas est juste noté ici pour vérification manuelle.
   const [rattachementEnCours, setRattachementEnCours] = useState<string | null>(null);
-  const [blNltAVerifier, setBlNltAVerifier] = useState<{ id: string; date: string; lot?: string; colisDetectes?: number; raison: string; sujetMail?: string; blNumero?: string }[]>([]);
+  const [blNltAVerifier, setBlNltAVerifier] = useState<{ id: string; date: string; lot?: string; colisDetectes?: number; raison: string; sujetMail?: string; blNumero?: string; rattacheA?: Record<string, { date: string; numero: string; colis: number | null }> }[]>([]);
+  // Sélection en cours par BL : demandeId -> nb de colis saisi pour cette demande.
+  const [selectionBl, setSelectionBl] = useState<Record<string, Record<string, string>>>({});
 
   // 16/09/2026 — Ne s'abonne plus directement à "reconditionnement_demandes" (voir App.tsx) :
   // dérive juste "demandes" de la liste reçue en prop, avec exactement le même tri qu'avant.
@@ -1657,19 +1659,26 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   function candidatsBlNlt(lotBl?: string) {
     const n = (x: any) => String(x ?? "").trim().replace(/^MRA\.?/i, "").replace(/^0+(?=\d)/, "");
     if (!lotBl || !n(lotBl)) return [] as Demande[];
-    return demandes.filter(d => d.depot === "nlt" && d.statut !== "annulé" && n(d.lot) === n(lotBl));
+    const vus = new Set<string>();
+    return demandes.filter(d => d.depot === "nlt" && d.statut !== "annulé" && n(d.lot) === n(lotBl) && !vus.has(d.id) && !!vus.add(d.id));
   }
-  async function rattacherBlNlt(aVerifierId: string, d: Demande) {
-    if (d.statut === "reçu" && !window.confirm(`${d.numero || d.id} est déjà reçue — rattacher quand même le BL (juste pour garder la trace) ?`)) return;
+  async function rattacherBlNlt(aVerifierId: string) {
+    const sel = selectionBl[aVerifierId] || {};
+    const ids = Object.keys(sel);
+    if (ids.length === 0) return;
+    const choisies = ids.map(id => demandes.find(d => d.id === id)).filter(Boolean) as Demande[];
+    const recues = choisies.filter(d => d.statut === "reçu");
+    if (recues.length && !window.confirm(`${recues.map(d => d.numero || d.id).join(", ")} ${recues.length > 1 ? "sont déjà reçues" : "est déjà reçue"} — rattacher quand même le BL (juste pour garder la trace) ?`)) return;
     setRattachementEnCours(aVerifierId);
     try {
       const r = await fetch("/api/portail-reconditionneur?depot=nlt", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "rattacherBlNlt", aVerifierId, demandeId: d.id }),
+        body: JSON.stringify({ action: "rattacherBlNlt", aVerifierId, affectations: ids.map(id => ({ demandeId: id, colis: sel[id] === "" ? null : Number(sel[id]) })) }),
       });
       const out = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(out?.error || `erreur ${r.status}`);
-      notify("success", `🔗 BL rattaché à ${d.numero || d.id}`);
+      notify("success", `🔗 BL rattaché à ${choisies.map(d => d.numero || d.id).join(", ")}`);
+      setSelectionBl(prev => { const n = { ...prev }; delete n[aVerifierId]; return n; });
     } catch (e: any) {
       notify("error", `❌ Rattachement impossible : ${e?.message || "erreur inconnue"}`);
     } finally {
@@ -2845,17 +2854,61 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   {b.raison}
                   {b.blNumero ? ` (BL ${b.blNumero})` : ""}
                   <span style={{ color: "#b45309", marginLeft: 6 }}>· {b.date}</span>
+                  {b.rattacheA && Object.keys(b.rattacheA).length > 0 && (
+                    <div style={{ marginTop: 4, color: "#15803d", fontWeight: 700 }}>
+                      ✅ Déjà rattaché à : {Object.values(b.rattacheA).map(r => `${r.numero}${r.colis != null ? ` (${r.colis} colis)` : ""}`).join(", ")}
+                    </div>
+                  )}
+                  {/* 25/09/2026 — Rattachement par NUMÉRO DE LOT, à une ou plusieurs demandes :
+                      coche les demandes concernées et ajuste le nb de colis de chacune. */}
+                  {candidatsBlNlt(b.lot).length > 0 && (() => {
+                    const cands = candidatsBlNlt(b.lot);
+                    const sel = selectionBl[b.id] || {};
+                    const nbSel = Object.keys(sel).length;
+                    const totalSel = Object.values(sel).reduce((t, v) => t + (parseInt(v) || 0), 0);
+                    return (
+                      <div style={{ marginTop: 8, display: "grid", gap: 4 }}>
+                        {cands.map(d => {
+                          const coche = d.id in sel;
+                          const deja = !!b.rattacheA?.[d.id];
+                          return (
+                            <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", cursor: "pointer" }}>
+                              <input type="checkbox" checked={coche} onChange={e => setSelectionBl(prev => {
+                                const cur = { ...(prev[b.id] || {}) };
+                                if (e.target.checked) cur[d.id] = String(cands.length === 1 && b.colisDetectes != null ? b.colisDetectes : (d.nbColisAEntrer ?? ""));
+                                else delete cur[d.id];
+                                return { ...prev, [b.id]: cur };
+                              })} />
+                              <span><b>{d.numero || d.id}</b> — {d.articleFini || "-"} · {d.statut}{d.nbColisAEntrer != null ? ` · ${d.nbColisAEntrer} colis prévus` : ""}{deja ? " · ✅ déjà rattaché" : ""}</span>
+                              {coche && (
+                                <input type="number" min={0} value={sel[d.id]} onClick={e => e.preventDefault()}
+                                  onChange={e => { const v = e.target.value; setSelectionBl(prev => ({ ...prev, [b.id]: { ...(prev[b.id] || {}), [d.id]: v } })); }}
+                                  style={{ width: 70, padding: "2px 6px", borderRadius: 6, border: "1px solid #fde3a8", fontSize: 12 }} />
+                              )}
+                              {coche && <span style={{ fontSize: 11 }}>colis</span>}
+                            </label>
+                          );
+                        })}
+                        {nbSel > 0 && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                            <button disabled={rattachementEnCours === b.id} onClick={() => rattacherBlNlt(b.id)}
+                              style={{ border: "none", background: "#92400e", color: "#fff", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: rattachementEnCours === b.id ? 0.5 : 1 }}>
+                              🔗 Rattacher à {nbSel} demande{nbSel > 1 ? "s" : ""}
+                            </button>
+                            {b.colisDetectes != null && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: totalSel === b.colisDetectes ? "#15803d" : "#b45309" }}>
+                                Total : {totalSel} / {b.colisDetectes} colis du BL{totalSel === b.colisDetectes ? " ✓" : ""}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", flexShrink: 0 }}>
                   {/* 25/09/2026 — Rattachement par NUMÉRO DE LOT : on propose les demandes NLT qui
                       ont ce lot (pas annulées) — un clic applique le BL comme la détection auto. */}
-                  {candidatsBlNlt(b.lot).map(d => (
-                    <button key={d.id} disabled={rattachementEnCours === b.id} onClick={() => rattacherBlNlt(b.id, d)}
-                      title={`${d.articleFini || ""} · ${d.statut}`}
-                      style={{ border: "none", background: "#92400e", color: "#fff", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: rattachementEnCours === b.id ? 0.5 : 1 }}>
-                      🔗 Rattacher à {d.numero || d.id}{d.statut === "reçu" ? " (déjà reçue)" : ""}
-                    </button>
-                  ))}
                   {b.lot && candidatsBlNlt(b.lot).length === 0 && (
                     <span style={{ fontSize: 11, color: "#b45309", alignSelf: "center" }}>aucune demande NLT avec le lot {b.lot}</span>
                   )}

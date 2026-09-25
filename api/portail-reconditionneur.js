@@ -311,22 +311,30 @@ export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { bl
   await notifierProdPrete(adminDb, "nlt", demande, id, { quantite: colis, ecart, attendu, transporteur, nbPalettes: null, commentaire: texte });
 }
 
+// Un même BL (un numéro de lot) peut être rattaché à PLUSIEURS demandes (même lot réparti sur
+// plusieurs articles) : affectations = [{ demandeId, colis }], le nombre de colis étant saisi
+// par demande dans l'appli. L'entrée « à vérifier » n'est pas supprimée ici (l'accès serveur
+// n'a pas de remove) : on y note les demandes rattachées, et « ✓ Traité » la retire.
 async function handleRattacherBlNlt(adminDb, body) {
-  const { aVerifierId, demandeId } = body;
-  if (!aVerifierId || !demandeId) { const e = new Error("aVerifierId et demandeId requis"); e.statusCode = 400; throw e; }
-  const [snapBl, snapD] = await Promise.all([
-    adminDb.ref(`nlt_bl_a_verifier/${aVerifierId}`).once("value"),
-    adminDb.ref(`reconditionnement_demandes/${demandeId}`).once("value"),
-  ]);
-  const bl = snapBl.val(), demande = snapD.val();
+  const { aVerifierId } = body;
+  const affectations = Array.isArray(body.affectations) ? body.affectations
+    : (body.demandeId ? [{ demandeId: body.demandeId, colis: undefined }] : []);
+  if (!aVerifierId || affectations.length === 0) { const e = new Error("aVerifierId et au moins une demande requis"); e.statusCode = 400; throw e; }
+  const bl = (await adminDb.ref(`nlt_bl_a_verifier/${aVerifierId}`).once("value")).val();
   if (!bl) { const e = new Error("BL introuvable (déjà traité ?)"); e.statusCode = 404; throw e; }
-  if (!demande || demande.depot !== "nlt") { const e = new Error("Demande NLT introuvable"); e.statusCode = 404; throw e; }
-  await appliquerBlNltSurDemande(adminDb, demandeId, demande, typeof bl.colisDetectes === "number" ? bl.colisDetectes : null, {
-    blNumero: bl.blNumero,
-    commentaire: `Rattaché à la main depuis le BL NLT ${bl.blNumero || ""} (lot ${bl.lot || "?"})`.trim(),
-  });
-  await adminDb.ref(`nlt_bl_a_verifier/${aVerifierId}`).remove();
-  return { success: true };
+  const rattaches = {};
+  for (const { demandeId, colis } of affectations) {
+    const demande = (await adminDb.ref(`reconditionnement_demandes/${demandeId}`).once("value")).val();
+    if (!demande || demande.depot !== "nlt") { const e = new Error(`Demande NLT introuvable (${demandeId})`); e.statusCode = 404; throw e; }
+    const n = colis === undefined || colis === null || colis === "" ? (typeof bl.colisDetectes === "number" ? bl.colisDetectes : null) : Number(colis);
+    await appliquerBlNltSurDemande(adminDb, demandeId, demande, Number.isFinite(n) ? n : null, {
+      blNumero: bl.blNumero,
+      commentaire: `Rattaché à la main depuis le BL NLT ${bl.blNumero || ""} (lot ${bl.lot || "?"})`.replace(/\s+/g, " "),
+    });
+    rattaches[demandeId] = { date: nowFr(), numero: demande.numero || demandeId, colis: Number.isFinite(n) ? n : null };
+  }
+  await adminDb.ref(`nlt_bl_a_verifier/${aVerifierId}/rattacheA`).update(rattaches);
+  return { success: true, rattaches: Object.keys(rattaches).length };
 }
 
 // 15/09/2026 — Extrait de handleConfirmerRepartie (le code était identique à ce qu'il faut
