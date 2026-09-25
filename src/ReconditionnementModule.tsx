@@ -1145,7 +1145,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     });
     const u12 = onValue(ref(db, "nlt_bl_a_verifier"), snap => {
       const d = snap.val();
-      setBlNltAVerifier(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
+      // 25/09/2026 — Un BL déjà rattaché (rattacheA, écrit par le serveur) est traité : on le
+      // retire de la liste au lieu de le laisser affiché.
+      const entrees = d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : [];
+      entrees.filter((b: any) => b.rattacheA && Object.keys(b.rattacheA).length > 0)
+        .forEach((b: any) => { remove(ref(db, `nlt_bl_a_verifier/${b.id}`)).catch(() => {}); });
+      setBlNltAVerifier(entrees.filter((b: any) => !(b.rattacheA && Object.keys(b.rattacheA).length > 0)));
     });
     return () => { u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); u11(); u12(); };
   }, []);
@@ -1682,6 +1687,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       if (!r.ok) throw new Error(out?.error || `erreur ${r.status}`);
       notify("success", `🔗 BL rattaché à ${choisies.map(d => d.numero || d.id).join(", ")}`);
       setSelectionBl(prev => { const n = { ...prev }; delete n[aVerifierId]; return n; });
+      // 25/09/2026 — « une fois rattaché ça reste ici » : le BL est traité, on le retire de la liste.
+      await remove(ref(db, `nlt_bl_a_verifier/${aVerifierId}`));
     } catch (e: any) {
       notify("error", `❌ Rattachement impossible : ${e?.message || "erreur inconnue"}`);
     } finally {
@@ -2882,12 +2889,15 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                           const deja = !!b.rattacheA?.[d.id];
                           return (
                             <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", cursor: "pointer" }}>
-                              <input type="checkbox" checked={coche} onChange={e => setSelectionBl(prev => {
-                                const cur = { ...(prev[b.id] || {}) };
-                                if (e.target.checked) cur[d.id] = String(cands.length === 1 && b.colisDetectes != null ? b.colisDetectes : (d.nbColisAEntrer ?? ""));
-                                else delete cur[d.id];
-                                return { ...prev, [b.id]: cur };
-                              })} />
+                              <span className="mrq-case-conteneur">
+                                <input type="checkbox" className="mrq-case-native" checked={coche} onChange={e => setSelectionBl(prev => {
+                                  const cur = { ...(prev[b.id] || {}) };
+                                  if (e.target.checked) cur[d.id] = String(cands.length === 1 && b.colisDetectes != null ? b.colisDetectes : (d.nbColisAEntrer ?? ""));
+                                  else delete cur[d.id];
+                                  return { ...prev, [b.id]: cur };
+                                })} />
+                                <span className="mrq-case-visuelle" />
+                              </span>
                               <span><b>{d.numero || d.id}</b> — {d.articleFini || "-"} · {d.statut}{d.nbColisAEntrer != null ? ` · ${d.nbColisAEntrer} colis prévus` : ""}{deja ? " · ✅ déjà rattaché" : ""}</span>
                               {coche && (
                                 <input type="number" min={0} value={sel[d.id]} onClick={e => e.preventDefault()}

@@ -3,7 +3,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { PDFParse } from "pdf-parse";
 import { getAdminDb } from "./_firebaseAdmin.js";
-import { appliquerBlNltSurDemande, lotsIdentiques, STATUTS_RATTACHABLES_BL } from "./portail-reconditionneur.js";
+import { appliquerBlNltSurDemande, lotsIdentiques } from "./portail-reconditionneur.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -193,11 +193,32 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
   // mais seulement avec les demandes encore « en attente » — or quand NLT envoie son BL, la
   // marchandise est déjà partie chez lui (« parti »). On cherche maintenant par numéro de lot
   // parmi toutes les demandes NLT pas encore reçues ni annulées.
-  const correspondantes = Object.entries(toutes).filter(
-    ([, d]) => d && d.depot === "nlt" && lotsIdentiques(d.lot, lot) && STATUTS_RATTACHABLES_BL.includes(d.statut)
+  // 25/09/2026 (bis) — « que les BL du jour se rattachent automatiquement » : on cherche le lot
+  // parmi les demandes NLT récentes (10 derniers jours, y compris déjà reçues : l'arrivage est
+  // parfois pointé avant l'arrivée du mail), en préférant celles du jour du BL. Plusieurs
+  // demandes avec le même lot (même lot réparti sur plusieurs articles) :
+  //   - une seule prévoit exactement le nb de colis du BL → c'est elle ;
+  //   - la somme de leurs colis prévus = colis du BL → rattaché à toutes, chacune avec ses colis ;
+  //   - sinon → « à vérifier » (choix manuel dans l'appli).
+  const maintenant = Date.now();
+  const recentes = Object.entries(toutes).filter(
+    ([, d]) => d && d.depot === "nlt" && lotsIdentiques(d.lot, lot) && d.statut !== "annulé"
+      && (typeof d.ts !== "number" || maintenant - d.ts < 10 * 24 * 3600 * 1000)
   );
+  const jourBl = new Date().toLocaleDateString("fr-FR");
+  const duJour = recentes.filter(([, d]) => typeof d.ts === "number" && new Date(d.ts).toLocaleDateString("fr-FR") === jourBl);
+  const candidats = duJour.length ? duJour : recentes;
+  let affectations = null; // [[id, demande, colis]]
+  if (candidats.length === 1) {
+    affectations = [[candidats[0][0], candidats[0][1], colis]];
+  } else if (candidats.length > 1 && typeof colis === "number") {
+    const exacts = candidats.filter(([, d]) => d.nbColisAEntrer === colis);
+    const somme = candidats.reduce((t, [, d]) => t + (typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : NaN), 0);
+    if (exacts.length === 1) affectations = [[exacts[0][0], exacts[0][1], colis]];
+    else if (somme === colis) affectations = candidats.map(([id, d]) => [id, d, d.nbColisAEntrer]);
+  }
 
-  if (correspondantes.length !== 1) {
+  if (!affectations) {
     // Pas de PDF joint ici (nlt_bl_a_verifier reste léger à lire dans l'appli) — le mail original
     // reste de toute façon disponible dans la boîte mail pour vérifier à la main.
     await adminDb.ref("nlt_bl_a_verifier").push({
@@ -205,15 +226,16 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
       lot,
       colisDetectes: colis,
       raison:
-        correspondantes.length === 0
-          ? "aucune demande NLT en cours (pas encore reçue) avec ce numéro de lot"
-          : `${correspondantes.length} demandes NLT en cours ont ce même numéro de lot — ambigu`,
+        candidats.length === 0
+          ? "aucune demande NLT récente avec ce numéro de lot"
+          : `${candidats.length} demandes NLT ont ce numéro de lot et les colis ne permettent pas de trancher — choisis ci-dessous`,
       ...contexteSansPdf,
     });
     return "a_verifier";
   }
 
-  const [id, demande] = correspondantes[0];
-  await appliquerBlNltSurDemande(adminDb, id, demande, colis, { blNumero: contexteMail.blNumero, blPdfDataUri });
+  for (const [id, demande, n] of affectations) {
+    await appliquerBlNltSurDemande(adminDb, id, demande, n, { blNumero: contexteMail.blNumero, blPdfDataUri });
+  }
   return "applique";
 }
