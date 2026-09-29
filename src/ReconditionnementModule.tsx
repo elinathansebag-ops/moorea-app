@@ -1501,6 +1501,30 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // 29/09/2026 — Extrait tel quel du bouton « Envoyer une palette IFCO à NLT » (même mouvement de
   // stock IFCO, même demande PAL…, même bordereau imprimé) pour être réutilisé à l'identique par
   // la demande groupée. AUCUNE règle de stock IFCO n'a été modifiée.
+  // 29/09/2026 — Saisie après coup « déjà revenue à Moorea » : aucun arrivage à pointer, donc le
+  // retour des caisses IFCO pleines n'était jamais comptabilisé. On applique ici EXACTEMENT le
+  // même mouvement que le pointage d'un retour de reconditionnement (App.tsx) : NLT → « pleines ».
+  async function mouvementRetourIfcoApresCoup(demandeId: string, caissesPleines: number, depot: string, origine: string, dateFr: string) {
+    if (!(caissesPleines > 0)) return;
+    const { get } = await import("firebase/database");
+    const levelsSnap = await get(ref(db, "ifco_stock/levels"));
+    const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
+    const newNlt = (levels.nlt || 0) - caissesPleines;
+    const newPleines = (levels.pleines || 0) + caissesPleines;
+    await update(ref(db, "ifco_stock/levels"), { nlt: newNlt, pleines: newPleines });
+    await push(ref(db, "ifco_stock/movements"), {
+      date: dateFr, from: "nlt", to: "pleines", caisses: caissesPleines,
+      raison: `Reconditionnement — retour${origine ? ` (${origine})` : ""}`,
+      reconditionnement_demande_id: demandeId,
+      user: userName || "Moorea", ts: Date.now(),
+    });
+    await push(ref(db, "reconditionnement_stock_mouvements"), {
+      type: "retour_moorea", depot, quantite: caissesPleines,
+      date: dateFr, ts: Date.now(),
+      reconditionnement_demande_id: demandeId,
+    });
+  }
+
   async function creerEnvoiPaletteIfcoNlt(qte: number, transporteurNomSaisi: string): Promise<string> {
     await pousserEnvoiPaletteIfco(qte, "Envoi manuel de palette IFCO à NLT");
 
@@ -2363,7 +2387,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       ts: original?.ts ?? dateRef.getTime(),
       saisieApresCoup: apresCoup || (original as any)?.saisieApresCoup || undefined,
       emailEnvoye: apresCoup ? true : undefined,
-      retour: apresCoup && statutApresCoup === "reçu" ? { date: dateRefFr, qualite: "conforme", commentaire: "Saisi après coup — déjà reçu", nbColisRecus: nbColisAEntrer ? parseInt(nbColisAEntrer) : 0 } : undefined,
+      retour: apresCoup && statutApresCoup === "reçu" ? { date: dateRefFr, qualite: "conforme", commentaire: "Saisi après coup — déjà reçu", nbColisRecus: nbColisAEntrer ? parseInt(nbColisAEntrer) : 0, nbPalettes: { grandes: 0, demi: 0 }, ...(depot === "nlt" && retourIfco === "oui" && nbColisAEntrer && parseInt(nbColisAEntrer) > 0 ? { caissesIfcoPleinesRecues: parseInt(nbColisAEntrer) } : {}) } : undefined,
     } as any;
 
     // Firebase (push/update) refuse toute valeur "undefined" — on retire ces clés avant
@@ -2485,6 +2509,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         // demande (plus seulement pour « déjà chez le reconditionneur »), avec une clé fixe
         // (recond_<id>) pour ne jamais créer de doublon. « Marquer parti » met ensuite juste à
         // jour cet arrivage (quantité déclarée par le presta, transporteur).
+        if (apresCoup && statutApresCoup === "reçu" && demande.retour?.caissesIfcoPleinesRecues) {
+          try { await mouvementRetourIfcoApresCoup(demandeId, demande.retour.caissesIfcoPleinesRecues, demande.depot, DEPOT_LABEL[demande.depot as keyof typeof DEPOT_LABEL] || "", dateRefFr); }
+          catch { notify("error", "⚠️ Retour des caisses IFCO pleines non enregistré dans le stock"); }
+        }
         if (demande.nbColisAEntrer != null && !(apresCoup && statutApresCoup === "reçu")) {
           try {
             await set(ref(db, `arrivages/recond_${demandeId}`), {
@@ -2794,7 +2822,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           ts: apresCoup ? dateRef.getTime() : now.getTime(),
           saisieApresCoup: apresCoup || undefined,
           emailEnvoye: apresCoup ? true : undefined,
-          retour: apresCoup && groupeStatutApresCoup === "reçu" ? { date: dateRefFr, qualite: "conforme", commentaire: "Saisi après coup — déjà reçu", nbColisRecus: nEntrer } : undefined,
+          retour: apresCoup && groupeStatutApresCoup === "reçu" ? { date: dateRefFr, qualite: "conforme", commentaire: "Saisi après coup — déjà reçu", nbColisRecus: nEntrer, nbPalettes: { grandes: 0, demi: 0 }, ...(dep === "nlt" && l.retourIfco === "oui" && nEntrer > 0 ? { caissesIfcoPleinesRecues: nEntrer } : {}) } : undefined,
           demandeGroupee: true,
         };
         Object.keys(demande).forEach(k => { if (demande[k] === undefined) delete demande[k]; });
@@ -2817,6 +2845,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         }
         // Retour attendu dans Arrivage dès la création (même règle que creerDemande) — sauf
         // saisie après coup « déjà revenue » (rien à pointer).
+        if (apresCoup && groupeStatutApresCoup === "reçu" && demande.retour?.caissesIfcoPleinesRecues) {
+          try { await mouvementRetourIfcoApresCoup(demandeId, demande.retour.caissesIfcoPleinesRecues, dep, DEPOT_LABEL[dep as keyof typeof DEPOT_LABEL] || "", dateRefFr); }
+          catch { notify("error", `⚠️ ${demande.numero} : retour des caisses IFCO pleines non enregistré dans le stock`); }
+        }
         if (!(apresCoup && groupeStatutApresCoup === "reçu")) await set(ref(db, `arrivages/recond_${demandeId}`), {
           fournisseur: "Reconditionnement", fournisseur_origine: demande.origineFournisseur || null,
           produit: demande.articleFini, variete: demande.articleVrac,
