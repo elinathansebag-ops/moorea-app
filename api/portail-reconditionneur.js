@@ -312,7 +312,8 @@ export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { bl
   await adminDb.ref(`reconditionnement_demandes/${id}`).update(maj);
   // Déjà reçue à Moorea (rattachement fait après coup) : on garde juste la trace du BL, sans
   // prévenir le transporteur d'une prod « prête » qui est en fait déjà arrivée.
-  if (demande.statut === "reçu" || typeof colis !== "number") return;
+  // Saisie après coup (reconditionnement rentré en retard) : jamais de mail.
+  if (demande.statut === "reçu" || typeof colis !== "number" || demande.saisieApresCoup) return;
   await notifierProdPrete(adminDb, "nlt", demande, id, { quantite: colis, ecart, attendu, transporteur, nbPalettes: null, commentaire: texte });
 }
 
@@ -349,6 +350,8 @@ async function handleRattacherBlNlt(adminDb, body) {
 // Prévient le transporteur (annuaire) ET l'entrepôt/Moorea qu'une prod est prête à récupérer.
 // Best effort : n'importe quelle erreur d'envoi est avalée (loggée), ne bloque jamais l'appelant.
 export async function notifierProdPrete(adminDb, depot, demande, id, { quantite, ecart, attendu, transporteur, nbPalettes, commentaire }) {
+  // 29/09/2026 — Reconditionnement saisi après coup : on ne prévient personne.
+  if (demande && demande.saisieApresCoup) return;
   const ref = demande.numero || id;
   // 01/09/2026 — Ligne "Quantité" reformulée pour dire explicitement si la quantité déclarée
   // par le presta correspond à ce qui était prévu, ou si elle a été changée — demande

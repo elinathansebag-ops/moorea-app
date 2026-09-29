@@ -970,6 +970,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [commentaireEan, setCommentaireEan] = useBrouillon(brouillonDemande, "commentaireEan", "");
   const [fournirEtiquettes, setFournirEtiquettes] = useBrouillon(brouillonDemande, "fournirEtiquettes", false);
   const [transporteurId, setTransporteurId] = useBrouillon(brouillonDemande, "transporteurId", "");
+  // 29/09/2026 — Saisie après coup d'un reconditionnement déjà fait (oublié par le commercial) :
+  // aucune impression, aucun mail (récap, transporteur, « prod prête »), daté du jour choisi.
+  const [saisieApresCoup, setSaisieApresCoup] = useBrouillon(brouillonDemande, "saisieApresCoup", false);
+  const [dateApresCoup, setDateApresCoup] = useBrouillon<string>(brouillonDemande, "dateApresCoup", (() => { const d = new Date(Date.now() - 24 * 3600 * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })());
+  const [statutApresCoup, setStatutApresCoup] = useBrouillon<"parti" | "reçu">(brouillonDemande, "statutApresCoup", "parti");
   // 23/09/2026 -- Demande d'Elinathan : une demande peut concerner un produit déjà présent
   // chez le reconditionneur (ex : resté sur place depuis un précédent reconditionnement) --
   // dans ce cas, pas besoin de l'envoyer physiquement (donc pas de bon à imprimer à
@@ -1784,6 +1789,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     setFournirEtiquettes(false);
     setTransporteurId("");
     setDejaChezReconditionneur(false);
+    setSaisieApresCoup(false);
     setPdfFile(null);
     setEditDemandeId(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -2103,7 +2109,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         return;
       }
     }
-    if (!transporteurId && !dejaChezReconditionneur) {
+    if (!transporteurId && !dejaChezReconditionneur && !(saisieApresCoup && !editDemandeId)) {
       notify("error", "✗ Choisis un transporteur");
       return;
     }
@@ -2148,10 +2154,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // seuls les champs du formulaire sont mis à jour.
     const original = editDemandeId ? demandes.find(d => d.id === editDemandeId) : null;
 
+    const apresCoup = saisieApresCoup && !editDemandeId;
+    const dateRef = apresCoup ? new Date(`${dateApresCoup}T12:00:00`) : now;
+    const dateRefFr = dateRef.toLocaleDateString("fr-FR") + (apresCoup ? " (saisi après coup)" : "");
     const demande: Omit<Demande, "id"> = {
-      numero: original?.numero || genererNumeroDemande(now, demandes),
-      dateCreation: original?.dateCreation || now.toISOString(),
-      dateCreationFr: original?.dateCreationFr || nowFr(),
+      numero: original?.numero || genererNumeroDemande(dateRef, demandes),
+      dateCreation: original?.dateCreation || dateRef.toISOString(),
+      dateCreationFr: original?.dateCreationFr || (apresCoup ? dateRefFr : nowFr()),
       creePar: original?.creePar || userName || "Moorea",
       depot,
       articleVrac: articleVrac.trim(),
@@ -2182,11 +2191,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       // directement à "parti" (comme si l'entrepôt venait de le faire partir) au lieu de
       // "en attente" -- ça évite que la demande traîne dans la file de préparation de
       // l'entrepôt pour un envoi qui n'a pas lieu d'être.
-      statut: dejaChezReconditionneur ? "parti" : (original?.statut || "en attente"),
-      departDate: dejaChezReconditionneur ? nowFr() : original?.departDate,
+      statut: apresCoup ? statutApresCoup : (dejaChezReconditionneur ? "parti" : (original?.statut || "en attente")),
+      departDate: apresCoup ? dateRefFr : (dejaChezReconditionneur ? nowFr() : original?.departDate),
       dejaChezReconditionneur: dejaChezReconditionneur || original?.dejaChezReconditionneur || undefined,
       // @ts-ignore — champ interne pour le tri, non typé dans Demande
-      ts: original?.ts ?? now.getTime(),
+      ts: original?.ts ?? dateRef.getTime(),
+      saisieApresCoup: apresCoup || (original as any)?.saisieApresCoup || undefined,
+      emailEnvoye: apresCoup ? true : undefined,
+      retour: apresCoup && statutApresCoup === "reçu" ? { date: dateRefFr, qualite: "conforme", commentaire: "Saisi après coup — déjà reçu", nbColisRecus: nbColisAEntrer ? parseInt(nbColisAEntrer) : 0 } : undefined,
     } as any;
 
     // Firebase (push/update) refuse toute valeur "undefined" — on retire ces clés avant
@@ -2260,7 +2272,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
           await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
 
-          if (dejaChezReconditionneur) {
+          if (apresCoup) {
+            // 29/09/2026 — Saisie après coup : ni impression du bon, ni récap mail (emailEnvoye
+            // reste true, posé à la création).
+          } else if (dejaChezReconditionneur) {
             // 23/09/2026 -- Correction (bug remonté par Elinathan) : "pas de mail au
             // transporteur" pour ces lignes-là ne veut PAS dire "pas de bon dans le récap envoyé
             // au reconditionneur" -- confusion faite ici à tort la première fois, qui a fait
@@ -2305,7 +2320,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         // demande (plus seulement pour « déjà chez le reconditionneur »), avec une clé fixe
         // (recond_<id>) pour ne jamais créer de doublon. « Marquer parti » met ensuite juste à
         // jour cet arrivage (quantité déclarée par le presta, transporteur).
-        if (demande.nbColisAEntrer != null) {
+        if (demande.nbColisAEntrer != null && !(apresCoup && statutApresCoup === "reçu")) {
           try {
             await set(ref(db, `arrivages/recond_${demandeId}`), {
               fournisseur: "Reconditionnement",
@@ -3817,6 +3832,42 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             {/* 23/09/2026 -- Demande d'Elinathan : produit déjà chez le reconditionneur --
                 pas d'envoi (donc pas de bon à l'entrepôt ni de mail transporteur), mais le
                 retour attendu doit quand même apparaître dans "Pointer arrivage". */}
+            {/* 29/09/2026 — Saisie après coup (reconditionnement déjà fait, oublié par le commercial). */}
+            {!editDemandeId && (
+              <div style={{ marginBottom: 10, padding: "12px 16px", borderRadius: 14, border: `2px solid ${saisieApresCoup ? "#d97706" : COLORS.gray200}`, background: saisieApresCoup ? "#fffbeb" : "#fff" }}>
+                <div onClick={() => setSaisieApresCoup(v => !v)} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                  <input type="checkbox" checked={saisieApresCoup} onChange={e => setSaisieApresCoup(e.target.checked)} onClick={e => e.stopPropagation()}
+                    style={{ width: 18, height: 18, flexShrink: 0, marginTop: 2, appearance: "auto", WebkitAppearance: "checkbox", padding: 0, border: "revert", borderRadius: "revert" }} />
+                  <div>
+                    <span style={{ fontSize: 13.5, color: saisieApresCoup ? "#92400e" : COLORS.gray700, fontWeight: 800, display: "block" }}>
+                      {saisieApresCoup ? "✓" : "📅"} Reconditionnement déjà fait — saisie après coup
+                    </span>
+                    <span style={{ fontSize: 11, color: saisieApresCoup ? "#92400e" : "#9ca3af" }}>
+                      Pour rentrer un reconditionnement oublié : aucun mail envoyé (ni récap, ni transporteur, ni reconditionneur) et rien d'imprimé à l'entrepôt.
+                    </span>
+                  </div>
+                </div>
+                {saisieApresCoup && (
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10, paddingLeft: 28 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>Fait le
+                      <input type="date" value={dateApresCoup} max={new Date().toISOString().slice(0, 10)} onChange={e => setDateApresCoup(e.target.value)}
+                        style={{ display: "block", marginTop: 4, padding: "6px 8px", borderRadius: 8, border: "1px solid #fcd34d", fontSize: 13 }} />
+                    </label>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>La marchandise est
+                      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                        {([["parti", "🚚 pas encore revenue (à pointer)"], ["reçu", "✅ déjà revenue à Moorea"]] as const).map(([v, l]) => (
+                          <button key={v} type="button" onClick={() => setStatutApresCoup(v)}
+                            style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${statutApresCoup === v ? "#d97706" : "#fde68a"}`, background: statutApresCoup === v ? "#d97706" : "#fff", color: statutApresCoup === v ? "#fff" : "#92400e" }}>
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div
               onClick={() => setDejaChezReconditionneur(v => !v)}
               style={{
