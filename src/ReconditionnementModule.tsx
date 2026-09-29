@@ -2507,6 +2507,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     retourIfco: "" | "oui" | "non"; cartons: string;
     commentaire: string; commentaireOuvert: boolean;
     dejaChez: boolean; transporteurId: string; // "" = transporteur par défaut du dépôt
+    cartonsModifie?: boolean; // false = cartons BABY BLANC = nb colis à entrer (défaut Andès)
   };
   const [lignesGroupe, setLignesGroupe] = useState<LigneGroupe[]>([]);
   const [groupeDepot, setGroupeDepot] = useState<Depot | "">("");
@@ -2552,6 +2553,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   };
   // Transporteur d'un bon : choisi sur la carte, sinon celui du haut (même dépôt), sinon le
   // transporteur par défaut de son dépôt (NLT → AB Transports, Andès → Moorea).
+  // Cartons BABY BLANC d'un bon Andès : par défaut = nb de colis à entrer (comme le formulaire
+  // bon par bon), sauf si on a modifié / vidé la case pour ce produit.
+  function cartonsDeLigne(l: LigneGroupe, dep: Depot | ""): string {
+    if (dep !== "andes") return "";
+    return l.cartonsModifie ? l.cartons : l.nbEntrer;
+  }
   function transporteurDeLigne(l: LigneGroupe, dep: Depot | ""): string {
     if (l.transporteurId) return l.transporteurId;
     if (dep && dep === groupeDepot && groupeTransporteurId) return groupeTransporteurId;
@@ -2680,7 +2687,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           : null;
         const nEntrer = parseInt(l.nbEntrer) || 0;
         const parColis = parseFloat(l.qteParColis) || 0;
-        const cartons = dep === "andes" ? (parseInt(l.cartons) || 0) : 0;
+        const cartons = dep === "andes" ? (parseInt(cartonsDeLigne(l, dep)) || 0) : 0;
         const demande: any = {
           numero: genererNumeroDemande(apresCoup ? dateRef : now, dejaNumerotes),
           dateCreation: (apresCoup ? dateRef : now).toISOString(),
@@ -4052,7 +4059,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         </F>
                       )}
                       {dep === "andes" && (
-                        <F label="Cartons BABY BLANC utilisés"><input type="number" min={0} value={l.cartons} onChange={e => majLigne(l.pdfId, { cartons: e.target.value })} /></F>
+                        <F label="Cartons BABY BLANC utilisés (= colis à entrer par défaut)"><input type="number" min={0} value={cartonsDeLigne(l, dep)} onChange={e => majLigne(l.pdfId, { cartons: e.target.value, cartonsModifie: true })} placeholder="0 = aucun carton" /></F>
                       )}
                     </div>
                   )}
