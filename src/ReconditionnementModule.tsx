@@ -807,7 +807,9 @@ function ArticleSelect({ value, onSelect, articles, placeholder }: {
   const filtered = search.trim()
     ? articles.filter(a => a.libelle.toLowerCase().includes(search.toLowerCase())).slice(0, 500)
     : articles.slice(0, 500);
-  const valide = value.trim() === "" || articles.some(a => a.libelle === value);
+  // 29/09/2026 — Plus d'avertissement « absent du catalogue » (demande d'Elinathan) : le nom lu
+  // sur le bon fait foi, le catalogue ne sert plus qu'aux suggestions.
+  const valide = true;
 
   return (
     <div style={{ position: "relative" }}>
@@ -2187,14 +2189,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // encore ajouté, référence différente, etc.), on ne bloque plus la création — on demande
     // juste une confirmation, pour éviter un vrai blocage comme "LIME MAROC CAL.54 IFCO" qui
     // existe réellement mais n'était pas encore dans le catalogue.
-    const vracInconnu = !catalogueArticles.some(a => a.libelle === articleVrac);
-    const finiInconnu = !catalogueArticles.some(a => a.libelle === articleFini);
-    if (vracInconnu || finiInconnu) {
-      const liste = [vracInconnu ? `"${articleVrac}"` : null, finiInconnu ? `"${articleFini}"` : null].filter(Boolean).join(" et ");
-      if (!window.confirm(`${liste} n'est pas dans le catalogue Moorea (pense à l'ajouter dans Catalogue si c'est un article valide). Enregistrer quand même la demande ?`)) {
-        return;
-      }
-    }
+    // 29/09/2026 — Plus de confirmation « absent du catalogue » (demande d'Elinathan).
     if (!transporteurId && !dejaChezReconditionneur && !(saisieApresCoup && !editDemandeId)) {
       notify("error", "✗ Choisis un transporteur");
       return;
@@ -2603,8 +2598,6 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       if (!l.nbEntrer) { notify("error", `✗ ${nom} : nombre de colis à entrer obligatoire`); return; }
       if (dep === "nlt" && l.retourIfco === "") { notify("error", `✗ ${nom} : retour en caisses IFCO Oui/Non ?`); return; }
     }
-    const inconnus = aCreer.flatMap(l => [l.articleVrac, l.articleFini]).filter(a => a && !catalogueArticles.some(c => c.libelle === a));
-    if (inconnus.length && !window.confirm(`${[...new Set(inconnus)].map(a => `"${a}"`).join(", ")} ${inconnus.length > 1 ? "ne sont pas" : "n'est pas"} dans le catalogue Moorea. Créer quand même ?`)) return;
 
     setGroupeEnCours(true);
     const transporteurIfco = transporteurs.find(t => t.id === transporteurDeLigne("nlt"));
