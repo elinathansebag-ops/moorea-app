@@ -2492,6 +2492,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     inclure: boolean; depot: Depot | "";
     articleVrac: string; lot: string; nbSortir: string; articleFini: string; nbEntrer: string; qteParColis: string;
     retourIfco: "" | "oui" | "non"; cartons: string;
+    commentaire: string; commentaireOuvert: boolean;
   };
   const [lignesGroupe, setLignesGroupe] = useState<LigneGroupe[]>([]);
   const [groupeDepot, setGroupeDepot] = useState<Depot | "">("");
@@ -2558,6 +2559,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const lignes: LigneGroupe[] = pdfsEnAttente.map(p => ({
       pdfId: p.id, nom: p.article || p.nom, base64: p.base64, lecture: "attente", inclure: true, depot: "",
       articleVrac: "", lot: "", nbSortir: "", articleFini: "", nbEntrer: "", qteParColis: "", retourIfco: "", cartons: "",
+      commentaire: "", commentaireOuvert: false,
     }));
     setLignesGroupe(lignes);
     setActiveTab("groupee");
@@ -2636,6 +2638,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           cartonsBabyBlancEnvoyes: dep === "andes" ? cartons : undefined,
           retourEnIfco: dep === "nlt" ? l.retourIfco === "oui" : false,
           fournirEtiquettes: false,
+          // 29/09/2026 — Commentaire de la carte : imprimé sur le bon de prépa (entrepôt) et donc
+          // aussi sur le bon joint au récap mail du reconditionneur (même PDF).
+          commentaireEan: l.commentaire.trim() || undefined,
           transporteurId: transporteurLigneId,
           transporteurNom: transporteur?.nom,
           pdfGeslotNom: l.nom,
@@ -3947,6 +3952,22 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         <F label="Cartons BABY BLANC utilisés"><input type="number" min={0} value={l.cartons} onChange={e => majLigne(l.pdfId, { cartons: e.target.value })} /></F>
                       )}
                     </div>
+                  )}
+                  {l.inclure && (
+                    l.commentaireOuvert || l.commentaire ? (
+                      <div style={{ marginTop: 10 }}>
+                        <F label="Commentaire (imprimé sur le bon de prépa et sur le bon envoyé par mail)">
+                          <textarea value={l.commentaire} onChange={e => majLigne(l.pdfId, { commentaire: e.target.value })} rows={2}
+                            placeholder="ex : utiliser l'EAN 3760…, étiquettes fournies par Moorea…"
+                            style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical" }} />
+                        </F>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => majLigne(l.pdfId, { commentaireOuvert: true })}
+                        style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px dashed ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        + Commentaire
+                      </button>
+                    )
                   )}
                 </div>
               );
