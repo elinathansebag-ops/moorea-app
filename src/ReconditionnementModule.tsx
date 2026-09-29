@@ -2931,6 +2931,15 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       let numeroPalette = "";
       if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteurIfco?.nom || "");
       notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
+      // 29/09/2026 — Demande d'Elinathan : une fois le formulaire groupé validé, le récap part
+      // tout seul (mail au reconditionneur avec les bons + petit mail au(x) transporteur(s)),
+      // sans avoir à cliquer « Envoyer le récap ». Saisie après coup : jamais de mail.
+      if (!groupeApresCoup) {
+        const depotsAEnvoyer = new Set<Depot>();
+        for (const l of aCreer) depotsAEnvoyer.add((l.depot || groupeDepot) as Depot);
+        if (numeroPalette) depotsAEnvoyer.add("nlt");
+        for (const dep of depotsAEnvoyer) await envoyerRecapDuJour(dep);
+      }
       setLignesGroupe([]); setGroupeCaissesIfco(""); setGroupeApresCoup(false);
       effacerBrouillon(brouillonGroupe); setGroupeIfcoEnvoi("non"); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
       setActiveTab("en_cours");
