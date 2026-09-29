@@ -284,7 +284,7 @@ async function envoyerRecapPourDepot(depot, stockActuel) {
     });
     const envoisTransporteur = await Promise.all(Object.entries(parTransporteur).map(async ([transporteurId, demandesLot]) => {
       const t = transporteursData[transporteurId];
-      if (!t || !t.email) return { transporteurId, envoye: false, raison: t ? "pas d'email configuré" : "transporteur introuvable" };
+      if (!t || !t.email) return { transporteurId, transporteurNom: t?.nom || null, envoye: false, raison: t ? "pas d'email configuré" : "transporteur introuvable" };
       try {
         const infoT = await transporter.sendMail({
           from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
@@ -292,10 +292,10 @@ async function envoyerRecapPourDepot(depot, stockActuel) {
           subject: `🚚 Enlèvement à faire aujourd'hui — Moorea → ${DEPOT_LABEL[depot]} (${dateFr})`,
           html: construireEmailTransporteurHtml({ transporteurNom: t.nom, depot, nbReferences: demandesLot.length, dateFr }),
         });
-        return { transporteurId, envoye: true, accepted: infoT.accepted || [], rejected: infoT.rejected || [] };
+        return { transporteurId, transporteurNom: t.nom || null, envoye: true, accepted: infoT.accepted || [], rejected: infoT.rejected || [] };
       } catch (errT) {
         console.error(`Erreur envoi mail transporteur (${t.nom || transporteurId}):`, errT);
-        return { transporteurId, envoye: false, raison: String(errT?.message || errT).slice(0, 200) };
+        return { transporteurId, transporteurNom: t.nom || null, envoye: false, raison: String(errT?.message || errT).slice(0, 200) };
       }
     }));
     transporteurEmails = envoisTransporteur;

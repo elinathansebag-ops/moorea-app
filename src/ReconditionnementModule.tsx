@@ -314,14 +314,15 @@ const EMAILS_PAR_DEPOT: Record<Depot, string[]> = { nlt: NLT_EMAILS, andes: ANDE
 // le PC entrepôt) écoute et imprime automatiquement, sans action côté iPad ni côté PC. Le job
 // "bon_reconditionnement" est traité à part côté relais (imprimante A4 normale, PDF Geslot
 // imprimé tel quel) — voir la fonction traiterBonReconditionnement dans print-relay.js.
-export async function envoyerBonReconditionnementPourImpressionPC(pdfNom: string, pdfBase64: string) {
-  await push(ref(db, "printQueue"), {
+export async function envoyerBonReconditionnementPourImpressionPC(pdfNom: string, pdfBase64: string): Promise<string> {
+  const r = await push(ref(db, "printQueue"), {
     type: "bon_reconditionnement",
     pdfNom,
     pdfBase64,
     status: "pending",
     createdAt: Date.now(),
   });
+  return r.key as string;
 }
 
 // Bon fictif utilisé uniquement par le bouton "Tester l'impression" en Configuration — permet
@@ -1322,6 +1323,32 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     if (depot === "andes") setCartonsBabyBlancEnvoyes(retourBabyBlanc === "oui" ? nbColisAEntrer : "");
   }, [nbColisAEntrer, depot, editDemandeId, retourBabyBlanc]);
 
+  // 29/09/2026 — Notifications empilées (une par mail envoyé / par bon imprimé), en bas à droite,
+  // en plus de la notification principale : plusieurs peuvent s'afficher en même temps.
+  const [toasts, setToasts] = useState<{ id: number; type: "success" | "error" | "info"; message: string }[]>([]);
+  function toast(type: "success" | "error" | "info", message: string) {
+    const id = Date.now() + Math.random();
+    setToasts(t => [...t, { id, type, message }]);
+    if (type !== "error") setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 7000);
+  }
+  // Suit un bon dans la file d'impression : notif « imprimé » quand le relais PC l'a traité,
+  // ou erreur s'il échoue / ne répond pas en 90 s.
+  function suivreImpression(key: string, label: string) {
+    toast("info", `🖨️ ${label} : envoyé à l'imprimante…`);
+    let fini = false;
+    const stop = onValue(ref(db, `printQueue/${key}`), snap => {
+      const v = snap.val();
+      if (fini || !v) return;
+      if (v.status === "done") { fini = true; toast("success", `🖨️ ${label} : imprimé`); stop(); }
+      else if (v.status === "error") { fini = true; toast("error", `🖨️ ${label} : impression échouée${v.error ? ` (${v.error})` : ""}`); stop(); }
+    });
+    setTimeout(() => { if (!fini) { fini = true; stop(); toast("error", `🖨️ ${label} : pas encore imprimé après 90 s — le PC d'impression est-il allumé ?`); } }, 90000);
+  }
+  async function imprimerBonAvecSuivi(pdfNom: string, pdfBase64: string, label: string) {
+    const key = await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
+    if (key) suivreImpression(key, label);
+  }
+
   function notify(type: "success" | "error", message: string) {
     setNotification({ type, message });
     // Les erreurs restent affichées jusqu'à fermeture manuelle (× ou reclique ailleurs) — un
@@ -1466,18 +1493,23 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       if (!res.ok) throw new Error(data?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
       if (!data) throw new Error("Réponse invalide du serveur");
       if (data.envoye) {
+        // Une notif par mail : reconditionneur puis chaque transporteur.
+        toast(data.rejected?.length ? "error" : "success", `📧 ${DEPOT_LABEL[dep]} : ${data.nb} bon${data.nb > 1 ? "s" : ""} envoyé${data.nb > 1 ? "s" : ""} à ${data.accepted?.join(", ") || "?"}${data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : ""}`);
+        for (const t of (data.transporteurEmails || [])) {
+          if (t.envoye) toast("success", `🚚 ${t.transporteurNom || "Transporteur"} : mail envoyé${t.accepted?.length ? ` à ${t.accepted.join(", ")}` : ""}`);
+          else toast("error", `🚚 ${t.transporteurNom || "Transporteur"} : mail NON envoyé (${t.raison || "erreur"})`);
+        }
         const rejetes = data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : "";
         if (data.patchEchoues?.length) {
           const p0 = data.patchEchoues[0];
           notify("error", `📧 Mail envoyé à ${DEPOT_LABEL[dep]} MAIS le marquage "envoyé" a échoué pour ${data.patchEchoues.length}/${data.nb} demande(s) — la case va rester affichée et tu risques un doublon au prochain clic. 1er échec (id ${p0.id}) : HTTP ${p0.statut} — ${p0.corps || "(pas de détail)"}`);
-        } else {
-          notify("success", `📧 Récap envoyé à ${DEPOT_LABEL[dep]} (${data.accepted?.join(", ") || "?"}) — ${data.nb} référence${data.nb > 1 ? "s" : ""}${rejetes}`);
         }
+        void rejetes;
       } else {
         notify("success", `Rien à envoyer pour ${DEPOT_LABEL[dep]} pour l'instant`);
       }
     } catch (err: any) {
-      notify("error", `❌ Erreur envoi récap ${DEPOT_LABEL[dep]} : ${err?.message || "erreur inconnue"}`);
+      toast("error", `📧 ${DEPOT_LABEL[dep]} : mail NON envoyé — ${err?.message || "erreur inconnue"}`);
     } finally {
       setEnvoiRecapEnCours(prev => ({ ...prev, [dep]: false }));
     }
@@ -2534,7 +2566,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             // Impression automatique du bon à l'entrepôt (relais PC) — sur le bon propre généré,
             // pas sur le scan Geslot d'origine.
             try {
-              await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
+              await imprimerBonAvecSuivi(pdfNom, pdfBase64, `Bon ${demande.numero || ""} ${demande.articleFini || ""}`.trim());
             } catch {
               notify("error", "⚠️ Demande envoyée, mais l'envoi à l'impression automatique a échoué");
             }
@@ -2892,8 +2924,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
           await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
           if (!l.dejaChez && !apresCoup) {
-            try { await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64); }
-            catch { notify("error", `⚠️ ${demande.numero} : impression automatique du bon échouée`); }
+            try { await imprimerBonAvecSuivi(pdfNom, pdfBase64, `Bon ${demande.numero || ""} ${demande.articleFini || ""}`.trim()); }
+            catch { toast("error", `🖨️ ${demande.numero} : impression automatique du bon échouée`); }
           }
           // Saisie après coup : ni impression ni récap mail (emailEnvoye reste true).
           if (!apresCoup) await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
@@ -3519,6 +3551,22 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             {notification.type === "error" && (
               <button onClick={() => setNotification(null)} style={{ border: "none", background: "transparent", color: "#b91c1c", fontSize: 16, fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
             )}
+          </div>
+        )}
+
+        {toasts.length > 0 && (
+          <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 950, display: "flex", flexDirection: "column", gap: 8, maxWidth: "min(420px, 92vw)" }}>
+            {toasts.map(t => (
+              <div key={t.id} style={{
+                background: t.type === "success" ? "#eafaf1" : t.type === "error" ? "#fef2f2" : "#eff6ff",
+                color: t.type === "success" ? "#1a6b3a" : t.type === "error" ? "#b91c1c" : "#1d4ed8",
+                border: `1.5px solid ${t.type === "success" ? "#a8d5b5" : t.type === "error" ? "#fca5a5" : "#bfdbfe"}`,
+                borderRadius: 10, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,0.12)", display: "flex", gap: 8, alignItems: "flex-start",
+              }}>
+                <span style={{ flex: 1 }}>{t.message}</span>
+                <button onClick={() => setToasts(x => x.filter(y => y.id !== t.id))} style={{ border: "none", background: "transparent", color: "inherit", fontSize: 15, fontWeight: 800, cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
+              </div>
+            ))}
           </div>
         )}
 
