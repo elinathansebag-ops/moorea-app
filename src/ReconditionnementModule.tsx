@@ -373,6 +373,12 @@ function resoudreArticleCatalogue(brut: string, _catalogue?: unknown): string {
 
 // 29/09/2026 — Retour en caisses IFCO par défaut : « Oui » si l'article contient « LIM »
 // (limes), « Non » pour tout le reste. Simple valeur de départ, modifiable sur chaque demande.
+// 29/09/2026 — Dépôt par défaut : les limes (« LIM ») et la passion (« PASSION ») partent
+// toujours chez NLT. Rien pour les autres articles (le dépôt reste à choisir).
+function depotParDefaut(...articles: string[]): Depot | "" {
+  return articles.some(a => /LIM|PASSION/i.test(a || "")) ? "nlt" : "";
+}
+
 function retourIfcoParDefaut(article: string): "oui" | "non" {
   return /LIM/i.test(article || "") ? "oui" : "non";
 }
@@ -1274,6 +1280,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // Le choix "retour en caisses IFCO" est obligatoire (Oui/Non) et remis à zéro à chaque
   // nouvelle demande ou changement d'article/dépôt — plus de coche automatique silencieuse sur
   // la détection du nom, qui pouvait se tromper sans que personne ne la revérifie.
+  // 29/09/2026 — Dépôt NLT par défaut pour les limes et la passion, si aucun dépôt choisi.
+  useEffect(() => {
+    if (editDemandeId || depot) return;
+    const d = depotParDefaut(articleVrac, articleFini);
+    if (d) setDepot(d);
+  }, [articleVrac, articleFini, editDemandeId]);
+
   // 29/09/2026 — Demande d'Elinathan : par défaut, retour en IFCO « Oui » si l'article à
   // fabriquer contient « LIM » (limes / citrons verts), « Non » sinon. Toujours modifiable.
   useEffect(() => {
@@ -2571,6 +2584,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         const v = await analyserBonGeslot(bytes);
         majLigne(l.pdfId, {
           ...v, lecture: v.articleVrac || v.articleFini ? "ok" : "echec",
+          depot: depotParDefaut(v.articleVrac, v.articleFini),
           retourIfco: v.articleFini ? retourIfcoParDefaut(v.articleFini) : "",
         });
       } catch {
