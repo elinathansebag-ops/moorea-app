@@ -972,6 +972,23 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [transporteurId, setTransporteurId] = useBrouillon(brouillonDemande, "transporteurId", "");
   // 29/09/2026 — Saisie après coup d'un reconditionnement déjà fait (oublié par le commercial) :
   // aucune impression, aucun mail (récap, transporteur, « prod prête »), daté du jour choisi.
+  // 29/09/2026 — Formulaire bon par bon : transporteur par défaut selon le dépôt choisi (NLT →
+  // AB Transports, Andès → Moorea), tant qu'on n'en a pas choisi un autre à la main.
+  const depotPrecedentRef = useRef<string>("");
+  useEffect(() => {
+    if (editDemandeId || !depot) { depotPrecedentRef.current = depot; return; }
+    const change = depot !== depotPrecedentRef.current;
+    const ancienDefaut = depotPrecedentRef.current ? transporteurParDefautForm(depotPrecedentRef.current as Depot) : "";
+    depotPrecedentRef.current = depot;
+    if (!transporteurId || (change && transporteurId === ancienDefaut)) {
+      const t = transporteurParDefautForm(depot as Depot);
+      if (t) setTransporteurId(t);
+    }
+  }, [depot, transporteurs]);
+  function transporteurParDefautForm(dep: Depot): string {
+    const motif = dep === "nlt" ? /\bab\s*transport/i : /moorea/i;
+    return transporteurs.find(t => motif.test(t.nom || ""))?.id || "";
+  }
   const [saisieApresCoup, setSaisieApresCoup] = useBrouillon(brouillonDemande, "saisieApresCoup", false);
   const [dateApresCoup, setDateApresCoup] = useBrouillon<string>(brouillonDemande, "dateApresCoup", (() => { const d = new Date(Date.now() - 24 * 3600 * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })());
   const [statutApresCoup, setStatutApresCoup] = useBrouillon<"parti" | "reçu">(brouillonDemande, "statutApresCoup", "parti");
@@ -2492,6 +2509,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [groupeTransporteurId, setGroupeTransporteurId] = useState("");
   const [groupeCaissesIfco, setGroupeCaissesIfco] = useState("");
   const [groupeEnCours, setGroupeEnCours] = useState(false);
+  // 29/09/2026 — Transporteur par défaut selon le dépôt (demande d'Elinathan) : NLT → AB
+  // Transports, Andès → Moorea. Retrouvé par son nom dans l'annuaire des transporteurs.
+  const transporteurParDefaut = (dep: Depot | ""): string => {
+    if (!dep) return "";
+    const motif = dep === "nlt" ? /\bab\s*transport/i : /moorea/i;
+    return transporteurs.find(t => motif.test(t.nom || ""))?.id || "";
+  };
   const majLigne = (pdfId: string, champs: Partial<LigneGroupe>) =>
     setLignesGroupe(prev => prev.map(l => l.pdfId === pdfId ? { ...l, ...champs } : l));
 
@@ -2574,7 +2598,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const aCreer = lignesGroupe.filter(l => l.inclure);
     const caissesIfco = parseInt(groupeCaissesIfco) || 0;
     if (aCreer.length === 0 && caissesIfco <= 0) { notify("error", "✗ Aucun bon sélectionné"); return; }
-    if (!groupeTransporteurId) { notify("error", "✗ Choisis un transporteur (en haut)"); return; }
+    const transporteurDeLigne = (dep: Depot) => (dep === groupeDepot && groupeTransporteurId) ? groupeTransporteurId : transporteurParDefaut(dep);
+    for (const l of aCreer) {
+      const dep = (l.depot || groupeDepot) as Depot;
+      if (dep && !transporteurDeLigne(dep)) { notify("error", `✗ Aucun transporteur pour ${DEPOT_LABEL[dep]} — choisis-le en haut`); return; }
+    }
     for (const [i, l] of aCreer.entries()) {
       const dep = l.depot || groupeDepot;
       const nom = `Bon ${i + 1} (${l.nom})`;
@@ -2587,13 +2615,15 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     if (inconnus.length && !window.confirm(`${[...new Set(inconnus)].map(a => `"${a}"`).join(", ")} ${inconnus.length > 1 ? "ne sont pas" : "n'est pas"} dans le catalogue Moorea. Créer quand même ?`)) return;
 
     setGroupeEnCours(true);
-    const transporteur = transporteurs.find(t => t.id === groupeTransporteurId);
+    const transporteurIfco = transporteurs.find(t => t.id === transporteurDeLigne("nlt"));
     const dejaNumerotes: Demande[] = [...demandes];
     let crees = 0;
     let cartonsRestants = stockBabyBlancAndes;
     try {
       for (const l of aCreer) {
         const dep = (l.depot || groupeDepot) as Depot;
+        const transporteurLigneId = transporteurDeLigne(dep);
+        const transporteur = transporteurs.find(t => t.id === transporteurLigneId);
         const now = new Date();
         const lotSaisi = normaliserLot(l.lot.trim());
         const arrivageOrigine = lotSaisi
@@ -2621,7 +2651,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           cartonsBabyBlancEnvoyes: dep === "andes" ? cartons : undefined,
           retourEnIfco: dep === "nlt" ? l.retourIfco === "oui" : false,
           fournirEtiquettes: false,
-          transporteurId: groupeTransporteurId,
+          transporteurId: transporteurLigneId,
           transporteurNom: transporteur?.nom,
           pdfGeslotNom: l.nom,
           pdfGeslotBase64: l.base64,
@@ -2668,7 +2698,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         crees++;
       }
       let numeroPalette = "";
-      if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteur?.nom || "");
+      if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteurIfco?.nom || "");
       notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
       setLignesGroupe([]); setGroupeCaissesIfco("");
       setActiveTab("en_cours");
@@ -3830,13 +3860,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               <div className="section-title" style={{ marginBottom: 10 }}>🧾 Déclaration groupée — commun à tous les bons</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
                 <F label="Dépôt (par défaut)">
-                  <select value={groupeDepot} onChange={e => setGroupeDepot(e.target.value as Depot | "")}>
+                  <select value={groupeDepot} onChange={e => { const v = e.target.value as Depot | ""; setGroupeDepot(v); const t = transporteurParDefaut(v); if (t) setGroupeTransporteurId(t); }}>
                     <option value="">— Choisir un dépôt —</option>
                     <option value="nlt">NLT</option>
                     <option value="andes">Andès</option>
                   </select>
                 </F>
-                <F label="Transporteur" required>
+                <F label="Transporteur (dépôt par défaut)" required>
                   <select value={groupeTransporteurId} onChange={e => setGroupeTransporteurId(e.target.value)}>
                     <option value="">— Choisir —</option>
                     {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
@@ -3895,6 +3925,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                               </button>
                             ))}
                           </div>
+                        </F>
+                      )}
+                      {dep && dep !== groupeDepot && (
+                        <F label="Transporteur">
+                          <div style={{ fontSize: 12, padding: "8px 0", color: COLORS.gray700 }}>{transporteurs.find(t => t.id === transporteurParDefaut(dep))?.nom || "⚠️ aucun par défaut"}</div>
                         </F>
                       )}
                       {dep === "andes" && (
