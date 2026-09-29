@@ -163,6 +163,8 @@ export type Demande = {
   qteConditionnement?: number;
   caissesIfcoEnvoyees?: number;
   cartonsBabyBlancEnvoyes?: number;
+  // 29/09/2026 — Andès : le retour se fait en cartons BABY BLANC (Oui/Non, comme l'IFCO pour NLT).
+  retourEnBabyBlanc?: boolean;
   // Le retour revient-il en caisses IFCO ? Pré-cochée automatiquement si "IFCO" apparaît dans le
   // nom de l'article à fabriquer, mais modifiable — sert ensuite, dans "Pointer arrivage", à
   // afficher ou non la case "Caisses IFCO pleines" (plus fiable qu'une simple détection du nom
@@ -985,6 +987,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [qtePerColis, setQtePerColis] = useBrouillon(brouillonDemande, "qtePerColis", "");
   const [caissesIfcoEnvoyees, setCaissesIfcoEnvoyees] = useBrouillon(brouillonDemande, "caissesIfcoEnvoyees", "");
   const [cartonsBabyBlancEnvoyes, setCartonsBabyBlancEnvoyes] = useBrouillon(brouillonDemande, "cartonsBabyBlancEnvoyes", "");
+  // 29/09/2026 — Andès : « cet article revient en BABY BLANC ? » Oui/Non obligatoire (comme
+  // l'IFCO pour NLT). Oui → 1 carton BABY BLANC par colis à entrer, décompté du stock chez Andès.
+  const [retourBabyBlanc, setRetourBabyBlanc] = useBrouillon<"" | "oui" | "non">(brouillonDemande, "retourBabyBlanc", "");
   // Coché automatiquement dès que "IFCO" apparaît dans le nom de l'article à fabriquer (voir
   // l'effet ci-dessous), mais reste modifiable à la main si jamais le nom ne suffit pas.
   // 31/08/2026 — Passé en choix Oui/Non obligatoire (comme l'envoi de caisses IFCO) : la
@@ -1299,8 +1304,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // diffère. Ne se déclenche pas en édition, où la valeur vient de la demande existante.
   useEffect(() => {
     if (editDemandeId) return;
-    if (depot === "andes") setCartonsBabyBlancEnvoyes(nbColisAEntrer);
-  }, [nbColisAEntrer, depot, editDemandeId]);
+    if (depot === "andes") setCartonsBabyBlancEnvoyes(retourBabyBlanc === "oui" ? nbColisAEntrer : "");
+  }, [nbColisAEntrer, depot, editDemandeId, retourBabyBlanc]);
 
   function notify(type: "success" | "error", message: string) {
     setNotification({ type, message });
@@ -1885,6 +1890,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     setQtePerColis("");
     setCaissesIfcoEnvoyees("");
     setCartonsBabyBlancEnvoyes("");
+    setRetourBabyBlanc("");
     setRetourIfco("");
     setCommentaireEan("");
     setFournirEtiquettes(false);
@@ -1919,6 +1925,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // Reprend la valeur enregistrée sur la demande (choix éventuellement corrigé à la main).
     setRetourIfco(d.retourEnIfco === true ? "oui" : d.retourEnIfco === false ? "non" : "");
     setCartonsBabyBlancEnvoyes(d.cartonsBabyBlancEnvoyes != null ? String(d.cartonsBabyBlancEnvoyes) : "");
+    setRetourBabyBlanc(d.depot !== "andes" ? "" : (d.retourEnBabyBlanc === true || (d.retourEnBabyBlanc == null && (d.cartonsBabyBlancEnvoyes || 0) > 0)) ? "oui" : "non");
     setCommentaireEan(d.commentaireEan || "");
     setFournirEtiquettes(d.fournirEtiquettes ?? false);
     setTransporteurId(d.transporteurId || "");
@@ -2211,6 +2218,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // NLT : on bloque la création tant qu'il n'est pas fait, plutôt que de risquer un oubli
     // silencieux (l'ancienne détection automatique sur le nom pouvait se tromper sans que
     // personne ne la revérifie).
+    if (depot === "andes" && retourBabyBlanc === "" && !editDemandeId) {
+      notify("error", "✗ Précise si l'article revient en cartons BABY BLANC (Oui/Non)");
+      return;
+    }
     if (depot === "nlt" && retourIfco === "" && !editDemandeId) {
       notify("error", "✗ Précise si le retour se fait en caisses IFCO (Oui/Non)");
       return;
@@ -2218,7 +2229,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const transporteur = transporteurs.find(t => t.id === transporteurId);
     const now = new Date();
     const caisses = depot === "nlt" ? (parseInt(caissesIfcoEnvoyees) || 0) : 0;
-    const cartons = depot === "andes" ? (parseInt(cartonsBabyBlancEnvoyes) || 0) : 0;
+    const cartons = depot === "andes" && retourBabyBlanc === "oui" ? (parseInt(cartonsBabyBlancEnvoyes) || parseInt(nbColisAEntrer) || 0) : 0;
     // Quantité totale à produire = quantité par colis (filet) × nb colis à entrer — on ne
     // demande plus le total directement, il est calculé pour éviter les erreurs de saisie.
     const nEntrerNum = parseInt(nbColisAEntrer) || 0;
@@ -2271,6 +2282,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       // sens pour ce dépôt (caisses IFCO pour Andès, cartons pour NLT), jamais pour un simple 0.
       caissesIfcoEnvoyees: depot === "nlt" ? caisses : undefined,
       cartonsBabyBlancEnvoyes: depot === "andes" ? cartons : undefined,
+      retourEnBabyBlanc: depot === "andes" ? retourBabyBlanc === "oui" : undefined,
       retourEnIfco: depot === "nlt" ? retourIfco === "oui" : false,
       commentaireEan: commentaireEan.trim() || undefined,
       fournirEtiquettes,
@@ -2507,7 +2519,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     retourIfco: "" | "oui" | "non"; cartons: string;
     commentaire: string; commentaireOuvert: boolean;
     dejaChez: boolean; transporteurId: string; // "" = transporteur par défaut du dépôt
-    cartonsModifie?: boolean; // false = cartons BABY BLANC = nb colis à entrer (défaut Andès)
+    cartonsModifie?: boolean;
+    retourBabyBlanc?: "" | "oui" | "non"; // Andès : revient en cartons BABY BLANC ?
   };
   const [lignesGroupe, setLignesGroupe] = useState<LigneGroupe[]>([]);
   const [groupeDepot, setGroupeDepot] = useState<Depot | "">("");
@@ -2556,8 +2569,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // Cartons BABY BLANC d'un bon Andès : par défaut = nb de colis à entrer (comme le formulaire
   // bon par bon), sauf si on a modifié / vidé la case pour ce produit.
   function cartonsDeLigne(l: LigneGroupe, dep: Depot | ""): string {
-    if (dep !== "andes") return "";
-    return l.cartonsModifie ? l.cartons : l.nbEntrer;
+    // Même règle que le formulaire bon par bon : Oui → 1 carton BABY BLANC par colis à entrer.
+    if (dep !== "andes" || l.retourBabyBlanc !== "oui") return "";
+    return l.nbEntrer;
   }
   function transporteurDeLigne(l: LigneGroupe, dep: Depot | ""): string {
     if (l.transporteurId) return l.transporteurId;
@@ -2661,6 +2675,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       if (!l.articleVrac.trim() || !l.articleFini.trim()) { notify("error", `✗ ${nom} : article vrac et article à fabriquer obligatoires`); return; }
       if (!l.nbEntrer) { notify("error", `✗ ${nom} : nombre de colis à entrer obligatoire`); return; }
       if (dep === "nlt" && l.retourIfco === "") { notify("error", `✗ ${nom} : retour en caisses IFCO Oui/Non ?`); return; }
+      if (dep === "andes" && !l.retourBabyBlanc) { notify("error", `✗ ${nom} : revient en cartons BABY BLANC Oui/Non ?`); return; }
     }
 
     setGroupeEnCours(true);
@@ -2704,6 +2719,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           qteConditionnement: nEntrer > 0 && parColis > 0 ? Math.round(parColis * nEntrer) : undefined,
           caissesIfcoEnvoyees: dep === "nlt" ? 0 : undefined,
           cartonsBabyBlancEnvoyes: dep === "andes" ? cartons : undefined,
+          retourEnBabyBlanc: dep === "andes" ? l.retourBabyBlanc === "oui" : undefined,
           retourEnIfco: dep === "nlt" ? l.retourIfco === "oui" : false,
           fournirEtiquettes: false,
           // 29/09/2026 — Commentaire de la carte : imprimé sur le bon de prépa (entrepôt) et donc
@@ -4059,7 +4075,17 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         </F>
                       )}
                       {dep === "andes" && (
-                        <F label="Cartons BABY BLANC utilisés (= colis à entrer par défaut)"><input type="number" min={0} value={cartonsDeLigne(l, dep)} onChange={e => majLigne(l.pdfId, { cartons: e.target.value, cartonsModifie: true })} placeholder="0 = aucun carton" /></F>
+                        <F label="Revient en cartons BABY BLANC ?">
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {(["oui", "non"] as const).map(v => (
+                              <button key={v} type="button" onClick={() => majLigne(l.pdfId, { retourBabyBlanc: v })}
+                                style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${l.retourBabyBlanc === v ? COLORS.primary : (!l.retourBabyBlanc ? "#fca5a5" : COLORS.gray200)}`, background: l.retourBabyBlanc === v ? COLORS.primary : "#fff", color: l.retourBabyBlanc === v ? "#fff" : COLORS.gray700 }}>
+                                {v === "oui" ? "Oui" : "Non"}
+                              </button>
+                            ))}
+                          </div>
+                          {l.retourBabyBlanc === "oui" && <span style={{ fontSize: 10.5, color: "#9ca3af" }}>→ {parseInt(l.nbEntrer) || 0} cartons décomptés chez Andès</span>}
+                        </F>
                       )}
                     </div>
                   )}
@@ -4371,10 +4397,28 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   cartons BABY BLANC sont déjà en stock chez Andès — on ne les envoie pas avec le
                   produit, cette demande consomme juste une partie de ce stock existant. */}
               {depot === "andes" && (
-                <F label="Cartons BABY BLANC utilisés (déjà en stock chez Andès)">
-                  <input type="number" value={cartonsBabyBlancEnvoyes} onChange={e => setCartonsBabyBlancEnvoyes(e.target.value)} placeholder="Nb de cartons utilisés pour cette production" />
-                  <span style={{ fontSize: 10.5, color: "#9ca3af" }}>= nb colis à entrer par défaut, modifiable</span>
-                </F>
+                <div style={{ margin: "2px 0 10px", padding: "10px 14px", borderRadius: 10, border: `2px solid ${retourBabyBlanc === "" ? "#f59e0b" : COLORS.gray200}`, background: "#fff" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                    <span style={{ fontSize: 13, color: COLORS.gray700, fontWeight: 800 }}>
+                      📦 Cet article revient en cartons BABY BLANC ? <span style={{ color: "#d97706" }}>*obligatoire</span>
+                    </span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" onClick={() => setRetourBabyBlanc("oui")}
+                        style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${retourBabyBlanc === "oui" ? COLORS.secondary : COLORS.gray200}`, background: retourBabyBlanc === "oui" ? COLORS.secondaryLight : "#fff", color: retourBabyBlanc === "oui" ? COLORS.secondary : COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        ✓ Oui
+                      </button>
+                      <button type="button" onClick={() => setRetourBabyBlanc("non")}
+                        style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${retourBabyBlanc === "non" ? COLORS.gray600 : COLORS.gray200}`, background: retourBabyBlanc === "non" ? COLORS.gray100 : "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        ✕ Non
+                      </button>
+                    </div>
+                  </div>
+                  <p style={{ margin: "6px 0 0", fontSize: 10.5, color: retourBabyBlanc === "" ? "#b45309" : "#9ca3af" }}>
+                    {retourBabyBlanc === "oui"
+                      ? `→ ${parseInt(nbColisAEntrer) || 0} carton${(parseInt(nbColisAEntrer) || 0) > 1 ? "s" : ""} BABY BLANC utilisé${(parseInt(nbColisAEntrer) || 0) > 1 ? "s" : ""} (1 par colis), décompté${(parseInt(nbColisAEntrer) || 0) > 1 ? "s" : ""} du stock chez Andès`
+                      : retourBabyBlanc === "non" ? "Aucun carton BABY BLANC décompté" : "Choisis Oui ou Non — obligatoire pour créer la demande."}
+                  </p>
+                </div>
               )}
               <F label="Commentaire EAN (transmis à l'entrepôt et au reconditionneur)">
                 <input type="text" value={commentaireEan} onChange={e => setCommentaireEan(e.target.value)} placeholder="ex : utiliser l'EAN 3760123456789" />
