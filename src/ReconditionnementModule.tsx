@@ -2506,6 +2506,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     articleVrac: string; lot: string; nbSortir: string; articleFini: string; nbEntrer: string; qteParColis: string;
     retourIfco: "" | "oui" | "non"; cartons: string;
     commentaire: string; commentaireOuvert: boolean;
+    dejaChez: boolean; transporteurId: string; // "" = transporteur par défaut du dépôt
   };
   const [lignesGroupe, setLignesGroupe] = useState<LigneGroupe[]>([]);
   const [groupeDepot, setGroupeDepot] = useState<Depot | "">("");
@@ -2517,6 +2518,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [groupeIfcoAutre, setGroupeIfcoAutre] = useState(false);
   const caissesIfcoGroupe = groupeIfcoEnvoi !== "oui" ? 0
     : groupeIfcoAutre ? (parseInt(groupeCaissesIfco) || 0) : (parseInt(groupeIfcoPalettes) || 0) * CAISSES_PAR_PALETTE;
+  // Caisses IFCO qui seront remplies chez NLT par les bons de l'écran (même règle que le compteur
+  // « Aujourd'hui » : dépôt NLT + retour en IFCO → 1 caisse par colis à entrer).
+  const bonsIfcoGroupe = lignesGroupe.filter(l => l.inclure && (l.depot || groupeDepot) === "nlt" && l.retourIfco === "oui");
+  const caissesIfcoBonsGroupe = { caisses: bonsIfcoGroupe.reduce((t, l) => t + (parseInt(l.nbEntrer) || 0), 0), nb: bonsIfcoGroupe.length };
   const [groupeEnCours, setGroupeEnCours] = useState(false);
   // 29/09/2026 — Transporteur par défaut selon le dépôt (demande d'Elinathan) : NLT → AB
   // Transports, Andès → Moorea. Retrouvé par son nom dans l'annuaire des transporteurs.
@@ -2525,6 +2530,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const motif = dep === "nlt" ? /\bab\s*transport/i : /moorea/i;
     return transporteurs.find(t => motif.test(t.nom || ""))?.id || "";
   };
+  // Transporteur d'un bon : choisi sur la carte, sinon celui du haut (même dépôt), sinon le
+  // transporteur par défaut de son dépôt (NLT → AB Transports, Andès → Moorea).
+  function transporteurDeLigne(l: LigneGroupe, dep: Depot | ""): string {
+    if (l.transporteurId) return l.transporteurId;
+    if (dep && dep === groupeDepot && groupeTransporteurId) return groupeTransporteurId;
+    return transporteurParDefaut(dep);
+  }
   const majLigne = (pdfId: string, champs: Partial<LigneGroupe>) =>
     setLignesGroupe(prev => prev.map(l => l.pdfId === pdfId ? { ...l, ...champs } : l));
 
@@ -2572,7 +2584,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const lignes: LigneGroupe[] = pdfsEnAttente.map(p => ({
       pdfId: p.id, nom: p.article || p.nom, base64: p.base64, lecture: "attente", inclure: true, depot: "",
       articleVrac: "", lot: "", nbSortir: "", articleFini: "", nbEntrer: "", qteParColis: "", retourIfco: "", cartons: "",
-      commentaire: "", commentaireOuvert: false,
+      commentaire: "", commentaireOuvert: false, dejaChez: false, transporteurId: "",
     }));
     setLignesGroupe(lignes);
     setActiveTab("groupee");
@@ -2601,10 +2613,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     if (aDesNlt && groupeIfcoEnvoi === "") { notify("error", "✗ Envoi de caisses IFCO vides à NLT : Oui ou Non ?"); return; }
     if (groupeIfcoEnvoi === "oui" && caissesIfco <= 0) { notify("error", "✗ Indique combien de palettes (ou de caisses) IFCO vides envoyer"); return; }
     if (aCreer.length === 0 && caissesIfco <= 0) { notify("error", "✗ Aucun bon sélectionné"); return; }
-    const transporteurDeLigne = (dep: Depot) => (dep === groupeDepot && groupeTransporteurId) ? groupeTransporteurId : transporteurParDefaut(dep);
     for (const l of aCreer) {
       const dep = (l.depot || groupeDepot) as Depot;
-      if (dep && !transporteurDeLigne(dep)) { notify("error", `✗ Aucun transporteur pour ${DEPOT_LABEL[dep]} — choisis-le en haut`); return; }
+      if (dep && !l.dejaChez && !transporteurDeLigne(l, dep)) { notify("error", `✗ Choisis un transporteur pour chaque bon ${DEPOT_LABEL[dep]}`); return; }
     }
     for (const [i, l] of aCreer.entries()) {
       const dep = l.depot || groupeDepot;
@@ -2616,14 +2627,17 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     }
 
     setGroupeEnCours(true);
-    const transporteurIfco = transporteurs.find(t => t.id === transporteurDeLigne("nlt"));
+    const transporteurIfco = transporteurs.find(t => t.id === ((groupeDepot === "nlt" && groupeTransporteurId) ? groupeTransporteurId : transporteurParDefaut("nlt")));
     const dejaNumerotes: Demande[] = [...demandes];
     let crees = 0;
     let cartonsRestants = stockBabyBlancAndes;
     try {
       for (const l of aCreer) {
         const dep = (l.depot || groupeDepot) as Depot;
-        const transporteurLigneId = transporteurDeLigne(dep);
+        // « Produit déjà chez le reconditionneur » : même règle que le formulaire bon par bon —
+        // demande directement « parti », pas de bon imprimé, pas de transporteur, mais le bon part
+        // quand même dans le récap mail et le retour attendu apparaît dans Arrivage.
+        const transporteurLigneId = l.dejaChez ? "" : transporteurDeLigne(l, dep);
         const transporteur = transporteurs.find(t => t.id === transporteurLigneId);
         const now = new Date();
         const lotSaisi = normaliserLot(l.lot.trim());
@@ -2659,7 +2673,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           transporteurNom: transporteur?.nom,
           pdfGeslotNom: l.nom,
           pdfGeslotBase64: l.base64,
-          statut: "en attente",
+          statut: l.dejaChez ? "parti" : "en attente",
+          departDate: l.dejaChez ? nowFr() : undefined,
+          dejaChezReconditionneur: l.dejaChez || undefined,
           ts: now.getTime(),
           demandeGroupee: true,
         };
@@ -2672,8 +2688,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           const pdfBase64 = await genererBonPdf({ ...demande, id: demandeId } as Demande);
           const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
           await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
-          try { await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64); }
-          catch { notify("error", `⚠️ ${demande.numero} : impression automatique du bon échouée`); }
+          if (!l.dejaChez) {
+            try { await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64); }
+            catch { notify("error", `⚠️ ${demande.numero} : impression automatique du bon échouée`); }
+          }
           await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
         } catch (errPdf: any) {
           notify("error", `⚠️ ${demande.numero} : génération du bon échouée (${errPdf?.message || "erreur"})`);
@@ -2686,7 +2704,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           quantite: nEntrer, unite: "colis", date: new Date().toLocaleDateString("fr-FR"), statut: "en attente",
           timestamp: Date.now(), reconditionnement_demande_id: demandeId, depot: dep,
           qteConditionnementAttendue: demande.qteConditionnement ?? null, caissesIfcoEnvoyees: demande.caissesIfcoEnvoyees ?? null,
-          origine: `${DEPOT_LABEL[dep]}${transporteur?.nom ? ` · ${transporteur.nom}` : ""}`, transporteurNom: transporteur?.nom || null,
+          origine: l.dejaChez ? `${DEPOT_LABEL[dep]} · déjà sur place` : `${DEPOT_LABEL[dep]}${transporteur?.nom ? ` · ${transporteur.nom}` : ""}`, transporteurNom: l.dejaChez ? null : (transporteur?.nom || null),
           retour_en_ifco: demande.retourEnIfco ?? false, quantiteDemandeeInitiale: nEntrer, quantiteDeclareePresta: null, ecartPresta: null,
         }).catch(() => notify("error", `⚠️ ${demande.numero} : retour attendu non créé dans Arrivage`));
         // Cartons Andès : même mouvement que creerDemande.
@@ -3860,25 +3878,22 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         {activeTab === "groupee" && (
           <div>
             <button type="button" onClick={() => setActiveTab("nouvelle")} style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 12 }}>← Retour au formulaire bon par bon</button>
-            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
-            <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-                <F label="Dépôt (par défaut)">
-                  <select value={groupeDepot} onChange={e => { const v = e.target.value as Depot | ""; setGroupeDepot(v); const t = transporteurParDefaut(v); if (t) setGroupeTransporteurId(t); }}>
-                    <option value="">— Choisir un dépôt —</option>
-                    <option value="nlt">NLT</option>
-                    <option value="andes">Andès</option>
-                  </select>
-                </F>
-                <F label="Transporteur (dépôt par défaut)" required>
-                  <select value={groupeTransporteurId} onChange={e => setGroupeTransporteurId(e.target.value)}>
-                    <option value="">— Choisir —</option>
-                    {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-                  </select>
-                </F>
+            {/* 29/09/2026 — « combien de caisses IFCO vont être utilisées aujourd'hui » : le
+                compteur « Aujourd'hui » inclut les bons de cet écran (NLT, retour IFCO Oui). */}
+            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt}
+              nltAujourdhui={{ caisses: nltAujourdhui.caisses + caissesIfcoBonsGroupe.caisses, nb: nltAujourdhui.nb + caissesIfcoBonsGroupe.nb }} />
+            {caissesIfcoBonsGroupe.nb > 0 && (
+              <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 12, padding: "10px 14px", margin: "4px 0 12px", fontSize: 13, color: "#1e3a8a", fontWeight: 700 }}>
+                🔄 Ces bons vont utiliser <b>{caissesIfcoBonsGroupe.caisses} caisses IFCO</b> chez NLT ({caissesIfcoBonsGroupe.nb} bon{caissesIfcoBonsGroupe.nb > 1 ? "s" : ""} en retour IFCO)
+                {nltAujourdhui.nb > 0 ? ` — ${nltAujourdhui.caisses + caissesIfcoBonsGroupe.caisses} au total aujourd'hui avec les ${nltAujourdhui.nb} demande${nltAujourdhui.nb > 1 ? "s" : ""} déjà faite${nltAujourdhui.nb > 1 ? "s" : ""}` : ""}
+                {(() => {
+                  const reste = stockIfco.nlt - caissesEngageesNlt - caissesIfcoBonsGroupe.caisses + caissesIfcoGroupe;
+                  return <div style={{ fontSize: 12, marginTop: 4, color: reste < 0 ? COLORS.danger : "#15803d" }}>
+                    {reste < 0 ? `⚠️ Il manquera ${-reste} caisses chez NLT` : `✅ Il restera ${reste} caisses disponibles chez NLT`}{caissesIfcoGroupe > 0 ? ` (en comptant les ${caissesIfcoGroupe} envoyées)` : ""}
+                  </div>;
+                })()}
               </div>
-            </div>
-
+            )}
             {/* Envoi de caisses IFCO vides à NLT : à part, rattaché à aucun article (même envoi
                 que « Envoyer une palette IFCO à NLT »). */}
             <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
@@ -3934,7 +3949,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
                       <F label="Dépôt">
                         <select value={l.depot} onChange={e => majLigne(l.pdfId, { depot: e.target.value as Depot | "" })} style={manque(dep)}>
-                          <option value="">{groupeDepot ? `Comme en haut (${DEPOT_LABEL[groupeDepot]})` : "— Choisir —"}</option>
+                          <option value="">— Choisir —</option>
                           <option value="nlt">NLT</option>
                           <option value="andes">Andès</option>
                         </select>
@@ -3957,14 +3972,28 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                           </div>
                         </F>
                       )}
-                      {dep && dep !== groupeDepot && (
+                      {!l.dejaChez && (
                         <F label="Transporteur">
-                          <div style={{ fontSize: 12, padding: "8px 0", color: COLORS.gray700 }}>{transporteurs.find(t => t.id === transporteurParDefaut(dep))?.nom || "⚠️ aucun par défaut"}</div>
+                          <select value={transporteurDeLigne(l, dep)} onChange={e => majLigne(l.pdfId, { transporteurId: e.target.value })} style={manque(transporteurDeLigne(l, dep))}>
+                            <option value="">— Choisir —</option>
+                            {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                          </select>
                         </F>
                       )}
                       {dep === "andes" && (
                         <F label="Cartons BABY BLANC utilisés"><input type="number" min={0} value={l.cartons} onChange={e => majLigne(l.pdfId, { cartons: e.target.value })} /></F>
                       )}
+                    </div>
+                  )}
+                  {l.inclure && (
+                    <div onClick={() => majLigne(l.pdfId, { dejaChez: !l.dejaChez })}
+                      style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 12px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${l.dejaChez ? COLORS.secondary : COLORS.gray200}`, background: l.dejaChez ? COLORS.secondaryLight : "#fff" }}>
+                      <span className="mrq-case-conteneur" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" className="mrq-case-native" checked={l.dejaChez} onChange={e => majLigne(l.pdfId, { dejaChez: e.target.checked })} />
+                        <span className="mrq-case-visuelle" />
+                      </span>
+                      <span style={{ fontSize: 12.5, fontWeight: 800, color: l.dejaChez ? "#15803d" : COLORS.gray700 }}>📍 Produit déjà chez le reconditionneur</span>
+                      <span style={{ fontSize: 11, color: "#9ca3af" }}>— rien à envoyer, pas de bon imprimé, pas de transporteur</span>
                     </div>
                   )}
                   {l.inclure && (
