@@ -3724,7 +3724,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 {" "}Envoie une palette IFCO à NLT ci-dessous.
               </p>
             )}
-            {(yABonsNltEnAttente || alerteCaissesIfcoNlt) && (
+            {true && (
             <div style={{ marginBottom: 14 }}>
               <button
                 type="button"
