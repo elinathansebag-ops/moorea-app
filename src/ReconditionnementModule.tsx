@@ -1697,6 +1697,50 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     }
   }
 
+  // 29/09/2026 — Demande d'Elinathan : plus d'onglet « Nouvelle demande », une demande ne se
+  // fait que depuis un bon. Bouton unique « Importer un ou plusieurs bons » : chaque page de
+  // chaque PDF choisi devient un fichier en attente, puis la déclaration groupée s'ouvre avec
+  // tous les bons (y compris ceux déjà en attente) — même pour un seul bon.
+  const importBonsRef = useRef<HTMLInputElement>(null);
+  async function importerBons(e: ChangeEvent<HTMLInputElement>) {
+    const fichiers = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (fichiers.length === 0) return;
+    if (fichiers.some(f => f.type !== "application/pdf")) { notify("error", "✗ Merci de choisir uniquement des fichiers PDF"); return; }
+    setImportMultiEnCours(true);
+    try {
+      const dateStr = new Date().toLocaleDateString("fr-FR").split("/").join("-");
+      const dateFr = nowFr();
+      const ajoutes: { id: string; nom: string; base64: string }[] = [];
+      let n = pdfsEnAttente.length;
+      for (const f of fichiers) {
+        const srcDoc = await PDFDocument.load(await f.arrayBuffer());
+        for (let i = 0; i < srcDoc.getPageCount(); i++) {
+          const pageDoc = await PDFDocument.create();
+          const [copiedPage] = await pageDoc.copyPages(srcDoc, [i]);
+          pageDoc.addPage(copiedPage);
+          const bytes = await pageDoc.save();
+          const base64: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(new Blob([bytes as any], { type: "application/pdf" }));
+          });
+          n++;
+          const nom = `reconditionnement-${dateStr}-${n}.pdf`;
+          const pushee = await push(ref(db, "reconditionnement_pdfs_en_attente"), { nom, base64, dateFr, ts: Date.now() + n });
+          if (pushee.key) ajoutes.push({ id: pushee.key, nom, base64 });
+        }
+      }
+      notify("success", `✅ ${ajoutes.length} bon${ajoutes.length > 1 ? "s" : ""} importé${ajoutes.length > 1 ? "s" : ""} — lecture en cours`);
+      await ouvrirDemandeGroupee(ajoutes);
+    } catch (err: any) {
+      notify("error", `❌ Erreur lors de l'import : ${err?.message || "erreur inconnue"}`);
+    } finally {
+      setImportMultiEnCours(false);
+    }
+  }
+
   // Rattache un fichier déjà découpé (voir importerPdf) à la demande en cours de
   // création — exactement comme un import manuel via "Importer un bon Geslot" (même lecture
   // automatique OCR), sauf qu'on reconstruit un objet File à partir du base64 déjà enregistré
@@ -2642,8 +2686,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     };
   }
 
-  async function ouvrirDemandeGroupee() {
-    const lignes: LigneGroupe[] = pdfsEnAttente.map(p => lignesGroupeSauvees?.[p.id] && lignesGroupeSauvees[p.id].lecture !== "en_cours" && lignesGroupeSauvees[p.id].lecture !== "attente"
+  async function ouvrirDemandeGroupee(nouveaux: { id: string; nom: string; base64: string; article?: string }[] = []) {
+    const source = [...pdfsEnAttente, ...nouveaux.filter(n => !pdfsEnAttente.some(p => p.id === n.id))];
+    const lignes: LigneGroupe[] = source.map(p => lignesGroupeSauvees?.[p.id] && lignesGroupeSauvees[p.id].lecture !== "en_cours" && lignesGroupeSauvees[p.id].lecture !== "attente"
       ? { ...(lignesGroupeSauvees[p.id] as LigneGroupe), pdfId: p.id, base64: p.base64 }
       : ({
       pdfId: p.id, nom: p.article || p.nom, base64: p.base64, lecture: "attente", inclure: true, depot: "",
@@ -3481,7 +3526,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
           {/* 29/09/2026 — Onglet « Configuration » retiré (il ne faisait que renvoyer vers
               Prestataires → Configuration), et chaque onglet respecte Droits d'accès. */}
-          {ongletsVisibles.map(t => (
+          {ongletsVisibles.filter(t => t.key !== "nouvelle").map(t => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key as any)}
@@ -3494,6 +3539,21 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               {t.label}
             </button>
           ))}
+          {(!peutVoirOnglet || peutVoirOnglet("nouvelle")) && (
+            <>
+              <input ref={importBonsRef} type="file" accept="application/pdf" multiple onChange={importerBons} style={{ display: "none" }} />
+              <button type="button" onClick={() => importBonsRef.current?.click()} disabled={importMultiEnCours}
+                style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: importMultiEnCours ? COLORS.gray200 : "#7c3aed", color: "#fff", fontSize: 13, fontWeight: 800, cursor: importMultiEnCours ? "default" : "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {importMultiEnCours ? "⏳ Import en cours…" : "📄 Importer un ou plusieurs bons"}
+              </button>
+              {pdfsEnAttente.length > 0 && activeTab !== "groupee" && (
+                <button type="button" onClick={() => ouvrirDemandeGroupee()}
+                  style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e9d8fd", background: "#faf5ff", color: "#7c3aed", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+                  📥 {pdfsEnAttente.length} bon{pdfsEnAttente.length > 1 ? "s" : ""} en attente
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {/* ── EN COURS ── */}
@@ -3949,7 +4009,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         {/* ═══ DEMANDE GROUPÉE (29/09/2026) — voir creerDemandesGroupees ═══ */}
         {activeTab === "groupee" && (
           <div>
-            <button type="button" onClick={() => setActiveTab("nouvelle")} style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 12 }}>← Retour au formulaire bon par bon</button>
+            <button type="button" onClick={() => setActiveTab("en_cours")} style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 12 }}>← Retour (les bons restent en attente)</button>
             {/* 29/09/2026 — « combien de caisses IFCO vont être utilisées aujourd'hui » : le
                 compteur « Aujourd'hui » inclut les bons de cet écran (NLT, retour IFCO Oui). */}
             <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt}
@@ -4185,7 +4245,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   </button>
                 )}
                 {pdfsEnAttente.length > 1 && (
-                  <button type="button" onClick={ouvrirDemandeGroupee} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  <button type="button" onClick={() => ouvrirDemandeGroupee()} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
                     🧾 Tout déclarer en une fois ({pdfsEnAttente.length} bons)
                   </button>
                 )}
