@@ -2523,6 +2523,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const bonsIfcoGroupe = lignesGroupe.filter(l => l.inclure && (l.depot || groupeDepot) === "nlt" && l.retourIfco === "oui");
   const caissesIfcoBonsGroupe = { caisses: bonsIfcoGroupe.reduce((t, l) => t + (parseInt(l.nbEntrer) || 0), 0), nb: bonsIfcoGroupe.length };
   const [groupeEnCours, setGroupeEnCours] = useState(false);
+  // Saisie après coup pour TOUS les bons de l'écran (mêmes règles que le formulaire bon par bon).
+  const [groupeApresCoup, setGroupeApresCoup] = useState(false);
+  const [groupeDateApresCoup, setGroupeDateApresCoup] = useState(() => { const d = new Date(Date.now() - 24 * 3600 * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+  const [groupeStatutApresCoup, setGroupeStatutApresCoup] = useState<"parti" | "reçu">("parti");
   // 29/09/2026 — Transporteur par défaut selon le dépôt (demande d'Elinathan) : NLT → AB
   // Transports, Andès → Moorea. Retrouvé par son nom dans l'annuaire des transporteurs.
   const transporteurParDefaut = (dep: Depot | ""): string => {
@@ -2615,7 +2619,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     if (aCreer.length === 0 && caissesIfco <= 0) { notify("error", "✗ Aucun bon sélectionné"); return; }
     for (const l of aCreer) {
       const dep = (l.depot || groupeDepot) as Depot;
-      if (dep && !l.dejaChez && !transporteurDeLigne(l, dep)) { notify("error", `✗ Choisis un transporteur pour chaque bon ${DEPOT_LABEL[dep]}`); return; }
+      if (dep && !l.dejaChez && !groupeApresCoup && !transporteurDeLigne(l, dep)) { notify("error", `✗ Choisis un transporteur pour chaque bon ${DEPOT_LABEL[dep]}`); return; }
     }
     for (const [i, l] of aCreer.entries()) {
       const dep = l.depot || groupeDepot;
@@ -2637,6 +2641,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         // « Produit déjà chez le reconditionneur » : même règle que le formulaire bon par bon —
         // demande directement « parti », pas de bon imprimé, pas de transporteur, mais le bon part
         // quand même dans le récap mail et le retour attendu apparaît dans Arrivage.
+        const apresCoup = groupeApresCoup;
+        const dateRef = apresCoup ? new Date(`${groupeDateApresCoup}T12:00:00`) : new Date();
+        const dateRefFr = dateRef.toLocaleDateString("fr-FR") + " (saisi après coup)";
         const transporteurLigneId = l.dejaChez ? "" : transporteurDeLigne(l, dep);
         const transporteur = transporteurs.find(t => t.id === transporteurLigneId);
         const now = new Date();
@@ -2649,9 +2656,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         const parColis = parseFloat(l.qteParColis) || 0;
         const cartons = dep === "andes" ? (parseInt(l.cartons) || 0) : 0;
         const demande: any = {
-          numero: genererNumeroDemande(now, dejaNumerotes),
-          dateCreation: now.toISOString(),
-          dateCreationFr: nowFr(),
+          numero: genererNumeroDemande(apresCoup ? dateRef : now, dejaNumerotes),
+          dateCreation: (apresCoup ? dateRef : now).toISOString(),
+          dateCreationFr: apresCoup ? dateRefFr : nowFr(),
           creePar: userName || "Moorea",
           depot: dep,
           articleVrac: l.articleVrac.trim(),
@@ -2673,10 +2680,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           transporteurNom: transporteur?.nom,
           pdfGeslotNom: l.nom,
           pdfGeslotBase64: l.base64,
-          statut: l.dejaChez ? "parti" : "en attente",
-          departDate: l.dejaChez ? nowFr() : undefined,
+          statut: apresCoup ? groupeStatutApresCoup : (l.dejaChez ? "parti" : "en attente"),
+          departDate: apresCoup ? dateRefFr : (l.dejaChez ? nowFr() : undefined),
           dejaChezReconditionneur: l.dejaChez || undefined,
-          ts: now.getTime(),
+          ts: apresCoup ? dateRef.getTime() : now.getTime(),
+          saisieApresCoup: apresCoup || undefined,
+          emailEnvoye: apresCoup ? true : undefined,
+          retour: apresCoup && groupeStatutApresCoup === "reçu" ? { date: dateRefFr, qualite: "conforme", commentaire: "Saisi après coup — déjà reçu", nbColisRecus: nEntrer } : undefined,
           demandeGroupee: true,
         };
         Object.keys(demande).forEach(k => { if (demande[k] === undefined) delete demande[k]; });
@@ -2688,16 +2698,18 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           const pdfBase64 = await genererBonPdf({ ...demande, id: demandeId } as Demande);
           const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
           await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
-          if (!l.dejaChez) {
+          if (!l.dejaChez && !apresCoup) {
             try { await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64); }
             catch { notify("error", `⚠️ ${demande.numero} : impression automatique du bon échouée`); }
           }
-          await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
+          // Saisie après coup : ni impression ni récap mail (emailEnvoye reste true).
+          if (!apresCoup) await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
         } catch (errPdf: any) {
           notify("error", `⚠️ ${demande.numero} : génération du bon échouée (${errPdf?.message || "erreur"})`);
         }
-        // Retour attendu dans Arrivage dès la création (même règle que creerDemande).
-        await set(ref(db, `arrivages/recond_${demandeId}`), {
+        // Retour attendu dans Arrivage dès la création (même règle que creerDemande) — sauf
+        // saisie après coup « déjà revenue » (rien à pointer).
+        if (!(apresCoup && groupeStatutApresCoup === "reçu")) await set(ref(db, `arrivages/recond_${demandeId}`), {
           fournisseur: "Reconditionnement", fournisseur_origine: demande.origineFournisseur || null,
           produit: demande.articleFini, variete: demande.articleVrac,
           lot_interne: demande.lot || demande.numero || demandeId, lot_fournisseur: demande.origineLotFournisseur || "",
@@ -2722,7 +2734,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       let numeroPalette = "";
       if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteurIfco?.nom || "");
       notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
-      setLignesGroupe([]); setGroupeCaissesIfco(""); setGroupeIfcoEnvoi(""); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
+      setLignesGroupe([]); setGroupeCaissesIfco(""); setGroupeApresCoup(false); setGroupeIfcoEnvoi(""); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
       setActiveTab("en_cours");
     } catch (err: any) {
       notify("error", `❌ Erreur après ${crees} demande(s) créée(s) : ${err?.message || "erreur inconnue"} — les bons restants sont toujours dans « Fichiers en attente »`);
@@ -3894,6 +3906,38 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 })()}
               </div>
             )}
+            {/* Saisie après coup pour tous les bons */}
+            <div className="card" style={{ padding: "12px 16px", marginBottom: 12, border: `2px solid ${groupeApresCoup ? "#d97706" : COLORS.gray200}`, background: groupeApresCoup ? "#fffbeb" : "#fff" }}>
+              <div onClick={() => setGroupeApresCoup(v => !v)} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                <span className="mrq-case-conteneur" style={{ marginTop: 2 }} onClick={e => e.stopPropagation()}>
+                  <input type="checkbox" className="mrq-case-native" checked={groupeApresCoup} onChange={e => setGroupeApresCoup(e.target.checked)} />
+                  <span className="mrq-case-visuelle" />
+                </span>
+                <div>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: groupeApresCoup ? "#92400e" : COLORS.gray700, display: "block" }}>📅 Reconditionnement déjà fait — saisie après coup (tous les bons)</span>
+                  <span style={{ fontSize: 11, color: groupeApresCoup ? "#92400e" : "#9ca3af" }}>Aucun mail envoyé (ni récap, ni transporteur, ni reconditionneur) et rien d'imprimé à l'entrepôt.</span>
+                </div>
+              </div>
+              {groupeApresCoup && (
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10, paddingLeft: 28 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>Fait le
+                    <input type="date" value={groupeDateApresCoup} max={new Date().toISOString().slice(0, 10)} onChange={e => setGroupeDateApresCoup(e.target.value)}
+                      style={{ display: "block", marginTop: 4, padding: "6px 8px", borderRadius: 8, border: "1px solid #fcd34d", fontSize: 13 }} />
+                  </label>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>La marchandise est
+                    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                      {([["parti", "🚚 pas encore revenue (à pointer)"], ["reçu", "✅ déjà revenue à Moorea"]] as const).map(([v, lbl]) => (
+                        <button key={v} type="button" onClick={() => setGroupeStatutApresCoup(v)}
+                          style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${groupeStatutApresCoup === v ? "#d97706" : "#fde68a"}`, background: groupeStatutApresCoup === v ? "#d97706" : "#fff", color: groupeStatutApresCoup === v ? "#fff" : "#92400e" }}>
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Envoi de caisses IFCO vides à NLT : à part, rattaché à aucun article (même envoi
                 que « Envoyer une palette IFCO à NLT »). */}
             <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
