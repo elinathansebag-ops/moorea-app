@@ -4074,6 +4074,17 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               )}
             </div>
 
+            {/* 29/09/2026 — Vider le formulaire pour repartir d'une saisie vierge (efface aussi le
+                brouillon enregistré). Affiché dès qu'un champ est rempli. */}
+            {!editDemandeId && (depot || articleVrac || lot || nbColisASortir || articleFini || nbColisAEntrer || qtePerColis || commentaireEan || pdfFile || saisieApresCoup || dejaChezReconditionneur) && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <button type="button" onClick={() => { if (window.confirm("Vider le formulaire et repartir d'une saisie vierge ?")) { resetForm(); notify("success", "🧹 Formulaire vidé"); } }}
+                  style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #fca5a5", background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  🗑️ Vider le formulaire
+                </button>
+              </div>
+            )}
+
             <div className="card" style={{ padding: "12px 16px", marginBottom: 8 }}>
               <div className="section-title" style={{ marginBottom: 10 }}>📍 Dépôt & article</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0 14px" }}>
