@@ -3857,7 +3857,6 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           <div>
             <button type="button" onClick={() => setActiveTab("nouvelle")} style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 12 }}>← Retour au formulaire bon par bon</button>
             <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
-              <div className="section-title" style={{ marginBottom: 10 }}>🧾 Déclaration groupée — commun à tous les bons</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
                 <F label="Dépôt (par défaut)">
                   <select value={groupeDepot} onChange={e => { const v = e.target.value as Depot | ""; setGroupeDepot(v); const t = transporteurParDefaut(v); if (t) setGroupeTransporteurId(t); }}>
