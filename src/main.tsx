@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { VersionChecker } from './VersionChecker'
@@ -32,7 +32,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <VersionChecker />
     <ErrorBoundary>
-      <App />
+      {/* 29/09/2026 — Affiché le temps de télécharger un module ouvert pour la première fois. */}
+      <Suspense fallback={<div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif", color: "#8a6f2e", fontWeight: 700 }}>⏳ Chargement…</div>}>
+        <App />
+      </Suspense>
     </ErrorBoundary>
   </React.StrictMode>,
 )

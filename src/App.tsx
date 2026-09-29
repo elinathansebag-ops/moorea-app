@@ -1,35 +1,66 @@
 // ✅ TEST MODIFICATION - Vérification que GitHub Desktop reçoit et publie les changements correctement 🚀
 // Cette ligne a été ajoutée pour tester le workflow de publication
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
 import jsPDF from "jspdf";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
-import RetoursModule from "./RetoursModule";
-import GencodeModule from "./GencodeModule";
-import CatalogueModule from "./CatalogueModule";
 import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
-import DroitsAccesModule from "./DroitsAccesModule";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
-import { StockApp } from "./StockApp";
-import { RHApp } from "./RHApp";
-import { EtiquetteModule } from "./EtiquetteModule";
-import { QrCodeDashboard } from "./QrCodeDashboard";
-import { YukonApp } from "./YukonApp";
-import { TachesModule } from "./TachesModule";
-import { RackModule } from "./RackModule";
-import { StattModule } from "./StattModule";
-import { PrestatairesModule } from "./PrestatairesModule";
-import { ReconditionnementModule } from "./ReconditionnementModule";
-import { MessagerieModule } from "./MessagerieModule";
-import { PreparationModule } from "./PreparationModule";
-import { PortailReconditionneur } from "./PortailReconditionneur";
-import { DashboardModule } from "./DashboardModule";
-import { ApproModule } from "./ApproModule";
-import { ChargementModule } from "./ChargementModule";
-import { PointeuseModule } from "./PointeuseModule";
-import { PointeuseEcran } from "./PointeuseEcran";
-import { EspaceEmployeModule } from "./EspaceEmployeModule";
-import { RecapQualiteModule } from "./RecapQualiteModule";
+
+// 29/09/2026 — Demande d'Elinathan (vitesse) : chaque module est maintenant téléchargé à part,
+// seulement quand on l'ouvre (avant : un seul fichier de ~5 Mo avec toute l'appli pour tout le
+// monde). Une fois l'accueil affiché, les modules auxquels le compte a droit sont préchargés
+// en arrière-plan (voir prechargerModules plus bas) pour que leur ouverture reste instantanée.
+// Si un morceau n'existe plus (nouvelle version mise en ligne entre-temps), on recharge la
+// page une fois pour récupérer la bonne version.
+function chargerModule(imp: () => Promise<any>, nom: string) {
+  let Comp: any = null;
+  let promesse: Promise<any> | null = null;
+  const precharger = () => {
+    if (!promesse) {
+      promesse = imp().then(m => { Comp = m[nom]; try { sessionStorage.removeItem("moorea-rechargement-module"); } catch { /* ignore */ } return { default: Comp }; })
+        .catch(err => {
+          promesse = null;
+          let dejaRecharge = false;
+          try { dejaRecharge = sessionStorage.getItem("moorea-rechargement-module") === "1"; } catch { /* ignore */ }
+          if (!dejaRecharge) {
+            try { sessionStorage.setItem("moorea-rechargement-module", "1"); } catch { /* ignore */ }
+            window.location.reload();
+          }
+          throw err;
+        });
+    }
+    return promesse;
+  };
+  const Paresseux = lazy(precharger);
+  const Module = (props: any) => (Comp ? createElement(Comp, props) : createElement(Paresseux, props));
+  (Module as any).precharger = () => precharger().catch(() => {});
+  return Module as any;
+}
+const RetoursModule = chargerModule(() => import("./RetoursModule"), "default");
+const GencodeModule = chargerModule(() => import("./GencodeModule"), "default");
+const CatalogueModule = chargerModule(() => import("./CatalogueModule"), "default");
+const DroitsAccesModule = chargerModule(() => import("./DroitsAccesModule"), "default");
+const StockApp = chargerModule(() => import("./StockApp"), "StockApp");
+const RHApp = chargerModule(() => import("./RHApp"), "RHApp");
+const EtiquetteModule = chargerModule(() => import("./EtiquetteModule"), "EtiquetteModule");
+const QrCodeDashboard = chargerModule(() => import("./QrCodeDashboard"), "QrCodeDashboard");
+const YukonApp = chargerModule(() => import("./YukonApp"), "YukonApp");
+const TachesModule = chargerModule(() => import("./TachesModule"), "TachesModule");
+const RackModule = chargerModule(() => import("./RackModule"), "RackModule");
+const StattModule = chargerModule(() => import("./StattModule"), "StattModule");
+const PrestatairesModule = chargerModule(() => import("./PrestatairesModule"), "PrestatairesModule");
+const ReconditionnementModule = chargerModule(() => import("./ReconditionnementModule"), "ReconditionnementModule");
+const MessagerieModule = chargerModule(() => import("./MessagerieModule"), "MessagerieModule");
+const PreparationModule = chargerModule(() => import("./PreparationModule"), "PreparationModule");
+const PortailReconditionneur = chargerModule(() => import("./PortailReconditionneur"), "PortailReconditionneur");
+const DashboardModule = chargerModule(() => import("./DashboardModule"), "DashboardModule");
+const ApproModule = chargerModule(() => import("./ApproModule"), "ApproModule");
+const ChargementModule = chargerModule(() => import("./ChargementModule"), "ChargementModule");
+const PointeuseModule = chargerModule(() => import("./PointeuseModule"), "PointeuseModule");
+const PointeuseEcran = chargerModule(() => import("./PointeuseEcran"), "PointeuseEcran");
+const EspaceEmployeModule = chargerModule(() => import("./EspaceEmployeModule"), "EspaceEmployeModule");
+const RecapQualiteModule = chargerModule(() => import("./RecapQualiteModule"), "RecapQualiteModule");
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
 // passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
@@ -556,6 +587,26 @@ export default function App() {
   const chargerGencodes = chargementAutorise(["gencodes", "stock"]);
   const chargerRetours = chargementAutorise(["retours"]);
   const chargerJournal = chargementAutorise([]);
+  // Préchargement en arrière-plan (un par un, après l'affichage de l'accueil) des modules
+  // auxquels le compte a droit — leur ouverture reste ainsi instantanée.
+  const prechargementPret = !!user && permsChargees;
+  useEffect(() => {
+    if (!prechargementPret) return;
+    const parModule: [string, any][] = [
+      ["reconditionnement", ReconditionnementModule], ["preparation", PreparationModule], ["prestataires", PrestatairesModule],
+      ["stock", StockApp], ["retours", RetoursModule], ["messagerie", MessagerieModule], ["appro", ApproModule],
+      ["gencodes", GencodeModule], ["catalogue", CatalogueModule], ["etiquettes", EtiquetteModule], ["rack", RackModule],
+      ["chargement", ChargementModule], ["taches", TachesModule], ["qualite", RecapQualiteModule], ["statt", StattModule],
+      ["rh", RHApp], ["yukon", YukonApp], ["dashboard_tv", DashboardModule], ["qrcode", QrCodeDashboard],
+    ];
+    const aCharger = parModule.filter(([k]) => monAccesReel.isAdmin || monAccesReel.hasModule(k)).map(([, c]) => c);
+    if (monAccesReel.isAdmin) aCharger.push(DroitsAccesModule, PointeuseModule);
+    let annule = false;
+    const t = setTimeout(async () => {
+      for (const c of aCharger) { if (annule) return; await c.precharger?.(); }
+    }, 2500);
+    return () => { annule = true; clearTimeout(t); };
+  }, [prechargementPret, monAccesReel.isAdmin]);
   // 17/09/2026 (bis) — Demande d'Elinathan : remplace le module séparé "Suivi arrivages" par le
   // même principe que Stock ("compter" vs lecture seule) — un compte qui a "arrivages" mais pas
   // l'onglet "valider" voit la même page "Pointer arrivage", juste grisée/sans possibilité de
