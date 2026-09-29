@@ -358,6 +358,33 @@ export function nowFr(): string {
 // demandes déjà créées aujourd'hui (connues côté client via le listener temps réel) — largement
 // suffisant pour un volume de quelques demandes par jour, sans avoir besoin d'un compteur
 // transactionnel côté serveur.
+// 29/09/2026 — « un truc que je comprends pas avec la reconnaissance des articles » : sur un bon
+// « (PASSIO0028) - PASSION COLOMBIE 2€ (3 PIECES X 8) », la lecture (correcte) était ensuite
+// associée au PREMIER article du catalogue dont le nom apparaît dans le texte — un article court
+// (ex : « 3 PIECES ») pouvait passer avant le bon. Maintenant : code Geslot retiré, correspondance
+// exacte d'abord, sinon l'article du catalogue le plus LONG contenu dans le texte (et couvrant
+// au moins 60 % du texte), sinon le texte lu tel quel (sans le code).
+function resoudreArticleCatalogue(brut: string, catalogue: { code: string; libelle: string }[]): string {
+  if (!brut) return "";
+  const norm = (x: string) => String(x || "").toUpperCase().replace(/\s+/g, " ").trim();
+  const nettoye = norm(brut);
+  if (!nettoye) return brut;
+  const sansCode = norm(nettoye.replace(/^\(?[A-Z0-9 ]{3,14}\)?\s*[-–]\s*/, "")) || nettoye;
+  for (const t of [nettoye, sansCode]) {
+    const exact = catalogue.find(a => norm(a.libelle) === t);
+    if (exact) return exact.libelle;
+  }
+  const contenus = catalogue
+    .filter(a => { const l = norm(a.libelle); return l.length >= 6 && sansCode.includes(l) && l.length >= sansCode.length * 0.6; })
+    .sort((a, b) => b.libelle.length - a.libelle.length);
+  if (contenus[0]) return contenus[0].libelle;
+  const englobants = catalogue
+    .filter(a => sansCode.length > 4 && norm(a.libelle).includes(sansCode))
+    .sort((a, b) => a.libelle.length - b.libelle.length);
+  if (englobants[0]) return englobants[0].libelle;
+  return sansCode;
+}
+
 function genererNumeroDemande(dateCreation: Date, demandesExistantes: Demande[]): string {
   const aa = String(dateCreation.getFullYear()).slice(-2);
   const mm = String(dateCreation.getMonth() + 1).padStart(2, "0");
@@ -1569,18 +1596,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         }
         return "";
       };
-      const resoudreArticle = (brut: string): string => {
-        if (!brut) return "";
-        const nettoye = brut.toUpperCase().replace(/\s+/g, " ").trim();
-        if (!nettoye) return brut;
-        let trouve = catalogueArticles.find(a => a.libelle.toUpperCase() === nettoye);
-        if (trouve) return trouve.libelle;
-        trouve = catalogueArticles.find(a => nettoye.includes(a.libelle.toUpperCase()));
-        if (trouve) return trouve.libelle;
-        trouve = catalogueArticles.find(a => nettoye.length > 4 && a.libelle.toUpperCase().includes(nettoye));
-        if (trouve) return trouve.libelle;
-        return brut;
-      };
+      const resoudreArticle = (brut: string): string => resoudreArticleCatalogue(brut, catalogueArticles);
       const vArticleVrac = resoudreArticle(lire("Article\\s*[àa]\\s*utiliser"));
       const vArticleFini = resoudreArticle(lire("Article\\s*[àa]\\s*fabriquer"));
       // 11/09/2026 — Demande d'Elinathan : afficher l'article qu'on va PRODUIRE (article fini, "à
@@ -1731,23 +1747,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       // que "PASSION COLOMBIE (VRAC 2 KG)"). On essaie donc de retrouver le vrai libellé du
       // catalogue même quand le texte lu contient du bruit autour (code, tirets, espaces mal
       // reconnus) plutôt que d'exiger une correspondance exacte à l'OCR.
-      const resoudreArticle = (brut: string): string => {
-        if (!brut) return "";
-        const nettoye = brut.toUpperCase().replace(/\s+/g, " ").trim();
-        if (!nettoye) return brut;
-        // 1. Correspondance exacte
-        let trouve = catalogueArticles.find(a => a.libelle.toUpperCase() === nettoye);
-        if (trouve) return trouve.libelle;
-        // 2. Le libellé du catalogue est contenu dans le texte lu (code/préfixe en trop)
-        trouve = catalogueArticles.find(a => nettoye.includes(a.libelle.toUpperCase()));
-        if (trouve) return trouve.libelle;
-        // 3. Le texte lu est contenu dans le libellé du catalogue (OCR tronqué)
-        trouve = catalogueArticles.find(a => nettoye.length > 4 && a.libelle.toUpperCase().includes(nettoye));
-        if (trouve) return trouve.libelle;
-        // Rien trouvé : on laisse le texte brut — le contour rouge de ArticleSelect avertira
-        // le commercial qu'il doit choisir manuellement dans le catalogue.
-        return brut;
-      };
+      const resoudreArticle = (brut: string): string => resoudreArticleCatalogue(brut, catalogueArticles);
 
       const vArticleVrac = resoudreArticle(lire("Article\\s*[àa]\\s*utiliser"));
       // Le champ "Lot" du bon Geslot donne le n° complet (ex: "2608661502") — on ne garde que
@@ -2550,18 +2550,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       for (const line of lines) { const m = line.match(re); if (m && m[1]) return m[1]; }
       return "";
     };
-    const resoudreArticle = (brut: string): string => {
-      if (!brut) return "";
-      const nettoye = brut.toUpperCase().replace(/\s+/g, " ").trim();
-      if (!nettoye) return brut;
-      let trouve = catalogueArticles.find(a => a.libelle.toUpperCase() === nettoye);
-      if (trouve) return trouve.libelle;
-      trouve = catalogueArticles.find(a => nettoye.includes(a.libelle.toUpperCase()));
-      if (trouve) return trouve.libelle;
-      trouve = catalogueArticles.find(a => nettoye.length > 4 && a.libelle.toUpperCase().includes(nettoye));
-      if (trouve) return trouve.libelle;
-      return brut;
-    };
+    const resoudreArticle = (brut: string): string => resoudreArticleCatalogue(brut, catalogueArticles);
     const nbEntrer = lireNombre("Nb\\s*colis\\s*[àa]\\s*entrer");
     const qteTotale = lireNombre("Qte\\s*conditionnement");
     const n = parseInt(nbEntrer) || 0;
