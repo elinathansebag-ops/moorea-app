@@ -1008,7 +1008,6 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
           <thead>
             <tr style={{ textAlign: "left", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase" }}>
               <th style={{ padding: "4px 8px" }}>Article</th>
-              <th style={{ padding: "4px 8px" }}>Lot</th>
               <th style={{ padding: "4px 8px", textAlign: "right" }}>Attendu</th>
               <th style={{ padding: "4px 8px" }}>Quantités reçues (1 case = 1 palette)</th>
               <th style={{ padding: "4px 8px", textAlign: "right" }}>Total</th>
@@ -1019,12 +1018,9 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
             {rows.map(({ a, attendu, recu, ecart, casesArr }) => (
               <Fragment key={a.id}>
                 <tr style={{ background: "#fff", borderTop: "6px solid #f9fafb" }}>
-                  <td style={{ padding: "8px", verticalAlign: "top", borderRadius: "10px 0 0 10px" }}>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>{a.produit}{a.variete ? ` · ${a.variete}` : ""}</p>
+                  <td style={{ padding: "8px", verticalAlign: "top", borderRadius: "10px 0 0 10px", minWidth: 220, whiteSpace: "normal", wordBreak: "break-word" }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a", whiteSpace: "normal", lineHeight: 1.3 }}>{a.produit}{a.variete ? ` · ${a.variete}` : ""}</p>
                     {a.fournisseur_origine && <span style={{ fontSize: 11, color: "#6b7280" }}>🌍 {a.fournisseur_origine}</span>}
-                  </td>
-                  <td style={{ padding: "8px", verticalAlign: "top", fontSize: 12, color: "#6b7280" }}>
-                    {a.lot_interne || "-"}{a.lot_fournisseur ? <><br /><span style={{ fontSize: 10.5 }}>📋 {a.lot_fournisseur}</span></> : null}
                   </td>
                   <td style={{ padding: "8px", verticalAlign: "top", textAlign: "right", fontWeight: 700, fontSize: 13, color: "#6b7280" }}>{attendu}</td>
                   <td style={{ padding: "8px", verticalAlign: "top" }}>
@@ -1059,7 +1055,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
                 </tr>
                 {problemes[a.id] && (
                   <tr style={{ background: "#fff" }}>
-                    <td colSpan={6} style={{ padding: "0 8px 8px" }}>
+                    <td colSpan={5} style={{ padding: "0 8px 8px" }}>
                       <input value={commentaires[a.id] || ""} onChange={e => setCommentaires(prev => ({ ...prev, [a.id]: e.target.value }))} placeholder="Commentaire sur le problème…"
                         style={{ width: "100%", padding: "6px 8px", border: "1.5px solid #fca5a5", borderRadius: 7, fontSize: 12, boxSizing: "border-box" }} />
                     </td>
