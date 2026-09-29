@@ -2013,6 +2013,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     setFournirEtiquettes(d.fournirEtiquettes ?? false);
     setTransporteurId(d.transporteurId || "");
     setPdfFile(d.pdfGeslotBase64 ? { nom: d.pdfGeslotNom || "geslot.pdf", base64: d.pdfGeslotBase64 } : null);
+    // 29/09/2026 — Même page qu'à la création : saisie après coup (date passée, déjà revenue…)
+    // et « déjà chez le reconditionneur » reprennent l'état de la demande.
+    setDejaChezReconditionneur(!!d.dejaChezReconditionneur);
+    setSaisieApresCoup(!!(d as any).saisieApresCoup);
+    setStatutApresCoup(d.statut === "reçu" ? "reçu" : "parti");
+    { const dc = d.dateCreation ? new Date(d.dateCreation) : new Date(); setDateApresCoup(`${dc.getFullYear()}-${String(dc.getMonth() + 1).padStart(2, "0")}-${String(dc.getDate()).padStart(2, "0")}`); }
     setActiveTab("nouvelle");
   }
 
@@ -2293,7 +2299,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // juste une confirmation, pour éviter un vrai blocage comme "LIME MAROC CAL.54 IFCO" qui
     // existe réellement mais n'était pas encore dans le catalogue.
     // 29/09/2026 — Plus de confirmation « absent du catalogue » (demande d'Elinathan).
-    if (!transporteurId && !dejaChezReconditionneur && !(saisieApresCoup && !editDemandeId)) {
+    if (!transporteurId && !dejaChezReconditionneur && !saisieApresCoup) {
       notify("error", "✗ Choisis un transporteur");
       return;
     }
@@ -2342,13 +2348,17 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // seuls les champs du formulaire sont mis à jour.
     const original = editDemandeId ? demandes.find(d => d.id === editDemandeId) : null;
 
-    const apresCoup = saisieApresCoup && !editDemandeId;
+    const apresCoup = !!saisieApresCoup;
     const dateRef = apresCoup ? new Date(`${dateApresCoup}T12:00:00`) : now;
     const dateRefFr = dateRef.toLocaleDateString("fr-FR") + (apresCoup ? " (saisi après coup)" : "");
+    // 29/09/2026 — En modification, la saisie après coup peut changer la date : on recalcule
+    // alors date, tri et numéro (le numéro porte la date) si le jour a changé.
+    const jourOriginal = original?.dateCreation ? (() => { const dc = new Date(original.dateCreation); return `${dc.getFullYear()}-${String(dc.getMonth() + 1).padStart(2, "0")}-${String(dc.getDate()).padStart(2, "0")}`; })() : null;
+    const dateChangee = !!original && apresCoup && jourOriginal !== dateApresCoup;
     const demande: Omit<Demande, "id"> = {
-      numero: original?.numero || genererNumeroDemande(dateRef, demandes),
-      dateCreation: original?.dateCreation || dateRef.toISOString(),
-      dateCreationFr: original?.dateCreationFr || (apresCoup ? dateRefFr : nowFr()),
+      numero: (original && !dateChangee ? original.numero : undefined) || genererNumeroDemande(dateRef, demandes.filter(x => x.id !== editDemandeId)),
+      dateCreation: (original && !dateChangee ? original.dateCreation : undefined) || dateRef.toISOString(),
+      dateCreationFr: (original && !dateChangee ? original.dateCreationFr : undefined) || (apresCoup ? dateRefFr : nowFr()),
       creePar: original?.creePar || userName || "Moorea",
       depot,
       articleVrac: articleVrac.trim(),
@@ -2380,14 +2390,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       // directement à "parti" (comme si l'entrepôt venait de le faire partir) au lieu de
       // "en attente" -- ça évite que la demande traîne dans la file de préparation de
       // l'entrepôt pour un envoi qui n'a pas lieu d'être.
-      statut: apresCoup ? statutApresCoup : (dejaChezReconditionneur ? "parti" : (original?.statut || "en attente")),
-      departDate: apresCoup ? dateRefFr : (dejaChezReconditionneur ? nowFr() : original?.departDate),
+      statut: apresCoup ? statutApresCoup : (original && (original.dejaChezReconditionneur || !dejaChezReconditionneur || original.statut !== "en attente") ? original.statut : (dejaChezReconditionneur ? "parti" : "en attente")),
+      departDate: apresCoup ? (original && !dateChangee && original.departDate ? original.departDate : dateRefFr) : (original?.departDate || (dejaChezReconditionneur ? nowFr() : undefined)),
       dejaChezReconditionneur: dejaChezReconditionneur || original?.dejaChezReconditionneur || undefined,
       // @ts-ignore — champ interne pour le tri, non typé dans Demande
-      ts: original?.ts ?? dateRef.getTime(),
-      saisieApresCoup: apresCoup || (original as any)?.saisieApresCoup || undefined,
+      ts: (original && !dateChangee ? (original as any).ts : undefined) ?? dateRef.getTime(),
+      saisieApresCoup: apresCoup || undefined,
       emailEnvoye: apresCoup ? true : undefined,
-      retour: apresCoup && statutApresCoup === "reçu" ? { date: dateRefFr, qualite: "conforme", commentaire: "Saisi après coup — déjà reçu", nbColisRecus: nbColisAEntrer ? parseInt(nbColisAEntrer) : 0, nbPalettes: { grandes: 0, demi: 0 }, ...(depot === "nlt" && retourIfco === "oui" && nbColisAEntrer && parseInt(nbColisAEntrer) > 0 ? { caissesIfcoPleinesRecues: parseInt(nbColisAEntrer) } : {}) } : undefined,
+      retour: apresCoup && statutApresCoup === "reçu" && original?.statut === "reçu" && original?.retour ? { nbPalettes: { grandes: 0, demi: 0 }, ...original.retour } : apresCoup && statutApresCoup === "reçu" ? { date: dateRefFr, qualite: "conforme", commentaire: "Saisi après coup — déjà reçu", nbColisRecus: nbColisAEntrer ? parseInt(nbColisAEntrer) : 0, nbPalettes: { grandes: 0, demi: 0 }, ...(depot === "nlt" && retourIfco === "oui" && nbColisAEntrer && parseInt(nbColisAEntrer) > 0 ? { caissesIfcoPleinesRecues: parseInt(nbColisAEntrer) } : {}) } : undefined,
     } as any;
 
     // Firebase (push/update) refuse toute valeur "undefined" — on retire ces clés avant
@@ -2404,10 +2414,57 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const cartonsAvant = (original?.depot === "andes" ? original?.cartonsBabyBlancEnvoyes : 0) || 0;
       const deltaCaisses = caisses - caissesAvant;
       const deltaCartons = cartons - cartonsAvant;
+      const etaitRecu = original?.statut === "reçu";
+      const devientRecu = (demande as any).statut === "reçu";
+      if (etaitRecu && !devientRecu && !(original as any)?.saisieApresCoup) {
+        notify("error", "✗ Cette demande a déjà été pointée à l'arrivage — elle ne peut plus repasser en « pas encore revenue »");
+        return;
+      }
       try {
+        if (!(original as any)?.saisieApresCoup && apresCoup) (demande as any).emailEnvoye = true;
+        if (etaitRecu && !devientRecu) (demande as any).retour = null;
         await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), demande);
+        // 29/09/2026 — Passage en « déjà revenue à Moorea » : plus rien à pointer, et même
+        // mouvement IFCO que le pointage (NLT → pleines).
+        if (!etaitRecu && devientRecu) {
+          const arrAttente = arrivagesData.filter(a => a.reconditionnement_demande_id === editDemandeId && a.statut === "en attente");
+          for (const a of arrAttente) await remove(ref(db, `arrivages/${a.id}`)).catch(() => {});
+          const n = (demande as any).retour?.caissesIfcoPleinesRecues || 0;
+          if (n > 0) {
+            try { await mouvementRetourIfcoApresCoup(editDemandeId, n, demande.depot, DEPOT_LABEL[demande.depot as keyof typeof DEPOT_LABEL] || "", dateRefFr); }
+            catch { notify("error", "⚠️ Retour des caisses IFCO pleines non enregistré dans le stock"); }
+          }
+        }
+        // Retour en arrière (saisie après coup « déjà revenue » → « pas encore revenue ») : on
+        // annule le retour des caisses pleines (même correction que la suppression d'une demande
+        // reçue) et on recrée le retour attendu dans Arrivage.
+        if (etaitRecu && !devientRecu) {
+          const n = original?.retour?.caissesIfcoPleinesRecues || 0;
+          if (n > 0) {
+            const levelsSnap = await get(ref(db, "ifco_stock/levels"));
+            const levels = levelsSnap.val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
+            await update(ref(db, "ifco_stock/levels"), { nlt: (levels.nlt || 0) + n, pleines: (levels.pleines || 0) - n });
+            await push(ref(db, "ifco_stock/movements"), {
+              date: nowFr(), from: "pleines", to: "nlt", caisses: n,
+              raison: `Reconditionnement — annulation du retour après modification de ${demande.numero || editDemandeId}`,
+              reconditionnement_demande_id: editDemandeId, user: userName || "Moorea", ts: Date.now(),
+            });
+          }
+          if (demande.nbColisAEntrer != null) {
+            await set(ref(db, `arrivages/recond_${editDemandeId}`), {
+              fournisseur: "Reconditionnement", fournisseur_origine: demande.origineFournisseur || null,
+              produit: demande.articleFini, variete: demande.articleVrac,
+              lot_interne: demande.lot || demande.numero || editDemandeId, lot_fournisseur: demande.origineLotFournisseur || "",
+              quantite: demande.nbColisAEntrer, unite: "colis", date: new Date().toLocaleDateString("fr-FR"), statut: "en attente",
+              timestamp: Date.now(), reconditionnement_demande_id: editDemandeId, depot: demande.depot,
+              qteConditionnementAttendue: demande.qteConditionnement ?? null, caissesIfcoEnvoyees: demande.caissesIfcoEnvoyees ?? null,
+              origine: `${DEPOT_LABEL[demande.depot as keyof typeof DEPOT_LABEL] || ""}${demande.transporteurNom ? ` · ${demande.transporteurNom}` : ""}`, transporteurNom: demande.transporteurNom || null,
+              retour_en_ifco: demande.retourEnIfco ?? false, quantiteDemandeeInitiale: demande.nbColisAEntrer, quantiteDeclareePresta: null, ecartPresta: null,
+            }).catch(() => notify("error", "⚠️ Retour attendu non recréé dans Arrivage"));
+          }
+        }
         // 25/09/2026 — Le retour attendu existant (encore à pointer) suit la modification.
-        const arrivageEdite = arrivagesData.find(a => a.reconditionnement_demande_id === editDemandeId && a.statut === "en attente");
+        const arrivageEdite = !devientRecu && arrivagesData.find(a => a.reconditionnement_demande_id === editDemandeId && a.statut === "en attente");
         if (arrivageEdite && demande.nbColisAEntrer != null) {
           await update(ref(db, `arrivages/${arrivageEdite.id}`), {
             produit: demande.articleFini, variete: demande.articleVrac,
@@ -4553,7 +4610,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 pas d'envoi (donc pas de bon à l'entrepôt ni de mail transporteur), mais le
                 retour attendu doit quand même apparaître dans "Pointer arrivage". */}
             {/* 29/09/2026 — Saisie après coup (reconditionnement déjà fait, oublié par le commercial). */}
-            {!editDemandeId && (
+            {(
               <div style={{ marginBottom: 10, padding: "12px 16px", borderRadius: 14, border: `2px solid ${saisieApresCoup ? "#d97706" : COLORS.gray200}`, background: saisieApresCoup ? "#fffbeb" : "#fff" }}>
                 <div onClick={() => setSaisieApresCoup(v => !v)} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
                   <input type="checkbox" checked={saisieApresCoup} onChange={e => setSaisieApresCoup(e.target.checked)} onClick={e => e.stopPropagation()}
