@@ -913,6 +913,34 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // ─── BL NLT : vérification automatique des mails depuis l'appli ───
+  // 29/09/2026 — Tant que l'appli est ouverte (sur n'importe quel poste), on déclenche toutes les
+  // 5 min, entre 7h et 20h, la lecture des BL envoyés par NLT (api/nlt-bl-poll.js) — le
+  // déclencheur GitHub seul ne passait que 2-3 fois par jour. Une transaction Firebase
+  // (config/nlt_bl_poll) garantit qu'un seul poste le lance à la fois, pas plus d'une fois par
+  // tranche de 4 min, pour ne jamais traiter deux fois le même mail en parallèle.
+  useEffect(() => {
+    if (!user) return;
+    const verifier = async () => {
+      const h = new Date().getHours();
+      if (h < 7 || h >= 20) return;
+      try {
+        const { runTransaction } = await import("firebase/database");
+        const res = await runTransaction(ref(db, "config/nlt_bl_poll"), (cur: any) => {
+          if (cur && typeof cur.ts === "number" && Date.now() - cur.ts < 4 * 60 * 1000) return; // déjà fait récemment
+          return { ...(cur || {}), ts: Date.now(), par: user?.email || "" };
+        });
+        if (!res.committed) return;
+        const r = await fetch("/api/nlt-bl-poll?source=app", { method: "POST" });
+        const out = await r.json().catch(() => ({}));
+        await update(ref(db, "config/nlt_bl_poll"), { fin: Date.now(), ok: r.ok, resume: out?.resume || out?.error || null });
+      } catch { /* hors ligne, etc. : réessai au prochain passage */ }
+    };
+    const t0 = setTimeout(verifier, 20 * 1000);
+    const t = setInterval(verifier, 5 * 60 * 1000);
+    return () => { clearTimeout(t0); clearInterval(t); };
+  }, [user]);
+
   // ─── FIREBASE: arrivages ───
   const [arrivagesCharges, setArrivagesCharges] = useState(false);
   useEffect(() => {

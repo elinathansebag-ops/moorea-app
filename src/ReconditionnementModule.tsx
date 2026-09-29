@@ -1078,6 +1078,28 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // lot détecté dans le PDF ne correspond pas à EXACTEMENT une seule demande NLT "en attente",
   // rien n'est appliqué automatiquement — le cas est juste noté ici pour vérification manuelle.
   const [rattachementEnCours, setRattachementEnCours] = useState<string | null>(null);
+  // 29/09/2026 — État de la vérification automatique des BL NLT (lancée par App.tsx).
+  const [pollBl, setPollBl] = useState<{ ts?: number; fin?: number; ok?: boolean; resume?: any } | null>(null);
+  const [pollBlManuel, setPollBlManuel] = useState(false);
+  useEffect(() => onValue(ref(db, "config/nlt_bl_poll"), snap => setPollBl(snap.val())), []);
+  async function verifierBlMaintenant() {
+    if (pollBlManuel) return;
+    setPollBlManuel(true);
+    try {
+      await update(ref(db, "config/nlt_bl_poll"), { ts: Date.now(), par: userName || "" });
+      const r = await fetch("/api/nlt-bl-poll?source=app", { method: "POST" });
+      const out = await r.json().catch(() => ({}));
+      await update(ref(db, "config/nlt_bl_poll"), { fin: Date.now(), ok: r.ok, resume: out?.resume || out?.error || null });
+      const res = out?.resume;
+      notify(r.ok ? "success" : "error", r.ok
+        ? `📬 BL NLT vérifiés — ${res?.mailsTraites ?? 0} mail(s) lu(s), ${res?.lotsAppliques ?? 0} rattachement(s)${res?.lotsAVerifier ? `, ${res.lotsAVerifier} à vérifier` : ""}`
+        : `❌ Vérification des BL impossible : ${out?.error || r.status}`);
+    } catch (e: any) {
+      notify("error", `❌ Vérification des BL impossible : ${e?.message || "erreur"}`);
+    } finally {
+      setPollBlManuel(false);
+    }
+  }
   const [blNltAVerifier, setBlNltAVerifier] = useState<{ id: string; date: string; lot?: string; colisDetectes?: number; raison: string; sujetMail?: string; blNumero?: string; rattacheA?: Record<string, { date: string; numero: string; colis: number | null }> }[]>([]);
   // Sélection en cours par BL : demandeId -> nb de colis saisi pour cette demande.
   const [selectionBl, setSelectionBl] = useState<Record<string, Record<string, string>>>({});
@@ -2934,6 +2956,16 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         {/* 15/09/2026 — Alerte "BL NLT à vérifier" : la détection automatique du mail NLT (voir
             api/nlt-bl-poll.js) n'applique JAMAIS un lot ambigu toute seule — elle le note ici à
             la place pour vérification manuelle plutôt que de risquer une mauvaise saisie. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 8, fontSize: 11, color: COLORS.gray600 }}>
+          <span>
+            📬 BL NLT : {pollBl?.fin ? `vérifiés automatiquement à ${new Date(pollBl.fin).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : "vérification automatique toutes les 5 min"}
+            {pollBl?.ok === false ? " · ⚠️ dernière vérification en erreur" : ""}
+          </span>
+          <button type="button" onClick={verifierBlMaintenant} disabled={pollBlManuel}
+            style={{ border: `1px solid ${COLORS.gray200}`, background: "#fff", borderRadius: 7, padding: "3px 9px", fontSize: 11, fontWeight: 700, cursor: pollBlManuel ? "default" : "pointer", color: COLORS.gray700 }}>
+            {pollBlManuel ? "⏳ Vérification…" : "🔄 Vérifier maintenant"}
+          </button>
+        </div>
         {blNltAVerifier.length > 0 && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fde3a8", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
             <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 13, color: "#92400e" }}>

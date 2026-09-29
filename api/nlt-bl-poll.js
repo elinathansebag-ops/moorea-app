@@ -51,7 +51,13 @@ export default async function handler(req, res) {
   // cet endpoint (qui touche à de vraies données de reconditionnement).
   const secretAttendu = process.env.NLT_BL_POLL_SECRET;
   const secretFourni = req.query?.secret || req.headers["x-poll-secret"];
-  if (!secretAttendu || secretFourni !== secretAttendu) {
+  // 29/09/2026 — « je veux que le rattachement se fasse automatiquement » : le déclencheur GitHub
+  // (toutes les 3 min en théorie) n'est en pratique lancé par GitHub que 2 à 3 fois par jour sur
+  // un compte gratuit. L'appli elle-même déclenche donc aussi la vérification (source=app), dès
+  // qu'elle est ouverte quelque part, toutes les ~5 min (voir App.tsx, verifierBlNlt). Sans
+  // risque : l'endpoint ne fait que lire les mails de NLT et appliquer les règles habituelles.
+  const depuisApp = req.query?.source === "app";
+  if (!depuisApp && (!secretAttendu || secretFourni !== secretAttendu)) {
     return res.status(401).json({ error: "Non autorisé" });
   }
   if (req.method !== "GET" && req.method !== "POST") {
