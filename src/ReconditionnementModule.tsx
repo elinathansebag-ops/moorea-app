@@ -803,11 +803,12 @@ export async function genererBonEnvoiPaletteIfco(data: {
 // création de la demande demande alors une confirmation plutôt que de bloquer complètement (voir
 // creerDemande). Le champ affiche un contour orange et un message tant que la valeur ne
 // correspond à aucun article connu, pour inciter à vérifier/l'ajouter au catalogue.
-function ArticleSelect({ value, onSelect, articles, placeholder }: {
+function ArticleSelect({ value, onSelect, articles, placeholder, inputStyle }: {
   value: string;
   onSelect: (libelle: string) => void;
   articles: { code: string; libelle: string }[];
   placeholder?: string;
+  inputStyle?: React.CSSProperties;
 }) {
   const [search, setSearch] = useState(value);
   const [open, setOpen] = useState(false);
@@ -828,7 +829,7 @@ function ArticleSelect({ value, onSelect, articles, placeholder }: {
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
-        style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${valide ? COLORS.gray200 : COLORS.amber}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+        style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${valide ? COLORS.gray200 : COLORS.amber}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box", ...(inputStyle || {}) }}
       />
       {!valide && (
         <p style={{ margin: "4px 0 0", fontSize: 11, color: "#b45309" }}>⚠️ Absent du catalogue Moorea — vérifie l'orthographe ou ajoute-le dans Catalogue. Tu peux quand même continuer.</p>
@@ -4093,7 +4094,20 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             {lignesGroupe.map((l, i) => {
               const dep = l.depot || groupeDepot;
               const lectureTxt = l.lecture === "en_cours" ? "⏳ lecture du bon…" : l.lecture === "attente" ? "⏳ en attente de lecture" : l.lecture === "echec" ? "⚠️ lecture incomplète — complète à la main" : "✅ lu automatiquement";
-              const manque = (v: string) => (l.inclure && !v ? { borderColor: "#fca5a5", background: "#fef2f2" } : {});
+              // 29/09/2026 — Cartes compactes et alignées : même hauteur pour tous les champs.
+              const champ: React.CSSProperties = { width: "100%", height: 36, padding: "0 10px", fontSize: 13, borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, boxSizing: "border-box", background: "#fff" };
+              const manque = (v: string): React.CSSProperties => ({ ...champ, ...(l.inclure && !v ? { borderColor: "#fca5a5", background: "#fef2f2" } : {}) });
+              const lab = (t: string) => <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray600, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t}</div>;
+              const ouiNon = (val: string | undefined, set: (v: "oui" | "non") => void) => (
+                <div style={{ display: "flex", gap: 6, height: 36 }}>
+                  {(["oui", "non"] as const).map(v => (
+                    <button key={v} type="button" onClick={() => set(v)}
+                      style={{ flex: 1, height: 36, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${val === v ? COLORS.primary : (!val ? "#fca5a5" : COLORS.gray200)}`, background: val === v ? COLORS.primary : "#fff", color: val === v ? "#fff" : COLORS.gray700 }}>
+                      {v === "oui" ? "Oui" : "Non"}
+                    </button>
+                  ))}
+                </div>
+              );
               return (
                 <div key={l.pdfId} className="card" style={{ padding: "12px 16px", marginBottom: 10, opacity: l.inclure ? 1 : 0.5 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -4102,7 +4116,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         <input type="checkbox" className="mrq-case-native" checked={l.inclure} onChange={e => majLigne(l.pdfId, { inclure: e.target.checked })} />
                         <span className="mrq-case-visuelle" />
                       </span>
-                      Bon {i + 1} — {l.nom}
+                      Bon {i + 1} — {l.articleFini || l.nom}
                     </label>
                     <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ fontSize: 11, color: l.lecture === "echec" ? "#b45309" : COLORS.gray600 }}>{lectureTxt}</span>
@@ -4110,52 +4124,54 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     </span>
                   </div>
                   {l.inclure && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-                      <F label="Dépôt">
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px 12px" }}>
+                      <div>{lab("Dépôt")}
                         <select value={l.depot} onChange={e => majLigne(l.pdfId, { depot: e.target.value as Depot | "" })} style={manque(dep)}>
                           <option value="">— Choisir —</option>
                           <option value="nlt">NLT</option>
                           <option value="andes">Andès</option>
                         </select>
-                      </F>
-                      <F label="Article vrac (à utiliser)"><ArticleSelect value={l.articleVrac} onSelect={v => majLigne(l.pdfId, { articleVrac: v })} articles={catalogueArticles} placeholder="Article du catalogue…" /></F>
-                      <F label="Lot"><input value={l.lot} onChange={e => majLigne(l.pdfId, { lot: e.target.value })} /></F>
-                      <F label="Colis à sortir"><input type="number" value={l.nbSortir} onChange={e => majLigne(l.pdfId, { nbSortir: e.target.value })} /></F>
-                      <F label="Article à fabriquer"><ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: v.trim() ? retourIfcoParDefaut(v) : "" })} articles={catalogueArticles} placeholder="Article du catalogue…" /></F>
-                      <F label="Colis à entrer"><input type="number" value={l.nbEntrer} onChange={e => majLigne(l.pdfId, { nbEntrer: e.target.value })} style={manque(l.nbEntrer)} /></F>
-                      <F label={dep ? `Quantité par colis (${UNITE_QTE[dep]})` : "Quantité par colis"}><input type="number" value={l.qteParColis} onChange={e => majLigne(l.pdfId, { qteParColis: e.target.value })} /></F>
-                      {dep === "nlt" && (
-                        <F label="Retour en caisses IFCO ?">
-                          <div style={{ display: "flex", gap: 6 }}>
-                            {(["oui", "non"] as const).map(v => (
-                              <button key={v} type="button" onClick={() => majLigne(l.pdfId, { retourIfco: v })}
-                                style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${l.retourIfco === v ? COLORS.primary : (l.retourIfco === "" ? "#fca5a5" : COLORS.gray200)}`, background: l.retourIfco === v ? COLORS.primary : "#fff", color: l.retourIfco === v ? "#fff" : COLORS.gray700 }}>
-                                {v === "oui" ? "Oui" : "Non"}
-                              </button>
-                            ))}
-                          </div>
-                        </F>
-                      )}
+                      </div>
+                      <div>{lab("Article vrac (à utiliser)")}<ArticleSelect value={l.articleVrac} onSelect={v => majLigne(l.pdfId, { articleVrac: v })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
+                      <div>{lab("Lot")}<input value={l.lot} onChange={e => majLigne(l.pdfId, { lot: e.target.value })} style={champ} /></div>
+                      <div>{lab("Colis à sortir")}<input type="number" value={l.nbSortir} onChange={e => majLigne(l.pdfId, { nbSortir: e.target.value })} style={champ} /></div>
+                      <div>{lab("Article à fabriquer")}<ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: v.trim() ? retourIfcoParDefaut(v) : "" })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
+                      <div>{lab("Colis à entrer")}<input type="number" value={l.nbEntrer} onChange={e => majLigne(l.pdfId, { nbEntrer: e.target.value })} style={manque(l.nbEntrer)} /></div>
+                      <div>{lab(dep ? `Qté par colis (${UNITE_QTE[dep]})` : "Qté par colis")}<input type="number" value={l.qteParColis} onChange={e => majLigne(l.pdfId, { qteParColis: e.target.value })} style={champ} /></div>
+                      <div>
+                        {dep === "nlt" && <>{lab("Retour en caisses IFCO ?")}{ouiNon(l.retourIfco, v => majLigne(l.pdfId, { retourIfco: v }))}</>}
+                        {dep === "andes" && <>{lab("Retour en BABY BLANC ?")}{ouiNon(l.retourBabyBlanc, v => majLigne(l.pdfId, { retourBabyBlanc: v }))}</>}
+                      </div>
                       {!l.dejaChez && (
-                        <F label="Transporteur">
+                        <div>{lab("Transporteur")}
                           <select value={transporteurDeLigne(l, dep)} onChange={e => majLigne(l.pdfId, { transporteurId: e.target.value })} style={manque(transporteurDeLigne(l, dep))}>
                             <option value="">— Choisir —</option>
                             {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
                           </select>
-                        </F>
+                        </div>
                       )}
-                      {dep === "andes" && (
-                        <F label="Revient en cartons BABY BLANC ?">
-                          <div style={{ display: "flex", gap: 6 }}>
-                            {(["oui", "non"] as const).map(v => (
-                              <button key={v} type="button" onClick={() => majLigne(l.pdfId, { retourBabyBlanc: v })}
-                                style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${l.retourBabyBlanc === v ? COLORS.primary : (!l.retourBabyBlanc ? "#fca5a5" : COLORS.gray200)}`, background: l.retourBabyBlanc === v ? COLORS.primary : "#fff", color: l.retourBabyBlanc === v ? "#fff" : COLORS.gray700 }}>
-                                {v === "oui" ? "Oui" : "Non"}
-                              </button>
-                            ))}
-                          </div>
-                          {l.retourBabyBlanc === "oui" && <span style={{ fontSize: 10.5, color: "#9ca3af" }}>→ {parseInt(l.nbEntrer) || 0} cartons décomptés chez Andès</span>}
-                        </F>
+                      <div style={{ gridColumn: l.dejaChez ? "1 / span 4" : "2 / span 3", display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${l.dejaChez ? COLORS.secondary : COLORS.gray200}`, background: l.dejaChez ? COLORS.secondaryLight : "#fff", fontSize: 12.5, fontWeight: 700, color: l.dejaChez ? "#15803d" : COLORS.gray700, whiteSpace: "nowrap" }}>
+                          <span className="mrq-case-conteneur">
+                            <input type="checkbox" className="mrq-case-native" checked={l.dejaChez} onChange={e => majLigne(l.pdfId, { dejaChez: e.target.checked })} />
+                            <span className="mrq-case-visuelle" />
+                          </span>
+                          📍 Déjà chez le reconditionneur
+                        </label>
+                        {!(l.commentaireOuvert || l.commentaire) && (
+                          <button type="button" onClick={() => majLigne(l.pdfId, { commentaireOuvert: true })}
+                            style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1.5px dashed ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                            + Commentaire
+                          </button>
+                        )}
+                        {dep === "andes" && l.retourBabyBlanc === "oui" && <span style={{ fontSize: 11, color: "#9ca3af", alignSelf: "center" }}>→ {parseInt(l.nbEntrer) || 0} cartons décomptés chez Andès</span>}
+                      </div>
+                      {(l.commentaireOuvert || l.commentaire) && (
+                        <div style={{ gridColumn: "1 / span 4" }}>{lab("Commentaire (bon de prépa + bon envoyé par mail)")}
+                          <textarea value={l.commentaire} onChange={e => majLigne(l.pdfId, { commentaire: e.target.value })} rows={2}
+                            placeholder="ex : utiliser l'EAN 3760…, étiquettes fournies par Moorea…"
+                            style={{ ...champ, height: "auto", padding: "8px 10px", fontFamily: "inherit", resize: "vertical" }} />
+                        </div>
                       )}
                     </div>
                   )}
@@ -4163,33 +4179,6 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: COLORS.dangerLight, border: `1px solid ${COLORS.danger}`, color: COLORS.danger, fontSize: 12, fontWeight: 700 }}>
                       ⚠️ Pas assez de caisses IFCO chez NLT pour ce bon : il en manque {manqueIfcoDuBon(l.pdfId)} (en comptant les bons au-dessus). Réponds « Oui » à l'envoi de caisses vides.
                     </div>
-                  )}
-                  {l.inclure && (
-                    <div onClick={() => majLigne(l.pdfId, { dejaChez: !l.dejaChez })}
-                      style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 12px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${l.dejaChez ? COLORS.secondary : COLORS.gray200}`, background: l.dejaChez ? COLORS.secondaryLight : "#fff" }}>
-                      <span className="mrq-case-conteneur" onClick={e => e.stopPropagation()}>
-                        <input type="checkbox" className="mrq-case-native" checked={l.dejaChez} onChange={e => majLigne(l.pdfId, { dejaChez: e.target.checked })} />
-                        <span className="mrq-case-visuelle" />
-                      </span>
-                      <span style={{ fontSize: 12.5, fontWeight: 800, color: l.dejaChez ? "#15803d" : COLORS.gray700 }}>📍 Produit déjà chez le reconditionneur</span>
-                      <span style={{ fontSize: 11, color: "#9ca3af" }}>— rien à envoyer, pas de bon imprimé, pas de transporteur</span>
-                    </div>
-                  )}
-                  {l.inclure && (
-                    l.commentaireOuvert || l.commentaire ? (
-                      <div style={{ marginTop: 10 }}>
-                        <F label="Commentaire (imprimé sur le bon de prépa et sur le bon envoyé par mail)">
-                          <textarea value={l.commentaire} onChange={e => majLigne(l.pdfId, { commentaire: e.target.value })} rows={2}
-                            placeholder="ex : utiliser l'EAN 3760…, étiquettes fournies par Moorea…"
-                            style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical" }} />
-                        </F>
-                      </div>
-                    ) : (
-                      <button type="button" onClick={() => majLigne(l.pdfId, { commentaireOuvert: true })}
-                        style={{ marginTop: 8, padding: "5px 12px", borderRadius: 8, border: `1px dashed ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                        + Commentaire
-                      </button>
-                    )
                   )}
                 </div>
               );
