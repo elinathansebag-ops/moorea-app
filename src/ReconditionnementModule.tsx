@@ -4061,33 +4061,29 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             {/* Envoi de caisses IFCO vides à NLT : à part, rattaché à aucun article (même envoi
                 que « Envoyer une palette IFCO à NLT »). */}
             <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700, marginBottom: 10 }}>📦 Envoyer des caisses IFCO vides à NLT ?</div>
-              <div style={{ display: "flex", gap: 8, marginBottom: groupeIfcoEnvoi === "oui" ? 12 : 0 }}>
+              {/* 29/09/2026 — Tout sur une seule ligne pour gagner de la hauteur. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700, whiteSpace: "nowrap" }}>📦 Envoyer des caisses IFCO vides à NLT ?</span>
                 {(["oui", "non"] as const).map(v => (
                   <button key={v} type="button" onClick={() => setGroupeIfcoEnvoi(v)}
-                    style={{ flex: 1, maxWidth: 160, padding: "9px 0", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${groupeIfcoEnvoi === v ? COLORS.primary : COLORS.gray200}`, background: groupeIfcoEnvoi === v ? COLORS.primary : "#fff", color: groupeIfcoEnvoi === v ? "#fff" : COLORS.gray700 }}>
+                    style={{ width: 70, height: 34, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${groupeIfcoEnvoi === v ? COLORS.primary : COLORS.gray200}`, background: groupeIfcoEnvoi === v ? COLORS.primary : "#fff", color: groupeIfcoEnvoi === v ? "#fff" : COLORS.gray700 }}>
                     {v === "oui" ? "Oui" : "Non"}
                   </button>
                 ))}
+                {groupeIfcoEnvoi === "oui" && (
+                  <>
+                    <input type="number" min={1} value={groupeIfcoAutre ? groupeCaissesIfco : groupeIfcoPalettes}
+                      onChange={e => groupeIfcoAutre ? setGroupeCaissesIfco(e.target.value) : setGroupeIfcoPalettes(e.target.value)}
+                      style={{ width: 80, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, boxSizing: "border-box" }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.gray700, whiteSpace: "nowrap" }}>{groupeIfcoAutre ? "caisses" : `palette(s) de ${CAISSES_PAR_PALETTE}`}</span>
+                    <button type="button" onClick={() => setGroupeIfcoAutre(v => !v)}
+                      style={{ height: 34, padding: "0 12px", borderRadius: 8, border: `1px solid ${COLORS.gray200}`, background: "#fff", fontSize: 12, fontWeight: 700, color: COLORS.gray600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      {groupeIfcoAutre ? "↩️ En palettes" : "Autre montant (en caisses)"}
+                    </button>
+                    <span style={{ fontSize: 12.5, fontWeight: 800, color: COLORS.gray700, whiteSpace: "nowrap" }}>= {caissesIfcoGroupe} caisses</span>
+                  </>
+                )}
               </div>
-              {groupeIfcoEnvoi === "oui" && (
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-                  {!groupeIfcoAutre ? (
-                    <F label={`Nombre de palettes (${CAISSES_PAR_PALETTE} caisses / palette)`}>
-                      <input type="number" min={1} value={groupeIfcoPalettes} onChange={e => setGroupeIfcoPalettes(e.target.value)} style={{ maxWidth: 140 }} />
-                    </F>
-                  ) : (
-                    <F label="Nombre de caisses">
-                      <input type="number" min={1} value={groupeCaissesIfco} onChange={e => setGroupeCaissesIfco(e.target.value)} style={{ maxWidth: 140 }} />
-                    </F>
-                  )}
-                  <button type="button" onClick={() => setGroupeIfcoAutre(v => !v)}
-                    style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${COLORS.gray200}`, background: "#fff", fontSize: 12, fontWeight: 700, color: COLORS.gray600, cursor: "pointer", marginBottom: 14 }}>
-                    {groupeIfcoAutre ? "↩️ En palettes" : "Autre montant (en caisses)"}
-                  </button>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700, marginBottom: 20 }}>= {caissesIfcoGroupe} caisses</span>
-                </div>
-              )}
             </div>
 
             {lignesGroupe.map((l, i) => {
