@@ -4018,7 +4018,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     <div className="app">
       <style>{styles}</style>
 
-      {comptesMailCasses.length > 0 && (
+      {/* 29/09/2026 — Bandeau fixe retiré (il cachait Retour/Accueil sur toutes les pages) :
+          l'alerte reste affichée sur l'accueil (« ⚠️ X compte(s) mail déconnecté(s) »). */}
+      {false && comptesMailCasses.length > 0 && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 5000, background: "#7f1d1d", color: "#fff", padding: "8px 16px", fontSize: 12.5, textAlign: "center", fontWeight: 700 }}>
           ⚠️ {comptesMailCasses.length > 1 ? "Plusieurs comptes mail sont" : "Un compte mail est"} déconnecté(s) — {comptesMailCasses.map(c => c.email).join(", ")}. Vérifier le mot de passe d'application dans Vercel.
         </div>
