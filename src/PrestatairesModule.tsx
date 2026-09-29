@@ -1896,6 +1896,13 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             statut: "en attente",
             timestamp: Date.now(),
             ifco_palette_commande_id: commandeId,
+            // 29/09/2026 — Le nombre de palettes est déjà connu ici : Arrivage ne le redemande
+            // plus (une étiquette par palette, avec son nombre de caisses).
+            nbPalettesCommandees: lignesIfco.reduce((s, l) => s + (l.quantite || 0), 0),
+            repartitionPalettesCommandees: lignesIfco.flatMap((l) => {
+              const specs = PALETTES_IFCO[l.type as keyof typeof PALETTES_IFCO];
+              return Array.from({ length: l.quantite || 0 }, () => (specs ? specs.caisses : 0));
+            }),
             origine: "",
             variete: notesIfco,
           });

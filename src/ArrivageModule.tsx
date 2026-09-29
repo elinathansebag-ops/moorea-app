@@ -357,6 +357,31 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
     if (!dejaAjusteManuel.current && nbPalettes === 1) setRepartitionPalettes([colisRecusNum]);
   }, [colisRecusNum, nbPalettes]);
 
+  // 29/09/2026 — Palettes IFCO commandées depuis Prestataires : le nombre de palettes y est déjà
+  // saisi, on ne le redemande pas. Anciennes commandes (sans le champ) : déduit du nom
+  // « Palettes IFCO BLL4314 (640 caisses) » → 1920 / 640 = 3 palettes.
+  const repartitionIfcoConnue: number[] | null = (() => {
+    if (!arrivage.ifco_palette_commande_id) return null;
+    const rep = Array.isArray(arrivage.repartitionPalettesCommandees) ? arrivage.repartitionPalettesCommandees.map((n: any) => parseInt(n) || 0).filter((n: number) => n > 0) : [];
+    if (rep.length) return rep;
+    const m = String(arrivage.produit || "").match(/\((\d+)\s*caisses\)/i);
+    const parPalette = m ? parseInt(m[1]) : 0;
+    const total = parseInt(arrivage.quantite) || 0;
+    if (parPalette > 0 && total > 0 && total % parPalette === 0) return Array.from({ length: total / parPalette }, () => parPalette);
+    return null;
+  })();
+  const cleIfcoConnue = repartitionIfcoConnue ? repartitionIfcoConnue.join(",") : "";
+  useEffect(() => {
+    if (!repartitionIfcoConnue) return;
+    const totalPrevu = repartitionIfcoConnue.reduce((a, b) => a + b, 0);
+    // Si le nombre reçu diffère de la commande, on garde le nombre de palettes et on ajuste
+    // la dernière palette.
+    const rep = [...repartitionIfcoConnue];
+    if (colisRecusNum > 0 && colisRecusNum !== totalPrevu) rep[rep.length - 1] = Math.max(0, rep[rep.length - 1] + (colisRecusNum - totalPrevu));
+    setNbPalettesState(rep.length);
+    setRepartitionPalettes(rep);
+  }, [cleIfcoConnue, colisRecusNum]);
+
   // Synchronise colisRecus/nbPalettes/repartitionPalettes à partir des cases palette (voir
   // "cases" ci-dessus) — pour un arrivage "normal", ce sont les cases qui pilotent tout le
   // reste : le total reçu (somme des cases, ou l'attendu si toutes vides, même logique que
@@ -784,7 +809,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           repartir avec une étiquette portant le lot de CET arrivage (lot_interne/lot_fournisseur).
           Pour un arrivage "normal" (!isSimple), ce bloc est remplacé par les cases palette
           fusionnées avec "Colis" plus haut — pas besoin de le répéter ici. */}
-      {isSimple && (
+      {isSimple && repartitionIfcoConnue && (
+        <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 700, color: "#6b7280" }}>
+          🎫 {nbPalettes} palette{nbPalettes > 1 ? "s" : ""} (déclarée{nbPalettes > 1 ? "s" : ""} dans Prestataires) — {nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression : {repartitionPalettes.join(" + ")} caisses
+        </div>
+      )}
+      {isSimple && !repartitionIfcoConnue && (
         <>
           <div style={{ marginBottom: 10, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes ({nbPalettes} étiquette{nbPalettes > 1 ? "s" : ""} à l'impression)</p>
