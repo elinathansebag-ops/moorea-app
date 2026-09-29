@@ -871,7 +871,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 }) {
   const [stockIfcoCharge, setStockIfcoCharge] = useState(false);
   const [arrivagesCharges, setArrivagesCharges] = useState(false);
-  const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "suivi_ifco" | "configuration">("en_cours");
+  const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "suivi_ifco" | "configuration" | "groupee">("en_cours");
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -1425,6 +1425,81 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // "Envoyer une palette IFCO" séparé (avec sa propre étiquette et son propre nombre de
   // palettes) est donc supprimé — pousserEnvoiPaletteIfco ne fait plus qu'enregistrer le
   // mouvement de stock (caisses vides envoyées à NLT), sans imprimer quoi que ce soit.
+  // 29/09/2026 — Extrait tel quel du bouton « Envoyer une palette IFCO à NLT » (même mouvement de
+  // stock IFCO, même demande PAL…, même bordereau imprimé) pour être réutilisé à l'identique par
+  // la demande groupée. AUCUNE règle de stock IFCO n'a été modifiée.
+  async function creerEnvoiPaletteIfcoNlt(qte: number, transporteurNomSaisi: string): Promise<string> {
+    await pousserEnvoiPaletteIfco(qte, "Envoi manuel de palette IFCO à NLT");
+
+    const now = new Date();
+    const aa = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const jj = String(now.getDate()).padStart(2, "0");
+    const prefixeJour = `PAL${aa}${mm}${jj}`;
+    const dejaAujourdhui = demandes.filter(d => d.numero?.startsWith(prefixeJour)).length;
+    const numero = `${prefixeJour}-${String(dejaAujourdhui + 1).padStart(2, "0")}`;
+    const nbGrandes = Math.max(1, Math.round(qte / CAISSES_PAR_PALETTE));
+    const dateFr = nowFr();
+    const transporteurNom = transporteurNomSaisi.trim() || undefined;
+
+    const demandeRef = await push(ref(db, "reconditionnement_demandes"), {
+      numero,
+      dateCreation: now.toISOString(),
+      dateCreationFr: dateFr,
+      creePar: userName || "Moorea",
+      depot: "nlt",
+      articleVrac: "Palette IFCO vide",
+      // 23/09/2026 — Correction (demande d'Elinathan) : "NLT" ici était le nom du
+      // dépôt réutilisé par erreur comme nom de "produit" — ça faisait ressortir
+      // "NLT" comme ligne de récap incompréhensible sur l'étiquette de départ
+      // groupé. Ce champ doit décrire ce qui part physiquement, comme pour
+      // n'importe quelle autre ligne.
+      articleFini: "Palette(s) IFCO vide(s)",
+      caissesIfcoEnvoyees: qte,
+      retourEnIfco: false,
+      // 11/09/2026 — Elinathan a remarqué que la palette apparaissait tout de suite
+      // "🚚 Parti chez le reconditionneur" alors qu'elle n'était pas encore
+      // physiquement partie. Le 01/09/2026 on avait volontairement sauté direct à
+      // "parti" ("l'envoi est immédiat, pas de préparation à valider") — mais ça ne
+      // correspond pas à la réalité du terrain : elle doit d'abord passer par
+      // l'entrepôt ("🕐 En attente entrepôt"), qui la marque "prêt" (avec le nombre
+      // de palettes réellement chargées) puis "parti" au moment où le transporteur
+      // l'emporte réellement — exactement comme une demande de reconditionnement
+      // normale. On ne pré-remplit donc plus entrepotPretPar/entrepotPretDate/
+      // nbPalettesDepart/departDate ici : c'est l'entrepôt qui les renseigne en
+      // validant, via les mêmes boutons/QR que pour les autres demandes — on ne
+      // met donc pas non plus nbPalettesDepart ici : le laisser vide tant que ce
+      // n'est pas "prêt" évite de le compter par erreur dans les totaux "parties"
+      // du récap transporteurs (voir plus bas, totalParties), qui se basent
+      // justement sur la présence de ce champ sans re-vérifier le statut.
+      statut: "en attente",
+      ts: now.getTime(),
+      ...(transporteurNom ? { transporteurNom } : {}),
+    });
+
+    // Bon PDF dédié (pas genererBonPdf — ce n'est pas un reconditionnement,
+    // pas de retour attendu, ça afficherait plein de champs vides "-").
+    try {
+      const pdfBase64 = await genererBonEnvoiPaletteIfco({
+        numero, dateFr, caisses: qte, nbPalettes: nbGrandes, transporteurNom, envoyePar: userName,
+      });
+      const pdfNom = `bon-envoi-palette-ifco-${demandeRef.key}.pdf`;
+      if (demandeRef.key) await update(ref(db, `reconditionnement_demandes/${demandeRef.key}`), { pdfNom, pdfBase64 });
+      try {
+        await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
+      } catch {
+        notify("error", "⚠️ Demande enregistrée, mais l'impression automatique du bordereau a échoué");
+      }
+      // 23/09/2026 — Demande d'Elinathan : plus d'aperçu du bon ouvert
+      // automatiquement à la validation ("je m'en fous, je veux pas voir le
+      // bon") — seule l'impression auto à l'entrepôt compte. Le bon reste
+      // consultable à tout moment via "Bon de prépa" sur la demande créée.
+    } catch (errPdf: any) {
+      notify("error", `⚠️ Demande enregistrée, mais la génération du bordereau a échoué : ${errPdf?.message || "erreur inconnue"}`);
+    }
+    return numero;
+  }
+
   async function pousserEnvoiPaletteIfco(caissesAEnvoyer: number, raison: string) {
     const now = new Date();
     // 31/08/2026 — Plus de plafond à 0 ici (Math.max(0, ...) supprimé partout sur le stock
@@ -2393,6 +2468,214 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       setActiveTab("en_cours");
     } catch (err: any) {
       notify("error", `❌ Erreur: ${err.message}`);
+    }
+  }
+
+  // ═══ DEMANDE GROUPÉE (29/09/2026) ═══════════════════════════════════════════════════════
+  // Demande d'Elinathan : quand le commercial importe tous les bons Geslot d'un coup, pouvoir
+  // tout déclarer en UNE fois au lieu de refaire le formulaire bon par bon. Un seul écran :
+  // dépôt / transporteur / caisses IFCO vides choisis une fois en haut, une carte par bon
+  // pré-remplie par la lecture automatique, un seul bouton. En dessous, ça reste une demande
+  // par bon (suivi Arrivage, BL NLT par lot, stock, étiquettes). Les caisses IFCO vides sont
+  // envoyées à part, EXACTEMENT comme le bouton « Envoyer une palette IFCO à NLT »
+  // (creerEnvoiPaletteIfcoNlt) — aucune règle de mouvement de stock IFCO n'a changé, et les
+  // lignes de la demande groupée n'ont jamais de caissesIfcoEnvoyees propres.
+  type LigneGroupe = {
+    pdfId: string; nom: string; base64: string;
+    lecture: "attente" | "en_cours" | "ok" | "echec";
+    inclure: boolean; depot: Depot | "";
+    articleVrac: string; lot: string; nbSortir: string; articleFini: string; nbEntrer: string; qteParColis: string;
+    retourIfco: "" | "oui" | "non"; cartons: string;
+  };
+  const [lignesGroupe, setLignesGroupe] = useState<LigneGroupe[]>([]);
+  const [groupeDepot, setGroupeDepot] = useState<Depot | "">("");
+  const [groupeTransporteurId, setGroupeTransporteurId] = useState("");
+  const [groupeCaissesIfco, setGroupeCaissesIfco] = useState("");
+  const [groupeEnCours, setGroupeEnCours] = useState(false);
+  const majLigne = (pdfId: string, champs: Partial<LigneGroupe>) =>
+    setLignesGroupe(prev => prev.map(l => l.pdfId === pdfId ? { ...l, ...champs } : l));
+
+  // Même lecture que lireEtPreremplirDepuisPdf, mais renvoie les valeurs au lieu de remplir le
+  // formulaire (pour pouvoir lire plusieurs bons sans toucher au formulaire bon par bon).
+  async function analyserBonGeslot(bytes: Uint8Array) {
+    const pdfjsLib: any = await import("pdfjs-dist");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    const doc = await pdfjsLib.getDocument({ data: bytes, wasmUrl: "/pdfjs-wasm/" }).promise;
+    const page = await doc.getPage(1);
+    const viewport = page.getViewport({ scale: 2.5 });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    const Tesseract: any = await import("tesseract.js");
+    const { data } = await Tesseract.recognize(canvas, "fra");
+    const lines: string[] = (data?.text || "").split("\n");
+    const lire = (label: string): string => {
+      const re = new RegExp(label + "\\s*[:：]?\\s*(.+)", "i");
+      for (const line of lines) { const m = line.match(re); if (m && m[1] && m[1].trim()) return m[1].trim(); }
+      return "";
+    };
+    const lireNombre = (label: string): string => {
+      const re = new RegExp(label + "\\s*[:：]?\\s*(\\d+)", "i");
+      for (const line of lines) { const m = line.match(re); if (m && m[1]) return m[1]; }
+      return "";
+    };
+    const resoudreArticle = (brut: string): string => {
+      if (!brut) return "";
+      const nettoye = brut.toUpperCase().replace(/\s+/g, " ").trim();
+      if (!nettoye) return brut;
+      let trouve = catalogueArticles.find(a => a.libelle.toUpperCase() === nettoye);
+      if (trouve) return trouve.libelle;
+      trouve = catalogueArticles.find(a => nettoye.includes(a.libelle.toUpperCase()));
+      if (trouve) return trouve.libelle;
+      trouve = catalogueArticles.find(a => nettoye.length > 4 && a.libelle.toUpperCase().includes(nettoye));
+      if (trouve) return trouve.libelle;
+      return brut;
+    };
+    const nbEntrer = lireNombre("Nb\\s*colis\\s*[àa]\\s*entrer");
+    const qteTotale = lireNombre("Qte\\s*conditionnement");
+    const n = parseInt(nbEntrer) || 0;
+    const parColis = qteTotale && n > 0 ? parseFloat(qteTotale) / n : null;
+    return {
+      articleVrac: resoudreArticle(lire("Article\\s*[àa]\\s*utiliser")),
+      lot: normaliserLot(lire("Lot")),
+      nbSortir: lireNombre("Nb\\s*colis\\s*[àa]\\s*sortir"),
+      articleFini: resoudreArticle(lire("Article\\s*[àa]\\s*fabriquer")),
+      nbEntrer,
+      qteParColis: parColis == null ? "" : String(Number.isInteger(parColis) ? parColis : Math.round(parColis * 100) / 100),
+    };
+  }
+
+  async function ouvrirDemandeGroupee() {
+    const lignes: LigneGroupe[] = pdfsEnAttente.map(p => ({
+      pdfId: p.id, nom: p.article || p.nom, base64: p.base64, lecture: "attente", inclure: true, depot: "",
+      articleVrac: "", lot: "", nbSortir: "", articleFini: "", nbEntrer: "", qteParColis: "", retourIfco: "", cartons: "",
+    }));
+    setLignesGroupe(lignes);
+    setActiveTab("groupee");
+    // Lecture des bons une par une, en arrière-plan : les cartes se remplissent au fur et à mesure.
+    for (const l of lignes) {
+      majLigne(l.pdfId, { lecture: "en_cours" });
+      try {
+        const bytes = new Uint8Array(await (await fetch(l.base64)).arrayBuffer());
+        const v = await analyserBonGeslot(bytes);
+        majLigne(l.pdfId, {
+          ...v, lecture: v.articleVrac || v.articleFini ? "ok" : "echec",
+          retourIfco: /ifco/i.test(v.articleFini) ? "oui" : (v.articleFini ? "non" : ""),
+        });
+      } catch {
+        majLigne(l.pdfId, { lecture: "echec" });
+      }
+    }
+  }
+
+  async function creerDemandesGroupees() {
+    if (groupeEnCours) return;
+    const aCreer = lignesGroupe.filter(l => l.inclure);
+    const caissesIfco = parseInt(groupeCaissesIfco) || 0;
+    if (aCreer.length === 0 && caissesIfco <= 0) { notify("error", "✗ Aucun bon sélectionné"); return; }
+    if (!groupeTransporteurId) { notify("error", "✗ Choisis un transporteur (en haut)"); return; }
+    for (const [i, l] of aCreer.entries()) {
+      const dep = l.depot || groupeDepot;
+      const nom = `Bon ${i + 1} (${l.nom})`;
+      if (!dep) { notify("error", `✗ ${nom} : choisis un dépôt`); return; }
+      if (!l.articleVrac.trim() || !l.articleFini.trim()) { notify("error", `✗ ${nom} : article vrac et article à fabriquer obligatoires`); return; }
+      if (!l.nbEntrer) { notify("error", `✗ ${nom} : nombre de colis à entrer obligatoire`); return; }
+      if (dep === "nlt" && l.retourIfco === "") { notify("error", `✗ ${nom} : retour en caisses IFCO Oui/Non ?`); return; }
+    }
+    const inconnus = aCreer.flatMap(l => [l.articleVrac, l.articleFini]).filter(a => a && !catalogueArticles.some(c => c.libelle === a));
+    if (inconnus.length && !window.confirm(`${[...new Set(inconnus)].map(a => `"${a}"`).join(", ")} ${inconnus.length > 1 ? "ne sont pas" : "n'est pas"} dans le catalogue Moorea. Créer quand même ?`)) return;
+
+    setGroupeEnCours(true);
+    const transporteur = transporteurs.find(t => t.id === groupeTransporteurId);
+    const dejaNumerotes: Demande[] = [...demandes];
+    let crees = 0;
+    let cartonsRestants = stockBabyBlancAndes;
+    try {
+      for (const l of aCreer) {
+        const dep = (l.depot || groupeDepot) as Depot;
+        const now = new Date();
+        const lotSaisi = normaliserLot(l.lot.trim());
+        const arrivageOrigine = lotSaisi
+          ? arrivagesData.find(a => String(a.lot_interne || "") === lotSaisi || String(a.lot_fournisseur || "") === lotSaisi
+              || (Array.isArray(a.lot_fournisseur_liste) && a.lot_fournisseur_liste.map(String).includes(lotSaisi)))
+          : null;
+        const nEntrer = parseInt(l.nbEntrer) || 0;
+        const parColis = parseFloat(l.qteParColis) || 0;
+        const cartons = dep === "andes" ? (parseInt(l.cartons) || 0) : 0;
+        const demande: any = {
+          numero: genererNumeroDemande(now, dejaNumerotes),
+          dateCreation: now.toISOString(),
+          dateCreationFr: nowFr(),
+          creePar: userName || "Moorea",
+          depot: dep,
+          articleVrac: l.articleVrac.trim(),
+          lot: lotSaisi || undefined,
+          origineFournisseur: arrivageOrigine?.fournisseur || undefined,
+          origineLotFournisseur: arrivageOrigine?.lot_fournisseur || undefined,
+          nbColisASortir: l.nbSortir ? parseInt(l.nbSortir) : undefined,
+          articleFini: l.articleFini.trim(),
+          nbColisAEntrer: nEntrer,
+          qteConditionnement: nEntrer > 0 && parColis > 0 ? Math.round(parColis * nEntrer) : undefined,
+          caissesIfcoEnvoyees: dep === "nlt" ? 0 : undefined,
+          cartonsBabyBlancEnvoyes: dep === "andes" ? cartons : undefined,
+          retourEnIfco: dep === "nlt" ? l.retourIfco === "oui" : false,
+          fournirEtiquettes: false,
+          transporteurId: groupeTransporteurId,
+          transporteurNom: transporteur?.nom,
+          pdfGeslotNom: l.nom,
+          pdfGeslotBase64: l.base64,
+          statut: "en attente",
+          ts: now.getTime(),
+          demandeGroupee: true,
+        };
+        Object.keys(demande).forEach(k => { if (demande[k] === undefined) delete demande[k]; });
+        const demandeRef = await push(ref(db, "reconditionnement_demandes"), demande);
+        const demandeId = demandeRef.key as string;
+        dejaNumerotes.push({ ...demande, id: demandeId });
+        // Mêmes étapes que creerDemande : bon propre + impression entrepôt + récap mail du jour.
+        try {
+          const pdfBase64 = await genererBonPdf({ ...demande, id: demandeId } as Demande);
+          const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
+          await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
+          try { await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64); }
+          catch { notify("error", `⚠️ ${demande.numero} : impression automatique du bon échouée`); }
+          await update(ref(db, `reconditionnement_demandes/${demandeId}`), { emailEnvoye: false });
+        } catch (errPdf: any) {
+          notify("error", `⚠️ ${demande.numero} : génération du bon échouée (${errPdf?.message || "erreur"})`);
+        }
+        // Retour attendu dans Arrivage dès la création (même règle que creerDemande).
+        await set(ref(db, `arrivages/recond_${demandeId}`), {
+          fournisseur: "Reconditionnement", fournisseur_origine: demande.origineFournisseur || null,
+          produit: demande.articleFini, variete: demande.articleVrac,
+          lot_interne: demande.lot || demande.numero || demandeId, lot_fournisseur: demande.origineLotFournisseur || "",
+          quantite: nEntrer, unite: "colis", date: new Date().toLocaleDateString("fr-FR"), statut: "en attente",
+          timestamp: Date.now(), reconditionnement_demande_id: demandeId, depot: dep,
+          qteConditionnementAttendue: demande.qteConditionnement ?? null, caissesIfcoEnvoyees: demande.caissesIfcoEnvoyees ?? null,
+          origine: `${DEPOT_LABEL[dep]}${transporteur?.nom ? ` · ${transporteur.nom}` : ""}`, transporteurNom: transporteur?.nom || null,
+          retour_en_ifco: demande.retourEnIfco ?? false, quantiteDemandeeInitiale: nEntrer, quantiteDeclareePresta: null, ecartPresta: null,
+        }).catch(() => notify("error", `⚠️ ${demande.numero} : retour attendu non créé dans Arrivage`));
+        // Cartons Andès : même mouvement que creerDemande.
+        if (cartons > 0) {
+          cartonsRestants -= cartons;
+          await update(ref(db, "stock_carton_andes"), { baby_blanc: cartonsRestants });
+          await push(ref(db, "reconditionnement_stock_mouvements"), {
+            type: "envoi_reconditionneur", article: "carton_baby_blanc", depot: dep, quantite: cartons, date: nowFr(), ts: now.getTime(),
+            reconditionnement_demande_id: demandeId,
+          });
+        }
+        await remove(ref(db, `reconditionnement_pdfs_en_attente/${l.pdfId}`)).catch(() => {});
+        crees++;
+      }
+      let numeroPalette = "";
+      if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteur?.nom || "");
+      notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
+      setLignesGroupe([]); setGroupeCaissesIfco("");
+      setActiveTab("en_cours");
+    } catch (err: any) {
+      notify("error", `❌ Erreur après ${crees} demande(s) créée(s) : ${err?.message || "erreur inconnue"} — les bons restants sont toujours dans « Fichiers en attente »`);
+    } finally {
+      setGroupeEnCours(false);
     }
   }
 
@@ -3539,6 +3822,97 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         )}
 
         {/* ── NOUVELLE DEMANDE ── */}
+        {/* ═══ DEMANDE GROUPÉE (29/09/2026) — voir creerDemandesGroupees ═══ */}
+        {activeTab === "groupee" && (
+          <div>
+            <button type="button" onClick={() => setActiveTab("nouvelle")} style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 12 }}>← Retour au formulaire bon par bon</button>
+            <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
+              <div className="section-title" style={{ marginBottom: 10 }}>🧾 Déclaration groupée — commun à tous les bons</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+                <F label="Dépôt (par défaut)">
+                  <select value={groupeDepot} onChange={e => setGroupeDepot(e.target.value as Depot | "")}>
+                    <option value="">— Choisir un dépôt —</option>
+                    <option value="nlt">NLT</option>
+                    <option value="andes">Andès</option>
+                  </select>
+                </F>
+                <F label="Transporteur" required>
+                  <select value={groupeTransporteurId} onChange={e => setGroupeTransporteurId(e.target.value)}>
+                    <option value="">— Choisir —</option>
+                    {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                  </select>
+                </F>
+                <F label="Caisses IFCO vides à envoyer à NLT">
+                  <input type="number" min={0} value={groupeCaissesIfco} onChange={e => setGroupeCaissesIfco(e.target.value)} placeholder={`ex : ${CAISSES_PAR_PALETTE} (1 palette)`} />
+                </F>
+              </div>
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: COLORS.gray600 }}>
+                Les caisses IFCO vides partent à part (comme « Envoyer une palette IFCO à NLT »), rattachées à aucun article. Laisse vide si rien à envoyer.
+              </p>
+            </div>
+
+            {lignesGroupe.map((l, i) => {
+              const dep = l.depot || groupeDepot;
+              const lectureTxt = l.lecture === "en_cours" ? "⏳ lecture du bon…" : l.lecture === "attente" ? "⏳ en attente de lecture" : l.lecture === "echec" ? "⚠️ lecture incomplète — complète à la main" : "✅ lu automatiquement";
+              const manque = (v: string) => (l.inclure && !v ? { borderColor: "#fca5a5", background: "#fef2f2" } : {});
+              return (
+                <div key={l.pdfId} className="card" style={{ padding: "12px 16px", marginBottom: 10, opacity: l.inclure ? 1 : 0.5 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                      <span className="mrq-case-conteneur">
+                        <input type="checkbox" className="mrq-case-native" checked={l.inclure} onChange={e => majLigne(l.pdfId, { inclure: e.target.checked })} />
+                        <span className="mrq-case-visuelle" />
+                      </span>
+                      Bon {i + 1} — {l.nom}
+                    </label>
+                    <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: l.lecture === "echec" ? "#b45309" : COLORS.gray600 }}>{lectureTxt}</span>
+                      <button type="button" onClick={() => setPdfApercu({ titre: l.nom, base64: l.base64 })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e9d8fd", background: "#fff", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Aperçu</button>
+                    </span>
+                  </div>
+                  {l.inclure && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+                      <F label="Dépôt">
+                        <select value={l.depot} onChange={e => majLigne(l.pdfId, { depot: e.target.value as Depot | "" })} style={manque(dep)}>
+                          <option value="">{groupeDepot ? `Comme en haut (${DEPOT_LABEL[groupeDepot]})` : "— Choisir —"}</option>
+                          <option value="nlt">NLT</option>
+                          <option value="andes">Andès</option>
+                        </select>
+                      </F>
+                      <F label="Article vrac (à utiliser)"><ArticleSelect value={l.articleVrac} onSelect={v => majLigne(l.pdfId, { articleVrac: v })} articles={catalogueArticles} placeholder="Article du catalogue…" /></F>
+                      <F label="Lot"><input value={l.lot} onChange={e => majLigne(l.pdfId, { lot: e.target.value })} /></F>
+                      <F label="Colis à sortir"><input type="number" value={l.nbSortir} onChange={e => majLigne(l.pdfId, { nbSortir: e.target.value })} /></F>
+                      <F label="Article à fabriquer"><ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: l.retourIfco || (/ifco/i.test(v) ? "oui" : "") })} articles={catalogueArticles} placeholder="Article du catalogue…" /></F>
+                      <F label="Colis à entrer"><input type="number" value={l.nbEntrer} onChange={e => majLigne(l.pdfId, { nbEntrer: e.target.value })} style={manque(l.nbEntrer)} /></F>
+                      <F label={dep ? `Quantité par colis (${UNITE_QTE[dep]})` : "Quantité par colis"}><input type="number" value={l.qteParColis} onChange={e => majLigne(l.pdfId, { qteParColis: e.target.value })} /></F>
+                      {dep === "nlt" && (
+                        <F label="Retour en caisses IFCO ?">
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {(["oui", "non"] as const).map(v => (
+                              <button key={v} type="button" onClick={() => majLigne(l.pdfId, { retourIfco: v })}
+                                style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${l.retourIfco === v ? COLORS.primary : (l.retourIfco === "" ? "#fca5a5" : COLORS.gray200)}`, background: l.retourIfco === v ? COLORS.primary : "#fff", color: l.retourIfco === v ? "#fff" : COLORS.gray700 }}>
+                                {v === "oui" ? "Oui" : "Non"}
+                              </button>
+                            ))}
+                          </div>
+                        </F>
+                      )}
+                      {dep === "andes" && (
+                        <F label="Cartons BABY BLANC utilisés"><input type="number" min={0} value={l.cartons} onChange={e => majLigne(l.pdfId, { cartons: e.target.value })} /></F>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            <button type="button" onClick={creerDemandesGroupees} disabled={groupeEnCours}
+              style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: groupeEnCours ? COLORS.gray200 : COLORS.primary, color: groupeEnCours ? "#999" : "#fff", fontSize: 15, fontWeight: 800, cursor: groupeEnCours ? "default" : "pointer", marginTop: 6 }}>
+              {groupeEnCours ? "⏳ Création en cours…" : `✅ Créer les ${lignesGroupe.filter(l => l.inclure).length} demandes${(parseInt(groupeCaissesIfco) || 0) > 0 ? ` + l'envoi de ${groupeCaissesIfco} caisses IFCO` : ""}`}
+            </button>
+          </div>
+        )}
+
         {activeTab === "nouvelle" && (
           <div className="fade-up">
             {editDemandeId && (
@@ -3579,6 +3953,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 {pdfsEnAttente.length > 0 && (
                   <button type="button" onClick={() => setAfficherPdfsEnAttente(v => !v)} style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e9d8fd", background: "#faf5ff", color: "#7c3aed", fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                     📥 Fichiers en attente ({pdfsEnAttente.length})
+                  </button>
+                )}
+                {pdfsEnAttente.length > 1 && (
+                  <button type="button" onClick={ouvrirDemandeGroupee} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    🧾 Tout déclarer en une fois ({pdfsEnAttente.length} bons)
                   </button>
                 )}
               </div>
@@ -4472,75 +4851,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   if (!qte || qte <= 0) { notify("error", "✗ Quantité invalide"); return; }
                   setEnvoiPaletteEnCours(true);
                   try {
-                    await pousserEnvoiPaletteIfco(qte, "Envoi manuel de palette IFCO à NLT");
-
-                    const now = new Date();
-                    const aa = String(now.getFullYear()).slice(-2);
-                    const mm = String(now.getMonth() + 1).padStart(2, "0");
-                    const jj = String(now.getDate()).padStart(2, "0");
-                    const prefixeJour = `PAL${aa}${mm}${jj}`;
-                    const dejaAujourdhui = demandes.filter(d => d.numero?.startsWith(prefixeJour)).length;
-                    const numero = `${prefixeJour}-${String(dejaAujourdhui + 1).padStart(2, "0")}`;
-                    const nbGrandes = Math.max(1, Math.round(qte / CAISSES_PAR_PALETTE));
-                    const dateFr = nowFr();
-                    const transporteurNom = envoiPaletteTransporteur.trim() || undefined;
-
-                    const demandeRef = await push(ref(db, "reconditionnement_demandes"), {
-                      numero,
-                      dateCreation: now.toISOString(),
-                      dateCreationFr: dateFr,
-                      creePar: userName || "Moorea",
-                      depot: "nlt",
-                      articleVrac: "Palette IFCO vide",
-                      // 23/09/2026 — Correction (demande d'Elinathan) : "NLT" ici était le nom du
-                      // dépôt réutilisé par erreur comme nom de "produit" — ça faisait ressortir
-                      // "NLT" comme ligne de récap incompréhensible sur l'étiquette de départ
-                      // groupé. Ce champ doit décrire ce qui part physiquement, comme pour
-                      // n'importe quelle autre ligne.
-                      articleFini: "Palette(s) IFCO vide(s)",
-                      caissesIfcoEnvoyees: qte,
-                      retourEnIfco: false,
-                      // 11/09/2026 — Elinathan a remarqué que la palette apparaissait tout de suite
-                      // "🚚 Parti chez le reconditionneur" alors qu'elle n'était pas encore
-                      // physiquement partie. Le 01/09/2026 on avait volontairement sauté direct à
-                      // "parti" ("l'envoi est immédiat, pas de préparation à valider") — mais ça ne
-                      // correspond pas à la réalité du terrain : elle doit d'abord passer par
-                      // l'entrepôt ("🕐 En attente entrepôt"), qui la marque "prêt" (avec le nombre
-                      // de palettes réellement chargées) puis "parti" au moment où le transporteur
-                      // l'emporte réellement — exactement comme une demande de reconditionnement
-                      // normale. On ne pré-remplit donc plus entrepotPretPar/entrepotPretDate/
-                      // nbPalettesDepart/departDate ici : c'est l'entrepôt qui les renseigne en
-                      // validant, via les mêmes boutons/QR que pour les autres demandes — on ne
-                      // met donc pas non plus nbPalettesDepart ici : le laisser vide tant que ce
-                      // n'est pas "prêt" évite de le compter par erreur dans les totaux "parties"
-                      // du récap transporteurs (voir plus bas, totalParties), qui se basent
-                      // justement sur la présence de ce champ sans re-vérifier le statut.
-                      statut: "en attente",
-                      ts: now.getTime(),
-                      ...(transporteurNom ? { transporteurNom } : {}),
-                    });
-
-                    // Bon PDF dédié (pas genererBonPdf — ce n'est pas un reconditionnement,
-                    // pas de retour attendu, ça afficherait plein de champs vides "-").
-                    try {
-                      const pdfBase64 = await genererBonEnvoiPaletteIfco({
-                        numero, dateFr, caisses: qte, nbPalettes: nbGrandes, transporteurNom, envoyePar: userName,
-                      });
-                      const pdfNom = `bon-envoi-palette-ifco-${demandeRef.key}.pdf`;
-                      if (demandeRef.key) await update(ref(db, `reconditionnement_demandes/${demandeRef.key}`), { pdfNom, pdfBase64 });
-                      try {
-                        await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
-                      } catch {
-                        notify("error", "⚠️ Demande enregistrée, mais l'impression automatique du bordereau a échoué");
-                      }
-                      // 23/09/2026 — Demande d'Elinathan : plus d'aperçu du bon ouvert
-                      // automatiquement à la validation ("je m'en fous, je veux pas voir le
-                      // bon") — seule l'impression auto à l'entrepôt compte. Le bon reste
-                      // consultable à tout moment via "Bon de prépa" sur la demande créée.
-                    } catch (errPdf: any) {
-                      notify("error", `⚠️ Demande enregistrée, mais la génération du bordereau a échoué : ${errPdf?.message || "erreur inconnue"}`);
-                    }
-
+                    const numero = await creerEnvoiPaletteIfcoNlt(qte, envoiPaletteTransporteur);
                     // 11/09/2026 — Message ajusté : ce n'est plus "envoyées" (déjà parti), mais
                     // juste créée, en attente que l'entrepôt la prépare puis la fasse partir.
                     notify("success", `📦 Demande créée — ${qte} caisses IFCO à préparer pour NLT (${numero})`);
