@@ -358,31 +358,17 @@ export function nowFr(): string {
 // demandes déjà créées aujourd'hui (connues côté client via le listener temps réel) — largement
 // suffisant pour un volume de quelques demandes par jour, sans avoir besoin d'un compteur
 // transactionnel côté serveur.
-// 29/09/2026 — « un truc que je comprends pas avec la reconnaissance des articles » : sur un bon
-// « (PASSIO0028) - PASSION COLOMBIE 2€ (3 PIECES X 8) », la lecture (correcte) était ensuite
-// associée au PREMIER article du catalogue dont le nom apparaît dans le texte — un article court
-// (ex : « 3 PIECES ») pouvait passer avant le bon. Maintenant : code Geslot retiré, correspondance
-// exacte d'abord, sinon l'article du catalogue le plus LONG contenu dans le texte (et couvrant
-// au moins 60 % du texte), sinon le texte lu tel quel (sans le code).
-function resoudreArticleCatalogue(brut: string, catalogue: { code: string; libelle: string }[]): string {
+// 29/09/2026 — Nom d'article lu sur un bon Geslot : on garde simplement ce qui est écrit APRÈS
+// le « - » (le code Geslot entre parenthèses, ex « (PASSIO0028) - », est retiré). Plus aucune
+// recherche dans le catalogue (demande d'Elinathan : elle faisait remplacer le bon nom par un
+// autre article, ex « 3 pieces »).
+function resoudreArticleCatalogue(brut: string, _catalogue?: unknown): string {
   if (!brut) return "";
-  const norm = (x: string) => String(x || "").toUpperCase().replace(/\s+/g, " ").trim();
-  const nettoye = norm(brut);
-  if (!nettoye) return brut;
-  const sansCode = norm(nettoye.replace(/^\(?[A-Z0-9 ]{3,14}\)?\s*[-–]\s*/, "")) || nettoye;
-  for (const t of [nettoye, sansCode]) {
-    const exact = catalogue.find(a => norm(a.libelle) === t);
-    if (exact) return exact.libelle;
-  }
-  const contenus = catalogue
-    .filter(a => { const l = norm(a.libelle); return l.length >= 6 && sansCode.includes(l) && l.length >= sansCode.length * 0.6; })
-    .sort((a, b) => b.libelle.length - a.libelle.length);
-  if (contenus[0]) return contenus[0].libelle;
-  const englobants = catalogue
-    .filter(a => sansCode.length > 4 && norm(a.libelle).includes(sansCode))
-    .sort((a, b) => a.libelle.length - b.libelle.length);
-  if (englobants[0]) return englobants[0].libelle;
-  return sansCode;
+  const texte = String(brut).replace(/\s+/g, " ").trim();
+  // « (CODE) - NOM » → tout ce qui suit le « - », jusqu'au bout de la ligne.
+  if (texte.startsWith("(")) return texte.replace(/^\([^)]*\)\s*/, "").replace(/^[-–]\s*/, "").trim();
+  const i = texte.search(/\s[-–]\s/);
+  return (i >= 0 ? texte.slice(i).replace(/^\s*[-–]\s*/, "") : texte).trim();
 }
 
 function genererNumeroDemande(dateCreation: Date, demandesExistantes: Demande[]): string {
