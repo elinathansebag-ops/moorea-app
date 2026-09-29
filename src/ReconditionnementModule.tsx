@@ -2734,8 +2734,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       if (!dep) { notify("error", `✗ ${nom} : choisis un dépôt`); return; }
       if (!l.articleVrac.trim() || !l.articleFini.trim()) { notify("error", `✗ ${nom} : article vrac et article à fabriquer obligatoires`); return; }
       if (!l.nbEntrer) { notify("error", `✗ ${nom} : nombre de colis à entrer obligatoire`); return; }
-      if (dep === "nlt" && l.retourIfco === "") { notify("error", `✗ ${nom} : retour en caisses IFCO Oui/Non ?`); return; }
-      if (dep === "andes" && !l.retourBabyBlanc) { notify("error", `✗ ${nom} : revient en cartons BABY BLANC Oui/Non ?`); return; }
+      // Retour IFCO / BABY BLANC : case à cocher (non cochée = Non).
     }
 
     setGroupeEnCours(true);
@@ -4098,16 +4097,6 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               const champ: React.CSSProperties = { width: "100%", height: 36, padding: "0 10px", fontSize: 13, borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, boxSizing: "border-box", background: "#fff" };
               const manque = (v: string): React.CSSProperties => ({ ...champ, ...(l.inclure && !v ? { borderColor: "#fca5a5", background: "#fef2f2" } : {}) });
               const lab = (t: string) => <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray600, textTransform: "uppercase", letterSpacing: 0.3, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t}</div>;
-              const ouiNon = (val: string | undefined, set: (v: "oui" | "non") => void) => (
-                <div style={{ display: "flex", gap: 6, height: 36 }}>
-                  {(["oui", "non"] as const).map(v => (
-                    <button key={v} type="button" onClick={() => set(v)}
-                      style={{ flex: 1, height: 36, borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${val === v ? COLORS.primary : (!val ? "#fca5a5" : COLORS.gray200)}`, background: val === v ? COLORS.primary : "#fff", color: val === v ? "#fff" : COLORS.gray700 }}>
-                      {v === "oui" ? "Oui" : "Non"}
-                    </button>
-                  ))}
-                </div>
-              );
               return (
                 <div key={l.pdfId} className="card" style={{ padding: "12px 16px", marginBottom: 10, opacity: l.inclure ? 1 : 0.5 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -4123,58 +4112,80 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       <button type="button" onClick={() => setPdfApercu({ titre: l.nom, base64: l.base64 })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e9d8fd", background: "#fff", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Aperçu</button>
                     </span>
                   </div>
-                  {l.inclure && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "10px 12px" }}>
-                      <div>{lab("Dépôt")}
-                        <select value={l.depot} onChange={e => majLigne(l.pdfId, { depot: e.target.value as Depot | "" })} style={manque(dep)}>
-                          <option value="">— Choisir —</option>
-                          <option value="nlt">NLT</option>
-                          <option value="andes">Andès</option>
-                        </select>
-                      </div>
-                      <div>{lab("Article vrac (à utiliser)")}<ArticleSelect value={l.articleVrac} onSelect={v => majLigne(l.pdfId, { articleVrac: v })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
-                      <div>{lab("Lot")}<input value={l.lot} onChange={e => majLigne(l.pdfId, { lot: e.target.value })} style={champ} /></div>
-                      <div>{lab("Colis à sortir")}<input type="number" value={l.nbSortir} onChange={e => majLigne(l.pdfId, { nbSortir: e.target.value })} style={champ} /></div>
-                      <div>{lab("Article à fabriquer")}<ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: v.trim() ? retourIfcoParDefaut(v) : "" })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
-                      <div>{lab("Colis à entrer")}<input type="number" value={l.nbEntrer} onChange={e => majLigne(l.pdfId, { nbEntrer: e.target.value })} style={manque(l.nbEntrer)} /></div>
-                      <div>{lab(dep ? `Qté par colis (${UNITE_QTE[dep]})` : "Qté par colis")}<input type="number" value={l.qteParColis} onChange={e => majLigne(l.pdfId, { qteParColis: e.target.value })} style={champ} /></div>
-                      <div>
-                        {dep === "nlt" && <>{lab("Retour en caisses IFCO ?")}{ouiNon(l.retourIfco, v => majLigne(l.pdfId, { retourIfco: v }))}</>}
-                        {dep === "andes" && <>{lab("Retour en BABY BLANC ?")}{ouiNon(l.retourBabyBlanc, v => majLigne(l.pdfId, { retourBabyBlanc: v }))}</>}
-                      </div>
-                      {!l.dejaChez && (
-                        <div>{lab("Transporteur")}
-                          <select value={transporteurDeLigne(l, dep)} onChange={e => majLigne(l.pdfId, { transporteurId: e.target.value })} style={manque(transporteurDeLigne(l, dep))}>
-                            <option value="">— Choisir —</option>
-                            {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-                          </select>
+                  {l.inclure && (() => {
+                    // 29/09/2026 — 3 lignes : (1) dépôt / lot / transporteur / déjà chez le
+                    // reconditionneur, (2) produit à sortir + quantité, (3) produit à rentrer +
+                    // quantités + case retour IFCO (NLT) ou BABY BLANC (Andès).
+                    const ligne = (cols: string, contenu: any) => <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "end" }}>{contenu}</div>;
+                    const caseRetour = (coche: boolean, libelle: string, set: (v: "oui" | "non") => void) => (
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${coche ? COLORS.primary : COLORS.gray200}`, background: coche ? COLORS.primaryLight : "#fff", fontSize: 12.5, fontWeight: 700, color: coche ? COLORS.primary : COLORS.gray700, whiteSpace: "nowrap" }}>
+                        <span className="mrq-case-conteneur">
+                          <input type="checkbox" className="mrq-case-native" checked={coche} onChange={e => set(e.target.checked ? "oui" : "non")} />
+                          <span className="mrq-case-visuelle" />
+                        </span>
+                        {libelle}
+                      </label>
+                    );
+                    return (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {ligne("1fr 1fr 1.4fr 1.6fr", <>
+                          <div>{lab("Dépôt")}
+                            <select value={l.depot} onChange={e => majLigne(l.pdfId, { depot: e.target.value as Depot | "" })} style={manque(dep)}>
+                              <option value="">— Choisir —</option>
+                              <option value="nlt">NLT</option>
+                              <option value="andes">Andès</option>
+                            </select>
+                          </div>
+                          <div>{lab("Lot")}<input value={l.lot} onChange={e => majLigne(l.pdfId, { lot: e.target.value })} style={champ} /></div>
+                          <div>{lab("Transporteur")}
+                            {l.dejaChez
+                              ? <div style={{ ...champ, display: "flex", alignItems: "center", color: "#9ca3af", background: COLORS.gray100 }}>aucun (déjà sur place)</div>
+                              : <select value={transporteurDeLigne(l, dep)} onChange={e => majLigne(l.pdfId, { transporteurId: e.target.value })} style={manque(transporteurDeLigne(l, dep))}>
+                                  <option value="">— Choisir —</option>
+                                  {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                                </select>}
+                          </div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${l.dejaChez ? COLORS.secondary : COLORS.gray200}`, background: l.dejaChez ? COLORS.secondaryLight : "#fff", fontSize: 12.5, fontWeight: 700, color: l.dejaChez ? "#15803d" : COLORS.gray700, whiteSpace: "nowrap", overflow: "hidden" }}>
+                            <span className="mrq-case-conteneur">
+                              <input type="checkbox" className="mrq-case-native" checked={l.dejaChez} onChange={e => majLigne(l.pdfId, { dejaChez: e.target.checked })} />
+                              <span className="mrq-case-visuelle" />
+                            </span>
+                            📍 Déjà chez le reconditionneur
+                          </label>
+                        </>)}
+                        {ligne("3fr 1fr", <>
+                          <div>{lab("Produit à sortir (article vrac)")}<ArticleSelect value={l.articleVrac} onSelect={v => majLigne(l.pdfId, { articleVrac: v })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
+                          <div>{lab("Colis à sortir")}<input type="number" value={l.nbSortir} onChange={e => majLigne(l.pdfId, { nbSortir: e.target.value })} style={champ} /></div>
+                        </>)}
+                        {ligne("3fr 1fr 1fr 1.3fr", <>
+                          <div>{lab("Produit à rentrer (article à fabriquer)")}<ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: v.trim() ? retourIfcoParDefaut(v) : "" })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
+                          <div>{lab("Colis à entrer")}<input type="number" value={l.nbEntrer} onChange={e => majLigne(l.pdfId, { nbEntrer: e.target.value })} style={manque(l.nbEntrer)} /></div>
+                          <div>{lab(dep ? `Qté / colis (${UNITE_QTE[dep]})` : "Qté / colis")}<input type="number" value={l.qteParColis} onChange={e => majLigne(l.pdfId, { qteParColis: e.target.value })} style={champ} /></div>
+                          <div>
+                            {dep === "andes"
+                              ? caseRetour(l.retourBabyBlanc === "oui", "Retour BABY BLANC", v => majLigne(l.pdfId, { retourBabyBlanc: v }))
+                              : caseRetour(l.retourIfco === "oui", "Retour en IFCO", v => majLigne(l.pdfId, { retourIfco: v }))}
+                          </div>
+                        </>)}
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          {!(l.commentaireOuvert || l.commentaire) && (
+                            <button type="button" onClick={() => majLigne(l.pdfId, { commentaireOuvert: true })}
+                              style={{ height: 32, padding: "0 12px", borderRadius: 8, border: `1.5px dashed ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                              + Commentaire
+                            </button>
+                          )}
+                          {dep === "andes" && l.retourBabyBlanc === "oui" && <span style={{ fontSize: 11, color: "#9ca3af" }}>→ {parseInt(l.nbEntrer) || 0} cartons BABY BLANC décomptés chez Andès</span>}
                         </div>
-                      )}
-                      <div style={{ gridColumn: l.dejaChez ? "1 / span 4" : "2 / span 3", display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap" }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${l.dejaChez ? COLORS.secondary : COLORS.gray200}`, background: l.dejaChez ? COLORS.secondaryLight : "#fff", fontSize: 12.5, fontWeight: 700, color: l.dejaChez ? "#15803d" : COLORS.gray700, whiteSpace: "nowrap" }}>
-                          <span className="mrq-case-conteneur">
-                            <input type="checkbox" className="mrq-case-native" checked={l.dejaChez} onChange={e => majLigne(l.pdfId, { dejaChez: e.target.checked })} />
-                            <span className="mrq-case-visuelle" />
-                          </span>
-                          📍 Déjà chez le reconditionneur
-                        </label>
-                        {!(l.commentaireOuvert || l.commentaire) && (
-                          <button type="button" onClick={() => majLigne(l.pdfId, { commentaireOuvert: true })}
-                            style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1.5px dashed ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-                            + Commentaire
-                          </button>
+                        {(l.commentaireOuvert || l.commentaire) && (
+                          <div>{lab("Commentaire (bon de prépa + bon envoyé par mail)")}
+                            <textarea value={l.commentaire} onChange={e => majLigne(l.pdfId, { commentaire: e.target.value })} rows={2}
+                              placeholder="ex : utiliser l'EAN 3760…, étiquettes fournies par Moorea…"
+                              style={{ ...champ, height: "auto", padding: "8px 10px", fontFamily: "inherit", resize: "vertical" }} />
+                          </div>
                         )}
-                        {dep === "andes" && l.retourBabyBlanc === "oui" && <span style={{ fontSize: 11, color: "#9ca3af", alignSelf: "center" }}>→ {parseInt(l.nbEntrer) || 0} cartons décomptés chez Andès</span>}
                       </div>
-                      {(l.commentaireOuvert || l.commentaire) && (
-                        <div style={{ gridColumn: "1 / span 4" }}>{lab("Commentaire (bon de prépa + bon envoyé par mail)")}
-                          <textarea value={l.commentaire} onChange={e => majLigne(l.pdfId, { commentaire: e.target.value })} rows={2}
-                            placeholder="ex : utiliser l'EAN 3760…, étiquettes fournies par Moorea…"
-                            style={{ ...champ, height: "auto", padding: "8px 10px", fontFamily: "inherit", resize: "vertical" }} />
-                        </div>
-                      )}
-                    </div>
-                  )}
+                    );
+                  })()}
                   {l.inclure && manqueIfcoDuBon(l.pdfId) != null && (
                     <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: COLORS.dangerLight, border: `1px solid ${COLORS.danger}`, color: COLORS.danger, fontSize: 12, fontWeight: 700 }}>
                       ⚠️ Pas assez de caisses IFCO chez NLT pour ce bon : il en manque {manqueIfcoDuBon(l.pdfId)} (en comptant les bons au-dessus). Réponds « Oui » à l'envoi de caisses vides.
