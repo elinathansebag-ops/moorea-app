@@ -2511,22 +2511,38 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [lignesGroupe, setLignesGroupe] = useState<LigneGroupe[]>([]);
   const [groupeDepot, setGroupeDepot] = useState<Depot | "">("");
   const [groupeTransporteurId, setGroupeTransporteurId] = useState("");
-  const [groupeCaissesIfco, setGroupeCaissesIfco] = useState("");
+  // 29/09/2026 — Saisie de l'écran groupé enregistrée au fil de l'eau (comme le formulaire bon
+  // par bon) : un rafraîchissement ne fait plus perdre les corrections faites sur les cartes.
+  const brouillonGroupe = cheminBrouillon("demande_groupee", userName || "moorea");
+  const [groupeCaissesIfco, setGroupeCaissesIfco] = useBrouillon(brouillonGroupe, "caissesIfco", "");
+  // Cartes enregistrées sans le PDF (retrouvé dans « Fichiers en attente » par son id).
+  const [lignesGroupeSauvees, setLignesGroupeSauvees] = useBrouillon<Record<string, any>>(brouillonGroupe, "lignes", {});
   // Envoi de caisses IFCO vides : bloc à part (Oui/Non, nb de palettes ou autre quantité).
-  const [groupeIfcoEnvoi, setGroupeIfcoEnvoi] = useState<"" | "oui" | "non">("");
-  const [groupeIfcoPalettes, setGroupeIfcoPalettes] = useState("1");
-  const [groupeIfcoAutre, setGroupeIfcoAutre] = useState(false);
+  const [groupeIfcoEnvoi, setGroupeIfcoEnvoi] = useBrouillon<"" | "oui" | "non">(brouillonGroupe, "ifcoEnvoi", "");
+  const [groupeIfcoPalettes, setGroupeIfcoPalettes] = useBrouillon(brouillonGroupe, "ifcoPalettes", "1");
+  const [groupeIfcoAutre, setGroupeIfcoAutre] = useBrouillon(brouillonGroupe, "ifcoAutre", false);
   const caissesIfcoGroupe = groupeIfcoEnvoi !== "oui" ? 0
     : groupeIfcoAutre ? (parseInt(groupeCaissesIfco) || 0) : (parseInt(groupeIfcoPalettes) || 0) * CAISSES_PAR_PALETTE;
   // Caisses IFCO qui seront remplies chez NLT par les bons de l'écran (même règle que le compteur
   // « Aujourd'hui » : dépôt NLT + retour en IFCO → 1 caisse par colis à entrer).
   const bonsIfcoGroupe = lignesGroupe.filter(l => l.inclure && (l.depot || groupeDepot) === "nlt" && l.retourIfco === "oui");
+  // Alerte par bon : en cumulant les bons dans l'ordre, à partir de quel bon il manque des
+  // caisses IFCO chez NLT (stock NLT − déjà engagé + caisses vides envoyées).
+  // (fonction appelée au rendu : caissesEngageesNlt est calculé plus bas dans le composant)
+  const manqueIfcoDuBon = (pdfId: string): number | null => {
+    let dispo = stockIfco.nlt - caissesEngageesNlt + caissesIfcoGroupe;
+    for (const l of bonsIfcoGroupe) {
+      dispo -= parseInt(l.nbEntrer) || 0;
+      if (l.pdfId === pdfId) return dispo < 0 ? -dispo : null;
+    }
+    return null;
+  };
   const caissesIfcoBonsGroupe = { caisses: bonsIfcoGroupe.reduce((t, l) => t + (parseInt(l.nbEntrer) || 0), 0), nb: bonsIfcoGroupe.length };
   const [groupeEnCours, setGroupeEnCours] = useState(false);
   // Saisie après coup pour TOUS les bons de l'écran (mêmes règles que le formulaire bon par bon).
-  const [groupeApresCoup, setGroupeApresCoup] = useState(false);
-  const [groupeDateApresCoup, setGroupeDateApresCoup] = useState(() => { const d = new Date(Date.now() - 24 * 3600 * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
-  const [groupeStatutApresCoup, setGroupeStatutApresCoup] = useState<"parti" | "reçu">("parti");
+  const [groupeApresCoup, setGroupeApresCoup] = useBrouillon(brouillonGroupe, "apresCoup", false);
+  const [groupeDateApresCoup, setGroupeDateApresCoup] = useBrouillon(brouillonGroupe, "dateApresCoup", () => { const d = new Date(Date.now() - 24 * 3600 * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+  const [groupeStatutApresCoup, setGroupeStatutApresCoup] = useBrouillon<"parti" | "reçu">(brouillonGroupe, "statutApresCoup", "parti");
   // 29/09/2026 — Transporteur par défaut selon le dépôt (demande d'Elinathan) : NLT → AB
   // Transports, Andès → Moorea. Retrouvé par son nom dans l'annuaire des transporteurs.
   const transporteurParDefaut = (dep: Depot | ""): string => {
@@ -2543,6 +2559,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   }
   const majLigne = (pdfId: string, champs: Partial<LigneGroupe>) =>
     setLignesGroupe(prev => prev.map(l => l.pdfId === pdfId ? { ...l, ...champs } : l));
+  // Enregistre chaque carte (sans le PDF) dès qu'elle change.
+  useEffect(() => {
+    if (lignesGroupe.length === 0) return;
+    const m: Record<string, any> = {};
+    lignesGroupe.forEach(l => { const { base64, ...reste } = l; void base64; m[l.pdfId] = reste; });
+    setLignesGroupeSauvees(m);
+  }, [lignesGroupe]);
 
   // Même lecture que lireEtPreremplirDepuisPdf, mais renvoie les valeurs au lieu de remplir le
   // formulaire (pour pouvoir lire plusieurs bons sans toucher au formulaire bon par bon).
@@ -2585,15 +2608,18 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   }
 
   async function ouvrirDemandeGroupee() {
-    const lignes: LigneGroupe[] = pdfsEnAttente.map(p => ({
+    const lignes: LigneGroupe[] = pdfsEnAttente.map(p => lignesGroupeSauvees?.[p.id] && lignesGroupeSauvees[p.id].lecture !== "en_cours" && lignesGroupeSauvees[p.id].lecture !== "attente"
+      ? { ...(lignesGroupeSauvees[p.id] as LigneGroupe), pdfId: p.id, base64: p.base64 }
+      : ({
       pdfId: p.id, nom: p.article || p.nom, base64: p.base64, lecture: "attente", inclure: true, depot: "",
       articleVrac: "", lot: "", nbSortir: "", articleFini: "", nbEntrer: "", qteParColis: "", retourIfco: "", cartons: "",
       commentaire: "", commentaireOuvert: false, dejaChez: false, transporteurId: "",
-    }));
+    } as LigneGroupe));
     setLignesGroupe(lignes);
     setActiveTab("groupee");
     // Lecture des bons une par une, en arrière-plan : les cartes se remplissent au fur et à mesure.
     for (const l of lignes) {
+      if (l.lecture === "ok" || l.lecture === "echec") continue; // déjà lu (carte enregistrée)
       majLigne(l.pdfId, { lecture: "en_cours" });
       try {
         const bytes = new Uint8Array(await (await fetch(l.base64)).arrayBuffer());
@@ -2734,7 +2760,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       let numeroPalette = "";
       if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteurIfco?.nom || "");
       notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
-      setLignesGroupe([]); setGroupeCaissesIfco(""); setGroupeApresCoup(false); setGroupeIfcoEnvoi(""); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
+      setLignesGroupe([]); setGroupeCaissesIfco(""); setGroupeApresCoup(false);
+      effacerBrouillon(brouillonGroupe); setGroupeIfcoEnvoi(""); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
       setActiveTab("en_cours");
     } catch (err: any) {
       notify("error", `❌ Erreur après ${crees} demande(s) créée(s) : ${err?.message || "erreur inconnue"} — les bons restants sont toujours dans « Fichiers en attente »`);
@@ -4029,6 +4056,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       )}
                     </div>
                   )}
+                  {l.inclure && manqueIfcoDuBon(l.pdfId) != null && (
+                    <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: COLORS.dangerLight, border: `1px solid ${COLORS.danger}`, color: COLORS.danger, fontSize: 12, fontWeight: 700 }}>
+                      ⚠️ Pas assez de caisses IFCO chez NLT pour ce bon : il en manque {manqueIfcoDuBon(l.pdfId)} (en comptant les bons au-dessus). Réponds « Oui » à l'envoi de caisses vides.
+                    </div>
+                  )}
                   {l.inclure && (
                     <div onClick={() => majLigne(l.pdfId, { dejaChez: !l.dejaChez })}
                       style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 12px", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${l.dejaChez ? COLORS.secondary : COLORS.gray200}`, background: l.dejaChez ? COLORS.secondaryLight : "#fff" }}>
@@ -4180,13 +4212,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     <select value={depot} onChange={e => {
                       const val = e.target.value as Depot | "";
                       setDepot(val);
-                      // Andès livre lui-même en chariot électrique (pas un vrai transporteur
-                      // externe) — on présélectionne ce "transporteur" automatiquement pour ne
-                      // pas avoir à le rechoisir à chaque demande vers Andès.
-                      if (val === "andes") {
-                        const chariot = transporteurs.find(t => /chariot/i.test(t.nom));
-                        if (chariot) setTransporteurId(chariot.id);
-                      }
+                      // 29/09/2026 — Andès : c'est Moorea qui dépose 99 % du temps → transporteur
+                      // « Moorea » par défaut (voir transporteurParDefautForm), plus « chariot ».
                     }} style={{ paddingRight: 30, color: depot ? undefined : "#9ca3af" }}>
                       <option value="" disabled>— Choisir un dépôt —</option>
                       <option value="nlt">NLT</option>
