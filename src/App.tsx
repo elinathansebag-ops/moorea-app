@@ -3523,6 +3523,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "reconditionnement", icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       { key: "messagerie", icon: "📧", label: "Messagerie", color: "#0f766e", badge: null, stat: "Tri automatique par commercial", action: () => { setShowAccueil(false); setShowMessagerie(true); } },
       { key: "appro", icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
+      // 29/09/2026 — Module Litiges accessible directement depuis l'accueil (avant : seulement
+      // via le bandeau « X litiges ouverts »). Admins par défaut, sinon droit « ⚠️ Litiges ».
+      { key: "litiges", icon: "⚠️", label: "Litiges", color: "#dc2626", badge: nbLitigesOuverts || null, stat: nbLitigesOuverts > 0 ? `${nbLitigesOuverts} ouvert${nbLitigesOuverts > 1 ? "s" : ""}` : "Refus, réserves, reprises", action: () => { setShowAccueil(false); setShowLitiges(true); } },
       { key: "chargement", icon: "🚛", label: "Optimisation chargement", color: "#0891b2", badge: null, stat: "Calculateur palettes & camion", action: () => { setShowAccueil(false); setShowChargement(true); } },
     ].filter(b => monAcces.hasModule(b.key));
 
