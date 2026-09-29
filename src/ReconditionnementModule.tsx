@@ -371,6 +371,12 @@ function resoudreArticleCatalogue(brut: string, _catalogue?: unknown): string {
   return (i >= 0 ? texte.slice(i).replace(/^\s*[-–]\s*/, "") : texte).trim();
 }
 
+// 29/09/2026 — Retour en caisses IFCO par défaut : « Oui » si l'article contient « LIM »
+// (limes), « Non » pour tout le reste. Simple valeur de départ, modifiable sur chaque demande.
+function retourIfcoParDefaut(article: string): "oui" | "non" {
+  return /LIM/i.test(article || "") ? "oui" : "non";
+}
+
 function genererNumeroDemande(dateCreation: Date, demandesExistantes: Demande[]): string {
   const aa = String(dateCreation.getFullYear()).slice(-2);
   const mm = String(dateCreation.getMonth() + 1).padStart(2, "0");
@@ -1266,9 +1272,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // Le choix "retour en caisses IFCO" est obligatoire (Oui/Non) et remis à zéro à chaque
   // nouvelle demande ou changement d'article/dépôt — plus de coche automatique silencieuse sur
   // la détection du nom, qui pouvait se tromper sans que personne ne la revérifie.
+  // 29/09/2026 — Demande d'Elinathan : par défaut, retour en IFCO « Oui » si l'article à
+  // fabriquer contient « LIM » (limes / citrons verts), « Non » sinon. Toujours modifiable.
   useEffect(() => {
     if (editDemandeId) return;
-    setRetourIfco("");
+    setRetourIfco(depot === "nlt" && articleFini.trim() ? retourIfcoParDefaut(articleFini) : "");
   }, [depot, articleFini, editDemandeId]);
 
   // Pré-remplit "Cartons BABY BLANC utilisés" avec le nb de colis à entrer — chez Andès, c'est
@@ -2566,7 +2574,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         const v = await analyserBonGeslot(bytes);
         majLigne(l.pdfId, {
           ...v, lecture: v.articleVrac || v.articleFini ? "ok" : "echec",
-          retourIfco: /ifco/i.test(v.articleFini) ? "oui" : (v.articleFini ? "non" : ""),
+          retourIfco: v.articleFini ? retourIfcoParDefaut(v.articleFini) : "",
         });
       } catch {
         majLigne(l.pdfId, { lecture: "echec" });
@@ -3922,7 +3930,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       <F label="Article vrac (à utiliser)"><ArticleSelect value={l.articleVrac} onSelect={v => majLigne(l.pdfId, { articleVrac: v })} articles={catalogueArticles} placeholder="Article du catalogue…" /></F>
                       <F label="Lot"><input value={l.lot} onChange={e => majLigne(l.pdfId, { lot: e.target.value })} /></F>
                       <F label="Colis à sortir"><input type="number" value={l.nbSortir} onChange={e => majLigne(l.pdfId, { nbSortir: e.target.value })} /></F>
-                      <F label="Article à fabriquer"><ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: l.retourIfco || (/ifco/i.test(v) ? "oui" : "") })} articles={catalogueArticles} placeholder="Article du catalogue…" /></F>
+                      <F label="Article à fabriquer"><ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: v.trim() ? retourIfcoParDefaut(v) : "" })} articles={catalogueArticles} placeholder="Article du catalogue…" /></F>
                       <F label="Colis à entrer"><input type="number" value={l.nbEntrer} onChange={e => majLigne(l.pdfId, { nbEntrer: e.target.value })} style={manque(l.nbEntrer)} /></F>
                       <F label={dep ? `Quantité par colis (${UNITE_QTE[dep]})` : "Quantité par colis"}><input type="number" value={l.qteParColis} onChange={e => majLigne(l.pdfId, { qteParColis: e.target.value })} /></F>
                       {dep === "nlt" && (
