@@ -1037,7 +1037,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
             <>
               <textarea value={recapMsg} onChange={e => setRecapMsg(e.target.value)} style={{ ...INP, minHeight: 140, marginBottom: 8 }} />
               <div style={{ display: "flex", gap: 8 }}>
-                <button style={{ ...BTN("#25D366"), flex: 1, justifyContent: "center" }} onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(recapMsg)}`, "_blank")}>📲 Envoyer WhatsApp</button>
+                <button style={{ ...BTN("#25D366"), flex: 1, justifyContent: "center" }} onClick={() => window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(recapMsg)}`, "_blank")}>📲 Envoyer WhatsApp</button>
                 <button style={{ ...BTN("transparent", "#1a2e1a"), border: "1.5px solid #e8e0d0" }} onClick={() => navigator.clipboard.writeText(recapMsg)}>📋</button>
               </div>
             </>

@@ -2016,7 +2016,7 @@ ${scoreLine}
 
 _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   const decisionLabel = (d: string) => d === "stock" ? "ENTREE EN STOCK" : d === "reserve" ? "RESERVE" : "REFUS";
@@ -4039,7 +4039,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <button onClick={() => setEcartPopup(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 Fermer
               </button>
-              <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(ecartPopup.message)}`, "_blank"); setEcartPopup(null); }}
+              <button onClick={() => { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(ecartPopup.message)}`, "_blank"); setEcartPopup(null); }}
                 style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 📲 Envoyer par WhatsApp
               </button>

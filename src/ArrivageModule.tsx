@@ -912,7 +912,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               <button onClick={() => setRecap(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 Fermer
               </button>
-              <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(recap.message)}`, "_blank"); setRecap(null); }}
+              <button onClick={() => { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(recap.message)}`, "_blank"); setRecap(null); }}
                 style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 📲 Envoyer par WhatsApp
               </button>
@@ -1010,7 +1010,11 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
       }
       effacerBrouillon(brouillonPointage);
       const lignesMsg = recapLignes.map(r => `${r.ecart !== 0 ? "⚠️" : "✅"} ${r.produit || "-"}${r.lot ? ` · lot ${r.lot}` : ""} — reçu ${r.recu}/${r.attendu}${r.ecart !== 0 ? ` (${r.ecart > 0 ? "+" : ""}${r.ecart})` : ""}`);
-      const message = `POINTAGE ${groupe} - ${date}\nTotal reçu : ${totalRecu}/${totalAttendu}${totalEcart !== 0 ? ` — écart ${totalEcart > 0 ? "+" : ""}${totalEcart}` : ""}\n\n${lignesMsg.join("\n")}`;
+      // 29/09/2026 — Plus de total global (on travaille par référence) : écarts d'abord.
+      const nbEcarts = recapLignes.filter(r => r.ecart !== 0).length;
+      const lignesTriees = [...recapLignes.map((r, i) => ({ r, l: lignesMsg[i] }))].sort((x, y) => (x.r.ecart !== 0 ? 0 : 1) - (y.r.ecart !== 0 ? 0 : 1)).map(x => x.l);
+      const message = `POINTAGE ${groupe} - ${date}\n${nbEcarts ? `${nbEcarts} référence${nbEcarts > 1 ? "s" : ""} avec écart` : "Aucun écart"}\n\n${lignesTriees.join("\n")}`;
+      void totalRecu; void totalAttendu;
       // 24/09/2026 — Même bug que ProduitRow le 09/09 : une fois tout validé, les lignes quittent
       // « en attente », ce composant est démonté et son popup local ne s'affichait jamais
       // (« 0 pop up pour les messages aux commerciaux »). On remonte donc le message jusqu'à
@@ -1133,7 +1137,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
               <button onClick={() => setRecap(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 Fermer
               </button>
-              <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(recap.message)}`, "_blank"); setRecap(null); }}
+              <button onClick={() => { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(recap.message)}`, "_blank"); setRecap(null); }}
                 style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 📲 Envoyer par WhatsApp
               </button>
@@ -2368,7 +2372,7 @@ export function PalettePublique({ id }: { id: string }) {
           )}
           <button onClick={() => {
               const msg = `📦 MRA.${String(arrivage.lot_interne || "").padStart(4, "0")} — ${arrivage.produit || ""}\nFournisseur : ${arrivage.fournisseur || "-"}\nStatut : ${arrivage.statut || "en attente"}\nQuantité : ${arrivage.quantite || "-"} ${arrivage.unite || ""}\nTraça fournisseur : ${arrivage.rapport?.lot_fournisseur || arrivage.lot_fournisseur || "-"}${arrivage.litige?.raison ? `\nMotif : ${arrivage.litige.raison}` : ""}`;
-              window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+              window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
             }}
             style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #25d366, #128c7e)", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
             📲 Prévenir les commerciaux
@@ -2778,7 +2782,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
       : "";
 
     const msg = `ARRIVAGES MOOREA - ${date}\n${synthese}\n\n${lignes.join("\n")}${ligneDetruire}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   // ─── RÉCAP WHATSAPP NLT DU JOUR ───
@@ -2806,7 +2810,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     ].filter(Boolean).join(" · ");
 
     const msg = `ARRIVAGES NLT MOOREA - ${date}\n${synthese}\n\n${lignes.join("\n")}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   // ─── PRÉVENIR DES ÉCARTS DU JOUR (WhatsApp, UN SEUL message) ───
@@ -2828,7 +2832,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     });
 
     const msg = `⚠️ ÉCARTS ARRIVAGES MOOREA - ${date}\n${avecEcart.length} écart${avecEcart.length > 1 ? "s" : ""}\n\n${lignes.join("\n")}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   // Aperçu de traçabilité fournisseur : au lieu de générer un PDF (qui s'affichait dans le
