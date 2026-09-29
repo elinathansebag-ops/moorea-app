@@ -885,7 +885,7 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
   );
 }
 
-export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne, demandesRecondChargees }: {
+export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne, demandesRecondChargees, peutVoirOnglet }: {
   onClose: () => void;
   userName?: string;
   // 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : la Configuration vit
@@ -897,10 +897,24 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // casser un appel qui ne le passerait pas encore.
   demandesRecondExterne?: any[];
   demandesRecondChargees?: boolean;
+  // 29/09/2026 — Droits par onglet (Droits d'accès → Reconditionnement), jusqu'ici non appliqués.
+  peutVoirOnglet?: (cle: string) => boolean;
 }) {
   const [stockIfcoCharge, setStockIfcoCharge] = useState(false);
   const [arrivagesCharges, setArrivagesCharges] = useState(false);
   const [activeTab, setActiveTab] = useState<"en_cours" | "nouvelle" | "historique" | "suivi_ifco" | "configuration" | "groupee">("en_cours");
+  const ongletsVisibles = [
+    { key: "en_cours", label: "📋 En cours" },
+    { key: "nouvelle", label: "➕ Nouvelle demande" },
+    { key: "historique", label: "🕘 Historique" },
+    { key: "suivi_ifco", label: "📊 Suivi IFCO" },
+  ].filter(t => !peutVoirOnglet || peutVoirOnglet(t.key));
+  // Onglet courant non autorisé (ou l'ancien « configuration ») → premier onglet autorisé.
+  // « groupee » dépend du droit « nouvelle ».
+  useEffect(() => {
+    const cle = activeTab === "groupee" ? "nouvelle" : activeTab;
+    if (!ongletsVisibles.some(t => t.key === cle) && ongletsVisibles[0]) setActiveTab(ongletsVisibles[0].key as any);
+  }, [activeTab, ongletsVisibles.map(t => t.key).join(",")]);
   const [demandes, setDemandes] = useState<Demande[]>([]);
   const [transporteurs, setTransporteurs] = useState<Transporteur[]>([]);
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -3465,13 +3479,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             tiennent jamais sur une seule ligne, autant permettre de glisser que de casser sur 2
             lignes (même principe que RetoursModule.tsx). */}
         <div style={{ display: "flex", gap: 8, marginBottom: 20, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-          {[
-            { key: "en_cours", label: "📋 En cours" },
-            { key: "nouvelle", label: "➕ Nouvelle demande" },
-            { key: "historique", label: "🕘 Historique" },
-            { key: "suivi_ifco", label: "📊 Suivi IFCO" },
-            { key: "configuration", label: "⚙️ Configuration" },
-          ].map(t => (
+          {/* 29/09/2026 — Onglet « Configuration » retiré (il ne faisait que renvoyer vers
+              Prestataires → Configuration), et chaque onglet respecte Droits d'accès. */}
+          {ongletsVisibles.map(t => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key as any)}
