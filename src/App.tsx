@@ -501,9 +501,12 @@ export default function App() {
   const [showDroitsAcces, setShowDroitsAcces] = useState(false);
   const [permRoles, setPermRoles] = useState<Record<string, AccesRole>>({});
   const [permUsers, setPermUsers] = useState<Record<string, AccesUser>>({});
+  // 29/09/2026 — Sert à ne charger les grosses collections (voir chargementAutorise plus bas)
+  // qu'une fois les droits connus.
+  const [permsChargees, setPermsChargees] = useState(false);
   useEffect(() => {
     const unsub1 = onValue(ref(db, "acces_permissions/roles"), snap => setPermRoles(snap.val() || {}));
-    const unsub2 = onValue(ref(db, "acces_permissions/users"), snap => setPermUsers(snap.val() || {}));
+    const unsub2 = onValue(ref(db, "acces_permissions/users"), snap => { setPermUsers(snap.val() || {}); setPermsChargees(true); });
     return () => { unsub1(); unsub2(); };
   }, []);
   // 17/09/2026 — Demande d'Elinathan : pouvoir choisir dans une liste déroulante, depuis
@@ -539,6 +542,20 @@ export default function App() {
   const [showPersonnaliserAccueil, setShowPersonnaliserAccueil] = useState(false);
   const monAccesReel = calculerAcces(user?.email, permRoles, permUsers);
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
+  // 29/09/2026 — Demande d'Elinathan (vitesse) : les grosses collections ne sont plus
+  // téléchargées pour un compte qui n'a accès à AUCUN des modules qui s'en servent. Toujours
+  // calculé sur les vrais droits (monAccesReel, jamais l'aperçu admin). Tant que le compte ou
+  // les droits ne sont pas encore connus : on attend (pour ne pas télécharger pour rien). Pas
+  // connecté (écran de connexion) : comportement d'avant, tout est écouté.
+  const chargementAutorise = (modules: string[]) =>
+    user === null ? true
+      : (user === undefined || !permsChargees) ? false
+      : (monAccesReel.isAdmin || modules.some(k => monAccesReel.hasModule(k)));
+  const chargerRecond = chargementAutorise(["reconditionnement", "preparation", "prestataires"]);
+  const chargerRapports = chargementAutorise(["arrivages", "rapports", "litiges", "qualite", "dashboard_tv"]);
+  const chargerGencodes = chargementAutorise(["gencodes", "stock"]);
+  const chargerRetours = chargementAutorise(["retours"]);
+  const chargerJournal = chargementAutorise([]);
   // 17/09/2026 (bis) — Demande d'Elinathan : remplace le module séparé "Suivi arrivages" par le
   // même principe que Stock ("compter" vs lecture seule) — un compte qui a "arrivages" mais pas
   // l'onglet "valider" voit la même page "Pointer arrivage", juste grisée/sans possibilité de
@@ -681,6 +698,7 @@ export default function App() {
     verifierSanteComptesMail(false);
   }, [monAccesReel.isAdmin, user]);
   useEffect(() => {
+    if (!chargerJournal) return;
     const unsub = onValue(ref(db, "activity_log"), snap => {
       const data = snap.val();
       if (!data) { setActivityLog([]); return; }
@@ -702,7 +720,7 @@ export default function App() {
       }
     });
     return () => unsub();
-  }, [monAccesReel.isAdmin]);
+  }, [monAccesReel.isAdmin, chargerJournal]);
   useEffect(() => {
     const unsub = onValue(ref(db, "rack_mode_placement"), snap => {
       const v = snap.val();
@@ -860,6 +878,7 @@ export default function App() {
 
   // ─── FIREBASE: écoute en temps réel ───
   useEffect(() => {
+    if (!chargerRapports) return;
     const rapportsRef = ref(db, "rapports");
     const unsub = onValue(rapportsRef, (snapshot) => {
       const data = snapshot.val();
@@ -872,16 +891,17 @@ export default function App() {
       }
     });
     return () => unsub();
-  }, []);
+  }, [chargerRapports]);
 
   // ─── FIREBASE: gencode articles ───
   useEffect(() => {
+    if (!chargerGencodes) return;
     const unsub = onValue(ref(db, "gencode_articles"), snap => {
       const d = snap.val();
       if (d) setGencodeArticles(Object.entries(d).map(([id, v]: any) => ({ ...v, id })));
     });
     return () => unsub();
-  }, []);
+  }, [chargerGencodes]);
 
   // ─── FIREBASE: demandes de reconditionnement (juste retourPresta.parti.nbPalettes) ───
   // Sert uniquement à afficher, en haut de chaque groupe NLT/Andès dans "Pointer arrivage", le
@@ -904,6 +924,7 @@ export default function App() {
   // (avant : écran vide « Aucune demande », impossible de savoir si ça chargeait ou avait planté).
   const [reconditionnementDemandesChargees, setReconditionnementDemandesChargees] = useState(false);
   useEffect(() => {
+    if (!chargerRecond) return;
     const unsub = onValue(ref(db, "reconditionnement_demandes"), snap => {
       setReconditionnementDemandesChargees(true);
       const d = snap.val();
@@ -911,7 +932,7 @@ export default function App() {
       setReconditionnementDemandesListe(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     return () => unsub();
-  }, []);
+  }, [chargerRecond]);
 
   // ─── BL NLT : vérification automatique des mails depuis l'appli ───
   // 29/09/2026 — Tant que l'appli est ouverte (sur n'importe quel poste), on déclenche toutes les
@@ -1043,12 +1064,13 @@ export default function App() {
   // retours masqués est mémorisée dans localStorage pour ne pas réapparaître.
   const [retoursAlerte, setRetoursAlerte] = useState<any[]>([]);
   useEffect(() => {
+    if (!chargerRetours) return;
     const u = onValue(ref(db, "retours"), snap => {
       const d = snap.val();
       setRetoursAlerte(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })) : []);
     });
     return () => u();
-  }, []);
+  }, [chargerRetours]);
   const [retoursAlerteMasquees, setRetoursAlerteMasquees] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("moorea-retours-alertes-masquees") || "[]")); } catch { return new Set(); }
   });
