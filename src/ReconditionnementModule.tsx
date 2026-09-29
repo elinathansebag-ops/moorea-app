@@ -2591,7 +2591,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // Cartes enregistrées sans le PDF (retrouvé dans « Fichiers en attente » par son id).
   const [lignesGroupeSauvees, setLignesGroupeSauvees] = useBrouillon<Record<string, any>>(brouillonGroupe, "lignes", {});
   // Envoi de caisses IFCO vides : bloc à part (Oui/Non, nb de palettes ou autre quantité).
-  const [groupeIfcoEnvoi, setGroupeIfcoEnvoi] = useBrouillon<"" | "oui" | "non">(brouillonGroupe, "ifcoEnvoi", "");
+  const [groupeIfcoEnvoi, setGroupeIfcoEnvoi] = useBrouillon<"" | "oui" | "non">(brouillonGroupe, "ifcoEnvoi", "non");
   const [groupeIfcoPalettes, setGroupeIfcoPalettes] = useBrouillon(brouillonGroupe, "ifcoPalettes", "1");
   const [groupeIfcoAutre, setGroupeIfcoAutre] = useBrouillon(brouillonGroupe, "ifcoAutre", false);
   const caissesIfcoGroupe = groupeIfcoEnvoi !== "oui" ? 0
@@ -2843,7 +2843,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteurIfco?.nom || "");
       notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
       setLignesGroupe([]); setGroupeCaissesIfco(""); setGroupeApresCoup(false);
-      effacerBrouillon(brouillonGroupe); setGroupeIfcoEnvoi(""); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
+      effacerBrouillon(brouillonGroupe); setGroupeIfcoEnvoi("non"); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
       setActiveTab("en_cours");
     } catch (err: any) {
       notify("error", `❌ Erreur après ${crees} demande(s) créée(s) : ${err?.message || "erreur inconnue"} — les bons restants sont toujours dans « Fichiers en attente »`);
