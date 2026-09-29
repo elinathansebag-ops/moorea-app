@@ -1019,7 +1019,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
               <Fragment key={a.id}>
                 <tr style={{ background: "#fff", borderTop: "6px solid #f9fafb" }}>
                   <td style={{ padding: "8px", verticalAlign: "top", borderRadius: "10px 0 0 10px", minWidth: 220, whiteSpace: "normal", wordBreak: "break-word" }}>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a", whiteSpace: "normal", lineHeight: 1.3 }}>{a.produit}{a.variete ? ` · ${a.variete}` : ""}</p>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "#1a2e1a", whiteSpace: "normal", lineHeight: 1.3 }}>{a.produit}</p>
                     {a.fournisseur_origine && <span style={{ fontSize: 11, color: "#6b7280" }}>🌍 {a.fournisseur_origine}</span>}
                   </td>
                   <td style={{ padding: "8px", verticalAlign: "top", textAlign: "right", fontWeight: 700, fontSize: 13, color: "#6b7280" }}>{attendu}</td>
