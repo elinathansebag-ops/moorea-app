@@ -531,7 +531,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       notify("error", "❌ Pas de nombre de palettes enregistré pour ce départ — impossible de réimprimer");
       return;
     }
-    const totalPalettes = demande.nbPalettesDepart.grandes + demande.nbPalettesDepart.demi;
+    const totalPalettes = (demande.nbPalettesDepart?.grandes || 0) + (demande.nbPalettesDepart?.demi || 0);
     // 23/09/2026 — Le récap produits doit reprendre tout le départ groupé d'origine, pas juste
     // cette ligne : on retrouve les autres demandes du même groupe via nbPalettesDepartGroupeId
     // (posé par finaliserDepartGroupe) ; si absent (vieux départ ou départ solo), on retombe sur
@@ -937,7 +937,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                             Reçu le {d.retour.date} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé"}
                                             {d.retour.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
                                             {d.retour.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : ""}
-                                            {` · ${d.retour.nbPalettes.grandes} grande(s) + ${d.retour.nbPalettes.demi} demi-palette(s)`}
+                                            {` · ${d.retour.nbPalettes?.grandes || 0} grande(s) + ${d.retour.nbPalettes?.demi || 0} demi-palette(s)`}
                                             {d.retour.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisse(s) IFCO pleines reçues` : (retourEnIfcoDemande(d) ? " · ⚠️ aucune caisse IFCO pleine saisie au retour" : "")}
                                             {d.retour.commentaire ? ` · "${d.retour.commentaire}"` : ""}
                                           </div>

@@ -3866,7 +3866,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         Reçu le {d.retour.date} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé"}
                         {d.retour.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
                         {d.retour.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : ""}
-                        {` · ${d.retour.nbPalettes.grandes} grande(s) + ${d.retour.nbPalettes.demi} demi-palette(s)`}
+                        {` · ${d.retour.nbPalettes?.grandes || 0} grande(s) + ${d.retour.nbPalettes?.demi || 0} demi-palette(s)`}
                         {d.retour.caissesIfcoPleinesRecues != null ? ` · 📦 ${d.retour.caissesIfcoPleinesRecues} caisse(s) IFCO pleines reçues` : (retourEnIfcoDemande(d) ? " · ⚠️ aucune caisse IFCO pleine saisie au retour" : "")}
                         {d.retour.commentaire ? ` · "${d.retour.commentaire}"` : ""}
                       </div>
