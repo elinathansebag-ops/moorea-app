@@ -2508,6 +2508,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [groupeDepot, setGroupeDepot] = useState<Depot | "">("");
   const [groupeTransporteurId, setGroupeTransporteurId] = useState("");
   const [groupeCaissesIfco, setGroupeCaissesIfco] = useState("");
+  // Envoi de caisses IFCO vides : bloc à part (Oui/Non, nb de palettes ou autre quantité).
+  const [groupeIfcoEnvoi, setGroupeIfcoEnvoi] = useState<"" | "oui" | "non">("");
+  const [groupeIfcoPalettes, setGroupeIfcoPalettes] = useState("1");
+  const [groupeIfcoAutre, setGroupeIfcoAutre] = useState(false);
+  const caissesIfcoGroupe = groupeIfcoEnvoi !== "oui" ? 0
+    : groupeIfcoAutre ? (parseInt(groupeCaissesIfco) || 0) : (parseInt(groupeIfcoPalettes) || 0) * CAISSES_PAR_PALETTE;
   const [groupeEnCours, setGroupeEnCours] = useState(false);
   // 29/09/2026 — Transporteur par défaut selon le dépôt (demande d'Elinathan) : NLT → AB
   // Transports, Andès → Moorea. Retrouvé par son nom dans l'annuaire des transporteurs.
@@ -2596,7 +2602,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   async function creerDemandesGroupees() {
     if (groupeEnCours) return;
     const aCreer = lignesGroupe.filter(l => l.inclure);
-    const caissesIfco = parseInt(groupeCaissesIfco) || 0;
+    const caissesIfco = caissesIfcoGroupe;
+    const aDesNlt = aCreer.some(l => (l.depot || groupeDepot) === "nlt");
+    if (aDesNlt && groupeIfcoEnvoi === "") { notify("error", "✗ Envoi de caisses IFCO vides à NLT : Oui ou Non ?"); return; }
+    if (groupeIfcoEnvoi === "oui" && caissesIfco <= 0) { notify("error", "✗ Indique combien de palettes (ou de caisses) IFCO vides envoyer"); return; }
     if (aCreer.length === 0 && caissesIfco <= 0) { notify("error", "✗ Aucun bon sélectionné"); return; }
     const transporteurDeLigne = (dep: Depot) => (dep === groupeDepot && groupeTransporteurId) ? groupeTransporteurId : transporteurParDefaut(dep);
     for (const l of aCreer) {
@@ -2700,7 +2709,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       let numeroPalette = "";
       if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteurIfco?.nom || "");
       notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
-      setLignesGroupe([]); setGroupeCaissesIfco("");
+      setLignesGroupe([]); setGroupeCaissesIfco(""); setGroupeIfcoEnvoi(""); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
       setActiveTab("en_cours");
     } catch (err: any) {
       notify("error", `❌ Erreur après ${crees} demande(s) créée(s) : ${err?.message || "erreur inconnue"} — les bons restants sont toujours dans « Fichiers en attente »`);
@@ -3856,6 +3865,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         {activeTab === "groupee" && (
           <div>
             <button type="button" onClick={() => setActiveTab("nouvelle")} style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 12 }}>← Retour au formulaire bon par bon</button>
+            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
             <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
                 <F label="Dépôt (par défaut)">
@@ -3871,13 +3881,39 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     {transporteurs.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
                   </select>
                 </F>
-                <F label="Caisses IFCO vides à envoyer à NLT">
-                  <input type="number" min={0} value={groupeCaissesIfco} onChange={e => setGroupeCaissesIfco(e.target.value)} placeholder={`ex : ${CAISSES_PAR_PALETTE} (1 palette)`} />
-                </F>
               </div>
-              <p style={{ margin: "8px 0 0", fontSize: 11, color: COLORS.gray600 }}>
-                Les caisses IFCO vides partent à part (comme « Envoyer une palette IFCO à NLT »), rattachées à aucun article. Laisse vide si rien à envoyer.
-              </p>
+            </div>
+
+            {/* Envoi de caisses IFCO vides à NLT : à part, rattaché à aucun article (même envoi
+                que « Envoyer une palette IFCO à NLT »). */}
+            <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700, marginBottom: 10 }}>📦 Envoyer des caisses IFCO vides à NLT ?</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: groupeIfcoEnvoi === "oui" ? 12 : 0 }}>
+                {(["oui", "non"] as const).map(v => (
+                  <button key={v} type="button" onClick={() => setGroupeIfcoEnvoi(v)}
+                    style={{ flex: 1, maxWidth: 160, padding: "9px 0", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${groupeIfcoEnvoi === v ? COLORS.primary : COLORS.gray200}`, background: groupeIfcoEnvoi === v ? COLORS.primary : "#fff", color: groupeIfcoEnvoi === v ? "#fff" : COLORS.gray700 }}>
+                    {v === "oui" ? "Oui" : "Non"}
+                  </button>
+                ))}
+              </div>
+              {groupeIfcoEnvoi === "oui" && (
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+                  {!groupeIfcoAutre ? (
+                    <F label={`Nombre de palettes (${CAISSES_PAR_PALETTE} caisses / palette)`}>
+                      <input type="number" min={1} value={groupeIfcoPalettes} onChange={e => setGroupeIfcoPalettes(e.target.value)} style={{ maxWidth: 140 }} />
+                    </F>
+                  ) : (
+                    <F label="Nombre de caisses">
+                      <input type="number" min={1} value={groupeCaissesIfco} onChange={e => setGroupeCaissesIfco(e.target.value)} style={{ maxWidth: 140 }} />
+                    </F>
+                  )}
+                  <button type="button" onClick={() => setGroupeIfcoAutre(v => !v)}
+                    style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${COLORS.gray200}`, background: "#fff", fontSize: 12, fontWeight: 700, color: COLORS.gray600, cursor: "pointer", marginBottom: 14 }}>
+                    {groupeIfcoAutre ? "↩️ En palettes" : "Autre montant (en caisses)"}
+                  </button>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700, marginBottom: 20 }}>= {caissesIfcoGroupe} caisses</span>
+                </div>
+              )}
             </div>
 
             {lignesGroupe.map((l, i) => {
@@ -3942,7 +3978,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 
             <button type="button" onClick={creerDemandesGroupees} disabled={groupeEnCours}
               style={{ width: "100%", padding: 16, borderRadius: 14, border: "none", background: groupeEnCours ? COLORS.gray200 : COLORS.primary, color: groupeEnCours ? "#999" : "#fff", fontSize: 15, fontWeight: 800, cursor: groupeEnCours ? "default" : "pointer", marginTop: 6 }}>
-              {groupeEnCours ? "⏳ Création en cours…" : `✅ Créer les ${lignesGroupe.filter(l => l.inclure).length} demandes${(parseInt(groupeCaissesIfco) || 0) > 0 ? ` + l'envoi de ${groupeCaissesIfco} caisses IFCO` : ""}`}
+              {groupeEnCours ? "⏳ Création en cours…" : `✅ Créer les ${lignesGroupe.filter(l => l.inclure).length} demandes${caissesIfcoGroupe > 0 ? ` + l'envoi de ${caissesIfcoGroupe} caisses IFCO` : ""}`}
             </button>
           </div>
         )}
