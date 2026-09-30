@@ -924,7 +924,11 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       <div class="card" style="padding:.75rem 1.25rem;margin-bottom:1rem;border:1.5px solid #bfdbfe;background:#eff6ff">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span style="font-weight:800;color:#1d4ed8;font-size:14px">📦 Caisses IFCO vides chez Moorea</span>
-          <input id="s-ifco-vides-comptage" type="number" min="0" inputmode="numeric" placeholder="à compter" oninput="sSaisieIfcoComptage(this.value)" style="width:110px;padding:8px;border:1.5px solid #bfdbfe;border-radius:8px;font-size:15px;font-weight:700;text-align:center;font-family:inherit"/>
+          <label style="font-size:12px;font-weight:700;color:#374151;display:inline-flex;align-items:center;gap:6px">Palettes complètes (640)
+            <input id="s-ifco-pal-comptage" type="number" min="0" inputmode="numeric" placeholder="0" oninput="sSaisieIfcoComptage()" style="width:80px;padding:8px;border:1.5px solid #bfdbfe;border-radius:8px;font-size:15px;font-weight:700;text-align:center;font-family:inherit"/></label>
+          <label style="font-size:12px;font-weight:700;color:#374151;display:inline-flex;align-items:center;gap:6px">+ Caisses
+            <input id="s-ifco-cai-comptage" type="number" min="0" inputmode="numeric" placeholder="0" oninput="sSaisieIfcoComptage()" style="width:80px;padding:8px;border:1.5px solid #bfdbfe;border-radius:8px;font-size:15px;font-weight:700;text-align:center;font-family:inherit"/></label>
+          <span id="s-ifco-total-comptage" style="font-weight:800;color:#1d4ed8;font-size:14px"></span>
           <span id="s-ifco-vides-statut" style="font-size:12px;color:#6b7280">obligatoire avant de terminer</span>
         </div>
       </div>
@@ -1316,29 +1320,48 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       // 30/09/2026 — Demande d'Elinathan : à chaque stock créé, on demande le nombre de caisses
       // IFCO vides comptées chez Moorea. C'est seulement NOTÉ (sur le stock + ifco_comptages
       // pour l'historique IFCO) : ça ne touche jamais ifco_stock/levels ni les règles IFCO.
+      // 30/09/2026 — Saisie en « palettes complètes (640 caisses) + caisses en plus » : total calculé.
+      const CAISSES_PAR_PALETTE_IFCO = 640;
       const demanderCaissesIfcoVides = (): Promise<number> => new Promise(resolve => {
         const ov = document.createElement("div");
         ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px";
-        ov.innerHTML = `<div style="background:#fff;border-radius:16px;padding:20px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25);font-family:inherit">
+        const champ = "width:100%;box-sizing:border-box;padding:12px;border:1.5px solid #e8e0d0;border-radius:10px;font-size:18px;font-weight:700;text-align:center";
+        ov.innerHTML = `<div style="background:#fff;border-radius:16px;padding:20px;max-width:380px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25);font-family:inherit">
           <div style="font-size:16px;font-weight:800;color:#1a2e1a;margin-bottom:6px">📦 Caisses IFCO vides</div>
           <div style="font-size:12.5px;color:#6b7280;margin-bottom:12px">Combien de caisses IFCO vides y a-t-il chez Moorea en ce moment ?</div>
-          <input id="s-ifco-vides-input" type="number" min="0" inputmode="numeric" placeholder="Nombre de caisses" style="width:100%;box-sizing:border-box;padding:12px;border:1.5px solid #e8e0d0;border-radius:10px;font-size:18px;font-weight:700;text-align:center" />
-          <div id="s-ifco-vides-err" style="color:#dc2626;font-size:12px;margin-top:6px;min-height:14px"></div>
+          <div style="display:flex;gap:10px">
+            <label style="flex:1;font-size:12px;font-weight:700;color:#374151">Palettes complètes<br><span style="font-weight:500;color:#9ca3af">(${CAISSES_PAR_PALETTE_IFCO} caisses)</span>
+              <input id="s-ifco-pal" type="number" min="0" inputmode="numeric" placeholder="0" style="${champ};margin-top:4px" /></label>
+            <label style="flex:1;font-size:12px;font-weight:700;color:#374151">+ Caisses<br><span style="font-weight:500;color:#9ca3af">(palette pas complète)</span>
+              <input id="s-ifco-cai" type="number" min="0" inputmode="numeric" placeholder="0" style="${champ};margin-top:4px" /></label>
+          </div>
+          <div id="s-ifco-total" style="margin-top:10px;font-size:14px;font-weight:800;color:#1d4ed8;text-align:center">= 0 caisse</div>
+          <div id="s-ifco-vides-err" style="color:#dc2626;font-size:12px;margin-top:6px;min-height:14px;text-align:center"></div>
           <button id="s-ifco-vides-ok" style="margin-top:8px;width:100%;padding:12px;border:none;border-radius:10px;background:#c8a84b;color:#fff;font-size:14px;font-weight:800;cursor:pointer">✓ Valider</button>
         </div>`;
         document.body.appendChild(ov);
-        const inp = ov.querySelector("#s-ifco-vides-input") as HTMLInputElement;
+        const pal = ov.querySelector("#s-ifco-pal") as HTMLInputElement;
+        const cai = ov.querySelector("#s-ifco-cai") as HTMLInputElement;
+        const tot = ov.querySelector("#s-ifco-total") as HTMLElement;
         const err = ov.querySelector("#s-ifco-vides-err") as HTMLElement;
+        const lire = () => {
+          const p = pal.value.trim() === "" ? 0 : parseInt(pal.value);
+          const c = cai.value.trim() === "" ? 0 : parseInt(cai.value);
+          return { p, c, ok: !isNaN(p) && !isNaN(c) && p >= 0 && c >= 0, vide: pal.value.trim() === "" && cai.value.trim() === "" };
+        };
+        const maj = () => { const { p, c, ok } = lire(); err.textContent = ""; tot.textContent = ok ? `= ${p * CAISSES_PAR_PALETTE_IFCO + c} caisse${p * CAISSES_PAR_PALETTE_IFCO + c > 1 ? "s" : ""}` : "—"; };
+        pal.oninput = maj; cai.oninput = maj;
         const valider = () => {
-          const v = inp.value.trim();
-          const n = parseInt(v);
-          if (v === "" || isNaN(n) || n < 0) { err.textContent = "Saisis un nombre (0 s'il n'y en a aucune)"; inp.focus(); return; }
+          const { p, c, ok, vide } = lire();
+          if (vide) { err.textContent = "Remplis au moins une case (0 s'il n'y en a aucune)"; pal.focus(); return; }
+          if (!ok) { err.textContent = "Nombres invalides"; return; }
           ov.remove();
-          resolve(n);
+          resolve(p * CAISSES_PAR_PALETTE_IFCO + c);
         };
         (ov.querySelector("#s-ifco-vides-ok") as HTMLElement).onclick = valider;
-        inp.onkeydown = (e) => { if (e.key === "Enter") valider(); };
-        setTimeout(() => inp.focus(), 50);
+        pal.onkeydown = (e) => { if (e.key === "Enter") cai.focus(); };
+        cai.onkeydown = (e) => { if (e.key === "Enter") valider(); };
+        setTimeout(() => pal.focus(), 50);
       });
       const enregistrerCaissesIfcoVides = async (importId: string, filename: string, caisses: number) => {
         let stockAppli: number | null = null;
@@ -1360,15 +1383,20 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         const n = await demanderCaissesIfcoVides();
         await enregistrerCaissesIfcoVides(sid, d?.filename || "", n);
         toast("📦 " + n + " caisses IFCO vides enregistrées");
-        if (sid === currentImportId) { const inp = document.getElementById("s-ifco-vides-comptage") as HTMLInputElement | null; if (inp) inp.value = String(n); statutIfcoComptage("✓ enregistré", "#15803d"); }
+        if (sid === currentImportId) { afficherIfcoComptage(n); statutIfcoComptage("✓ enregistré", "#15803d"); }
       };
       // Champ « Caisses IFCO vides » en haut de la page Comptage (même page que les produits).
       let ifcoComptageTimer: any = null;
       const statutIfcoComptage = (txt: string, couleur = "#6b7280") => { const el = document.getElementById("s-ifco-vides-statut"); if (el) { el.textContent = txt; el.style.color = couleur; } };
-      (window as any).sSaisieIfcoComptage = (val: string) => {
+      (window as any).sSaisieIfcoComptage = () => {
         clearTimeout(ifcoComptageTimer);
-        const v = String(val).trim(); const n = parseInt(v);
-        if (v === "" || isNaN(n) || n < 0) { statutIfcoComptage("obligatoire avant de terminer"); return; }
+        const vp = ((document.getElementById("s-ifco-pal-comptage") as HTMLInputElement | null)?.value || "").trim();
+        const vc = ((document.getElementById("s-ifco-cai-comptage") as HTMLInputElement | null)?.value || "").trim();
+        const p = vp === "" ? 0 : parseInt(vp); const c = vc === "" ? 0 : parseInt(vc);
+        const totEl = document.getElementById("s-ifco-total-comptage");
+        if ((vp === "" && vc === "") || isNaN(p) || isNaN(c) || p < 0 || c < 0) { if (totEl) totEl.textContent = ""; statutIfcoComptage("obligatoire avant de terminer"); return; }
+        const n = p * CAISSES_PAR_PALETTE_IFCO + c;
+        if (totEl) totEl.textContent = `= ${n} caisses`;
         statutIfcoComptage("⏳ enregistrement…");
         ifcoComptageTimer = setTimeout(async () => {
           if (!currentImportId) return;
@@ -1379,16 +1407,26 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           } catch (e: any) { statutIfcoComptage("⚠️ non enregistré : " + (e?.message || ""), "#dc2626"); }
         }, 800);
       };
+      const afficherIfcoComptage = (n: number) => {
+        const inpP = document.getElementById("s-ifco-pal-comptage") as HTMLInputElement | null;
+        const inpC = document.getElementById("s-ifco-cai-comptage") as HTMLInputElement | null;
+        const totEl = document.getElementById("s-ifco-total-comptage");
+        if (inpP) inpP.value = String(Math.floor(n / CAISSES_PAR_PALETTE_IFCO));
+        if (inpC) inpC.value = String(n % CAISSES_PAR_PALETTE_IFCO);
+        if (totEl) totEl.textContent = `= ${n} caisses`;
+      };
       const chargerChampIfcoComptage = async () => {
-        const inp = document.getElementById("s-ifco-vides-comptage") as HTMLInputElement | null;
-        if (!inp) return;
-        inp.value = "";
+        const inpP = document.getElementById("s-ifco-pal-comptage") as HTMLInputElement | null;
+        const inpC = document.getElementById("s-ifco-cai-comptage") as HTMLInputElement | null;
+        const totEl = document.getElementById("s-ifco-total-comptage");
+        if (!inpP || !inpC) return;
+        inpP.value = ""; inpC.value = ""; if (totEl) totEl.textContent = "";
         statutIfcoComptage("obligatoire avant de terminer");
         if (!currentImportId) return;
         try {
           const snap = await getDoc(doc(db, "stocks", currentImportId));
           const iv = (snap.data() as any)?.ifcoVides;
-          if (iv && typeof iv.caisses === "number") { inp.value = String(iv.caisses); statutIfcoComptage("✓ enregistré", "#15803d"); }
+          if (iv && typeof iv.caisses === "number") { afficherIfcoComptage(iv.caisses); statutIfcoComptage("✓ enregistré", "#15803d"); }
         } catch { /* ignore */ }
       };
 
