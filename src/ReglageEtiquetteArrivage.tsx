@@ -51,6 +51,50 @@ const TAILLES: { cle: keyof ConfigEtiquette; nom: string; min: number; max: numb
   { cle: "lotMooreaSize", nom: "Lot Moorea", min: 10, max: 60, unite: "px", pour: "lotMoorea" },
 ];
 
+
+// 30/09/2026 — « l'étiquette ça va pas / ça décale » : 1) l'aperçu de l'app était en Times alors
+// que l'imprimante sort en Arial Black (bien plus large) → tout débordait à l'impression ;
+// 2) rien n'empêchait un texte de passer sous un autre élément (quantité sous la DLC, lot
+// fournisseur par-dessus le QR → QR illisible, DLC coupée au bord). Chaque texte est maintenant
+// réduit juste assez pour s'arrêter avant l'élément suivant à sa droite (ou le bord).
+// MÊME FONCTION dans print-relay.js et ReglageEtiquetteArrivage.tsx — à garder identiques.
+function taillesAjustees(cfg: any, pos: any, visible: (k: string) => boolean, textes: Record<string, string>) {
+  const PX = 96 / 25.4;
+  const h: Record<string, number> = {
+    qr: cfg.qrSize,
+    dlc: cfg.dlcValueSize / PX + 2,
+    qty: (cfg.qtySize * 0.9) / PX,
+    lot: (cfg.metaCellSize * 1.2) / PX + 2,
+    ar: (cfg.metaCellSize * 1.2) / PX + 2,
+    lotMoorea: (cfg.lotMooreaSize * 1.2) / PX + 1.6,
+  };
+  const cles = ["qr", "dlc", "qty", "lot", "ar", "lotMoorea"].filter((k) => visible(k) && pos[k]);
+  const espaceDroite = (k: string) => {
+    const p = pos[k];
+    let lim = 180 - 2 - p.x;
+    for (const o of cles) {
+      if (o === k) continue;
+      const q = pos[o];
+      if (q.x <= p.x + 0.5) continue;
+      if (q.y < p.y + h[k] && q.y + h[o] > p.y) lim = Math.min(lim, q.x - p.x - 1.5);
+    }
+    return Math.max(lim, 10);
+  };
+  const tient = (texte: string, base: number, largeurMm: number, coef: number) =>
+    Math.max(10, Math.min(base, Math.floor((largeurMm * PX) / (Math.max(String(texte).length, 1) * coef))));
+  const largeurMotDlc = (3 * cfg.dlcLabelSize * 0.75 + 3) / PX;
+  return {
+    qty: tient(textes.qty, cfg.qtySize, Math.min(cfg.qtyLargeur || 74, pos.qty ? espaceDroite("qty") : 999), 0.7),
+    dlc: tient(textes.dlc, cfg.dlcValueSize, (pos.dlc ? espaceDroite("dlc") : 90) - 8 - 3 - largeurMotDlc, 0.64),
+    // Lot fournisseur : jamais plus petit que 18px (lisible) — s'il ne tient pas, il passe
+    // sur 2 lignes dans sa largeur (lotLargeur) au lieu de déborder sur le QR.
+    lot: Math.max(Math.min(18, cfg.metaCellSize), tient(textes.lot, cfg.metaCellSize, (pos.lot ? espaceDroite("lot") : 90) - 5, 0.72)),
+    lotLargeur: (pos.lot ? espaceDroite("lot") : 90),
+    ar: tient("AR : " + textes.ar, cfg.metaCellSize, (pos.ar ? espaceDroite("ar") : 90) - 5, 0.68),
+    lotMoorea: tient(textes.lotMoorea, cfg.lotMooreaSize, (pos.lotMoorea ? espaceDroite("lotMoorea") : 90) - 4.6, 0.72),
+  };
+}
+
 function fusionner(c: any): ConfigEtiquette {
   return {
     ...DESIGN_ORIGINE, ...(c || {}),
@@ -174,7 +218,8 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
   const visible = (cle: Cle) => !cfg.masques[cle];
   // Même calcul que print-relay.js : le nombre de colis est réduit pour tenir dans sa largeur.
   const qteTexte = String(exemple.qte || "-");
-  const qtyFont = Math.min(cfg.qtySize, Math.floor(cfg.qtyLargeur * PX_PAR_MM / (Math.max(qteTexte.length, 1) * 0.5)));
+  const tailles = taillesAjustees(cfg, cfg.positions, (k: string) => visible(k as Cle), { qty: qteTexte, dlc: exemple.dlc, lot: exemple.lotFournisseur, ar: exemple.ar, lotMoorea: exemple.lotMoorea });
+  const qtyFont = tailles.qty;
   const qtyDecalage = Math.round((cfg.qtySize - qtyFont) * 0.45);
   const cell: React.CSSProperties = { background: "#eee", borderRadius: "1.5mm", padding: "1mm 2.5mm", fontSize: cfg.metaCellSize, fontWeight: 900, color: "#000", lineHeight: 1.2, whiteSpace: "nowrap" };
 
@@ -199,17 +244,17 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
             <div
               onPointerMove={pendantGlisse} onPointerUp={finGlisse} onPointerCancel={finGlisse}
               onPointerDown={e => { if (e.target === e.currentTarget) setSelection(null); }}
-              style={{ position: "relative", width: `${LARGEUR_MM}mm`, height: `${HAUTEUR_MM}mm`, background: "#fff", overflow: "hidden", transform: `scale(${echelle})`, transformOrigin: "top left", userSelect: "none", fontFamily: "'Times New Roman', Times, serif" }}>
+              style={{ position: "relative", width: `${LARGEUR_MM}mm`, height: `${HAUTEUR_MM}mm`, background: "#fff", overflow: "hidden", transform: `scale(${echelle})`, transformOrigin: "top left", userSelect: "none", fontFamily: "'Arial Black', Arial, sans-serif", textTransform: "uppercase" }}>
               {visible("produit") && <div onPointerDown={debutGlisse("produit")} style={{ ...at("produit"), fontSize: cfg.produitSize, fontWeight: 900, color: "#000", lineHeight: 1.05, whiteSpace: "normal", overflowWrap: "break-word", width: `${cfg.produitLargeur}mm`, background: selection === "produit" ? "rgba(37,99,235,.06)" : undefined }}>{exemple.produit.toUpperCase()}</div>}
               {visible("qr") && <div onPointerDown={debutGlisse("qr")} style={at("qr")}><img src={FAUX_QR} alt="" draggable={false} style={{ width: `${cfg.qrSize}mm`, height: `${cfg.qrSize}mm`, display: "block", pointerEvents: "none" }} /></div>}
               {visible("dlc") && <div onPointerDown={debutGlisse("dlc")} style={{ ...at("dlc"), display: "flex", flexDirection: "row", alignItems: "center", gap: "3mm", background: "#000", borderRadius: "1.5mm", padding: "1mm 4mm", width: "fit-content" }}>
                 <span style={{ fontSize: cfg.dlcLabelSize, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap" }}>DLC</span>
-                <span style={{ fontSize: cfg.dlcValueSize, fontWeight: 900, color: "#fff", lineHeight: 1, whiteSpace: "nowrap" }}>{exemple.dlc}</span>
+                <span style={{ fontSize: tailles.dlc, fontWeight: 900, color: "#fff", lineHeight: 1, whiteSpace: "nowrap" }}>{exemple.dlc}</span>
               </div>}
               {visible("qty") && <div onPointerDown={debutGlisse("qty")} style={{ ...at("qty"), fontSize: qtyFont, marginTop: qtyDecalage, fontWeight: 900, color: "#000", lineHeight: 0.9, whiteSpace: "nowrap" }}>{qteTexte}</div>}
-              {visible("lot") && <div onPointerDown={debutGlisse("lot")} style={{ ...at("lot"), ...cell }}>{exemple.lotFournisseur.toUpperCase()}</div>}
-              {visible("ar") && <div onPointerDown={debutGlisse("ar")} style={{ ...at("ar"), ...cell }}><span style={{ fontWeight: 700 }}>AR :</span> {exemple.ar}</div>}
-              {visible("lotMoorea") && <div onPointerDown={debutGlisse("lotMoorea")} style={{ ...at("lotMoorea"), fontSize: cfg.lotMooreaSize, fontWeight: 900, color: "#000", border: "0.6mm solid #000", borderRadius: "1.5mm", padding: "0.5mm 2mm", whiteSpace: "nowrap", lineHeight: 1.2 }}>{exemple.lotMoorea}</div>}
+              {visible("lot") && <div onPointerDown={debutGlisse("lot")} style={{ ...at("lot"), ...cell, fontSize: tailles.lot, maxWidth: `${tailles.lotLargeur}mm`, whiteSpace: "normal", overflowWrap: "anywhere" }}>{exemple.lotFournisseur.toUpperCase()}</div>}
+              {visible("ar") && <div onPointerDown={debutGlisse("ar")} style={{ ...at("ar"), ...cell, fontSize: tailles.ar }}><span style={{ fontWeight: 700 }}>AR :</span> {exemple.ar}</div>}
+              {visible("lotMoorea") && <div onPointerDown={debutGlisse("lotMoorea")} style={{ ...at("lotMoorea"), fontSize: tailles.lotMoorea, fontWeight: 900, color: "#000", border: "0.6mm solid #000", borderRadius: "1.5mm", padding: "0.5mm 2mm", whiteSpace: "nowrap", lineHeight: 1.2 }}>{exemple.lotMoorea}</div>}
             </div>
           </div>
           <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 14px" }}>Étiquette 180 × 110 mm · {selection ? `${NOMS[selection]} : x ${cfg.positions[selection].x} mm, y ${cfg.positions[selection].y} mm` : "clique un élément pour le sélectionner"}</p>
