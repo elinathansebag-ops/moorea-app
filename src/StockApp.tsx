@@ -1527,6 +1527,12 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         for (let i = 1; i <= NB_MAX_CELLULES; i++) a["compte" + i] = d ? (d["c" + i] ?? null) : null;
         a.detruire = d ? (d.cd ?? null) : null;
         a.compte = d ? d.c : null;
+        a._par = d ? (d._par || "") : "";
+      };
+      // 30/09/2026 — Qui a compté chaque article (comptage à deux appareils).
+      const nomCompteur = () => {
+        const u = auth.currentUser;
+        return (u?.displayName || u?.email || "").split(/[ @]/)[0] || "Moi";
       };
       const majStatutReseau = () => {
         if (!navigator.onLine) setSyncStatus("loading", "📴 Hors ligne — comptage gardé sur l'appareil");
@@ -1549,7 +1555,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           // 16/09/2026 — Une case comptée à 0 est un vrai comptage : elle est bien enregistrée.
           for (let i = 1; i <= NB_MAX_CELLULES; i++) { const v = a["compte" + i]; if (v !== null && v !== undefined) locs["c" + i] = v; }
           if (!a._saisieTs) a._saisieTs = Date.now();
-          data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: a._saisieTs, _idx: idx };
+          a._par = nomCompteur();
+          data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: a._saisieTs, _idx: idx, _par: a._par };
           dernierEnvoye[a.article] = sa;
         });
         if (!nb) return;
@@ -2336,8 +2343,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           let artLabel = a.article;
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
           const ifcoBadge = isIfcoArticle(a.article) ? `<br><span style="font-size:10px;color:#1a6b3a;font-weight:700">☑️ Caisse IFCO</span>` : "";
+          const moi = nomCompteur();
+          const parBadge = counted(a) && a._par ? `<br><span style="font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px;${a._par === moi ? "background:#dcfce7;color:#15803d" : "background:#ede9fe;color:#6d28d9"}">👤 ${a._par === moi ? "Moi" : a._par}</span>` : "";
           html += `<tr data-id="${a.id}">
-            <td style="font-weight:500">${artLabel}${ifcoBadge}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
+            <td style="font-weight:500">${artLabel}${parBadge}${ifcoBadge}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
             <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>
