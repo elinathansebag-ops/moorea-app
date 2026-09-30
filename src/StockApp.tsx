@@ -914,6 +914,13 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           <button class="btn btn-sm" onclick="sScannerPalette()">📷 Scanner une palette incomplète</button>
         </div>
       </div>
+      <div class="card" style="padding:.75rem 1.25rem;margin-bottom:1rem;border:1.5px solid #bfdbfe;background:#eff6ff">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-weight:800;color:#1d4ed8;font-size:14px">📦 Caisses IFCO vides chez Moorea</span>
+          <input id="s-ifco-vides-comptage" type="number" min="0" inputmode="numeric" placeholder="à compter" oninput="sSaisieIfcoComptage(this.value)" style="width:110px;padding:8px;border:1.5px solid #bfdbfe;border-radius:8px;font-size:15px;font-weight:700;text-align:center;font-family:inherit"/>
+          <span id="s-ifco-vides-statut" style="font-size:12px;color:#6b7280">obligatoire avant de terminer</span>
+        </div>
+      </div>
       <div class="card">
         <div class="tbl-wrap">
           <table>
@@ -950,10 +957,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       <div class="stat-grid" id="s-metrics-e"></div>
       <div class="card">
         <div class="pills">
-          <button class="pill active" id="s-ef-tous" onclick="sSetEF('tous')">Tous</button>
-          <button class="pill" id="s-ef-ecart" onclick="sSetEF('ecart')">Avec écart</button>
-          <button class="pill" id="s-ef-ok" onclick="sSetEF('ok')">OK</button>
-          <button class="pill" id="s-ef-nc" onclick="sSetEF('nc')">Non comptés</button>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#15803d;cursor:pointer;padding:4px 8px"><span class="mrq-case-conteneur" style="--case-couleur:#15803d"><input type="checkbox" class="mrq-case-native" id="s-efc-ok" checked onchange="sRenderEcarts()"/><span class="mrq-case-visuelle"></span></span>✓ 0 écart</label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#b45309;cursor:pointer;padding:4px 8px"><span class="mrq-case-conteneur" style="--case-couleur:#b45309"><input type="checkbox" class="mrq-case-native" id="s-efc-plus" checked onchange="sRenderEcarts()"/><span class="mrq-case-visuelle"></span></span>＋ En plus</label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#dc2626;cursor:pointer;padding:4px 8px"><span class="mrq-case-conteneur" style="--case-couleur:#dc2626"><input type="checkbox" class="mrq-case-native" id="s-efc-moins" checked onchange="sRenderEcarts()"/><span class="mrq-case-visuelle"></span></span>− En moins</label>
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#6b7280;cursor:pointer;padding:4px 8px"><span class="mrq-case-conteneur" style="--case-couleur:#6b7280"><input type="checkbox" class="mrq-case-native" id="s-efc-nc" checked onchange="sRenderEcarts()"/><span class="mrq-case-visuelle"></span></span>Non comptés</label>
           <input class="search-input" id="s-srch2" placeholder="🔍 Rechercher..." oninput="sRenderEcarts()" style="max-width:220px"/>
         </div>
         <div class="tbl-wrap">
@@ -1339,7 +1346,38 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         const n = await demanderCaissesIfcoVides();
         await enregistrerCaissesIfcoVides(sid, d?.filename || "", n);
         toast("📦 " + n + " caisses IFCO vides enregistrées");
+        if (sid === currentImportId) { const inp = document.getElementById("s-ifco-vides-comptage") as HTMLInputElement | null; if (inp) inp.value = String(n); statutIfcoComptage("✓ enregistré", "#15803d"); }
       };
+      // Champ « Caisses IFCO vides » en haut de la page Comptage (même page que les produits).
+      let ifcoComptageTimer: any = null;
+      const statutIfcoComptage = (txt: string, couleur = "#6b7280") => { const el = document.getElementById("s-ifco-vides-statut"); if (el) { el.textContent = txt; el.style.color = couleur; } };
+      (window as any).sSaisieIfcoComptage = (val: string) => {
+        clearTimeout(ifcoComptageTimer);
+        const v = String(val).trim(); const n = parseInt(v);
+        if (v === "" || isNaN(n) || n < 0) { statutIfcoComptage("obligatoire avant de terminer"); return; }
+        statutIfcoComptage("⏳ enregistrement…");
+        ifcoComptageTimer = setTimeout(async () => {
+          if (!currentImportId) return;
+          try {
+            const snap = await getDoc(doc(db, "stocks", currentImportId));
+            await enregistrerCaissesIfcoVides(currentImportId, (snap.data() as any)?.filename || "", n);
+            statutIfcoComptage("✓ enregistré", "#15803d");
+          } catch (e: any) { statutIfcoComptage("⚠️ non enregistré : " + (e?.message || ""), "#dc2626"); }
+        }, 800);
+      };
+      const chargerChampIfcoComptage = async () => {
+        const inp = document.getElementById("s-ifco-vides-comptage") as HTMLInputElement | null;
+        if (!inp) return;
+        inp.value = "";
+        statutIfcoComptage("obligatoire avant de terminer");
+        if (!currentImportId) return;
+        try {
+          const snap = await getDoc(doc(db, "stocks", currentImportId));
+          const iv = (snap.data() as any)?.ifcoVides;
+          if (iv && typeof iv.caisses === "number") { inp.value = String(iv.caisses); statutIfcoComptage("✓ enregistré", "#15803d"); }
+        } catch { /* ignore */ }
+      };
+
       (window as any).sSaisirIfco = async (sid: string, filename: string) => {
         const n = await demanderCaissesIfcoVides();
         try { await enregistrerCaissesIfcoVides(sid, filename, n); toast("📦 " + n + " caisses IFCO vides enregistrées"); }
@@ -1540,6 +1578,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         currentSessionId = "CPT-" + team + "-" + TODAY + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
         articles = allArticles.filter(a => getEquipe(a) === team).map(a => ({ ...a, compte: null, ...cellulesVides(), detruire: null }));
         ecartFilter = "tous";
+        chargerChampIfcoComptage();
         const ct = document.getElementById("s-comptage-title");
         const et = document.getElementById("s-ecarts-title");
         const sid = document.getElementById("s-session-id-display");
@@ -2105,7 +2144,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
           const ifcoBadge = isIfcoArticle(a.article) ? `<br><span style="font-size:10px;color:#1a6b3a;font-weight:700">☑️ Caisse IFCO</span>` : "";
           html += `<tr data-id="${a.id}">
-            <td style="font-weight:500">${artLabel}${ifcoBadge}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${lotsStr ? `<br><span style="font-size:10px;color:#9ca3af">${lotsStr}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
+            <td style="font-weight:500">${artLabel}${ifcoBadge}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
             <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>
@@ -2129,7 +2168,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
               const lotsStr = a.lotsQty && Object.keys(a.lotsQty || {}).length > 0 ? Object.entries(a.lotsQty).map(([l, qty]: any) => `lot ${l} · ${qty} col.`).join(" | ") : (a.lots?.join(" ") || "");
               const enc = encodeURIComponent(JSON.stringify({ id: a.id, article: a.article, famille: a.famille, nb_colis: a.nb_colis, lots: a.lots || [], lotsQty: a.lotsQty || {}, lot: a.lot || "", equipe: a.equipe }));
               otherHtml += `<tr style="background:#fffbf0;border-left:3px solid #c8a84b">
-                <td style="font-weight:500">${a.article}<br><span style="font-size:10px;color:#c8a84b;font-weight:600">📦 ${otherTeam} · ${a.nb_colis} colis</span>${lotsStr ? `<br><span style="font-size:10px;color:#6b7280">${lotsStr}</span>` : ""}</td>
+                <td style="font-weight:500">${a.article}<br><span style="font-size:10px;color:#c8a84b;font-weight:600">📦 ${otherTeam} · ${a.nb_colis} colis</span></td>
                 <td colspan="3" style="text-align:center;color:#6b7280;font-size:12px;font-style:italic">-</td>
                 <td style="text-align:right"><button class="btn btn-sm btn-gold" data-enc="${enc}" onclick="sRecupererArticle(this.dataset.enc)">← Récupérer</button></td>
               </tr>`;
@@ -2375,10 +2414,13 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         const q = (document.getElementById("s-srch2") as HTMLInputElement)?.value.toLowerCase() || "";
         let rows = articles.filter(a => {
           if (q && !a.article.toLowerCase().includes(q)) return false;
-          if (ecartFilter === "ecart") return counted(a) && ecart(a) !== 0;
-          if (ecartFilter === "ok") return counted(a) && ecart(a) === 0;
-          if (ecartFilter === "nc") return !counted(a);
-          return true;
+          // 30/09/2026 — Filtres en cases à cocher (0 écart / en plus / en moins / non comptés).
+          const coche = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.checked ?? true;
+          if (!counted(a)) return coche("s-efc-nc");
+          const e = ecart(a);
+          if (e === 0) return coche("s-efc-ok");
+          if (e > 0) return coche("s-efc-plus");
+          return coche("s-efc-moins");
         });
         const tbody = document.getElementById("s-etbl-body");
         if (!tbody) return;
