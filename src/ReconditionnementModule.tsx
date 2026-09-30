@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
+import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
 import { db, ref, push, onValue, update, remove, get, set } from "./firebase";
 import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent, ChargementEcran } from "./shared";
@@ -5150,6 +5151,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             jour (demande d'Elinathan : "chaque caisse coûte cher, pas le droit à l'erreur"). ── */}
         {activeTab === "suivi_ifco" && (
           <div style={{ display: "grid", gap: 20 }}>
+            <ComptagesIfcoVides />
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, padding: 20 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
                 <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>📅 Stock IFCO jour par jour</h3>

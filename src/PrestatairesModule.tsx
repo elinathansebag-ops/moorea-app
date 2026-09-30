@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent } from "react";
+import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, styles, ChargementEcran } from "./shared";
 import * as XLSX from "xlsx";
@@ -3516,6 +3517,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 <div style={{ fontSize: 9, color: "#ccc" }}>{Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE) > 0 ? `palette${Math.floor(stockLevels.transit / CAISSES_PAR_PALETTE) > 1 ? 's' : ''}${stockLevels.transit % CAISSES_PAR_PALETTE > 0 ? ` + ${stockLevels.transit % CAISSES_PAR_PALETTE} caisses` : ''}` : 'caisses'}</div>
               </div>
             </div>
+
+            <ComptagesIfcoVides />
 
             {/* BOUTONS ACTIONS */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 24 }}>

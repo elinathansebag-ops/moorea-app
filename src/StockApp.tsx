@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { db, db as rtdb, ref, onValue, update, push, get } from "./firebase";
+import { db, db as rtdb, ref, onValue, update, push, get, auth } from "./firebase";
 import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, documentId } from "firebase/firestore";
 import { PageHeader, styles } from "./shared";
 import { Html5Qrcode } from "html5-qrcode";
@@ -1292,6 +1292,51 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         }
       };
 
+      // 30/09/2026 — Demande d'Elinathan : à chaque stock créé, on demande le nombre de caisses
+      // IFCO vides comptées chez Moorea. C'est seulement NOTÉ (sur le stock + ifco_comptages
+      // pour l'historique IFCO) : ça ne touche jamais ifco_stock/levels ni les règles IFCO.
+      const demanderCaissesIfcoVides = (): Promise<number> => new Promise(resolve => {
+        const ov = document.createElement("div");
+        ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px";
+        ov.innerHTML = `<div style="background:#fff;border-radius:16px;padding:20px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25);font-family:inherit">
+          <div style="font-size:16px;font-weight:800;color:#1a2e1a;margin-bottom:6px">📦 Caisses IFCO vides</div>
+          <div style="font-size:12.5px;color:#6b7280;margin-bottom:12px">Combien de caisses IFCO vides y a-t-il chez Moorea en ce moment ?</div>
+          <input id="s-ifco-vides-input" type="number" min="0" inputmode="numeric" placeholder="Nombre de caisses" style="width:100%;box-sizing:border-box;padding:12px;border:1.5px solid #e8e0d0;border-radius:10px;font-size:18px;font-weight:700;text-align:center" />
+          <div id="s-ifco-vides-err" style="color:#dc2626;font-size:12px;margin-top:6px;min-height:14px"></div>
+          <button id="s-ifco-vides-ok" style="margin-top:8px;width:100%;padding:12px;border:none;border-radius:10px;background:#c8a84b;color:#fff;font-size:14px;font-weight:800;cursor:pointer">✓ Valider</button>
+        </div>`;
+        document.body.appendChild(ov);
+        const inp = ov.querySelector("#s-ifco-vides-input") as HTMLInputElement;
+        const err = ov.querySelector("#s-ifco-vides-err") as HTMLElement;
+        const valider = () => {
+          const v = inp.value.trim();
+          const n = parseInt(v);
+          if (v === "" || isNaN(n) || n < 0) { err.textContent = "Saisis un nombre (0 s'il n'y en a aucune)"; inp.focus(); return; }
+          ov.remove();
+          resolve(n);
+        };
+        (ov.querySelector("#s-ifco-vides-ok") as HTMLElement).onclick = valider;
+        inp.onkeydown = (e) => { if (e.key === "Enter") valider(); };
+        setTimeout(() => inp.focus(), 50);
+      });
+      const enregistrerCaissesIfcoVides = async (importId: string, filename: string, caisses: number) => {
+        let stockAppli: number | null = null;
+        try { const v = (await get(ref(rtdb, "ifco_stock/levels/moorea"))).val(); stockAppli = typeof v === "number" ? v : null; } catch { /* ignore */ }
+        const info = {
+          caisses, stockAppli, ecart: stockAppli == null ? null : caisses - stockAppli,
+          par: auth.currentUser?.displayName || auth.currentUser?.email || "",
+          ts: Date.now(), dateLabel: new Date().toLocaleString("fr-FR"), importId, filename,
+        };
+        await setDoc(doc(db, "stocks", importId), { ifcoVides: info }, { merge: true });
+        await update(ref(rtdb, "ifco_comptages"), { [importId]: info });
+      };
+      (window as any).sSaisirIfco = async (sid: string, filename: string) => {
+        const n = await demanderCaissesIfcoVides();
+        try { await enregistrerCaissesIfcoVides(sid, filename, n); toast("📦 " + n + " caisses IFCO vides enregistrées"); }
+        catch (e: any) { toast("Erreur IFCO : " + (e?.message || "")); }
+        renderStockList();
+      };
+
       // Save stock to Firestore
       const saveStock = async (filename: string, arts: any[]) => {
         const importId = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
@@ -1449,8 +1494,11 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           });
           allArticles = Object.values(grouped).map((a: any, i: number) => ({ id: i + 1, equipe: "PRESTIGE", famille: a.famille, code: "", article: a.article, nb_colis: a.nb_colis, lots: a.lots, lot: a.lots.join(" "), lotsQty: a.lotsQty, compte: null, ...cellulesVides(), detruire: null }));
           const statusEl = document.getElementById("s-upload-status");
+          const caissesIfcoVides = await demanderCaissesIfcoVides();
           if (statusEl) statusEl.textContent = "⏳ Enregistrement...";
-          await saveStock(file.name, allArticles);
+          const nouvelImportId = await saveStock(file.name, allArticles);
+          try { await enregistrerCaissesIfcoVides(nouvelImportId, file.name, caissesIfcoVides); }
+          catch (e: any) { toast("⚠️ Caisses IFCO vides non enregistrées : " + (e?.message || "")); }
           if (statusEl) statusEl.textContent = "✓ " + file.name + " - " + allArticles.length + " articles enregistrés";
           const gms = allArticles.filter(a => getEquipe(a) === "GMS").length;
           const pres = allArticles.filter(a => getEquipe(a) === "PRESTIGE").length;
@@ -1658,6 +1706,9 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
                   <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
                 </div>
                 <div style="font-size:11px;color:#6b7280;margin-top:3px">${done}/${total} · ${pct}%</div>
+                ${s.ifcoVides
+                  ? `<div style="font-size:11px;margin-top:4px;color:#1d4ed8;font-weight:700">📦 IFCO vides : ${s.ifcoVides.caisses}${s.ifcoVides.ecart != null ? ` <span style="color:${s.ifcoVides.ecart === 0 ? "#15803d" : "#b45309"}">(appli ${s.ifcoVides.stockAppli} · écart ${s.ifcoVides.ecart > 0 ? "+" : ""}${s.ifcoVides.ecart})</span>` : ""}</div>`
+                  : `<button class="btn btn-sm" style="margin-top:4px;border-color:#bfdbfe;color:#1d4ed8" onclick="sSaisirIfco('${sid}','${String(s.filename || "").replace(/'/g, "\\'")}')">📦 Saisir caisses IFCO vides</button>`}
               </div>
               <div class="stock-actions">
                 ${s.cloture ? "" : (canCompter ? `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>` : `<span style="font-size:11px;background:#f5f6f8;border:1px solid #e5e7eb;color:#9ca3af;padding:4px 10px;border-radius:8px;font-weight:600">🔒 Lecture seule</span>`)}
