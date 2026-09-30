@@ -1238,8 +1238,18 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const d = snap.val();
       setIfcoStockMovements(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.ts || 0) - (b.ts || 0)) : []);
     });
+    let nettoyageFichiersFait = false;
     const u8 = onValue(ref(db, "reconditionnement_pdfs_en_attente"), snap => {
       const d = snap.val();
+      // 30/09/2026 — Fichiers en attente jamais utilisés : supprimés automatiquement après 15 jours
+      // (une seule écriture groupée, une fois par ouverture du module).
+      if (d && !nettoyageFichiersFait) {
+        nettoyageFichiersFait = true;
+        const limite = Date.now() - 15 * 24 * 3600 * 1000;
+        const vieux: Record<string, null> = {};
+        for (const [id, v] of Object.entries(d as Record<string, any>)) if (typeof v?.ts === "number" && v.ts < limite) vieux[id] = null;
+        if (Object.keys(vieux).length) update(ref(db, "reconditionnement_pdfs_en_attente"), vieux).catch(() => {});
+      }
       setPdfsEnAttente(d ? Object.entries(d).map(([id, v]: any) => ({ ...v, id })).sort((a: any, b: any) => (a.ts || 0) - (b.ts || 0)) : []);
     });
     const u10 = onValue(ref(db, "reajustements_stock_demandes"), snap => {
