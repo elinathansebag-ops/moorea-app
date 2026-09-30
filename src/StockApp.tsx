@@ -2069,7 +2069,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         });
         const tbody = document.getElementById("s-tbl-body");
         if (!tbody) return;
-        if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
+        if (!rows.length && !q) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
         let html = "";
         rows.forEach(a => {
           const q1 = a.compte1 !== null && a.compte1 !== undefined ? a.compte1 : "";
@@ -2105,7 +2105,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             <td style="text-align:center;color:#6b7280;font-size:12px">${a.nb_colis}</td>
           </tr>`;
         });
-        tbody.innerHTML = html;
+        tbody.innerHTML = html || `<tr><td colspan="5" class="empty-state">Aucun article « ${q.replace(/</g, "&lt;")} » dans ce stock</td></tr>`;
 
         if (q) {
           const otherTeam = currentTeam === "GMS" ? "PRESTIGE" : "GMS";
@@ -2128,9 +2128,62 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             });
             tbody.innerHTML += otherHtml;
           }
+          // 30/09/2026 — Demande d'Elinathan : ni dans ce stock, ni dans l'autre équipe →
+          // on propose directement les articles du catalogue correspondants, ajoutables en un
+          // clic (plus besoin d'aller les rechercher dans « Ajouter un article »).
+          if (!rows.length && !otherMatches.length) {
+            const mots = q.split(/\s+/).filter(Boolean);
+            const dejaLa = new Set(articles.map(x => String(x.article || "").toLowerCase().trim()));
+            const vus = new Set<string>();
+            const catMatches = (catalogueArticles || [])
+              .filter((c: any) => {
+                const nom = String(c?.libelle || "").trim();
+                const k = nom.toLowerCase();
+                if (!nom || dejaLa.has(k) || vus.has(k)) return false;
+                if (!mots.every(m => k.includes(m))) return false;
+                vus.add(k); return true;
+              })
+              .slice(0, 10);
+            if (catMatches.length) {
+              let catHtml = `<tr><td colspan="5" style="padding:8px 12px;font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;letter-spacing:.5px">- PAS EN STOCK · À AJOUTER DEPUIS LE CATALOGUE -</td></tr>`;
+              catMatches.forEach((c: any) => {
+                const enc = encodeURIComponent(String(c.libelle).trim());
+                catHtml += `<tr style="background:#eff6ff;border-left:3px solid #3b82f6">
+                  <td style="font-weight:500">${String(c.libelle).trim()}${c.code ? `<br><span style="font-size:10px;color:#6b7280">${c.code}</span>` : ""}</td>
+                  <td colspan="3" style="text-align:center;color:#6b7280;font-size:12px;font-style:italic">pas dans le stock</td>
+                  <td style="text-align:right"><button class="btn btn-sm" style="border-color:#3b82f6;color:#1d4ed8" data-enc="${enc}" onclick="sAjouterDepuisCatalogue(this.dataset.enc)">+ Ajouter</button></td>
+                </tr>`;
+              });
+              tbody.innerHTML += catHtml;
+            }
+          }
         }
       };
       (window as any).sRenderTable = sRenderTable;
+
+      // Ajoute au comptage un article du catalogue absent du stock (0 colis théorique, case vide
+      // à remplir), et l'enregistre dans le stock Firestore comme « Ajouter un article ».
+      (window as any).sAjouterDepuisCatalogue = async (enc: string) => {
+        const nom = decodeURIComponent(enc);
+        if (articles.find(x => String(x.article || "").toLowerCase().trim() === nom.toLowerCase())) { toast("Déjà dans le comptage"); return; }
+        const cat = (catalogueArticles || []).find((c: any) => String(c?.libelle || "").trim() === nom);
+        const newArt = { id: Date.now(), equipe: currentTeam, famille: "AUTRE", code: cat?.code || "", article: nom, nb_colis: 0, lots: [], lotsQty: {}, lot: "", comment: "", compte: null, ...cellulesVides(), detruire: null, _extra: true };
+        articles.push(newArt);
+        if (currentImportId) {
+          try {
+            const snap = await getDoc(doc(db, "stocks", currentImportId));
+            if (snap.exists()) {
+              const data = snap.data() as any;
+              const existingArts = data.articles || [];
+              existingArts.push({ id: newArt.id, equipe: newArt.equipe, famille: newArt.famille, code: newArt.code, article: newArt.article, nb_colis: 0, lot: "", lots: [], lotsQty: {} });
+              await setDoc(doc(db, "stocks", currentImportId), { ...data, articles: existingArts });
+            }
+          } catch (e) { console.warn("Erreur sauvegarde article catalogue en Firestore:", e); }
+        }
+        updateMetricsC(); sRenderTable();
+        toast(nom.split(" ").slice(0, 4).join(" ") + " ajouté — saisis la quantité");
+        setTimeout(() => { (document.querySelector(`#s-tbl-body tr[data-id="${newArt.id}"] .qty-in`) as HTMLInputElement | null)?.focus(); }, 80);
+      };
 
       (window as any).sTerminerComptage = async () => {
         document.getElementById("s-nav-ecarts")?.classList.remove("hidden");
