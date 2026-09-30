@@ -1330,6 +1330,16 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         await setDoc(doc(db, "stocks", importId), { ifcoVides: info }, { merge: true });
         await update(ref(rtdb, "ifco_comptages"), { [importId]: info });
       };
+      // 30/09/2026 — Comptage IFCO vides OBLIGATOIRE à la fin du stock (clôture ou passage aux
+      // écarts) : si le stock n'en a pas encore, on le demande avant de clôturer.
+      const exigerCaissesIfcoVides = async (sid: string) => {
+        const snap = await getDoc(doc(db, "stocks", sid));
+        const d: any = snap.exists() ? snap.data() : null;
+        if (d?.ifcoVides) return;
+        const n = await demanderCaissesIfcoVides();
+        await enregistrerCaissesIfcoVides(sid, d?.filename || "", n);
+        toast("📦 " + n + " caisses IFCO vides enregistrées");
+      };
       (window as any).sSaisirIfco = async (sid: string, filename: string) => {
         const n = await demanderCaissesIfcoVides();
         try { await enregistrerCaissesIfcoVides(sid, filename, n); toast("📦 " + n + " caisses IFCO vides enregistrées"); }
@@ -1494,11 +1504,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           });
           allArticles = Object.values(grouped).map((a: any, i: number) => ({ id: i + 1, equipe: "PRESTIGE", famille: a.famille, code: "", article: a.article, nb_colis: a.nb_colis, lots: a.lots, lot: a.lots.join(" "), lotsQty: a.lotsQty, compte: null, ...cellulesVides(), detruire: null }));
           const statusEl = document.getElementById("s-upload-status");
-          const caissesIfcoVides = await demanderCaissesIfcoVides();
           if (statusEl) statusEl.textContent = "⏳ Enregistrement...";
-          const nouvelImportId = await saveStock(file.name, allArticles);
-          try { await enregistrerCaissesIfcoVides(nouvelImportId, file.name, caissesIfcoVides); }
-          catch (e: any) { toast("⚠️ Caisses IFCO vides non enregistrées : " + (e?.message || "")); }
+          await saveStock(file.name, allArticles);
           if (statusEl) statusEl.textContent = "✓ " + file.name + " - " + allArticles.length + " articles enregistrés";
           const gms = allArticles.filter(a => getEquipe(a) === "GMS").length;
           const pres = allArticles.filter(a => getEquipe(a) === "PRESTIGE").length;
@@ -1913,6 +1920,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       // Clôturer
       (window as any).sCloturerStock = async (sid: string) => {
         if (!confirm("Clôturer ce stock ?")) return;
+        try { await exigerCaissesIfcoVides(sid); } catch (e: any) { toast("Erreur IFCO : " + (e?.message || "") + " — stock non clôturé"); return; }
         try {
           const snap = await getDoc(doc(db, "stocks", sid));
           let dureeMsg = "";
@@ -2186,6 +2194,9 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       };
 
       (window as any).sTerminerComptage = async () => {
+        if (currentImportId) {
+          try { await exigerCaissesIfcoVides(currentImportId); } catch (e: any) { toast("Erreur IFCO : " + (e?.message || "") + " — réessaie"); return; }
+        }
         document.getElementById("s-nav-ecarts")?.classList.remove("hidden");
         // Clôture automatiquement le stock dès qu'on passe aux écarts, pour éviter
         // qu'il reste "ouvert" par oubli — reste réouvrable à tout moment depuis
@@ -2547,6 +2558,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       (window as any)._doCloturerStock = async () => {
         if (!currentImportId) { toast("Aucun stock chargé"); return; }
         if (!confirm("Clôturer ce stock ? Il reste réouvrable ensuite depuis la liste des stocks.")) return;
+        try { await exigerCaissesIfcoVides(currentImportId); } catch (e: any) { toast("Erreur IFCO : " + (e?.message || "") + " — stock non clôturé"); return; }
         try {
           const snap = await getDoc(doc(db, "stocks", currentImportId));
           const sdata = snap.exists() ? (snap.data() as any) : {};
