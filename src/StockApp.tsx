@@ -1376,7 +1376,46 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       };
       // 30/09/2026 — Comptage IFCO vides OBLIGATOIRE à la fin du stock (clôture ou passage aux
       // écarts) : si le stock n'en a pas encore, on le demande avant de clôturer.
+      // 30/09/2026 — Alerte mail à Elinathan quand, à la fin d'un stock, les caisses IFCO vides
+      // comptées s'écartent du stock Moorea de l'appli d'au moins une palette (640). Une seule
+      // alerte par stock (drapeau alerteEnvoyee), jamais pendant la saisie.
+      const SEUIL_ALERTE_IFCO = 640;
+      const alerterEcartIfcoSiBesoin = async (sid: string) => {
+        try {
+          const snap = await getDoc(doc(db, "stocks", sid));
+          const d: any = snap.exists() ? snap.data() : null;
+          const iv = d?.ifcoVides;
+          if (!iv || iv.alerteEnvoyee || iv.ecart == null || Math.abs(iv.ecart) < SEUIL_ALERTE_IFCO) return;
+          const signe = iv.ecart > 0 ? "+" : "";
+          const r = await fetch("/api/send-email", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sender: "entrepot",
+              to: ["elinathan.sebag@moorea.fr"],
+              subject: `⚠️ Écart caisses IFCO vides : ${signe}${iv.ecart} (${d.dateLabel || ""})`,
+              html: `<div style="font-family:Arial,sans-serif;color:#333;line-height:1.7;max-width:560px">
+                <p>Bonjour Elinathan,</p>
+                <p>À la fin du stock du <b>${d.dateLabel || ""}</b> (${d.filename || ""}), le comptage des caisses IFCO vides chez Moorea ne correspond pas au stock de l'appli :</p>
+                <table style="border-collapse:collapse;margin:12px 0">
+                  <tr><td style="padding:6px 12px;border:1px solid #e5e7eb">Compté</td><td style="padding:6px 12px;border:1px solid #e5e7eb"><b>${iv.caisses}</b> caisses</td></tr>
+                  <tr><td style="padding:6px 12px;border:1px solid #e5e7eb">Stock appli</td><td style="padding:6px 12px;border:1px solid #e5e7eb">${iv.stockAppli} caisses</td></tr>
+                  <tr><td style="padding:6px 12px;border:1px solid #e5e7eb">Écart</td><td style="padding:6px 12px;border:1px solid #e5e7eb;color:${iv.ecart < 0 ? "#dc2626" : "#b45309"}"><b>${signe}${iv.ecart}</b> caisses (${signe}${(iv.ecart / 640).toFixed(1)} palette)</td></tr>
+                </table>
+                <p>Compté par : ${iv.par || "-"}. Le stock IFCO de l'appli n'a pas été modifié.</p>
+              </div>`,
+            }),
+          });
+          if (r.ok) {
+            await setDoc(doc(db, "stocks", sid), { ifcoVides: { ...iv, alerteEnvoyee: true } }, { merge: true });
+            toast("📧 Écart IFCO ≥ 1 palette : alerte envoyée à Elinathan");
+          }
+        } catch { /* l'alerte ne doit jamais bloquer la clôture */ }
+      };
       const exigerCaissesIfcoVides = async (sid: string) => {
+        await exigerCaissesIfcoVidesSansAlerte(sid);
+        alerterEcartIfcoSiBesoin(sid);
+      };
+      const exigerCaissesIfcoVidesSansAlerte = async (sid: string) => {
         const snap = await getDoc(doc(db, "stocks", sid));
         const d: any = snap.exists() ? snap.data() : null;
         if (d?.ifcoVides) return;
