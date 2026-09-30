@@ -1,0 +1,88 @@
+name: Sauvegarde automatique de la base (chaque nuit)
+
+# 30/09/2026 — Demande d'Elinathan : pouvoir revenir en arrière après une mauvaise manipulation
+# (aujourd'hui une suppression est définitive). Chaque nuit, ce robot télécharge TOUTE la base
+# Firebase (Realtime Database moorea-qualite + Firestore moorea-stock : stocks, comptages,
+# config), la compresse, la CHIFFRE avec un mot de passe, et la garde 30 jours dans l'onglet
+# « Actions » de GitHub (bouton « Artifacts » de chaque exécution).
+#
+# ⚠️ Le dépôt GitHub est PUBLIC : la sauvegarde n'est JAMAIS gardée en clair. Sans le secret
+# SAUVEGARDE_MOT_DE_PASSE, le robot s'arrête en erreur au lieu de publier quoi que ce soit.
+#
+# Secret requis (Settings → Secrets and variables → Actions → New repository secret) :
+#   SAUVEGARDE_MOT_DE_PASSE → un mot de passe long, à garder précieusement (sans lui, impossible
+#                             de relire une sauvegarde).
+#
+# Pour relire une sauvegarde : télécharger l'artifact (zip), puis dans le terminal :
+#   openssl enc -d -aes-256-cbc -pbkdf2 -in sauvegarde.tar.gz.enc -out sauvegarde.tar.gz -pass pass:LE_MOT_DE_PASSE
+#   tar xzf sauvegarde.tar.gz
+on:
+  schedule:
+    - cron: "30 1 * * *"   # 3h30 à Paris en été, 2h30 en hiver
+  workflow_dispatch: {}
+
+jobs:
+  sauvegarde:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Vérifie le mot de passe de chiffrement
+        env:
+          MDP: ${{ secrets.SAUVEGARDE_MOT_DE_PASSE }}
+        run: |
+          if [ -z "$MDP" ]; then echo "❌ Secret SAUVEGARDE_MOT_DE_PASSE absent : sauvegarde annulée (jamais publiée en clair)."; exit 1; fi
+
+      - name: Télécharge la base
+        run: |
+          python3 - <<'EOF'
+          import json, os, time, urllib.request, urllib.parse
+          os.makedirs("sauvegarde/rtdb", exist_ok=True)
+          os.makedirs("sauvegarde/firestore", exist_ok=True)
+          RTDB = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app"
+          def lire(url, essais=4):
+              for i in range(essais):
+                  try:
+                      with urllib.request.urlopen(url, timeout=300) as r:
+                          return r.read()
+                  except Exception as e:
+                      if i == essais - 1: raise
+                      time.sleep(5 * (i + 1))
+          # Realtime Database : une branche par fichier (évite une seule réponse géante)
+          cles = json.loads(lire(RTDB + "/.json?shallow=true") or b"{}") or {}
+          print(f"RTDB : {len(cles)} branches")
+          for cle in sorted(cles):
+              data = lire(RTDB + "/" + urllib.parse.quote(cle) + ".json")
+              with open(f"sauvegarde/rtdb/{cle}.json", "wb") as f: f.write(data)
+              print(f"  {cle} : {len(data)//1024} Ko")
+          # Firestore moorea-stock (stocks / comptages / config)
+          KEY = "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8"
+          FS = "https://firestore.googleapis.com/v1/projects/moorea-stock/databases/(default)/documents/"
+          for col in ["stocks", "comptages", "config"]:
+              docs, token = [], ""
+              while True:
+                  url = FS + col + "?pageSize=300&key=" + KEY + (("&pageToken=" + urllib.parse.quote(token)) if token else "")
+                  page = json.loads(lire(url))
+                  docs += page.get("documents", [])
+                  token = page.get("nextPageToken", "")
+                  if not token: break
+              with open(f"sauvegarde/firestore/{col}.json", "w") as f: json.dump(docs, f)
+              print(f"Firestore {col} : {len(docs)} documents")
+          with open("sauvegarde/LISEZMOI.txt", "w") as f:
+              f.write("Sauvegarde Moorea du " + time.strftime("%Y-%m-%d %H:%M UTC") + "\nrtdb/ = Realtime Database (un fichier par branche)\nfirestore/ = moorea-stock (format API Firestore)\n")
+          EOF
+
+      - name: Compresse et chiffre
+        env:
+          MDP: ${{ secrets.SAUVEGARDE_MOT_DE_PASSE }}
+        run: |
+          tar czf sauvegarde.tar.gz sauvegarde
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in sauvegarde.tar.gz -out sauvegarde.tar.gz.enc -pass env:MDP
+          rm -rf sauvegarde sauvegarde.tar.gz
+          ls -la sauvegarde.tar.gz.enc
+
+      - name: Garde la sauvegarde 30 jours
+        uses: actions/upload-artifact@v4
+        with:
+          name: sauvegarde-moorea-${{ github.run_id }}
+          path: sauvegarde.tar.gz.enc
+          retention-days: 30
