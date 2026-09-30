@@ -1,6 +1,7 @@
 // ✅ TEST MODIFICATION - Vérification que GitHub Desktop reçoit et publie les changements correctement 🚀
 // Cette ligne a été ajoutée pour tester le workflow de publication
 
+import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
 import jsPDF from "jspdf";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
@@ -4121,6 +4122,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           ⚠️ {comptesMailCasses.length > 1 ? "Plusieurs comptes mail sont" : "Un compte mail est"} déconnecté(s) — {comptesMailCasses.map(c => c.email).join(", ")}. Vérifier le mot de passe d'application dans Vercel.
         </div>
       )}
+
+      {/* 30/09/2026 — Calculatrice aussi dans Pointer arrivage (comme dans Stock). */}
+      {pageMode === "arrivages" && vue !== "historique" && <Calculatrice />}
 
       {progImportArr && (() => {
         void tickProgImport;

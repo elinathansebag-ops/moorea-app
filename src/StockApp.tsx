@@ -910,8 +910,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           <button class="pill" id="s-cpt-ifco-non" onclick="sSetComptageIfcoF('non')" style="color:#9ca3af">Non IFCO</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
-          <button class="btn btn-sm btn-gold" onclick="sScannerPaletteComplete()">📷 Scanner une palette complète</button>
-          <button class="btn btn-sm" onclick="sScannerPalette()">📷 Scanner une palette incomplète</button>
+          <button class="btn btn-sm btn-gold" onclick="sScannerPalette()">📷 Scanner une palette</button>
         </div>
       </div>
       <div class="card" style="padding:.75rem 1.25rem;margin-bottom:1rem;border:1.5px solid #bfdbfe;background:#eff6ff">
@@ -1200,6 +1199,11 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       setSyncStatus("ok", "Synchronisé");
 
       // Toast amélioré avec types (success, error, info, warning)
+      const fermerCalculatrice = () => {
+        const m = document.getElementById("stock-calc-modal");
+        if (m) { m.classList.remove("open"); m.style.display = "none"; }
+      };
+
       const toast = (msg: string, type: "success" | "error" | "info" | "warning" = "info") => {
         const t = document.getElementById("stock-toast");
         if (!t) return;
@@ -1284,6 +1288,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         });
         const fab = document.getElementById("stock-calc-fab");
         if (fab) (fab as HTMLElement).style.display = p === "comptage" ? "flex" : "none";
+        // 30/09/2026 — La calculatrice restait ouverte (impossible à fermer) en quittant le comptage.
+        if (p !== "comptage") fermerCalculatrice();
         const scanFab = document.getElementById("stock-scan-fab");
         if (scanFab) scanFab.style.display = p === "comptage" ? "flex" : "none";
         if (p === "home") renderStockList();
@@ -1959,6 +1965,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       // Clôturer
       (window as any).sCloturerStock = async (sid: string) => {
         if (!confirm("Clôturer ce stock ?")) return;
+        fermerCalculatrice();
         try { await exigerCaissesIfcoVides(sid); } catch (e: any) { toast("Erreur IFCO : " + (e?.message || "") + " — stock non clôturé"); return; }
         try {
           const snap = await getDoc(doc(db, "stocks", sid));
@@ -2233,6 +2240,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       };
 
       (window as any).sTerminerComptage = async () => {
+        fermerCalculatrice();
         if (currentImportId) {
           try { await exigerCaissesIfcoVides(currentImportId); } catch (e: any) { toast("Erreur IFCO : " + (e?.message || "") + " — réessaie"); return; }
         }
@@ -2600,6 +2608,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       (window as any)._doCloturerStock = async () => {
         if (!currentImportId) { toast("Aucun stock chargé"); return; }
         if (!confirm("Clôturer ce stock ? Il reste réouvrable ensuite depuis la liste des stocks.")) return;
+        fermerCalculatrice();
         try { await exigerCaissesIfcoVides(currentImportId); } catch (e: any) { toast("Erreur IFCO : " + (e?.message || "") + " — stock non clôturé"); return; }
         try {
           const snap = await getDoc(doc(db, "stocks", currentImportId));
@@ -3016,15 +3025,18 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             // lots du stock (« introuvable »). On retrouve le n° de lot interne de l'arrivage.
             if (lot && !/^\d{3,6}(-\d+)?$/.test(lot)) {
               try {
-                const snap = await get(ref(rtdb, `arrivages/${lot}`)); // rtdb : ici « db » désigne Firestore
-                const a = snap.val();
+                let a = (await get(ref(rtdb, `arrivages/${lot}`))).val(); // rtdb : ici « db » désigne Firestore
+                // 30/09/2026 — Arrivage déjà archivé (plus de quelques jours) : il n'est plus dans
+                // « arrivages » → on le cherche aussi dans les archives (sinon « introuvable »).
+                if (!a) a = (await get(ref(rtdb, `arrivages_archives/${lot}`))).val();
                 if (a && a.lot_interne) lot = String(a.lot_interne);
               } catch {}
             }
             if (!lot && /^\d{3,6}$/.test(raw)) lot = raw;
             if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
-            if (sScanModeComplet) { (window as any).sCompterPaletteComplete(lot); return; }
-            (window as any).sVerifierLotDansStock(lot);
+            // 30/09/2026 — Demande d'Elinathan : on scanne d'abord, puis on choisit « palette
+            // entière » ou « autre quantité » (un seul bouton de scan au lieu de deux).
+            (window as any).sProposerPaletteScannee(lot);
           };
           // html5-qrcode — EAN + QR, fonctionne sur iOS et Android.
           // Importé directement (bundlé par Vite) au lieu d'être chargé depuis un CDN externe
@@ -3181,6 +3193,59 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           </div>
         `;
         (window as any).sAfficherResultatScan({ found: true, html });
+      };
+
+      // Après un scan : article trouvé → choix « palette entière » (quantité de la palette) ou
+      // « autre quantité » (saisie), ajoutée dans la prochaine case libre du comptage.
+      (window as any).sProposerPaletteScannee = (lot: string) => {
+        const paletteMatch = lot.match(/^(.+?)(?:-(\d+))?$/);
+        const baseLot = paletteMatch?.[1] || lot;
+        const findArt = (list: any[]) => list.find((a: any) =>
+          (a.lots || []).includes(baseLot) || (a.lotsQty && Object.keys(a.lotsQty).includes(baseLot))
+        );
+        const art = findArt(articles);
+        if (!art) {
+          const artOther = findArt(allArticles);
+          (window as any).sAfficherResultatScan({ found: false, msg: artOther
+            ? `Lot #${baseLot} = « ${artOther.article} » (équipe ${getEquipe(artOther)}) — pas dans ce comptage ${currentTeam || ""}`
+            : `Lot #${baseLot} introuvable dans ce stock` });
+          return;
+        }
+        const qty = art.lotsQty?.[baseLot];
+        const compte = art.compte !== null && art.compte !== undefined ? art.compte : null;
+        const html = `
+          <div style="font-size:30px;margin-bottom:6px">📦</div>
+          <p style="font-size:18px;font-weight:800;color:#1a2e1a;margin:0 0 2px">${art.article}</p>
+          <p style="font-size:13px;color:#6b7280;margin:0 0 12px">Lot #${baseLot} · stock ${art.nb_colis} · compté ${compte ?? "-"}</p>
+          ${qty !== undefined && qty !== null ? `<button onclick="sAjouterQtePalette(${art.id}, ${Number(qty)})" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16a34a;color:#fff;font-weight:800;font-size:15px;cursor:pointer;margin-bottom:10px">✅ Palette entière · ${qty} colis</button>` : `<p style="font-size:12px;color:#b45309;margin:0 0 10px">Quantité de la palette inconnue — saisis-la ci-dessous</p>`}
+          <div style="display:flex;gap:8px">
+            <input id="s-scan-qte" type="number" min="0" inputmode="numeric" placeholder="Autre quantité" style="flex:1;min-width:0;padding:12px;border:1.5px solid #e8e0d0;border-radius:10px;font-size:16px;font-weight:700;text-align:center" onkeydown="if(event.key==='Enter')sAjouterQtePalette(${art.id}, this.value)"/>
+            <button onclick="sAjouterQtePalette(${art.id}, document.getElementById('s-scan-qte').value)" style="padding:12px 14px;border-radius:10px;border:none;background:#c8a84b;color:#0a0a0a;font-weight:800;font-size:14px;cursor:pointer">✓ Ajouter</button>
+          </div>`;
+        (window as any).sAfficherResultatScan({ found: true, html });
+      };
+      (window as any).sAjouterQtePalette = (id: number, val: any) => {
+        const n = parseFloat(String(val).replace(",", "."));
+        if (isNaN(n) || n < 0) { toast("Saisis une quantité"); return; }
+        const art = articles.find((a: any) => a.id === id);
+        if (!art) { toast("Article introuvable"); return; }
+        let nextLoc = 1;
+        for (let i = 1; i <= NB_MAX_CELLULES; i++) { if (art[`compte${i}`] === null || art[`compte${i}`] === undefined) { nextLoc = i; break; } nextLoc = i + 1; }
+        if (nextLoc > NB_MAX_CELLULES) { (window as any).sAfficherResultatScan({ found: false, msg: `Toutes les cases de « ${art.article} » sont remplies` }); return; }
+        art[`compte${nextLoc}`] = n;
+        if (!art._saisieTs) art._saisieTs = Date.now();
+        let t = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += parseFloat(art[`compte${i}`] ?? 0) || 0; art.compte = t;
+        sRenderTable();
+        updateMetricsC();
+        clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);
+        const row = document.querySelector(`tr[data-id="${art.id}"]`) as HTMLElement | null;
+        if (row) { row.style.background = "#dcfce7"; setTimeout(() => row.style.background = "", 2000); }
+        (window as any).sAfficherResultatScan({ found: true, html: `
+          <div style="font-size:32px;margin-bottom:8px">✅</div>
+          <p style="font-size:18px;font-weight:800;color:#1a2e1a;margin:0 0 2px">${art.article}</p>
+          <div style="background:#f0fdf4;border-radius:10px;padding:12px;border:1.5px solid #bbf7d0;margin-top:10px">
+            <p style="margin:0;font-size:14px;color:#15803d;font-weight:800">+ ${n} colis (case ${nextLoc}) · total ${t}</p>
+          </div>` });
       };
 
       (window as any).sAfficherResultatScan = ({ found, msg, html }: any) => {
