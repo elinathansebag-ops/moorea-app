@@ -916,6 +916,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           <button class="pill active" id="s-cpt-ifco-tous" onclick="sSetComptageIfcoF('tous')">Tous</button>
           <button class="pill" id="s-cpt-ifco-oui" onclick="sSetComptageIfcoF('oui')" style="color:#1a6b3a">☑️ IFCO</button>
           <button class="pill" id="s-cpt-ifco-non" onclick="sSetComptageIfcoF('non')" style="color:#9ca3af">Non IFCO</button>
+          <span style="font-size:12px;font-weight:700;color:#6b7280;margin-left:6px">👥 À deux :</span>
+          <button class="pill active" id="s-cpt-part-0" onclick="sSetPartie(0)">Tout</button>
+          <button class="pill" id="s-cpt-part-1" onclick="sSetPartie(1)">1re moitié</button>
+          <button class="pill" id="s-cpt-part-2" onclick="sSetPartie(2)">2e moitié</button>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
           <button class="btn btn-sm btn-gold" onclick="sScannerPalette()">📷 Scanner une palette</button>
@@ -1094,7 +1098,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
 
     (async () => {
       const { initializeApp, getApps } = await import("firebase/app");
-      const { getFirestore, doc, setDoc, deleteDoc, getDoc, getDocs, collection } = await import("firebase/firestore");
+      const { getFirestore, doc, setDoc, deleteDoc, getDoc, getDocs, collection, onSnapshot, deleteField, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } = await import("firebase/firestore");
 
       const stockCfg = {
         apiKey: "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8",
@@ -1106,7 +1110,12 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       };
       const existing = getApps().find((a: any) => a.name === "moorea-stock");
       const stockApp = existing ?? initializeApp(stockCfg, "moorea-stock");
-      const db = getFirestore(stockApp);
+      // 30/09/2026 — Mode hors ligne : les comptages sont gardés sur l'appareil (IndexedDB) si le
+      // wifi saute, et envoyés tout seuls dès que la connexion revient. Si Firestore a déjà été
+      // ouvert ailleurs dans l'appli pour ce projet (autre module), on garde celui-là.
+      let db: any;
+      try { db = initializeFirestore(stockApp, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); }
+      catch { db = getFirestore(stockApp); }
 
       const TODAY = new Date().toISOString().slice(0, 10);
       let allArticles: any[] = [];
@@ -1496,41 +1505,121 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       };
 
       // Save comptages
+      // 30/09/2026 — Comptage à plusieurs appareils + hors ligne.
+      // On n'envoie plus tout le comptage à chaque fois (ce qui écrasait ce qu'un autre appareil
+      // venait de compter) : seulement les articles modifiés ICI depuis le dernier envoi/réception
+      // (dernierEnvoye), fusionnés dans le document. En face, un abonnement en direct récupère les
+      // articles comptés par l'autre appareil — sauf ceux qu'on est soi-même en train de modifier.
+      let dernierEnvoye: Record<string, string> = {};
+      let docComptageSuivi = "";
+      let stopComptageDirect: (() => void) | null = null;
+      const serArticle = (a: any) => {
+        if (!counted(a)) return "";
+        const cells: any[] = []; for (let i = 1; i <= NB_MAX_CELLULES; i++) cells.push(a["compte" + i] ?? null);
+        return JSON.stringify({ c: a.compte ?? null, cells, cd: a.detruire ?? null });
+      };
+      const serEntree = (d: any) => {
+        if (!d) return "";
+        const cells: any[] = []; for (let i = 1; i <= NB_MAX_CELLULES; i++) cells.push(d["c" + i] ?? null);
+        return JSON.stringify({ c: d.c ?? null, cells, cd: d.cd ?? null });
+      };
+      const appliquerEntree = (a: any, d: any) => {
+        for (let i = 1; i <= NB_MAX_CELLULES; i++) a["compte" + i] = d ? (d["c" + i] ?? null) : null;
+        a.detruire = d ? (d.cd ?? null) : null;
+        a.compte = d ? d.c : null;
+      };
+      const majStatutReseau = () => {
+        if (!navigator.onLine) setSyncStatus("loading", "📴 Hors ligne — comptage gardé sur l'appareil");
+      };
+      window.addEventListener("offline", majStatutReseau);
+      window.addEventListener("online", () => setSyncStatus("ok", "Synchronisé"));
+
       const saveComptages = async () => {
         if (!currentTeam || !currentImportId) return;
-        setSyncStatus("loading", "Sauvegarde...");
+        const docId = currentImportId + "_" + currentTeam;
+        if (docId !== docComptageSuivi) { dernierEnvoye = {}; docComptageSuivi = docId; }
         const data: any = {};
+        let nb = 0;
         articles.forEach((a, idx) => {
-          if (counted(a)) {
-            const locs: any = {};
-            // 16/09/2026 — Bug trouvé avec Elinathan : une case comptée à 0 était exclue d'ici
-            // (condition "v !== 0"), donc jamais écrite dans Firestore. Au rechargement, la case
-            // redevenait "non comptée" comme si personne n'était passé, alors que 0 est un vrai
-            // comptage (le commercial doit pouvoir distinguer "compté, il n'y a rien" de "oublié").
-            for (let i = 1; i <= NB_MAX_CELLULES; i++) { const v = a["compte" + i]; if (v !== null && v !== undefined) locs["c" + i] = v; }
-            data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: a._saisieTs || Date.now(), _idx: idx };
-          }
+          const sa = serArticle(a);
+          if (sa === (dernierEnvoye[a.article] ?? "")) return;
+          nb++;
+          if (!sa) { data[a.article] = deleteField(); dernierEnvoye[a.article] = ""; return; }
+          const locs: any = {};
+          // 16/09/2026 — Une case comptée à 0 est un vrai comptage : elle est bien enregistrée.
+          for (let i = 1; i <= NB_MAX_CELLULES; i++) { const v = a["compte" + i]; if (v !== null && v !== undefined) locs["c" + i] = v; }
+          if (!a._saisieTs) a._saisieTs = Date.now();
+          data[a.article] = { c: a.compte, ...locs, cd: a.detruire ?? null, _pos: a._saisieTs, _idx: idx };
+          dernierEnvoye[a.article] = sa;
         });
-        await setDoc(doc(db, "comptages", currentImportId + "_" + currentTeam), { data, team: currentTeam, date: TODAY, ts: Date.now(), sessionId: currentSessionId });
-        setSyncStatus("ok", "Sauvegardé");
+        if (!nb) return;
+        setSyncStatus("loading", navigator.onLine ? "Sauvegarde..." : "📴 Hors ligne — comptage gardé sur l'appareil");
+        const ecriture = setDoc(doc(db, "comptages", docId), { data, team: currentTeam, date: TODAY, ts: Date.now(), sessionId: currentSessionId }, { merge: true });
+        // Hors ligne, la promesse n'aboutit qu'au retour du réseau : on ne bloque rien en attendant.
+        ecriture.then(() => setSyncStatus("ok", "Sauvegardé")).catch(() => setSyncStatus("error", "Erreur de sauvegarde"));
+        if (navigator.onLine) await ecriture.catch(() => {});
+      };
+
+      const rendreEnGardantFocus = () => {
+        const ae = document.activeElement as HTMLInputElement | null;
+        const tr = ae?.closest?.("tr[data-id]") as HTMLElement | null;
+        const id = tr?.dataset.id, loc = ae?.dataset?.loc, destroy = ae?.classList?.contains("qty-in-destroy");
+        const debut = ae?.selectionStart ?? null;
+        sRenderTable(); updateMetricsC();
+        if (id) {
+          const cible = document.querySelector(`#s-tbl-body tr[data-id="${id}"] ${destroy ? ".qty-in-destroy" : `input[data-loc="${loc}"]`}`) as HTMLInputElement | null;
+          if (cible) { cible.focus(); try { if (debut !== null) cible.setSelectionRange(debut, debut); } catch { /* type number */ } }
+        }
+      };
+      const suivreComptageEnDirect = (team: string) => {
+        stopComptageDirect?.();
+        const docId = currentImportId + "_" + team;
+        (window as any).__stopComptageDirect = () => stopComptageDirect?.();
+        stopComptageDirect = onSnapshot(doc(db, "comptages", docId), (snap: any) => {
+          if (snap.metadata?.hasPendingWrites) return; // notre propre écriture
+          if (docComptageSuivi !== docId || currentTeam !== team) return;
+          const data = (snap.exists() ? (snap.data() as any).data : null) || {};
+          let change = false;
+          for (const [nom, d] of Object.entries(data as Record<string, any>)) {
+            const distant = serEntree(d);
+            const base = dernierEnvoye[nom] ?? "";
+            if (distant === base) continue;
+            let a = articles.find(x => x.article === nom);
+            if (!a) {
+              // Article ajouté sur l'autre appareil (catalogue / ajout manuel)
+              const ref0 = allArticles.find(x => x.article === nom);
+              a = { id: Date.now() + Math.floor(Math.random() * 1000), equipe: team, famille: ref0?.famille || "AUTRE", code: ref0?.code || "", article: nom, nb_colis: ref0?.nb_colis || 0, lots: ref0?.lots || [], lotsQty: ref0?.lotsQty || {}, lot: ref0?.lot || "", compte: null, ...cellulesVides(), detruire: null, _extra: true };
+              articles.push(a);
+            } else if (serArticle(a) !== base) continue; // modifié ici aussi : on garde notre saisie
+            appliquerEntree(a, d);
+            dernierEnvoye[nom] = distant;
+            change = true;
+          }
+          // Articles effacés sur l'autre appareil
+          for (const a of articles) {
+            const base = dernierEnvoye[a.article] ?? "";
+            if (base && !data[a.article] && serArticle(a) === base) { appliquerEntree(a, null); dernierEnvoye[a.article] = ""; change = true; }
+          }
+          if (change) rendreEnGardantFocus();
+        }, () => { /* hors ligne : reprend tout seul */ });
       };
 
       const loadComptages = async (team: string) => {
         try {
-          const snap = await getDoc(doc(db, "comptages", currentImportId + "_" + team));
+          const docId = currentImportId + "_" + team;
+          const snap = await getDoc(doc(db, "comptages", docId));
+          dernierEnvoye = {}; docComptageSuivi = docId;
           if (snap.exists()) {
             const data = (snap.data() as any).data || {};
             let n = 0;
+            for (const [nom, d] of Object.entries(data as Record<string, any>)) dernierEnvoye[nom] = serEntree(d);
             articles.forEach(a => {
               const d = data[a.article];
-              if (d) {
-                for (let i = 1; i <= NB_MAX_CELLULES; i++) a["compte" + i] = d["c" + i] ?? null;
-                a.detruire = d.cd ?? null;
-                a.compte = d.c; n++;
-              }
+              if (d) { appliquerEntree(a, d); n++; }
             });
             if (n > 0) toast(n + " comptages récupérés");
           }
+          suivreComptageEnDirect(team);
         } catch {
           // Important : sans ça, un échec de chargement (réseau coupé, permissions...) donnait
           // l'impression que le comptage repartait de zéro, alors que les données existent bien.
@@ -2194,13 +2283,25 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         sRenderTable();
       };
 
+      let comptagePartie = 0;
+      (window as any).sSetPartie = (n: number) => {
+        comptagePartie = n;
+        [0, 1, 2].forEach(t => document.getElementById("s-cpt-part-" + t)?.classList.toggle("active", t === n));
+        sRenderTable();
+      };
+
       const isIfcoArticle = (article: string) => !!_ifcoByArticle?.[article?.toLowerCase().trim()];
 
       const sRenderTable = () => {
         const srchEl = document.getElementById("s-srch") as HTMLInputElement;
         const q = srchEl ? srchEl.value.toLowerCase().trim() : "";
-        const rows = articles.filter(a => {
+        // 30/09/2026 — Comptage à deux : chaque appareil prend une moitié de la liste (même ordre
+        // sur les deux appareils). La recherche montre toujours tout.
+        const moitie = Math.ceil(articles.length / 2);
+        const rows = articles.filter((a, idx) => {
           if (!a || !a.article) return false;
+          if (!q && comptagePartie === 1 && idx >= moitie) return false;
+          if (!q && comptagePartie === 2 && idx < moitie) return false;
           if (comptageIfcoFilter === "oui" && !isIfcoArticle(a.article)) return false;
           if (comptageIfcoFilter === "non" && isIfcoArticle(a.article)) return false;
           if (!q) return true;
@@ -3419,6 +3520,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
     });
 
     return () => {
+      try { (window as any).__stopComptageDirect?.(); } catch { /* ignore */ }
       // Cleanup global functions
       ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sSetIfcoF","sSetComptageIfcoF","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
       const styleEl = document.getElementById("stock-app-styles");
