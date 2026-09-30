@@ -584,6 +584,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     try {
       await Promise.all([
         ...idsDemandes.map(id => remove(ref(db, `reconditionnement_demandes/${id}`))),
+        ...idsDemandes.map(id => update(ref(db, `reconditionnement_pdfs/${id}`), { pdfBase64: null, pdfGeslotBase64: null }).catch(() => {})),
         ...idsArrivages.map(id => remove(ref(db, `arrivages/${id}`))),
       ]);
       notifyRecond("success", `🗑️ ${idsDemandes.length} demande(s) et ${idsArrivages.length} arrivage(s) de test supprimés.`);
@@ -625,6 +626,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       const arrivageLie = arrivagesLies.find((a: any) => a.reconditionnement_demande_id === d.id);
       if (arrivageLie) await remove(ref(db, `arrivages/${arrivageLie.id}`));
       await remove(ref(db, `reconditionnement_demandes/${d.id}`));
+      update(ref(db, `reconditionnement_pdfs/${d.id}`), { pdfBase64: null, pdfGeslotBase64: null }).catch(() => {}); // le BL peut servir à d'autres demandes du jour
 
       notifyRecond("success", `🗑️ Test supprimé (${d.numero || d.id}) — stock et stats corrigés`);
     } catch (err: any) {

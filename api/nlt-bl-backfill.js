@@ -144,7 +144,7 @@ export default async function handler(req, res) {
 
             for (const { lot, colis } of lots) {
               resultats.lotsTrouves++;
-              const candidats = (parLot.get(lot) || []).filter(d => !d.blNltPdfBase64);
+              const candidats = (parLot.get(lot) || []).filter(d => !d.blNltPdfBase64 && !d.aPdfBl);
               const detail = {
                 lot,
                 colisSurLeBl: colis,
@@ -154,7 +154,7 @@ export default async function handler(req, res) {
               };
 
               if (candidats.length === 0) {
-                const dejaLa = (parLot.get(lot) || []).length > (parLot.get(lot) || []).filter(d => !d.blNltPdfBase64).length;
+                const dejaLa = (parLot.get(lot) || []).length > (parLot.get(lot) || []).filter(d => !d.blNltPdfBase64 && !d.aPdfBl).length;
                 if (dejaLa) {
                   resultats.dejaAttaches++;
                   detail.resultat = "déjà attaché précédemment";
@@ -246,8 +246,10 @@ export default async function handler(req, res) {
               resultats.attaches++;
 
               if (appliquer) {
+                await adminDb.ref(`reconditionnement_pdfs/${choisi.id}`).update({ blNltPdfBase64: blPdfDataUri });
                 await adminDb.ref(`reconditionnement_demandes/${choisi.id}`).update({
-                  blNltPdfBase64: blPdfDataUri,
+                  aPdfBl: true,
+                  blNltPdfBase64: null,
                   blNltNumero: blNumero || null,
                   blNltDate: nowFr(),
                 });

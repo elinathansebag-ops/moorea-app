@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { aPdfDemande, lirePdfDemande } from "./pdfsRecond";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
 
@@ -899,15 +900,15 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                           </div>
                                         )}
 
-                                        {(d.pdfBase64 || d.pdfGeslotBase64) && (
+                                        {(aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64")) && (
                                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                                            {d.pdfGeslotBase64 && (
-                                              <button type="button" onClick={() => setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: d.pdfGeslotBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                            {aPdfDemande(d, "pdfGeslotBase64") && (
+                                              <button type="button" onClick={() => lirePdfDemande(d, "pdfGeslotBase64").then(b => b && setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: b }))} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                                 📄 Bon Geslot
                                               </button>
                                             )}
-                                            {d.pdfBase64 && (
-                                              <button type="button" onClick={() => setPdfApercu({ titre: `Bon de prépa — ${d.numero || d.id}`, base64: d.pdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                            {aPdfDemande(d, "pdfBase64") && (
+                                              <button type="button" onClick={() => lirePdfDemande(d, "pdfBase64").then(b => b && setPdfApercu({ titre: `Bon de prépa — ${d.numero || d.id}`, base64: b }))} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                                 📄 Bon de prépa (avec QR)
                                               </button>
                                             )}

@@ -202,7 +202,14 @@ async function envoyerRecapPourDepot(depot, stockActuel) {
   const toutes = snap.val() || {};
   const enAttente = Object.entries(toutes)
     .map(([id, d]) => ({ id, ...d }))
-    .filter(d => d && d.depot === depot && d.emailEnvoye === false && d.pdfBase64);
+    .filter(d => d && d.depot === depot && d.emailEnvoye === false && (d.pdfBase64 || d.aPdfBon));
+  // 30/09/2026 — Les bons sont maintenant rangés à part (reconditionnement_pdfs/{id}) : on va les
+  // chercher pour ceux qui ne l'ont plus dans la demande elle-même.
+  for (const d of enAttente) {
+    if (d.pdfBase64) continue;
+    try { d.pdfBase64 = (await adminDb.ref(`reconditionnement_pdfs/${d.id}/pdfBase64`).once("value")).val() || null; } catch { d.pdfBase64 = null; }
+  }
+  for (let i = enAttente.length - 1; i >= 0; i--) if (!enAttente[i].pdfBase64) enAttente.splice(i, 1);
 
   if (enAttente.length === 0) {
     return { depot, envoye: false, raison: "rien en attente" };

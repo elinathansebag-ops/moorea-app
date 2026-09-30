@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
+import { aPdfDemande, lirePdfDemande, ecrirePdfDemande, type ChampPdfRecond } from "./pdfsRecond";
 import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
 import { db, ref, push, onValue, update, remove, get, set } from "./firebase";
@@ -315,6 +316,15 @@ const EMAILS_PAR_DEPOT: Record<Depot, string[]> = { nlt: NLT_EMAILS, andes: ANDE
 // le PC entrepôt) écoute et imprime automatiquement, sans action côté iPad ni côté PC. Le job
 // "bon_reconditionnement" est traité à part côté relais (imprimante A4 normale, PDF Geslot
 // imprimé tel quel) — voir la fonction traiterBonReconditionnement dans print-relay.js.
+// 30/09/2026 — Vitesse / coût Firebase : les PDF (bon de prépa, bon Geslot, BL NLT) ne sont plus
+// stockés DANS chaque demande (reconditionnement_demandes, écoutée en permanence et retéléchargée
+// en entier à chaque changement) mais à part, dans reconditionnement_pdfs/{id}. La demande ne
+// garde qu'un petit drapeau (aPdfBon / aPdfGeslot / aPdfBl). Les anciennes demandes encore au
+// format d'avant restent lisibles (lirePdfDemande regarde les deux endroits), et sont déplacées
+// automatiquement une fois (voir migration dans App.tsx).
+export { CHEMIN_PDFS_RECOND, DRAPEAU_PDF_RECOND, aPdfDemande, lirePdfDemande, ecrirePdfDemande } from "./pdfsRecond";
+export type { ChampPdfRecond } from "./pdfsRecond";
+
 export async function envoyerBonReconditionnementPourImpressionPC(pdfNom: string, pdfBase64: string): Promise<string> {
   const r = await push(ref(db, "printQueue"), {
     type: "bon_reconditionnement",
@@ -1614,7 +1624,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         numero, dateFr, caisses: qte, nbPalettes: nbGrandes, transporteurNom, envoyePar: userName,
       });
       const pdfNom = `bon-envoi-palette-ifco-${demandeRef.key}.pdf`;
-      if (demandeRef.key) await update(ref(db, `reconditionnement_demandes/${demandeRef.key}`), { pdfNom, pdfBase64 });
+      if (demandeRef.key) await ecrirePdfDemande(demandeRef.key, { pdfBase64 }, { pdfNom });
       try {
         await envoyerBonReconditionnementPourImpressionPC(pdfNom, pdfBase64);
       } catch {
@@ -1987,11 +1997,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     }
   }
 
+  async function ouvrirPdfDemande(d: Demande, champ: ChampPdfRecond, titre: string) {
+    const b = await lirePdfDemande(d, champ);
+    if (!b) { notify("error", "❌ PDF introuvable"); return; }
+    setPdfApercu({ titre, base64: b });
+  }
+
   async function ouvrirBlNlt(d: Demande) {
-    let base64 = d.blNltPdfBase64;
-    if (!base64 && d.blNltPdfDe) {
-      try { base64 = (await get(ref(db, `reconditionnement_demandes/${d.blNltPdfDe}/blNltPdfBase64`))).val() || undefined; } catch { /* ignore */ }
-    }
+    const base64 = await lirePdfDemande(d, "blNltPdfBase64");
     if (!base64) { notify("error", "❌ PDF du BL introuvable"); return; }
     setPdfApercu({ titre: `BL NLT — ${d.numero || d.id}${d.blNltNumero ? ` (BL ${d.blNltNumero})` : ""}`, base64 });
   }
@@ -2046,6 +2059,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     setFournirEtiquettes(d.fournirEtiquettes ?? false);
     setTransporteurId(d.transporteurId || "");
     setPdfFile(d.pdfGeslotBase64 ? { nom: d.pdfGeslotNom || "geslot.pdf", base64: d.pdfGeslotBase64 } : null);
+    if (!d.pdfGeslotBase64 && aPdfDemande(d, "pdfGeslotBase64")) {
+      lirePdfDemande(d, "pdfGeslotBase64").then(b => { if (b) setPdfFile({ nom: d.pdfGeslotNom || "geslot.pdf", base64: b }); });
+    }
     // 29/09/2026 — Même page qu'à la création : saisie après coup (date passée, déjà revenue…)
     // et « déjà chez le reconditionneur » reprennent l'état de la demande.
     setDejaChezReconditionneur(!!d.dejaChezReconditionneur);
@@ -2102,6 +2118,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         await remove(ref(db, `arrivages/${arrivageLie.id}`));
       }
       await remove(ref(db, `reconditionnement_demandes/${d.id}`));
+      update(ref(db, `reconditionnement_pdfs/${d.id}`), { pdfBase64: null, pdfGeslotBase64: null }).catch(() => {}); // le BL peut servir à d'autres demandes du jour
       notify("success", caissesEnvoyees > 0 || cartonsUtilises > 0 ? "🗑️ Demande supprimée — stock remis à jour en conséquence" : "🗑️ Demande supprimée");
     } catch (err: any) {
       notify("error", `❌ Erreur lors de la suppression : ${err?.message || "erreur inconnue"}`);
@@ -2246,6 +2263,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === d.id);
       if (arrivageLie) await remove(ref(db, `arrivages/${arrivageLie.id}`));
       await remove(ref(db, `reconditionnement_demandes/${d.id}`));
+      update(ref(db, `reconditionnement_pdfs/${d.id}`), { pdfBase64: null, pdfGeslotBase64: null }).catch(() => {}); // le BL peut servir à d'autres demandes du jour
 
       notify("success", `🗑️ Test supprimé (${d.numero || d.id}) — stock et stats corrigés`);
     } catch (err: any) {
@@ -2310,6 +2328,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     try {
       await Promise.all([
         ...idsDemandes.map(id => remove(ref(db, `reconditionnement_demandes/${id}`))),
+        ...idsDemandes.map(id => update(ref(db, `reconditionnement_pdfs/${id}`), { pdfBase64: null, pdfGeslotBase64: null }).catch(() => {})),
         ...idsArrivages.map(id => remove(ref(db, `arrivages/${id}`))),
       ]);
       notify("success", `🗑️ ${idsDemandes.length} demande(s) et ${idsArrivages.length} arrivage(s) de test supprimés.`);
@@ -2436,6 +2455,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // Firebase (push/update) refuse toute valeur "undefined" — on retire ces clés avant
     // l'envoi plutôt que de risquer une erreur "value argument contains undefined".
     Object.keys(demande).forEach(k => { if ((demande as any)[k] === undefined) delete (demande as any)[k]; });
+    // Le bon Geslot est rangé à part (reconditionnement_pdfs), jamais dans la demande.
+    const geslotB64 = (demande as any).pdfGeslotBase64 as string | undefined;
+    delete (demande as any).pdfGeslotBase64;
 
     // ── Mode édition : on met à jour l'enregistrement existant et on régénère le bon. Si la
     // quantité de caisses IFCO (ou de cartons Andès) envoyée a changé par rapport à la valeur
@@ -2457,6 +2479,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         if (!(original as any)?.saisieApresCoup && apresCoup) (demande as any).emailEnvoye = true;
         if (etaitRecu && !devientRecu) (demande as any).retour = null;
         await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), demande);
+        if (geslotB64) await ecrirePdfDemande(editDemandeId, { pdfGeslotBase64: geslotB64 });
         // 29/09/2026 — Passage en « déjà revenue à Moorea » : plus rien à pointer, et même
         // mouvement IFCO que le pointage (NLT → pleines).
         if (!etaitRecu && devientRecu) {
@@ -2510,7 +2533,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         try {
           const pdfBase64 = await genererBonPdf({ ...demande, id: editDemandeId } as Demande);
           const pdfNom = `bon-reconditionnement-${editDemandeId}.pdf`;
-          await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), { pdfNom, pdfBase64 });
+          await ecrirePdfDemande(editDemandeId, { pdfBase64 }, { pdfNom });
         } catch (errPdf: any) {
           notify("error", `⚠️ Demande modifiée, mais la régénération du bon a échoué : ${errPdf?.message || "erreur inconnue"}`);
         }
@@ -2540,6 +2563,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     try {
       const demandeRef = await push(ref(db, "reconditionnement_demandes"), demande);
       const demandeId = demandeRef.key;
+      if (demandeId && geslotB64) await ecrirePdfDemande(demandeId, { pdfGeslotBase64: geslotB64 });
 
       // Génère le bon propre (jsPDF, avec QR code de suivi) maintenant qu'on a l'id réel de la
       // demande, puis l'attache à l'enregistrement qu'on vient de créer. Best-effort : si la
@@ -2549,7 +2573,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         try {
           const pdfBase64 = await genererBonPdf({ ...demande, id: demandeId } as Demande);
           const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
-          await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
+          await ecrirePdfDemande(demandeId, { pdfBase64 }, { pdfNom });
 
           if (apresCoup) {
             // 29/09/2026 — Saisie après coup : ni impression du bon, ni récap mail (emailEnvoye
@@ -2916,14 +2940,17 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           demandeGroupee: true,
         };
         Object.keys(demande).forEach(k => { if (demande[k] === undefined) delete demande[k]; });
+        const geslotLigne = demande.pdfGeslotBase64 as string | undefined;
+        delete demande.pdfGeslotBase64;
         const demandeRef = await push(ref(db, "reconditionnement_demandes"), demande);
         const demandeId = demandeRef.key as string;
+        if (geslotLigne) await ecrirePdfDemande(demandeId, { pdfGeslotBase64: geslotLigne });
         dejaNumerotes.push({ ...demande, id: demandeId });
         // Mêmes étapes que creerDemande : bon propre + impression entrepôt + récap mail du jour.
         try {
           const pdfBase64 = await genererBonPdf({ ...demande, id: demandeId } as Demande);
           const pdfNom = `bon-reconditionnement-${demandeId}.pdf`;
-          await update(ref(db, `reconditionnement_demandes/${demandeId}`), { pdfNom, pdfBase64 });
+          await ecrirePdfDemande(demandeId, { pdfBase64 }, { pdfNom });
           if (!l.dejaChez && !apresCoup) {
             try { await imprimerBonAvecSuivi(pdfNom, pdfBase64, `Bon ${demande.numero || ""} ${demande.articleFini || ""}`.trim()); }
             catch { toast("error", `🖨️ ${demande.numero} : impression automatique du bon échouée`); }
@@ -3975,19 +4002,19 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       </div>
                     )}
 
-                    {(d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64 || d.blNltPdfDe) && (
+                    {(aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                        {d.pdfGeslotBase64 && (
-                          <button type="button" onClick={() => setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: d.pdfGeslotBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {aPdfDemande(d, "pdfGeslotBase64") && (
+                          <button type="button" onClick={() => ouvrirPdfDemande(d, "pdfGeslotBase64", `Bon Geslot — ${d.numero || d.id}`)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                             📄 Bon Geslot
                           </button>
                         )}
-                        {d.pdfBase64 && (
-                          <button type="button" onClick={() => setPdfApercu({ titre: `Bon de prépa — ${d.numero || d.id}`, base64: d.pdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {aPdfDemande(d, "pdfBase64") && (
+                          <button type="button" onClick={() => ouvrirPdfDemande(d, "pdfBase64", `Bon de prépa — ${d.numero || d.id}`)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                             📄 Bon de prépa (avec QR)
                           </button>
                         )}
-                        {(d.blNltPdfBase64 || d.blNltPdfDe) && (
+                        {(aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
                           <button type="button" onClick={() => ouvrirBlNlt(d)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                             📄 BL NLT
                           </button>
@@ -4849,19 +4876,19 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                       cours" : une fois la demande passée en Historique (terminée), il disparaissait
                                       complètement, alors que le BL rattaché (automatiquement ou via le rattrapage
                                       historique) reste consultable. On l'affiche donc ici aussi. */}
-                                  {(d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64 || d.blNltPdfDe) && (
+                                  {(aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
-                                      {d.pdfGeslotBase64 && (
-                                        <button type="button" onClick={() => setPdfApercu({ titre: `Bon Geslot — ${d.numero || d.id}`, base64: d.pdfGeslotBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                      {aPdfDemande(d, "pdfGeslotBase64") && (
+                                        <button type="button" onClick={() => ouvrirPdfDemande(d, "pdfGeslotBase64", `Bon Geslot — ${d.numero || d.id}`)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                           📄 Bon Geslot
                                         </button>
                                       )}
-                                      {d.pdfBase64 && (
-                                        <button type="button" onClick={() => setPdfApercu({ titre: `Bon de prépa — ${d.numero || d.id}`, base64: d.pdfBase64! })} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                      {aPdfDemande(d, "pdfBase64") && (
+                                        <button type="button" onClick={() => ouvrirPdfDemande(d, "pdfBase64", `Bon de prépa — ${d.numero || d.id}`)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: COLORS.primaryLight, color: COLORS.primary, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                           📄 Bon de prépa (avec QR)
                                         </button>
                                       )}
-                                      {(d.blNltPdfBase64 || d.blNltPdfDe) && (
+                                      {(aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
                                         <button type="button" onClick={() => ouvrirBlNlt(d)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                           📄 BL NLT
                                         </button>

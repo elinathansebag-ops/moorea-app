@@ -300,7 +300,12 @@ export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { bl
   // Lot absent du BL (rattachement « BL du jour ») : on joint seulement le BL, sans toucher à la
   // quantité déclarée ni au statut de la demande.
   if (typeof colis !== "number") { delete maj.retourPresta; }
-  if (blPdfDataUri) maj.blNltPdfBase64 = blPdfDataUri;
+  // 30/09/2026 — PDF rangé à part (reconditionnement_pdfs), la demande ne garde qu'un drapeau.
+  if (blPdfDataUri) {
+    await adminDb.ref(`reconditionnement_pdfs/${id}`).update({ blNltPdfBase64: blPdfDataUri });
+    maj.aPdfBl = true;
+    maj.blNltPdfBase64 = null;
+  }
   // PDF du BL stocké une seule fois (sur une demande du jour) : les autres pointent vers elle.
   if (blPdfDe) maj.blNltPdfDe = blPdfDe;
   if (demande.statut === "en attente" && typeof colis === "number") {

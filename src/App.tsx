@@ -998,6 +998,36 @@ export default function App() {
     return () => unsub();
   }, [chargerRecond]);
 
+  // 30/09/2026 — Migration unique : les PDF (bon, bon Geslot, BL NLT) encore stockés dans les
+  // demandes sont déplacés vers reconditionnement_pdfs/{id} (voir src/pdfsRecond.ts). Faite
+  // automatiquement par un compte admin, par paquets de ~4 Mo, en une seule écriture par paquet
+  // (le PDF est copié et retiré de la demande dans la même écriture : rien ne peut être perdu).
+  const migrationPdfsRecondFaite = useRef(false);
+  useEffect(() => {
+    if (migrationPdfsRecondFaite.current || !monAccesReel.isAdmin || !reconditionnementDemandesChargees) return;
+    migrationPdfsRecondFaite.current = true;
+    const aMigrer = reconditionnementDemandesListe.filter((d: any) => d && (d.pdfBase64 || d.pdfGeslotBase64 || d.blNltPdfBase64));
+    if (!aMigrer.length) return;
+    (async () => {
+      let maj: Record<string, any> = {};
+      let taille = 0;
+      const envoyer = async () => { if (!Object.keys(maj).length) return; await update(ref(db), maj); maj = {}; taille = 0; };
+      for (const d of aMigrer as any[]) {
+        for (const [champ, drapeau] of [["pdfBase64", "aPdfBon"], ["pdfGeslotBase64", "aPdfGeslot"], ["blNltPdfBase64", "aPdfBl"]]) {
+          const v = d[champ];
+          if (!v) continue;
+          maj[`reconditionnement_pdfs/${d.id}/${champ}`] = v;
+          maj[`reconditionnement_demandes/${d.id}/${drapeau}`] = true;
+          maj[`reconditionnement_demandes/${d.id}/${champ}`] = null;
+          taille += String(v).length;
+        }
+        if (taille > 4_000_000) await envoyer();
+      }
+      await envoyer();
+      console.log(`✅ PDF reconditionnement rangés à part : ${aMigrer.length} demande(s)`);
+    })().catch(e => console.error("Migration PDF reconditionnement — erreur (réessai au prochain chargement):", e));
+  }, [reconditionnementDemandesChargees, monAccesReel.isAdmin]);
+
   // ─── BL NLT : vérification automatique des mails depuis l'appli ───
   // 29/09/2026 — Tant que l'appli est ouverte (sur n'importe quel poste), on déclenche toutes les
   // 5 min, entre 7h et 20h, la lecture des BL envoyés par NLT (api/nlt-bl-poll.js) — le
