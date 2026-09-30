@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { db, db as rtdb, ref, onValue, update, push, get, auth } from "./firebase";
 import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, documentId } from "firebase/firestore";
 import { PageHeader, styles } from "./shared";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -3042,20 +3042,45 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           // Importé directement (bundlé par Vite) au lieu d'être chargé depuis un CDN externe
           // au moment de l'exécution — évite les pannes si le CDN est lent, bloqué (pare-feu,
           // réseau d'entreprise) ou hors ligne.
-          const h5scanner = new Html5Qrcode("s-scan-video", { verbose: false });
-          sScanStream = { _h5: h5scanner } as any;
-          await h5scanner.start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: { width: 280, height: 120 } },
-            (text: string) => {
-              if (sScanActive) {
-                sScanActive = false;
-                try { if (h5scanner.isScanning) h5scanner.stop().catch(() => {}); } catch {}
-                handleRaw(text.trim());
-              }
-            },
-            () => {}
-          );
+          // 30/09/2026 — « le scan palette marche pas » : la zone de lecture était un rectangle
+          // fixe 280×120, trop bas pour un QR (carré) → le QR des étiquettes n'était jamais lu.
+          // On reprend exactement les réglages du scanner de Pointer arrivage, qui marche :
+          // zone carrée adaptative, formats limités, détecteur natif, haute résolution + repli.
+          // Et on arrête/nettoie proprement l'instance précédente (sinon « Scanner une autre
+          // palette » pouvait rester sur un écran noir).
+          const ancien = (sScanStream as any)?._h5;
+          if (ancien) { try { if (ancien.isScanning) await ancien.stop(); } catch {} try { ancien.clear(); } catch {} }
+          sScanStream = null;
+          try { document.getElementById("s-scan-video")!.innerHTML = ""; } catch {}
+          const onDecoded = (text: string) => {
+            if (sScanActive) {
+              sScanActive = false;
+              const h5 = (sScanStream as any)?._h5;
+              try { if (h5?.isScanning) h5.stop().catch(() => {}); } catch {}
+              handleRaw(text.trim());
+            }
+          };
+          const baseConfig: any = {
+            fps: 15,
+            qrbox: (vw: number, vh: number) => { const size = Math.floor(Math.max(200, Math.min(Math.min(vw, vh) * 0.7, 320))); return { width: size, height: size }; },
+            disableFlip: false,
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+            ],
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          };
+          try {
+            const h1 = new Html5Qrcode("s-scan-video", { verbose: false } as any);
+            sScanStream = { _h5: h1 } as any;
+            await h1.start({ facingMode: "environment" }, { ...baseConfig, videoConstraints: { facingMode: "environment", focusMode: "continuous", width: { ideal: 1280 }, height: { ideal: 720 } } as any }, onDecoded, () => {});
+          } catch {
+            try { document.getElementById("s-scan-video")!.innerHTML = ""; } catch {}
+            await new Promise(r => setTimeout(r, 150));
+            const h2 = new Html5Qrcode("s-scan-video", { verbose: false } as any);
+            sScanStream = { _h5: h2 } as any;
+            await h2.start({ facingMode: "environment" }, baseConfig, onDecoded, () => {});
+          }
         } catch (e: any) {
           const errEl = document.getElementById("s-scan-error") as HTMLElement;
           const msgEl = document.getElementById("s-scan-error-msg");
