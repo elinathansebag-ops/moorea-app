@@ -396,6 +396,18 @@ export default function App() {
   const [formArr, setFormArr] = useState({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "", date: "" });
   const [previewArr, setPreviewArr] = useState<any[] | null>(null);
   const [importingArr, setImportingArr] = useState(false);
+  // 30/09/2026 — Demande d'Elinathan : barre de progression pendant l'import d'un fichier
+  // Geslot (lecture du PDF/Excel puis enregistrement), pour savoir si ça charge ou si ça a planté.
+  const [progImportArr, setProgImportArr] = useState<{ texte: string; fait: number; total: number; debut: number; maj: number } | null>(null);
+  const majProgImportArr = (texte: string, fait: number, total: number) =>
+    setProgImportArr(prev => ({ texte, fait, total, debut: prev?.debut ?? Date.now(), maj: Date.now() }));
+  const [tickProgImport, setTickProgImport] = useState(0);
+  useEffect(() => { if (!importingArr) setProgImportArr(null); }, [importingArr]);
+  useEffect(() => {
+    if (!progImportArr) return;
+    const t = setInterval(() => setTickProgImport(x => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [!!progImportArr]);
   // ─── DÉTECTION DE DOUBLONS (ex: après un import relancé par erreur) ───
   // Regroupe les arrivages par produit+fournisseur+date normalisés ; affiche une liste à
   // valider avant toute suppression — rien n'est jamais effacé automatiquement.
@@ -1487,6 +1499,7 @@ export default function App() {
   const handleExcelArr = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     setImportingArr(true);
+    setProgImportArr({ texte: "Ouverture du fichier…", fait: 0, total: 1, debut: Date.now(), maj: Date.now() });
     const now2 = new Date();
     if (file.name.endsWith(".pdf")) {
       const loadPDF = () => new Promise<any>((res, rej) => {
@@ -1498,11 +1511,14 @@ export default function App() {
       const reader = new FileReader();
       reader.onload = async (evt) => {
         try {
+          majProgImportArr("Chargement du lecteur PDF…", 0, 1);
           const lib = await loadPDF();
           const pdf = await lib.getDocument({ data: evt.target!.result }).promise;
+          majProgImportArr(`Lecture du PDF — page 0/${pdf.numPages}`, 0, pdf.numPages + 1);
 
           const allItems: { str: string; x: number; y: number; globalY: number }[] = [];
           for (let p = 1; p <= pdf.numPages; p++) {
+            majProgImportArr(`Lecture du PDF — page ${p}/${pdf.numPages}`, p - 1, pdf.numPages + 1);
             const pg = await pdf.getPage(p);
             const tc = await pg.getTextContent();
             tc.items.forEach((i: any) => {
@@ -1516,6 +1532,7 @@ export default function App() {
             });
           }
 
+          majProgImportArr("Analyse des arrivages…", pdf.numPages, pdf.numPages + 1);
           const lineMap = new Map<number, { str: string; x: number }[]>();
           allItems.forEach(item => {
             const key = Math.round(item.globalY / 4) * 4;
@@ -1617,7 +1634,9 @@ export default function App() {
           const s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
           s.onload = () => res((window as any).XLSX); s.onerror = rej; document.head.appendChild(s);
         });
+        majProgImportArr("Chargement du lecteur Excel…", 0, 2);
         loadXLSX().then(XLSX => {
+          majProgImportArr("Lecture du fichier Excel…", 1, 2);
           const wb = XLSX.read(evt.target!.result, { type: "array" });
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" }) as any[][];
           const arr: any[] = []; let curLot = "", curFourn = "", curDate = now2.toLocaleDateString("fr-FR");
@@ -1837,7 +1856,10 @@ export default function App() {
       setPreviewArr(null); setImportingArr(false); return;
     }
 
-    for (const a of nouveaux) { const ca = getCodeArticle(a.produit); await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now(), ...(ca ? {code_article: ca} : {}) }); }
+    const totalEcritures = nouveaux.length + modifs.length;
+    let ecrits = 0;
+    setProgImportArr({ texte: `Enregistrement 0/${totalEcritures}`, fait: 0, total: totalEcritures, debut: Date.now(), maj: Date.now() });
+    for (const a of nouveaux) { const ca = getCodeArticle(a.produit); await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now(), ...(ca ? {code_article: ca} : {}) }); ecrits++; majProgImportArr(`Enregistrement ${ecrits}/${totalEcritures}`, ecrits, totalEcritures); }
 
     // Modification de calibre/quantité sur un arrivage déjà présent : on met à jour ses infos
     // et, s'il était déjà validé/refusé, on le rouvre en "en attente" pour qu'il soit revérifié
@@ -1857,6 +1879,7 @@ export default function App() {
         ...(etaitTraite ? { statut: "en attente" } : {}),
       });
       logActivite("Modification import", `${nouveau.produit} (${nouveau.fournisseur}) mis à jour depuis "${ancien.produit}"${etaitTraite ? " — rouvert en attente" : ""}`);
+      ecrits++; majProgImportArr(`Enregistrement ${ecrits}/${totalEcritures}`, ecrits, totalEcritures);
     }
 
     setPreviewArr(null); setImportingArr(false);
@@ -4098,6 +4121,25 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           ⚠️ {comptesMailCasses.length > 1 ? "Plusieurs comptes mail sont" : "Un compte mail est"} déconnecté(s) — {comptesMailCasses.map(c => c.email).join(", ")}. Vérifier le mot de passe d'application dans Vercel.
         </div>
       )}
+
+      {progImportArr && (() => {
+        void tickProgImport;
+        const pct = progImportArr.total > 0 ? Math.min(100, Math.round(progImportArr.fait / progImportArr.total * 100)) : 0;
+        const secondes = Math.floor((Date.now() - progImportArr.debut) / 1000);
+        const bloque = Date.now() - progImportArr.maj > 45000;
+        return (
+          <div style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 6000, background: "#fff", border: `1.5px solid ${bloque ? "#fca5a5" : "#e8e0d0"}`, borderRadius: 14, padding: "12px 16px", width: "min(420px, 92vw)", boxShadow: "0 8px 24px rgba(0,0,0,.18)", fontFamily: "'Syne', sans-serif" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 800, color: "#1a2e1a", marginBottom: 8, gap: 8 }}>
+              <span>📥 Import Geslot — {progImportArr.texte}</span>
+              <span style={{ color: "#8a6f2e", flexShrink: 0 }}>{pct}% · {secondes}s</span>
+            </div>
+            <div style={{ height: 8, background: "#f3efe6", borderRadius: 6, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.max(pct, 3)}%`, background: bloque ? "#dc2626" : "#c8a84b", borderRadius: 6, transition: "width .3s" }} />
+            </div>
+            {bloque && <div style={{ marginTop: 8, fontSize: 11.5, color: "#b91c1c", fontWeight: 700 }}>⚠️ Aucun progrès depuis 45 s — la connexion est peut-être coupée. Recharge la page et réessaie.</div>}
+          </div>
+        );
+      })()}
 
       {popupEtiquette && (
         <PopupEtiquetteMulti arrivage={popupEtiquette} onClose={() => setPopupEtiquette(null)} />
