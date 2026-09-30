@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { db, db as rtdb, ref, onValue, update, push, get, auth } from "./firebase";
 import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, documentId } from "firebase/firestore";
 import { PageHeader, styles } from "./shared";
+import { ScannerQR } from "./ArrivageModule";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -639,6 +640,13 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
 
 export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompter = true }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[]; canConfig?: boolean; canCompter?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // 30/09/2026 — Demande d'Elinathan : même caméra que celle de l'accueil (ScannerQR), qui
+  // marche bien, au lieu du scanner maison du stock.
+  const [scanOuvert, setScanOuvert] = useState(false);
+  useEffect(() => {
+    (window as any).__ouvrirScannerStock = () => setScanOuvert(true);
+    return () => { delete (window as any).__ouvrirScannerStock; };
+  }, []);
   const mainRtdb = db; // DB principale (moorea-qualite) — c'est là que vivent les racks (rack_positions)
 
   useEffect(() => {
@@ -3005,9 +3013,37 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         (window as any).sScannerPalette();
       };
 
+      // Résultat d'un scan fait avec la caméra de l'accueil (ScannerQR) : id d'arrivage, n° de
+      // lot ou EAN → même traitement qu'avant (choix palette entière / autre quantité).
+      (window as any).sTraiterScanStock = async (val: string) => {
+        const page = document.getElementById("s-page-scanner");
+        if (page) page.style.display = "flex";
+        const errEl = document.getElementById("s-scan-error") as HTMLElement | null;
+        if (errEl) errEl.style.display = "none";
+        if (val.startsWith("EAN:")) { (window as any).sVerifierEANDansStock(val.slice(4)); return; }
+        if (/^\d{8,13}$/.test(val)) { (window as any).sVerifierEANDansStock(val); return; }
+        let lot = val;
+        try { const u = new URL(val); lot = u.searchParams.get("lot") || u.searchParams.get("id") || ""; } catch { /* pas une URL */ }
+        if (lot && !/^\d{3,6}(-\d+)?$/.test(lot)) {
+          try {
+            let a = (await get(ref(rtdb, `arrivages/${lot}`))).val();
+            if (!a) a = (await get(ref(rtdb, `arrivages_archives/${lot}`))).val();
+            if (a && a.lot_interne) lot = String(a.lot_interne);
+          } catch { /* ignore */ }
+        }
+        if (!lot || !/^\d{3,6}(-\d+)?$/.test(lot)) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + val.slice(0, 40) }); return; }
+        (window as any).sProposerPaletteScannee(lot);
+      };
+
       (window as any).sScannerPalette = async () => {
         const page = document.getElementById("s-page-scanner");
         if (!page) return;
+        if ((window as any).__ouvrirScannerStock) {
+          page.style.display = "none";
+          sScanActive = false;
+          (window as any).__ouvrirScannerStock();
+          return;
+        }
         page.style.display = "flex";
         document.getElementById("s-scan-result")!.style.display = "none";
         (document.getElementById("s-scan-error") as HTMLElement).style.display = "none";
@@ -3318,6 +3354,14 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       <style>{styles}</style>
       <PageHeader titre="📦 Stock Moorea" onBack={onExit} onHome={onExit} />
       <div ref={containerRef} />
+      {scanOuvert && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 900 }}>
+          <ScannerQR
+            onClose={() => setScanOuvert(false)}
+            onScan={(val) => { setScanOuvert(false); (window as any).sTraiterScanStock?.(String(val || "").trim()); }}
+          />
+        </div>
+      )}
     </div>
   );
 }
