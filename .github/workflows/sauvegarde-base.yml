@@ -33,9 +33,11 @@ jobs:
           if [ -z "$MDP" ]; then echo "❌ Secret SAUVEGARDE_MOT_DE_PASSE absent : sauvegarde annulée (jamais publiée en clair)."; exit 1; fi
 
       - name: Télécharge la base
+        env:
+          FIREBASE_DB_SECRET: ${{ secrets.FIREBASE_DB_SECRET }}
         run: |
           python3 - <<'EOF'
-          import json, os, time, urllib.request, urllib.parse
+          import json, os, time, urllib.request, urllib.parse, urllib.error
           os.makedirs("sauvegarde/rtdb", exist_ok=True)
           os.makedirs("sauvegarde/firestore", exist_ok=True)
           RTDB = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app"
@@ -47,13 +49,45 @@ jobs:
                   except Exception as e:
                       if i == essais - 1: raise
                       time.sleep(5 * (i + 1))
-          # Realtime Database : une branche par fichier (évite une seule réponse géante)
-          cles = json.loads(lire(RTDB + "/.json?shallow=true") or b"{}") or {}
-          print(f"RTDB : {len(cles)} branches")
-          for cle in sorted(cles):
-              data = lire(RTDB + "/" + urllib.parse.quote(cle) + ".json")
+          # Realtime Database : une branche par fichier (évite une seule réponse géante).
+          # La racine de la base n'est pas lisible sans authentification (401) : on sauvegarde donc
+          # la liste des branches utilisées par l'appli. Si le secret FIREBASE_DB_SECRET est créé
+          # (clé « Secrets de base de données » de Firebase), on lit TOUTES les branches.
+          SECRET = os.environ.get("FIREBASE_DB_SECRET", "")
+          AUTH = ("?auth=" + urllib.parse.quote(SECRET)) if SECRET else ""
+          CONNUES = """acces_permissions activity_log appro arrivage_palettes_annoncees arrivages arrivages_archives
+          bloc_notes_commandes brouillons chargement_conteneurs chargement_parametres chargement_references comptes config
+          entretiens etiquettes gencode_articles geslot_articles ifco_attente ifco_clients ifco_comptages
+          ifco_declarations_entree ifco_declarations_entree_archives ifco_declarations_lignes ifco_declarations_lignes_archives
+          ifco_histo ifco_histo_archives ifco_palettes_commandes ifco_rapprochements ifco_reconditionnement ifco_stock
+          ifco_stock_movements_archives messagerieCache messagerie_boite messagerie_commerciaux messagerie_config
+          messagerie_contacts messagerie_equipes messagerie_modeles messagerie_regles messagerie_regles_auto
+          messagerie_sync_etat meta moorea_articles nlt_bl_a_verifier palettes_vierges_livraisons parametres
+          pointeuse_comptes pointeuse_demandes pointeuse_employes pointeuse_messages pointeuse_pins pointeuse_pointages
+          pointeuse_public presence prestataires_cartons prestataires_cartons_archives prestataires_fiches printQueue_archives
+          programme_achat_lignes programme_achat_periodes rack_alertes_envoyees rack_config rack_favoris rack_historique
+          rack_mode_placement rack_positions rapports reajustements_stock_demandes reconditionnement_demandes
+          reconditionnement_pdfs reconditionnement_pdfs_en_attente reconditionnement_stock_mouvements
+          reconditionnement_stock_mouvements_archives reconditionnement_transporteurs retours retours_archives
+          retours_compteur retours_corbeille retours_entrepot rh rh_planning sante_comptes_mail stock_ajustements
+          stock_carton_andes taches_perso ventes_jour_importees yukon""".split()
+          cles = CONNUES
+          if SECRET:
+              try:
+                  cles = sorted(set(CONNUES) | set((json.loads(lire(RTDB + "/.json?shallow=true&auth=" + urllib.parse.quote(SECRET))) or {}).keys()))
+              except Exception as e:
+                  print("Liste complète impossible, liste connue utilisée :", e)
+          ok, refuses = 0, []
+          for cle in cles:
+              try:
+                  data = lire(RTDB + "/" + urllib.parse.quote(cle) + ".json" + AUTH, essais=2)
+              except urllib.error.HTTPError as e:
+                  refuses.append(f"{cle} (HTTP {e.code})"); print(f"  ⚠️ {cle} : HTTP {e.code}"); continue
               with open(f"sauvegarde/rtdb/{cle}.json", "wb") as f: f.write(data)
+              ok += 1
               print(f"  {cle} : {len(data)//1024} Ko")
+          print(f"RTDB : {ok} branches sauvegardées, {len(refuses)} refusées")
+          if ok == 0: raise SystemExit("❌ Aucune branche lisible — sauvegarde vide, abandon.")
           # Firestore moorea-stock (stocks / comptages / config)
           KEY = "AIzaSyDETa9aJzOdVAMpDLMv8inFKZ921yiCzY8"
           FS = "https://firestore.googleapis.com/v1/projects/moorea-stock/databases/(default)/documents/"
@@ -61,14 +95,17 @@ jobs:
               docs, token = [], ""
               while True:
                   url = FS + col + "?pageSize=300&key=" + KEY + (("&pageToken=" + urllib.parse.quote(token)) if token else "")
-                  page = json.loads(lire(url))
+                  try:
+                      page = json.loads(lire(url, essais=2))
+                  except urllib.error.HTTPError as e:
+                      refuses.append(f"firestore/{col} (HTTP {e.code})"); print(f"  ⚠️ Firestore {col} : HTTP {e.code}"); page = {}
                   docs += page.get("documents", [])
                   token = page.get("nextPageToken", "")
                   if not token: break
               with open(f"sauvegarde/firestore/{col}.json", "w") as f: json.dump(docs, f)
               print(f"Firestore {col} : {len(docs)} documents")
           with open("sauvegarde/LISEZMOI.txt", "w") as f:
-              f.write("Sauvegarde Moorea du " + time.strftime("%Y-%m-%d %H:%M UTC") + "\nrtdb/ = Realtime Database (un fichier par branche)\nfirestore/ = moorea-stock (format API Firestore)\n")
+              f.write("Sauvegarde Moorea du " + time.strftime("%Y-%m-%d %H:%M UTC") + "\nrtdb/ = Realtime Database (un fichier par branche)\nfirestore/ = moorea-stock (format API Firestore)\n" + ("Branches refusées : " + ", ".join(refuses) + "\n" if refuses else ""))
           EOF
 
       - name: Compresse et chiffre
