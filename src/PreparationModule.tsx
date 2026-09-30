@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { noterHistoriqueDemande } from "./historiqueRecond";
 import { aPdfDemande, lirePdfDemande } from "./pdfsRecond";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
@@ -334,6 +335,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       entrepotPretDate: nowFr(),
       nbPalettesDepart: null,
     });
+    noterHistoriqueDemande(id, "Marquée prête (entrepôt)", userName);
   }
 
   // Quand le transport est assuré par Moorea elle-même, pas de nombre de palettes à indiquer —
@@ -346,6 +348,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       entrepotPretDate: nowFr(),
       nbPalettesDepart: null,
     });
+    noterHistoriqueDemande(id, "Marquée prête (transport Moorea)", userName);
     notify("success", "✅ Marqué prêt — transport Moorea, pas de palette à indiquer");
   }
 
@@ -426,6 +429,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     // directement "reçu" dès le départ, plutôt que de le laisser affiché comme en transit.
     const statutFinal = demande && demande.nbColisAEntrer == null ? "reçu" : "parti";
     await update(ref(db, `reconditionnement_demandes/${id}`), { statut: statutFinal, departDate: nowFr(), ...(extra || {}) });
+    noterHistoriqueDemande(id, statutFinal === "reçu" ? "Marquée partie et terminée (pas de retour attendu)" : "Marquée partie chez le reconditionneur", userName);
 
     // Le retour n'est plus pointé depuis une modale ici : on crée l'arrivage attendu
     // correspondant, comme n'importe quelle livraison, pour qu'il apparaisse directement dans
@@ -514,6 +518,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       statut: "prêt",
       departDate: null,
     });
+    noterHistoriqueDemande(id, "Repassée de « partie » à « prête »", userName);
     notify("success", "↩️ Demande repassée à « prêt »");
   }
 

@@ -1,6 +1,7 @@
 // ✅ TEST MODIFICATION - Vérification que GitHub Desktop reçoit et publie les changements correctement 🚀
 // Cette ligne a été ajoutée pour tester le workflow de publication
 
+import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
 import jsPDF from "jspdf";
@@ -1405,6 +1406,7 @@ export default function App() {
         };
         Object.keys(retour).forEach(k => { if (retour[k] === undefined) delete retour[k]; });
         await update(ref(db, `reconditionnement_demandes/${arrivage.reconditionnement_demande_id}`), { statut: "reçu", retour });
+        noterHistoriqueDemande(arrivage.reconditionnement_demande_id, `Retour pointé à l'arrivage : ${ctrl.colisRecus ?? "?"} colis${decision !== "conforme" ? " (problème signalé)" : ""}`, user?.displayName || user?.email || "");
 
         // Le reconditionneur est censé confirmer lui-même "prêt à repartir" depuis son espace en
         // ligne (voir src/PortailReconditionneur.tsx) avant même le retour physique — mais ça peut

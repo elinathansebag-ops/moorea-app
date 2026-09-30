@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
+import { noterHistoriqueDemande } from "./historiqueRecond";
 import { aPdfDemande, lirePdfDemande, ecrirePdfDemande, type ChampPdfRecond } from "./pdfsRecond";
 import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
@@ -2140,6 +2141,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // qui a été engagé), pas une action physique d'entrepôt.
   async function reinitialiserDemande(id: string) {
     if (!window.confirm("Remettre cette demande à l'étape « en attente » ?")) return;
+    noterHistoriqueDemande(id, "Remise à l'étape « en attente »", userName);
     // 25/09/2026 — Le retour attendu reste dans « Pointer arrivage » (il existe dès la création).
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "en attente",
@@ -2168,6 +2170,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 
   async function repasserAPret(id: string) {
     if (!window.confirm("Repasser cette demande de « parti » à « prêt » ? Le nombre de palettes déjà saisi est conservé.")) return;
+    noterHistoriqueDemande(id, "Repassée de « partie » à « prête »", userName);
     // 25/09/2026 — Le retour attendu reste dans « Pointer arrivage » (il existe dès la création).
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "prêt",
@@ -2213,6 +2216,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // statut principal, comme pour les commandes cartons/palettes IFCO (module Prestataires). ───
   async function marquerDemandeFacturee(id: string) {
     if (!window.confirm("Confirmer que la facture correspond bien à ce qui a été reçu ?")) return;
+    noterHistoriqueDemande(id, "Facture pointée", userName);
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       pointageCompta: { facture: true, date: nowFr(), par: userName },
     });
@@ -2489,6 +2493,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         if (!(original as any)?.saisieApresCoup && apresCoup) (demande as any).emailEnvoye = true;
         if (etaitRecu && !devientRecu) (demande as any).retour = null;
         await update(ref(db, `reconditionnement_demandes/${editDemandeId}`), demande);
+        {
+          const libelles: Record<string, string> = { statut: "statut", dateCreationFr: "date", depot: "dépôt", articleVrac: "produit à sortir", nbColisASortir: "colis à sortir", articleFini: "produit à rentrer", nbColisAEntrer: "colis à entrer", lot: "lot", transporteurNom: "transporteur", retourEnIfco: "retour IFCO", dejaChezReconditionneur: "déjà chez le reconditionneur", saisieApresCoup: "saisie après coup", commentaireEan: "commentaire" };
+          const aff = (v: any) => v === true ? "oui" : v === false ? "non" : (v == null || v === "" ? "—" : String(v));
+          const changes = Object.entries(libelles)
+            .filter(([k]) => aff((original as any)?.[k]) !== aff((demande as any)[k]) && (demande as any)[k] !== undefined)
+            .map(([k, l]) => `${l} : ${aff((original as any)?.[k])} → ${aff((demande as any)[k])}`);
+          noterHistoriqueDemande(editDemandeId, changes.length ? `Modifiée — ${changes.join(" · ")}` : "Modifiée (bon régénéré)", userName);
+        }
         if (geslotB64) await ecrirePdfDemande(editDemandeId, { pdfGeslotBase64: geslotB64 });
         // 29/09/2026 — Passage en « déjà revenue à Moorea » : plus rien à pointer, et même
         // mouvement IFCO que le pointage (NLT → pleines).
@@ -2574,6 +2586,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       const demandeRef = await push(ref(db, "reconditionnement_demandes"), demande);
       const demandeId = demandeRef.key;
       if (demandeId && geslotB64) await ecrirePdfDemande(demandeId, { pdfGeslotBase64: geslotB64 });
+      noterHistoriqueDemande(demandeId, apresCoup ? `Créée en saisie après coup (fait le ${dateRefFr.replace(" (saisi après coup)", "")}, ${statutApresCoup === "reçu" ? "déjà revenue" : "pas encore revenue"})` : (dejaChezReconditionneur ? "Créée (produit déjà chez le reconditionneur)" : "Créée"), userName);
 
       // Génère le bon propre (jsPDF, avec QR code de suivi) maintenant qu'on a l'id réel de la
       // demande, puis l'attache à l'enregistrement qu'on vient de créer. Best-effort : si la
@@ -2955,6 +2968,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         const demandeRef = await push(ref(db, "reconditionnement_demandes"), demande);
         const demandeId = demandeRef.key as string;
         if (geslotLigne) await ecrirePdfDemande(demandeId, { pdfGeslotBase64: geslotLigne });
+        noterHistoriqueDemande(demandeId, apresCoup ? `Créée (déclaration groupée) en saisie après coup (fait le ${dateRefFr.replace(" (saisi après coup)", "")}, ${groupeStatutApresCoup === "reçu" ? "déjà revenue" : "pas encore revenue"})` : `Créée (déclaration groupée)${l.dejaChez ? " — déjà chez le reconditionneur" : ""}`, userName);
         dejaNumerotes.push({ ...demande, id: demandeId });
         // Mêmes étapes que creerDemande : bon propre + impression entrepôt + récap mail du jour.
         try {
@@ -3022,6 +3036,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 
   async function annulerDemande(id: string) {
     await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "annulé" });
+    noterHistoriqueDemande(id, "Annulée", userName);
     // 25/09/2026 — L'arrivage existant dès la création : une demande annulée ne doit plus rien
     // attendre dans « Pointer arrivage ».
     const arrivageLie = arrivagesData.find(a => a.reconditionnement_demande_id === id && a.statut === "en attente");
@@ -3041,6 +3056,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // ensuite, puisqu'il n'y a pas de retour à pointer dans "Pointer arrivage").
     const statutFinal = d.nbColisAEntrer == null ? "reçu" : "parti";
     await update(ref(db, `reconditionnement_demandes/${d.id}`), { statut: statutFinal, departDate: nowFr() });
+    noterHistoriqueDemande(d.id, statutFinal === "reçu" ? "Marquée partie et terminée" : "Marquée partie chez le reconditionneur", userName);
 
     const quantitePrevue = typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : null;
     const quantiteDeclareePresta = typeof d.retourPresta?.quantiteDeclaree === "number" ? d.retourPresta.quantiteDeclaree : null;
@@ -4012,6 +4028,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       </div>
                     )}
 
+                    <HistoriqueDemandeRecond d={d} />
                     {(aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         {aPdfDemande(d, "pdfGeslotBase64") && (
@@ -4886,7 +4903,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                       cours" : une fois la demande passée en Historique (terminée), il disparaissait
                                       complètement, alors que le BL rattaché (automatiquement ou via le rattrapage
                                       historique) reste consultable. On l'affiche donc ici aussi. */}
-                                  {(aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
+                                  <HistoriqueDemandeRecond d={d} />
+                    {(aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
                                       {aPdfDemande(d, "pdfGeslotBase64") && (
                                         <button type="button" onClick={() => ouvrirPdfDemande(d, "pdfGeslotBase64", `Bon Geslot — ${d.numero || d.id}`)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -5397,5 +5415,23 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         </div>
       )}
     </div>
+  );
+}
+
+// 30/09/2026 — Historique « qui a fait quoi » d'une demande (voir src/historiqueRecond.ts).
+function HistoriqueDemandeRecond({ d }: { d: any }) {
+  const lignes = d?.historique ? (Object.values(d.historique) as any[]).sort((a, b) => (a.ts || 0) - (b.ts || 0)) : [];
+  if (!lignes.length) return null;
+  return (
+    <details style={{ marginTop: 6, marginBottom: 6 }}>
+      <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: "#6b7280" }}>🕘 Historique ({lignes.length})</summary>
+      <div style={{ marginTop: 4, paddingLeft: 10, borderLeft: "2px solid #e5e7eb" }}>
+        {lignes.map((l, i) => (
+          <div key={i} style={{ fontSize: 11, color: "#4b5563", margin: "2px 0" }}>
+            <span style={{ color: "#9ca3af" }}>{l.date}</span>{l.par ? <b> · {l.par}</b> : null} — {l.action}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }

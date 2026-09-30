@@ -315,6 +315,13 @@ export async function appliquerBlNltSurDemande(adminDb, id, demande, colis, { bl
     maj.nbPalettesDepart = null;
   }
   await adminDb.ref(`reconditionnement_demandes/${id}`).update(maj);
+  // 30/09/2026 — Historique de la demande (qui a fait quoi).
+  try {
+    await adminDb.ref(`reconditionnement_demandes/${id}/historique`).push({
+      ts: Date.now(), date: new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" }), par: "NLT (BL reçu par mail)",
+      action: `BL NLT reçu${blNumero ? ` n° ${blNumero}` : ""}${typeof colis === "number" ? ` — ${colis} colis déclarés` : " (rattaché au BL du jour)"}`,
+    });
+  } catch { /* jamais bloquant */ }
   // Déjà reçue à Moorea (rattachement fait après coup) : on garde juste la trace du BL, sans
   // prévenir le transporteur d'une prod « prête » qui est en fait déjà arrivée.
   // Saisie après coup (reconditionnement rentré en retard) : jamais de mail.
