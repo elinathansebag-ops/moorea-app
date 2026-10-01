@@ -331,7 +331,7 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
             )}
             {commercial && duJour.length > 0 && (
               <select value="" onChange={e => { if (e.target.value) choisirRefTout(e.target.value); }} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13, fontWeight: 700 }}>
-                <option value="">🥦 Tout le jour en…</option>
+                <option value="">Tout le jour en…</option>
                 {REFS_LIDL.map(r => <option key={r.k} value={r.k}>{libRef(r)}</option>)}
               </select>
             )}
@@ -344,7 +344,7 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                 <div style={{ width: `${Math.round((colisPrets / totalColis) * 100)}%`, height: "100%", background: colisPrets === totalColis ? "#16a34a" : "linear-gradient(90deg,#fbbf24,#f59e0b)", borderRadius: 8, transition: "width .5s" }} />
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: colisPrets === totalColis ? "#15803d" : "#6b7280" }}>
-                {colisPrets === totalColis ? "🎉 Tout est prêt, bravo !" : `💪 ${colisPrets} / ${totalColis} colis prêts`}
+                {colisPrets === totalColis ? "Tout est prêt" : `${colisPrets} / ${totalColis} colis prêts`}
               </div>
             </div>
           )}
@@ -352,7 +352,7 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
             <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
           )}
           {duJour.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "📭 Aucune commande Lidl. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») en choisissant le départ." : "☕ Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
+            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "Aucune commande Lidl. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») en choisissant le départ." : "Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
           ) : !commercial ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <label style={{ fontSize: 13, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
@@ -403,7 +403,7 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                               <button type="button" onClick={() => annulerPret(l)} style={{ background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>
                             </div>
                           ) : (
-                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 14, padding: "14px 22px", fontWeight: 900, fontSize: 16, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>👍 Prêt !</button>
+                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 14, padding: "14px 22px", fontWeight: 900, fontSize: 16, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>Prêt</button>
                           )}
                         </div>
                       );
@@ -454,14 +454,14 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                         <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
                           {pret ? (
                             <span>
-                              <span style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt 🎉</span>
+                              <span style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</span>
                               <span style={{ fontSize: 10.5, color: "#9ca3af", marginLeft: 6 }}>{l.pretPar} {l.pretLe}</span>
                               {!commercial && <button type="button" onClick={() => annulerPret(l)} style={{ marginLeft: 8, background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>}
                             </span>
                           ) : commercial ? (
                             <span style={{ color: "#b45309", fontWeight: 700, fontSize: 12 }}>{l.depart === "sud" ? "Géré par Medina" : "À préparer"}</span>
                           ) : (
-                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>👍 Prêt !</button>
+                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>Prêt</button>
                           )}
                         </td>
                       </tr>
