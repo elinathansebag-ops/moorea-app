@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { db, ref, onValue } from "./firebase";
+import { db, ref, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
 import { LidlCommandes, infoBase } from "./LidlCommandes";
 
@@ -24,6 +24,18 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
   const [semaine, setSemaine] = useState(lundi(iso(new Date())));
   const [filtreDepart, setFiltreDepart] = useState<"tous" | "sud" | "paris">("tous");
 
+  // Signalements de la prépa : « il manque une ferme dans la liste »
+  const [signals, setSignals] = useState<{ id: string; base: string; par: string; date: string }[]>([]);
+  const [nomFerme, setNomFerme] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const u = onValue(ref(db, "lidl_config/fermes_manquantes"), snap => setSignals(Object.entries(snap.val() || {}).map(([id, v]: any) => ({ id, ...v }))));
+    return () => u();
+  }, []);
+  async function ajouterFerme(id: string) {
+    const nom = (nomFerme[id] || "").trim().toUpperCase().replace(/[.#$\[\]/]/g, "-");
+    if (!nom) return;
+    await update(ref(db), { [`lidl_config/fermes/${nom}`]: true, [`lidl_config/fermes_manquantes/${id}`]: null });
+  }
   useEffect(() => {
     const u = onValue(ref(db, "lidl_commandes"), snap => setLignes(Object.entries(snap.val() || {}).map(([id, v]: any) => ({ ...v, id }))));
     return () => u();
@@ -81,6 +93,19 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
           {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}
         </div>
 
+        {signals.length > 0 && (
+          <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: "#92400e", marginBottom: 6 }}>Ferme manquante signalée par la préparation</div>
+            {signals.map(sg => (
+              <div key={sg.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 13 }}>
+                <span>{sg.par || "Préparation"} · base {sg.base} · {dateFr(sg.date)}</span>
+                <input value={nomFerme[sg.id] || ""} onChange={e => setNomFerme(x => ({ ...x, [sg.id]: e.target.value }))} placeholder="Nom de la ferme" style={{ padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+                <button type="button" onClick={() => ajouterFerme(sg.id)} style={{ background: "#0050aa", color: "#fff", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 700, cursor: "pointer" }}>Ajouter à la liste</button>
+                <button type="button" onClick={() => remove(ref(db, `lidl_config/fermes_manquantes/${sg.id}`))} style={{ background: "transparent", border: "none", color: "#6b7280", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}>Ignorer</button>
+              </div>
+            ))}
+          </div>
+        )}
         {onglet === "jour" && <LidlCommandes userName={userName} mode="commercial" jourForce={jourOuvert || undefined} />}
 
         {onglet === "passees" && (
