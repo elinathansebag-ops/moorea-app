@@ -243,7 +243,7 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
   }
 
   return (
-    <div style={{ background: "#fff", border: `1.5px solid ${couleur}33`, borderRadius: 12, marginBottom: 16, overflow: "hidden" }}>
+    <div style={{ background: "#fff", border: `1.5px solid ${couleur}33`, borderRadius: 18, marginBottom: 16, overflow: "hidden", boxShadow: "0 4px 14px rgba(0,0,0,.06)" }}>
       <div onClick={() => setOuvert(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", cursor: "pointer", background: `${couleur}0d` }}>
         <span style={{ fontWeight: 800, fontSize: 14, color: couleur }}>
           🛒 Lidl {jourAffiche && <span style={{ fontWeight: 600, color: "#4b5563" }}>· {dateFr(jourAffiche)} · {nbPret}/{duJour.length} prêtes · {colisPrets}/{totalColis} colis</span>}
@@ -272,11 +272,21 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
             {commercial && duJour.length > 0 && <button type="button" onClick={imprimerGeslot} style={{ background: "#fff", color: couleur, border: `1.5px solid ${couleur}`, borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>🖨️ Imprimer pour Geslot</button>}
             {commercial && duJour.length > 0 && <button type="button" onClick={supprimerJour} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ Supprimer ce jour</button>}
           </div>
+          {duJour.length > 0 && totalColis > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ height: 10, background: "#e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+                <div style={{ width: `${Math.round((colisPrets / totalColis) * 100)}%`, height: "100%", background: colisPrets === totalColis ? "#16a34a" : "linear-gradient(90deg,#fbbf24,#f59e0b)", borderRadius: 8, transition: "width .5s" }} />
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: colisPrets === totalColis ? "#15803d" : "#6b7280" }}>
+                {colisPrets === totalColis ? "🎉 Tout est prêt, bravo !" : `💪 ${colisPrets} / ${totalColis} colis prêts`}
+              </div>
+            </div>
+          )}
           {message && (
             <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
           )}
           {duJour.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "Aucune commande Lidl. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») en choisissant le départ." : "Aucune commande Lidl à préparer (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
+            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "📭 Aucune commande Lidl. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») en choisissant le départ." : "☕ Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
@@ -313,14 +323,14 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                         <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
                           {pret ? (
                             <span>
-                              <span style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</span>
+                              <span style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt 🎉</span>
                               <span style={{ fontSize: 10.5, color: "#9ca3af", marginLeft: 6 }}>{l.pretPar} {l.pretLe}</span>
                               {!commercial && <button type="button" onClick={() => annulerPret(l)} style={{ marginLeft: 8, background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>}
                             </span>
                           ) : commercial ? (
                             <span style={{ color: "#b45309", fontWeight: 700, fontSize: 12 }}>{l.depart === "sud" ? "Géré par Medina" : "À préparer"}</span>
                           ) : (
-                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Prêt</button>
+                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>👍 Prêt !</button>
                           )}
                         </td>
                       </tr>

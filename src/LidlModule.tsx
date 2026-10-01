@@ -58,32 +58,56 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
   }, [lignesSemaine, joursSemaine]);
   const totalSemaine = matrice.reduce((s, g) => s + g.total, 0);
   const totalParJour = joursSemaine.map((_, i) => matrice.reduce((s, g) => s + g.parJour[i], 0));
+  const maxCase = Math.max(1, ...matrice.flatMap(g => g.parJour));
   const nbCmd = lignesSemaine.length, nbPrets = lignesSemaine.filter(l => l.statut === "pret").length;
 
   const btnOnglet = (k: typeof onglet, lib: string) => (
     <button key={k} type="button" onClick={() => setOnglet(k)}
-      style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${onglet === k ? "#0050aa" : "#e5e7eb"}`, background: onglet === k ? "#0050aa" : "#fff", color: onglet === k ? "#fff" : "#374151", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{lib}</button>
+      style={{ padding: "10px 18px", borderRadius: 24, border: `2px solid ${onglet === k ? "#0050aa" : "#e5e7eb"}`, background: onglet === k ? "linear-gradient(135deg,#0050aa,#2563eb)" : "#fff", color: onglet === k ? "#fff" : "#374151", fontWeight: 800, fontSize: 14, cursor: "pointer", boxShadow: onglet === k ? "0 4px 12px rgba(0,80,170,.3)" : "0 1px 2px rgba(0,0,0,.05)", transform: onglet === k ? "translateY(-1px)" : "none", transition: "all .15s" }}>{lib}</button>
   );
-  const carte = (t: string, v: string, c = "#111827") => (
-    <div style={{ flex: "1 1 130px", background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "10px 14px" }}>
-      <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 700 }}>{t}</div><div style={{ fontSize: 20, fontWeight: 800, color: c }}>{v}</div>
+  const carte = (t: string, v: string, c = "#111827", emoji = "📦", fond = "#eff6ff") => (
+    <div style={{ flex: "1 1 140px", background: fond, borderRadius: 16, padding: "12px 16px", boxShadow: "0 2px 8px rgba(0,0,0,.06)", display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ fontSize: 28 }}>{emoji}</div>
+      <div><div style={{ fontSize: 11, color: "#6b7280", fontWeight: 700 }}>{t}</div><div style={{ fontSize: 22, fontWeight: 900, color: c }}>{v}</div></div>
     </div>
   );
+  // Bandeau d'accueil : le point sur aujourd'hui
+  const auj = iso(new Date());
+  const duJourAuj = lignes.filter(l => l.date === auj && l.depart === "paris");
+  const colisAuj = duJourAuj.reduce((s, l) => s + l.quantite, 0);
+  const colisPretsAuj = duJourAuj.filter(l => l.statut === "pret").reduce((s, l) => s + l.quantite, 0);
+  const pctAuj = colisAuj ? Math.round((colisPretsAuj / colisAuj) * 100) : 0;
+  const prenom = (userName || "").split(" ")[0];
+  const heure = new Date().getHours();
+  const salut = heure < 12 ? "Bonjour" : heure < 18 ? "Salut" : "Bonsoir";
   const etat = (nb: number, prets: number) => nb > 0 && prets === nb ? { t: "✅ Toutes prêtes", c: "#15803d", b: "#dcfce7" } : prets > 0 ? { t: `⏳ ${prets}/${nb} prêtes`, c: "#b45309", b: "#fef3c7" } : { t: "À préparer", c: "#b91c1c", b: "#fee2e2" };
 
   return (
     <div style={{ minHeight: "100vh", background: "#f9fafb" }}>
       <PageHeader titre="🛒 Commandes Lidl" couleur="#0050aa" onBack={onClose} onHome={onClose} />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+        <div style={{ background: "linear-gradient(135deg,#0050aa 0%,#2563eb 60%,#fbbf24 140%)", borderRadius: 20, padding: "16px 20px", color: "#fff", marginBottom: 16, boxShadow: "0 6px 18px rgba(0,80,170,.25)" }}>
+          <div style={{ fontSize: 20, fontWeight: 900 }}>{salut}{prenom ? ` ${prenom}` : ""} ! 👋</div>
+          {colisAuj === 0 ? (
+            <div style={{ fontSize: 13.5, opacity: 0.95, marginTop: 4 }}>Pas encore de commande Paris pour aujourd'hui. Prêt à importer le tableau Lidl ? 📥</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 13.5, marginTop: 4 }}>{pctAuj === 100 ? "🎉 Bravo, tout est prêt pour Lidl aujourd'hui !" : `🚚 Aujourd'hui (départ Paris) : ${colisPretsAuj} / ${colisAuj} colis prêts`}</div>
+              <div style={{ height: 12, background: "rgba(255,255,255,.3)", borderRadius: 8, marginTop: 8, overflow: "hidden" }}>
+                <div style={{ width: `${pctAuj}%`, height: "100%", background: pctAuj === 100 ? "#4ade80" : "#fbbf24", borderRadius: 8, transition: "width .5s" }} />
+              </div>
+            </>
+          )}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
           {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}
         </div>
 
         {onglet === "jour" && <LidlCommandes userName={userName} mode="commercial" jourForce={jourOuvert || undefined} />}
 
         {onglet === "passees" && (
-          <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
-            {parJour.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucune commande importée pour l'instant.</div> : (
+          <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 14, boxShadow: "0 2px 8px rgba(0,0,0,.05)" }}>
+            {parJour.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucune commande importée pour l'instant 🌱</div> : (
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead><tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
@@ -93,7 +117,7 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
                     {parJour.map(g => {
                       const e = g.depart === "sud" ? { t: "Géré par Medina", c: "#6b7280", b: "#f3f4f6" } : etat(g.nb, g.prets);
                       return (
-                        <tr key={g.date + g.depart} onClick={() => { setJourOuvert(g.date); setOnglet("jour"); }} style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer" }}>
+                        <tr key={g.date + g.depart} onClick={() => { setJourOuvert(g.date); setOnglet("jour"); }} onMouseEnter={ev => (ev.currentTarget.style.background = "#eff6ff")} onMouseLeave={ev => (ev.currentTarget.style.background = "")} style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer", transition: "background .15s" }}>
                           <td style={{ padding: 8, fontWeight: 700 }}>{dateFr(g.date)}</td>
                           <td style={{ padding: 8 }}>{g.depart === "paris" ? "🏙️ Paris" : "☀️ Perpignan"}</td>
                           <td style={{ padding: 8 }}>{g.nb}</td>
@@ -122,13 +146,13 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
               </select>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-              {carte("Colis de la semaine", totalSemaine.toLocaleString("fr-FR"))}
-              {carte("Commandes (base × camion)", String(nbCmd))}
-              {carte("Prêtes", nbCmd ? `${nbPrets}/${nbCmd}` : "—", "#15803d")}
-              {carte("Bases servies", String(matrice.length))}
+              {carte("Colis de la semaine", totalSemaine.toLocaleString("fr-FR"), "#0050aa", "📦", "#eff6ff")}
+              {carte("Commandes (base × camion)", String(nbCmd), "#7c3aed", "🧾", "#f5f3ff")}
+              {carte("Prêtes", nbCmd ? `${nbPrets}/${nbCmd}` : "—", "#15803d", "✅", "#f0fdf4")}
+              {carte("Bases servies", String(matrice.length), "#b45309", "🏪", "#fffbeb")}
             </div>
             <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 14, overflowX: "auto" }}>
-              {matrice.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucune commande cette semaine.</div> : (
+              {matrice.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Rien cette semaine 😴</div> : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead><tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
                     <th style={{ padding: 8, textAlign: "left" }}>Base</th>
@@ -139,7 +163,7 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
                     {matrice.map(g => (
                       <tr key={g.base} style={{ borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "7px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{nomBase(g.base)} <span style={{ color: "#9ca3af", fontWeight: 500 }}>n°{numBase(g.base) === 999 ? "?" : numBase(g.base)}</span></td>
-                        {g.parJour.map((q, i) => <td key={i} style={{ padding: "7px 8px", textAlign: "right", color: q ? "#111827" : "#d1d5db" }}>{q || "·"}</td>)}
+                        {g.parJour.map((q, i) => <td key={i} style={{ padding: "7px 8px", textAlign: "right", color: q ? "#0b2e63" : "#d1d5db", fontWeight: q ? 700 : 400, background: q ? `rgba(37,99,235,${0.08 + 0.4 * (q / maxCase)})` : "transparent" }}>{q || "·"}</td>)}
                         <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800 }}>{g.total}</td>
                         <td style={{ padding: "7px 8px", textAlign: "right", color: g.prets === g.nb ? "#15803d" : "#b45309" }}>{g.prets}/{g.nb}</td>
                       </tr>
