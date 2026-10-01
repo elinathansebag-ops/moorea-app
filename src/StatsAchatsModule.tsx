@@ -53,6 +53,8 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
   const [tri, setTri] = useState<{ k: keyof Agg | "marge" | "pct"; desc: boolean }>({ k: "ven", desc: true });
   const [filtres, setFiltres] = useState<Partial<Record<Dim, string>>>({});
   const [montants, setMontants] = useState(false);
+  const [calOuvert, setCalOuvert] = useState(false);
+  const [calMois, setCalMois] = useState("");
   const [gran, setGran] = useState<Granularite>("semaine");
   const [import_, setImport] = useState<{ etat: string; progression: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -227,6 +229,22 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
   }
 
   const marge = total.res;
+  // Calendrier : pour chaque jour importé, nombre de lignes / colis et type de données.
+  const parJour = useMemo(() => {
+    const m = new Map<string, { nb: number; col: number; sa: boolean }>();
+    for (const l of donnees) {
+      const j = m.get(l.d) || { nb: 0, col: 0, sa: false };
+      j.nb++; j.col += l.col; if (l.sa) j.sa = true;
+      m.set(l.d, j);
+    }
+    return m;
+  }, [donnees]);
+  const moisCal = calMois || (donnees.length ? [...parJour.keys()].sort().pop()!.slice(0, 7) : iso(new Date()).slice(0, 7));
+  function changerMois(delta: number) {
+    const [a, mm] = moisCal.split("-").map(Number);
+    const d = new Date(a, mm - 1 + delta, 1);
+    setCalMois(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
   // Périodes déjà importées : jours présents regroupés en plages (nouvelle plage si trou de plus de 3 jours).
   const plagesImportees = useMemo(() => {
     const jours = [...new Set(donnees.map(l => l.d))].sort();
@@ -294,6 +312,53 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
             </div>
           )}
           {erreur && <div style={{ marginTop: 10, background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c", borderRadius: 8, padding: "8px 10px", fontSize: 12.5 }}>{erreur}</div>}
+        </div>
+
+        {/* Calendrier des données importées */}
+        <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "10px 14px", marginBottom: 14 }}>
+          <button type="button" onClick={() => setCalOuvert(o => !o)} style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer", fontWeight: 800, fontSize: 14, color: "#374151", padding: 0 }}>
+            📅 Calendrier des données importées {calOuvert ? "▲" : "▼"}
+            <span style={{ fontWeight: 500, fontSize: 12, color: "#9ca3af", marginLeft: 8 }}>{parJour.size} jour{parJour.size > 1 ? "s" : ""} en base</span>
+          </button>
+          {calOuvert && (() => {
+            const [a, mm] = moisCal.split("-").map(Number);
+            const premier = new Date(a, mm - 1, 1);
+            const nbJours = new Date(a, mm, 0).getDate();
+            const decal = (premier.getDay() + 6) % 7;
+            const cases: (string | null)[] = [...Array(decal).fill(null), ...Array.from({ length: nbJours }, (_, i) => `${moisCal}-${String(i + 1).padStart(2, "0")}`)];
+            const nomMois = premier.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+            return (
+              <div style={{ marginTop: 10, maxWidth: 420 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <button type="button" onClick={() => changerMois(-1)} style={{ border: "1.5px solid #e5e7eb", background: "#fff", borderRadius: 8, padding: "4px 12px", cursor: "pointer", fontWeight: 800 }}>‹</button>
+                  <b style={{ textTransform: "capitalize" }}>{nomMois}</b>
+                  <button type="button" onClick={() => changerMois(1)} style={{ border: "1.5px solid #e5e7eb", background: "#fff", borderRadius: 8, padding: "4px 12px", cursor: "pointer", fontWeight: 800 }}>›</button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, textAlign: "center", fontSize: 11 }}>
+                  {["L", "M", "M", "J", "V", "S", "D"].map((j, i) => <div key={i} style={{ color: "#9ca3af", fontWeight: 700 }}>{j}</div>)}
+                  {cases.map((j, i) => {
+                    if (!j) return <div key={i} />;
+                    const info = parJour.get(j);
+                    return (
+                      <div key={i} title={info ? `${dateFr(j)} : ${info.nb} lignes, ${ent(info.col)} colis${info.sa ? " (quantités seules)" : ""} — clique pour filtrer` : `${dateFr(j)} : aucune donnée`}
+                        onClick={() => { if (info) { setDebut(j); setFin(j); } }}
+                        style={{ padding: "6px 0", borderRadius: 8, cursor: info ? "pointer" : "default", fontWeight: info ? 800 : 500,
+                          background: info ? (info.sa ? "#ede9fe" : "#dcfce7") : "#f9fafb", color: info ? (info.sa ? "#5b21b6" : "#166534") : "#d1d5db",
+                          border: "1px solid " + (info ? (info.sa ? "#c4b5fd" : "#86efac") : "#f3f4f6") }}>
+                        {Number(j.slice(8))}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 8 }}>
+                  <span style={{ background: "#dcfce7", border: "1px solid #86efac", borderRadius: 4, padding: "0 6px", marginRight: 6 }}>&nbsp;</span>importé (achats + ventes)
+                  <span style={{ background: "#ede9fe", border: "1px solid #c4b5fd", borderRadius: 4, padding: "0 6px", margin: "0 6px 0 12px" }}>&nbsp;</span>quantités seules
+                  <span style={{ background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 4, padding: "0 6px", margin: "0 6px 0 12px" }}>&nbsp;</span>pas de données
+                  <div style={{ marginTop: 4 }}>Clique sur un jour importé pour voir seulement ce jour. (Dimanche et jours sans livraison = normalement vides.)</div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {chargement ? (
