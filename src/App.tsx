@@ -51,6 +51,7 @@ const YukonApp = chargerModule(() => import("./YukonApp"), "YukonApp");
 const TachesModule = chargerModule(() => import("./TachesModule"), "TachesModule");
 const RackModule = chargerModule(() => import("./RackModule"), "RackModule");
 const StattModule = chargerModule(() => import("./StattModule"), "StattModule");
+const StatsAchatsModule = chargerModule(() => import("./StatsAchatsModule"), "StatsAchatsModule");
 const PrestatairesModule = chargerModule(() => import("./PrestatairesModule"), "PrestatairesModule");
 const ReconditionnementModule = chargerModule(() => import("./ReconditionnementModule"), "ReconditionnementModule");
 const MessagerieModule = chargerModule(() => import("./MessagerieModule"), "MessagerieModule");
@@ -508,6 +509,7 @@ export default function App() {
   const [showRack, setShowRack] = useState(false);
   const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showStatt, setShowStatt] = useState(false);
+  const [showStatsAchats, setShowStatsAchats] = useState(false);
   const [showPrestataires, setShowPrestataires] = useState(false);
   const [showChargement, setShowChargement] = useState(false);
   // 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : quand on clique "Ouvrir
@@ -3442,6 +3444,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <DashboardModule arrivages={arrivages} onClose={() => { setShowDashboard(false); setShowAccueil(true); }} />;
   }
 
+  // 01/10/2026 — Module « Stats achats » : réservé aux admins (import manuel des exports Excel).
+  if (showStatsAchats) {
+    if (!monAcces.isAdmin) return <AccesRefuse onRetour={() => { setShowStatsAchats(false); setShowAccueil(true); }} />;
+    return <StatsAchatsModule onClose={() => { setShowStatsAchats(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
+  }
+
   if (showStatt) {
     if (!monAcces.hasModule("statt")) return <AccesRefuse onRetour={() => { setShowStatt(false); setShowAccueil(true); }} />;
     return <StattModule onClose={() => { setShowStatt(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
@@ -3655,6 +3663,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       // 29/09/2026 — Module Litiges accessible directement depuis l'accueil (avant : seulement
       // via le bandeau « X litiges ouverts »). Admins par défaut, sinon droit « ⚠️ Litiges ».
       { key: "litiges", icon: "⚠️", label: "Litiges", color: "#dc2626", badge: nbLitigesOuverts || null, stat: nbLitigesOuverts > 0 ? `${nbLitigesOuverts} ouvert${nbLitigesOuverts > 1 ? "s" : ""}` : "Refus, réserves, reprises", action: () => { setShowAccueil(false); setShowLitiges(true); } },
+      ...(monAcces.isAdmin ? [{ key: "stats_achats", icon: "📊", label: "Stats achats", color: "#7c3aed", badge: null, stat: "Achats, marges, fournisseurs (admin)", action: () => { setShowAccueil(false); setShowStatsAchats(true); } }] : []),
       { key: "chargement", icon: "🚛", label: "Optimisation chargement", color: "#0891b2", badge: null, stat: "Calculateur palettes & camion", action: () => { setShowAccueil(false); setShowChargement(true); } },
     ].filter(b => monAcces.hasModule(b.key));
 
