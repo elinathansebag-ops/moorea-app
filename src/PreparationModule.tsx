@@ -3,6 +3,7 @@ import { noterHistoriqueDemande } from "./historiqueRecond";
 import { aPdfDemande, lirePdfDemande } from "./pdfsRecond";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
+import { LidlCommandes } from "./LidlCommandes";
 
 // ── Module Préparation entrepôt ──
 // Anciennement l'onglet "📋 Demandes" du module Reconditionnement — extrait ici en module à part
@@ -727,6 +728,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
             </div>
           </div>
         ))}
+
+        {/* 02/10/2026 — Cellule Lidl : commandes issues du tableau de répartition quotidien (voir LidlCommandes.tsx) */}
+        <LidlCommandes userName={userName} />
 
         {/* Filtre statut */}
         <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
