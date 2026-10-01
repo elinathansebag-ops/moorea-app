@@ -100,6 +100,16 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const jours = useMemo(() => [...new Set(lignesParis.map(l => l.date))].sort().reverse(), [lignesParis]);
   const jourAffiche = jour && jours.includes(jour) ? jour : (jours.includes(iso(new Date())) ? iso(new Date()) : jours[0] || "");
   const duJour = useMemo(() => lignesParis.filter(l => l.date === jourAffiche).sort((a, b) => (a.base.localeCompare(b.base)) || (Number(a.camion) - Number(b.camion))), [lignesParis, jourAffiche]);
+  const [masquerPretes, setMasquerPretes] = useState(false);
+  const groupesBase = useMemo(() => {
+    const m = new Map<string, LigneLidl[]>();
+    duJour.forEach(l => m.set(l.base, [...(m.get(l.base) || []), l]));
+    // les bases pas encore prêtes d'abord, puis par n° de base
+    return [...m.entries()].map(([base, lignes]) => ({ base, lignes })).sort((x, y) => {
+      const px = x.lignes.every(l => l.statut === "pret") ? 1 : 0, py = y.lignes.every(l => l.statut === "pret") ? 1 : 0;
+      return px - py || (infoBase(x.base)?.num ?? 999) - (infoBase(y.base)?.num ?? 999);
+    });
+  }, [duJour]);
   const nbPret = duJour.filter(l => l.statut === "pret").length;
   const totalColis = duJour.reduce((s, l) => s + l.quantite, 0);
   const colisPrets = duJour.filter(l => l.statut === "pret").reduce((s, l) => s + l.quantite, 0);
@@ -287,6 +297,59 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
           )}
           {duJour.length === 0 ? (
             <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "📭 Aucune commande Lidl. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») en choisissant le départ." : "☕ Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
+          ) : !commercial ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <label style={{ fontSize: 13, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={masquerPretes} onChange={e => setMasquerPretes(e.target.checked)} style={{ width: 18, height: 18 }} /> Cacher les lignes déjà prêtes
+              </label>
+              {groupesBase.map(g => {
+                const inf = infoBase(g.base);
+                const lignesVisibles = masquerPretes ? g.lignes.filter(l => l.statut !== "pret") : g.lignes;
+                if (!lignesVisibles.length) return null;
+                const toutPret = g.lignes.every(l => l.statut === "pret");
+                return (
+                  <div key={g.base} style={{ border: `2px solid ${toutPret ? "#86efac" : "#e5e7eb"}`, borderRadius: 16, overflow: "hidden", background: toutPret ? "#f0fdf4" : "#fff" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: toutPret ? "#dcfce7" : "#eff6ff", flexWrap: "wrap", gap: 6 }}>
+                      <div>
+                        <span style={{ fontSize: 18, fontWeight: 900 }}>{inf?.nom || g.base}</span>
+                        <span style={{ marginLeft: 8, fontSize: 12, color: "#6b7280" }}>{inf ? `base n° ${inf.num}` : g.base}</span>
+                        {inf?.nationale && <span style={{ marginLeft: 6, fontSize: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>NATIONALE</span>}
+                      </div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#7c3aed" }}>🚚 {g.lignes[0].transporteur || "—"}</div>
+                    </div>
+                    {lignesVisibles.map(l => {
+                      const pret = l.statut === "pret";
+                      return (
+                        <div key={l.id} style={{ padding: "12px 14px", borderTop: "1px solid #f3f4f6", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, opacity: pret ? 0.85 : 1 }}>
+                          <div style={{ flex: "1 1 160px", minWidth: 140 }}>
+                            <div style={{ fontWeight: 800, fontSize: 15 }}>{l.article}</div>
+                            {l.emballage && <div style={{ fontSize: 11.5, color: "#9ca3af" }}>{l.emballage}</div>}
+                            {l.quantiteModifieeApresPret && <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ quantité modifiée après « prêt »</div>}
+                            {l.absenteDuFichier && <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</div>}
+                          </div>
+                          <div style={{ background: "#0050aa", color: "#fff", borderRadius: 14, padding: "6px 14px", textAlign: "center", minWidth: 70 }}>
+                            <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.1 }}>{l.quantite}</div>
+                            <div style={{ fontSize: 10, opacity: 0.85 }}>colis</div>
+                          </div>
+                          <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="N° de lot"
+                            onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value }))} onBlur={() => !pret && sauverLot(l)}
+                            style={{ flex: "1 1 140px", maxWidth: 220, padding: "12px", border: "2px solid #e5e7eb", borderRadius: 12, fontSize: 16, background: pret ? "#f3f4f6" : "#fff" }} />
+                          {pret ? (
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</div>
+                              <div style={{ fontSize: 10.5, color: "#9ca3af" }}>{l.pretPar} {l.pretLe}</div>
+                              <button type="button" onClick={() => annulerPret(l)} style={{ background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>
+                            </div>
+                          ) : (
+                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 14, padding: "14px 22px", fontWeight: 900, fontSize: 16, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>👍 Prêt !</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
