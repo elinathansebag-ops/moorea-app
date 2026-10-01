@@ -3995,7 +3995,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                         <ResumeStatutsGroupe demandes={demandesJourDepot} />
                                       </div>
                                     </div>
-                                    <BarreMailsRecond depot={dep} label={DEPOT_LABEL[dep]} demandes={demandesJourDepot} stockActuel={dep === "nlt" ? stockIfco.nlt : stockBabyBlancAndes} onResultat={(ok, m) => notify(ok ? "success" : "error", m)} />
+                                    <BarreMailsRecond depot={dep} label={DEPOT_LABEL[dep]} demandes={demandesJourDepot} stockActuel={dep === "nlt" ? stockIfco.nlt : stockBabyBlancAndes} onResultat={(ok, m) => notify(ok ? "success" : "error", m)} regenererBon={async (d: any) => { const pdfBase64 = await genererBonPdf({ ...d } as Demande); await ecrirePdfDemande(d.id, { pdfBase64 }, { pdfNom: `bon-reconditionnement-${d.id}.pdf` }); }} />
                                     {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
                                 {demandesJourDepot.map(d => (

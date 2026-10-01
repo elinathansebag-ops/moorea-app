@@ -10,7 +10,9 @@ import { useState } from "react";
 
 const heure = (ts: number) => new Date(ts).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", " à");
 
-export function BarreMailsRecond({ depot, label, demandes, stockActuel, onResultat }: {
+export function BarreMailsRecond({ depot, label, demandes, stockActuel, onResultat, regenererBon }: {
+  // Régénère le bon PDF d'une demande (utilisé quand le bon est introuvable côté serveur).
+  regenererBon?: (d: any) => Promise<void>;
   depot: "nlt" | "andes";
   label: string;
   demandes: any[];
@@ -33,15 +35,28 @@ export function BarreMailsRecond({ depot, label, demandes, stockActuel, onResult
     if (!window.confirm(`Renvoyer ${nom} (${actives.length} demande${actives.length > 1 ? "s" : ""}) ?`)) return;
     setEnCours(mode);
     try {
-      const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stockActuel, ids: actives.map(d => d.id), force: true, mode }),
-      });
-      const texte = await res.text();
-      let data: any = null;
-      try { data = texte ? JSON.parse(texte) : null; } catch { /* non-JSON */ }
-      if (!res.ok || !data) throw new Error(data?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
+      const appeler = async () => {
+        const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stockActuel, ids: actives.map(d => d.id), force: true, mode }),
+        });
+        const texte = await res.text();
+        let d: any = null;
+        try { d = texte ? JSON.parse(texte) : null; } catch { /* non-JSON */ }
+        if (!res.ok || !d) throw new Error(d?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
+        return d;
+      };
+      let data = await appeler();
+      if (mode === "reconditionneur" && !data.envoye && data.sansBon?.length) {
+        const noms = data.sansBon.map((x: any) => x.numero).join(", ");
+        if (regenererBon && window.confirm(`Le bon PDF est introuvable pour : ${noms}.\nLes régénérer puis renvoyer le mail ?`)) {
+          for (const x of data.sansBon) { const d = actives.find(a => a.id === x.id); if (d) await regenererBon(d); }
+          data = await appeler();
+        } else {
+          throw new Error(`bon PDF introuvable pour ${noms}`);
+        }
+      }
       if (mode === "reconditionneur") {
         if (!data.envoye) throw new Error("rien à envoyer (bons introuvables)");
         if (data.rejected?.length) throw new Error(`refusé par ${data.rejected.join(", ")}`);

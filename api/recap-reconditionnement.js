@@ -217,8 +217,13 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
   }
   if (mode !== "transporteur") for (let i = enAttente.length - 1; i >= 0; i--) if (!enAttente[i].pdfBase64) enAttente.splice(i, 1);
 
+  // 02/10/2026 — Diagnostic : quelles demandes demandées n'ont aucun bon PDF (envoi impossible) ?
+  const sansBon = (ids || [])
+    .map(id => ({ id, ...(toutes[id] || {}) }))
+    .filter(d => toutes[d.id] && d.depot === depot && !enAttente.some(e => e.id === d.id))
+    .map(d => ({ id: d.id, numero: d.numero || d.id }));
   if (enAttente.length === 0) {
-    return { depot, envoye: false, raison: "rien en attente" };
+    return { depot, envoye: false, raison: sansBon.length ? "bons introuvables" : "rien en attente", sansBon };
   }
 
   const dateFr = new Date().toLocaleDateString("fr-FR");
@@ -323,7 +328,7 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
     console.error("Erreur lecture reconditionnement_transporteurs (récap, non bloquant):", errTransp);
   }
 
-  return { depot, envoye: true, nb: enAttente.length, accepted, rejected, patchEchoues, transporteurEmails };
+  return { depot, envoye: true, nb: enAttente.length, accepted, rejected, patchEchoues, transporteurEmails, sansBon };
 }
 
 export default async function handler(req, res) {
