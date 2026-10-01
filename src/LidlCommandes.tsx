@@ -55,7 +55,7 @@ export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: s
   PRO: { nom: "Provence", num: 8, perpignan: "SOCAFNA", paris: "TRADIF" }, ASA: { nom: "Les Arcs", num: 24, perpignan: "SOCAFNA", paris: "TRADIF" },
   // Les 2 bases NATIONALES (les autres sont régionales) — sans colonne dans le fichier de répartition
   // vu jusqu'ici ; reconnues par leur nom si elles apparaissent un jour (voir infoBase).
-  BEAUCAIRE: { nom: "Beaucaire", num: 16, perpignan: "REY", nationale: true },
+  BEAUCAIRE: { nom: "Beaucaire", num: 16, perpignan: "REY", paris: "TRADIF", nationale: true },
   "ETAMPES BCD": { nom: "Etampes BCD", num: 60, perpignan: "REY", paris: "SRD", nationale: true },
 };
 export function infoBase(code: string) {
