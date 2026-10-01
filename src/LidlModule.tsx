@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { db, ref, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
-import { LidlCommandes, infoBase } from "./LidlCommandes";
+import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl } from "./LidlCommandes";
+import { genererXlsxLidl, envoyerTracabiliteLidl, nomFichierLidl, lireConfigLidl, EMAIL_LIDL_DEFAUT, EMAIL_TEST, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : le commercial a son propre module « Commandes Lidl » (il n'a
 // rien à faire dans Préparation). Il y rentre la commande du jour (import du tableau de répartition
 // Lidl, en choisissant le départ Sud/Perpignan ou Paris), consulte les commandes passées avec leur
 // état (prête ou non), et voit les stats de la semaine par base. L'entrepôt prépare les commandes
 // au départ de Paris dans la cellule « Lidl » de Préparation (lot + bouton « Prêt »).
-type L = { id: string; date: string; base: string; quantite: number; statut: string; depart?: string; lot?: string };
+type L = { id: string; date: string; base: string; quantite: number; statut: string; depart?: string; lot?: string; transporteur?: string; refLidl?: string; ferme?: string; palettes?: number; camion?: string };
 const dateFr = (s: string) => (s ? s.split("-").reverse().join("/") : "");
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const lundi = (s: string) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
@@ -18,23 +19,37 @@ const nomBase = (c: string) => infoBase(c)?.nom || c;
 const numBase = (c: string) => infoBase(c)?.num ?? 999;
 
 export function LidlModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
-  const [onglet, setOnglet] = useState<"jour" | "passees" | "stats">("jour");
+  const [onglet, setOnglet] = useState<"jour" | "passees" | "stats" | "traca" | "config">("jour");
   const [lignes, setLignes] = useState<L[]>([]);
   const [jourOuvert, setJourOuvert] = useState("");
   const [semaine, setSemaine] = useState(lundi(iso(new Date())));
   const [filtreDepart, setFiltreDepart] = useState<"tous" | "sud" | "paris">("tous");
 
+  const producteurs = useProducteursLidl();
+  const [cfg, setCfg] = useState(lireConfigLidl(null));
+  const [envois, setEnvois] = useState<Record<string, any>>({});
+  const [jourTraca, setJourTraca] = useState("");
+  const [msgTraca, setMsgTraca] = useState<{ type: "ok" | "err"; texte: string } | null>(null);
+  const [occupe, setOccupe] = useState(false);
+  useEffect(() => {
+    const u1 = onValue(ref(db, "lidl_config"), snap => setCfg(lireConfigLidl(snap.val())));
+    const u2 = onValue(ref(db, "lidl_envois"), snap => setEnvois(snap.val() || {}));
+    return () => { u1(); u2(); };
+  }, []);
   // Signalements de la prépa : « il manque une ferme dans la liste »
   const [signals, setSignals] = useState<{ id: string; base: string; par: string; date: string }[]>([]);
-  const [nomFerme, setNomFerme] = useState<Record<string, string>>({});
   useEffect(() => {
     const u = onValue(ref(db, "lidl_config/fermes_manquantes"), snap => setSignals(Object.entries(snap.val() || {}).map(([id, v]: any) => ({ id, ...v }))));
     return () => u();
   }, []);
+  const [nouvProd, setNouvProd] = useState<Record<string, string>>({});
   async function ajouterFerme(id: string) {
-    const nom = (nomFerme[id] || "").trim().toUpperCase().replace(/[.#$\[\]/]/g, "-");
-    if (!nom) return;
-    await update(ref(db), { [`lidl_config/fermes/${nom}`]: true, [`lidl_config/fermes_manquantes/${id}`]: null });
+    const v = nouvProd;
+    const pn = (v.pn || "").trim().toUpperCase().replace(/[.#$\[\]/]/g, "-");
+    const nums = ["pg", "fg", "eg"].map(k => Number((v[k] || "").replace(/\s/g, "")));
+    if (!pn || nums.some(n => !n) || !(v.fn || "").trim() || !(v.en || "").trim()) { alert("Remplis les 6 champs : producteur (nom + GGN), fournisseur (nom + GLN), emballeur (nom + GLN)."); return; }
+    await update(ref(db), { [`lidl_config/producteurs/${pn}`]: { pn, pg: nums[0], fg: nums[1], eg: nums[2], fn: v.fn.trim().toUpperCase(), en: v.en.trim().toUpperCase() }, [`lidl_config/fermes_manquantes/${id}`]: null });
+    setNouvProd({});
   }
   useEffect(() => {
     const u = onValue(ref(db, "lidl_commandes"), snap => setLignes(Object.entries(snap.val() || {}).map(([id, v]: any) => ({ ...v, id }))));
@@ -73,6 +88,27 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
   const maxCase = Math.max(1, ...matrice.flatMap(g => g.parJour));
   const nbCmd = lignesSemaine.length, nbPrets = lignesSemaine.filter(l => l.statut === "pret").length;
 
+  const joursTraca = useMemo(() => [...new Set(lignes.map(l => l.date))].sort().reverse(), [lignes]);
+  const jourT = jourTraca && joursTraca.includes(jourTraca) ? jourTraca : joursTraca[0] || "";
+  const lignesT = useMemo(() => lignes.filter(l => l.date === jourT) as unknown as LigneExport[], [lignes, jourT]);
+  const ctx = useMemo(() => contexteLidl(producteurs), [producteurs]);
+  const verif = useMemo(() => (lignesT.length ? { prets: lignesT.filter(l => l.statut === "pret").length, total: lignesT.length } : { prets: 0, total: 0 }), [lignesT]);
+  const envoiJour = envois[jourT] || {};
+  async function telecharger() {
+    try {
+      const g = await genererXlsxLidl(jourT, lignesT, ctx);
+      const bin = atob(g.base64); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      a.download = `${nomFichierLidl(jourT, (envoiJour.version || 0) + 1)}.xlsx`; a.click();
+      setMsgTraca({ type: g.problemes.length ? "err" : "ok", texte: g.problemes.length ? `Fichier téléchargé SANS les lignes incomplètes : ${g.problemes.join(" ; ")}` : `Fichier téléchargé (${g.nbLignes} lignes).` });
+    } catch (e: any) { setMsgTraca({ type: "err", texte: e?.message || String(e) }); }
+  }
+  async function envoyerMaintenant() {
+    if (verif.prets < verif.total && !window.confirm(`Il reste ${verif.total - verif.prets} ligne(s) pas prête(s) : elles ne seront PAS dans le fichier. Envoyer quand même ?`)) return;
+    setOccupe(true);
+    const r = await envoyerTracabiliteLidl(jourT, lignesT, ctx, userName || "");
+    setMsgTraca({ type: r.ok ? "ok" : "err", texte: r.message }); setOccupe(false);
+  }
   const btnOnglet = (k: typeof onglet, lib: string) => (
     <button key={k} type="button" onClick={() => setOnglet(k)}
       style={{ padding: "10px 18px", borderRadius: 24, border: `2px solid ${onglet === k ? "#0050aa" : "#e5e7eb"}`, background: onglet === k ? "linear-gradient(135deg,#0050aa,#2563eb)" : "#fff", color: onglet === k ? "#fff" : "#374151", fontWeight: 800, fontSize: 14, cursor: "pointer", boxShadow: onglet === k ? "0 4px 12px rgba(0,80,170,.3)" : "0 1px 2px rgba(0,0,0,.05)", transform: onglet === k ? "translateY(-1px)" : "none", transition: "all .15s" }}>{lib}</button>
@@ -90,7 +126,7 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
       <PageHeader titre="🛒 Commandes Lidl" couleur="#0050aa" onBack={onClose} onHome={onClose} />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}
+          {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}{btnOnglet("traca", "📤 Traçabilité Lidl")}{btnOnglet("config", "⚙️ Configuration")}
         </div>
 
         {signals.length > 0 && (
@@ -99,7 +135,9 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
             {signals.map(sg => (
               <div key={sg.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 13 }}>
                 <span>{sg.par || "Préparation"} · base {sg.base} · {dateFr(sg.date)}</span>
-                <input value={nomFerme[sg.id] || ""} onChange={e => setNomFerme(x => ({ ...x, [sg.id]: e.target.value }))} placeholder="Nom du producteur" style={{ padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+                {([["pn", "Producteur (nom)"], ["pg", "Producteur (GGN)"], ["fn", "Fournisseur (nom)"], ["fg", "Fournisseur (GLN)"], ["en", "Emballeur (nom)"], ["eg", "Emballeur (GLN)"]] as const).map(([k, lib]) => (
+                  <input key={k} value={nouvProd[k] || ""} onChange={e => setNouvProd(x => ({ ...x, [k]: e.target.value }))} placeholder={lib} style={{ padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12.5, width: 150 }} />
+                ))}
                 <button type="button" onClick={() => ajouterFerme(sg.id)} style={{ background: "#0050aa", color: "#fff", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 700, cursor: "pointer" }}>Ajouter à la liste</button>
                 <button type="button" onClick={() => remove(ref(db, `lidl_config/fermes_manquantes/${sg.id}`))} style={{ background: "transparent", border: "none", color: "#6b7280", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}>Ignorer</button>
               </div>
@@ -134,6 +172,70 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
                 <div style={{ fontSize: 11.5, color: "#9ca3af", marginTop: 8 }}>Clique sur un jour pour voir le détail par base (lot, état « prêt »).</div>
               </div>
             )}
+          </div>
+        )}
+
+        {onglet === "traca" && (
+          <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 14 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <select value={jourT} onChange={e => setJourTraca(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }}>
+                {joursTraca.map(j => <option key={j} value={j}>{dateFr(j)}</option>)}
+              </select>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>{verif.prets} / {verif.total} lignes prêtes</span>
+              <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 12, fontWeight: 700, background: cfg.modeTest ? "#fef3c7" : "#dcfce7", color: cfg.modeTest ? "#b45309" : "#15803d" }}>{cfg.modeTest ? "Mode test : envoi à toi seulement" : `Mode réel : envoi à ${cfg.emailLidl}`}</span>
+            </div>
+            {!jourT ? <div style={{ color: "#9ca3af", textAlign: "center", padding: 16 }}>Aucune commande.</div> : (
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                    <thead><tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>{["Base", "Produit", "Colis", "Producteur", "Lot", "Palettes", "Transporteur", "État"].map(h => <th key={h} style={{ padding: 7, textAlign: "left" }}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {[...lignesT].sort((a, b) => numBase(a.base) - numBase(b.base)).map(l => {
+                        const ok = l.statut === "pret";
+                        return (
+                          <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: ok ? "#fff" : "#fffbeb" }}>
+                            <td style={{ padding: 7, fontWeight: 700 }}>{nomBase(l.base)} <span style={{ color: "#9ca3af", fontWeight: 500 }}>n°{numBase(l.base) === 999 ? "?" : numBase(l.base)}</span></td>
+                            <td style={{ padding: 7 }}>{l.refLidl || "—"}</td><td style={{ padding: 7, fontWeight: 700 }}>{l.quantite}</td>
+                            <td style={{ padding: 7 }}>{l.ferme || "—"}</td><td style={{ padding: 7 }}>{l.lot || "—"}</td><td style={{ padding: 7 }}>{String(l.palettes ?? 0.5).replace(".", ",")}</td>
+                            <td style={{ padding: 7 }}>{l.transporteur || "—"}</td>
+                            <td style={{ padding: 7, color: ok ? "#15803d" : "#b45309", fontWeight: 700 }}>{ok ? "Prête" : "À compléter"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 12 }}>
+                  <button type="button" disabled={occupe} onClick={envoyerMaintenant} style={{ background: "#0050aa", color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 800, cursor: "pointer" }}>{occupe ? "Envoi…" : envoiJour.version ? "Renvoyer une mise à jour" : cfg.modeTest ? "Envoyer le test" : "Envoyer à Lidl"}</button>
+                  <button type="button" onClick={telecharger} style={{ background: "#fff", color: "#0050aa", border: "1.5px solid #0050aa", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>Télécharger le fichier</button>
+                  <span style={{ fontSize: 12, color: "#6b7280" }}>Envoi automatique dès que la dernière ligne est prête. Lidl demande le fichier la veille avant 14h.</span>
+                </div>
+                {envoiJour.version > 0 && <div style={{ marginTop: 8, fontSize: 12.5, color: "#15803d" }}>Dernier envoi : {envoiJour.dernierEnvoi} par {envoiJour.par} ({envoiJour.mode === "test" ? "test" : "réel"}) vers {envoiJour.destinataire} · version {String(envoiJour.version).padStart(2, "0")} · {envoiJour.nbLignes} lignes</div>}
+                {envoiJour.erreur && <div style={{ marginTop: 8, fontSize: 12.5, color: "#b91c1c" }}>Dernière erreur : {envoiJour.erreur}</div>}
+                {msgTraca && <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 600, color: msgTraca.type === "ok" ? "#166534" : "#b91c1c" }}>{msgTraca.texte}</div>}
+              </>
+            )}
+          </div>
+        )}
+
+        {onglet === "config" && (
+          <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 16 }}>
+            <div style={{ background: cfg.modeTest ? "#fffbeb" : "#f0fdf4", border: `1.5px solid ${cfg.modeTest ? "#fde3a8" : "#bbf7d0"}`, borderRadius: 12, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 13, color: cfg.modeTest ? "#b45309" : "#15803d" }}>{cfg.modeTest ? "Mode test actif" : "Mode réel actif"}</div>
+                <div style={{ fontSize: 11.5, color: "#4b5563", marginTop: 2 }}>{cfg.modeTest ? `Le tableau part uniquement dans ta boîte (${EMAIL_TEST}), depuis Jordan. Rien n'est envoyé à Lidl.` : `Le tableau part vraiment à Lidl (${cfg.emailLidl}), depuis Jordan.`}</div>
+              </div>
+              <button type="button" onClick={() => update(ref(db, "lidl_config"), { modeTest: !cfg.modeTest })} title="Basculer entre test et réel"
+                style={{ position: "relative", width: 108, height: 34, borderRadius: 20, border: "none", cursor: "pointer", background: cfg.modeTest ? "#fde3a8" : "#bbf7d0", flexShrink: 0 }}>
+                <span style={{ position: "absolute", top: 3, left: cfg.modeTest ? 3 : 57, width: 48, height: 28, borderRadius: 16, background: cfg.modeTest ? "#f59e0b" : "#16a34a", color: "#fff", fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", transition: "left .15s" }}>{cfg.modeTest ? "TEST" : "RÉEL"}</span>
+              </button>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Adresse de Lidl (mode réel)</label>
+              <input defaultValue={cfg.emailLidl} key={cfg.emailLidl} onBlur={e => { const v = e.target.value.trim(); if (v && v !== cfg.emailLidl) update(ref(db, "lidl_config"), { emailLidl: v }); }}
+                placeholder={EMAIL_LIDL_DEFAUT} style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 360, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+            </div>
+            <div style={{ marginTop: 14, fontSize: 12, color: "#6b7280" }}>Nom du fichier et objet du mail : MOOREA_LIVRAISON JJ MOIS AAAA (puis _02, _03 pour une mise à jour). Producteurs connus : {producteurs.length}.</div>
           </div>
         )}
 

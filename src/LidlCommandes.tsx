@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { db, ref, onValue, update, remove, get, push } from "./firebase";
+import { PRODUCTEURS_LIDL, envoyerTracabiliteLidl, type Producteur, type ContexteExport, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : Lidl envoie chaque jour un tableau de répartition
 // (« Répartition fournisseur/camion mix », fichier AU-xxxxx.xlsx). Le commercial l'importe ici dès
@@ -28,6 +29,7 @@ type LigneLidl = {
   pretPar?: string;
   pretLe?: string;
   absenteDuFichier?: boolean;
+  palettes?: number;     // nombre de palettes (grande = 1, demi = 0,5) — colonne Z du tableau Lidl
   quantiteModifieeApresPret?: boolean;
   refLidl?: string;      // référence choisie par le commercial (voir REFS_LIDL)
   ferme?: string;        // ferme d'emballage choisie par la prépa
@@ -63,13 +65,32 @@ export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: s
 };
 // 02/10/2026 — Lidl commande 2 références (haricots verts) ; le commercial choisit laquelle (et l'origine) par ligne.
 export const REFS_LIDL = [
-  { k: "h250_ke", article: "Haricot vert 250g par 12", emballage: "250g × 12", origine: "Kenya" },
-  { k: "h6x500_ma", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Maroc" },
-  { k: "h6x500_ke", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Kenya" },
+  { k: "h250_ke", article: "Haricot vert 250g par 12", emballage: "250g × 12", origine: "Kenya", ian: 82211, g: "HARICOT VERT", h: "BARQUETTE 250G", i: "Haricots verts", j: "KE", l: 12 },
+  { k: "h6x500_ma", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Maroc", ian: 82212, g: "HARICOT VERT", h: "SACHET 6X500G", i: "Haricots verts", j: "MA", l: 6 },
+  { k: "h6x500_ke", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Kenya", ian: 82212, g: "HARICOT VERT", h: "SACHET 6X500G", i: "Haricots verts", j: "KE", l: 6 },
 ];
-// Producteurs (colonne « Producteur (NOM) » du fichier fourni par Elinathan, 02/10/2026). Si une ferme manque, la prépa
-// choisit « Il manque un producteur » en bas de la liste : le commercial est prévenu et l'ajoute.
-export const FERMES_LIDL = ["ATHI ORCHARD", "ATHIFARM", "BAKARI", "FOKI", "FRESH HARVEST", "FRESH INN MAROCCO", "FRESH WORLD", "GREEN EGYPT", "JANI FRESH", "KENYA FRESH", "LOWLAND", "NATURE GROWERS", "RIM", "SHALIMAR", "SOCIETE DE CULTURES LEGUMIERES", "SOLEIL VERT", "SUMMER FRUITS ENTREPRISES", "YAYA FRESH"];
+// Contexte pour l'export Lidl (n° d'entrepôt, produit, noms) — voir lidlExport.ts
+export function contexteLidl(producteurs: Producteur[]): ContexteExport {
+  return {
+    entrepot: code => { const b = infoBase(code); if (!b) return null; if (b.nationale) return b.nom.replace(" BCD", ""); return b.num; },
+    produit: k => { const r = REFS_LIDL.find(x => x.k === k); return r ? { ian: r.ian, g: r.g, h: r.h, i: r.i, j: r.j, l: r.l } : null; },
+    nomBase: code => infoBase(code)?.nom || code,
+    producteurs,
+  };
+}
+// Producteurs : les 18 de Lidl + ceux ajoutés par le commercial (lidl_config/producteurs)
+export function useProducteursLidl() {
+  const [ajouts, setAjouts] = useState<Producteur[]>([]);
+  useEffect(() => {
+    const u = onValue(ref(db, "lidl_config/producteurs"), snap => setAjouts(Object.values(snap.val() || {}) as Producteur[]));
+    return () => u();
+  }, []);
+  return useMemo(() => {
+    const m = new Map<string, Producteur>();
+    PRODUCTEURS_LIDL.forEach(p => m.set(p.pn, p)); ajouts.forEach(p => p?.pn && m.set(p.pn, p));
+    return [...m.values()].sort((a, b) => a.pn.localeCompare(b.pn));
+  }, [ajouts]);
+}
 // Lot = 1 lettre + 4 chiffres (ex. A1234)
 const LOT_OK = /^[A-Z]\d{4}$/;
 const libRef = (r: { article: string; origine: string }) => `${r.article} — ${r.origine}`;
@@ -123,11 +144,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const jourAffiche = jour && jours.includes(jour) ? jour : (jours.includes(iso(new Date())) ? iso(new Date()) : jours[0] || "");
   const duJour = useMemo(() => lignesParis.filter(l => l.date === jourAffiche).sort((a, b) => (a.base.localeCompare(b.base)) || (Number(a.camion) - Number(b.camion))), [lignesParis, jourAffiche]);
   const [masquerPretes, setMasquerPretes] = useState(false);
-  const [fermes, setFermes] = useState<string[]>([]);
-  useEffect(() => {
-    const u = onValue(ref(db, "lidl_config/fermes"), snap => setFermes([...new Set([...FERMES_LIDL, ...Object.keys(snap.val() || {})])].sort((a, b) => a.localeCompare(b))));
-    return () => u();
-  }, []);
+  const producteurs = useProducteursLidl();
+  const fermes = useMemo(() => producteurs.map(p => p.pn), [producteurs]);
   async function signalerFermeManquante(l: LigneLidl) {
     await push(ref(db, "lidl_config/fermes_manquantes"), { base: infoBase(l.base)?.nom || l.base, article: l.article, date: l.date, par: userName || "", ts: Date.now() });
     flash("ok", "Le commercial est prévenu qu'il manque un producteur dans la liste.");
@@ -244,7 +262,17 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     const lot = (lotsSaisis[l.id] ?? l.lot).trim();
     if (!l.ferme) { flash("err", `Choisis d'abord le producteur pour ${infoBase(l.base)?.nom || l.base}.`); return; }
     if (!LOT_OK.test(lot)) { flash("err", `Le numéro de lot doit être 1 lettre + 4 chiffres (ex. A1234) pour ${infoBase(l.base)?.nom || l.base}.`); return; }
-    await update(ref(db, `lidl_commandes/${l.id}`), { lot, statut: "pret", pretPar: userName || "", pretLe: new Date().toLocaleString("fr-FR"), quantiteModifieeApresPret: null });
+    await update(ref(db, `lidl_commandes/${l.id}`), { lot, statut: "pret", palettes: l.palettes ?? 0.5, pretPar: userName || "", pretLe: new Date().toLocaleString("fr-FR"), quantiteModifieeApresPret: null });
+    // Envoi automatique à Lidl quand TOUTES les lignes du jour (Paris + Perpignan) sont prêtes
+    const duJourComplet = lignes.filter(x => x.date === l.date).map(x => x.id === l.id ? { ...x, lot, statut: "pret" as const, palettes: l.palettes ?? 0.5 } : x);
+    if (duJourComplet.length && duJourComplet.every(x => x.statut === "pret")) {
+      const r = await envoyerTracabiliteLidl(l.date, duJourComplet as unknown as LigneExport[], contexteLidl(producteurs), userName || "", true);
+      if (r.ok) flash("ok", "Dernière ligne prête : " + r.message);
+      else if (r.message !== "Envoi déjà en cours") flash("err", "Toutes les lignes sont prêtes mais l'envoi à Lidl a échoué : " + r.message);
+    }
+  }
+  async function setPalettes(l: LigneLidl, v: number) {
+    await update(ref(db, `lidl_commandes/${l.id}`), { palettes: Math.max(0.5, Math.round(v * 2) / 2) });
   }
   async function annulerPret(l: LigneLidl) {
     await update(ref(db, `lidl_commandes/${l.id}`), { statut: "a_preparer", pretPar: null, pretLe: null });
@@ -398,6 +426,14 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                           <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot (A1234)" maxLength={5} autoCapitalize="characters"
                             onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => !pret && sauverLot(l)}
                             style={{ flex: "0 1 120px", padding: "12px", border: `2px solid ${(lotsSaisis[l.id] ?? l.lot) && !LOT_OK.test(lotsSaisis[l.id] ?? l.lot) ? "#f59e0b" : "#e5e7eb"}`, borderRadius: 12, fontSize: 16, fontWeight: 700, letterSpacing: 1, background: pret ? "#f3f4f6" : "#fff" }} />
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700 }}>Palettes</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <button type="button" disabled={pret} onClick={() => setPalettes(l, (l.palettes ?? 0.5) - 0.5)} style={{ width: 32, height: 32, borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", fontSize: 18, cursor: pret ? "default" : "pointer" }}>−</button>
+                              <span style={{ minWidth: 34, textAlign: "center", fontWeight: 800, fontSize: 16 }}>{String(l.palettes ?? 0.5).replace(".", ",")}</span>
+                              <button type="button" disabled={pret} onClick={() => setPalettes(l, (l.palettes ?? 0.5) + 0.5)} style={{ width: 32, height: 32, borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", fontSize: 18, cursor: pret ? "default" : "pointer" }}>+</button>
+                            </div>
+                          </div>
                           {pret ? (
                             <div style={{ textAlign: "center" }}>
                               <div style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</div>
@@ -448,20 +484,33 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                           {l.absenteDuFichier && <div style={{ fontSize: 10.5, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</div>}
                         </td>
                         <td style={{ padding: "8px" }}>
-                          <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret || commercial} placeholder={commercial ? "—" : "Lot utilisé"}
-                            onChange={e => setLotsSaisis(s => ({ ...s, [l.id]: e.target.value }))} onBlur={() => !pret && !commercial && sauverLot(l)}
-                            style={{ width: 150, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, background: pret || commercial ? "#f3f4f6" : "#fff" }} />
-                          {l.ferme && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>🏡 {l.ferme}</div>}
+                          {l.depart === "sud" ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <select value={l.ferme || ""} disabled={pret} onChange={e => choisirFerme(l, e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12.5 }}>
+                                <option value="">Producteur…</option>
+                                {producteurs.map(p => <option key={p.pn} value={p.pn}>{p.pn}</option>)}
+                              </select>
+                              <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot (A1234)" maxLength={5}
+                                onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => !pret && sauverLot(l)}
+                                style={{ width: 110, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, fontWeight: 700 }} />
+                              <label style={{ fontSize: 11, color: "#6b7280" }}>Palettes <input type="number" step={0.5} min={0.5} disabled={pret} value={l.palettes ?? 0.5} onChange={e => setPalettes(l, Number(e.target.value) || 0.5)} style={{ width: 56, padding: "3px 4px", borderRadius: 6, border: "1.5px solid #e5e7eb" }} /></label>
+                            </div>
+                          ) : (
+                            <>
+                              <input value={lotsSaisis[l.id] ?? l.lot} disabled placeholder="—" style={{ width: 150, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, background: "#f3f4f6" }} />
+                              {l.ferme && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{l.ferme}</div>}
+                            </>
+                          )}
                         </td>
                         <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
                           {pret ? (
                             <span>
                               <span style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</span>
                               <span style={{ fontSize: 10.5, color: "#9ca3af", marginLeft: 6 }}>{l.pretPar} {l.pretLe}</span>
-                              {!commercial && <button type="button" onClick={() => annulerPret(l)} style={{ marginLeft: 8, background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>}
+                              {(!commercial || l.depart === "sud") && <button type="button" onClick={() => annulerPret(l)} style={{ marginLeft: 8, background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>}
                             </span>
-                          ) : commercial ? (
-                            <span style={{ color: "#b45309", fontWeight: 700, fontSize: 12 }}>{l.depart === "sud" ? "Géré par Medina" : "À préparer"}</span>
+                          ) : commercial && l.depart !== "sud" ? (
+                            <span style={{ color: "#b45309", fontWeight: 700, fontSize: 12 }}>À préparer</span>
                           ) : (
                             <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>Prêt</button>
                           )}
