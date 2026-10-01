@@ -193,7 +193,11 @@ async function mergerBons(enAttente) {
   return Buffer.from(await merged.save());
 }
 
-async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
+async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) {
+  // 01/10/2026 — opts.force : renvoyer même des demandes déjà envoyées ; opts.mode :
+  // "tout" (défaut) | "reconditionneur" | "transporteur" (annonce transport seule).
+  const mode = opts.mode || "tout";
+  const force = !!opts.force;
   // Va chercher les demandes directement dans Firebase (voir commentaire en haut de fichier) —
   // plus besoin que le client envoie les PDF, potentiellement plusieurs Mo à plusieurs, dans le
   // corps de la requête.
@@ -202,16 +206,16 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
   const toutes = snap.val() || {};
   const enAttente = Object.entries(toutes)
     .map(([id, d]) => ({ id, ...d }))
-    .filter(d => d && d.depot === depot && d.emailEnvoye === false && (d.pdfBase64 || d.aPdfBon))
+    .filter(d => d && d.depot === depot && (force || d.emailEnvoye === false) && (mode === "transporteur" || d.pdfBase64 || d.aPdfBon))
     // 01/10/2026 — Départ validé en Préparation : on n'envoie que les demandes de CE départ.
     .filter(d => !ids || ids.includes(d.id));
   // 30/09/2026 — Les bons sont maintenant rangés à part (reconditionnement_pdfs/{id}) : on va les
   // chercher pour ceux qui ne l'ont plus dans la demande elle-même.
   for (const d of enAttente) {
-    if (d.pdfBase64) continue;
+    if (d.pdfBase64 || mode === "transporteur") continue;
     try { d.pdfBase64 = (await adminDb.ref(`reconditionnement_pdfs/${d.id}/pdfBase64`).once("value")).val() || null; } catch { d.pdfBase64 = null; }
   }
-  for (let i = enAttente.length - 1; i >= 0; i--) if (!enAttente[i].pdfBase64) enAttente.splice(i, 1);
+  if (mode !== "transporteur") for (let i = enAttente.length - 1; i >= 0; i--) if (!enAttente[i].pdfBase64) enAttente.splice(i, 1);
 
   if (enAttente.length === 0) {
     return { depot, envoye: false, raison: "rien en attente" };
@@ -220,6 +224,9 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
   const dateFr = new Date().toLocaleDateString("fr-FR");
   const idsEnvoyes = enAttente.map(d => d.id);
 
+  let accepted = [], rejected = [], patchEchoues = [];
+  const maintenant = Date.now();
+  if (mode !== "transporteur") {
   const emailHtml = construireEmailHtml({ depot, enAttente, dateFr, stockActuel });
 
   let attachments;
@@ -247,7 +254,7 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
   const info = await transporter.sendMail({
     from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
     to: destinataires.join(","),
-    subject: `📋 Reconditionnement à faire aujourd'hui — ${DEPOT_LABEL[depot]} — ${enAttente.length} référence${enAttente.length > 1 ? "s" : ""} (${dateFr})`,
+    subject: `${force ? "RENVOI — " : ""}📋 Reconditionnement à faire aujourd'hui — ${DEPOT_LABEL[depot]} — ${enAttente.length} référence${enAttente.length > 1 ? "s" : ""} (${dateFr})`,
     html: emailHtml,
     attachments,
   });
@@ -256,8 +263,8 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
   // destinataires (adresse inexistante, boîte pleine...) — sendMail() ne lève une exception que si
   // AUCUN destinataire n'a été accepté. On vérifie donc explicitement `info.accepted`/`info.rejected`
   // pour ne pas dire "envoyé" en silence si ça a partiellement (ou totalement) échoué.
-  const accepted = info.accepted || [];
-  const rejected = info.rejected || [];
+  accepted = info.accepted || [];
+  rejected = info.rejected || [];
   if (accepted.length === 0) {
     throw new Error(`Aucun destinataire accepté par Gmail (${destinataires.join(", ") || "aucune adresse configurée"})`);
   }
@@ -265,13 +272,14 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
   // Marque ces demandes comme envoyées pour ne pas les reprendre le lendemain.
   const patchResultats = await Promise.all(idsEnvoyes.map(async id => {
     try {
-      await adminDb.ref(`reconditionnement_demandes/${id}`).update({ emailEnvoye: true, emailEnvoyeDate: dateFr });
+      await adminDb.ref(`reconditionnement_demandes/${id}`).update({ emailEnvoye: true, emailEnvoyeDate: dateFr, emailEnvoyeTs: maintenant });
       return { id, ok: true, statut: 200 };
     } catch (e) {
       return { id, ok: false, statut: 500, corps: String(e?.message || e).slice(0, 300) };
     }
   }));
-  const patchEchoues = patchResultats.filter(p => !p.ok);
+  patchEchoues = patchResultats.filter(p => !p.ok);
+  }
 
   // Prévenir aussi le(s) transporteur(s) — demande du 27/08/2026 : jusqu'ici, choisir un
   // transporteur sur une demande ne servait qu'en interne (stats/facturation, imprimé sur le
@@ -282,7 +290,7 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
   // ou un envoi qui échoue, ne doit surtout pas faire échouer le récap déjà envoyé au
   // reconditionneur — on log et on continue.
   let transporteurEmails = [];
-  try {
+  if (mode !== "reconditionneur") try {
     const transporteursSnap = await adminDb.ref("reconditionnement_transporteurs").once("value");
     const transporteursData = transporteursSnap.val() || {};
     const parTransporteur = {};
@@ -298,9 +306,10 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
         const infoT = await transporter.sendMail({
           from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
           to: t.email,
-          subject: `🚚 Enlèvement à faire aujourd'hui — Moorea → ${DEPOT_LABEL[depot]} (${dateFr})`,
+          subject: `${force ? "RENVOI — " : ""}🚚 Enlèvement à faire aujourd'hui — Moorea → ${DEPOT_LABEL[depot]} (${dateFr})`,
           html: construireEmailTransporteurHtml({ transporteurNom: t.nom, depot, nbReferences: demandesLot.length, dateFr }),
         });
+        await Promise.all(demandesLot.map(d => adminDb.ref(`reconditionnement_demandes/${d.id}`).update({ mailTransporteurTs: maintenant }).catch(() => {})));
         return { transporteurId, transporteurNom: t.nom || null, envoye: true, accepted: infoT.accepted || [], rejected: infoT.rejected || [] };
       } catch (errT) {
         console.error(`Erreur envoi mail transporteur (${t.nom || transporteurId}):`, errT);
@@ -330,16 +339,20 @@ export default async function handler(req, res) {
   // maintenant relus directement côté serveur.
   let stockActuel = null;
   let ids = null;
+  let force = false;
+  let mode = "tout";
   try {
     const body = req.body && typeof req.body === "object" ? req.body : JSON.parse(req.body || "{}");
     stockActuel = typeof body.stockActuel === "number" ? body.stockActuel : null;
+    force = body.force === true;
+    mode = ["reconditionneur", "transporteur"].includes(body.mode) ? body.mode : "tout";
     ids = Array.isArray(body.ids) && body.ids.length ? body.ids.map(String) : null;
   } catch {
     stockActuel = null;
   }
 
   try {
-    const resultat = await envoyerRecapPourDepot(depot, stockActuel, ids);
+    const resultat = await envoyerRecapPourDepot(depot, stockActuel, ids, { force, mode });
     return res.status(200).json({ success: true, ...resultat });
   } catch (err) {
     console.error("Erreur récap reconditionnement:", err);

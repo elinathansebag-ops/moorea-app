@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
+import { BarreMailsRecond } from "./BarreMailsRecond";
 import { noterHistoriqueDemande } from "./historiqueRecond";
 import { aPdfDemande, lirePdfDemande, ecrirePdfDemande, type ChampPdfRecond } from "./pdfsRecond";
 import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
@@ -2189,6 +2190,38 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // dans le récap du jour envoyé par email — voir creerDemande). Permet de forcer une demande à
   // réapparaître dans "Fichiers en attente" et donc dans le prochain récap envoyé, quelle que
   // soit la raison pour laquelle emailEnvoye était passé à true trop tôt.
+  // 02/10/2026 — Demande d'Elinathan : reporter une demande à un autre jour (ex. saisie tard le
+  // soir, à faire le lendemain). Change la date de la demande (elle passe dans le bon jour de la
+  // liste, en Préparation aussi), régénère le bon PDF avec la nouvelle date, et la remet « à
+  // envoyer » : le mail partira à la validation du départ du nouveau jour. Le numéro ne change pas.
+  async function reporterDemande(d: Demande) {
+    const base = (() => { const m = (d.dateCreationFr || "").match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : new Date(); })();
+    const demain = new Date(base.getTime() + 86400000);
+    const defaut = demain.toLocaleDateString("fr-FR");
+    const saisie = window.prompt(`Reporter ${d.numero || "cette demande"} au (JJ/MM/AAAA) :`, defaut);
+    if (!saisie) return;
+    const m = saisie.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) { notify("error", "Date invalide (format JJ/MM/AAAA)"); return; }
+    const nouvelle = `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3]}`;
+    const heure = (d.dateCreationFr || "").split(" ")[1] || "08:00";
+    const dateCreationFr = `${nouvelle} ${heure}`;
+    const dateIso = new Date(+m[3], +m[2] - 1, +m[1], 8, 0).toISOString();
+    try {
+      const maj = { ...d, dateCreationFr, dateCreation: dateIso } as Demande;
+      await update(ref(db, `reconditionnement_demandes/${d.id}`), { dateCreationFr, dateCreation: dateIso, emailEnvoye: false, emailEnvoyeTs: null, mailTransporteurTs: null });
+      noterHistoriqueDemande(d.id, `Reportée au ${nouvelle}`, userName);
+      try {
+        const pdfBase64 = await genererBonPdf(maj);
+        await ecrirePdfDemande(d.id, { pdfBase64 }, { pdfNom: `bon-reconditionnement-${d.id}.pdf` });
+      } catch (e: any) {
+        notify("error", `⚠️ Reportée, mais le bon n'a pas pu être régénéré : ${e?.message || "erreur"}`);
+      }
+      notify("success", `📅 ${d.numero || "Demande"} reportée au ${nouvelle}`);
+    } catch (err: any) {
+      notify("error", `❌ Report impossible : ${err?.message || "erreur"}`);
+    }
+  }
+
   async function inclureDansProchainRecap(id: string) {
     await update(ref(db, `reconditionnement_demandes/${id}`), { emailEnvoye: false });
     notify("success", "↩️ Demande remise dans « Fichiers en attente » — elle partira dans le prochain récap envoyé");
@@ -4014,6 +4047,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                         <ResumeStatutsGroupe demandes={demandesJourDepot} />
                                       </div>
                                     </div>
+                                    <BarreMailsRecond depot={dep} label={DEPOT_LABEL[dep]} demandes={demandesJourDepot} stockActuel={dep === "nlt" ? stockIfco.nlt : stockBabyBlancAndes} onResultat={(ok, m) => notify(ok ? "success" : "error", m)} />
                                     {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
                                 {demandesJourDepot.map(d => (
@@ -4146,6 +4180,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         <button onClick={() => chargerPourEdition(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           ✏️ Modifier
                         </button>
+                        {(d.statut === "en attente" || d.statut === "prêt") && (
+                          <button onClick={() => reporterDemande(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            📅 Reporter
+                          </button>
+                        )}
                         <button onClick={() => supprimerDemande(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           🗑️ Supprimer
                         </button>
