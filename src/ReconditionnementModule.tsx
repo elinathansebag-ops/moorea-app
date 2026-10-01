@@ -2110,6 +2110,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // 3 statuts (il n'existe qu'une fois "reçu", voir supprimerDemandeTerminee ci-dessous), donc
   // rien à annuler de ce côté ici.
   async function supprimerDemande(d: Demande) {
+    // 01/10/2026 — Garde-fou : l'arrivage lié a été validé (le camion est pointé), la demande est
+    // donc réelle. Trois demandes validées mais jamais envoyées ont été supprimées par erreur.
+    const arrivageValide = arrivagesData.find(a => a.reconditionnement_demande_id === d.id && a.statut === "validé");
+    if (arrivageValide) {
+      notify("error", `🔒 ${d.numero || "Cette demande"} ne peut pas être supprimée : son arrivage est validé. Envoie-la (mail) ou demande à l'admin.`);
+      return;
+    }
     if (!window.confirm("Supprimer définitivement cette demande de reconditionnement ?")) return;
     try {
       const { get } = await import("firebase/database");
