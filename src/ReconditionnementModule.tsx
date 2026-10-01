@@ -3696,6 +3696,19 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     return { ...m, demande: d, classif: classifierMouvementIfco(m), stockApres: stockApresChaqueMouvement[i] };
   }).reverse();
 
+  // 02/10/2026 — Demande d'Elinathan : à côté de « NLT (3) · terminées », le stock de caisses vides
+  // chez NLT juste AVANT le premier et juste APRÈS le dernier mouvement de ces reconditionnements
+  // (lecture dans le journal ifco_stock/movements, même reconstitution que « Suivi IFCO »).
+  const stockNltAvantApres = (ds: Demande[]): { avant: number; apres: number } | null => {
+    const ids = new Set(ds.map(d => d.id));
+    let premier = -1, dernier = -1;
+    ifcoStockMovements.forEach((m: any, i: number) => {
+      if (m.reconditionnement_demande_id && ids.has(m.reconditionnement_demande_id)) { if (premier < 0) premier = i; dernier = i; }
+    });
+    if (premier < 0) return null;
+    return { avant: premier > 0 ? stockApresChaqueMouvement[premier - 1].nlt : 0, apres: stockApresChaqueMouvement[dernier].nlt };
+  };
+
   return (
     <div id="recond-root" style={{ minHeight: "100vh", background: COLORS.gray100, overflowX: "hidden", maxWidth: "100vw" }}>
       <style>{styles}</style>
@@ -4082,6 +4095,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                           {DEPOT_LABEL[dep]} <span style={{ color: "#999", fontWeight: 600 }}>({demandesJourDepot.length})</span>
                                         </span>
                                         <ResumeStatutsGroupe demandes={demandesJourDepot} />
+                                        {dep === "nlt" && (() => {
+                                          const st = stockNltAvantApres(demandesJourDepot);
+                                          return st ? (
+                                            <span title="Caisses IFCO vides chez NLT, avant le premier et après le dernier mouvement de ces reconditionnements" style={{ fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: "#fff", border: `1px solid ${COLORS.gray200}`, color: COLORS.gray700 }}>
+                                              📦 Stock NLT : {st.avant} → {st.apres} caisses
+                                            </span>
+                                          ) : null;
+                                        })()}
                                       </div>
                                     </div>
                                     <BarreMailsRecond depot={dep} label={DEPOT_LABEL[dep]} demandes={demandesJourDepot} stockActuel={dep === "nlt" ? stockIfco.nlt : stockBabyBlancAndes} onResultat={(ok, m) => notify(ok ? "success" : "error", m)} regenererBon={async (d: any) => { const pdfBase64 = await genererBonPdf({ ...d } as Demande); await ecrirePdfDemande(d.id, { pdfBase64 }, { pdfNom: `bon-reconditionnement-${d.id}.pdf` }); }} />
