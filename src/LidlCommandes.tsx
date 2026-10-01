@@ -32,23 +32,23 @@ type LigneLidl = {
 };
 
 // 02/10/2026 — Liste des bases Lidl (fournie par Elinathan : « BASE LIDL / N° BASE / TRANSPORT
-// DÉPART SUD »). Le fichier Lidl ne contient que des codes à 3 lettres ; la correspondance avec le
-// nom de la base est déduite des initiales. Les codes marqués vérif: true sont déduits avec un peu
-// moins de certitude et à confirmer ; SAI, SLC et ASA restent à identifier (Lillers, Armentières,
-// Cambrai, tous SOCAFNA).
+// DÉPART SUD »). Le fichier Lidl ne contient que des codes à 3 lettres, rangés dans le MÊME ORDRE
+// que les lignes de cette liste (de Lillers à Les Arcs) — d'où la correspondance ci-dessous
+// (confirmée : « Les Arcs = dernière ligne du tableau, n° 24 » = dernière colonne ASA).
 export const BASES_LIDL: Record<string, { nom: string; num: number; transport: string; verif?: boolean }> = {
+  SAI: { nom: "Lillers", num: 13, transport: "SOCAFNA" }, LCA: { nom: "Armentière", num: 4, transport: "SOCAFNA" },
+  SLC: { nom: "Cambrai", num: 25, transport: "SOCAFNA" }, MFV: { nom: "Montoy", num: 3, transport: "SOCAFNA" },
   GON: { nom: "Gondreville", num: 17, transport: "SOCAFNA" }, ENT: { nom: "Entzheim", num: 2, transport: "SOCAFNA" },
   HON: { nom: "Honguemare", num: 11, transport: "REY" }, BAR: { nom: "Barbery", num: 6, transport: "REY" },
-  MEA: { nom: "Meaux", num: 19, transport: "REY" }, ABL: { nom: "Ablis", num: 27, transport: "REY" },
-  LIF: { nom: "Liffré", num: 20, transport: "SATFER" }, CAQ: { nom: "Carquefou", num: 7, transport: "SOCAFNA" },
-  SOR: { nom: "Sorigny", num: 18, transport: "REY" }, VAR: { nom: "Vars", num: 23, transport: "SATFER" },
-  MON: { nom: "Montchanin", num: 12, transport: "SOCAFNA" }, SQF: { nom: "St Quentin", num: 5, transport: "SOCAFNA" },
-  PCH: { nom: "Pontcharra", num: 21, transport: "SOCAFNA" }, BAZ: { nom: "Baziège", num: 14, transport: "SATFER" },
+  MEA: { nom: "Meaux", num: 19, transport: "REY" }, CLV: { nom: "Chanteloup", num: 26, transport: "REY" },
+  ABL: { nom: "Ablis", num: 27, transport: "REY" }, LCM: { nom: "Coudray", num: 10, transport: "REY" },
+  PLO: { nom: "Guingamp", num: 15, transport: "SOCAFNA" }, LIF: { nom: "Liffré", num: 20, transport: "SATFER" },
+  CAQ: { nom: "Carquefou", num: 7, transport: "SOCAFNA" }, SOR: { nom: "Sorigny", num: 18, transport: "REY" },
+  VAR: { nom: "Vars", num: 23, transport: "SATFER" }, MON: { nom: "Montchanin", num: 12, transport: "SOCAFNA" },
+  SQF: { nom: "St Quentin", num: 5, transport: "SOCAFNA" }, PCH: { nom: "Pontcharra", num: 21, transport: "SOCAFNA" },
+  CET: { nom: "Aquitaine", num: 9, transport: "SATFER" }, BAZ: { nom: "Baziège", num: 14, transport: "SATFER" },
   BEZ: { nom: "Béziers", num: 22, transport: "SATFER" }, LUN: { nom: "Lunel", num: 16, transport: "SOCAFNA" },
-  PRO: { nom: "Provence", num: 8, transport: "SOCAFNA" },
-  LCA: { nom: "Les Arcs", num: 24, transport: "SOCAFNA", verif: true }, MFV: { nom: "Montoy", num: 3, transport: "SOCAFNA", verif: true },
-  CLV: { nom: "Chanteloup", num: 26, transport: "REY", verif: true }, LCM: { nom: "Coudray", num: 10, transport: "REY", verif: true },
-  PLO: { nom: "Guingamp", num: 15, transport: "SOCAFNA", verif: true }, CET: { nom: "Aquitaine", num: 9, transport: "SATFER", verif: true },
+  PRO: { nom: "Provence", num: 8, transport: "SOCAFNA" }, ASA: { nom: "Les Arcs", num: 24, transport: "SOCAFNA" },
 };
 const dateFr = (s: string) => (s ? s.split("-").reverse().join("/") : "");
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
