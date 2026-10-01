@@ -37,7 +37,7 @@ type LigneLidl = {
 // (confirmée : « Les Arcs = dernière ligne du tableau, n° 24 » = dernière colonne ASA).
 // Transporteurs : « perpignan » = transport DÉPART PERPIGNAN (colonne « TRANSPORT DÉPART SUD » de la
 // liste) ; « paris » = transport DÉPART PARIS (Rungis), à renseigner quand Elinathan donnera la liste.
-export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: string; paris?: string; verif?: boolean }> = {
+export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: string; paris?: string; nationale?: boolean; verif?: boolean }> = {
   SAI: { nom: "Lillers", num: 13, perpignan: "SOCAFNA" }, LCA: { nom: "Armentière", num: 4, perpignan: "SOCAFNA" },
   SLC: { nom: "Cambrai", num: 25, perpignan: "SOCAFNA" }, MFV: { nom: "Montoy", num: 3, perpignan: "SOCAFNA" },
   GON: { nom: "Gondreville", num: 17, perpignan: "SOCAFNA" }, ENT: { nom: "Entzheim", num: 2, perpignan: "SOCAFNA" },
@@ -51,7 +51,18 @@ export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: s
   CET: { nom: "Aquitaine", num: 9, perpignan: "SATFER" }, BAZ: { nom: "Baziège", num: 14, perpignan: "SATFER" },
   BEZ: { nom: "Béziers", num: 22, perpignan: "SATFER" }, LUN: { nom: "Lunel", num: 16, perpignan: "SOCAFNA" },
   PRO: { nom: "Provence", num: 8, perpignan: "SOCAFNA" }, ASA: { nom: "Les Arcs", num: 24, perpignan: "SOCAFNA" },
+  // Les 2 bases NATIONALES (les autres sont régionales) — sans colonne dans le fichier de répartition
+  // vu jusqu'ici ; reconnues par leur nom si elles apparaissent un jour (voir infoBase).
+  BEAUCAIRE: { nom: "Beaucaire", num: 16, perpignan: "REY", nationale: true },
+  "ETAMPES BCD": { nom: "Etampes BCD", num: 60, perpignan: "REY", nationale: true },
 };
+export function infoBase(code: string) {
+  if (BASES_LIDL[code]) return BASES_LIDL[code];
+  const c = code.toUpperCase();
+  if (c.includes("BEAUCAIRE")) return BASES_LIDL.BEAUCAIRE;
+  if (c.includes("ETAMPES") || c.includes("ÉTAMPES") || c === "BCD") return BASES_LIDL["ETAMPES BCD"];
+  return undefined;
+}
 const dateFr = (s: string) => (s ? s.split("-").reverse().join("/") : "");
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const txt = (v: any) => (v == null ? "" : String(v).trim());
@@ -225,8 +236,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
                     return (
                       <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: pret ? "#f0fdf4" : "#fff" }}>
                         <td style={{ padding: "8px" }}>
-                          <div style={{ fontWeight: 800 }}>{BASES_LIDL[l.base]?.nom || l.base}{BASES_LIDL[l.base]?.verif ? " ?" : ""}</div>
-                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{BASES_LIDL[l.base] ? `${l.base} · base n° ${BASES_LIDL[l.base].num} · départ Perpignan : ${BASES_LIDL[l.base].perpignan}${BASES_LIDL[l.base].paris ? ` · départ Paris : ${BASES_LIDL[l.base].paris}` : ""}` : `${l.base} · base à identifier`}</div>
+                          <div style={{ fontWeight: 800 }}>{infoBase(l.base)?.nom || l.base}{infoBase(l.base)?.nationale && <span style={{ marginLeft: 6, fontSize: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>NATIONALE</span>}</div>
+                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{infoBase(l.base) ? `${l.base} · base n° ${infoBase(l.base)!.num} · départ Perpignan : ${infoBase(l.base)!.perpignan}${infoBase(l.base)!.paris ? ` · départ Paris : ${infoBase(l.base)!.paris}` : ""}` : `${l.base} · base à identifier`}</div>
                         </td>
                         <td style={{ padding: "8px", color: "#6b7280" }}>{l.camion}</td>
                         <td style={{ padding: "8px", maxWidth: 260 }}>
