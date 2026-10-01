@@ -15,6 +15,8 @@ type LigneLidl = {
   camion: string;
   avis: string;
   base: string;          // code de la base Lidl (SAI, LCA, BAR…)
+  depart?: "sud" | "paris"; // départ choisi à l'import par le commercial (sud = Perpignan, paris = Moorea/Rungis)
+  transporteur?: string; // transporteur de la base pour ce départ
   articleNum: string;
   article: string;
   emballage: string;
@@ -54,7 +56,7 @@ export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: s
   // Les 2 bases NATIONALES (les autres sont régionales) — sans colonne dans le fichier de répartition
   // vu jusqu'ici ; reconnues par leur nom si elles apparaissent un jour (voir infoBase).
   BEAUCAIRE: { nom: "Beaucaire", num: 16, perpignan: "REY", nationale: true },
-  "ETAMPES BCD": { nom: "Etampes BCD", num: 60, perpignan: "REY", nationale: true },
+  "ETAMPES BCD": { nom: "Etampes BCD", num: 60, perpignan: "REY", paris: "SRD", nationale: true },
 };
 export function infoBase(code: string) {
   if (BASES_LIDL[code]) return BASES_LIDL[code];
@@ -74,6 +76,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
   const [jour, setJour] = useState("");
   const [message, setMessage] = useState<{ type: "ok" | "err"; texte: string } | null>(null);
   const [import_, setImport] = useState(false);
+  const [depart, setDepart] = useState<"" | "sud" | "paris">("");
   const [lotsSaisis, setLotsSaisis] = useState<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -98,6 +101,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
   }
 
   async function importer(fichier: File) {
+    if (!depart) { flash("err", "Choisis d'abord le départ : Sud (Perpignan) ou Paris."); if (inputRef.current) inputRef.current.value = ""; return; }
     setImport(true);
     setMessage(null);
     try {
@@ -134,7 +138,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
           if (q <= 0) continue;
           const avis = txt(row[cAvis]);
           lues.push({
-            id: `${d}_${avis}_${cb.base}`.replace(/[.#$\[\]/]/g, "-"),
+            id: `${d}_${avis}_${cb.base}_${depart}`.replace(/[.#$\[\]/]/g, "-"),
+            depart, transporteur: (infoBase(cb.base) as any)?.[depart === "paris" ? "paris" : "perpignan"] || "",
             date: d, camion: txt(row[cCamion]), avis, base: cb.base,
             articleNum: txt(row[cArt]), article: txt(row[cDes]), emballage: txt(row[cEmb]), origine: cOri >= 0 ? txt(row[cOri]) : "",
             quantite: q, prix: cPrix >= 0 ? num(row[cPrix]) || undefined : undefined,
@@ -147,12 +152,12 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
       const datesFichier = [...new Set(lues.map(l => l.date))];
       const existantes = new Map<string, any>();
       const tout = (await get(ref(db, "lidl_commandes"))).val() || {};
-      Object.entries(tout).forEach(([id, x]: any) => { if (datesFichier.includes(x.date)) existantes.set(id, x); });
+      Object.entries(tout).forEach(([id, x]: any) => { if (datesFichier.includes(x.date) && (x.depart || "sud") === depart) existantes.set(id, x); });
       const maj: Record<string, any> = {};
       let nouvelles = 0, modifiees = 0, inchangees = 0, retirees = 0;
       for (const l of lues) {
         const ex = existantes.get(l.id);
-        const base = { date: l.date, camion: l.camion, avis: l.avis, base: l.base, articleNum: l.articleNum, article: l.article, emballage: l.emballage, origine: l.origine, quantite: l.quantite, prix: l.prix ?? null, fichier: fichier.name, importePar: userName || "", absenteDuFichier: null };
+        const base = { date: l.date, depart: l.depart, transporteur: l.transporteur || null, camion: l.camion, avis: l.avis, base: l.base, articleNum: l.articleNum, article: l.article, emballage: l.emballage, origine: l.origine, quantite: l.quantite, prix: l.prix ?? null, fichier: fichier.name, importePar: userName || "", absenteDuFichier: null };
         if (!ex) { nouvelles++; for (const [k, v] of Object.entries({ ...base, lot: "", statut: "a_preparer" })) maj[`lidl_commandes/${l.id}/${k}`] = v; }
         else {
           if (ex.quantite !== l.quantite) { modifiees++; maj[`lidl_commandes/${l.id}/quantiteModifieeApresPret`] = ex.statut === "pret" ? true : null; } else inchangees++;
@@ -168,7 +173,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
       await update(ref(db), maj);
       await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichier.name, dates: datesFichier, lignes: lues.length });
       setJour(datesFichier.sort()[0]);
-      flash("ok", `✅ ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl pour le ${datesFichier.map(dateFr).join(", ")} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}.`);
+      flash("ok", `✅ Départ ${depart === "paris" ? "Paris" : "Sud (Perpignan)"} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl pour le ${datesFichier.map(dateFr).join(", ")} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}.`);
     } catch (e: any) {
       flash("err", "Import impossible : " + (e?.message || e));
     }
@@ -206,8 +211,12 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
         <div style={{ padding: 14 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
             <input ref={inputRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importer(f); }} />
-            <button type="button" disabled={import_} onClick={() => inputRef.current?.click()}
-              style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>
+            {([["sud", "☀️ Départ Sud (Perpignan)"], ["paris", "🏙️ Départ Paris"]] as const).map(([k, lib]) => (
+              <button key={k} type="button" onClick={() => setDepart(k)}
+                style={{ padding: "8px 12px", borderRadius: 20, border: `1.5px solid ${depart === k ? couleur : "#e5e7eb"}`, background: depart === k ? `${couleur}14` : "#fff", color: depart === k ? couleur : "#374151", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{lib}</button>
+            ))}
+            <button type="button" disabled={import_ || !depart} onClick={() => inputRef.current?.click()}
+              style={{ background: depart ? couleur : "#9ca3af", color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, fontSize: 13, cursor: depart ? "pointer" : "not-allowed" }}>
               {import_ ? "Import…" : "📥 Importer le tableau Lidl du jour"}
             </button>
             {jours.length > 0 && (
@@ -237,7 +246,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
                       <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: pret ? "#f0fdf4" : "#fff" }}>
                         <td style={{ padding: "8px" }}>
                           <div style={{ fontWeight: 800 }}>{infoBase(l.base)?.nom || l.base}{infoBase(l.base)?.nationale && <span style={{ marginLeft: 6, fontSize: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>NATIONALE</span>}</div>
-                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{infoBase(l.base) ? `${l.base} · base n° ${infoBase(l.base)!.num} · départ Perpignan : ${infoBase(l.base)!.perpignan}${infoBase(l.base)!.paris ? ` · départ Paris : ${infoBase(l.base)!.paris}` : ""}` : `${l.base} · base à identifier`}</div>
+                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{infoBase(l.base) ? `${l.base} · base n° ${infoBase(l.base)!.num}` : `${l.base} · base à identifier`}</div>
+                          {l.depart && <div style={{ fontSize: 11, fontWeight: 700, color: l.depart === "paris" ? "#7c3aed" : "#b45309" }}>🚚 Départ {l.depart === "paris" ? "Paris" : "Perpignan"} : {l.transporteur || "—"}</div>}
                         </td>
                         <td style={{ padding: "8px", color: "#6b7280" }}>{l.camion}</td>
                         <td style={{ padding: "8px", maxWidth: 260 }}>
