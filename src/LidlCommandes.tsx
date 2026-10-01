@@ -29,6 +29,8 @@ type LigneLidl = {
   pretLe?: string;
   absenteDuFichier?: boolean;
   quantiteModifieeApresPret?: boolean;
+  refLidl?: string;      // référence choisie par le commercial (voir REFS_LIDL)
+  refChoisie?: boolean;  // true = choix manuel : l'import ne l'écrase plus
   importePar?: string;
   fichier?: string;
 };
@@ -58,6 +60,20 @@ export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: s
   BEAUCAIRE: { nom: "Beaucaire", num: 16, perpignan: "REY", paris: "TRADIF", nationale: true },
   "ETAMPES BCD": { nom: "Etampes BCD", num: 60, perpignan: "REY", paris: "SRD", nationale: true },
 };
+// 02/10/2026 — Lidl commande 2 références (haricots verts) ; le commercial choisit laquelle (et l'origine) par ligne.
+export const REFS_LIDL = [
+  { k: "h250_ke", article: "Haricot vert 250g par 12", emballage: "250g × 12", origine: "Kenya" },
+  { k: "h6x500_ma", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Maroc" },
+  { k: "h6x500_ke", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Kenya" },
+];
+const libRef = (r: { article: string; origine: string }) => `${r.article} — ${r.origine}`;
+// Référence par défaut déduite du fichier Lidl (250g → barquette Kenya ; 500g/6x → sachet Maroc)
+function devinerRef(article: string, emballage: string) {
+  const t = `${article} ${emballage}`.toLowerCase();
+  if (/250/.test(t)) return REFS_LIDL[0];
+  if (/500|6\s*x/.test(t)) return REFS_LIDL[1];
+  return null;
+}
 export function infoBase(code: string) {
   if (BASES_LIDL[code]) return BASES_LIDL[code];
   const c = code.toUpperCase();
@@ -164,6 +180,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
             quantite: q, prix: cPrix >= 0 ? num(row[cPrix]) || undefined : undefined,
             lot: "", statut: "a_preparer",
           });
+          const dr = devinerRef(txt(row[cDes]), txt(row[cEmb]));
+          if (dr) { const nl = lues[lues.length - 1]; nl.refLidl = dr.k; nl.article = dr.article; nl.emballage = dr.emballage; nl.origine = dr.origine; }
         }
       }
       if (!lues.length) throw new Error("Aucune quantité à préparer dans ce fichier (toutes les bases sont à 0).");
@@ -177,10 +195,13 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       for (const l of lues) {
         const ex = existantes.get(l.id);
         const base = { date: l.date, depart: l.depart, transporteur: l.transporteur || null, camion: l.camion, avis: l.avis, base: l.base, articleNum: l.articleNum, article: l.article, emballage: l.emballage, origine: l.origine, quantite: l.quantite, prix: l.prix ?? null, fichier: fichier.name, importePar: userName || "", absenteDuFichier: null };
-        if (!ex) { nouvelles++; for (const [k, v] of Object.entries({ ...base, lot: "", statut: "a_preparer" })) maj[`lidl_commandes/${l.id}/${k}`] = v; }
+        if (!ex) { nouvelles++; for (const [k, v] of Object.entries({ ...base, refLidl: l.refLidl ?? null, lot: "", statut: "a_preparer" })) maj[`lidl_commandes/${l.id}/${k}`] = v; }
         else {
           if (ex.quantite !== l.quantite) { modifiees++; maj[`lidl_commandes/${l.id}/quantiteModifieeApresPret`] = ex.statut === "pret" ? true : null; } else inchangees++;
-          for (const [k, v] of Object.entries(base)) maj[`lidl_commandes/${l.id}/${k}`] = v;
+          const b2: Record<string, any> = { ...base };
+          if (ex.refChoisie) { delete b2.article; delete b2.emballage; delete b2.origine; }
+          else if (l.refLidl) b2.refLidl = l.refLidl;
+          for (const [k, v] of Object.entries(b2)) maj[`lidl_commandes/${l.id}/${k}`] = v;
         }
         existantes.delete(l.id);
       }
@@ -229,7 +250,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       const bases = [...parBase.entries()].sort((x, y) => (infoBase(x[0])?.nom || x[0]).localeCompare(infoBase(y[0])?.nom || y[0]));
       const rows = bases.map(([b, ls]) => {
         const inf = infoBase(b);
-        return ls.map((l, i) => `<tr>${i === 0 ? `<td rowspan="${ls.length}" class="b">${esc(inf?.nom || b)}${inf ? `<br><small>base n° ${inf.num}</small>` : ""}</td>` : ""}<td>${esc(l.article)}</td><td class="q">${l.quantite}</td><td class="c"></td></tr>`).join("");
+        return ls.map((l, i) => `<tr>${i === 0 ? `<td rowspan="${ls.length}" class="b">${esc(inf?.nom || b)}${inf ? `<br><small>base n° ${inf.num}</small>` : ""}</td>` : ""}<td>${esc(l.article)}${l.origine ? ` — ${esc(l.origine)}` : ""}</td><td class="q">${l.quantite}</td><td class="c"></td></tr>`).join("");
       }).join("");
       const tot = g.lignes.reduce((s, l) => s + l.quantite, 0);
       return `${g.titre ? `<h2>${g.titre}</h2>` : ""}<table><thead><tr><th>Base</th><th>Produit</th><th>Quantité</th><th>✔</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2">Total</td><td class="q">${tot}</td><td></td></tr></tfoot></table>`;
@@ -246,6 +267,17 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
     w.document.close();
   }
 
+  async function choisirRef(l: LigneLidl, k: string) {
+    const r = REFS_LIDL.find(x => x.k === k); if (!r) return;
+    await update(ref(db, `lidl_commandes/${l.id}`), { refLidl: r.k, article: r.article, emballage: r.emballage, origine: r.origine, refChoisie: true });
+  }
+  async function choisirRefTout(k: string) {
+    const r = REFS_LIDL.find(x => x.k === k); if (!r) return;
+    const maj: Record<string, any> = {};
+    duJour.filter(l => l.statut !== "pret").forEach(l => { maj[`lidl_commandes/${l.id}/refLidl`] = r.k; maj[`lidl_commandes/${l.id}/article`] = r.article; maj[`lidl_commandes/${l.id}/emballage`] = r.emballage; maj[`lidl_commandes/${l.id}/origine`] = r.origine; maj[`lidl_commandes/${l.id}/refChoisie`] = true; });
+    await update(ref(db), maj);
+    flash("ok", `✅ Toutes les lignes non prêtes du jour passées en « ${libRef(r)} ».`);
+  }
   async function supprimerJour() {
     if (!jourAffiche) return;
     if (!window.confirm(`Supprimer toutes les commandes Lidl du ${dateFr(jourAffiche)} (${duJour.length} lignes) ?`)) return;
@@ -277,6 +309,12 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
             {jours.length > 0 && (
               <select value={jourAffiche} onChange={e => setJour(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }}>
                 {jours.map(j => <option key={j} value={j}>{dateFr(j)}</option>)}
+              </select>
+            )}
+            {commercial && duJour.length > 0 && (
+              <select value="" onChange={e => { if (e.target.value) choisirRefTout(e.target.value); }} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13, fontWeight: 700 }}>
+                <option value="">🥦 Tout le jour en…</option>
+                {REFS_LIDL.map(r => <option key={r.k} value={r.k}>{libRef(r)}</option>)}
               </select>
             )}
             {commercial && duJour.length > 0 && <button type="button" onClick={imprimerGeslot} style={{ background: "#fff", color: couleur, border: `1.5px solid ${couleur}`, borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>🖨️ Imprimer pour Geslot</button>}
@@ -323,7 +361,7 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                         <div key={l.id} style={{ padding: "12px 14px", borderTop: "1px solid #f3f4f6", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, opacity: pret ? 0.85 : 1 }}>
                           <div style={{ flex: "1 1 160px", minWidth: 140 }}>
                             <div style={{ fontWeight: 800, fontSize: 15 }}>{l.article}</div>
-                            {l.emballage && <div style={{ fontSize: 11.5, color: "#9ca3af" }}>{l.emballage}</div>}
+                            {(l.emballage || l.origine) && <div style={{ fontSize: 12, fontWeight: 700, color: "#0050aa" }}>{[l.emballage, l.origine].filter(Boolean).join(" · ")}</div>}
                             {l.quantiteModifieeApresPret && <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ quantité modifiée après « prêt »</div>}
                             {l.absenteDuFichier && <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</div>}
                           </div>
@@ -370,8 +408,13 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                         </td>
                         <td style={{ padding: "8px", color: "#6b7280" }}>{l.camion}</td>
                         <td style={{ padding: "8px", maxWidth: 260 }}>
-                          <div style={{ fontWeight: 600 }}>{l.article}</div>
-                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{l.articleNum}{l.emballage ? ` · ${l.emballage}` : ""}{l.origine ? ` · ${l.origine}` : ""}</div>
+                          {commercial ? (
+                            <select value={l.refLidl || ""} disabled={l.statut === "pret"} onChange={e => choisirRef(l, e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12.5, fontWeight: 600, maxWidth: 250 }}>
+                              {!l.refLidl && <option value="">{l.article || "— choisir —"}{l.origine ? ` (${l.origine})` : ""}</option>}
+                              {REFS_LIDL.map(r => <option key={r.k} value={r.k}>{libRef(r)}</option>)}
+                            </select>
+                          ) : <div style={{ fontWeight: 600 }}>{l.article}</div>}
+                          {!commercial && <div style={{ fontSize: 11, color: "#9ca3af" }}>{l.articleNum}{l.emballage ? ` · ${l.emballage}` : ""}{l.origine ? ` · ${l.origine}` : ""}</div>}
                         </td>
                         <td style={{ padding: "8px", fontWeight: 800 }}>
                           {l.quantite} <span style={{ fontWeight: 500, color: "#9ca3af", fontSize: 11 }}>colis</span>
