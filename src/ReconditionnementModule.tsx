@@ -899,7 +899,9 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
   );
 }
 
-export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne, demandesRecondChargees, peutVoirOnglet }: {
+export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne, demandesRecondChargees, peutVoirOnglet, isAdmin }: {
+  // 01/10/2026 — Seul un admin peut supprimer une demande dont l'arrivage est validé.
+  isAdmin?: boolean;
   onClose: () => void;
   userName?: string;
   // 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : la Configuration vit
@@ -2113,8 +2115,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // 01/10/2026 — Garde-fou : l'arrivage lié a été validé (le camion est pointé), la demande est
     // donc réelle. Trois demandes validées mais jamais envoyées ont été supprimées par erreur.
     const arrivageValide = arrivagesData.find(a => a.reconditionnement_demande_id === d.id && a.statut === "validé");
-    if (arrivageValide) {
-      notify("error", `🔒 ${d.numero || "Cette demande"} ne peut pas être supprimée : son arrivage est validé. Envoie-la (mail) ou demande à l'admin.`);
+    if (arrivageValide && isAdmin) {
+      if (!window.confirm(`⚠️ ADMIN — L'arrivage de ${d.numero || "cette demande"} est VALIDÉ.\nSupprimer quand même la demande ET son arrivage ?`)) return;
+    } else if (arrivageValide) {
+      notify("error", `🔒 ${d.numero || "Cette demande"} ne peut pas être supprimée : son arrivage est validé. Seul un admin peut la supprimer.`);
       return;
     }
     if (!window.confirm("Supprimer définitivement cette demande de reconditionnement ?")) return;

@@ -3226,6 +3226,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         <ReconditionnementModule
           demandesRecondChargees={reconditionnementDemandesChargees}
           peutVoirOnglet={(cle: string) => monAcces.hasTab(`reconditionnement.${cle}`)}
+          isAdmin={monAccesReel.isAdmin}
           onClose={() => { setShowReconditionnement(false); setShowAccueil(true); }}
           userName={nomAfficheGarde}
           onOpenPrestatairesConfig={() => { setShowReconditionnement(false); setPrestatairesInitialTab("configuration"); setShowPrestataires(true); }}
