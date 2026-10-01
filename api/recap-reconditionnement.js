@@ -211,9 +211,10 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
     .filter(d => !ids || ids.includes(d.id));
   // 30/09/2026 — Les bons sont maintenant rangés à part (reconditionnement_pdfs/{id}) : on va les
   // chercher pour ceux qui ne l'ont plus dans la demande elle-même.
+  let erreurLecturePdf = null;
   for (const d of enAttente) {
     if (d.pdfBase64 || mode === "transporteur") continue;
-    try { d.pdfBase64 = (await adminDb.ref(`reconditionnement_pdfs/${d.id}/pdfBase64`).once("value")).val() || null; } catch { d.pdfBase64 = null; }
+    try { d.pdfBase64 = (await adminDb.ref(`reconditionnement_pdfs/${d.id}/pdfBase64`).once("value")).val() || null; } catch (e) { d.pdfBase64 = null; erreurLecturePdf = String(e?.message || e).slice(0, 300); }
   }
   if (mode !== "transporteur") for (let i = enAttente.length - 1; i >= 0; i--) if (!enAttente[i].pdfBase64) enAttente.splice(i, 1);
 
@@ -223,7 +224,7 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
     .filter(d => toutes[d.id] && d.depot === depot && !enAttente.some(e => e.id === d.id))
     .map(d => ({ id: d.id, numero: d.numero || d.id }));
   if (enAttente.length === 0) {
-    return { depot, envoye: false, raison: sansBon.length ? "bons introuvables" : "rien en attente", sansBon };
+    return { depot, envoye: false, raison: sansBon.length ? "bons introuvables" : "rien en attente", sansBon, erreurLecturePdf };
   }
 
   const dateFr = new Date().toLocaleDateString("fr-FR");

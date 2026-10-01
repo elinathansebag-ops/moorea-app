@@ -53,8 +53,9 @@ export function BarreMailsRecond({ depot, label, demandes, stockActuel, onResult
         if (regenererBon && window.confirm(`Le bon PDF est introuvable pour : ${noms}.\nLes régénérer puis renvoyer le mail ?`)) {
           for (const x of data.sansBon) { const d = actives.find(a => a.id === x.id); if (d) await regenererBon(d); }
           data = await appeler();
+          if (!data.envoye) throw new Error(`bon toujours introuvable${data.erreurLecturePdf ? " — " + data.erreurLecturePdf : ""}`);
         } else {
-          throw new Error(`bon PDF introuvable pour ${noms}`);
+          throw new Error(`bon PDF introuvable pour ${noms}${data.erreurLecturePdf ? " — " + data.erreurLecturePdf : ""}`);
         }
       }
       if (mode === "reconditionneur") {
