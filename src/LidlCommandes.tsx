@@ -30,6 +30,7 @@ type LigneLidl = {
   absenteDuFichier?: boolean;
   quantiteModifieeApresPret?: boolean;
   refLidl?: string;      // référence choisie par le commercial (voir REFS_LIDL)
+  ferme?: string;        // ferme d'emballage choisie par la prépa
   refChoisie?: boolean;  // true = choix manuel : l'import ne l'écrase plus
   importePar?: string;
   fichier?: string;
@@ -66,6 +67,8 @@ export const REFS_LIDL = [
   { k: "h6x500_ma", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Maroc" },
   { k: "h6x500_ke", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Kenya" },
 ];
+// Lot = 1 lettre + 4 chiffres (ex. A1234)
+const LOT_OK = /^[A-Z]\d{4}$/;
 const libRef = (r: { article: string; origine: string }) => `${r.article} — ${r.origine}`;
 // Référence par défaut déduite du fichier Lidl (250g → barquette Kenya ; 500g/6x → sachet Maroc)
 function devinerRef(article: string, emballage: string) {
@@ -117,6 +120,20 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const jourAffiche = jour && jours.includes(jour) ? jour : (jours.includes(iso(new Date())) ? iso(new Date()) : jours[0] || "");
   const duJour = useMemo(() => lignesParis.filter(l => l.date === jourAffiche).sort((a, b) => (a.base.localeCompare(b.base)) || (Number(a.camion) - Number(b.camion))), [lignesParis, jourAffiche]);
   const [masquerPretes, setMasquerPretes] = useState(false);
+  const [fermes, setFermes] = useState<string[]>([]);
+  useEffect(() => {
+    const u = onValue(ref(db, "lidl_config/fermes"), snap => setFermes(Object.keys(snap.val() || {}).sort((a, b) => a.localeCompare(b))));
+    return () => u();
+  }, []);
+  async function ajouterFerme(l: LigneLidl) {
+    const nom = (window.prompt("Nom de la nouvelle ferme d'emballage :") || "").trim().replace(/[.#$\[\]/]/g, "-");
+    if (!nom) return;
+    await update(ref(db), { [`lidl_config/fermes/${nom}`]: true, [`lidl_commandes/${l.id}/ferme`]: nom });
+  }
+  async function choisirFerme(l: LigneLidl, v: string) {
+    if (v === "__new") { await ajouterFerme(l); return; }
+    await update(ref(db, `lidl_commandes/${l.id}`), { ferme: v || null });
+  }
   const groupesBase = useMemo(() => {
     const m = new Map<string, LigneLidl[]>();
     duJour.forEach(l => m.set(l.base, [...(m.get(l.base) || []), l]));
@@ -223,14 +240,15 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
 
   async function marquerPret(l: LigneLidl) {
     const lot = (lotsSaisis[l.id] ?? l.lot).trim();
-    if (!lot) { flash("err", `Saisis d'abord le numéro de traçabilité (lot) pour ${l.base}.`); return; }
+    if (!l.ferme) { flash("err", `Choisis d'abord la ferme d'emballage pour ${infoBase(l.base)?.nom || l.base}.`); return; }
+    if (!LOT_OK.test(lot)) { flash("err", `Le numéro de lot doit être 1 lettre + 4 chiffres (ex. A1234) pour ${infoBase(l.base)?.nom || l.base}.`); return; }
     await update(ref(db, `lidl_commandes/${l.id}`), { lot, statut: "pret", pretPar: userName || "", pretLe: new Date().toLocaleString("fr-FR"), quantiteModifieeApresPret: null });
   }
   async function annulerPret(l: LigneLidl) {
     await update(ref(db, `lidl_commandes/${l.id}`), { statut: "a_preparer", pretPar: null, pretLe: null });
   }
   async function sauverLot(l: LigneLidl) {
-    const lot = (lotsSaisis[l.id] ?? l.lot).trim();
+    const lot = (lotsSaisis[l.id] ?? l.lot).trim().toUpperCase();
     if (lot !== l.lot) await update(ref(db, `lidl_commandes/${l.id}`), { lot });
   }
   // Fiche simplifiée à imprimer pour saisir les commandes dans Geslot : base, article, quantité (sans transporteur).
@@ -369,9 +387,15 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                             <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.1 }}>{l.quantite}</div>
                             <div style={{ fontSize: 10, opacity: 0.85 }}>colis</div>
                           </div>
-                          <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="N° de lot"
-                            onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value }))} onBlur={() => !pret && sauverLot(l)}
-                            style={{ flex: "1 1 140px", maxWidth: 220, padding: "12px", border: "2px solid #e5e7eb", borderRadius: 12, fontSize: 16, background: pret ? "#f3f4f6" : "#fff" }} />
+                          <select value={l.ferme || ""} disabled={pret} onChange={e => choisirFerme(l, e.target.value)}
+                            style={{ flex: "1 1 150px", maxWidth: 220, padding: "12px", border: "2px solid #e5e7eb", borderRadius: 12, fontSize: 15, background: pret ? "#f3f4f6" : "#fff" }}>
+                            <option value="">🏡 Ferme d'emballage…</option>
+                            {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
+                            <option value="__new">➕ Ajouter une ferme…</option>
+                          </select>
+                          <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot (A1234)" maxLength={5} autoCapitalize="characters"
+                            onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => !pret && sauverLot(l)}
+                            style={{ flex: "0 1 120px", padding: "12px", border: `2px solid ${(lotsSaisis[l.id] ?? l.lot) && !LOT_OK.test(lotsSaisis[l.id] ?? l.lot) ? "#f59e0b" : "#e5e7eb"}`, borderRadius: 12, fontSize: 16, fontWeight: 700, letterSpacing: 1, background: pret ? "#f3f4f6" : "#fff" }} />
                           {pret ? (
                             <div style={{ textAlign: "center" }}>
                               <div style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</div>
@@ -425,6 +449,7 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                           <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret || commercial} placeholder={commercial ? "—" : "Lot utilisé"}
                             onChange={e => setLotsSaisis(s => ({ ...s, [l.id]: e.target.value }))} onBlur={() => !pret && !commercial && sauverLot(l)}
                             style={{ width: 150, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, background: pret || commercial ? "#f3f4f6" : "#fff" }} />
+                          {l.ferme && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>🏡 {l.ferme}</div>}
                         </td>
                         <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
                           {pret ? (
