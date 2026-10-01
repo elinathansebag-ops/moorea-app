@@ -345,14 +345,13 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
             {commercial && <>
             <input ref={inputRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importer(f); }} />
-            {([["sud", "☀️ Départ Sud (Perpignan)"], ["paris", "🏙️ Départ Paris"]] as const).map(([k, lib]) => (
-              <button key={k} type="button" onClick={() => setDepart(k)}
-                style={{ padding: "8px 12px", borderRadius: 20, border: `1.5px solid ${depart === k ? couleur : "#e5e7eb"}`, background: depart === k ? `${couleur}14` : "#fff", color: depart === k ? couleur : "#374151", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{lib}</button>
+            {/* Un clic = on choisit le départ ET le fichier : plus rien à cocher avant d'importer. */}
+            {([["sud", "☀️ Importer — départ Sud (Perpignan)"], ["paris", "🏙️ Importer — départ Paris"]] as const).map(([k, lib]) => (
+              <button key={k} type="button" disabled={import_} onClick={() => { setDepart(k); inputRef.current?.click(); }}
+                style={{ background: import_ ? "#9ca3af" : couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, fontSize: 13, cursor: import_ ? "wait" : "pointer" }}>
+                {import_ ? "Import…" : lib}
+              </button>
             ))}
-            <button type="button" disabled={import_ || !depart} onClick={() => inputRef.current?.click()}
-              style={{ background: depart ? couleur : "#9ca3af", color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, fontSize: 13, cursor: depart ? "pointer" : "not-allowed" }}>
-              {import_ ? "Import…" : "📥 Importer le tableau Lidl du jour"}
-            </button>
             </>}
             {jours.length > 0 && (
               <select value={jourAffiche} onChange={e => setJour(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }}>
@@ -382,7 +381,7 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
             <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
           )}
           {duJour.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "Aucune commande Lidl. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») en choisissant le départ." : "Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
+            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "Aucune commande Lidl. Clique sur « Importer » du bon départ (Sud ou Paris) et choisis le tableau reçu de Lidl (fichier « AU-…xlsx »)." : "Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
           ) : !commercial ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <label style={{ fontSize: 13, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>

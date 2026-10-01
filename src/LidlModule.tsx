@@ -111,7 +111,7 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
   }
   const btnOnglet = (k: typeof onglet, lib: string) => (
     <button key={k} type="button" onClick={() => setOnglet(k)}
-      style={{ padding: "10px 18px", borderRadius: 24, border: `2px solid ${onglet === k ? "#0050aa" : "#e5e7eb"}`, background: onglet === k ? "linear-gradient(135deg,#0050aa,#2563eb)" : "#fff", color: onglet === k ? "#fff" : "#374151", fontWeight: 800, fontSize: 14, cursor: "pointer", boxShadow: onglet === k ? "0 4px 12px rgba(0,80,170,.3)" : "0 1px 2px rgba(0,0,0,.05)", transform: onglet === k ? "translateY(-1px)" : "none", transition: "all .15s" }}>{lib}</button>
+      style={{ padding: "10px 16px", borderRadius: 10, border: `2px solid ${onglet === k ? "#0050aa" : "#e5e7eb"}`, background: onglet === k ? "#eff6ff" : "#fff", color: onglet === k ? "#0050aa" : "#4b5563", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{lib}</button>
   );
   const carte = (t: string, v: string, c = "#111827", emoji = "📦", fond = "#eff6ff") => (
     <div style={{ flex: "1 1 140px", background: fond, borderRadius: 16, padding: "12px 16px", boxShadow: "0 2px 8px rgba(0,0,0,.06)", display: "flex", alignItems: "center", gap: 12 }}>
