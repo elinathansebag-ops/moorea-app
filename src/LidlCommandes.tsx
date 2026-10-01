@@ -88,9 +88,13 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
     return () => u();
   }, []);
 
-  const jours = useMemo(() => [...new Set(lignes.map(l => l.date))].sort().reverse(), [lignes]);
+  // 02/10/2026 — Les commandes au départ de PERPIGNAN sont gérées sur place par l'entreprise
+  // Medina (logistique) : elles ne s'affichent PAS dans Préparation. Seuls les départs de Paris
+  // (Moorea/Rungis) sont montrés ici. Les lignes « Sud » restent enregistrées dans la base.
+  const lignesParis = useMemo(() => lignes.filter(l => l.depart === "paris"), [lignes]);
+  const jours = useMemo(() => [...new Set(lignesParis.map(l => l.date))].sort().reverse(), [lignesParis]);
   const jourAffiche = jour && jours.includes(jour) ? jour : (jours.includes(iso(new Date())) ? iso(new Date()) : jours[0] || "");
-  const duJour = useMemo(() => lignes.filter(l => l.date === jourAffiche).sort((a, b) => (a.base.localeCompare(b.base)) || (Number(a.camion) - Number(b.camion))), [lignes, jourAffiche]);
+  const duJour = useMemo(() => lignesParis.filter(l => l.date === jourAffiche).sort((a, b) => (a.base.localeCompare(b.base)) || (Number(a.camion) - Number(b.camion))), [lignesParis, jourAffiche]);
   const nbPret = duJour.filter(l => l.statut === "pret").length;
   const totalColis = duJour.reduce((s, l) => s + l.quantite, 0);
   const colisPrets = duJour.filter(l => l.statut === "pret").reduce((s, l) => s + l.quantite, 0);
@@ -172,8 +176,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
       }
       await update(ref(db), maj);
       await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichier.name, dates: datesFichier, lignes: lues.length });
-      setJour(datesFichier.sort()[0]);
-      flash("ok", `✅ Départ ${depart === "paris" ? "Paris" : "Sud (Perpignan)"} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl pour le ${datesFichier.map(dateFr).join(", ")} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}.`);
+      if (depart === "paris") setJour(datesFichier.sort()[0]);
+      flash("ok", `${depart === "sud" ? "ℹ️ Départ Sud (Perpignan) enregistré, mais NON affiché dans Préparation (géré par Medina). " : ""}✅ Départ ${depart === "paris" ? "Paris" : "Sud (Perpignan)"} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl pour le ${datesFichier.map(dateFr).join(", ")} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}.`);
     } catch (e: any) {
       flash("err", "Import impossible : " + (e?.message || e));
     }
@@ -230,7 +234,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
             <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
           )}
           {duJour.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>Aucune commande Lidl. Importe le tableau reçu de Lidl (fichier « AU-…xlsx »).</div>
+            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>Aucune commande Lidl au départ de Paris. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») avec « Départ Paris ». (Les commandes au départ de Perpignan sont gérées par Medina : elles ne s'affichent pas ici.)</div>
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
