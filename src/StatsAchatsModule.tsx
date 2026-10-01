@@ -99,6 +99,9 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
       const idx = (...noms: string[]) => entetes.findIndex(h => noms.some(n => h === n || h.startsWith(n)));
       const iF = idx("tri par fournisseur"), iC = idx("tri par client"), iD = idx("tri par date"), iA = idx("tri par article");
       const iCol = idx("colis vendus"), iAch = idx("mt achat"), iVen = idx("mt vente"), iRes = idx("resultat", "résultat"), iFam = idx("famille"), iG = idx("gamme");
+      if (entetes.includes("n° vente") && entetes.includes("mt achats")) {
+        throw new Error("Ce fichier est l'export des VENTES détaillées : il ne contient aucun montant d'achat (colonne « Mt achats » vide), donc impossible d'en tirer des marges, et importer ses jours effacerait les achats déjà enregistrés. Importe plutôt un export « Résultat par ligne » (comme ooo.xlsx) qui couvre la même période.");
+      }
       if ([iF, iC, iD, iA, iCol, iAch, iVen].some(i => i < 0)) {
         throw new Error("Ce fichier n'a pas les colonnes attendues (Tri par Fournisseur / Client / Date de livraison / Article, Colis vendus, Mt achat, Mt vente). Utilise l'export « Résultat par ligne ».");
       }
