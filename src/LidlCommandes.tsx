@@ -67,9 +67,9 @@ export const REFS_LIDL = [
   { k: "h6x500_ma", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Maroc" },
   { k: "h6x500_ke", article: "Haricot vert sachet 6x500g", emballage: "Sachet 6x500g", origine: "Kenya" },
 ];
-// Fermes d'emballage connues (liste fournie par Elinathan, 02/10/2026). Si une ferme manque, la prépa
-// choisit « Il manque une ferme » en bas de la liste : le commercial est prévenu et l'ajoute.
-export const FERMES_LIDL = ["AGROATLAS EUROPA", "ATHI ORCHARD", "ATHIFARM", "BAKARI", "EAGA", "FOKI", "FRESH HARVEST", "FRESH INN MAROCCO", "FRESH WORLD", "GREEN EGYPT", "JANI FRESH", "KENYA FRESH", "LOWLAND", "NATURE GROWERS", "RIM", "SHALIMAR", "SOCIETE DE CULTURES LEGUMIERES", "SOLEIL VERT", "SUMMER FEST", "SUMMER FRUITS ENTREPRISES", "YAYA FRESH"];
+// Producteurs (colonne « Producteur (NOM) » du fichier fourni par Elinathan, 02/10/2026). Si une ferme manque, la prépa
+// choisit « Il manque un producteur » en bas de la liste : le commercial est prévenu et l'ajoute.
+export const FERMES_LIDL = ["ATHI ORCHARD", "ATHIFARM", "BAKARI", "FOKI", "FRESH HARVEST", "FRESH INN MAROCCO", "FRESH WORLD", "GREEN EGYPT", "JANI FRESH", "KENYA FRESH", "LOWLAND", "NATURE GROWERS", "RIM", "SHALIMAR", "SOCIETE DE CULTURES LEGUMIERES", "SOLEIL VERT", "SUMMER FRUITS ENTREPRISES", "YAYA FRESH"];
 // Lot = 1 lettre + 4 chiffres (ex. A1234)
 const LOT_OK = /^[A-Z]\d{4}$/;
 const libRef = (r: { article: string; origine: string }) => `${r.article} — ${r.origine}`;
@@ -130,7 +130,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   }, []);
   async function signalerFermeManquante(l: LigneLidl) {
     await push(ref(db, "lidl_config/fermes_manquantes"), { base: infoBase(l.base)?.nom || l.base, article: l.article, date: l.date, par: userName || "", ts: Date.now() });
-    flash("ok", "Le commercial est prévenu qu'il manque une ferme dans la liste.");
+    flash("ok", "Le commercial est prévenu qu'il manque un producteur dans la liste.");
   }
   async function choisirFerme(l: LigneLidl, v: string) {
     if (v === "__new") { await signalerFermeManquante(l); return; }
@@ -242,7 +242,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
 
   async function marquerPret(l: LigneLidl) {
     const lot = (lotsSaisis[l.id] ?? l.lot).trim();
-    if (!l.ferme) { flash("err", `Choisis d'abord la ferme d'emballage pour ${infoBase(l.base)?.nom || l.base}.`); return; }
+    if (!l.ferme) { flash("err", `Choisis d'abord le producteur pour ${infoBase(l.base)?.nom || l.base}.`); return; }
     if (!LOT_OK.test(lot)) { flash("err", `Le numéro de lot doit être 1 lettre + 4 chiffres (ex. A1234) pour ${infoBase(l.base)?.nom || l.base}.`); return; }
     await update(ref(db, `lidl_commandes/${l.id}`), { lot, statut: "pret", pretPar: userName || "", pretLe: new Date().toLocaleString("fr-FR"), quantiteModifieeApresPret: null });
   }
@@ -391,9 +391,9 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
                           </div>
                           <select value={l.ferme || ""} disabled={pret} onChange={e => choisirFerme(l, e.target.value)}
                             style={{ flex: "1 1 150px", maxWidth: 220, padding: "12px", border: "2px solid #e5e7eb", borderRadius: 12, fontSize: 15, background: pret ? "#f3f4f6" : "#fff" }}>
-                            <option value="">🏡 Ferme d'emballage…</option>
+                            <option value="">Producteur…</option>
                             {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
-                            <option value="__new">⚠️ Il manque une ferme — prévenir</option>
+                            <option value="__new">Il manque un producteur — prévenir</option>
                           </select>
                           <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot (A1234)" maxLength={5} autoCapitalize="characters"
                             onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => !pret && sauverLot(l)}

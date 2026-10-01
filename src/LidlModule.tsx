@@ -95,11 +95,11 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
 
         {signals.length > 0 && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 12, padding: 12, marginBottom: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 13, color: "#92400e", marginBottom: 6 }}>Ferme manquante signalée par la préparation</div>
+            <div style={{ fontWeight: 800, fontSize: 13, color: "#92400e", marginBottom: 6 }}>Producteur manquant signalé par la préparation</div>
             {signals.map(sg => (
               <div key={sg.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 6, fontSize: 13 }}>
                 <span>{sg.par || "Préparation"} · base {sg.base} · {dateFr(sg.date)}</span>
-                <input value={nomFerme[sg.id] || ""} onChange={e => setNomFerme(x => ({ ...x, [sg.id]: e.target.value }))} placeholder="Nom de la ferme" style={{ padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+                <input value={nomFerme[sg.id] || ""} onChange={e => setNomFerme(x => ({ ...x, [sg.id]: e.target.value }))} placeholder="Nom du producteur" style={{ padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
                 <button type="button" onClick={() => ajouterFerme(sg.id)} style={{ background: "#0050aa", color: "#fff", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 700, cursor: "pointer" }}>Ajouter à la liste</button>
                 <button type="button" onClick={() => remove(ref(db, `lidl_config/fermes_manquantes/${sg.id}`))} style={{ background: "transparent", border: "none", color: "#6b7280", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}>Ignorer</button>
               </div>
