@@ -36,21 +36,21 @@ type LigneLidl = {
 // que les lignes de cette liste (de Lillers à Les Arcs) — d'où la correspondance ci-dessous
 // (confirmée : « Les Arcs = dernière ligne du tableau, n° 24 » = dernière colonne ASA).
 // Transporteurs : « perpignan » = transport DÉPART PERPIGNAN (colonne « TRANSPORT DÉPART SUD » de la
-// liste) ; « paris » = transport DÉPART PARIS (Rungis), à renseigner quand Elinathan donnera la liste.
+// liste) ; « paris » = transport DÉPART MOOREA / PARIS (Rungis), liste du 02/10/2026 fournie par Elinathan.
 export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: string; paris?: string; nationale?: boolean; verif?: boolean }> = {
-  SAI: { nom: "Lillers", num: 13, perpignan: "SOCAFNA" }, LCA: { nom: "Armentière", num: 4, perpignan: "SOCAFNA" },
-  SLC: { nom: "Cambrai", num: 25, perpignan: "SOCAFNA" }, MFV: { nom: "Montoy", num: 3, perpignan: "SOCAFNA" },
-  GON: { nom: "Gondreville", num: 17, perpignan: "SOCAFNA" }, ENT: { nom: "Entzheim", num: 2, perpignan: "SOCAFNA" },
-  HON: { nom: "Honguemare", num: 11, perpignan: "REY" }, BAR: { nom: "Barbery", num: 6, perpignan: "REY" },
-  MEA: { nom: "Meaux", num: 19, perpignan: "REY" }, CLV: { nom: "Chanteloup", num: 26, perpignan: "REY" },
-  ABL: { nom: "Ablis", num: 27, perpignan: "REY" }, LCM: { nom: "Coudray", num: 10, perpignan: "REY" },
-  PLO: { nom: "Guingamp", num: 15, perpignan: "SOCAFNA" }, LIF: { nom: "Liffré", num: 20, perpignan: "SATFER" },
-  CAQ: { nom: "Carquefou", num: 7, perpignan: "SOCAFNA" }, SOR: { nom: "Sorigny", num: 18, perpignan: "REY" },
-  VAR: { nom: "Vars", num: 23, perpignan: "SATFER" }, MON: { nom: "Montchanin", num: 12, perpignan: "SOCAFNA" },
-  SQF: { nom: "St Quentin", num: 5, perpignan: "SOCAFNA" }, PCH: { nom: "Pontcharra", num: 21, perpignan: "SOCAFNA" },
-  CET: { nom: "Aquitaine", num: 9, perpignan: "SATFER" }, BAZ: { nom: "Baziège", num: 14, perpignan: "SATFER" },
-  BEZ: { nom: "Béziers", num: 22, perpignan: "SATFER" }, LUN: { nom: "Lunel", num: 16, perpignan: "SOCAFNA" },
-  PRO: { nom: "Provence", num: 8, perpignan: "SOCAFNA" }, ASA: { nom: "Les Arcs", num: 24, perpignan: "SOCAFNA" },
+  SAI: { nom: "Lillers", num: 13, perpignan: "SOCAFNA", paris: "MESGUEN" }, LCA: { nom: "Armentière", num: 4, perpignan: "SOCAFNA", paris: "MESGUEN" },
+  SLC: { nom: "Cambrai", num: 25, perpignan: "SOCAFNA", paris: "MESGUEN" }, MFV: { nom: "Montoy", num: 3, perpignan: "SOCAFNA", paris: "PROVIN CAMANDONA" },
+  GON: { nom: "Gondreville", num: 17, perpignan: "SOCAFNA", paris: "PROVIN CAMANDONA" }, ENT: { nom: "Entzheim", num: 2, perpignan: "SOCAFNA", paris: "PROVIN CAMANDONA" },
+  HON: { nom: "Honguemare", num: 11, perpignan: "REY", paris: "PRIMEVER" }, BAR: { nom: "Barbery", num: 6, perpignan: "REY", paris: "MESGUEN" },
+  MEA: { nom: "Meaux", num: 19, perpignan: "REY", paris: "SRD" }, CLV: { nom: "Chanteloup", num: 26, perpignan: "REY", paris: "SRD" },
+  ABL: { nom: "Ablis", num: 27, perpignan: "REY", paris: "SRD" }, LCM: { nom: "Coudray", num: 10, perpignan: "REY", paris: "MESGUEN" },
+  PLO: { nom: "Guingamp", num: 15, perpignan: "SOCAFNA", paris: "MESGUEN" }, LIF: { nom: "Liffré", num: 20, perpignan: "SATFER", paris: "PRIMEVER" },
+  CAQ: { nom: "Carquefou", num: 7, perpignan: "SOCAFNA", paris: "PRIMEVER" }, SOR: { nom: "Sorigny", num: 18, perpignan: "REY", paris: "MESGUEN" },
+  VAR: { nom: "Vars", num: 23, perpignan: "SATFER", paris: "PRIMEVER" }, MON: { nom: "Montchanin", num: 12, perpignan: "SOCAFNA", paris: "TRADIF" },
+  SQF: { nom: "St Quentin", num: 5, perpignan: "SOCAFNA", paris: "TRADIF" }, PCH: { nom: "Pontcharra", num: 21, perpignan: "SOCAFNA", paris: "TRADIF" },
+  CET: { nom: "Aquitaine", num: 9, perpignan: "SATFER", paris: "PRIMEVER" }, BAZ: { nom: "Baziège", num: 14, perpignan: "SATFER", paris: "PRIMEVER" },
+  BEZ: { nom: "Béziers", num: 22, perpignan: "SATFER", paris: "TRADIF" }, LUN: { nom: "Lunel", num: 16, perpignan: "SOCAFNA", paris: "TRADIF" },
+  PRO: { nom: "Provence", num: 8, perpignan: "SOCAFNA", paris: "TRADIF" }, ASA: { nom: "Les Arcs", num: 24, perpignan: "SOCAFNA", paris: "TRADIF" },
   // Les 2 bases NATIONALES (les autres sont régionales) — sans colonne dans le fichier de répartition
   // vu jusqu'ici ; reconnues par leur nom si elles apparaissent un jour (voir infoBase).
   BEAUCAIRE: { nom: "Beaucaire", num: 16, perpignan: "REY", nationale: true },
