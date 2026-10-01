@@ -182,7 +182,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       await update(ref(db), maj);
       await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichier.name, dates: datesFichier, lignes: lues.length });
       setJour(datesFichier.sort()[0]);
-      flash("ok", `${depart === "sud" ? "ℹ️ Départ Sud (Perpignan) enregistré, mais NON affiché dans Préparation (géré par Medina). " : ""}✅ Départ ${depart === "paris" ? "Paris" : "Sud (Perpignan)"} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl pour le ${datesFichier.map(dateFr).join(", ")} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}.`);
+      flash("ok", `${depart === "sud" ? "ℹ️ Départ Sud (Perpignan) enregistré, mais NON affiché dans Préparation (géré par Medina). " : ""}✅ Départ ${depart === "paris" ? "Paris" : "Sud (Perpignan)"} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl pour le ${datesFichier.map(dateFr).join(", ")} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}. Clique sur « 🖨️ Imprimer pour Geslot » pour la fiche à saisir.`);
     } catch (e: any) {
       flash("err", "Import impossible : " + (e?.message || e));
     }
@@ -202,6 +202,40 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     const lot = (lotsSaisis[l.id] ?? l.lot).trim();
     if (lot !== l.lot) await update(ref(db, `lidl_commandes/${l.id}`), { lot });
   }
+  // Fiche simplifiée à imprimer pour saisir les commandes dans Geslot : base, article, quantité (sans transporteur).
+  function imprimerGeslot() {
+    if (!duJour.length) return;
+    const esc = (t: string) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const groupes: { titre: string; lignes: LigneLidl[] }[] = [];
+    for (const d of ["paris", "sud"] as const) {
+      const ls = duJour.filter(l => l.depart === d);
+      if (ls.length) groupes.push({ titre: d === "paris" ? "Départ Paris" : "Départ Perpignan", lignes: ls });
+    }
+    const autres = duJour.filter(l => l.depart !== "paris" && l.depart !== "sud");
+    if (autres.length) groupes.push({ titre: "", lignes: autres });
+    const corps = groupes.map(g => {
+      const parBase = new Map<string, LigneLidl[]>();
+      g.lignes.forEach(l => { parBase.set(l.base, [...(parBase.get(l.base) || []), l]); });
+      const bases = [...parBase.entries()].sort((x, y) => (infoBase(x[0])?.nom || x[0]).localeCompare(infoBase(y[0])?.nom || y[0]));
+      const rows = bases.map(([b, ls]) => {
+        const inf = infoBase(b);
+        return ls.map((l, i) => `<tr>${i === 0 ? `<td rowspan="${ls.length}" class="b">${esc(inf?.nom || b)}${inf ? `<br><small>base n° ${inf.num}</small>` : ""}</td>` : ""}<td>${esc(l.article)}</td><td class="q">${l.quantite}</td><td class="c"></td></tr>`).join("");
+      }).join("");
+      const tot = g.lignes.reduce((s, l) => s + l.quantite, 0);
+      return `${g.titre ? `<h2>${g.titre}</h2>` : ""}<table><thead><tr><th>Base</th><th>Produit</th><th>Quantité</th><th>✔</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2">Total</td><td class="q">${tot}</td><td></td></tr></tfoot></table>`;
+    }).join("");
+    const w = window.open("", "_blank");
+    if (!w) { flash("err", "Impression bloquée par le navigateur : autorise les pop-ups pour ce site."); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Commandes Lidl ${dateFr(jourAffiche)}</title><style>
+body{font-family:Arial,sans-serif;margin:16px;color:#000}h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:16px 0 6px;border-bottom:2px solid #000}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th,td{border:1px solid #000;padding:5px 7px;text-align:left}th{background:#eee}
+td.q{text-align:right;font-weight:700;width:80px}td.c{width:34px}td.b{font-weight:700;vertical-align:top;width:150px}small{font-weight:400}tfoot td{font-weight:700;background:#f5f5f5}
+tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><body>
+<h1>Commandes Lidl — livraison du ${dateFr(jourAffiche)}</h1><div style="font-size:12px;margin-bottom:6px">À saisir dans Geslot</div>${corps}
+<button onclick="window.print()" style="margin-top:10px;padding:8px 14px">🖨️ Imprimer</button><script>setTimeout(function(){window.print()},300)<\/script></body></html>`);
+    w.document.close();
+  }
+
   async function supprimerJour() {
     if (!jourAffiche) return;
     if (!window.confirm(`Supprimer toutes les commandes Lidl du ${dateFr(jourAffiche)} (${duJour.length} lignes) ?`)) return;
@@ -235,6 +269,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
                 {jours.map(j => <option key={j} value={j}>{dateFr(j)}</option>)}
               </select>
             )}
+            {commercial && duJour.length > 0 && <button type="button" onClick={imprimerGeslot} style={{ background: "#fff", color: couleur, border: `1.5px solid ${couleur}`, borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>🖨️ Imprimer pour Geslot</button>}
             {commercial && duJour.length > 0 && <button type="button" onClick={supprimerJour} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ Supprimer ce jour</button>}
           </div>
           {message && (
