@@ -73,11 +73,12 @@ const num = (v: any) => (typeof v === "number" && isFinite(v) ? v : typeof v ===
 // mode « commercial » : module « Commandes Lidl » (import du tableau, vue de TOUTES les commandes,
 // Sud et Paris, lecture seule). mode « preparation » : cellule de Préparation (entrepôt) — pas
 // d'import, uniquement les commandes au départ de Paris, avec saisie du lot et bouton « Prêt ».
-export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparation" }: { userName?: string; couleur?: string; mode?: "commercial" | "preparation" }) {
+export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparation", jourForce }: { userName?: string; couleur?: string; mode?: "commercial" | "preparation"; jourForce?: string }) {
   const commercial = mode === "commercial";
   const [lignes, setLignes] = useState<LigneLidl[]>([]);
   const [ouvert, setOuvert] = useState(true);
   const [jour, setJour] = useState("");
+  useEffect(() => { if (jourForce) setJour(jourForce); }, [jourForce]);
   const [message, setMessage] = useState<{ type: "ok" | "err"; texte: string } | null>(null);
   const [import_, setImport] = useState(false);
   const [depart, setDepart] = useState<"" | "sud" | "paris">("");
