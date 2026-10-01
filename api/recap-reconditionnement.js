@@ -193,7 +193,7 @@ async function mergerBons(enAttente) {
   return Buffer.from(await merged.save());
 }
 
-async function envoyerRecapPourDepot(depot, stockActuel) {
+async function envoyerRecapPourDepot(depot, stockActuel, ids = null) {
   // Va chercher les demandes directement dans Firebase (voir commentaire en haut de fichier) —
   // plus besoin que le client envoie les PDF, potentiellement plusieurs Mo à plusieurs, dans le
   // corps de la requête.
@@ -202,7 +202,9 @@ async function envoyerRecapPourDepot(depot, stockActuel) {
   const toutes = snap.val() || {};
   const enAttente = Object.entries(toutes)
     .map(([id, d]) => ({ id, ...d }))
-    .filter(d => d && d.depot === depot && d.emailEnvoye === false && (d.pdfBase64 || d.aPdfBon));
+    .filter(d => d && d.depot === depot && d.emailEnvoye === false && (d.pdfBase64 || d.aPdfBon))
+    // 01/10/2026 — Départ validé en Préparation : on n'envoie que les demandes de CE départ.
+    .filter(d => !ids || ids.includes(d.id));
   // 30/09/2026 — Les bons sont maintenant rangés à part (reconditionnement_pdfs/{id}) : on va les
   // chercher pour ceux qui ne l'ont plus dans la demande elle-même.
   for (const d of enAttente) {
@@ -327,15 +329,17 @@ export default async function handler(req, res) {
   // dans le mail) — voir le commentaire en haut de fichier : les demandes et leurs PDF sont
   // maintenant relus directement côté serveur.
   let stockActuel = null;
+  let ids = null;
   try {
     const body = req.body && typeof req.body === "object" ? req.body : JSON.parse(req.body || "{}");
     stockActuel = typeof body.stockActuel === "number" ? body.stockActuel : null;
+    ids = Array.isArray(body.ids) && body.ids.length ? body.ids.map(String) : null;
   } catch {
     stockActuel = null;
   }
 
   try {
-    const resultat = await envoyerRecapPourDepot(depot, stockActuel);
+    const resultat = await envoyerRecapPourDepot(depot, stockActuel, ids);
     return res.status(200).json({ success: true, ...resultat });
   } catch (err) {
     console.error("Erreur récap reconditionnement:", err);

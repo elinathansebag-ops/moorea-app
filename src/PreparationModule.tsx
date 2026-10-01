@@ -414,7 +414,33 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     }
     await envoyerEtiquetteIfcoMooreaPourImpressionPC(depot, grandes + demi, transporteur, recap);
     const total = idsAvecPalette.length + idsSansPalette.length;
-    notify("success", `🚚 ${total} demande${total > 1 ? "s" : ""} validée${total > 1 ? "s" : ""} et partie${total > 1 ? "s" : ""} — étiquette(s) envoyée(s) à l'impression, les retours apparaîtront dans « Pointer arrivage »`);
+    // 01/10/2026 — Demande d'Elinathan : c'est la validation du départ ici qui envoie le mail au
+    // reconditionneur (toutes les demandes du départ réunies) + le mail au(x) transporteur(s).
+    let msgMail = "";
+    try {
+      const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stockActuel: depot === "nlt" ? stockIfco.nlt : stockBabyBlancAndes, ids: [...idsAvecPalette, ...idsSansPalette] }),
+      });
+      const texte = await res.text();
+      let data: any = null;
+      try { data = texte ? JSON.parse(texte) : null; } catch { /* non-JSON */ }
+      if (!res.ok || !data) throw new Error(data?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
+      if (data.envoye) {
+        const ko = data.rejected?.length;
+        msgMail = ko ? ` — ⚠️ mail refusé par ${data.rejected.join(", ")}` : ` — 📧 mail envoyé à ${DEPOT_LABEL[depot]}`;
+        const tr = (data.transporteurEmails || []).filter((t: any) => !t.envoye);
+        if (tr.length) msgMail += ` — 🚚 mail transporteur NON envoyé (${tr.map((t: any) => `${t.transporteurNom || "?"}: ${t.raison}`).join("; ")})`;
+        update(ref(db, `reconditionnement_dernier_envoi/${depot}`), { ok: !ko, message: ko ? `Refusé par ${data.rejected.join(", ")}` : `${data.nb} bon(s) envoyé(s)`, ts: Date.now() }).catch(() => {});
+      } else {
+        msgMail = " — (aucun mail à envoyer : déjà parti)";
+      }
+    } catch (err: any) {
+      msgMail = ` — ❌ mail NON envoyé (${err?.message || "erreur"}) : renvoie-le depuis Reconditionnement → « Envoyer le récap »`;
+      update(ref(db, `reconditionnement_dernier_envoi/${depot}`), { ok: false, message: String(err?.message || "erreur").slice(0, 400), ts: Date.now() }).catch(() => {});
+    }
+    notify("success", `🚚 ${total} demande${total > 1 ? "s" : ""} validée${total > 1 ? "s" : ""} et partie${total > 1 ? "s" : ""} — étiquette(s) envoyée(s) à l'impression, les retours apparaîtront dans « Pointer arrivage »${msgMail}`);
   }
 
   // Cœur de "marquer parti", sans notification — utilisé aussi bien pour une demande seule
