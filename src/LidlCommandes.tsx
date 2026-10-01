@@ -35,20 +35,22 @@ type LigneLidl = {
 // DÉPART SUD »). Le fichier Lidl ne contient que des codes à 3 lettres, rangés dans le MÊME ORDRE
 // que les lignes de cette liste (de Lillers à Les Arcs) — d'où la correspondance ci-dessous
 // (confirmée : « Les Arcs = dernière ligne du tableau, n° 24 » = dernière colonne ASA).
-export const BASES_LIDL: Record<string, { nom: string; num: number; transport: string; verif?: boolean }> = {
-  SAI: { nom: "Lillers", num: 13, transport: "SOCAFNA" }, LCA: { nom: "Armentière", num: 4, transport: "SOCAFNA" },
-  SLC: { nom: "Cambrai", num: 25, transport: "SOCAFNA" }, MFV: { nom: "Montoy", num: 3, transport: "SOCAFNA" },
-  GON: { nom: "Gondreville", num: 17, transport: "SOCAFNA" }, ENT: { nom: "Entzheim", num: 2, transport: "SOCAFNA" },
-  HON: { nom: "Honguemare", num: 11, transport: "REY" }, BAR: { nom: "Barbery", num: 6, transport: "REY" },
-  MEA: { nom: "Meaux", num: 19, transport: "REY" }, CLV: { nom: "Chanteloup", num: 26, transport: "REY" },
-  ABL: { nom: "Ablis", num: 27, transport: "REY" }, LCM: { nom: "Coudray", num: 10, transport: "REY" },
-  PLO: { nom: "Guingamp", num: 15, transport: "SOCAFNA" }, LIF: { nom: "Liffré", num: 20, transport: "SATFER" },
-  CAQ: { nom: "Carquefou", num: 7, transport: "SOCAFNA" }, SOR: { nom: "Sorigny", num: 18, transport: "REY" },
-  VAR: { nom: "Vars", num: 23, transport: "SATFER" }, MON: { nom: "Montchanin", num: 12, transport: "SOCAFNA" },
-  SQF: { nom: "St Quentin", num: 5, transport: "SOCAFNA" }, PCH: { nom: "Pontcharra", num: 21, transport: "SOCAFNA" },
-  CET: { nom: "Aquitaine", num: 9, transport: "SATFER" }, BAZ: { nom: "Baziège", num: 14, transport: "SATFER" },
-  BEZ: { nom: "Béziers", num: 22, transport: "SATFER" }, LUN: { nom: "Lunel", num: 16, transport: "SOCAFNA" },
-  PRO: { nom: "Provence", num: 8, transport: "SOCAFNA" }, ASA: { nom: "Les Arcs", num: 24, transport: "SOCAFNA" },
+// Transporteurs : « perpignan » = transport DÉPART PERPIGNAN (colonne « TRANSPORT DÉPART SUD » de la
+// liste) ; « paris » = transport DÉPART PARIS (Rungis), à renseigner quand Elinathan donnera la liste.
+export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: string; paris?: string; verif?: boolean }> = {
+  SAI: { nom: "Lillers", num: 13, perpignan: "SOCAFNA" }, LCA: { nom: "Armentière", num: 4, perpignan: "SOCAFNA" },
+  SLC: { nom: "Cambrai", num: 25, perpignan: "SOCAFNA" }, MFV: { nom: "Montoy", num: 3, perpignan: "SOCAFNA" },
+  GON: { nom: "Gondreville", num: 17, perpignan: "SOCAFNA" }, ENT: { nom: "Entzheim", num: 2, perpignan: "SOCAFNA" },
+  HON: { nom: "Honguemare", num: 11, perpignan: "REY" }, BAR: { nom: "Barbery", num: 6, perpignan: "REY" },
+  MEA: { nom: "Meaux", num: 19, perpignan: "REY" }, CLV: { nom: "Chanteloup", num: 26, perpignan: "REY" },
+  ABL: { nom: "Ablis", num: 27, perpignan: "REY" }, LCM: { nom: "Coudray", num: 10, perpignan: "REY" },
+  PLO: { nom: "Guingamp", num: 15, perpignan: "SOCAFNA" }, LIF: { nom: "Liffré", num: 20, perpignan: "SATFER" },
+  CAQ: { nom: "Carquefou", num: 7, perpignan: "SOCAFNA" }, SOR: { nom: "Sorigny", num: 18, perpignan: "REY" },
+  VAR: { nom: "Vars", num: 23, perpignan: "SATFER" }, MON: { nom: "Montchanin", num: 12, perpignan: "SOCAFNA" },
+  SQF: { nom: "St Quentin", num: 5, perpignan: "SOCAFNA" }, PCH: { nom: "Pontcharra", num: 21, perpignan: "SOCAFNA" },
+  CET: { nom: "Aquitaine", num: 9, perpignan: "SATFER" }, BAZ: { nom: "Baziège", num: 14, perpignan: "SATFER" },
+  BEZ: { nom: "Béziers", num: 22, perpignan: "SATFER" }, LUN: { nom: "Lunel", num: 16, perpignan: "SOCAFNA" },
+  PRO: { nom: "Provence", num: 8, perpignan: "SOCAFNA" }, ASA: { nom: "Les Arcs", num: 24, perpignan: "SOCAFNA" },
 };
 const dateFr = (s: string) => (s ? s.split("-").reverse().join("/") : "");
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -224,7 +226,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
                       <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: pret ? "#f0fdf4" : "#fff" }}>
                         <td style={{ padding: "8px" }}>
                           <div style={{ fontWeight: 800 }}>{BASES_LIDL[l.base]?.nom || l.base}{BASES_LIDL[l.base]?.verif ? " ?" : ""}</div>
-                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{BASES_LIDL[l.base] ? `${l.base} · base n° ${BASES_LIDL[l.base].num} · ${BASES_LIDL[l.base].transport}` : `${l.base} · base à identifier`}</div>
+                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{BASES_LIDL[l.base] ? `${l.base} · base n° ${BASES_LIDL[l.base].num} · départ Perpignan : ${BASES_LIDL[l.base].perpignan}${BASES_LIDL[l.base].paris ? ` · départ Paris : ${BASES_LIDL[l.base].paris}` : ""}` : `${l.base} · base à identifier`}</div>
                         </td>
                         <td style={{ padding: "8px", color: "#6b7280" }}>{l.camion}</td>
                         <td style={{ padding: "8px", maxWidth: 260 }}>
