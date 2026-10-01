@@ -3849,61 +3849,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               </div>
             ))}
 
-            {/* Envoi du récap du jour — manuel, un bouton par dépôt. Repassé côté commercial ici
-                le 27/08/2026 (retiré de Préparation entrepôt, voir envoyerRecapDuJour plus haut) :
-                c'est une décision commerciale ("le lot du jour est prêt à partir au reconditionneur"),
-                pas une action physique d'entrepôt. */}
-            {(["nlt", "andes"] as Depot[]).map(dep => {
-              const demandesEnAttenteEnvoi = demandes.filter(d => d.depot === dep && d.emailEnvoye === false);
-              const enAttenteRecap = demandesEnAttenteEnvoi.length;
-              if (enAttenteRecap === 0) return null;
-              const detailOuvert = detailEnvoiOuvert.has(dep);
-              return (
-                <div key={dep} style={{ background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                    <span
-                      onClick={() => toggleDetailEnvoi(dep)}
-                      style={{ fontSize: 13, fontWeight: 700, color: "#92400e", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-                    >
-                      📧 {enAttenteRecap} demande{enAttenteRecap > 1 ? "s" : ""} {DEPOT_LABEL[dep]} pas encore envoyée{enAttenteRecap > 1 ? "s" : ""} au reconditionneur
-                      <span style={{ fontSize: 11, transform: detailOuvert ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
-                    </span>
-                    <button
-                      onClick={() => envoyerRecapDuJour(dep)}
-                      disabled={envoiRecapEnCours[dep]}
-                      style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: envoiRecapEnCours[dep] ? COLORS.gray200 : COLORS.primary, color: envoiRecapEnCours[dep] ? COLORS.gray600 : "#fff", fontSize: 12, fontWeight: 700, cursor: envoiRecapEnCours[dep] ? "default" : "pointer" }}
-                    >
-                      {envoiRecapEnCours[dep] ? "Envoi..." : `Envoyer le récap à ${DEPOT_LABEL[dep]}`}
-                    </button>
-                  </div>
-                  {dernierEnvoiRecap[dep] && !dernierEnvoiRecap[dep]!.ok && (
-                    <div style={{ marginTop: 8, background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 600 }}>
-                      ⚠️ Le dernier envoi automatique a échoué ({new Date(dernierEnvoiRecap[dep]!.ts).toLocaleString("fr-FR")}) : {dernierEnvoiRecap[dep]!.message}
-                    </div>
-                  )}
-                  {detailOuvert && (
-                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                      {demandesEnAttenteEnvoi.map(d => (
-                        <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "#fff", border: "1px solid #fde3a8", borderRadius: 8, padding: "6px 10px" }}>
-                          <span style={{ fontSize: 12, color: "#92400e" }}>
-                            {d.numero && <b style={{ marginRight: 4 }}>{d.numero}</b>}
-                            {d.articleVrac} → {d.articleFini}
-                            <span style={{ color: "#b08a4a" }}> · {d.dateCreationFr}</span>
-                          </span>
-                          <button
-                            onClick={() => supprimerDemande(d)}
-                            title="Supprimer cette demande (pas encore envoyée)"
-                            style={{ padding: "4px 10px", borderRadius: 6, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
-                          >
-                            🗑️ Supprimer
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {/* 02/10/2026 — Bandeaux jaunes « demandes pas encore envoyées » retirés (demande d'Elinathan) :
+                l'état des mails et les boutons de renvoi sont maintenant dans la cellule de chaque
+                reconditionneur (BarreMailsRecond). */}
 
             {/* 01/09/2026 — À la demande d'Elinathan : les pages de PDF importées en masse
                 (voir "Importer un PDF multi-pages" dans Nouvelle demande) mais pas encore
