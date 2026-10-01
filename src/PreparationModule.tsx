@@ -414,8 +414,8 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     }
     await envoyerEtiquetteIfcoMooreaPourImpressionPC(depot, grandes + demi, transporteur, recap);
     const total = idsAvecPalette.length + idsSansPalette.length;
-    // 01/10/2026 — Demande d'Elinathan : c'est la validation du départ ici qui envoie le mail au
-    // reconditionneur (toutes les demandes du départ réunies) + le mail au(x) transporteur(s).
+    // 02/10/2026 — Le mail part normalement à la création (commercial). Ici, simple filet de sécurité :
+    // n'envoie que les demandes du départ dont le mail n'est pas encore parti.
     let msgMail = "";
     try {
       const res = await fetch(`/api/recap-reconditionnement?depot=${depot}`, {
@@ -434,7 +434,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
         if (tr.length) msgMail += ` — 🚚 mail transporteur NON envoyé (${tr.map((t: any) => `${t.transporteurNom || "?"}: ${t.raison}`).join("; ")})`;
         update(ref(db, `reconditionnement_dernier_envoi/${depot}`), { ok: !ko, message: ko ? `Refusé par ${data.rejected.join(", ")}` : `${data.nb} bon(s) envoyé(s)`, ts: Date.now() }).catch(() => {});
       } else {
-        msgMail = " — (aucun mail à envoyer : déjà parti)";
+        msgMail = " — (mail déjà envoyé à la création)";
       }
     } catch (err: any) {
       msgMail = ` — ❌ mail NON envoyé (${err?.message || "erreur"}) : renvoie-le depuis Reconditionnement → « Envoyer le récap »`;

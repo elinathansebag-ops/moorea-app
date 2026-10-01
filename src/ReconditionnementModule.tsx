@@ -2778,6 +2778,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       notify("success", dejaChezReconditionneur
         ? "✅ Ligne enregistrée — déjà chez le reconditionneur, aucun envoi ni mail, le retour apparaît dans « Pointer arrivage »"
         : "✅ Demande envoyée à l'entrepôt");
+      // 02/10/2026 — Le mail part directement à la validation (sauf saisie après coup).
+      if (!apresCoup) await envoyerRecapDuJour(depot as Depot);
       resetForm();
       setActiveTab("en_cours");
     } catch (err: any) {
@@ -3074,10 +3076,15 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       let numeroPalette = "";
       if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteurIfco?.nom || "");
       notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
-      // 01/10/2026 — Demande d'Elinathan : le mail au reconditionneur ne part PLUS à la validation
-      // du formulaire. Il part quand l'entrepôt valide le départ dans Préparation (toutes les
-      // demandes du départ réunies en un seul mail, voir finaliserDepartGroupe). Le bouton manuel
-      // « Envoyer le récap » reste en secours.
+      // 02/10/2026 — Demande d'Elinathan : le mail part DIRECTEMENT à la validation par le commercial
+      // (mail au reconditionneur avec les bons + mail au(x) transporteur(s) hors Moorea).
+      // Saisie après coup : jamais de mail.
+      if (!groupeApresCoup) {
+        const depotsAEnvoyer = new Set<Depot>();
+        for (const l of aCreer) depotsAEnvoyer.add((l.depot || groupeDepot) as Depot);
+        if (numeroPalette) depotsAEnvoyer.add("nlt");
+        for (const dep of depotsAEnvoyer) await envoyerRecapDuJour(dep);
+      }
       setLignesGroupe([]); setGroupeCaissesIfco(""); setGroupeApresCoup(false);
       effacerBrouillon(brouillonGroupe); setGroupeIfcoEnvoi("non"); setGroupeIfcoPalettes("1"); setGroupeIfcoAutre(false);
       setActiveTab("en_cours");
