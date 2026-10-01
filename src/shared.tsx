@@ -382,6 +382,7 @@ export const MODULE_DEFS: ModuleDef[] = [
     { key: "compter", label: "📋 Peut compter (sinon lecture seule : historique + état)" },
   ] },
   { key: "retours", label: "🚚 Retours clients" },
+  { key: "lidl", label: "🛒 Commandes Lidl (commercial : import du tableau)" },
   { key: "preparation", label: "🏭 Préparation" },
   { key: "rack", label: "🗄️ Rotation racks" },
   { key: "prestataires", label: "📦 Prestataires", tabs: [

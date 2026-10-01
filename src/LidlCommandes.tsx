@@ -70,7 +70,11 @@ const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 const txt = (v: any) => (v == null ? "" : String(v).trim());
 const num = (v: any) => (typeof v === "number" && isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && isFinite(Number(v.replace(",", "."))) ? Number(v.replace(",", ".")) : 0);
 
-export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: string; couleur?: string }) {
+// mode « commercial » : module « Commandes Lidl » (import du tableau, vue de TOUTES les commandes,
+// Sud et Paris, lecture seule). mode « preparation » : cellule de Préparation (entrepôt) — pas
+// d'import, uniquement les commandes au départ de Paris, avec saisie du lot et bouton « Prêt ».
+export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparation" }: { userName?: string; couleur?: string; mode?: "commercial" | "preparation" }) {
+  const commercial = mode === "commercial";
   const [lignes, setLignes] = useState<LigneLidl[]>([]);
   const [ouvert, setOuvert] = useState(true);
   const [jour, setJour] = useState("");
@@ -91,7 +95,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
   // 02/10/2026 — Les commandes au départ de PERPIGNAN sont gérées sur place par l'entreprise
   // Medina (logistique) : elles ne s'affichent PAS dans Préparation. Seuls les départs de Paris
   // (Moorea/Rungis) sont montrés ici. Les lignes « Sud » restent enregistrées dans la base.
-  const lignesParis = useMemo(() => lignes.filter(l => l.depart === "paris"), [lignes]);
+  const lignesParis = useMemo(() => (commercial ? lignes : lignes.filter(l => l.depart === "paris")), [lignes, commercial]);
   const jours = useMemo(() => [...new Set(lignesParis.map(l => l.date))].sort().reverse(), [lignesParis]);
   const jourAffiche = jour && jours.includes(jour) ? jour : (jours.includes(iso(new Date())) ? iso(new Date()) : jours[0] || "");
   const duJour = useMemo(() => lignesParis.filter(l => l.date === jourAffiche).sort((a, b) => (a.base.localeCompare(b.base)) || (Number(a.camion) - Number(b.camion))), [lignesParis, jourAffiche]);
@@ -176,7 +180,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
       }
       await update(ref(db), maj);
       await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichier.name, dates: datesFichier, lignes: lues.length });
-      if (depart === "paris") setJour(datesFichier.sort()[0]);
+      setJour(datesFichier.sort()[0]);
       flash("ok", `${depart === "sud" ? "ℹ️ Départ Sud (Perpignan) enregistré, mais NON affiché dans Préparation (géré par Medina). " : ""}✅ Départ ${depart === "paris" ? "Paris" : "Sud (Perpignan)"} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl pour le ${datesFichier.map(dateFr).join(", ")} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}.`);
     } catch (e: any) {
       flash("err", "Import impossible : " + (e?.message || e));
@@ -214,6 +218,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
       {ouvert && (
         <div style={{ padding: 14 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
+            {commercial && <>
             <input ref={inputRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importer(f); }} />
             {([["sud", "☀️ Départ Sud (Perpignan)"], ["paris", "🏙️ Départ Paris"]] as const).map(([k, lib]) => (
               <button key={k} type="button" onClick={() => setDepart(k)}
@@ -223,18 +228,19 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
               style={{ background: depart ? couleur : "#9ca3af", color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, fontSize: 13, cursor: depart ? "pointer" : "not-allowed" }}>
               {import_ ? "Import…" : "📥 Importer le tableau Lidl du jour"}
             </button>
+            </>}
             {jours.length > 0 && (
               <select value={jourAffiche} onChange={e => setJour(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }}>
                 {jours.map(j => <option key={j} value={j}>{dateFr(j)}</option>)}
               </select>
             )}
-            {duJour.length > 0 && <button type="button" onClick={supprimerJour} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ Supprimer ce jour</button>}
+            {commercial && duJour.length > 0 && <button type="button" onClick={supprimerJour} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ Supprimer ce jour</button>}
           </div>
           {message && (
             <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
           )}
           {duJour.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>Aucune commande Lidl au départ de Paris. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») avec « Départ Paris ». (Les commandes au départ de Perpignan sont gérées par Medina : elles ne s'affichent pas ici.)</div>
+            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "Aucune commande Lidl. Importe le tableau reçu de Lidl (fichier « AU-…xlsx ») en choisissant le départ." : "Aucune commande Lidl à préparer (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
@@ -264,17 +270,19 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
                           {l.absenteDuFichier && <div style={{ fontSize: 10.5, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</div>}
                         </td>
                         <td style={{ padding: "8px" }}>
-                          <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot utilisé"
-                            onChange={e => setLotsSaisis(s => ({ ...s, [l.id]: e.target.value }))} onBlur={() => !pret && sauverLot(l)}
-                            style={{ width: 150, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, background: pret ? "#f3f4f6" : "#fff" }} />
+                          <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret || commercial} placeholder={commercial ? "—" : "Lot utilisé"}
+                            onChange={e => setLotsSaisis(s => ({ ...s, [l.id]: e.target.value }))} onBlur={() => !pret && !commercial && sauverLot(l)}
+                            style={{ width: 150, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, background: pret || commercial ? "#f3f4f6" : "#fff" }} />
                         </td>
                         <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
                           {pret ? (
                             <span>
                               <span style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</span>
                               <span style={{ fontSize: 10.5, color: "#9ca3af", marginLeft: 6 }}>{l.pretPar} {l.pretLe}</span>
-                              <button type="button" onClick={() => annulerPret(l)} style={{ marginLeft: 8, background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>
+                              {!commercial && <button type="button" onClick={() => annulerPret(l)} style={{ marginLeft: 8, background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>}
                             </span>
+                          ) : commercial ? (
+                            <span style={{ color: "#b45309", fontWeight: 700, fontSize: 12 }}>{l.depart === "sud" ? "Géré par Medina" : "À préparer"}</span>
                           ) : (
                             <button type="button" onClick={() => marquerPret(l)} style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Prêt</button>
                           )}

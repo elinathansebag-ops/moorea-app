@@ -51,6 +51,7 @@ const YukonApp = chargerModule(() => import("./YukonApp"), "YukonApp");
 const TachesModule = chargerModule(() => import("./TachesModule"), "TachesModule");
 const RackModule = chargerModule(() => import("./RackModule"), "RackModule");
 const StattModule = chargerModule(() => import("./StattModule"), "StattModule");
+const LidlModule = chargerModule(() => import("./LidlModule"), "LidlModule");
 const StatsAchatsModule = chargerModule(() => import("./StatsAchatsModule"), "StatsAchatsModule");
 const PrestatairesModule = chargerModule(() => import("./PrestatairesModule"), "PrestatairesModule");
 const ReconditionnementModule = chargerModule(() => import("./ReconditionnementModule"), "ReconditionnementModule");
@@ -510,6 +511,7 @@ export default function App() {
   const [rackAutoConfig, setRackAutoConfig] = useState(false);
   const [showStatt, setShowStatt] = useState(false);
   const [showStatsAchats, setShowStatsAchats] = useState(false);
+  const [showLidl, setShowLidl] = useState(false);
   const [showPrestataires, setShowPrestataires] = useState(false);
   const [showChargement, setShowChargement] = useState(false);
   // 07/09/2026 — Fusion des Configuration (demande d'Elinathan) : quand on clique "Ouvrir
@@ -610,7 +612,7 @@ export default function App() {
     if (!prechargementPret) return;
     const parModule: [string, any][] = [
       ["reconditionnement", ReconditionnementModule], ["preparation", PreparationModule], ["prestataires", PrestatairesModule],
-      ["stock", StockApp], ["retours", RetoursModule], ["messagerie", MessagerieModule], ["appro", ApproModule],
+      ["stock", StockApp], ["retours", RetoursModule], ["lidl", LidlModule], ["messagerie", MessagerieModule], ["appro", ApproModule],
       ["gencodes", GencodeModule], ["catalogue", CatalogueModule], ["etiquettes", EtiquetteModule], ["rack", RackModule],
       ["chargement", ChargementModule], ["taches", TachesModule], ["qualite", RecapQualiteModule], ["statt", StattModule],
       ["rh", RHApp], ["yukon", YukonApp], ["dashboard_tv", DashboardModule], ["qrcode", QrCodeDashboard],
@@ -3444,6 +3446,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <DashboardModule arrivages={arrivages} onClose={() => { setShowDashboard(false); setShowAccueil(true); }} />;
   }
 
+  // 02/10/2026 — Module « Commandes Lidl » (commercial) : import du tableau de répartition Lidl.
+  if (showLidl) {
+    if (!monAcces.hasModule("lidl")) return <AccesRefuse onRetour={() => { setShowLidl(false); setShowAccueil(true); }} />;
+    return <LidlModule onClose={() => { setShowLidl(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
+  }
+
   // 01/10/2026 — Module « Stats achats » : réservé aux admins (import manuel des exports Excel).
   if (showStatsAchats) {
     if (!monAcces.isAdmin) return <AccesRefuse onRetour={() => { setShowStatsAchats(false); setShowAccueil(true); }} />;
@@ -3650,6 +3658,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     // actions d'entrepôt (quai/manutention), la dernière (row2Bureau) des actions de bureau
     // (suivi administratif/commercial) — on les sépare visuellement avec un sous-titre dédié.
     const row2Entrepot = [
+      { key: "lidl", icon: "🛒", label: "Commandes Lidl", color: "#0050aa", badge: null, stat: "Tableau de répartition du jour", action: () => { setShowAccueil(false); setShowLidl(true); } },
       { key: "retours", icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { key: "preparation", icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
       { key: "rack", icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
