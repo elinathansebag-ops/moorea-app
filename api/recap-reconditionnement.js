@@ -296,6 +296,8 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
     const parTransporteur = {};
     enAttente.forEach(d => {
       if (!d.transporteurId) return;
+      // 02/10/2026 — Transport assuré par Moorea elle-même : aucun mail à envoyer.
+      if (/moorea/i.test(d.transporteurNom || "") || /moorea/i.test(transporteursData[d.transporteurId]?.nom || "")) return;
       if (!parTransporteur[d.transporteurId]) parTransporteur[d.transporteurId] = [];
       parTransporteur[d.transporteurId].push(d);
     });

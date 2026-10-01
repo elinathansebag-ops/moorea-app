@@ -25,7 +25,8 @@ export function BarreMailsRecond({ depot, label, demandes, stockActuel, onResult
   const tousEnvoyes = actives.every(d => d.emailEnvoye === true);
   const aucunEnvoye = actives.every(d => d.emailEnvoye !== true);
   const tsTransp = Math.max(0, ...actives.map(d => d.mailTransporteurTs || 0));
-  const aTransporteur = actives.some(d => d.transporteurId);
+  // Transport Moorea : pas de mail d'annonce (c'est nous).
+  const aTransporteur = actives.some(d => d.transporteurId && !/moorea/i.test(d.transporteurNom || ""));
 
   async function renvoyer(mode: "reconditionneur" | "transporteur") {
     const nom = mode === "reconditionneur" ? `le mail à ${label}` : "l'annonce transport";
