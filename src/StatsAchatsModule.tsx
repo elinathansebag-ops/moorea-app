@@ -11,7 +11,7 @@ import { PageHeader } from "./shared";
 // donc réimporter le même fichier ou une période qui chevauche sans jamais créer de doublon.
 // Ce module est isolé : il ne lit ni ne modifie aucune autre donnée de l'app (stocks, IFCO…).
 
-type Ligne = { f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number };
+type Ligne = { f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number; pc: number; kg: number; sa?: number };
 type LigneJour = Ligne & { d: string };
 type Dim = "f" | "a" | "fam" | "c";
 type Onglet = "f" | "fam" | "a" | "c" | "evo";
@@ -39,7 +39,7 @@ function cle(s: string, g: Granularite): string {
   return g === "jour" ? s : g === "semaine" ? lundi(s) : s.slice(0, 7);
 }
 
-type Agg = { nom: string; col: number; ach: number; ven: number; res: number; nb: number };
+type Agg = { nom: string; col: number; ach: number; ven: number; res: number; pc: number; kg: number; sa: number; nb: number };
 
 export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [donnees, setDonnees] = useState<LigneJour[]>([]);
@@ -52,6 +52,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
   const [recherche, setRecherche] = useState("");
   const [tri, setTri] = useState<{ k: keyof Agg | "marge" | "pct"; desc: boolean }>({ k: "ven", desc: true });
   const [filtres, setFiltres] = useState<Partial<Record<Dim, string>>>({});
+  const [montants, setMontants] = useState(false);
   const [gran, setGran] = useState<Granularite>("semaine");
   const [import_, setImport] = useState<{ etat: string; progression: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,7 +68,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
         const liste: any[] = Array.isArray(arr) ? arr : Object.values(arr || {});
         for (const r of liste) {
           if (!r) continue;
-          out.push({ d, f: r.f || "", c: r.c || "", a: r.a || "", fam: r.fam || "", g: r.g || "", col: r.col || 0, ach: r.ach || 0, ven: r.ven || 0, res: typeof r.res === "number" ? r.res : (r.ven || 0) - (r.ach || 0) });
+          out.push({ d, f: r.f || "", c: r.c || "", a: r.a || "", fam: r.fam || "", g: r.g || "", col: r.col || 0, ach: r.ach || 0, ven: r.ven || 0, res: typeof r.res === "number" ? r.res : (r.ven || 0) - (r.ach || 0), pc: r.pc || 0, kg: r.kg || 0, sa: r.sa ? 1 : 0 });
         }
       }
       setDonnees(out);
@@ -97,13 +98,21 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
       if (lignes.length < 2) throw new Error("Fichier vide.");
       const entetes = lignes[0].map(h => txt(h).toLowerCase());
       const idx = (...noms: string[]) => entetes.findIndex(h => noms.some(n => h === n || h.startsWith(n)));
-      const iF = idx("tri par fournisseur"), iC = idx("tri par client"), iD = idx("tri par date"), iA = idx("tri par article");
-      const iCol = idx("colis vendus"), iAch = idx("mt achat"), iVen = idx("mt vente"), iRes = idx("resultat", "résultat"), iFam = idx("famille"), iG = idx("gamme");
-      if (entetes.includes("n° vente") && entetes.includes("mt achats")) {
-        throw new Error("Ce fichier est l'export des VENTES détaillées : il ne contient aucun montant d'achat (colonne « Mt achats » vide), donc impossible d'en tirer des marges, et importer ses jours effacerait les achats déjà enregistrés. Importe plutôt un export « Résultat par ligne » (comme ooo.xlsx) qui couvre la même période.");
-      }
-      if ([iF, iC, iD, iA, iCol, iAch, iVen].some(i => i < 0)) {
-        throw new Error("Ce fichier n'a pas les colonnes attendues (Tri par Fournisseur / Client / Date de livraison / Article, Colis vendus, Mt achat, Mt vente). Utilise l'export « Résultat par ligne ».");
+      // Deux formats acceptés : « Résultat par ligne » (achats + marge) ou « Ventes » détaillées
+      // (quantités : colis, pièces, poids net — sans montant d'achat).
+      const formatVentes = entetes.includes("n° vente") && entetes.includes("nom client");
+      const iF = formatVentes ? idx("fournisseur") : idx("tri par fournisseur");
+      const iC = formatVentes ? idx("nom client") : idx("tri par client");
+      const iD = formatVentes ? idx("date liv") : idx("tri par date");
+      const iA = formatVentes ? idx("article") : idx("tri par article");
+      const iCol = formatVentes ? idx("nb colis") : idx("colis vendus");
+      const iAch = formatVentes ? -1 : idx("mt achat");
+      const iVen = formatVentes ? idx("mt ventes") : idx("mt vente");
+      const iRes = formatVentes ? -1 : idx("resultat", "résultat");
+      const iPc = formatVentes ? idx("nb pi") : -1, iKg = formatVentes ? idx("poids net") : -1;
+      const iFam = idx("famille"), iG = idx("gamme"), iNV = formatVentes ? idx("n° vente") : -1;
+      if ([iF, iC, iD, iA, iCol, iVen].some(i => i < 0) || (!formatVentes && iAch < 0)) {
+        throw new Error("Ce fichier n'a pas les colonnes attendues. Utilise l'export « Résultat par ligne » ou l'export « Ventes » (Fournisseur, Nom client, Date liv., Article, Nb Colis…).");
       }
       setImport({ etat: "Regroupement par jour…", progression: 20 });
       const jours = new Map<string, Map<string, Ligne>>();
@@ -114,14 +123,16 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
         let d = "";
         if (dt instanceof Date && !isNaN(dt.getTime())) d = iso(new Date(dt.getTime() + 12 * 3600 * 1000)); // +12 h : évite un décalage d'un jour dû au fuseau
         else if (typeof dt === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(dt.trim())) d = dt.trim().split("/").reverse().join("-");
-        if (!d || !txt(r[iF])) { ignorees++; continue; }
+        if (!d || !txt(r[iF]) || (formatVentes && !txt(r[iNV]))) { ignorees++; continue; }
         const f = txt(r[iF]), c = txt(r[iC]), a = txt(r[iA]);
         const m = jours.get(d) || new Map<string, Ligne>();
         const k = f + "\u0001" + c + "\u0001" + a;
-        const ex = m.get(k) || { f, c, a, fam: iFam >= 0 ? txt(r[iFam]) : "", g: iG >= 0 ? txt(r[iG]) : "", col: 0, ach: 0, ven: 0, res: 0 };
-        ex.res += iRes >= 0 ? nombre(r[iRes]) : nombre(r[iVen]) - nombre(r[iAch]);
+        const ex = m.get(k) || { f, c, a, fam: iFam >= 0 ? txt(r[iFam]) : "", g: iG >= 0 ? txt(r[iG]) : "", col: 0, ach: 0, ven: 0, res: 0, pc: 0, kg: 0, sa: formatVentes ? 1 : 0 };
+        if (!formatVentes) ex.res += iRes >= 0 ? nombre(r[iRes]) : nombre(r[iVen]) - nombre(r[iAch]);
         ex.col += nombre(r[iCol]);
-        ex.ach += nombre(r[iAch]);
+        if (iAch >= 0) ex.ach += nombre(r[iAch]);
+        if (iPc >= 0) ex.pc += nombre(r[iPc]);
+        if (iKg >= 0) ex.kg += nombre(r[iKg]);
         ex.ven += nombre(r[iVen]);
         m.set(k, ex);
         jours.set(d, m);
@@ -136,7 +147,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
       let faits = 0;
       for (const p of paquets) {
         const maj: Record<string, any> = {};
-        for (const d of p) maj["stats_achats/jours/" + d] = [...jours.get(d)!.values()].map(l => ({ ...l, col: arrondi(l.col), ach: arrondi(l.ach), ven: arrondi(l.ven), res: arrondi(l.res) }));
+        for (const d of p) maj["stats_achats/jours/" + d] = [...jours.get(d)!.values()].map(l => ({ ...l, col: arrondi(l.col), ach: arrondi(l.ach), ven: arrondi(l.ven), res: arrondi(l.res), pc: arrondi(l.pc), kg: arrondi(l.kg), sa: l.sa ? 1 : 0 }));
         await update(ref(db), maj);
         faits += p.length;
         setImport({ etat: `Envoi ${faits}/${dates.length} jours…`, progression: 20 + Math.round((faits / dates.length) * 75) });
@@ -158,15 +169,15 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
     (!filtres.f || l.f === filtres.f) && (!filtres.fam || l.fam === filtres.fam) && (!filtres.a || l.a === filtres.a) && (!filtres.c || l.c === filtres.c)
   ), [donnees, debut, fin, filtres]);
 
-  const total = useMemo(() => filtrees.reduce((t, l) => ({ col: t.col + l.col, ach: t.ach + l.ach, ven: t.ven + l.ven, res: t.res + l.res }), { col: 0, ach: 0, ven: 0, res: 0 }), [filtrees]);
+  const total = useMemo(() => filtrees.reduce((t, l) => ({ col: t.col + l.col, ach: t.ach + l.ach, ven: t.ven + l.ven, res: t.res + l.res, pc: t.pc + l.pc, kg: t.kg + l.kg, sa: t.sa + (l.sa ? 1 : 0) }), { col: 0, ach: 0, ven: 0, res: 0, pc: 0, kg: 0, sa: 0 }), [filtrees]);
 
   const groupes = useMemo(() => {
     if (onglet === "evo") return [] as Agg[];
     const m = new Map<string, Agg>();
     for (const l of filtrees) {
       const nom = (l[onglet as Dim] || "(vide)");
-      const g = m.get(nom) || { nom, col: 0, ach: 0, ven: 0, res: 0, nb: 0 };
-      g.col += l.col; g.ach += l.ach; g.ven += l.ven; g.res += l.res; g.nb++;
+      const g = m.get(nom) || { nom, col: 0, ach: 0, ven: 0, res: 0, pc: 0, kg: 0, sa: 0, nb: 0 };
+      g.col += l.col; g.ach += l.ach; g.ven += l.ven; g.res += l.res; g.pc += l.pc; g.kg += l.kg; g.sa += l.sa ? 1 : 0; g.nb++;
       m.set(nom, g);
     }
     const q = recherche.trim().toLowerCase();
@@ -185,14 +196,14 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
     const m = new Map<string, Agg>();
     for (const l of filtrees) {
       const k = cle(l.d, gran);
-      const g = m.get(k) || { nom: k, col: 0, ach: 0, ven: 0, res: 0, nb: 0 };
-      g.col += l.col; g.ach += l.ach; g.ven += l.ven; g.res += l.res; g.nb++;
+      const g = m.get(k) || { nom: k, col: 0, ach: 0, ven: 0, res: 0, pc: 0, kg: 0, sa: 0, nb: 0 };
+      g.col += l.col; g.ach += l.ach; g.ven += l.ven; g.res += l.res; g.pc += l.pc; g.kg += l.kg; g.sa += l.sa ? 1 : 0; g.nb++;
       m.set(k, g);
     }
     return [...m.values()].sort((a, b) => a.nom.localeCompare(b.nom));
   }, [filtrees, onglet, gran]);
 
-  const maxEvo = Math.max(1, ...evolution.map(e => Math.max(e.ven, e.ach)));
+  const maxCol = Math.max(1, ...evolution.map(e => e.col));
   const dernierFiltre = (Object.keys(filtres) as Dim[]).filter(k => filtres[k]);
 
   function clic(nom: string) {
@@ -216,6 +227,19 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
   }
 
   const marge = total.res;
+  // Périodes déjà importées : jours présents regroupés en plages (nouvelle plage si trou de plus de 3 jours).
+  const plagesImportees = useMemo(() => {
+    const jours = [...new Set(donnees.map(l => l.d))].sort();
+    const out: { du: string; au: string; nb: number; sansAchat: boolean }[] = [];
+    const sa = new Set(donnees.filter(l => l.sa).map(l => l.d));
+    for (const j of jours) {
+      const der = out[out.length - 1];
+      const ecart = der ? (new Date(j + "T12:00:00").getTime() - new Date(der.au + "T12:00:00").getTime()) / 86400000 : 99;
+      if (der && ecart <= 3) { der.au = j; der.nb++; der.sansAchat = der.sansAchat || sa.has(j); }
+      else out.push({ du: j, au: j, nb: 1, sansAchat: sa.has(j) });
+    }
+    return out;
+  }, [donnees]);
   const carte = (titre: string, val: string, sous?: string, couleur = "#111827") => (
     <div style={{ flex: "1 1 140px", background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "10px 14px" }}>
       <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 700 }}>{titre}</div>
@@ -241,6 +265,16 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
               {meta
                 ? <>Dernier import : <b>{new Date(meta.dernierImport).toLocaleString("fr-FR")}</b> {meta.par ? `par ${meta.par}` : ""} — {meta.fichier} ({(meta.lignes || 0).toLocaleString("fr-FR")} lignes, du {dateFr(meta.du)} au {dateFr(meta.au)})</>
                 : "Aucune donnée pour l'instant. Importe ton export Excel (« Résultat par ligne »)."}
+              {plagesImportees.length > 0 && (
+                <div style={{ marginTop: 6, fontSize: 12.5, color: "#374151" }}>
+                  <b>📅 Période déjà importée :</b>{" "}
+                  {plagesImportees.map((p, i) => (
+                    <span key={i} style={{ display: "inline-block", background: "#ede9fe", color: "#5b21b6", borderRadius: 14, padding: "2px 10px", margin: "2px 6px 2px 0", fontWeight: 700 }}>
+                      du {dateFr(p.du)} au {dateFr(p.au)} ({p.nb} jour{p.nb > 1 ? "s" : ""} de livraison){p.sansAchat ? " · quantités seules" : ""}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Réimporter une période déjà présente la remplace : pas de doublons.</div>
             </div>
             <div>
@@ -273,6 +307,9 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
               <span>→</span>
               <input type="date" value={fin} onChange={e => setFin(e.target.value)} style={{ padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8 }} />
               {periodes.map(p => <button key={p.l} type="button" onClick={() => preset(p.n)} style={{ padding: "6px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.l}</button>)}
+              <label style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#374151", cursor: "pointer" }}>
+                <input type="checkbox" checked={montants} onChange={e => setMontants(e.target.checked)} style={{ marginRight: 6 }} />💶 Afficher les montants
+              </label>
               <button type="button" onClick={() => preset("tout")} style={{ padding: "6px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Tout</button>
             </div>
 
@@ -291,10 +328,13 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
 
             {/* Totaux */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-              {carte("Colis vendus", ent(total.col))}
-              {carte("Achats", eur(total.ach))}
-              {carte("Ventes", eur(total.ven))}
-              {carte("Marge nette", eur(marge), total.ven ? pct((marge / total.ven) * 100) + " des ventes (après frais)" : undefined, marge >= 0 ? "#15803d" : "#b91c1c")}
+              {carte("Colis", ent(total.col))}
+              {total.kg > 0 && carte("Poids net", ent(total.kg) + " kg")}
+              {total.pc > 0 && carte("Pièces", ent(total.pc))}
+              {carte("Jours avec livraisons", String(new Set(filtrees.map(l => l.d)).size))}
+              {montants && carte("Achats", eur(total.ach))}
+              {montants && carte("Ventes", eur(total.ven))}
+              {montants && carte("Marge nette", eur(marge), total.sa > 0 ? "⚠️ incomplète : " + ent(total.sa) + " lignes sans prix d'achat" : total.ven ? pct((marge / total.ven) * 100) + " des ventes (après frais)" : undefined, marge >= 0 ? "#15803d" : "#b91c1c")}
             </div>
 
             {/* Onglets */}
@@ -314,7 +354,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                     <thead>
                       <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
-                        {th(COL_TITRES[onglet as Dim], "nom", false)}{th("Colis", "col")}{th("Achats", "ach")}{th("Ventes", "ven")}{th("Marge nette €", "marge")}{th("Marge %", "pct")}{th("Prix achat/colis", "ach")}
+                        {th(COL_TITRES[onglet as Dim], "nom", false)}{th("Colis", "col")}{th("Poids net kg", "kg")}{th("Pièces", "pc")}{montants && <>{th("Achats", "ach")}{th("Ventes", "ven")}{th("Marge nette €", "marge")}{th("Marge %", "pct")}{th("Prix achat/colis", "ach")}</>}
                       </tr>
                     </thead>
                     <tbody>
@@ -324,11 +364,15 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
                           <tr key={g.nom} onClick={() => clic(g.nom)} style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer" }}>
                             <td style={{ padding: "7px 8px", fontWeight: 600, maxWidth: 360 }}>{g.nom}</td>
                             <td style={{ padding: "7px 8px", textAlign: "right" }}>{ent(g.col)}</td>
-                            <td style={{ padding: "7px 8px", textAlign: "right" }}>{eur(g.ach)}</td>
-                            <td style={{ padding: "7px 8px", textAlign: "right" }}>{eur(g.ven)}</td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: m >= 0 ? "#15803d" : "#b91c1c" }}>{eur(m)}</td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", color: m >= 0 ? "#15803d" : "#b91c1c" }}>{g.ven ? pct((m / g.ven) * 100) : "—"}</td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", color: "#6b7280" }}>{g.col ? eur2(g.ach / g.col) : "—"}</td>
+                            <td style={{ padding: "7px 8px", textAlign: "right" }}>{g.kg ? ent(g.kg) : "—"}</td>
+                            <td style={{ padding: "7px 8px", textAlign: "right" }}>{g.pc ? ent(g.pc) : "—"}</td>
+                            {montants && <>
+                              <td style={{ padding: "7px 8px", textAlign: "right" }}>{eur(g.ach)}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right" }}>{eur(g.ven)}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: m >= 0 ? "#15803d" : "#b91c1c" }}>{eur(m)}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", color: m >= 0 ? "#15803d" : "#b91c1c" }}>{g.ven ? pct((m / g.ven) * 100) : "—"}</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", color: "#6b7280" }}>{g.col ? eur2(g.ach / g.col) : "—"}</td>
+                            </>}
                           </tr>
                         );
                       })}
@@ -351,11 +395,10 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
                       <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
                         <th style={{ padding: 8, textAlign: "left" }}>{gran === "semaine" ? "Semaine du" : gran === "mois" ? "Mois" : "Jour"}</th>
                         <th style={{ padding: 8, textAlign: "right" }}>Colis</th>
-                        <th style={{ padding: 8, textAlign: "right" }}>Achats</th>
-                        <th style={{ padding: 8, textAlign: "right" }}>Ventes</th>
-                        <th style={{ padding: 8, textAlign: "right" }}>Marge %</th>
-                        <th style={{ padding: 8, textAlign: "right" }}>Prix achat/colis</th>
-                        <th style={{ padding: 8, minWidth: 160 }}>Achats (gris) / ventes (violet)</th>
+                        <th style={{ padding: 8, textAlign: "right" }}>Poids net kg</th>
+                        <th style={{ padding: 8, textAlign: "right" }}>Pièces</th>
+                        {montants && <><th style={{ padding: 8, textAlign: "right" }}>Achats</th><th style={{ padding: 8, textAlign: "right" }}>Ventes</th><th style={{ padding: 8, textAlign: "right" }}>Marge %</th><th style={{ padding: 8, textAlign: "right" }}>Prix achat/colis</th></>}
+                        <th style={{ padding: 8, minWidth: 160 }}>Colis</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -366,13 +409,16 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
                           <tr key={e.nom} style={{ borderBottom: "1px solid #f3f4f6" }}>
                             <td style={{ padding: "6px 8px", fontWeight: 600, whiteSpace: "nowrap" }}>{gran === "mois" ? e.nom.split("-").reverse().join("/") : dateFr(e.nom)}</td>
                             <td style={{ padding: "6px 8px", textAlign: "right" }}>{ent(e.col)}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{eur(e.ach)}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{eur(e.ven)}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", color: m >= 0 ? "#15803d" : "#b91c1c" }}>{e.ven ? pct((m / e.ven) * 100) : "—"}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", color: "#6b7280" }}>{e.col ? eur2(pa) : "—"}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{e.kg ? ent(e.kg) : "—"}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{e.pc ? ent(e.pc) : "—"}</td>
+                            {montants && <>
+                              <td style={{ padding: "6px 8px", textAlign: "right" }}>{eur(e.ach)}</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right" }}>{eur(e.ven)}</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right", color: m >= 0 ? "#15803d" : "#b91c1c" }}>{e.ven ? pct((m / e.ven) * 100) : "—"}</td>
+                              <td style={{ padding: "6px 8px", textAlign: "right", color: "#6b7280" }}>{e.col ? eur2(pa) : "—"}</td>
+                            </>}
                             <td style={{ padding: "6px 8px" }}>
-                              <div style={{ height: 6, background: "#9ca3af", width: Math.max(0, (e.ach / maxEvo) * 100) + "%", borderRadius: 3, marginBottom: 2 }} />
-                              <div style={{ height: 6, background: "#7c3aed", width: Math.max(0, (e.ven / maxEvo) * 100) + "%", borderRadius: 3 }} />
+                              <div style={{ height: 8, background: "#7c3aed", width: Math.max(0, (e.col / maxCol) * 100) + "%", borderRadius: 3 }} />
                             </td>
                           </tr>
                         );
