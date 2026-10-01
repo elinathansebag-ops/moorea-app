@@ -1488,6 +1488,19 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // action physique d'entrepôt — donc le bouton revient ici, sur l'onglet "En cours", et est
   // retiré de Préparation. Logique identique à envoyerRecapDuJour dans PreparationModule.tsx.
   const [envoiRecapEnCours, setEnvoiRecapEnCours] = useState<Record<Depot, boolean>>({ nlt: false, andes: false });
+  // 01/10/2026 — Demande d'Elinathan : quand le récap automatique échoue (mail refusé, compte
+  // d'envoi en panne…), la raison restait seulement dans une notification qui disparaît, et les
+  // demandes restaient « pas encore envoyées » sans explication. On garde maintenant le dernier
+  // résultat d'envoi par dépôt (reconditionnement_dernier_envoi/{dépôt}) et on l'affiche dans le
+  // bandeau orange, même après rechargement de la page.
+  const [dernierEnvoiRecap, setDernierEnvoiRecap] = useState<Record<string, { ok: boolean; message: string; ts: number } | undefined>>({});
+  useEffect(() => {
+    const u = onValue(ref(db, "reconditionnement_dernier_envoi"), snap => setDernierEnvoiRecap(snap.val() || {}));
+    return () => u();
+  }, []);
+  function noterDernierEnvoiRecap(dep: Depot, ok: boolean, message: string) {
+    update(ref(db, `reconditionnement_dernier_envoi/${dep}`), { ok, message: message.slice(0, 400), ts: Date.now() }).catch(() => {});
+  }
   // 28/08/2026 — Détail des demandes pas encore envoyées (voir bandeau ci-dessous) : replié par
   // défaut, juste un compteur ; ce Set retient quels dépôts sont dépliés pour voir la liste et
   // pouvoir en supprimer une avant l'envoi du récap.
@@ -1515,6 +1528,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       if (!res.ok) throw new Error(data?.error || texte.slice(0, 200) || `Erreur ${res.status}`);
       if (!data) throw new Error("Réponse invalide du serveur");
       if (data.envoye) {
+        noterDernierEnvoiRecap(dep, !data.rejected?.length, data.rejected?.length ? `Refusé par ${data.rejected.join(", ")}` : `${data.nb} bon(s) envoyé(s)`);
         // Une notif par mail : reconditionneur puis chaque transporteur.
         toast(data.rejected?.length ? "error" : "success", `📧 ${DEPOT_LABEL[dep]} : ${data.nb} bon${data.nb > 1 ? "s" : ""} envoyé${data.nb > 1 ? "s" : ""} à ${data.accepted?.join(", ") || "?"}${data.rejected?.length ? ` — ⚠️ refusé par ${data.rejected.join(", ")}` : ""}`);
         for (const t of (data.transporteurEmails || [])) {
@@ -1531,6 +1545,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         notify("success", `Rien à envoyer pour ${DEPOT_LABEL[dep]} pour l'instant`);
       }
     } catch (err: any) {
+      noterDernierEnvoiRecap(dep, false, err?.message || "erreur inconnue");
       toast("error", `📧 ${DEPOT_LABEL[dep]} : mail NON envoyé — ${err?.message || "erreur inconnue"}`);
     } finally {
       setEnvoiRecapEnCours(prev => ({ ...prev, [dep]: false }));
@@ -3822,6 +3837,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       {envoiRecapEnCours[dep] ? "Envoi..." : `Envoyer le récap à ${DEPOT_LABEL[dep]}`}
                     </button>
                   </div>
+                  {dernierEnvoiRecap[dep] && !dernierEnvoiRecap[dep]!.ok && (
+                    <div style={{ marginTop: 8, background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c", borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 600 }}>
+                      ⚠️ Le dernier envoi automatique a échoué ({new Date(dernierEnvoiRecap[dep]!.ts).toLocaleString("fr-FR")}) : {dernierEnvoiRecap[dep]!.message}
+                    </div>
+                  )}
                   {detailOuvert && (
                     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
                       {demandesEnAttenteEnvoi.map(d => (
