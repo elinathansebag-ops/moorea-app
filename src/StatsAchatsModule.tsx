@@ -11,7 +11,7 @@ import { PageHeader } from "./shared";
 // donc réimporter le même fichier ou une période qui chevauche sans jamais créer de doublon.
 // Ce module est isolé : il ne lit ni ne modifie aucune autre donnée de l'app (stocks, IFCO…).
 
-type Ligne = { f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number };
+type Ligne = { f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number };
 type LigneJour = Ligne & { d: string };
 type Dim = "f" | "a" | "fam" | "c";
 type Onglet = "f" | "fam" | "a" | "c" | "evo";
@@ -39,7 +39,7 @@ function cle(s: string, g: Granularite): string {
   return g === "jour" ? s : g === "semaine" ? lundi(s) : s.slice(0, 7);
 }
 
-type Agg = { nom: string; col: number; ach: number; ven: number; nb: number };
+type Agg = { nom: string; col: number; ach: number; ven: number; res: number; nb: number };
 
 export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
   const [donnees, setDonnees] = useState<LigneJour[]>([]);
@@ -67,7 +67,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
         const liste: any[] = Array.isArray(arr) ? arr : Object.values(arr || {});
         for (const r of liste) {
           if (!r) continue;
-          out.push({ d, f: r.f || "", c: r.c || "", a: r.a || "", fam: r.fam || "", g: r.g || "", col: r.col || 0, ach: r.ach || 0, ven: r.ven || 0 });
+          out.push({ d, f: r.f || "", c: r.c || "", a: r.a || "", fam: r.fam || "", g: r.g || "", col: r.col || 0, ach: r.ach || 0, ven: r.ven || 0, res: typeof r.res === "number" ? r.res : (r.ven || 0) - (r.ach || 0) });
         }
       }
       setDonnees(out);
@@ -98,7 +98,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
       const entetes = lignes[0].map(h => txt(h).toLowerCase());
       const idx = (...noms: string[]) => entetes.findIndex(h => noms.some(n => h === n || h.startsWith(n)));
       const iF = idx("tri par fournisseur"), iC = idx("tri par client"), iD = idx("tri par date"), iA = idx("tri par article");
-      const iCol = idx("colis vendus"), iAch = idx("mt achat"), iVen = idx("mt vente"), iFam = idx("famille"), iG = idx("gamme");
+      const iCol = idx("colis vendus"), iAch = idx("mt achat"), iVen = idx("mt vente"), iRes = idx("resultat", "résultat"), iFam = idx("famille"), iG = idx("gamme");
       if ([iF, iC, iD, iA, iCol, iAch, iVen].some(i => i < 0)) {
         throw new Error("Ce fichier n'a pas les colonnes attendues (Tri par Fournisseur / Client / Date de livraison / Article, Colis vendus, Mt achat, Mt vente). Utilise l'export « Résultat par ligne ».");
       }
@@ -115,7 +115,8 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
         const f = txt(r[iF]), c = txt(r[iC]), a = txt(r[iA]);
         const m = jours.get(d) || new Map<string, Ligne>();
         const k = f + "\u0001" + c + "\u0001" + a;
-        const ex = m.get(k) || { f, c, a, fam: iFam >= 0 ? txt(r[iFam]) : "", g: iG >= 0 ? txt(r[iG]) : "", col: 0, ach: 0, ven: 0 };
+        const ex = m.get(k) || { f, c, a, fam: iFam >= 0 ? txt(r[iFam]) : "", g: iG >= 0 ? txt(r[iG]) : "", col: 0, ach: 0, ven: 0, res: 0 };
+        ex.res += iRes >= 0 ? nombre(r[iRes]) : nombre(r[iVen]) - nombre(r[iAch]);
         ex.col += nombre(r[iCol]);
         ex.ach += nombre(r[iAch]);
         ex.ven += nombre(r[iVen]);
@@ -132,7 +133,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
       let faits = 0;
       for (const p of paquets) {
         const maj: Record<string, any> = {};
-        for (const d of p) maj["stats_achats/jours/" + d] = [...jours.get(d)!.values()].map(l => ({ ...l, col: arrondi(l.col), ach: arrondi(l.ach), ven: arrondi(l.ven) }));
+        for (const d of p) maj["stats_achats/jours/" + d] = [...jours.get(d)!.values()].map(l => ({ ...l, col: arrondi(l.col), ach: arrondi(l.ach), ven: arrondi(l.ven), res: arrondi(l.res) }));
         await update(ref(db), maj);
         faits += p.length;
         setImport({ etat: `Envoi ${faits}/${dates.length} jours…`, progression: 20 + Math.round((faits / dates.length) * 75) });
@@ -154,20 +155,20 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
     (!filtres.f || l.f === filtres.f) && (!filtres.fam || l.fam === filtres.fam) && (!filtres.a || l.a === filtres.a) && (!filtres.c || l.c === filtres.c)
   ), [donnees, debut, fin, filtres]);
 
-  const total = useMemo(() => filtrees.reduce((t, l) => ({ col: t.col + l.col, ach: t.ach + l.ach, ven: t.ven + l.ven }), { col: 0, ach: 0, ven: 0 }), [filtrees]);
+  const total = useMemo(() => filtrees.reduce((t, l) => ({ col: t.col + l.col, ach: t.ach + l.ach, ven: t.ven + l.ven, res: t.res + l.res }), { col: 0, ach: 0, ven: 0, res: 0 }), [filtrees]);
 
   const groupes = useMemo(() => {
     if (onglet === "evo") return [] as Agg[];
     const m = new Map<string, Agg>();
     for (const l of filtrees) {
       const nom = (l[onglet as Dim] || "(vide)");
-      const g = m.get(nom) || { nom, col: 0, ach: 0, ven: 0, nb: 0 };
-      g.col += l.col; g.ach += l.ach; g.ven += l.ven; g.nb++;
+      const g = m.get(nom) || { nom, col: 0, ach: 0, ven: 0, res: 0, nb: 0 };
+      g.col += l.col; g.ach += l.ach; g.ven += l.ven; g.res += l.res; g.nb++;
       m.set(nom, g);
     }
     const q = recherche.trim().toLowerCase();
     let liste = [...m.values()].filter(g => !q || g.nom.toLowerCase().includes(q));
-    const val = (g: Agg) => tri.k === "marge" ? g.ven - g.ach : tri.k === "pct" ? (g.ven ? (g.ven - g.ach) / g.ven : -1) : (g as any)[tri.k];
+    const val = (g: Agg) => tri.k === "marge" ? g.res : tri.k === "pct" ? (g.ven ? g.res / g.ven : -1) : (g as any)[tri.k];
     liste.sort((x, y) => {
       const a = val(x), b = val(y);
       const r = typeof a === "string" ? a.localeCompare(b) : a - b;
@@ -181,8 +182,8 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
     const m = new Map<string, Agg>();
     for (const l of filtrees) {
       const k = cle(l.d, gran);
-      const g = m.get(k) || { nom: k, col: 0, ach: 0, ven: 0, nb: 0 };
-      g.col += l.col; g.ach += l.ach; g.ven += l.ven; g.nb++;
+      const g = m.get(k) || { nom: k, col: 0, ach: 0, ven: 0, res: 0, nb: 0 };
+      g.col += l.col; g.ach += l.ach; g.ven += l.ven; g.res += l.res; g.nb++;
       m.set(k, g);
     }
     return [...m.values()].sort((a, b) => a.nom.localeCompare(b.nom));
@@ -211,7 +212,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
     setDebut(iso(dd)); setFin(f);
   }
 
-  const marge = total.ven - total.ach;
+  const marge = total.res;
   const carte = (titre: string, val: string, sous?: string, couleur = "#111827") => (
     <div style={{ flex: "1 1 140px", background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "10px 14px" }}>
       <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 700 }}>{titre}</div>
@@ -290,7 +291,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
               {carte("Colis vendus", ent(total.col))}
               {carte("Achats", eur(total.ach))}
               {carte("Ventes", eur(total.ven))}
-              {carte("Marge", eur(marge), total.ven ? pct((marge / total.ven) * 100) + " des ventes" : undefined, marge >= 0 ? "#15803d" : "#b91c1c")}
+              {carte("Marge nette", eur(marge), total.ven ? pct((marge / total.ven) * 100) + " des ventes (après frais)" : undefined, marge >= 0 ? "#15803d" : "#b91c1c")}
             </div>
 
             {/* Onglets */}
@@ -310,12 +311,12 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                     <thead>
                       <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
-                        {th(COL_TITRES[onglet as Dim], "nom", false)}{th("Colis", "col")}{th("Achats", "ach")}{th("Ventes", "ven")}{th("Marge €", "marge")}{th("Marge %", "pct")}{th("Prix achat/colis", "ach")}
+                        {th(COL_TITRES[onglet as Dim], "nom", false)}{th("Colis", "col")}{th("Achats", "ach")}{th("Ventes", "ven")}{th("Marge nette €", "marge")}{th("Marge %", "pct")}{th("Prix achat/colis", "ach")}
                       </tr>
                     </thead>
                     <tbody>
                       {groupes.slice(0, 300).map(g => {
-                        const m = g.ven - g.ach;
+                        const m = g.res;
                         return (
                           <tr key={g.nom} onClick={() => clic(g.nom)} style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer" }}>
                             <td style={{ padding: "7px 8px", fontWeight: 600, maxWidth: 360 }}>{g.nom}</td>
@@ -356,7 +357,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
                     </thead>
                     <tbody>
                       {evolution.map(e => {
-                        const m = e.ven - e.ach;
+                        const m = e.res;
                         const pa = e.col ? e.ach / e.col : 0;
                         return (
                           <tr key={e.nom} style={{ borderBottom: "1px solid #f3f4f6" }}>
