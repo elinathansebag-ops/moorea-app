@@ -2287,6 +2287,66 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     await update(ref(db, `reconditionnement_demandes/${id}`), { pointageCompta: null });
   }
 
+  // ─── Correction d'une demande déjà terminée (« reçu ») ───
+  // 02/10/2026 — Demande d'Elinathan : pouvoir corriger une demande validée (quantités envoyées /
+  // reçues) et que le stock de caisses (ou cartons) de chacun se corrige tout seul. On calcule
+  // l'écart entre l'ancienne et la nouvelle valeur et on ne passe QUE cet écart sur le stock, avec
+  // une ligne de mouvement « Correction » pour garder la trace. Mêmes règles de stock que la
+  // création / le retour / la suppression d'une demande terminée (voir supprimerDemandeTerminee).
+  const [corrD, setCorrD] = useState<Demande | null>(null);
+  const [corrEnvoye, setCorrEnvoye] = useState("");
+  const [corrPleines, setCorrPleines] = useState("");
+  const [corrColis, setCorrColis] = useState("");
+  const [corrEnCours, setCorrEnCours] = useState(false);
+  function ouvrirCorrection(d: Demande) {
+    setCorrD(d);
+    setCorrEnvoye(String(d.depot === "nlt" ? (d.caissesIfcoEnvoyees || 0) : (d.cartonsBabyBlancEnvoyes || 0)));
+    setCorrPleines(String(d.retour?.caissesIfcoPleinesRecues || 0));
+    setCorrColis(String(d.retour?.nbColisRecus ?? 0));
+  }
+  async function enregistrerCorrection() {
+    const d = corrD; if (!d) return;
+    const nEnvoye = Math.max(0, Math.round(Number(corrEnvoye) || 0));
+    const nPleines = Math.max(0, Math.round(Number(corrPleines) || 0));
+    const nColis = Math.max(0, Math.round(Number(corrColis) || 0));
+    const ancienEnvoye = d.depot === "nlt" ? (d.caissesIfcoEnvoyees || 0) : (d.cartonsBabyBlancEnvoyes || 0);
+    const anciennesPleines = d.retour?.caissesIfcoPleinesRecues || 0;
+    const dEnvoye = nEnvoye - ancienEnvoye;
+    const dPleines = d.depot === "nlt" ? nPleines - anciennesPleines : 0;
+    setCorrEnCours(true);
+    try {
+      const { get } = await import("firebase/database");
+      if (d.depot === "nlt" && (dEnvoye !== 0 || dPleines !== 0)) {
+        const levels = (await get(ref(db, "ifco_stock/levels"))).val() || { moorea: 0, transit: 0, nlt: 0, pleines: 0 };
+        await update(ref(db, "ifco_stock/levels"), {
+          moorea: (levels.moorea || 0) - dEnvoye,
+          nlt: (levels.nlt || 0) + dEnvoye - dPleines,
+          pleines: (levels.pleines || 0) + dPleines,
+        });
+        const base = { date: nowFr(), reconditionnement_demande_id: d.id, user: userName || "Moorea", ts: Date.now() };
+        if (dEnvoye !== 0) await push(ref(db, "ifco_stock/movements"), { ...base, from: dEnvoye > 0 ? "moorea" : "nlt", to: dEnvoye > 0 ? "nlt" : "moorea", caisses: Math.abs(dEnvoye), raison: `Correction envoi — ${d.numero || d.id} (${ancienEnvoye} → ${nEnvoye})` });
+        if (dPleines !== 0) await push(ref(db, "ifco_stock/movements"), { ...base, from: dPleines > 0 ? "nlt" : "pleines", to: dPleines > 0 ? "pleines" : "nlt", caisses: Math.abs(dPleines), raison: `Correction retour pleines — ${d.numero || d.id} (${anciennesPleines} → ${nPleines})` });
+      }
+      if (d.depot === "andes" && dEnvoye !== 0) {
+        const stock = (await get(ref(db, "stock_carton_andes"))).val() || {};
+        await update(ref(db, "stock_carton_andes"), { baby_blanc: (stock.baby_blanc || 0) - dEnvoye });
+        await push(ref(db, "reconditionnement_stock_mouvements"), { type: "envoi_reconditionneur", article: "carton_baby_blanc", depot: "andes", quantite: dEnvoye, date: nowFr(), ts: Date.now(), reconditionnement_demande_id: d.id, correction: true });
+      }
+      const maj: Record<string, any> = {};
+      if (d.depot === "nlt") maj.caissesIfcoEnvoyees = nEnvoye; else maj.cartonsBabyBlancEnvoyes = nEnvoye;
+      maj["retour/nbColisRecus"] = nColis;
+      if (d.depot === "nlt") maj["retour/caissesIfcoPleinesRecues"] = nPleines;
+      await update(ref(db, `reconditionnement_demandes/${d.id}`), maj);
+      noterHistoriqueDemande(d.id, `Corrigée après réception : ${d.depot === "nlt" ? "caisses envoyées" : "cartons"} ${ancienEnvoye}→${nEnvoye}${d.depot === "nlt" ? `, pleines reçues ${anciennesPleines}→${nPleines}` : ""}, colis reçus ${d.retour?.nbColisRecus ?? 0}→${nColis}`, userName);
+      notify("success", `✅ ${d.numero || "Demande"} corrigée — stock mis à jour (${[dEnvoye ? `envoyées ${dEnvoye > 0 ? "+" : ""}${dEnvoye}` : "", dPleines ? `pleines ${dPleines > 0 ? "+" : ""}${dPleines}` : ""].filter(Boolean).join(", ") || "aucun écart de stock"})`);
+      setCorrD(null);
+    } catch (err: any) {
+      notify("error", `❌ Correction impossible : ${err?.message || "erreur"}`);
+    } finally {
+      setCorrEnCours(false);
+    }
+  }
+
   // ─── Nettoyage des demandes de test déjà terminées ("reçu") ───
   // Outil discret (Configuration → onglet caché), pas destiné à l'usage courant : sert à faire
   // disparaître les demandes de test créées pendant le développement, SANS fausser les stats de
@@ -3653,6 +3713,28 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         <ChargementEcran texte="Chargement des demandes de reconditionnement…" />
       )}
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px", display: (demandesRecondChargees === false || !stockIfcoCharge) ? "none" : undefined }}>
+        {corrD && (
+          <div onClick={() => !corrEnCours && setCorrD(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420, boxShadow: "0 10px 40px rgba(0,0,0,.3)" }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, marginBottom: 4 }}>✏️ Corriger {corrD.numero || corrD.id}</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14 }}>{corrD.articleVrac} → {corrD.articleFini}. Seul l'écart est appliqué au stock.</div>
+              {([
+                [corrD.depot === "nlt" ? "Caisses IFCO envoyées à NLT" : "Cartons BABY BLANC utilisés", corrEnvoye, setCorrEnvoye, true],
+                ["Colis reçus", corrColis, setCorrColis, true],
+                ["Caisses IFCO pleines reçues", corrPleines, setCorrPleines, corrD.depot === "nlt"],
+              ] as [string, string, (v: string) => void, boolean][]).filter(x => x[3]).map(([lib, val, set]) => (
+                <label key={lib} style={{ display: "block", marginBottom: 10, fontSize: 12, fontWeight: 700, color: COLORS.gray600 }}>
+                  {lib}
+                  <input type="number" min={0} value={val} onChange={e => set(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: "9px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 14, boxSizing: "border-box" }} />
+                </label>
+              ))}
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                <button disabled={corrEnCours} onClick={() => setCorrD(null)} style={{ padding: "9px 16px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                <button disabled={corrEnCours} onClick={enregistrerCorrection} style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontWeight: 800, cursor: "pointer" }}>{corrEnCours ? "..." : "Enregistrer"}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {notification && (
           <div style={{
             position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)", zIndex: 900,
@@ -4204,6 +4286,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                           }}
                           style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.danger}`, background: "#fff", color: COLORS.danger, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           🗑️ Supprimer (même terminé)
+                        </button>
+                        <button onClick={() => ouvrirCorrection(d)} style={{ padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${COLORS.primaryBorder}`, background: "#fff", color: COLORS.primary, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          ✏️ Corriger (stock mis à jour)
                         </button>
                       </div>
                     )}
