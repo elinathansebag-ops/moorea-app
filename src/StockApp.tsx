@@ -1944,6 +1944,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
                   : `<button class="btn btn-sm" style="margin-top:4px;border-color:#bfdbfe;color:#1d4ed8" onclick="sSaisirIfco('${sid}','${String(s.filename || "").replace(/'/g, "\\'")}')">📦 Saisir caisses IFCO vides</button>`}
               </div>
               <div class="stock-actions">
+                <button class="btn btn-sm" style="border-color:#bfdbfe;color:#1d4ed8" onclick="sConsulter('${sid}','${team}')">🔍 Consulter</button>
                 ${s.cloture ? "" : (canCompter ? `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>` : `<span style="font-size:11px;background:#f5f6f8;border:1px solid #e5e7eb;color:#9ca3af;padding:4px 10px;border-radius:8px;font-weight:600">🔒 Lecture seule</span>`)}
                 ${s.cloture
                   ? `<span style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 10px;border-radius:8px;font-weight:600">✓ Clôturé</span>
@@ -2885,6 +2886,80 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         } catch { toast("Erreur PDF"); }
       };
 
+
+      // 02/10/2026 — Demande d'Elinathan : pouvoir CONSULTER un stock (même déjà compté / clôturé) avec
+      // les mêmes cases à cocher d'écarts que la page Écarts. Lecture seule : charge le stock + son comptage
+      // dans une vue à part, sans toucher à allArticles / currentImportId (donc aucun risque pour un comptage
+      // en cours) et sans rien écrire dans Firestore ni modifier les règles de stock IFCO.
+      let consultArts: any[] = [];
+      const consultCase = (id: string, couleur: string, lib: string) => `<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:${couleur};cursor:pointer;padding:4px 8px"><span class="mrq-case-conteneur" style="--case-couleur:${couleur}"><input type="checkbox" class="mrq-case-native" id="${id}" checked onchange="sConsulterRender()"/><span class="mrq-case-visuelle"></span></span>${lib}</label>`;
+      (window as any).sConsulterRender = () => {
+        const coche = (id: string) => (document.getElementById(id) as HTMLInputElement | null)?.checked ?? true;
+        const q = ((document.getElementById("s-cons-srch") as HTMLInputElement | null)?.value || "").toLowerCase();
+        const cnt = consultArts.filter(a => a.c !== null);
+        const avec = cnt.filter(a => a.e !== 0);
+        const met = document.getElementById("s-cons-metrics");
+        if (met) met.innerHTML = `
+          <div class="stat-card green"><div class="num">${cnt.length - avec.length}</div><div class="lbl">Sans écart</div></div>
+          <div class="stat-card red"><div class="num">${avec.length}</div><div class="lbl">Avec écart</div></div>
+          <div class="stat-card amber"><div class="num">${cnt.filter(a => a.e > 0).length}</div><div class="lbl">Surplus</div></div>
+          <div class="stat-card red"><div class="num">${cnt.filter(a => a.e < 0).length}</div><div class="lbl">Manquants</div></div>`;
+        const rows = consultArts.filter(a => {
+          if (q && !String(a.article).toLowerCase().includes(q)) return false;
+          if (a.c === null) return coche("s-cons-nc");
+          return a.e === 0 ? coche("s-cons-ok") : a.e > 0 ? coche("s-cons-plus") : coche("s-cons-moins");
+        });
+        const tb = document.getElementById("s-cons-body"); if (!tb) return;
+        if (!rows.length) { tb.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
+        tb.innerHTML = rows.map(a => {
+          const lots = a.lotsQty && Object.keys(a.lotsQty).length ? `<div style="margin-top:3px;font-size:10px;color:#6b7280">${Object.entries(a.lotsQty).map(([l, qq]: any) => `lot ${l} · ${qq} col.`).join(" | ")}</div>` : "";
+          if (a.c === null) return `<tr><td style="font-weight:500">${a.article}${lots}</td><td style="text-align:right">${a.nb_colis}</td><td style="color:#6b7280;text-align:right">-</td><td>-</td><td><span class="badge badge-nc">Non compté</span></td></tr>`;
+          const sign = a.e > 0 ? "+" : "";
+          const cls = a.e > 0 ? "ep" : a.e < 0 ? "en" : "ez";
+          const badge = a.e === 0 ? `<span class="badge badge-ok">OK</span>` : a.e > 0 ? `<span class="badge badge-surplus">Surplus</span>` : `<span class="badge badge-manque">Manque</span>`;
+          return `<tr><td style="font-weight:500">${a.article}${lots}</td><td style="text-align:right">${a.nb_colis}</td><td style="text-align:right;font-weight:700">${a.c}</td><td class="${cls}" style="text-align:right">${sign}${a.e}</td><td>${badge}</td></tr>`;
+        }).join("");
+      };
+      (window as any).sConsulterFermer = () => { document.getElementById("s-consult-overlay")?.remove(); };
+      (window as any).sConsulter = async (sid: string, team: string) => {
+        try {
+          const stockSnap = await getDoc(doc(db, "stocks", sid));
+          if (!stockSnap.exists()) { toast("Stock introuvable"); return; }
+          const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
+          const s = stockSnap.data() as any;
+          const comptData = comptSnap.exists() ? (comptSnap.data() as any).data || {} : {};
+          consultArts = (s.articles || []).filter((a: any) => a.equipe === team).map((a: any) => {
+            const d = comptData[a.article];
+            const c = d === undefined || d === null ? null : (typeof d === "object" ? (d.c ?? null) : d);
+            return { ...a, c, e: c === null ? 0 : c - a.nb_colis };
+          }).sort((x: any, y: any) => String(x.article).localeCompare(String(y.article), "fr"));
+          document.getElementById("s-consult-overlay")?.remove();
+          const ov = document.createElement("div");
+          ov.id = "s-consult-overlay";
+          ov.style.cssText = "position:fixed;inset:0;background:#f5f6f8;z-index:9000;overflow:auto;padding:14px";
+          ov.innerHTML = `
+            <div style="max-width:900px;margin:0 auto">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+                <div><div style="font-size:16px;font-weight:800">🔍 Consultation · ${team === "GMS" ? "🌿 GMS" : "✨ Prestige"}</div>
+                <div style="font-size:12px;color:#6b7280">${s.dateLabel || ""} · ${s.filename || ""} · lecture seule${s.cloture ? " · ✓ clôturé" : ""}</div></div>
+                <button class="btn btn-sm" onclick="sConsulterFermer()">✕ Fermer</button>
+              </div>
+              <div class="stat-grid" id="s-cons-metrics"></div>
+              <div class="card">
+                <div class="pills">
+                  ${consultCase("s-cons-ok", "#15803d", "✓ 0 écart")}${consultCase("s-cons-plus", "#b45309", "＋ En plus")}${consultCase("s-cons-moins", "#dc2626", "− En moins")}${consultCase("s-cons-nc", "#6b7280", "Non comptés")}
+                  <input class="search-input" id="s-cons-srch" placeholder="🔍 Rechercher..." oninput="sConsulterRender()" style="max-width:220px"/>
+                </div>
+                <div class="tbl-wrap"><table>
+                  <thead><tr><th>Article</th><th style="text-align:right">Stock sys.</th><th style="text-align:right">Compté</th><th style="text-align:right">Écart</th><th>Statut</th></tr></thead>
+                  <tbody id="s-cons-body"></tbody>
+                </table></div>
+              </div>
+            </div>`;
+          (document.getElementById("stock-root") || document.body).appendChild(ov);
+          (window as any).sConsulterRender();
+        } catch { toast("Erreur lors de la consultation"); }
+      };
       // Config
       (window as any).sCheckPin = (val: string) => {
         if (val.length === 4) {
@@ -3531,7 +3606,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
     return () => {
       try { (window as any).__stopComptageDirect?.(); } catch { /* ignore */ }
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sSetIfcoF","sSetComptageIfcoF","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sConsulter","sConsulterRender","sConsulterFermer","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sSetIfcoF","sSetComptageIfcoF","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
+      document.getElementById("s-consult-overlay")?.remove();
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
     };
