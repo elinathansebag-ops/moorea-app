@@ -31,6 +31,25 @@ type LigneLidl = {
   fichier?: string;
 };
 
+// 02/10/2026 — Liste des bases Lidl (fournie par Elinathan : « BASE LIDL / N° BASE / TRANSPORT
+// DÉPART SUD »). Le fichier Lidl ne contient que des codes à 3 lettres ; la correspondance avec le
+// nom de la base est déduite des initiales. Les codes marqués vérif: true sont déduits avec un peu
+// moins de certitude et à confirmer ; SAI, SLC et ASA restent à identifier (Lillers, Armentières,
+// Cambrai, tous SOCAFNA).
+export const BASES_LIDL: Record<string, { nom: string; num: number; transport: string; verif?: boolean }> = {
+  GON: { nom: "Gondreville", num: 17, transport: "SOCAFNA" }, ENT: { nom: "Entzheim", num: 2, transport: "SOCAFNA" },
+  HON: { nom: "Honguemare", num: 11, transport: "REY" }, BAR: { nom: "Barbery", num: 6, transport: "REY" },
+  MEA: { nom: "Meaux", num: 19, transport: "REY" }, ABL: { nom: "Ablis", num: 27, transport: "REY" },
+  LIF: { nom: "Liffré", num: 20, transport: "SATFER" }, CAQ: { nom: "Carquefou", num: 7, transport: "SOCAFNA" },
+  SOR: { nom: "Sorigny", num: 18, transport: "REY" }, VAR: { nom: "Vars", num: 23, transport: "SATFER" },
+  MON: { nom: "Montchanin", num: 12, transport: "SOCAFNA" }, SQF: { nom: "St Quentin", num: 5, transport: "SOCAFNA" },
+  PCH: { nom: "Pontcharra", num: 21, transport: "SOCAFNA" }, BAZ: { nom: "Baziège", num: 14, transport: "SATFER" },
+  BEZ: { nom: "Béziers", num: 22, transport: "SATFER" }, LUN: { nom: "Lunel", num: 16, transport: "SOCAFNA" },
+  PRO: { nom: "Provence", num: 8, transport: "SOCAFNA" },
+  LCA: { nom: "Les Arcs", num: 24, transport: "SOCAFNA", verif: true }, MFV: { nom: "Montoy", num: 3, transport: "SOCAFNA", verif: true },
+  CLV: { nom: "Chanteloup", num: 26, transport: "REY", verif: true }, LCM: { nom: "Coudray", num: 10, transport: "REY", verif: true },
+  PLO: { nom: "Guingamp", num: 15, transport: "SOCAFNA", verif: true }, CET: { nom: "Aquitaine", num: 9, transport: "SATFER", verif: true },
+};
 const dateFr = (s: string) => (s ? s.split("-").reverse().join("/") : "");
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const txt = (v: any) => (v == null ? "" : String(v).trim());
@@ -195,7 +214,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <thead>
                   <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
-                    {["Base", "Camion", "Article", "Quantité", "N° de traçabilité (lot)", ""].map(h => <th key={h} style={{ padding: "8px", textAlign: "left", color: "#374151", fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>)}
+                    {["Base", "ID livraison", "Article", "Quantité", "N° de traçabilité (lot)", ""].map(h => <th key={h} style={{ padding: "8px", textAlign: "left", color: "#374151", fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
@@ -203,7 +222,10 @@ export function LidlCommandes({ userName, couleur = "#0050aa" }: { userName?: st
                     const pret = l.statut === "pret";
                     return (
                       <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: pret ? "#f0fdf4" : "#fff" }}>
-                        <td style={{ padding: "8px", fontWeight: 800 }}>{l.base}</td>
+                        <td style={{ padding: "8px" }}>
+                          <div style={{ fontWeight: 800 }}>{BASES_LIDL[l.base]?.nom || l.base}{BASES_LIDL[l.base]?.verif ? " ?" : ""}</div>
+                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{BASES_LIDL[l.base] ? `${l.base} · base n° ${BASES_LIDL[l.base].num} · ${BASES_LIDL[l.base].transport}` : `${l.base} · base à identifier`}</div>
+                        </td>
                         <td style={{ padding: "8px", color: "#6b7280" }}>{l.camion}</td>
                         <td style={{ padding: "8px", maxWidth: 260 }}>
                           <div style={{ fontWeight: 600 }}>{l.article}</div>
