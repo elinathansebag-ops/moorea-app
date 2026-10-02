@@ -128,6 +128,12 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
           {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}{btnOnglet("traca", "📤 Traçabilité Lidl")}{btnOnglet("config", "⚙️ Configuration")}
         </div>
+        {/* 02/10/2026 — Demande d'Elinathan : le commercial voit tout de suite si le mail est bien parti chez Lidl, et à quelle heure. */}
+        <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${envoiJour.version > 0 && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: envoiJour.version > 0 && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: envoiJour.version > 0 && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
+          {envoiJour.erreur ? `❌ Mail Lidl du ${dateFr(jourT)} : échec (${envoiJour.erreur})`
+            : envoiJour.version > 0 ? `📧 Mail Lidl du ${dateFr(jourT)} envoyé le ${envoiJour.dernierEnvoi} ${envoiJour.mode === "test" ? "(TEST — à Elinathan)" : "à Lidl"}`
+            : `⏳ Mail Lidl du ${dateFr(jourT)} : pas encore envoyé`}
+        </div>
 
         {signals.length > 0 && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 12, padding: 12, marginBottom: 12 }}>
