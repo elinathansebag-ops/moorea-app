@@ -230,6 +230,11 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
   const dateFr = new Date().toLocaleDateString("fr-FR");
   const idsEnvoyes = enAttente.map(d => d.id);
 
+  // Déclaré ici (et non dans le bloc d'envoi au reconditionneur) : le mail transporteur s'en sert aussi.
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: "jordan.jouanest@moorea.fr", pass: process.env.GMAIL_PASS_JORDAN },
+  });
   let accepted = [], rejected = [], patchEchoues = [];
   const maintenant = Date.now();
   if (mode !== "transporteur") {
@@ -252,10 +257,6 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
     }));
   }
 
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: { user: "jordan.jouanest@moorea.fr", pass: process.env.GMAIL_PASS_JORDAN },
-  });
   const destinataires = EMAILS_PAR_DEPOT[depot] || [];
   const info = await transporter.sendMail({
     from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
