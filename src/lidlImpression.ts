@@ -149,7 +149,7 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
     doc.setFontSize(10); doc.text("Transporteur :", LM, y); doc.line(LM, y + 1, LM + 24, y + 1);
     doc.setFontSize(22); doc.text(e.transporteur || "-", LM, y + 11);
     y += 22;
-    doc.setLineWidth(0.3); doc.line(LM, y, LW - LM, y);
+    doc.setLineWidth(0.3); doc.line(LM, y, qrs[i] ? LW - LM - QR - 3 : LW - LM, y);
     const largeurTexte = LW - LM * 2 - (qrs[i] ? QR + 3 : 0);
     doc.setFontSize(10); doc.setFont("helvetica", "normal");
     for (const morceau of (doc.splitTextToSize(e.produit, largeurTexte) as string[]).slice(0, 2)) { y += 5.5; doc.text(morceau, LM, y); }
