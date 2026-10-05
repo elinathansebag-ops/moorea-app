@@ -1755,6 +1755,7 @@ export default function App() {
     const doublonsExacts: any[] = [];
     const modifs: { ancien: any; nouveau: any }[] = [];
     const nouveaux: any[] = [];
+    const dateChangee: { ancien: any; nouveau: any }[] = [];
 
     // 1) Correspondance directe : même article (texte exact, calibre inclus) + fournisseur +
     // date, indépendamment du lot — c'est le cas le plus courant (quantité corrigée, lot
@@ -1823,6 +1824,7 @@ export default function App() {
       racineLignes.get(cle)!.push(a);
     });
 
+    const sansCorrespondance: any[] = [];
     restantes.forEach(a => {
       const racine = produitRacine(a.produit).toLowerCase();
       const fournNorm = (a.fournisseur || "").toLowerCase().trim();
@@ -1831,12 +1833,27 @@ export default function App() {
       const candidatsLignes = racineLignes.get(cle) || [];
       if (candidatsExistants.length === 1 && candidatsLignes.length === 1) {
         modifs.push({ ancien: candidatsExistants[0], nouveau: a });
+        dejaMatches.add(candidatsExistants[0].id);
       } else {
-        nouveaux.push(a);
+        sansCorrespondance.push(a);
       }
     });
 
-    return { nouveaux, modifs, doublonsExacts };
+    // 3) 05/10/2026 — Demande d'Elinathan : le commercial a changé la date de l'arrivage dans
+    // Geslot. Même lot interne + même article + même fournisseur qu'un arrivage PAS ENCORE VALIDÉ
+    // (en attente) mais à une autre date → c'est le même arrivage : il est remplacé par la ligne
+    // importée, à sa nouvelle date (au lieu de créer un doublon). Uniquement quand la
+    // correspondance est sûre : lot interne renseigné et un seul arrivage en attente concerné.
+    sansCorrespondance.forEach(a => {
+      const lot = String(a.lot_interne || "").trim();
+      if (!lot) { nouveaux.push(a); return; }
+      const cle = cleDoublonArrivage(a);
+      const candidats = existants.filter(ex => !dejaMatches.has(ex.id) && (ex.statut || "en attente") === "en attente" && ex.date !== a.date && cleDoublonArrivage(ex) === cle);
+      if (candidats.length === 1) { dateChangee.push({ ancien: candidats[0], nouveau: a }); dejaMatches.add(candidats[0].id); }
+      else nouveaux.push(a);
+    });
+
+    return { nouveaux, modifs, doublonsExacts, dateChangee };
   };
 
   // Report de date d'un arrivage : si un arrivage avec la même clé (lot/produit/fournisseur)
@@ -1894,15 +1911,15 @@ export default function App() {
     }
     setImportingArr(true);
 
-    const { nouveaux, modifs, doublonsExacts } = classifierImportArr(previewArr, arrivages);
+    const { nouveaux, modifs, doublonsExacts, dateChangee } = classifierImportArr(previewArr, arrivages);
     const doublons = doublonsExacts.length;
 
-    if (nouveaux.length === 0 && modifs.length === 0) {
+    if (nouveaux.length === 0 && modifs.length === 0 && dateChangee.length === 0) {
       showToast(`Tous les ${previewArr.length} arrivages existent déjà pour cette date`, "error");
       setPreviewArr(null); setImportingArr(false); return;
     }
 
-    const totalEcritures = nouveaux.length + modifs.length;
+    const totalEcritures = nouveaux.length + modifs.length + dateChangee.length;
     let ecrits = 0;
     setProgImportArr({ texte: `Enregistrement 0/${totalEcritures}`, fait: 0, total: totalEcritures, debut: Date.now(), maj: Date.now() });
     for (const a of nouveaux) { const ca = getCodeArticle(a.produit); await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now(), ...(ca ? {code_article: ca} : {}) }); ecrits++; majProgImportArr(`Enregistrement ${ecrits}/${totalEcritures}`, ecrits, totalEcritures); }
@@ -1928,9 +1945,30 @@ export default function App() {
       ecrits++; majProgImportArr(`Enregistrement ${ecrits}/${totalEcritures}`, ecrits, totalEcritures);
     }
 
+    // Date changée dans Geslot : l'arrivage en attente prend la nouvelle date et les nouvelles
+    // infos. Mis à jour sur place (même identifiant) pour garder ses liens — étiquettes déjà
+    // imprimées, commande de cartons/palettes liée (dont la date suit, voir syncDateCommandeLiee).
+    for (const { ancien, nouveau } of dateChangee) {
+      const ca = getCodeArticle(nouveau.produit);
+      await update(ref(db, `arrivages/${ancien.id}`), {
+        date: nouveau.date,
+        produit: nouveau.produit,
+        quantite: nouveau.quantite,
+        unite: nouveau.unite,
+        poids_brut: nouveau.poids_brut,
+        poids_net: nouveau.poids_net,
+        lot_interne: nouveau.lot_interne,
+        ...(ca ? { code_article: ca } : {}),
+      });
+      syncDateCommandeLiee(ancien, nouveau.date);
+      logActivite("Date changée (import)", `${nouveau.produit} (${nouveau.fournisseur}) lot ${nouveau.lot_interne} : ${ancien.date} → ${nouveau.date}`);
+      ecrits++; majProgImportArr(`Enregistrement ${ecrits}/${totalEcritures}`, ecrits, totalEcritures);
+    }
+
     setPreviewArr(null); setImportingArr(false);
 
     const parts: string[] = [];
+    if (dateChangee.length > 0) parts.push(`${dateChangee.length} déplacé${dateChangee.length > 1 ? "s" : ""} à la nouvelle date (${[...new Set(dateChangee.map(x => `${x.ancien.date} → ${x.nouveau.date}`))].join(", ")})`);
     if (nouveaux.length > 0) parts.push(`${nouveaux.length} nouveaux ajoutés`);
     if (modifs.length > 0) parts.push(`${modifs.length} mis à jour et rouvert${modifs.length > 1 ? "s" : ""}`);
     if (doublons > 0) parts.push(`${doublons} doublon${doublons > 1 ? "s" : ""} ignoré${doublons > 1 ? "s" : ""}`);
@@ -4577,7 +4615,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               </div>
             )}
             {previewArr && (() => {
-              const { nouveaux, modifs, doublonsExacts } = classifierImportArr(previewArr, arrivages);
+              const { nouveaux, modifs, doublonsExacts, dateChangee } = classifierImportArr(previewArr, arrivages);
               const doublons = doublonsExacts.length;
               // Repère un mélange GMS/Prestige dans le fichier importé — si les deux équipes
               // apparaissent dans le même import, c'est probablement le mauvais fichier qui a
@@ -4594,9 +4632,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                     <div>
                       <p style={{ margin: 0, fontWeight: 700, color: "#1a6b3a", fontFamily: "'Syne', sans-serif" }}>✅ {previewArr.length} arrivages détectés</p>
-                      {(doublons > 0 || modifs.length > 0) && (
+                      {(doublons > 0 || modifs.length > 0 || dateChangee.length > 0) && (
                         <p style={{ margin: "3px 0 0", fontSize: 12, color: "#d97706" }}>
                           {doublons > 0 && <>⚠️ {doublons} déjà présent{doublons > 1 ? "s" : ""} (inchangé{doublons > 1 ? "s" : ""}) · </>}
+                          {dateChangee.length > 0 && <><span style={{ color: "#1d4ed8", fontWeight: 700 }}>{dateChangee.length} déplacé{dateChangee.length > 1 ? "s" : ""} à la nouvelle date</span> · </>}
                           {modifs.length > 0 && <><span style={{ color: "#b45309", fontWeight: 700 }}>{modifs.length} modifié{modifs.length > 1 ? "s" : ""}</span> (calibre/quantité — seront rouverts) · </>}
                           <span style={{ color: "#16a34a", fontWeight: 700 }}>{nouveaux.length} nouveaux</span> seront ajoutés
                         </p>
@@ -4612,6 +4651,17 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <p style={{ margin: "3px 0 0", fontSize: 11.5, color: "#991b1b" }}>
                         Un import contient normalement une seule équipe (GMS ou Prestige) — vérifie que c'est le bon fichier avant de continuer.
                       </p>
+                    </div>
+                  )}
+                  {dateChangee.length > 0 && (
+                    <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+                      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#1e40af" }}>📅 Date changée dans Geslot — l'arrivage non validé sera remplacé à la nouvelle date :</p>
+                      {dateChangee.slice(0, 8).map((m, i) => (
+                        <p key={i} style={{ margin: "0 0 3px", fontSize: 12.5, color: "#1e40af" }}>
+                          <strong>{m.nouveau.produit}</strong> ({m.nouveau.fournisseur}{m.nouveau.lot_interne ? `, lot ${m.nouveau.lot_interne}` : ""}) : {m.ancien.date} → <strong>{m.nouveau.date}</strong>
+                        </p>
+                      ))}
+                      {dateChangee.length > 8 && <p style={{ margin: 0, fontSize: 12, color: "#1e40af" }}>… et {dateChangee.length - 8} autre{dateChangee.length - 8 > 1 ? "s" : ""}</p>}
                     </div>
                   )}
                   {modifs.length > 0 && (
