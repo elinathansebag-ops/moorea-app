@@ -145,6 +145,9 @@ fonds = lambda c: [x for p in ("background", "background-color") for x in formes
 bords = lambda c: [rgb(c), c, c.upper()]
 textes = lambda c: formes("color", c)
 bloc(V2_FONDS, ":root.v2", "background-color", fonds)
+# Tout ce qui passe sur fond vert sapin prend un texte blanc (l'ancien « bouton or, texte noir »
+# devenait illisible). Les bandeaux noirs avaient déjà un texte clair : rien ne change pour eux.
+texte_blanc = ",\n".join(f':root.v2 [style*="{x}"]' for c in V2_FONDS[SAPIN] for x in fonds(c)) + " { color: #ffffff !important; }"
 bloc(V2_FONDS_CLAIR, ":root.v2:not(.dark)", "background-color", fonds)
 bloc(V2_FONDS_TEINTES, ":root.v2:not(.dark)", "background-color", fonds)
 bloc(V2_BORDURES, ":root.v2", "border-color", bords)
@@ -154,5 +157,6 @@ bloc(V2_TEXTES_CLAIR, ":root.v2:not(.dark)", "color", textes)
 # Boutons en dégradé vert ou or → vert sapin uni (les dégradés d'autres couleurs gardent leur sens).
 grad = [f':root.v2 button[style*="linear-gradient"][style*="{x}"]' for c in ["#16a34a", "#22c55e", "#27ae60", "#c8a84b", "#8a6f2e"] for x in (rgb(c), c)]
 v2.append(",\n".join(grad) + f" {{ background: {SAPIN} !important; box-shadow: none !important; }}")
+v2.append(texte_blanc)  # en dernier : l'emporte sur les autres couleurs de texte
 open("src/apparenceV2.css", "w").write("\n".join(v2) + "\n")
 print("src/apparenceV2.css :", sum(l.count('[style*=') for l in v2), "sélecteurs")
