@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { db, ref, onValue, update, remove, get, push } from "./firebase";
+import { pdfBonGeslot, pdfBonPreparation, envoyerPdfImprimante, type LigneBon } from "./lidlImpression";
 import { PRODUCTEURS_LIDL, envoyerTracabiliteLidl, genererXlsxLidl, nomFichierLidl, type Producteur, type ContexteExport, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : Lidl envoie chaque jour un tableau de répartition
@@ -326,6 +327,9 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       setJoursOuverts(x => new Set(x).add(d));
       setSemainesOuvertes(x => new Set(x).add(lundiDe(d)));
       setDernierImport({ date: d, depart: dep });
+      // Impression automatique : bon Geslot (bureau) toujours ; bon de préparation (entrepôt) pour Paris.
+      imprimerGeslot(d, dep, lues);
+      if (dep === "paris") imprimerBonEntrepot(d, lues);
       if (dep === "sud") {
         const r = await envoyerRecapMedina(d, lues);
         setRecapMedina(r?.ok ? `📧 Récap de préparation Medina envoyé à Jordan (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}).` : `❌ Récap Medina non envoyé : ${r?.erreur || "erreur"}`);
@@ -361,42 +365,41 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     const lot = (lotsSaisis[l.id] ?? l.lot).trim().toUpperCase();
     if (lot !== l.lot) await update(ref(db, `lidl_commandes/${l.id}`), { lot });
   }
-  // Ouvre une page prête à imprimer (en attendant le branchement direct sur les imprimantes du bureau et de l'entrepôt).
-  function ouvrirImpression(titre: string, css: string, corps: string) {
-    const w = window.open("", "_blank");
-    if (!w) { flash("err", "Impression bloquée par le navigateur : autorise les pop-ups pour ce site."); return; }
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${echapHtml(titre)}</title><style>
-body{font-family:Arial,sans-serif;margin:16px;color:#000}h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:16px 0 6px;border-bottom:2px solid #000}
-table{width:100%;border-collapse:collapse;margin-bottom:8px}th,td{border:1px solid #000;padding:5px 7px;text-align:left}th{background:#eee}
-tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{font-weight:400}@media print{button{display:none}}${css}</style></head><body>${corps}
-<button onclick="window.print()" style="margin-top:10px;padding:8px 14px">🖨️ Imprimer</button><script>setTimeout(function(){window.print()},300)<\/script></body></html>`);
-    w.document.close();
+  // ── Impression automatique (relais PC) avec notification « imprimé » / erreur
+  const [notifs, setNotifs] = useState<{ id: number; type: "ok" | "err" | "info"; texte: string }[]>([]);
+  // Une notification par bon : « envoyé… » puis remplacée par « imprimé » ou l'erreur.
+  function notif(type: "ok" | "err" | "info", texte: string, id = Date.now() + Math.random()) {
+    setNotifs(n => (n.some(x => x.id === id) ? n.map(x => (x.id === id ? { id, type, texte } : x)) : [...n, { id, type, texte }]));
+    if (type === "ok") setTimeout(() => setNotifs(n => n.filter(x => x.id !== id)), 8000);
+    return id;
   }
-  // PDF bureau : fiche simple par base, pour saisir les commandes dans Geslot (sans transporteur).
-  function imprimerGeslot(jourG: string, dep?: "sud" | "paris") {
-    const duJour = (parJour.get(jourG) || []).filter(l => !dep || l.depart === dep);
-    if (!duJour.length) return;
-    const groupes: { titre: string; lignes: LigneLidl[] }[] = [];
-    for (const d of ["paris", "sud"] as const) {
-      const ls = duJour.filter(l => l.depart === d);
-      if (ls.length) groupes.push({ titre: libDepart(d), lignes: ls });
-    }
-    const autres = duJour.filter(l => l.depart !== "paris" && l.depart !== "sud");
-    if (autres.length) groupes.push({ titre: "", lignes: autres });
-    const corps = groupes.map(g => {
-      const parBase = new Map<string, LigneLidl[]>();
-      g.lignes.forEach(l => { parBase.set(l.base, [...(parBase.get(l.base) || []), l]); });
-      const bases = [...parBase.entries()].sort((x, y) => (infoBase(x[0])?.nom || x[0]).localeCompare(infoBase(y[0])?.nom || y[0]));
-      const rows = bases.map(([b, ls]) => {
-        const inf = infoBase(b);
-        return ls.map((l, i) => `<tr>${i === 0 ? `<td rowspan="${ls.length}" class="b">${echapHtml(inf?.nom || b)}${inf ? `<br><small>base n° ${inf.num}</small>` : ""}</td>` : ""}<td>${echapHtml(l.article)}${l.origine ? ` — ${echapHtml(l.origine)}` : ""}</td><td class="q">${l.quantite}</td><td class="c"></td></tr>`).join("");
-      }).join("");
-      const tot = g.lignes.reduce((s, l) => s + l.quantite, 0);
-      return `${g.titre ? `<h2>${g.titre}</h2>` : ""}<table><thead><tr><th>Base</th><th>Produit</th><th>Quantité</th><th>✔</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2">Total</td><td class="q">${tot}</td><td></td></tr></tfoot></table>`;
-    }).join("");
-    ouvrirImpression(`Commandes Lidl ${dateFr(jourG)} — Geslot`, "table{font-size:13px}td.q{text-align:right;font-weight:700;width:80px}td.c{width:34px}td.b{font-weight:700;vertical-align:top;width:150px}",
-      `<h1>Commandes Lidl — date de livraison : ${dateFr(jourG)}</h1><div style="font-size:12px;margin-bottom:6px">À saisir dans Geslot</div>${corps}`);
+  function suivreImpression(cle: string, libelle: string, id: number) {
+    let fini = false;
+    const stop = onValue(ref(db, `printQueue/${cle}`), snap => {
+      const v = snap.val();
+      if (fini || !v) return;
+      if (v.status === "done") { fini = true; stop(); notif("ok", `🖨️ ${libelle} : imprimé`, id); }
+      else if (v.status === "error") { fini = true; stop(); notif("err", `🖨️ ${libelle} : impression échouée${v.error ? ` (${v.error})` : ""}`, id); }
+    });
+    setTimeout(() => { if (!fini) { fini = true; stop(); notif("err", `🖨️ ${libelle} : pas imprimé après 90 s — le PC d'impression est-il allumé ?`, id); } }, 90000);
   }
+  async function imprimer(libelle: string, pdfNom: string, fabriquer: () => string) {
+    try {
+      const cle = await envoyerPdfImprimante(pdfNom, fabriquer());
+      suivreImpression(cle, libelle, notif("info", `🖨️ ${libelle} : envoyé à l'imprimante…`));
+    } catch (e: any) { notif("err", `🖨️ ${libelle} : non envoyé (${e?.message || e})`); }
+  }
+  const versLigneBon = (l: LigneLidl): LigneBon => {
+    const inf = infoBase(l.base);
+    return { base: l.base, nomBase: inf?.nom || l.base, numBase: inf?.num, produit: [l.article, l.origine].filter(Boolean).join(" — "), quantite: l.quantite, transporteur: l.transporteur || "", depart: l.depart };
+  };
+  // Bon Geslot (bureau) : par base. `source` permet d'imprimer juste après l'import, avant que la liste se rafraîchisse.
+  function imprimerGeslot(jourG: string, dep?: "sud" | "paris", source?: LigneLidl[]) {
+    const ls = (source || parJour.get(jourG) || []).filter(l => !dep || l.depart === dep);
+    if (!ls.length) return;
+    imprimer(`Bon Geslot du ${dateFr(jourG)}`, `LIDL_GESLOT_${jourG}${dep ? `_${dep}` : ""}.pdf`, () => pdfBonGeslot(dateFr(jourG), ls.map(versLigneBon)));
+  }
+
   // Bon de préparation : par transporteur (PROVIN CAMANDONA → TRADIF → SRD → MESGUEN → PRIMEVER → autres),
   // de la plus petite commande à la plus grosse, avec des cases à remplir à la main (producteur, lot,
   // palettes). Styles en ligne : le même tableau sert à l'impression et au mail récap Medina.
@@ -418,11 +421,11 @@ tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{fon
     const deps = [...new Set(tri.map(l => l.depart))];
     return `<h1 style="font-size:18px;margin:0 0 4px">Préparation Lidl — date de livraison : ${dateFr(jourB)}</h1><div style="font-size:13px;margin-bottom:6px">${deps.length === 1 ? libDepart(deps[0]) + " · " : ""}${tri.length} commande${tri.length > 1 ? "s" : ""} · ${total} colis</div>${corps}`;
   }
-  // PDF entrepôt (départ Paris) : préparé chez Moorea.
-  function imprimerBonEntrepot(jourB: string) {
-    const ls = (parJour.get(jourB) || []).filter(l => l.depart === "paris");
+  // Bon de préparation (entrepôt, départ Paris) : préparé chez Moorea.
+  function imprimerBonEntrepot(jourB: string, source?: LigneLidl[]) {
+    const ls = (source || parJour.get(jourB) || []).filter(l => l.depart === "paris");
     if (!ls.length) return;
-    ouvrirImpression(`Préparation Lidl — livraison ${dateFr(jourB)}`, "", htmlBonPrepa(jourB, ls));
+    imprimer(`Bon de préparation du ${dateFr(jourB)}`, `LIDL_PREPARATION_${jourB}.pdf`, () => pdfBonPreparation(dateFr(jourB), trierPourPrepa(ls).map(versLigneBon)));
   }
   // Départ Medina (Perpignan) : la prépa se fait chez Medina. Récap envoyé à Jordan depuis sa propre
   // boîte (l'envoi direct à Medina sera programmé plus tard).
@@ -712,8 +715,8 @@ tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{fon
         {commercial && etatTraca(j)}
         {commercial && (
           <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {btnJour("📄 Geslot", () => imprimerGeslot(j))}
-            {ls.some(l => l.depart === "paris") && btnJour("🏭 Bon entrepôt", () => imprimerBonEntrepot(j))}
+            {btnJour("🖨️ Geslot", () => imprimerGeslot(j))}
+            {ls.some(l => l.depart === "paris") && btnJour("🖨️ Bon entrepôt", () => imprimerBonEntrepot(j))}
             {ls.some(l => l.depart === "sud") && btnJour("📧 Récap Medina", async () => { const r = await envoyerRecapMedina(j); flash(r?.ok ? "ok" : "err", r?.ok ? `Récap Medina du ${dateFr(j)} envoyé à Jordan.` : `Récap Medina non envoyé : ${r?.erreur}`); })}
             {btnJour("📊 Tableau Lidl", () => telechargerTableau(j))}
           </span>
@@ -757,6 +760,16 @@ tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{fon
     );
   });
 
+  const zoneNotifs = notifs.length > 0 && (
+    <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 1100, display: "flex", flexDirection: "column", gap: 8, maxWidth: 380 }}>
+      {notifs.map(n => (
+        <div key={n.id} role="status" style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, fontSize: 13, fontWeight: 700, boxShadow: "0 6px 20px rgba(0,0,0,.15)", background: n.type === "ok" ? "#f0fdf4" : n.type === "err" ? "#fef2f2" : "#eff6ff", border: `1.5px solid ${n.type === "ok" ? "#86efac" : n.type === "err" ? "#fca5a5" : "#bfdbfe"}`, color: n.type === "ok" ? "#166534" : n.type === "err" ? "#b91c1c" : "#1e40af" }}>
+          <span style={{ flex: 1 }}>{n.texte}</span>
+          <button type="button" aria-label="Fermer" onClick={() => setNotifs(x => x.filter(y => y.id !== n.id))} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 15, color: "inherit", padding: 0 }}>×</button>
+        </div>
+      ))}
+    </div>
+  );
   const messageBox = message && (
     <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
   );
@@ -782,7 +795,7 @@ tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{fon
         <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 4 }}>
           {fichierLu?.dateFichier ? `Date de livraison lue dans le fichier : ${dateFr(fichierLu.dateFichier)}${dateImport && dateImport !== fichierLu.dateFichier ? " — ⚠️ tu as choisi une autre date" : ""}` : fichierLu ? "Pas de date de livraison dans le fichier : date du jour proposée." : "Remplie automatiquement avec la date de livraison du fichier."}
         </div>
-        {depart && <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 10 }}>{depart === "paris" ? "Après l'import : bon Geslot (bureau) + bon de préparation (entrepôt)." : "Après l'import : bon Geslot (bureau) + récap de préparation envoyé par mail à Jordan."}</div>}
+        {depart && <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 10 }}>{depart === "paris" ? "Après l'import : impression automatique du bon Geslot (bureau) et du bon de préparation (entrepôt)." : "Après l'import : impression automatique du bon Geslot (bureau) + récap de préparation envoyé par mail à Jordan."}</div>}
         {erreurImport && <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c" }}>{erreurImport}</div>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
           <button type="button" disabled={import_} onClick={() => setFenetreImport(false)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Annuler</button>
@@ -794,10 +807,10 @@ tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{fon
   );
   const apresImport = dernierImport && (
     <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 12, background: "#f0fdf4", border: "1.5px solid #86efac" }}>
-      <div style={{ fontWeight: 800, fontSize: 13.5, color: "#166534", marginBottom: 8 }}>Commandes importées — {libDepart(dernierImport.depart)} — livraison du {dateFr(dernierImport.date)}</div>
+      <div style={{ fontWeight: 800, fontSize: 13.5, color: "#166534", marginBottom: 8 }}>Commandes importées — {libDepart(dernierImport.depart)} — livraison du {dateFr(dernierImport.date)} · {dernierImport.depart === "paris" ? "bon Geslot et bon de préparation envoyés à l'imprimante" : "bon Geslot envoyé à l'imprimante"}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <button type="button" onClick={() => imprimerGeslot(dernierImport.date, dernierImport.depart)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Bon Geslot (bureau)</button>
-        {dernierImport.depart === "paris" && <button type="button" onClick={() => imprimerBonEntrepot(dernierImport.date)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Bon de préparation (entrepôt)</button>}
+        <button type="button" onClick={() => imprimerGeslot(dernierImport.date, dernierImport.depart)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Réimprimer le bon Geslot</button>
+        {dernierImport.depart === "paris" && <button type="button" onClick={() => imprimerBonEntrepot(dernierImport.date)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Réimprimer le bon de préparation</button>}
         {recapMedina && <span style={{ fontSize: 12.5, fontWeight: 700, color: recapMedina.startsWith("❌") ? "#b91c1c" : "#166534" }}>{recapMedina}</span>}
         <button type="button" onClick={() => setDernierImport(null)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#6b7280", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>fermer</button>
       </div>
@@ -813,6 +826,7 @@ tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{fon
         </button>
       </div>
       {fenetre}
+      {zoneNotifs}
       {apresImport}
       {messageBox}
       {jours.length === 0
@@ -832,6 +846,7 @@ tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{fon
       </div>
       {ouvert && (
         <div style={{ padding: 12 }}>
+          {zoneNotifs}
           {messageBox}
           {jours.length > 0 && (() => {
             // Transporteurs présents (dans l'ordre de préparation) avec le nombre de commandes encore à préparer
