@@ -705,6 +705,21 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     }
   };
 
+  // Onglet affiché (Lidl / Reconditionnement), mémorisé sur l'appareil ; un QR scanné ouvre le bon onglet.
+  const [onglet, setOnglet] = useState<"lidl" | "recond">(() => {
+    if (scanDemandeId) return "recond";
+    if (scanLidlId) return "lidl";
+    try { return localStorage.getItem("prepa:onglet") === "recond" ? "recond" : "lidl"; } catch { return "lidl"; }
+  });
+  const choisirOnglet = (k: "lidl" | "recond") => { setOnglet(k); try { localStorage.setItem("prepa:onglet", k); } catch { /* stockage bloqué */ } };
+  useEffect(() => { if (scanDemandeId) setOnglet("recond"); }, [scanDemandeId]);
+  useEffect(() => { if (scanLidlId) setOnglet("lidl"); }, [scanLidlId]);
+  const [nbLidlAPreparer, setNbLidlAPreparer] = useState(0);
+  useEffect(() => onValue(ref(db, "lidl_commandes"), snap => {
+    setNbLidlAPreparer(Object.values(snap.val() || {}).filter((l: any) => l.depart === "paris" && l.statut !== "pret").length);
+  }), []);
+  const nbRecondEnCours = demandes.filter(d => d.statut !== "reçu" && d.statut !== "annulé").length;
+
   return (
     <div id="prepa-root" style={{ minHeight: "100vh", background: COLORS.gray100, overflowX: "hidden", maxWidth: "100vw" }}>
       <style>{styles}</style>
@@ -732,6 +747,21 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           </div>
         )}
 
+        {/* 05/10/2026 — Demande d'Elinathan : Lidl et Reconditionnement séparés en deux onglets. */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          {([["lidl", "🛒 Lidl", nbLidlAPreparer, "#0050aa"], ["recond", "♻️ Reconditionnement", nbRecondEnCours, COLORS.primary]] as const).map(([k, lib, n, c]) => (
+            <button key={k} type="button" onClick={() => choisirOnglet(k)}
+              style={{ flex: 1, height: 52, borderRadius: 14, border: `2px solid ${onglet === k ? c : COLORS.gray200}`, background: onglet === k ? c : "#fff", color: onglet === k ? "#fff" : COLORS.gray700, fontSize: 16, fontWeight: 900, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: onglet === k ? "0 3px 10px rgba(0,0,0,.12)" : "none" }}>
+              {lib}
+              {n > 0 && <span style={{ background: onglet === k ? "rgba(255,255,255,.25)" : "#fef3c7", color: onglet === k ? "#fff" : "#b45309", borderRadius: 12, padding: "1px 9px", fontSize: 13 }}>{n}</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* 02/10/2026 — Cellule Lidl : commandes issues du tableau de répartition quotidien (voir LidlCommandes.tsx) */}
+        {onglet === "lidl" && <LidlCommandes userName={userName} ficheScan={scanLidlId} onFicheScanTraitee={onScanLidlHandled} />}
+
+        {onglet === "recond" && (<>
         {/* Demandes de réajustement de stock envoyées par les reconditionneurs */}
         {reajustements.filter(r => r.statut === "en attente").map(r => (
           <div key={r.id} style={{ background: COLORS.amberLight, border: `1.5px solid ${COLORS.amber}`, borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
@@ -757,9 +787,6 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
             </div>
           </div>
         ))}
-
-        {/* 02/10/2026 — Cellule Lidl : commandes issues du tableau de répartition quotidien (voir LidlCommandes.tsx) */}
-        <LidlCommandes userName={userName} ficheScan={scanLidlId} onFicheScanTraitee={onScanLidlHandled} />
 
         {/* Filtre statut */}
         <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
@@ -1117,6 +1144,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
             })}
           </div>
         )}
+        </>)}
       </div>
 
       {/* MODALE — Aperçu PDF (bon Geslot ou bon de prépa) */}
