@@ -64,9 +64,9 @@ export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: s
   BEAUCAIRE: { nom: "Beaucaire", num: 16, perpignan: "REY", paris: "TRADIF", nationale: true },
   "ETAMPES BCD": { nom: "Etampes BCD", num: 60, perpignan: "REY", paris: "SRD", nationale: true },
 };
-// 05/10/2026 — Adresses de livraison des bases Lidl (pour les étiquettes palettes), relevées sur les
-// bons de préparation Geslot du 02/10/2026 fournis par Elinathan. Les bases manquantes se complètent
-// dans Commandes Lidl → Configuration (lidl_config/adresses/{code}, prioritaire sur cette liste).
+// 05/10/2026 — Adresses de livraison des bases Lidl (pour les étiquettes palettes), reprises de la fiche
+// clients Geslot (« client info.xlsx » fourni par Elinathan) et des bons de préparation du 02/10/2026.
+// Modifiables dans Commandes Lidl → Configuration (lidl_config/adresses/{code}, prioritaire sur cette liste).
 export const ADRESSES_LIDL: Record<string, string[]> = {
   ABL: ["LIDL ABLIS", "ZA ABLIS NORD", "1 RUE DU BOIS DES FAURES", "78660 ABLIS", "FRANCE"],
   MON: ["LIDL MONTCHANIN", "1 Rue Eugene Herzog", "71210 Montchanin", "FRANCE"],
@@ -80,6 +80,21 @@ export const ADRESSES_LIDL: Record<string, string[]> = {
   PCH: ["LIDL PONTCHARRA", "ZI Les Prés Bruns", "38530 PONTCHARRA", "FRANCE"],
   CAQ: ["LIDL DR07 CARQUEFOU (EX SAUTRON)", "2 rue du nouveau bele", "44470 Carquefou", "FRANCE"],
   LIF: ["LIDL LIFFRE", "Parc d'Activités Beauge II", "35340 LIFFRE", "FRANCE"],
+  ENT: ["LIDL ENTZHEIM", "Parc d'Activité Aéroparc", "67960 ENTZHEIM", "FRANCE"],
+  SAI: ["LIDL LILLERS SAINT AUGUSTIN", "620 voie Paul Hochart", "ZA des Escardalles", "62129 SAINT AUGUSTIN", "FRANCE"],
+  MFV: ["LIDL MONTOY", "Z.I. d'activité de la Planchette", "1 rue Georges Pawlak", "57645 MONTOY FLANVILLE", "FRANCE"],
+  GON: ["LIDL GONDREVILLE", "parc logistique Sud Lorraine", "1 rue de l'Europe", "54840 Fontenoy sur Moselle", "FRANCE"],
+  BAR: ["LIDL BARBERY", "7 bis rue de Meaux", "60810 BARBERY", "FRANCE"],
+  LCM: ["LIDL COUDRAY MONTCEAUX ARPAJON", "3 CHEMIN DES MULETS", "91830 LE COUDRAY MONTCEAUX", "FRANCE"],
+  CLV: ["LIDL CHANTELOUP", "ZAC LES CETTONS II", "78570 CHANTELOUP", "FRANCE"],
+  MEA: ["LIDL MEAUX", "11 bld du memorial americain", "RD du 405A", "77100 MEAUX", "FRANCE"],
+  PLO: ["LIDL GUINGAMP (PLOUMAGOAR)", "PRIM NATURE PARMENTINES", "Traou an Dour", "22540 PEDERNEC", "FRANCE"],
+  CET: ["LIDL AQUITAINE", "chemin Saint Eloi de Noyon", "Zone d'activités Jarry", "33610 CESTAS", "FRANCE"],
+  LCA: ["LIDL ARMENTIERES EX LESQUIN", "HOUSSOYE TRANSPORTS - CHARLET", "RUE CALMETTE - ZONE DE LA HOUSSOYE", "59280", "FRANCE"],
+  VAR: ["LIDL VARS", "ZAC DES COTEAUX 3", "16330 VARS", "FRANCE"],
+  SOR: ["LIDL SORIGNY", "RUE NUNGESSER ET COLI", "ZA ISOPARC", "37250 SORIGNY", "FRANCE"],
+  SLC: ["LIDL CAMBRAI", "PARC ACTIPOLE DE L'A2", "59554 SAILLY LEZ CAMBRAI", "FRANCE"],
+  "ETAMPES BCD": ["LIDL ETAMPES BCD FRUITS EFL", "8 AVENUE DU 8 MAI 1945", "91150 ETAMPES", "FRANCE"],
 };
 export function useAdressesLidl() {
   const [ajouts, setAjouts] = useState<Record<string, string>>({});
