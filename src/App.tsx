@@ -4234,7 +4234,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     if (!monAcces.hasModule("stock")) return <AccesRefuse onRetour={() => { setShowStock(false); setShowAccueil(true); }} />;
     (window as any)._gencodeArticles = gencodeArticles;
     return (
-      <>{fabScanner}<StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} canConfig={monAcces.hasTab("stock.config")} canCompter={monAcces.hasTab("stock.compter")} /></>
+      <>{fabScanner}<StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} canConfig={monAcces.hasTab("stock.config")} canCompter={monAcces.hasTab("stock.compter")} isAdmin={monAccesReel.isAdmin} /></>
     );
   }
 

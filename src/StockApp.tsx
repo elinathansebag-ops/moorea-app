@@ -638,7 +638,7 @@ const STOCK_CONFIG_ARTICLES: {article:string,equipe:string}[] = [
   {article:"YACON POIRE DE TERRE (VRAC 2 KG)",equipe:"PRESTIGE"}
 ];
 
-export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompter = true }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[]; canConfig?: boolean; canCompter?: boolean }) {
+export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompter = true, isAdmin = false }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[]; canConfig?: boolean; canCompter?: boolean; isAdmin?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 30/09/2026 — Demande d'Elinathan : même caméra que celle de l'accueil (ScannerQR), qui
   // marche bien, au lieu du scanner maison du stock.
@@ -1478,6 +1478,35 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         } catch { /* ignore */ }
       };
 
+      // 05/10/2026 — Demande d'Elinathan : bouton « Régulariser » (comptes admin) sur l'écart IFCO
+      // vides d'un stock. On applique l'écart constaté au comptage au stock IFCO actuel de l'appli
+      // (pas le chiffre compté tel quel : les mouvements faits depuis le comptage restent comptés),
+      // avec un mouvement « Régularisation inventaire » dans l'historique IFCO.
+      (window as any).sRegulariserIfco = async (sid: string) => {
+        if (!isAdmin) return;
+        try {
+          const snap = await getDoc(doc(db, "stocks", sid));
+          const iv = (snap.data() as any)?.ifcoVides;
+          if (!iv || iv.ecart == null || iv.ecart === 0) { toast("Aucun écart IFCO à régulariser"); return; }
+          if (iv.regularise) { toast("Écart déjà régularisé"); return; }
+          const actuel = (await get(ref(rtdb, "ifco_stock/levels/moorea"))).val();
+          const avant = typeof actuel === "number" ? actuel : 0;
+          const apres = avant + iv.ecart;
+          if (!confirm(`Régulariser le stock IFCO vides de l'appli ?\n\nComptage du ${iv.dateLabel || ""} : ${iv.caisses} caisses (appli ${iv.stockAppli} au moment du comptage, écart ${iv.ecart > 0 ? "+" : ""}${iv.ecart}).\n\nStock IFCO Moorea de l'appli : ${avant} → ${apres}`)) return;
+          const par = auth.currentUser?.displayName || auth.currentUser?.email || "";
+          const now = new Date();
+          await push(ref(rtdb, "ifco_stock/movements"), {
+            date: now.toLocaleDateString("fr-FR"), from: iv.ecart > 0 ? "regularisation" : "moorea", to: iv.ecart > 0 ? "moorea" : "regularisation",
+            caisses: Math.abs(iv.ecart), raison: `Régularisation inventaire du ${iv.dateLabel || ""} (${iv.ecart > 0 ? "+" : ""}${iv.ecart})`, stock_id: sid, user: par, ts: Date.now(),
+          });
+          await update(ref(rtdb, "ifco_stock/levels"), { moorea: apres });
+          const reg = { par, ts: Date.now(), dateLabel: now.toLocaleString("fr-FR"), avant, apres };
+          await setDoc(doc(db, "stocks", sid), { ifcoVides: { ...iv, regularise: reg } }, { merge: true });
+          await update(ref(rtdb, `ifco_comptages/${sid}`), { regularise: reg });
+          toast(`⚖️ Stock IFCO régularisé : ${avant} → ${apres}`);
+        } catch (e: any) { toast("Erreur régularisation IFCO : " + (e?.message || "")); }
+        renderStockList();
+      };
       (window as any).sSaisirIfco = async (sid: string, filename: string) => {
         const n = await demanderCaissesIfcoVides();
         try { await enregistrerCaissesIfcoVides(sid, filename, n); toast("📦 " + n + " caisses IFCO vides enregistrées"); }
@@ -1942,7 +1971,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
                 </div>
                 <div style="font-size:11px;color:#6b7280;margin-top:3px">${done}/${total} · ${pct}%</div>
                 ${s.ifcoVides
-                  ? `<div style="font-size:11px;margin-top:4px;color:#1d4ed8;font-weight:700">📦 IFCO vides : ${s.ifcoVides.caisses}${s.ifcoVides.ecart != null ? ` <span style="color:${s.ifcoVides.ecart === 0 ? "#15803d" : "#b45309"}">(appli ${s.ifcoVides.stockAppli} · écart ${s.ifcoVides.ecart > 0 ? "+" : ""}${s.ifcoVides.ecart})</span>` : ""}</div>`
+                  ? `<div style="font-size:11px;margin-top:4px;color:#1d4ed8;font-weight:700">📦 IFCO vides : ${s.ifcoVides.caisses}${s.ifcoVides.ecart != null ? ` <span style="color:${s.ifcoVides.ecart === 0 || s.ifcoVides.regularise ? "#15803d" : "#b45309"}">(appli ${s.ifcoVides.stockAppli} · écart ${s.ifcoVides.ecart > 0 ? "+" : ""}${s.ifcoVides.ecart})</span>` : ""}
+                      ${s.ifcoVides.regularise
+                        ? `<span style="color:#15803d;font-weight:600"> · ✓ régularisé (${s.ifcoVides.regularise.avant} → ${s.ifcoVides.regularise.apres}) par ${s.ifcoVides.regularise.par || "?"} le ${s.ifcoVides.regularise.dateLabel || ""}</span>`
+                        : (isAdmin && s.ifcoVides.ecart != null && s.ifcoVides.ecart !== 0 ? ` <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:11px;border-color:#b45309;color:#b45309" onclick="sRegulariserIfco('${sid}')">⚖️ Régulariser</button>` : "")}</div>`
                   : `<button class="btn btn-sm" style="margin-top:4px;border-color:#bfdbfe;color:#1d4ed8" onclick="sSaisirIfco('${sid}','${String(s.filename || "").replace(/'/g, "\\'")}')">📦 Saisir caisses IFCO vides</button>`}
               </div>
               <div class="stock-actions">
