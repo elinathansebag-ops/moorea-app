@@ -5,6 +5,9 @@ import { VersionChecker } from './VersionChecker'
 import { IndicateurHorsLigne } from './IndicateurHorsLigne'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ProfilGenerique } from './ProfilGenerique'
+import { installerJetonApi } from './apiAuth'
+
+installerJetonApi()
 import './cases-a-cocher.css'
 
 // 24/09/2026 — pdf.js (lecture des bons Geslot) utilise Map.getOrInsertComputed, fonction JS

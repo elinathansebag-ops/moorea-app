@@ -1,15 +1,28 @@
 import nodemailer from 'nodemailer';
+import { verifierTokenFirebase } from './_verifyFirebaseToken.js';
 
 export const config = { runtime: 'nodejs' };
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // 05/10/2026 — Sécurité : seul un compte @moorea.fr connecté à l'appli peut envoyer un mail
+  // (jeton Firebase ajouté automatiquement par src/apiAuth.ts). Avant, n'importe qui connaissant
+  // l'URL pouvait envoyer un mail au nom de nos comptes.
+  try {
+    const idToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    const utilisateur = await verifierTokenFirebase(idToken);
+    if (!utilisateur.email || !utilisateur.email.toLowerCase().endsWith('@moorea.fr')) {
+      return res.status(403).json({ error: 'Accès réservé aux comptes @moorea.fr' });
+    }
+  } catch (err) {
+    return res.status(401).json({ error: `Non autorisé : ${err.message}` });
+  }
   try {
     const { subject, html, cc = [], attachments = [], to, sender } = req.body;
 
