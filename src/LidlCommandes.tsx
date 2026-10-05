@@ -90,7 +90,8 @@ export const ADRESSES_LIDL: Record<string, string[]> = {
   MEA: ["LIDL MEAUX", "11 bld du memorial americain", "RD du 405A", "77100 MEAUX", "FRANCE"],
   PLO: ["LIDL GUINGAMP (PLOUMAGOAR)", "PRIM NATURE PARMENTINES", "Traou an Dour", "22540 PEDERNEC", "FRANCE"],
   CET: ["LIDL AQUITAINE", "chemin Saint Eloi de Noyon", "Zone d'activités Jarry", "33610 CESTAS", "FRANCE"],
-  LCA: ["LIDL ARMENTIERES EX LESQUIN", "HOUSSOYE TRANSPORTS - CHARLET", "RUE CALMETTE - ZONE DE LA HOUSSOYE", "59280", "FRANCE"],
+  // Ville absente de la fiche Geslot : 59280 rue Calmette / zone de la Houssoye = Bois-Grenier (registre des entreprises).
+  LCA: ["LIDL ARMENTIERES EX LESQUIN", "HOUSSOYE TRANSPORTS - CHARLET", "RUE CALMETTE - ZONE DE LA HOUSSOYE", "59280 BOIS-GRENIER", "FRANCE"],
   VAR: ["LIDL VARS", "ZAC DES COTEAUX 3", "16330 VARS", "FRANCE"],
   SOR: ["LIDL SORIGNY", "RUE NUNGESSER ET COLI", "ZA ISOPARC", "37250 SORIGNY", "FRANCE"],
   SLC: ["LIDL CAMBRAI", "PARC ACTIPOLE DE L'A2", "59554 SAILLY LEZ CAMBRAI", "FRANCE"],
