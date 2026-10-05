@@ -559,11 +559,24 @@ export default function App() {
   // 29/09/2026 — Sert à ne charger les grosses collections (voir chargementAutorise plus bas)
   // qu'une fois les droits connus.
   const [permsChargees, setPermsChargees] = useState(false);
+  // 05/10/2026 — Bug signalé par Elinathan : à sa toute première connexion, un compte limité à
+  // 2 modules voyait TOUS les modules jusqu'au rafraîchissement. La lecture des droits pouvait
+  // échouer (refusée tant que le compte n'est pas encore enregistré) ou arriver après l'accueil,
+  // et sans droits lus l'appli accordait tout par défaut. Désormais : on réécoute les droits à la
+  // connexion et, en cas d'échec, on réessaie toutes les 3 s ; et tant qu'ils ne sont pas chargés,
+  // aucun module n'est accordé (voir monAccesReel plus bas).
   useEffect(() => {
-    const unsub1 = onValue(ref(db, "acces_permissions/roles"), snap => setPermRoles(snap.val() || {}));
-    const unsub2 = onValue(ref(db, "acces_permissions/users"), snap => { setPermUsers(snap.val() || {}); setPermsChargees(true); });
-    return () => { unsub1(); unsub2(); };
-  }, []);
+    let annule = false, stop1 = () => {}, stop2 = () => {}, relance: ReturnType<typeof setTimeout> | null = null;
+    setPermsChargees(false);
+    const ecouter = () => {
+      stop1(); stop2();
+      const echec = () => { if (!annule && !relance) relance = setTimeout(() => { relance = null; ecouter(); }, 3000); };
+      stop1 = onValue(ref(db, "acces_permissions/roles"), snap => setPermRoles(snap.val() || {}), echec);
+      stop2 = onValue(ref(db, "acces_permissions/users"), snap => { setPermUsers(snap.val() || {}); setPermsChargees(true); }, echec);
+    };
+    ecouter();
+    return () => { annule = true; stop1(); stop2(); if (relance) clearTimeout(relance); };
+  }, [userCompte?.uid]);
   // 17/09/2026 — Demande d'Elinathan : pouvoir choisir dans une liste déroulante, depuis
   // l'accueil, l'adresse mail de qui elle veut "voir et tester" — sans avoir à se connecter
   // depuis le compte Google de cette personne. "monAccesReel" reste TOUJOURS calculé sur sa
@@ -595,7 +608,9 @@ export default function App() {
     update(ref(db, `comptes/${user.uid}/accueil_masques`), { [moduleKey]: accueilMasques[moduleKey] ? null : true });
   };
   const [showPersonnaliserAccueil, setShowPersonnaliserAccueil] = useState(false);
-  const monAccesReel = calculerAcces(user?.email, permRoles, permUsers);
+  const monAccesReel = (permsChargees || ADMIN_BOOTSTRAP.includes((user?.email || "").toLowerCase()))
+    ? calculerAcces(user?.email, permRoles, permUsers)
+    : { isAdmin: false, hasModule: () => false, hasTab: () => false };
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
   // 29/09/2026 — Demande d'Elinathan (vitesse) : les grosses collections ne sont plus
   // téléchargées pour un compte qui n'a accès à AUCUN des modules qui s'en servent. Toujours
@@ -3221,6 +3236,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // (`if (!arrivagesCharges) return <ChargementEcran .../>`) — seule cette page-là attend les
   // arrivages, pas toute l'appli.
   if (!rtdbPret) return <EcranChargementInitial />;
+  // 05/10/2026 — Droits pas encore lus (première connexion, réseau lent) : on attend plutôt que
+  // d'afficher un accueil vide ou, avant, tous les modules.
+  if (user && !permsChargees && !ADMIN_BOOTSTRAP.includes((user.email || "").toLowerCase())) return <ChargementEcran texte="Chargement de tes accès…" />;
 
   // 22/09/2026 -- Écran dédié pour un compte flambant neuf, en attente qu'un admin lui donne
   // des modules (voir la note plus haut). Se referme tout seul dès que l'accès est donné,
