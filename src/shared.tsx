@@ -472,6 +472,8 @@ export function compteEnAttente(u: AccesUser | undefined): boolean {
 export type AccesRole = { label: string; modules?: Record<string, boolean>; tabs?: Record<string, boolean> };
 export type AccesUser = {
   email: string; role?: string | null; admin?: boolean;
+  // 05/10/2026 — Invitation envoyée depuis Droits d'accès (mail avec le lien de l'appli).
+  invitation?: { prenom?: string; par?: string; ts: number; dateLabel?: string; nbEnvois?: number };
   extraModules?: Record<string, boolean>; extraTabs?: Record<string, boolean>;
   // 17/09/2026 — Demande d'Elinathan : rattacher une adresse de connexion à un ou plusieurs
   // "commerciaux" de la Messagerie (voir messagerie_commerciaux dans MessagerieModule.tsx), pour

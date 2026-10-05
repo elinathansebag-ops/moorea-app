@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { db, ref, onValue, remove } from "./firebase";
+import { db, ref, onValue, remove, update, auth } from "./firebase";
 import { set } from "firebase/database";
 import { PageHeader, styles, MODULE_DEFS, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, toutesLesClesModules, AccesRole, AccesUser } from "./shared";
 import { Commercial } from "./MessagerieModule";
@@ -100,6 +100,12 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
   const [chargeRoles, setChargeRoles] = useState(false);
   const [chargeUsers, setChargeUsers] = useState(false);
   const [nouvelEmail, setNouvelEmail] = useState("");
+  // 05/10/2026 — Invitation par mail (demande d'Elinathan) : part de sa boîte, avec le lien de
+  // l'appli et un petit mode d'emploi ; la personne apparaît « invitation envoyée · en attente ».
+  const [invitEmail, setInvitEmail] = useState("");
+  const [invitPrenom, setInvitPrenom] = useState("");
+  const [invitEnCours, setInvitEnCours] = useState(false);
+  const [invitMessage, setInvitMessage] = useState<{ ok: boolean; texte: string } | null>(null);
   const [compteOuvert, setCompteOuvert] = useState<string | null>(null);
   const [comptes, setComptes] = useState<Record<string, { email: string; displayName?: string; premiere_connexion?: number; derniere_connexion?: number }>>({});
   const [presences, setPresences] = useState<Record<string, { online: boolean; lastSeen?: number }>>({});
@@ -133,6 +139,48 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
     });
     setNouvelEmail("");
     setCompteOuvert(cle);
+  };
+
+  const echapHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const envoyerInvitation = async (emailBrut: string, prenomBrut: string) => {
+    const email = emailBrut.trim().toLowerCase(), prenom = prenomBrut.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setInvitMessage({ ok: false, texte: "Adresse mail invalide." }); return; }
+    if (!email.endsWith("@moorea.fr")) { setInvitMessage({ ok: false, texte: "Seules les adresses @moorea.fr peuvent se connecter à l'appli." }); return; }
+    const cle = cleEmail(email);
+    const existant = users[cle];
+    setInvitEnCours(true); setInvitMessage(null);
+    const lien = window.location.origin;
+    const bonjour = prenom ? `Bonjour ${echapHtml(prenom)},` : "Bonjour,";
+    const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#1c1c1e;max-width:560px">
+<p>${bonjour}</p>
+<p>Je t'invite à utiliser <b>l'appli Moorea</b>, l'outil interne qu'on utilise pour les arrivages, la préparation des commandes (Lidl, reconditionnement), le stock, les IFCO et le reste du quotidien.</p>
+<p style="margin:22px 0"><a href="${lien}" style="background:#1c1c1e;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;display:inline-block">Ouvrir l'appli Moorea</a></p>
+<p><b>Comment faire :</b></p>
+<ol style="padding-left:20px;margin-top:4px">
+<li>Ouvre le lien ci-dessus (<a href="${lien}">${lien}</a>).</li>
+<li>Clique sur <b>« Se connecter avec Google »</b> et choisis ton adresse <b>${echapHtml(email)}</b>.</li>
+<li>Ton accès est ensuite validé de mon côté : tu verras tes modules apparaître dès que c'est fait (pas besoin de te reconnecter).</li>
+</ol>
+<p><b>Astuce :</b> sur iPad ou téléphone, ajoute l'appli à ton écran d'accueil (Safari : bouton Partager → « Sur l'écran d'accueil » ; Chrome : menu ⋮ → « Installer l'application ») pour l'ouvrir comme une vraie appli.</p>
+<p>Une question ? Réponds simplement à ce mail.</p>
+<p>À bientôt,<br>Elinathan</p>
+</div>`;
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender: "elinathan", to: [email], subject: "Ton accès à l'appli Moorea", html }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) throw new Error(data?.error || `Erreur ${res.status}`);
+      const invitation = { prenom: prenom || existant?.invitation?.prenom || "", par: auth.currentUser?.displayName || auth.currentUser?.email || "", ts: Date.now(), dateLabel: new Date().toLocaleString("fr-FR"), nbEnvois: (existant?.invitation?.nbEnvois || 0) + 1 };
+      if (existant) await update(ref(db, `acces_permissions/users/${cle}`), { invitation });
+      else await sauverUser(cle, { email, role: null, admin: false, modeBase: "total", extraModules: {}, extraTabs: {}, denyModules: toutesLesClesModules(), denyTabs: {}, invitation });
+      setInvitMessage({ ok: true, texte: `✉️ Invitation envoyée à ${email} depuis ta boîte mail. Elle apparaît ci-dessous en attente.` });
+      setInvitEmail(""); setInvitPrenom("");
+    } catch (e: any) {
+      setInvitMessage({ ok: false, texte: `Invitation non envoyée : ${e?.message || e}` });
+    }
+    setInvitEnCours(false);
   };
 
   const supprimerUtilisateur = (cle: string, email: string) => {
@@ -429,9 +477,19 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
 
           return (
             <div>
+              <div className="card" style={{ padding: 14, marginBottom: 10 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>✉️ Inviter quelqu'un</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>Un mail part de ta boîte avec le lien de l'appli et la marche à suivre. La personne apparaît ensuite « en attente » : tu choisis ses modules quand tu veux.</div>
+                <form onSubmit={e => { e.preventDefault(); envoyerInvitation(invitEmail, invitPrenom); }} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input value={invitPrenom} onChange={e => setInvitPrenom(e.target.value)} placeholder="Prénom" aria-label="Prénom" style={{ flex: "1 1 140px" }} />
+                  <input value={invitEmail} onChange={e => setInvitEmail(e.target.value)} placeholder="prenom.nom@moorea.fr" aria-label="Adresse mail" type="email" style={{ flex: "2 1 220px" }} />
+                  <button type="submit" className="btn-primary" disabled={invitEnCours || !invitEmail.trim()} style={{ width: "auto", padding: "0 18px" }}>{invitEnCours ? "Envoi…" : "Envoyer l'invitation"}</button>
+                </form>
+                {invitMessage && <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: invitMessage.ok ? "#15803d" : "#b91c1c" }}>{invitMessage.texte}</div>}
+              </div>
               <div className="card" style={{ padding: 14, marginBottom: 14, display: "flex", gap: 8 }}>
                 <input value={nouvelEmail} onChange={e => setNouvelEmail(e.target.value)} placeholder="adresse@moorea.fr (pas encore connectée)" onKeyDown={e => e.key === "Enter" && ajouterUtilisateur()} />
-                <button className="btn-primary" style={{ width: "auto", padding: "0 18px" }} onClick={ajouterUtilisateur}>+ Pré-configurer</button>
+                <button className="btn-primary" style={{ width: "auto", padding: "0 18px" }} onClick={ajouterUtilisateur}>+ Pré-configurer sans mail</button>
               </div>
 
               {nbEnAttente > 0 && (
@@ -506,10 +564,13 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                       <div key={cle} className="card" style={{ padding: 14, marginBottom: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                           <div>
-                            <span style={{ fontWeight: 700, fontSize: 14 }}>{u.email}</span>
+                            <span style={{ fontWeight: 700, fontSize: 14 }}>{u.invitation?.prenom ? `${u.invitation.prenom} · ` : ""}{u.email}</span>
                             {u.admin && <span className="pill" style={{ background: "#f0fdf4", color: "#16a34a", marginLeft: 8 }}>Admin</span>}
+                            {u.invitation && <span className="pill" style={{ background: "#eff6ff", color: "#1d4ed8", marginLeft: 8 }}>✉️ Invitation envoyée · en attente</span>}
+                            {u.invitation && <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 3 }}>Le {u.invitation.dateLabel}{u.invitation.par ? ` par ${u.invitation.par}` : ""}{(u.invitation.nbEnvois || 1) > 1 ? ` · envoyée ${u.invitation.nbEnvois} fois` : ""} — pas encore connecté(e)</div>}
                           </div>
                           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            {u.invitation && <button onClick={() => envoyerInvitation(u.email, u.invitation?.prenom || "")} disabled={invitEnCours} style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #bfdbfe", background: "#fff", color: "#1d4ed8", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>↻ Renvoyer</button>}
                             {!estBootstrap && <button onClick={() => supprimerUtilisateur(cle, u.email)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 14 }}>🗑️</button>}
                             <button
                               onClick={() => setCompteOuvert(ouvert ? null : cle)}
