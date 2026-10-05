@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { activerSansEmoji } from "./apparenceEmoji";
 
 // 05/10/2026 — Nouvelle apparence (charte Moorea : vert sapin #305A55, vert sauge #74B484) mise en
 // place à côté de l'ancienne, avec un interrupteur pour revenir en arrière (demande d'Elinathan).
@@ -14,8 +15,12 @@ let v2 = false;
 const abonnes = new Set<() => void>();
 export function definirV2(actif: boolean) {
   if (actif === v2) return;
+  // Retour à l'ancienne apparence après avoir été en nouvelle : on recharge la page pour retrouver
+  // tous les textes d'origine (emojis retirés par apparenceEmoji.ts).
+  if (v2 && !actif) { window.location.reload(); return; }
   v2 = actif;
   document.documentElement.classList.toggle("v2", actif);
+  activerSansEmoji(actif);
   abonnes.forEach(f => f());
 }
 export function useV2() {

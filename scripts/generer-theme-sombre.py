@@ -86,13 +86,18 @@ print("src/themeSombre.css :", sum(l.count('[style*=') for l in lignes), "sélec
 # de la charte (vert sapin #305A55, vert sauge #74B484, gris-verts). Les gris clairs ne sont changés
 # qu'en mode clair : en mode nuit, c'est src/themeSombre.css qui décide.
 SAPIN, SAUGE, SAPIN_TEXTE, ENCRE = "#305a55", "#74b484", "#3f8a55", "#1e2b29"
-V2_FONDS = {SAPIN: ["#c8a84b", "#0a0a0a", "#1a2e1a"]}
+# Accents de l'ancienne apparence (or, noir, bleu Lidl, violet) → vert sapin.
+# Boutons et en-têtes pleins de couleurs vives (bleu, bleu ciel, violet, vert vif) → vert sapin,
+# pour une seule couleur d'action dans toute l'appli. Les teintes d'état (fonds pâles) ne bougent pas.
+V2_FONDS = {SAPIN: ["#c8a84b", "#0a0a0a", "#1a2e1a", "#0050aa", "#111827", "#6d28d9", "#7c3aed",
+                    "#3b82f6", "#2563eb", "#0ea5e9", "#8b5cf6", "#27ae60", "#16a34a", "#1e8449", "#0891b2", "#ea580c", "#f97316", "#eab308", "#ca8a04"]}
+V2_FONDS_TEINTES = {"#eef6f0": ["#f5f3ff", "#faf5ff", "#ede9fe", "#eff6ff"]}
 V2_FONDS_CLAIR = {"#f3f6f5": ["#f5f3ee", "#faf8f3", "#faf9f6", "#f8f6f2", "#faf8f0", "#faf8f5"]}
-V2_BORDURES = {SAPIN: ["#c8a84b"]}
+V2_BORDURES = {SAPIN: ["#c8a84b", "#0050aa", "#6d28d9", "#7c3aed", "#3b82f6", "#8b5cf6", "#27ae60", "#0ea5e9", "#2563eb", "#9333ea", "#a855f7", "#eab308"], "#c9e2cf": ["#e9d8fd", "#bfdbfe", "#93c5fd"]}
 V2_BORDURES_CLAIR = {"#dde6e3": ["#e8e0d0", "#f0ede6"]}
 # L'or était surtout un texte posé sur fond noir (devenu vert sapin) : il devient vert sauge, la
 # variante claire du logo, lisible sur le vert sapin.
-V2_TEXTES = {SAUGE: ["#c8a84b"], SAPIN: ["#8a6f2e", "#92722c"]}
+V2_TEXTES = {SAUGE: ["#c8a84b"], SAPIN: ["#8a6f2e", "#92722c", "#0050aa", "#6d28d9", "#7c3aed", "#3b82f6", "#8b5cf6", "#0ea5e9", "#27ae60", "#2563eb", "#9333ea", "#a855f7"]}
 V2_TEXTES_CLAIR = {ENCRE: ["#1a2e1a"]}
 
 v2 = ["/* Généré par scripts/generer-theme-sombre.py — ne pas modifier à la main. */",
@@ -119,6 +124,17 @@ v2 = ["/* Généré par scripts/generer-theme-sombre.py — ne pas modifier à l
       ':root.v2 #stock-root .add-loc-btn { border-color: #305a55 !important; color: #305a55 !important; } :root.v2 #stock-root .team-card.gms::before { background: #305a55 !important; }',
       ':root.v2 #stock-toast.info, :root.v2 #stock-fusion-bar { background: #305a55 !important; color: #ffffff !important; border-color: #305a55 !important; }',
       ':root.v2 #stock-calc-fab { background: #305a55 !important; box-shadow: none !important; } :root.v2 #stock-calc-modal .calc-btn.op { color: #305a55 !important; }',
+      # Stock : son bandeau interne faisait doublon avec l'en-tête de l'appli ; on ne garde que
+      # l'indicateur de synchronisation, sur une ligne fine.
+      ':root.v2 #stock-root .topbar { height: auto !important; min-height: 0 !important; padding: 6px 2rem !important; position: static !important; align-items: center !important; justify-content: flex-end !important; }',
+      ':root.v2 #stock-root .topbar .logo, :root.v2 #stock-root .topbar .logo-sub { display: none !important; }',
+      # Or semi-transparent (bordures et fonds teintés) → teintes de la charte.
+      ':root.v2 [style*="solid rgba(200, 168, 75"] { border-color: rgba(48, 90, 85, 0.3) !important; }',
+      ':root.v2 [style*="background: rgba(200, 168, 75"], :root.v2 [style*="background-color: rgba(200, 168, 75"] { background-color: rgba(116, 180, 132, 0.15) !important; }',
+      ':root.v2 [style*="background: rgba(0, 80, 170"], :root.v2 [style*="background-color: rgba(0, 80, 170"] { background-color: rgba(116, 180, 132, 0.15) !important; }',
+      ':root.v2 [style*="solid rgba(0, 80, 170"] { border-color: rgba(48, 90, 85, 0.3) !important; }',
+      # Cadres plus fins (les bordures de 1,5 px deviennent 1 px).
+      ':root.v2 [style*="1.5px solid"] { border-width: 1px !important; }',
       # Téléphone : le titre de l'écran a besoin de la place du logo.
       '@media (max-width: 640px) { :root.v2 .v2-logo-entete, :root.v2 .v2-logo-entete + span { display: none !important; } }']
 def bloc(table, prefixe, prop, formes_fn):
@@ -130,6 +146,7 @@ bords = lambda c: [rgb(c), c, c.upper()]
 textes = lambda c: formes("color", c)
 bloc(V2_FONDS, ":root.v2", "background-color", fonds)
 bloc(V2_FONDS_CLAIR, ":root.v2:not(.dark)", "background-color", fonds)
+bloc(V2_FONDS_TEINTES, ":root.v2:not(.dark)", "background-color", fonds)
 bloc(V2_BORDURES, ":root.v2", "border-color", bords)
 bloc(V2_BORDURES_CLAIR, ":root.v2:not(.dark)", "border-color", bords)
 bloc(V2_TEXTES, ":root.v2", "color", textes)

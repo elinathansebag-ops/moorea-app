@@ -180,7 +180,10 @@ function PageHeaderV2({ titre, onBack, onHome }: { titre: string; onBack?: () =>
     <div style={{ background: "#305a55", position: "sticky", top: 0, zIndex: 200, paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", height: 60, display: "flex", alignItems: "center", gap: 14, padding: "0 16px" }}>
         {onBack && <button type="button" onClick={onBack} style={bouton} aria-label="Retour"><IconeTrait d="M19 12H5 M12 19l-7-7 7-7" taille={18} /><span>Retour</span></button>}
-        <span style={{ display: "inline-flex" }} className="v2-logo-entete"><LogoMoorea taille={13} /></span>
+        {/* Le logo ramène à l'accueil (demande d'Elinathan). */}
+        {onHome || onBack
+          ? <button type="button" onClick={onHome || onBack} aria-label="Accueil" className="v2-logo-entete" style={{ display: "inline-flex", border: "none", background: "transparent", padding: 0, cursor: "pointer" }}><LogoMoorea taille={13} /></button>
+          : <span style={{ display: "inline-flex" }} className="v2-logo-entete"><LogoMoorea taille={13} /></span>}
         <span style={{ width: 1, height: 22, background: "rgba(255,255,255,0.25)" }} />
         <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 600, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sansEmoji(titre)}</p>
         {onHome && <button type="button" onClick={onHome} style={bouton} aria-label="Accueil"><IconeTrait d="M3 10.5 12 3l9 7.5 M5 9.5V21h14V9.5" taille={18} /></button>}
