@@ -536,6 +536,7 @@ export default function App() {
   // Id de demande scanné via le QR code imprimé sur le bon (voir useEffect des paramètres
   // d'URL ci-dessous, param "recond") — transmis au module pour valider "prêt"/"parti" au scan.
   const [qrRecondDemandeId, setQrRecondDemandeId] = useState<string | null>(null);
+  const [qrLidlId, setQrLidlId] = useState<string | null>(null);
   const [showDashboard, setShowDashboard] = useState(false);
   // ─── PANNEAU ADMIN — journal d'activité (qui a fait quoi) + réglages centralisés ───
   // 09/09/2026 — Sur demande d'Elinathan ("donne moi le code admin ou n'en mets pas si je suis
@@ -1216,6 +1217,9 @@ export default function App() {
     // prop scanDemandeId). Réservé au personnel déjà connecté, comme les autres QR ci-dessus.
     const recond = params.get("recond");
     if (recond) { setQrRecondDemandeId(recond); setShowAccueil(false); setShowPreparation(true); }
+    // 05/10/2026 — Étiquette palette Lidl scannée avec l'appareil photo : ouvre Préparation sur la fiche de la commande.
+    const lidl = params.get("lidl");
+    if (lidl) { setQrLidlId(lidl); setShowAccueil(false); setShowPreparation(true); }
     // Espace reconditionneur public — voir déclaration de portailDepot plus haut.
     const portail = params.get("portail");
     if (portail === "nlt" || portail === "andes") setPortailDepot(portail);
@@ -3213,6 +3217,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           initialTab={prestatairesInitialTab}
           canConfig={monAcces.hasTab("prestataires.configuration")}
           demandesRecondExterne={reconditionnementDemandesListe}
+          scanLidlId={qrLidlId}
+          onScanLidlHandled={() => { setQrLidlId(null); window.history.replaceState({}, "", window.location.pathname); }}
         />
       ) : (
         <AccesRefuse onRetour={() => { setShowPrestataires(false); setPrestatairesInitialTab(undefined); setShowAccueil(true); }} />

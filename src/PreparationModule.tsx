@@ -182,8 +182,11 @@ function ResumeStatutsGroupe({ demandes }: { demandes: Demande[] }) {
   );
 }
 
-export function PreparationModule({ onClose, userName, scanDemandeId, onScanHandled, demandesRecondExterne }: {
+export function PreparationModule({ onClose, userName, scanDemandeId, onScanHandled, demandesRecondExterne, scanLidlId, onScanLidlHandled }: {
   onClose: () => void;
+  // 05/10/2026 — Étiquette palette Lidl scannée avec l'appareil photo de l'iPad (URL ?lidl=<id>) : ouvre la fiche.
+  scanLidlId?: string | null;
+  onScanLidlHandled?: () => void;
   userName?: string;
   // Id de demande transmis quand l'app a été ouverte via le QR code imprimé sur le bon (voir
   // App.tsx, paramètre d'URL "?recond=<id>") — permet de valider "prêt" puis "parti" directement
@@ -756,7 +759,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
         ))}
 
         {/* 02/10/2026 — Cellule Lidl : commandes issues du tableau de répartition quotidien (voir LidlCommandes.tsx) */}
-        <LidlCommandes userName={userName} />
+        <LidlCommandes userName={userName} ficheScan={scanLidlId} onFicheScanTraitee={onScanLidlHandled} />
 
         {/* Filtre statut */}
         <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>

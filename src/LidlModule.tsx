@@ -27,6 +27,8 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
 
   const producteurs = useProducteursLidl();
   const adresses = useAdressesLidl();
+  const [cfgEtiq, setCfgEtiq] = useState(false);
+  useEffect(() => onValue(ref(db, "lidl_config/etiquettesAuto"), snap => setCfgEtiq(snap.val() === true)), []);
   const [cfg, setCfg] = useState(lireConfigLidl(null));
   const [envois, setEnvois] = useState<Record<string, any>>({});
   const [jourTraca, setJourTraca] = useState("");
@@ -236,6 +238,14 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
                 style={{ position: "relative", width: 108, height: 34, borderRadius: 20, border: "none", cursor: "pointer", background: cfg.modeTest ? "#fde3a8" : "#bbf7d0", flexShrink: 0 }}>
                 <span style={{ position: "absolute", top: 3, left: cfg.modeTest ? 3 : 57, width: 48, height: 28, borderRadius: 16, background: cfg.modeTest ? "#f59e0b" : "#16a34a", color: "#fff", fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", transition: "left .15s" }}>{cfg.modeTest ? "TEST" : "RÉEL"}</span>
               </button>
+            </div>
+            {/* 05/10/2026 — Étiquettes palettes : envoi automatique à l'imprimante à étiquettes du relais PC (à activer une fois le relais mis à jour). */}
+            <div style={{ marginTop: 12, background: cfgEtiq ? "#f0fdf4" : "#f9fafb", border: `1.5px solid ${cfgEtiq ? "#bbf7d0" : "#e5e7eb"}`, borderRadius: 12, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 13 }}>🏷️ Étiquettes palettes : {cfgEtiq ? "impression automatique" : "PDF à imprimer"}</div>
+                <div style={{ fontSize: 11.5, color: "#4b5563", marginTop: 2 }}>{cfgEtiq ? "Les étiquettes partent directement à l'imprimante à étiquettes du PC (relais)." : "Les étiquettes s'ouvrent en PDF. À activer quand l'imprimante à étiquettes est branchée sur le relais PC."}</div>
+              </div>
+              <button type="button" onClick={() => update(ref(db, "lidl_config"), { etiquettesAuto: !cfgEtiq })} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: cfgEtiq ? "#16a34a" : "#9ca3af", color: "#fff", fontWeight: 800, cursor: "pointer" }}>{cfgEtiq ? "Activé" : "Désactivé"}</button>
             </div>
             <div style={{ marginTop: 14 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Adresse de Lidl (mode réel)</label>

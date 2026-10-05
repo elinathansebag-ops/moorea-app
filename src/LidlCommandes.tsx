@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { db, ref, onValue, update, remove, get, push } from "./firebase";
-import { pdfBonGeslot, pdfBonPreparation, pdfEtiquettesPalettes, envoyerPdfImprimante, type LigneBon, type EtiquettePalette } from "./lidlImpression";
+import { pdfBonGeslot, pdfBonPreparation, pdfEtiquettesPalettes, envoyerPdfImprimante, envoyerEtiquettesImprimante, type LigneBon, type EtiquettePalette } from "./lidlImpression";
+import { LidlScanner } from "./LidlScanner";
 import { PRODUCTEURS_LIDL, envoyerTracabiliteLidl, genererXlsxLidl, nomFichierLidl, type Producteur, type ContexteExport, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : Lidl envoie chaque jour un tableau de répartition
@@ -37,6 +38,9 @@ type LigneLidl = {
   refChoisie?: boolean;  // true = choix manuel : l'import ne l'écrase plus
   importePar?: string;
   fichier?: string;
+  etiquettes?: number;            // nombre d'étiquettes palettes déjà imprimées
+  etiquetteQuantite?: number;     // nb de colis écrit sur l'étiquette imprimée
+  etiquetteAReimprimer?: boolean; // quantité modifiée par un réimport après impression
 };
 
 // 02/10/2026 — Liste des bases Lidl (fournie par Elinathan : « BASE LIDL / N° BASE / TRANSPORT
@@ -184,7 +188,7 @@ const libDepart = (d?: string) => (d === "paris" ? "Départ Paris" : d === "sud"
 // mode « commercial » : module « Commandes Lidl » (import du tableau, vue de TOUTES les commandes,
 // Sud et Paris, lecture seule). mode « preparation » : cellule de Préparation (entrepôt) — pas
 // d'import, uniquement les commandes au départ de Paris, avec saisie du lot et bouton « Prêt ».
-export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparation", jourForce }: { userName?: string; couleur?: string; mode?: "commercial" | "preparation"; jourForce?: string }) {
+export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparation", jourForce, ficheScan, onFicheScanTraitee }: { userName?: string; couleur?: string; mode?: "commercial" | "preparation"; jourForce?: string; ficheScan?: string | null; onFicheScanTraitee?: () => void }) {
   const commercial = mode === "commercial";
   const [lignes, setLignes] = useState<LigneLidl[]>([]);
   const [ouvert, setOuvert] = useState(true);
@@ -201,6 +205,16 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const [erreurImport, setErreurImport] = useState("");
   const [dernierImport, setDernierImport] = useState<{ date: string; depart: "sud" | "paris" } | null>(null);
   const [recapMedina, setRecapMedina] = useState("");
+  // Réimport qui modifie une commande déjà importée : pop-up d'alerte (commercial) + alerte en Préparation
+  type Changement = { base: string; avant: number; apres: number; pret?: boolean; etiquette?: boolean; id?: string };
+  const [popupChangements, setPopupChangements] = useState<{ date: string; depart: string; liste: Changement[] } | null>(null);
+  const [alertesPrepa, setAlertesPrepa] = useState<{ id: string; date: string; par: string; ts: number; changements: Changement[] }[]>([]);
+  // Mode scan (directeur d'entrepôt) : caméra ouverte en continu, une fiche par étiquette scannée
+  const [scanOuvert, setScanOuvert] = useState(false);
+  const [ficheId, setFicheId] = useState<string | null>(null);
+  const [dernierSaisi, setDernierSaisi] = useState<{ ferme?: string; lot?: string }>({});
+  const [etiquettesAuto, setEtiquettesAuto] = useState(false);
+  const [aImprimerApresImport, setAImprimerApresImport] = useState<string[]>([]);
   const [lotsSaisis, setLotsSaisis] = useState<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -245,6 +259,19 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     lignesParis.forEach(l => m.set(l.date, [...(m.get(l.date) || []), l]));
     return m;
   }, [lignesParis]);
+  useEffect(() => {
+    const u1 = onValue(ref(db, "lidl_config/etiquettesAuto"), snap => setEtiquettesAuto(snap.val() === true));
+    const u2 = commercial ? () => {} : onValue(ref(db, "lidl_changements"), snap => {
+      const v = snap.val() || {};
+      setAlertesPrepa(Object.entries(v).map(([id, x]: any) => ({ id, ...x })).filter((x: any) => !x.vu && x.depart === "paris").sort((a: any, b: any) => a.ts - b.ts));
+    });
+    return () => { u1(); u2(); };
+  }, [commercial]);
+  // QR scanné avec l'appareil photo de l'iPad (URL ?lidl=<id>) : ouvre directement la fiche.
+  useEffect(() => {
+    if (!ficheScan) return;
+    setScanOuvert(true); setFicheId(ficheScan); onFicheScanTraitee?.();
+  }, [ficheScan]);
   // État de l'envoi de la traçabilité à Lidl, par jour (lidl_envois/{date})
   const [envois, setEnvois] = useState<Record<string, any>>({});
   useEffect(() => {
@@ -350,8 +377,16 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       Object.entries(tout).forEach(([id, x]: any) => { if (x.date === d && (x.depart || "sud") === dep) existantes.set(id, x); });
       const maj: Record<string, any> = {};
       let nouvelles = 0, modifiees = 0, inchangees = 0, retirees = 0;
+      const reimport = existantes.size > 0;
+      const changements: Changement[] = [];
+      const nomB = (c: string) => infoBase(c)?.nom || c;
       for (const l of lues) {
         const ex = existantes.get(l.id);
+        if (reimport && !ex) changements.push({ base: nomB(l.base), avant: 0, apres: l.quantite, id: l.id });
+        if (ex && ex.quantite !== l.quantite) {
+          changements.push({ base: nomB(l.base), avant: ex.quantite, apres: l.quantite, pret: ex.statut === "pret", etiquette: (ex.etiquettes || 0) > 0, id: l.id });
+          if ((ex.etiquettes || 0) > 0) maj[`lidl_commandes/${l.id}/etiquetteAReimprimer`] = true;
+        }
         const base = { date: l.date, depart: l.depart, transporteur: l.transporteur || null, camion: l.camion, avis: l.avis, base: l.base, articleNum: l.articleNum, article: l.article, emballage: l.emballage, origine: l.origine, quantite: l.quantite, prix: l.prix ?? null, fichier: fichierLu.nom, importePar: userName || "", absenteDuFichier: null };
         if (!ex) { nouvelles++; for (const [k, v] of Object.entries({ ...base, refLidl: l.refLidl ?? null, lot: "", statut: "a_preparer" })) maj[`lidl_commandes/${l.id}/${k}`] = v; }
         else {
@@ -365,10 +400,15 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       }
       // Lignes de ce jour et de ce départ absentes du nouveau fichier : supprimées si pas prêtes, sinon signalées.
       for (const [id, ex] of existantes) {
+        changements.push({ base: nomB(ex.base), avant: ex.quantite, apres: 0, pret: ex.statut === "pret", etiquette: (ex.etiquettes || 0) > 0 });
         if (ex.statut === "pret") maj[`lidl_commandes/${id}/absenteDuFichier`] = true;
         else { retirees++; maj[`lidl_commandes/${id}`] = null; }
       }
       await update(ref(db), maj);
+      if (changements.length) {
+        await push(ref(db, "lidl_changements"), { date: d, depart: dep, ts: Date.now(), par: userName || "", changements, vu: false });
+        setPopupChangements({ date: d, depart: dep, liste: changements });
+      }
       await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichierLu.nom, dates: [d], depart: dep, dateFichier: fichierLu.dateFichier || null, lignes: lues.length });
       setJour(d);
       setJoursOuverts(x => new Set(x).add(d));
@@ -376,7 +416,15 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       setDernierImport({ date: d, depart: dep });
       // Impression automatique : bon Geslot (bureau) toujours ; bon de préparation (entrepôt) pour Paris.
       imprimerGeslot(d, dep, lues);
-      if (dep === "paris") imprimerBonEntrepot(d, lues);
+      if (dep === "paris") {
+        imprimerBonEntrepot(d, lues);
+        // Étiquettes palettes (option 1) : une par commande dès l'import ; les palettes en plus
+        // s'impriment quand le directeur saisit la taille de palette. Les étiquettes déjà imprimées
+        // ne repartent pas (sauf quantité modifiée : voir l'alerte de réimport).
+        const ids = lues.filter(l => !((tout[l.id]?.etiquettes || 0) > 0)).map(l => l.id);
+        if (etiquettesAuto) imprimerEtiquettes(lues.filter(l => ids.includes(l.id)).map(l => ({ l, de: 1, a: 1, nb: 1 })));
+        else setAImprimerApresImport(ids);
+      } else setAImprimerApresImport([]);
       if (dep === "sud") {
         const r = await envoyerRecapMedina(d, lues);
         setRecapMedina(r?.ok ? `📧 Récap de préparation Medina envoyé à Jordan (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}).` : `❌ Récap Medina non envoyé : ${r?.erreur || "erreur"}`);
@@ -389,11 +437,15 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     setImport(false);
   }
 
-  async function marquerPret(l: LigneLidl) {
+  async function marquerPret(l: LigneLidl): Promise<boolean> {
     const lot = (lotsSaisis[l.id] ?? l.lot).trim();
-    if (!l.ferme) { flash("err", `Choisis d'abord le producteur pour ${infoBase(l.base)?.nom || l.base}.`); return; }
-    if (!LOT_OK.test(lot)) { flash("err", `Le numéro de lot doit être 1 lettre + 4 chiffres (ex. A1234) pour ${infoBase(l.base)?.nom || l.base}.`); return; }
+    if (!l.ferme) { flash("err", `Choisis d'abord le producteur pour ${infoBase(l.base)?.nom || l.base}.`); notif("err", `Choisis d'abord le producteur pour ${infoBase(l.base)?.nom || l.base}.`); return false; }
+    if (!LOT_OK.test(lot)) { flash("err", `Le numéro de lot doit être 1 lettre + 4 chiffres (ex. A1234) pour ${infoBase(l.base)?.nom || l.base}.`); notif("err", `Lot invalide pour ${infoBase(l.base)?.nom || l.base} (1 lettre + 4 chiffres, ex. A1234).`); return false; }
     await update(ref(db, `lidl_commandes/${l.id}`), { lot, statut: "pret", palettes: l.palettes ?? 0.5, pretPar: userName || "", pretLe: new Date().toLocaleString("fr-FR"), quantiteModifieeApresPret: null });
+    setDernierSaisi({ ferme: l.ferme, lot });
+    // Plus d'une palette : on imprime les étiquettes qui manquent (« Palette 2/2 »…).
+    const nb = Math.max(1, Math.ceil(l.palettes ?? 0.5));
+    if ((l.etiquettes || 0) > 0 && nb > (l.etiquettes || 0)) imprimerEtiquettes([{ l, de: (l.etiquettes || 0) + 1, a: nb, nb }]);
     // Envoi automatique à Lidl quand TOUTES les lignes du jour (Paris + Perpignan) sont prêtes
     const duJourComplet = lignes.filter(x => x.date === l.date).map(x => x.id === l.id ? { ...x, lot, statut: "pret" as const, palettes: l.palettes ?? 0.5 } : x);
     if (duJourComplet.length && duJourComplet.every(x => x.statut === "pret")) {
@@ -401,6 +453,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       if (r.ok) flash("ok", "Dernière ligne prête : " + r.message);
       else if (r.message !== "Envoi déjà en cours") flash("err", "Toutes les lignes sont prêtes mais l'envoi à Lidl a échoué : " + r.message);
     }
+    return true;
   }
   async function setPalettes(l: LigneLidl, v: number) {
     await update(ref(db, `lidl_commandes/${l.id}`), { palettes: Math.max(0.5, Math.round(v * 2) / 2) });
@@ -474,24 +527,44 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     if (!ls.length) return;
     imprimer(`Bon de préparation du ${dateFr(jourB)}`, `LIDL_PREPARATION_${jourB}.pdf`, () => pdfBonPreparation(dateFr(jourB), trierPourPrepa(ls).map(versLigneBon)));
   }
-  // Étiquettes palettes du jour (départ Paris, filtre transporteur respecté) : une par palette.
+  // ── Étiquettes palettes (QR → fiche de la commande). Une par palette ; `de`/`a` = numéros de
+  // palette à imprimer, `nb` = nombre total de palettes de la commande.
   const adresses = useAdressesLidl();
-  function sortirEtiquettes(jourE: string) {
-    const ls = trierPourPrepa((parJour.get(jourE) || []).filter(l => l.depart === "paris" && (!filtreTransporteur || (l.transporteur || "Sans transporteur") === filtreTransporteur)));
-    if (!ls.length) return;
+  const urlQr = (id: string) => `${window.location.origin}${window.location.pathname}?lidl=${encodeURIComponent(id)}`;
+  async function imprimerEtiquettes(items: { l: LigneLidl; de: number; a: number; nb: number }[]) {
+    if (!items.length) return;
+    // Sans imprimante à étiquettes branchée : le PDF s'ouvre. La fenêtre est ouverte tout de suite
+    // (sinon l'iPad la bloque, la fabrication du PDF étant asynchrone).
+    const fenetre = etiquettesAuto ? null : window.open("", "_blank");
     const manquantes = new Set<string>();
-    const etiquettes: EtiquettePalette[] = ls.flatMap(l => {
+    const etiquettes: EtiquettePalette[] = items.flatMap(({ l, de, a, nb }) => {
       const inf = infoBase(l.base);
       const adr = adresses[l.base] || (() => { manquantes.add(inf?.nom || l.base); return [`LIDL ${(inf?.nom || l.base).toUpperCase()}`]; })();
-      const nb = Math.max(1, Math.ceil(l.palettes ?? 0.5));
-      return Array.from({ length: nb }, (_, k) => ({ destinataire: adr, transporteur: l.transporteur || "", quantite: l.quantite, produit: [l.article, l.origine].filter(Boolean).join(" — "), palette: k + 1, nbPalettes: nb }));
+      return Array.from({ length: a - de + 1 }, (_, k) => ({ destinataire: adr, transporteur: l.transporteur || "", quantite: l.quantite, produit: [l.article, l.origine].filter(Boolean).join(" — "), palette: de + k, nbPalettes: nb, qrUrl: urlQr(l.id) }));
     });
-    const doc = pdfEtiquettesPalettes(dateFr(jourE), etiquettes);
-    // En attendant le branchement de l'imprimante à étiquettes sur le relais PC : le PDF s'ouvre, prêt à imprimer.
-    const url = URL.createObjectURL(doc.output("blob"));
-    const w = window.open(url, "_blank");
-    if (!w) { const a = document.createElement("a"); a.href = url; a.download = `LIDL_ETIQUETTES_${jourE}.pdf`; a.click(); }
-    notif(manquantes.size ? "err" : "ok", `🏷️ ${etiquettes.length} étiquette${etiquettes.length > 1 ? "s" : ""} palette du ${dateFr(jourE)}${manquantes.size ? ` — adresse manquante pour : ${[...manquantes].join(", ")} (à compléter dans Commandes Lidl → Configuration)` : ""}`);
+    const jourE = items[0].l.date;
+    const libelle = `${etiquettes.length} étiquette${etiquettes.length > 1 ? "s" : ""} palette${etiquettes.length > 1 ? "s" : ""}`;
+    try {
+      const doc = await pdfEtiquettesPalettes(dateFr(jourE), etiquettes);
+      if (etiquettesAuto) {
+        const cle = await envoyerEtiquettesImprimante(`LIDL_ETIQUETTES_${jourE}.pdf`, doc.output("datauristring").split(",")[1]);
+        suivreImpression(cle, libelle, notif("info", `🏷️ ${libelle} : envoyées à l'imprimante…`));
+      } else {
+        const url = URL.createObjectURL(doc.output("blob"));
+        if (fenetre) fenetre.location.href = url;
+        else { const lien = document.createElement("a"); lien.href = url; lien.download = `LIDL_ETIQUETTES_${jourE}.pdf`; lien.click(); }
+        notif("ok", `🏷️ ${libelle} prête${etiquettes.length > 1 ? "s" : ""} à imprimer`);
+      }
+      const maj: Record<string, any> = {};
+      items.forEach(({ l, a }) => { maj[`lidl_commandes/${l.id}/etiquettes`] = Math.max(l.etiquettes || 0, a); maj[`lidl_commandes/${l.id}/etiquetteQuantite`] = l.quantite; maj[`lidl_commandes/${l.id}/etiquetteAReimprimer`] = null; });
+      await update(ref(db), maj);
+      if (manquantes.size) notif("err", `🏷️ Adresse manquante pour : ${[...manquantes].join(", ")} (Commandes Lidl → Configuration)`);
+    } catch (e: any) { fenetre?.close(); notif("err", `🏷️ Étiquettes non imprimées : ${e?.message || e}`); }
+  }
+  // Toutes les étiquettes d'un jour (réimpression complète), filtre transporteur respecté.
+  function sortirEtiquettes(jourE: string) {
+    const ls = trierPourPrepa((parJour.get(jourE) || []).filter(l => l.depart === "paris" && (!filtreTransporteur || (l.transporteur || "Sans transporteur") === filtreTransporteur)));
+    imprimerEtiquettes(ls.map(l => { const nb = Math.max(1, Math.ceil(l.palettes ?? 0.5)); return { l, de: 1, a: nb, nb }; }));
   }
   // Départ Medina (Perpignan) : la prépa se fait chez Medina. Récap envoyé à Jordan depuis sa propre
   // boîte (l'envoi direct à Medina sera programmé plus tard).
@@ -585,8 +658,11 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
             {inf?.nationale && <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>NATIONALE</span>}
           </div>
           {avecRef && <div style={{ fontSize: 14, fontWeight: 800, color: "#0050aa" }}>{libReference(l)}</div>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11, color: "#9ca3af" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11, color: "#9ca3af", alignItems: "center" }}>
             <span>{inf ? `base n° ${inf.num}` : l.base}{l.camion ? ` · camion ${l.camion}` : ""}</span>{alertes}
+            {l.etiquetteAReimprimer && <span style={{ color: "#b91c1c", fontWeight: 800 }}>⚠️ étiquette à réimprimer ({l.etiquetteQuantite} → {l.quantite} colis)</span>}
+            <button type="button" onClick={() => { const nb = Math.max(1, Math.ceil(l.palettes ?? 0.5)); imprimerEtiquettes([{ l, de: 1, a: nb, nb }]); }}
+              style={{ background: "transparent", border: "none", color: l.etiquetteAReimprimer ? "#b91c1c" : "#6b7280", fontSize: 11, fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0 }}>🏷️ {l.etiquettes ? "réimprimer l'étiquette" : "imprimer l'étiquette"}</button>
           </div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, flex: "1 1 auto", justifyContent: "flex-end" }}>
@@ -827,6 +903,128 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     );
   });
 
+  // ── Fiche ouverte par un scan : grosses commandes tactiles, ferme et lot repris de la commande précédente.
+  const ligneFiche = ficheId ? lignes.find(x => x.id === ficheId) : undefined;
+  useEffect(() => {
+    if (!ligneFiche || ligneFiche.statut === "pret") return;
+    if (!ligneFiche.ferme && dernierSaisi.ferme) update(ref(db, `lidl_commandes/${ligneFiche.id}`), { ferme: dernierSaisi.ferme });
+    if (!ligneFiche.lot && dernierSaisi.lot && lotsSaisis[ligneFiche.id] == null) setLotsSaisis(x => ({ ...x, [ligneFiche.id]: dernierSaisi.lot! }));
+  }, [ligneFiche?.id]);
+  const gros = { height: 54, borderRadius: 12, fontSize: 17, fontWeight: 800 } as const;
+  const fiche = (() => {
+    if (!ficheId) return <div style={{ textAlign: "center", color: "#6b7280", fontSize: 14, padding: "18px 8px" }}>Vise le QR code d'une étiquette palette.</div>;
+    if (!ligneFiche) return (
+      <div style={{ padding: 14, textAlign: "center" }}>
+        <div style={{ color: "#b91c1c", fontWeight: 800, marginBottom: 10 }}>Commande introuvable (supprimée ou réimportée).</div>
+        <button type="button" onClick={() => setFicheId(null)} style={{ ...gros, width: "100%", border: "1.5px solid #d1d5db", background: "#fff" }}>Scanner la suivante</button>
+      </div>
+    );
+    const l = ligneFiche, inf = infoBase(l.base), pret = l.statut === "pret", lot = lotsSaisis[l.id] ?? l.lot, pal = l.palettes ?? 0.5;
+    return (
+      <div style={{ padding: "12px 4px 4px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#111827" }}>{inf?.nom || l.base}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#6d28d9" }}>🚚 {l.transporteur || "—"}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#0050aa" }}>{libReference(l)}</div>
+            <div style={{ fontSize: 12, color: "#6b7280" }}>Livraison du {dateFr(l.date)}</div>
+          </div>
+          <div style={{ background: "#0050aa", color: "#fff", borderRadius: 12, padding: "6px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.05 }}>{l.quantite}</div><div style={{ fontSize: 11 }}>colis</div>
+          </div>
+        </div>
+        {l.etiquetteAReimprimer && <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 10, background: "#fef2f2", border: "1.5px solid #fca5a5", color: "#b91c1c", fontWeight: 800, fontSize: 13 }}>⚠️ Quantité modifiée par le commercial ({l.etiquetteQuantite} → {l.quantite} colis) : réimprime l'étiquette.</div>}
+        {pret ? (
+          <>
+            <div style={{ padding: 12, borderRadius: 12, background: "#f0fdf4", border: "1.5px solid #86efac", color: "#166534", fontWeight: 800, fontSize: 15, marginBottom: 10 }}>
+              ✅ Déjà prête — {l.ferme} · lot {l.lot} · {String(pal).replace(".", ",")} palette{pal > 1 ? "s" : ""}<div style={{ fontSize: 12, fontWeight: 600 }}>{l.pretPar} {l.pretLe}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" onClick={() => annulerPret(l)} style={{ ...gros, flex: 1, border: "1.5px solid #d1d5db", background: "#fff", color: "#374151" }}>Modifier</button>
+              <button type="button" onClick={() => setFicheId(null)} style={{ ...gros, flex: 2, border: "none", background: couleur, color: "#fff" }}>Scanner la suivante</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+              <select value={l.ferme || ""} onChange={e => choisirFerme(l, e.target.value)} aria-label="Ferme de production" style={{ ...gros, fontSize: 16, fontWeight: 700, padding: "0 10px", border: `2px solid ${l.ferme ? "#d1d5db" : "#f59e0b"}`, background: "#fff" }}>
+                <option value="">Ferme…</option>
+                {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
+                <option value="__new">Il manque un producteur — prévenir</option>
+              </select>
+              <input value={lot} placeholder="Lot (A1234)" maxLength={5} autoCapitalize="characters" aria-label="Numéro de lot"
+                onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => sauverLot(l)}
+                style={{ ...gros, padding: "0 12px", letterSpacing: 2, border: `2px solid ${lot && !LOT_OK.test(lot) ? "#f59e0b" : "#d1d5db"}`, boxSizing: "border-box", width: "100%" }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <button type="button" disabled={pal <= 0.5} onClick={() => setPalettes(l, pal - 0.5)} aria-label="Moins de palettes" style={{ ...gros, width: 64, border: "1.5px solid #d1d5db", background: pal <= 0.5 ? "#f3f4f6" : "#fff", color: pal <= 0.5 ? "#d1d5db" : "#111827" }}>◀</button>
+              <div style={{ flex: 1, textAlign: "center" }}><div style={{ fontSize: 26, fontWeight: 900 }}>{String(pal).replace(".", ",")}</div><div style={{ fontSize: 12, color: "#6b7280", fontWeight: 700 }}>{pal === 0.5 ? "demi-palette" : pal === 1 ? "palette" : "palettes"}</div></div>
+              <button type="button" onClick={() => setPalettes(l, pal + 0.5)} aria-label="Plus de palettes" style={{ ...gros, width: 64, border: "1.5px solid #d1d5db", background: "#fff", color: "#111827" }}>▶</button>
+            </div>
+            {(dernierSaisi.ferme || dernierSaisi.lot) && <div style={{ fontSize: 11.5, color: "#6b7280", marginBottom: 8 }}>Ferme et lot repris de la commande précédente — vérifie avant de valider.</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" onClick={() => setFicheId(null)} style={{ ...gros, flex: 1, border: "1.5px solid #d1d5db", background: "#fff", color: "#374151" }}>Passer</button>
+              <button type="button" onClick={async () => { if (await marquerPret({ ...l, lot })) { notif("ok", `✅ ${inf?.nom || l.base} prête`); setFicheId(null); } }}
+                style={{ ...gros, flex: 2, border: "none", background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", fontSize: 19, fontWeight: 900 }}>Prêt ✓</button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  })();
+  const restantsScan = lignesParis.filter(l => l.statut !== "pret" && l.date === jourAffiche).length;
+  const fenetreScan = scanOuvert && (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.6)", zIndex: 1050, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 12, overflowY: "auto" }}>
+      <div role="dialog" aria-label="Scanner les étiquettes palettes" style={{ background: "#fff", borderRadius: 18, padding: 12, width: "100%", maxWidth: 560, boxShadow: "0 20px 50px rgba(0,0,0,.3)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>📷 Scan des étiquettes <span style={{ fontWeight: 600, fontSize: 13, color: "#6b7280" }}>· {restantsScan} à préparer</span></div>
+          <button type="button" onClick={() => { setScanOuvert(false); setFicheId(null); }} style={{ height: 40, padding: "0 14px", borderRadius: 10, border: "1.5px solid #d1d5db", background: "#fff", fontWeight: 800, cursor: "pointer" }}>Fermer</button>
+        </div>
+        <LidlScanner enPause={!!ficheId} onCode={id => setFicheId(id)} />
+        {fiche}
+      </div>
+    </div>
+  );
+  const modale = (titre: string, contenu: any, boutons: any) => (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.55)", zIndex: 1080, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div role="alertdialog" aria-label={titre} style={{ background: "#fff", borderRadius: 16, padding: 18, width: "100%", maxWidth: 520, boxShadow: "0 20px 50px rgba(0,0,0,.3)", borderTop: "6px solid #dc2626" }}>
+        <div style={{ fontWeight: 900, fontSize: 17, color: "#b91c1c", marginBottom: 10 }}>{titre}</div>
+        {contenu}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, flexWrap: "wrap" }}>{boutons}</div>
+      </div>
+    </div>
+  );
+  const listeChangements = (liste: Changement[]) => (
+    <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: 10 }}>
+      {liste.map((c, i) => (
+        <div key={i} style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", alignItems: "baseline", padding: "7px 10px", borderTop: i ? "1px solid #f3f4f6" : "none", fontSize: 13.5 }}>
+          <b style={{ minWidth: 120 }}>{c.base}</b>
+          <span style={{ fontWeight: 800, color: c.apres === 0 ? "#b91c1c" : c.avant === 0 ? "#15803d" : "#b45309" }}>{c.avant === 0 ? `nouvelle : ${c.apres} colis` : c.apres === 0 ? `supprimée (${c.avant} colis)` : `${c.avant} → ${c.apres} colis`}</span>
+          {c.pret && <span style={{ fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>déjà prête</span>}
+          {c.etiquette && <span style={{ fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>étiquette déjà imprimée</span>}
+        </div>
+      ))}
+    </div>
+  );
+  const popupCommercial = commercial && popupChangements && modale(`⚠️ Commande Lidl modifiée — livraison du ${dateFr(popupChangements.date)}`,
+    <>
+      <div style={{ fontSize: 13.5, marginBottom: 8 }}>Ce réimport ({libDepart(popupChangements.depart)}) change {popupChangements.liste.length} commande{popupChangements.liste.length > 1 ? "s" : ""}. {popupChangements.depart === "paris" ? "L'entrepôt est prévenu par une alerte dans Préparation." : ""}</div>
+      {listeChangements(popupChangements.liste)}
+    </>,
+    <button type="button" onClick={() => setPopupChangements(null)} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: couleur, color: "#fff", fontWeight: 900, cursor: "pointer" }}>J'ai compris</button>);
+  const alerte = alertesPrepa[0];
+  const popupPrepa = !commercial && alerte && modale(`⚠️ Le commercial a modifié la commande Lidl du ${dateFr(alerte.date)}`,
+    <>
+      <div style={{ fontSize: 13.5, marginBottom: 8 }}>Réimport par {alerte.par || "le commercial"} à {new Date(alerte.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}{alertesPrepa.length > 1 ? ` (+${alertesPrepa.length - 1} autre${alertesPrepa.length > 2 ? "s" : ""} modification${alertesPrepa.length > 2 ? "s" : ""})` : ""}.</div>
+      {listeChangements(alerte.changements || [])}
+    </>,
+    <>
+      {(alerte.changements || []).some(c => c.etiquette && c.apres > 0) && (
+        <button type="button" onClick={() => { const ls = (alerte.changements || []).filter(c => c.etiquette && c.apres > 0 && c.id).map(c => lignes.find(x => x.id === c.id)).filter(Boolean) as LigneLidl[]; imprimerEtiquettes(ls.map(l => { const nb = Math.max(1, Math.ceil(l.palettes ?? 0.5)); return { l, de: 1, a: nb, nb }; })); }}
+          style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #dc2626", background: "#fff", color: "#b91c1c", fontWeight: 800, cursor: "pointer" }}>🏷️ Réimprimer les étiquettes concernées</button>
+      )}
+      <button type="button" onClick={() => update(ref(db, `lidl_changements/${alerte.id}`), { vu: true, vuPar: userName || "", vuLe: new Date().toLocaleString("fr-FR") })} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontWeight: 900, cursor: "pointer" }}>J'ai vu</button>
+    </>);
   const zoneNotifs = notifs.length > 0 && (
     <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 1100, display: "flex", flexDirection: "column", gap: 8, maxWidth: 380 }}>
       {notifs.map(n => (
@@ -878,6 +1076,10 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <button type="button" onClick={() => imprimerGeslot(dernierImport.date, dernierImport.depart)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Réimprimer le bon Geslot</button>
         {dernierImport.depart === "paris" && <button type="button" onClick={() => imprimerBonEntrepot(dernierImport.date)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Réimprimer le bon de préparation</button>}
+        {aImprimerApresImport.length > 0 && dernierImport.depart === "paris" && (
+          <button type="button" onClick={() => { const ls = lignes.filter(l => aImprimerApresImport.includes(l.id)); imprimerEtiquettes(trierPourPrepa(ls).map(l => ({ l, de: 1, a: 1, nb: 1 }))); setAImprimerApresImport([]); }}
+            style={{ background: "#b45309", color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🏷️ Imprimer les étiquettes palettes ({aImprimerApresImport.length})</button>
+        )}
         {recapMedina && <span style={{ fontSize: 12.5, fontWeight: 700, color: recapMedina.startsWith("❌") ? "#b91c1c" : "#166534" }}>{recapMedina}</span>}
         <button type="button" onClick={() => setDernierImport(null)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#6b7280", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>fermer</button>
       </div>
@@ -893,6 +1095,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
         </button>
       </div>
       {fenetre}
+      {popupCommercial}
       {zoneNotifs}
       {apresImport}
       {messageBox}
@@ -905,6 +1108,9 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   // Préparation : cellule « 🛒 Lidl » repliable, résumé du jour en cours dans l'en-tête.
   return (
     <div style={{ background: "#fff", border: `1.5px solid ${couleur}33`, borderRadius: 18, marginBottom: 16, overflow: "hidden", boxShadow: "0 4px 14px rgba(0,0,0,.06)" }}>
+      {zoneNotifs}
+      {fenetreScan}
+      {popupPrepa}
       <div onClick={() => setOuvert(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", cursor: "pointer", background: `${couleur}0d` }}>
         <span style={{ fontWeight: 800, fontSize: 14, color: couleur }}>
           🛒 Lidl {jourAffiche && <span style={{ fontWeight: 600, color: "#4b5563" }}>· {dateFr(jourAffiche)} · {nbPret}/{duJour.length} prêtes · {colisPrets}/{totalColis} colis</span>}
@@ -913,7 +1119,10 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       </div>
       {ouvert && (
         <div style={{ padding: 12 }}>
-          {zoneNotifs}
+          {jours.length > 0 && (
+            <button type="button" onClick={() => { setScanOuvert(true); setFicheId(null); }}
+              style={{ width: "100%", height: 52, marginBottom: 10, borderRadius: 12, border: "none", background: "#111827", color: "#fff", fontWeight: 900, fontSize: 16, cursor: "pointer" }}>📷 Scanner les étiquettes palettes</button>
+          )}
           {messageBox}
           {jours.length > 0 && (() => {
             // Transporteurs présents (dans l'ordre de préparation) avec le nombre de commandes encore à préparer

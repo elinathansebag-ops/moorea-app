@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import QRCode from "qrcode";
 import { db, ref, push } from "./firebase";
 
 // 05/10/2026 — Demande d'Elinathan : après l'import des commandes Lidl, les bons s'impriment tout
@@ -103,6 +104,13 @@ export function pdfBonPreparation(dateFr: string, lignes: LigneBon[]) {
   return enBase64(doc);
 }
 
+// Étiquettes palettes vers l'imprimante à étiquettes du relais PC (type « etiquette_lidl », PDF 100 × 150 mm).
+// À activer dans Commandes Lidl → Configuration une fois le relais mis à jour pour ce type de job.
+export async function envoyerEtiquettesImprimante(pdfNom: string, pdfBase64: string): Promise<string> {
+  const r = await push(ref(db, "printQueue"), { type: "etiquette_lidl", pdfNom, pdfBase64, format: "100x150", status: "pending", createdAt: Date.now(), origine: "lidl" });
+  return r.key as string;
+}
+
 // Envoie un PDF A4 au relais PC d'impression ; renvoie la clé du job pour suivre son état.
 export async function envoyerPdfImprimante(pdfNom: string, pdfBase64: string): Promise<string> {
   const r = await push(ref(db, "printQueue"), { type: "bon_reconditionnement", pdfNom, pdfBase64, status: "pending", createdAt: Date.now(), origine: "lidl" });
@@ -112,12 +120,15 @@ export async function envoyerPdfImprimante(pdfNom: string, pdfBase64: string): P
 // ── Étiquettes palettes Lidl (05/10/2026, modèle = étiquette jaune Moorea montrée par Elinathan) :
 // en-tête Moorea + adresse, date de livraison, destinataire (base Lidl + adresse), transporteur,
 // colis et produit. Une étiquette par palette (une demi-palette = une étiquette). Format 100 × 150 mm.
+// QR code (option 1 validée le 05/10/2026) : le directeur d'entrepôt le scanne avec l'iPad, la fiche
+// de la commande s'ouvre (ferme, lot, taille de palette, « Prêt »).
 export const ADRESSE_MOOREA = ["MOOREA COMMERCE FRUITS", "69 rue de Perpignan  BP 40376  94632 Rungis Cedex - FRANCE", "Tél : +33 1 56 70 62 40 - commercial@moorea.fr"];
-export type EtiquettePalette = { destinataire: string[]; transporteur: string; quantite: number; produit: string; palette: number; nbPalettes: number };
+export type EtiquettePalette = { destinataire: string[]; transporteur: string; quantite: number; produit: string; palette: number; nbPalettes: number; qrUrl?: string };
 
-export function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[]) {
-  const LW = 100, LH = 150, LM = 7;
+export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[]) {
+  const LW = 100, LH = 150, LM = 7, QR = 30;
   const doc = new jsPDF({ unit: "mm", format: [LW, LH], orientation: "portrait" });
+  const qrs = await Promise.all(etiquettes.map(e => (e.qrUrl ? QRCode.toDataURL(e.qrUrl, { width: 300, margin: 0 }) : Promise.resolve(""))));
   etiquettes.forEach((e, i) => {
     if (i) doc.addPage([LW, LH], "portrait");
     doc.setTextColor(0, 0, 0);
@@ -139,11 +150,13 @@ export function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalet
     doc.setFontSize(22); doc.text(e.transporteur || "-", LM, y + 11);
     y += 22;
     doc.setLineWidth(0.3); doc.line(LM, y, LW - LM, y);
+    const largeurTexte = LW - LM * 2 - (qrs[i] ? QR + 3 : 0);
     doc.setFontSize(10); doc.setFont("helvetica", "normal");
-    for (const morceau of (doc.splitTextToSize(e.produit, LW - LM * 2) as string[]).slice(0, 2)) { y += 5.5; doc.text(morceau, LM, y); }
+    for (const morceau of (doc.splitTextToSize(e.produit, largeurTexte) as string[]).slice(0, 2)) { y += 5.5; doc.text(morceau, LM, y); }
+    if (e.nbPalettes > 1) { doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LM, LH - 16); }
     doc.setFont("helvetica", "bold"); doc.setFontSize(16);
     doc.text(`${e.quantite} colis${e.nbPalettes > 1 ? " au total" : ""}`, LM, LH - 8);
-    if (e.nbPalettes > 1) { doc.setFontSize(12); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LW - LM, LH - 8, { align: "right" }); }
+    if (qrs[i]) doc.addImage(qrs[i], "PNG", LW - LM - QR, LH - LM - QR, QR, QR);
   });
   return doc;
 }
