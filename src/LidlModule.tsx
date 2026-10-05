@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { db, ref, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
+import { LidlTableauDeBord } from "./LidlTableauDeBord";
 import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl, BASES_LIDL, ADRESSES_LIDL, useAdressesLidl } from "./LidlCommandes";
 import { genererXlsxLidl, envoyerTracabiliteLidl, nomFichierLidl, lireConfigLidl, EMAIL_LIDL_DEFAUT, EMAIL_TEST, type LigneExport } from "./lidlExport";
 
@@ -19,7 +20,7 @@ const nomBase = (c: string) => infoBase(c)?.nom || c;
 const numBase = (c: string) => infoBase(c)?.num ?? 999;
 
 export function LidlModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
-  const [onglet, setOnglet] = useState<"jour" | "passees" | "stats" | "traca" | "config">("jour");
+  const [onglet, setOnglet] = useState<"jour" | "passees" | "stats" | "bord" | "traca" | "config">("jour");
   const [lignes, setLignes] = useState<L[]>([]);
   const [jourOuvert, setJourOuvert] = useState("");
   const [semaine, setSemaine] = useState(lundi(iso(new Date())));
@@ -129,7 +130,7 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
       <PageHeader titre="🛒 Commandes Lidl" couleur="#0050aa" onBack={onClose} onHome={onClose} />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}{btnOnglet("traca", "📤 Traçabilité Lidl")}{btnOnglet("config", "⚙️ Configuration")}
+          {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}{btnOnglet("bord", "📈 Tableau de bord")}{btnOnglet("traca", "📤 Traçabilité Lidl")}{btnOnglet("config", "⚙️ Configuration")}
         </div>
         {/* 02/10/2026 — Demande d'Elinathan : le commercial voit tout de suite si le mail est bien parti chez Lidl, et à quelle heure. */}
         <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${envoiJour.version > 0 && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: envoiJour.version > 0 && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: envoiJour.version > 0 && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
@@ -183,6 +184,8 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
             )}
           </div>
         )}
+
+        {onglet === "bord" && <LidlTableauDeBord lignes={lignes as any} envois={envois} />}
 
         {onglet === "traca" && (
           <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 14 }}>
