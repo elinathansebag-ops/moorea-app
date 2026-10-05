@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { db, ref, onValue, update, remove, get, push } from "./firebase";
-import { PRODUCTEURS_LIDL, envoyerTracabiliteLidl, type Producteur, type ContexteExport, type LigneExport } from "./lidlExport";
+import { PRODUCTEURS_LIDL, envoyerTracabiliteLidl, genererXlsxLidl, nomFichierLidl, type Producteur, type ContexteExport, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : Lidl envoie chaque jour un tableau de répartition
 // (« Répartition fournisseur/camion mix », fichier AU-xxxxx.xlsx). Le commercial l'importe ici dès
@@ -110,8 +110,28 @@ export function infoBase(code: string) {
 }
 const dateFr = (s: string) => (s ? s.split("-").reverse().join("/") : "");
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const JOURS_COURTS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+const lundiDe = (d: string) => { const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return iso(x); };
+function numeroSemaine(d: string) {
+  const date = new Date(d + "T12:00:00");
+  date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));
+  const s1 = new Date(date.getFullYear(), 0, 4);
+  return { n: 1 + Math.round(((date.getTime() - s1.getTime()) / 86400000 - 3 + ((s1.getDay() + 6) % 7)) / 7), annee: date.getFullYear() };
+}
 const txt = (v: any) => (v == null ? "" : String(v).trim());
 const num = (v: any) => (typeof v === "number" && isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && isFinite(Number(v.replace(",", "."))) ? Number(v.replace(",", ".")) : 0);
+
+// 05/10/2026 — Ordre de préparation demandé par Elinathan : par transporteur (PROVIN CAMANDONA, TRADIF,
+// SRD, MESGUEN, PRIMEVER, puis les autres), et dans chaque transporteur de la plus petite commande à la plus grosse.
+const ORDRE_TRANSPORTEURS = ["PROVIN CAMANDONA", "TRADIF", "SRD", "MESGUEN", "PRIMEVER"];
+const rangTransporteur = (t?: string) => { const i = ORDRE_TRANSPORTEURS.indexOf((t || "").toUpperCase()); return i < 0 ? ORDRE_TRANSPORTEURS.length : i; };
+function trierPourPrepa<T extends { transporteur?: string; quantite: number; base: string }>(ls: T[]) {
+  return [...ls].sort((x, y) => rangTransporteur(x.transporteur) - rangTransporteur(y.transporteur)
+    || (x.transporteur || "").localeCompare(y.transporteur || "") || x.quantite - y.quantite
+    || (infoBase(x.base)?.num ?? 999) - (infoBase(y.base)?.num ?? 999));
+}
+const echapHtml = (t: any) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const libDepart = (d?: string) => (d === "paris" ? "Départ Paris" : d === "sud" ? "Départ Medina (Perpignan)" : "");
 
 // mode « commercial » : module « Commandes Lidl » (import du tableau, vue de TOUTES les commandes,
 // Sud et Paris, lecture seule). mode « preparation » : cellule de Préparation (entrepôt) — pas
@@ -124,7 +144,15 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   useEffect(() => { if (jourForce) setJour(jourForce); }, [jourForce]);
   const [message, setMessage] = useState<{ type: "ok" | "err"; texte: string } | null>(null);
   const [import_, setImport] = useState(false);
+  // 05/10/2026 — Import en une fenêtre : fichier + départ (Paris / Medina Perpignan) + date (reprise du fichier, modifiable).
+  type LigneBrute = Omit<LigneLidl, "id" | "date" | "depart" | "transporteur" | "lot" | "statut">;
+  const [fenetreImport, setFenetreImport] = useState(false);
+  const [fichierLu, setFichierLu] = useState<{ nom: string; lignes: LigneBrute[]; dateFichier: string } | null>(null);
   const [depart, setDepart] = useState<"" | "sud" | "paris">("");
+  const [dateImport, setDateImport] = useState("");
+  const [erreurImport, setErreurImport] = useState("");
+  const [dernierImport, setDernierImport] = useState<{ date: string; depart: "sud" | "paris" } | null>(null);
+  const [recapMedina, setRecapMedina] = useState("");
   const [lotsSaisis, setLotsSaisis] = useState<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -142,8 +170,40 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const lignesParis = useMemo(() => (commercial ? lignes : lignes.filter(l => l.depart === "paris")), [lignes, commercial]);
   const jours = useMemo(() => [...new Set(lignesParis.map(l => l.date))].sort().reverse(), [lignesParis]);
   const jourAffiche = jour && jours.includes(jour) ? jour : (jours.includes(iso(new Date())) ? iso(new Date()) : jours[0] || "");
-  const duJour = useMemo(() => lignesParis.filter(l => l.date === jourAffiche).sort((a, b) => (a.base.localeCompare(b.base)) || (Number(a.camion) - Number(b.camion))), [lignesParis, jourAffiche]);
-  const [masquerPretes, setMasquerPretes] = useState(false);
+  const duJour = useMemo(() => lignesParis.filter(l => l.date === jourAffiche), [lignesParis, jourAffiche]);
+  // 05/10/2026 — Demande d'Elinathan : historique des commandes Lidl rangé par semaine puis par jour
+  // (accordéons, comme le reconditionnement). Le jour en cours est ouvert, les autres restent consultables.
+  const [joursOuverts, setJoursOuverts] = useState<Set<string>>(new Set());
+  const [semainesOuvertes, setSemainesOuvertes] = useState<Set<string>>(new Set());
+  // Sous-accordéons par produit dans un jour (ouverts par défaut) : clé = jour|produit
+  const [produitsFermes, setProduitsFermes] = useState<Set<string>>(new Set());
+  // Filtre par transporteur (Préparation) : "" = tous
+  const [filtreTransporteur, setFiltreTransporteur] = useState("");
+  const initOuverture = useRef("");
+  useEffect(() => {
+    if (!jourAffiche || initOuverture.current === jourAffiche) return;
+    initOuverture.current = jourAffiche;
+    setJoursOuverts(x => new Set(x).add(jourAffiche));
+    setSemainesOuvertes(x => new Set(x).add(lundiDe(jourAffiche)));
+  }, [jourAffiche]);
+  const basculer = (set: Dispatch<SetStateAction<Set<string>>>, k: string) => set(x => { const n = new Set(x); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const semaines = useMemo(() => {
+    const m = new Map<string, string[]>();
+    jours.forEach(j => { const k = lundiDe(j); m.set(k, [...(m.get(k) || []), j]); });
+    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [jours]);
+  const parJour = useMemo(() => {
+    const m = new Map<string, LigneLidl[]>();
+    lignesParis.forEach(l => m.set(l.date, [...(m.get(l.date) || []), l]));
+    return m;
+  }, [lignesParis]);
+  // État de l'envoi de la traçabilité à Lidl, par jour (lidl_envois/{date})
+  const [envois, setEnvois] = useState<Record<string, any>>({});
+  useEffect(() => {
+    if (!commercial) return;
+    const u = onValue(ref(db, "lidl_envois"), snap => setEnvois(snap.val() || {}));
+    return () => u();
+  }, [commercial]);
   const producteurs = useProducteursLidl();
   const fermes = useMemo(() => producteurs.map(p => p.pn), [producteurs]);
   async function signalerFermeManquante(l: LigneLidl) {
@@ -154,15 +214,12 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     if (v === "__new") { await signalerFermeManquante(l); return; }
     await update(ref(db, `lidl_commandes/${l.id}`), { ferme: v || null });
   }
-  const groupesBase = useMemo(() => {
-    const m = new Map<string, LigneLidl[]>();
-    duJour.forEach(l => m.set(l.base, [...(m.get(l.base) || []), l]));
-    // les bases pas encore prêtes d'abord, puis par n° de base
-    return [...m.entries()].map(([base, lignes]) => ({ base, lignes })).sort((x, y) => {
-      const px = x.lignes.every(l => l.statut === "pret") ? 1 : 0, py = y.lignes.every(l => l.statut === "pret") ? 1 : 0;
-      return px - py || (infoBase(x.base)?.num ?? 999) - (infoBase(y.base)?.num ?? 999);
-    });
-  }, [duJour]);
+  // Module commercial : par n° de base puis camion. Préparation : même ordre que le bon entrepôt
+  // (transporteur dans l'ordre PROVIN CAMANDONA → TRADIF → SRD → MESGUEN → PRIMEVER → autres, puis de la plus petite
+  // commande à la plus grosse), pour que l'écran suive le papier.
+  const trierJour = (ls: LigneLidl[]) => commercial
+    ? [...ls].sort((x, y) => (infoBase(x.base)?.num ?? 999) - (infoBase(y.base)?.num ?? 999) || (Number(x.camion) - Number(y.camion)))
+    : trierPourPrepa(ls);
   const nbPret = duJour.filter(l => l.statut === "pret").length;
   const totalColis = duJour.reduce((s, l) => s + l.quantite, 0);
   const colisPrets = duJour.filter(l => l.statut === "pret").reduce((s, l) => s + l.quantite, 0);
@@ -172,10 +229,9 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     setTimeout(() => setMessage(m => (m && m.texte === texte ? null : m)), 9000);
   }
 
-  async function importer(fichier: File) {
-    if (!depart) { flash("err", "Choisis d'abord le départ : Sud (Perpignan) ou Paris."); if (inputRef.current) inputRef.current.value = ""; return; }
-    setImport(true);
-    setMessage(null);
+  // Lecture du tableau de répartition Lidl (fichier « AU-…xlsx ») : une ligne par camion × base.
+  async function lireFichier(fichier: File) {
+    setErreurImport(""); setFichierLu(null);
     try {
       const XLSX = await import("xlsx");
       const wb = XLSX.read(await fichier.arrayBuffer(), { type: "array", cellDates: true });
@@ -190,48 +246,65 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       const cCamion = col("RA002"), cAvis = col("RA001"), cArt = col("RA003"), cDes = col("RA004"), cEmb = col("RA005"), cOri = col("UA015"), cPrix = col("PP005"), cDate = col("ME003");
       const colsBases = codes.map((c, i) => ({ c, i })).filter(x => x.c.startsWith("AS9")).map(x => ({ i: x.i, base: txt(libelles[x.i]) || x.c }));
       if (!colsBases.length || cArt < 0 || cAvis < 0) throw new Error("Colonnes de quantités par base introuvables.");
-      // Date par défaut : « Date » en haut du fichier (B1)
-      let dateEntete = "";
+      // Date de livraison : colonne ME003 (date de livraison Lidl), sinon « Date » en haut du fichier (B1)
+      let dateEntete = "", dateLivraisonLue = "";
       const b1 = m[0]?.[1];
       if (b1 instanceof Date) dateEntete = iso(new Date(b1.getTime() + 12 * 3600 * 1000));
-      const lues: LigneLidl[] = [];
+      const lues: LigneBrute[] = [];
       for (let r = iCodes + 2; r < m.length; r++) {
         const row = m[r];
         if (!row || !txt(row[cAvis])) continue;
-        let d = "";
         const dv = row[cDate];
+        let d = "";
         if (dv instanceof Date) d = iso(new Date(dv.getTime() + 12 * 3600 * 1000));
         else if (/^\d{4}-\d{2}-\d{2}/.test(txt(dv))) d = txt(dv).slice(0, 10);
         else if (/^\d{2}\/\d{2}\/\d{4}$/.test(txt(dv))) d = txt(dv).split("/").reverse().join("-");
-        d = d || dateEntete;
-        if (!d) throw new Error("Date de livraison introuvable dans le fichier.");
+        if (d && !dateLivraisonLue) dateLivraisonLue = d;
         for (const cb of colsBases) {
           const q = num(row[cb.i]);
           if (q <= 0) continue;
-          const avis = txt(row[cAvis]);
-          lues.push({
-            id: `${d}_${avis}_${cb.base}_${depart}`.replace(/[.#$\[\]/]/g, "-"),
-            depart, transporteur: (infoBase(cb.base) as any)?.[depart === "paris" ? "paris" : "perpignan"] || "",
-            date: d, camion: txt(row[cCamion]), avis, base: cb.base,
+          const l: LigneBrute = {
+            camion: txt(row[cCamion]), avis: txt(row[cAvis]), base: cb.base,
             articleNum: txt(row[cArt]), article: txt(row[cDes]), emballage: txt(row[cEmb]), origine: cOri >= 0 ? txt(row[cOri]) : "",
             quantite: q, prix: cPrix >= 0 ? num(row[cPrix]) || undefined : undefined,
-            lot: "", statut: "a_preparer",
-          });
+          };
           const dr = devinerRef(txt(row[cDes]), txt(row[cEmb]));
-          if (dr) { const nl = lues[lues.length - 1]; nl.refLidl = dr.k; nl.article = dr.article; nl.emballage = dr.emballage; nl.origine = dr.origine; }
+          if (dr) { l.refLidl = dr.k; l.article = dr.article; l.emballage = dr.emballage; l.origine = dr.origine; }
+          lues.push(l);
         }
       }
       if (!lues.length) throw new Error("Aucune quantité à préparer dans ce fichier (toutes les bases sont à 0).");
-      // Fusion avec l'existant : on garde « Prêt » et les lots déjà saisis.
-      const datesFichier = [...new Set(lues.map(l => l.date))];
+      const dateFichier = dateLivraisonLue || dateEntete;
+      setFichierLu({ nom: fichier.name, lignes: lues, dateFichier });
+      setDateImport(dateFichier || iso(new Date()));
+    } catch (e: any) {
+      setErreurImport(e?.message || String(e));
+    }
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  // Enregistre les commandes du fichier à la date et au départ choisis. Réimporter le même fichier ne
+  // crée jamais de doublon (identifiant = date + n° d'avis + base + départ) et garde les « Prêt » et les lots.
+  async function enregistrerImport() {
+    if (!fichierLu) { setErreurImport("Choisis d'abord le fichier de Lidl."); return; }
+    if (!depart) { setErreurImport("Choisis le départ : Paris ou Medina (Perpignan)."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateImport)) { setErreurImport("Choisis la date de livraison."); return; }
+    const dep = depart, d = dateImport;
+    setImport(true); setErreurImport("");
+    try {
+      const lues: LigneLidl[] = fichierLu.lignes.map(l => ({
+        ...l, id: `${d}_${l.avis}_${l.base}_${dep}`.replace(/[.#$\[\]/]/g, "-"),
+        date: d, depart: dep, transporteur: (infoBase(l.base) as any)?.[dep === "paris" ? "paris" : "perpignan"] || "",
+        lot: "", statut: "a_preparer",
+      }));
       const existantes = new Map<string, any>();
       const tout = (await get(ref(db, "lidl_commandes"))).val() || {};
-      Object.entries(tout).forEach(([id, x]: any) => { if (datesFichier.includes(x.date) && (x.depart || "sud") === depart) existantes.set(id, x); });
+      Object.entries(tout).forEach(([id, x]: any) => { if (x.date === d && (x.depart || "sud") === dep) existantes.set(id, x); });
       const maj: Record<string, any> = {};
       let nouvelles = 0, modifiees = 0, inchangees = 0, retirees = 0;
       for (const l of lues) {
         const ex = existantes.get(l.id);
-        const base = { date: l.date, depart: l.depart, transporteur: l.transporteur || null, camion: l.camion, avis: l.avis, base: l.base, articleNum: l.articleNum, article: l.article, emballage: l.emballage, origine: l.origine, quantite: l.quantite, prix: l.prix ?? null, fichier: fichier.name, importePar: userName || "", absenteDuFichier: null };
+        const base = { date: l.date, depart: l.depart, transporteur: l.transporteur || null, camion: l.camion, avis: l.avis, base: l.base, articleNum: l.articleNum, article: l.article, emballage: l.emballage, origine: l.origine, quantite: l.quantite, prix: l.prix ?? null, fichier: fichierLu.nom, importePar: userName || "", absenteDuFichier: null };
         if (!ex) { nouvelles++; for (const [k, v] of Object.entries({ ...base, refLidl: l.refLidl ?? null, lot: "", statut: "a_preparer" })) maj[`lidl_commandes/${l.id}/${k}`] = v; }
         else {
           if (ex.quantite !== l.quantite) { modifiees++; maj[`lidl_commandes/${l.id}/quantiteModifieeApresPret`] = ex.statut === "pret" ? true : null; } else inchangees++;
@@ -242,20 +315,27 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
         }
         existantes.delete(l.id);
       }
-      // Lignes de ces dates absentes du nouveau fichier : supprimées si pas prêtes, sinon signalées.
+      // Lignes de ce jour et de ce départ absentes du nouveau fichier : supprimées si pas prêtes, sinon signalées.
       for (const [id, ex] of existantes) {
         if (ex.statut === "pret") maj[`lidl_commandes/${id}/absenteDuFichier`] = true;
         else { retirees++; maj[`lidl_commandes/${id}`] = null; }
       }
       await update(ref(db), maj);
-      await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichier.name, dates: datesFichier, lignes: lues.length });
-      setJour(datesFichier.sort()[0]);
-      flash("ok", `${depart === "sud" ? "ℹ️ Départ Sud (Perpignan) enregistré, mais NON affiché dans Préparation (géré par Medina). " : ""}✅ Départ ${depart === "paris" ? "Paris" : "Sud (Perpignan)"} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl pour le ${datesFichier.map(dateFr).join(", ")} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}. Clique sur « 🖨️ Imprimer pour Geslot » pour la fiche à saisir.`);
+      await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichierLu.nom, dates: [d], depart: dep, dateFichier: fichierLu.dateFichier || null, lignes: lues.length });
+      setJour(d);
+      setJoursOuverts(x => new Set(x).add(d));
+      setSemainesOuvertes(x => new Set(x).add(lundiDe(d)));
+      setDernierImport({ date: d, depart: dep });
+      if (dep === "sud") {
+        const r = await envoyerRecapMedina(d, lues);
+        setRecapMedina(r?.ok ? `📧 Récap de préparation Medina envoyé à Jordan (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}).` : `❌ Récap Medina non envoyé : ${r?.erreur || "erreur"}`);
+      } else setRecapMedina("");
+      setFenetreImport(false); setFichierLu(null); setDepart("");
+      flash("ok", `✅ ${libDepart(dep)} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl enregistrée${lues.length > 1 ? "s" : ""} — livraison du ${dateFr(d)} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}.${dep === "sud" ? " (Départ Medina : pas affiché dans Préparation.)" : ""}`);
     } catch (e: any) {
-      flash("err", "Import impossible : " + (e?.message || e));
+      setErreurImport("Import impossible : " + (e?.message || e));
     }
     setImport(false);
-    if (inputRef.current) inputRef.current.value = "";
   }
 
   async function marquerPret(l: LigneLidl) {
@@ -281,14 +361,25 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     const lot = (lotsSaisis[l.id] ?? l.lot).trim().toUpperCase();
     if (lot !== l.lot) await update(ref(db, `lidl_commandes/${l.id}`), { lot });
   }
-  // Fiche simplifiée à imprimer pour saisir les commandes dans Geslot : base, article, quantité (sans transporteur).
-  function imprimerGeslot() {
+  // Ouvre une page prête à imprimer (en attendant le branchement direct sur les imprimantes du bureau et de l'entrepôt).
+  function ouvrirImpression(titre: string, css: string, corps: string) {
+    const w = window.open("", "_blank");
+    if (!w) { flash("err", "Impression bloquée par le navigateur : autorise les pop-ups pour ce site."); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${echapHtml(titre)}</title><style>
+body{font-family:Arial,sans-serif;margin:16px;color:#000}h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:16px 0 6px;border-bottom:2px solid #000}
+table{width:100%;border-collapse:collapse;margin-bottom:8px}th,td{border:1px solid #000;padding:5px 7px;text-align:left}th{background:#eee}
+tr{page-break-inside:avoid}tfoot td{font-weight:700;background:#f5f5f5}small{font-weight:400}@media print{button{display:none}}${css}</style></head><body>${corps}
+<button onclick="window.print()" style="margin-top:10px;padding:8px 14px">🖨️ Imprimer</button><script>setTimeout(function(){window.print()},300)<\/script></body></html>`);
+    w.document.close();
+  }
+  // PDF bureau : fiche simple par base, pour saisir les commandes dans Geslot (sans transporteur).
+  function imprimerGeslot(jourG: string, dep?: "sud" | "paris") {
+    const duJour = (parJour.get(jourG) || []).filter(l => !dep || l.depart === dep);
     if (!duJour.length) return;
-    const esc = (t: string) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const groupes: { titre: string; lignes: LigneLidl[] }[] = [];
     for (const d of ["paris", "sud"] as const) {
       const ls = duJour.filter(l => l.depart === d);
-      if (ls.length) groupes.push({ titre: d === "paris" ? "Départ Paris" : "Départ Perpignan", lignes: ls });
+      if (ls.length) groupes.push({ titre: libDepart(d), lignes: ls });
     }
     const autres = duJour.filter(l => l.depart !== "paris" && l.depart !== "sud");
     if (autres.length) groupes.push({ titre: "", lignes: autres });
@@ -298,40 +389,439 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       const bases = [...parBase.entries()].sort((x, y) => (infoBase(x[0])?.nom || x[0]).localeCompare(infoBase(y[0])?.nom || y[0]));
       const rows = bases.map(([b, ls]) => {
         const inf = infoBase(b);
-        return ls.map((l, i) => `<tr>${i === 0 ? `<td rowspan="${ls.length}" class="b">${esc(inf?.nom || b)}${inf ? `<br><small>base n° ${inf.num}</small>` : ""}</td>` : ""}<td>${esc(l.article)}${l.origine ? ` — ${esc(l.origine)}` : ""}</td><td class="q">${l.quantite}</td><td class="c"></td></tr>`).join("");
+        return ls.map((l, i) => `<tr>${i === 0 ? `<td rowspan="${ls.length}" class="b">${echapHtml(inf?.nom || b)}${inf ? `<br><small>base n° ${inf.num}</small>` : ""}</td>` : ""}<td>${echapHtml(l.article)}${l.origine ? ` — ${echapHtml(l.origine)}` : ""}</td><td class="q">${l.quantite}</td><td class="c"></td></tr>`).join("");
       }).join("");
       const tot = g.lignes.reduce((s, l) => s + l.quantite, 0);
       return `${g.titre ? `<h2>${g.titre}</h2>` : ""}<table><thead><tr><th>Base</th><th>Produit</th><th>Quantité</th><th>✔</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2">Total</td><td class="q">${tot}</td><td></td></tr></tfoot></table>`;
     }).join("");
-    const w = window.open("", "_blank");
-    if (!w) { flash("err", "Impression bloquée par le navigateur : autorise les pop-ups pour ce site."); return; }
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Commandes Lidl ${dateFr(jourAffiche)}</title><style>
-body{font-family:Arial,sans-serif;margin:16px;color:#000}h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:16px 0 6px;border-bottom:2px solid #000}
-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}th,td{border:1px solid #000;padding:5px 7px;text-align:left}th{background:#eee}
-td.q{text-align:right;font-weight:700;width:80px}td.c{width:34px}td.b{font-weight:700;vertical-align:top;width:150px}small{font-weight:400}tfoot td{font-weight:700;background:#f5f5f5}
-tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><body>
-<h1>Commandes Lidl — livraison du ${dateFr(jourAffiche)}</h1><div style="font-size:12px;margin-bottom:6px">À saisir dans Geslot</div>${corps}
-<button onclick="window.print()" style="margin-top:10px;padding:8px 14px">🖨️ Imprimer</button><script>setTimeout(function(){window.print()},300)<\/script></body></html>`);
-    w.document.close();
+    ouvrirImpression(`Commandes Lidl ${dateFr(jourG)} — Geslot`, "table{font-size:13px}td.q{text-align:right;font-weight:700;width:80px}td.c{width:34px}td.b{font-weight:700;vertical-align:top;width:150px}",
+      `<h1>Commandes Lidl — date de livraison : ${dateFr(jourG)}</h1><div style="font-size:12px;margin-bottom:6px">À saisir dans Geslot</div>${corps}`);
+  }
+  // Bon de préparation : par transporteur (PROVIN CAMANDONA → TRADIF → SRD → MESGUEN → PRIMEVER → autres),
+  // de la plus petite commande à la plus grosse, avec des cases à remplir à la main (producteur, lot,
+  // palettes). Styles en ligne : le même tableau sert à l'impression et au mail récap Medina.
+  function htmlBonPrepa(jourB: string, ls: LigneLidl[]) {
+    const tri = trierPourPrepa(ls);
+    const parT = new Map<string, LigneLidl[]>();
+    tri.forEach(l => { const t = l.transporteur || "Sans transporteur"; parT.set(t, [...(parT.get(t) || []), l]); });
+    const total = tri.reduce((s, l) => s + l.quantite, 0);
+    const td = "border:1px solid #000;padding:6px 8px;font-size:14px;height:22px";
+    const th = "border:1px solid #000;padding:6px 8px;font-size:13px;background:#eee;text-align:left";
+    const corps = [...parT.entries()].map(([t, lt]) => {
+      const tot = lt.reduce((s, l) => s + l.quantite, 0);
+      const rows = lt.map(l => {
+        const inf = infoBase(l.base);
+        return `<tr><td style="${td};font-weight:700;width:150px">${echapHtml(inf?.nom || l.base)}${inf ? ` <span style="font-weight:400;font-size:12px">n° ${inf.num}</span>` : ""}</td><td style="${td}">${echapHtml([l.article, l.origine].filter(Boolean).join(" — "))}</td><td style="${td};text-align:right;font-weight:900;font-size:16px;width:60px">${l.quantite}</td><td style="${td};width:150px"></td><td style="${td};width:90px"></td><td style="${td};width:70px"></td><td style="${td};width:30px"></td></tr>`;
+      }).join("");
+      return `<h2 style="font-size:15px;margin:16px 0 6px;border-bottom:2px solid #000">🚚 ${echapHtml(t)} <span style="font-weight:400;font-size:13px">— ${lt.length} commande${lt.length > 1 ? "s" : ""} · ${tot} colis</span></h2><table style="width:100%;border-collapse:collapse;margin-bottom:8px"><thead><tr><th style="${th}">Base</th><th style="${th}">Produit</th><th style="${th}">Colis</th><th style="${th}">Producteur</th><th style="${th}">Lot</th><th style="${th}">Palettes</th><th style="${th}">✔</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }).join("");
+    const deps = [...new Set(tri.map(l => l.depart))];
+    return `<h1 style="font-size:18px;margin:0 0 4px">Préparation Lidl — date de livraison : ${dateFr(jourB)}</h1><div style="font-size:13px;margin-bottom:6px">${deps.length === 1 ? libDepart(deps[0]) + " · " : ""}${tri.length} commande${tri.length > 1 ? "s" : ""} · ${total} colis</div>${corps}`;
+  }
+  // PDF entrepôt (départ Paris) : préparé chez Moorea.
+  function imprimerBonEntrepot(jourB: string) {
+    const ls = (parJour.get(jourB) || []).filter(l => l.depart === "paris");
+    if (!ls.length) return;
+    ouvrirImpression(`Préparation Lidl — livraison ${dateFr(jourB)}`, "", htmlBonPrepa(jourB, ls));
+  }
+  // Départ Medina (Perpignan) : la prépa se fait chez Medina. Récap envoyé à Jordan depuis sa propre
+  // boîte (l'envoi direct à Medina sera programmé plus tard).
+  async function envoyerRecapMedina(jourM: string, lignesM?: LigneLidl[]) {
+    const ls = lignesM || (lignes.filter(l => l.date === jourM && l.depart === "sud"));
+    if (!ls.length) return;
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: "jordan", to: ["jordan.jouanest@moorea.fr"],
+          subject: `Lidl — Préparation Medina (Perpignan) — livraison du ${dateFr(jourM)}`,
+          html: `<div style="font-family:Arial,sans-serif;color:#111">${htmlBonPrepa(jourM, ls)}<p style="font-size:12px;color:#6b7280">Envoyé automatiquement par l'app Moorea après l'import des commandes Lidl${userName ? ` par ${echapHtml(userName)}` : ""}.</p></div>`,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) throw new Error(data?.error || `Erreur ${res.status}`);
+      await update(ref(db, `lidl_recap_medina/${jourM}`), { envoyeLe: new Date().toLocaleString("fr-FR"), par: userName || "", nbLignes: ls.length, erreur: null }).catch(() => {});
+      return { ok: true as const };
+    } catch (e: any) {
+      await update(ref(db, `lidl_recap_medina/${jourM}`), { erreur: `${new Date().toLocaleString("fr-FR")} — ${e?.message || e}` }).catch(() => {});
+      return { ok: false as const, erreur: e?.message || String(e) };
+    }
   }
 
   async function choisirRef(l: LigneLidl, k: string) {
     const r = REFS_LIDL.find(x => x.k === k); if (!r) return;
     await update(ref(db, `lidl_commandes/${l.id}`), { refLidl: r.k, article: r.article, emballage: r.emballage, origine: r.origine, refChoisie: true });
   }
-  async function choisirRefTout(k: string) {
+  async function choisirRefTout(jourR: string, k: string) {
     const r = REFS_LIDL.find(x => x.k === k); if (!r) return;
     const maj: Record<string, any> = {};
-    duJour.filter(l => l.statut !== "pret").forEach(l => { maj[`lidl_commandes/${l.id}/refLidl`] = r.k; maj[`lidl_commandes/${l.id}/article`] = r.article; maj[`lidl_commandes/${l.id}/emballage`] = r.emballage; maj[`lidl_commandes/${l.id}/origine`] = r.origine; maj[`lidl_commandes/${l.id}/refChoisie`] = true; });
+    (parJour.get(jourR) || []).filter(l => l.statut !== "pret").forEach(l => { maj[`lidl_commandes/${l.id}/refLidl`] = r.k; maj[`lidl_commandes/${l.id}/article`] = r.article; maj[`lidl_commandes/${l.id}/emballage`] = r.emballage; maj[`lidl_commandes/${l.id}/origine`] = r.origine; maj[`lidl_commandes/${l.id}/refChoisie`] = true; });
     await update(ref(db), maj);
     flash("ok", `✅ Toutes les lignes non prêtes du jour passées en « ${libRef(r)} ».`);
   }
-  async function supprimerJour() {
-    if (!jourAffiche) return;
-    if (!window.confirm(`Supprimer toutes les commandes Lidl du ${dateFr(jourAffiche)} (${duJour.length} lignes) ?`)) return;
-    for (const l of duJour) await remove(ref(db, `lidl_commandes/${l.id}`));
+  async function supprimerJour(jourS: string) {
+    const ls = parJour.get(jourS) || [];
+    if (!window.confirm(`Supprimer toutes les commandes Lidl du ${dateFr(jourS)} (${ls.length} lignes) ?`)) return;
+    for (const l of ls) await remove(ref(db, `lidl_commandes/${l.id}`));
+  }
+  // Tableau de traçabilité du jour : le même fichier que celui envoyé par mail à Lidl.
+  async function telechargerTableau(jourT: string) {
+    try {
+      const g = await genererXlsxLidl(jourT, lignes.filter(l => l.date === jourT) as unknown as LigneExport[], contexteLidl(producteurs));
+      const bin = atob(g.base64); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      a.download = `${nomFichierLidl(jourT, envois[jourT]?.version || 1)}.xlsx`; a.click();
+      flash(g.problemes.length ? "err" : "ok", g.problemes.length ? `Tableau du ${dateFr(jourT)} téléchargé SANS les lignes incomplètes : ${g.problemes.join(" ; ")}` : `Tableau Lidl du ${dateFr(jourT)} téléchargé (${g.nbLignes} lignes).`);
+    } catch (e: any) { flash("err", `Tableau du ${dateFr(jourT)} : ${e?.message || e}`); }
   }
 
+  // ── Préparation (entrepôt) : une ligne compacte par commande. On met en avant la base, le
+  // transporteur et la référence ; le reste est plus discret. Une ligne « Prêt » se replie en une
+  // seule ligne fine.
+  const libReference = (l: LigneLidl) => [l.article, l.emballage && !l.article.toLowerCase().replace(/\s/g, "").includes(l.emballage.toLowerCase().replace(/\s/g, "")) ? l.emballage : "", l.origine].filter(Boolean).join(" · ");
+  const cleProduit = (l: LigneLidl) => l.refLidl || `${l.article}|${l.origine}`;
+  const ligneTerrain = (l: LigneLidl, avecRef = true) => {
+    const inf = infoBase(l.base);
+    const pret = l.statut === "pret";
+    const lot = lotsSaisis[l.id] ?? l.lot;
+    const alertes = <>
+      {l.quantiteModifieeApresPret && <span style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ quantité modifiée après « prêt »</span>}
+      {l.absenteDuFichier && <span style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</span>}
+    </>;
+    if (pret) return (
+      <div key={l.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 12px", padding: "6px 12px", borderTop: "1px solid #dcfce7", background: "#f0fdf4", fontSize: 12.5, color: "#374151" }}>
+        <span style={{ color: "#15803d", fontWeight: 900 }}>✅</span>
+        <span style={{ fontWeight: 800, color: "#111827", minWidth: 110 }}>{inf?.nom || l.base}</span>
+        <span style={{ fontWeight: 700, color: "#7c3aed", minWidth: 90 }}>🚚 {l.transporteur || "—"}</span>
+        {avecRef ? <span style={{ fontWeight: 700, color: "#0050aa", flex: "1 1 160px" }}>{libReference(l)}</span> : <span style={{ flex: "1 1 40px" }} />}
+        <span style={{ fontWeight: 800 }}>{l.quantite} colis</span>
+        <span style={{ color: "#6b7280" }}>{l.ferme || "—"} · lot {l.lot || "—"} · {String(l.palettes ?? 0.5).replace(".", ",")} pal.</span>
+        <span style={{ fontSize: 11, color: "#9ca3af" }}>{l.pretPar} {l.pretLe}</span>
+        {alertes}
+        <button type="button" onClick={() => annulerPret(l)} style={{ background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline", padding: 0 }}>annuler</button>
+      </div>
+    );
+    const fleche = (sens: -1 | 1) => {
+      const v = l.palettes ?? 0.5, bloque = sens < 0 && v <= 0.5;
+      return (
+        <button type="button" disabled={bloque} onClick={() => setPalettes(l, v + sens * 0.5)} aria-label={sens < 0 ? "Moins de palettes" : "Plus de palettes"}
+          style={{ width: 38, height: 40, borderRadius: 10, border: "1.5px solid #d1d5db", background: bloque ? "#f3f4f6" : "#fff", color: bloque ? "#d1d5db" : "#111827", fontSize: 16, cursor: bloque ? "default" : "pointer" }}>{sens < 0 ? "◀" : "▶"}</button>
+      );
+    };
+    return (
+      <div key={l.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 12px", padding: "10px 12px", borderTop: "1px solid #f3f4f6", background: "#fff" }}>
+        <div style={{ flex: "1 1 150px", minWidth: 130 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 10px" }}>
+            <span style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>{inf?.nom || l.base}</span>
+            {inf?.nationale && <span style={{ fontSize: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>NATIONALE</span>}
+          </div>
+          {avecRef && <div style={{ fontSize: 14, fontWeight: 800, color: "#0050aa" }}>{libReference(l)}</div>}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11, color: "#9ca3af" }}>
+            <span>{inf ? `base n° ${inf.num}` : l.base}{l.camion ? ` · camion ${l.camion}` : ""}</span>{alertes}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, flex: "1 1 auto", justifyContent: "flex-end" }}>
+        <div style={{ background: "#0050aa", color: "#fff", borderRadius: 10, padding: "4px 12px", textAlign: "center", minWidth: 62 }}>
+          <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1.1 }}>{l.quantite}</div>
+          <div style={{ fontSize: 9.5, opacity: 0.85 }}>colis</div>
+        </div>
+        <select value={l.ferme || ""} onChange={e => choisirFerme(l, e.target.value)}
+          style={{ flex: "0 1 150px", minWidth: 120, height: 42, padding: "0 10px", border: `1.5px solid ${l.ferme ? "#d1d5db" : "#f59e0b"}`, borderRadius: 10, fontSize: 14, background: "#fff" }}>
+          <option value="">Producteur…</option>
+          {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
+          <option value="__new">Il manque un producteur — prévenir</option>
+        </select>
+        <input value={lot} placeholder="Lot (A1234)" maxLength={5} autoCapitalize="characters"
+          onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => sauverLot(l)}
+          style={{ width: 96, height: 42, padding: "0 8px", border: `1.5px solid ${lot && !LOT_OK.test(lot) ? "#f59e0b" : "#d1d5db"}`, borderRadius: 10, fontSize: 15, fontWeight: 700, letterSpacing: 1 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }} title="Nombre de palettes (grande = 1, demi = 0,5)">
+          {fleche(-1)}
+          <div style={{ minWidth: 44, textAlign: "center", lineHeight: 1.1 }}>
+            <div style={{ fontWeight: 900, fontSize: 16 }}>{String(l.palettes ?? 0.5).replace(".", ",")}</div>
+            <div style={{ fontSize: 9.5, color: "#6b7280", fontWeight: 700 }}>palette{(l.palettes ?? 0.5) > 1 ? "s" : ""}</div>
+          </div>
+          {fleche(1)}
+        </div>
+        <button type="button" onClick={() => marquerPret(l)} style={{ height: 42, background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 10, padding: "0 20px", fontWeight: 900, fontSize: 15, cursor: "pointer", boxShadow: "0 2px 6px rgba(22,163,74,.3)" }}>Prêt</button>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Module commercial : tableau du jour (toutes les commandes, Sud et Paris)
+  const tableauCommercial = (ls: LigneLidl[]) => (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+        <thead>
+          <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
+            {["Base", "ID livraison", "Article", "Quantité", "N° de traçabilité (lot)", ""].map(h => <th key={h} style={{ padding: "8px", textAlign: "left", color: "#374151", fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {ls.map(l => {
+            const pret = l.statut === "pret";
+            return (
+              <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: pret ? "#f0fdf4" : "#fff" }}>
+                <td style={{ padding: "8px" }}>
+                  <div style={{ fontWeight: 800 }}>{infoBase(l.base)?.nom || l.base}{infoBase(l.base)?.nationale && <span style={{ marginLeft: 6, fontSize: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>NATIONALE</span>}</div>
+                  <div style={{ fontSize: 11, color: "#9ca3af" }}>{infoBase(l.base) ? `${l.base} · base n° ${infoBase(l.base)!.num}` : `${l.base} · base à identifier`}</div>
+                  {l.depart && <div style={{ fontSize: 11, fontWeight: 700, color: l.depart === "paris" ? "#7c3aed" : "#b45309" }}>🚚 Départ {l.depart === "paris" ? "Paris" : "Perpignan"} : {l.transporteur || "—"}</div>}
+                </td>
+                <td style={{ padding: "8px", color: "#6b7280" }}>{l.camion}</td>
+                <td style={{ padding: "8px", maxWidth: 260 }}>
+                  <select value={l.refLidl || ""} disabled={pret} onChange={e => choisirRef(l, e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12.5, fontWeight: 600, maxWidth: 250 }}>
+                    {!l.refLidl && <option value="">{l.article || "— choisir —"}{l.origine ? ` (${l.origine})` : ""}</option>}
+                    {REFS_LIDL.map(r => <option key={r.k} value={r.k}>{libRef(r)}</option>)}
+                  </select>
+                </td>
+                <td style={{ padding: "8px", fontWeight: 800 }}>
+                  {l.quantite} <span style={{ fontWeight: 500, color: "#9ca3af", fontSize: 11 }}>colis</span>
+                  {l.quantiteModifieeApresPret && <div style={{ fontSize: 10.5, color: "#b45309", fontWeight: 700 }}>⚠️ quantité modifiée après « prêt »</div>}
+                  {l.absenteDuFichier && <div style={{ fontSize: 10.5, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</div>}
+                </td>
+                <td style={{ padding: "8px" }}>
+                  {l.depart === "sud" ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <select value={l.ferme || ""} disabled={pret} onChange={e => choisirFerme(l, e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12.5 }}>
+                        <option value="">Producteur…</option>
+                        {producteurs.map(p => <option key={p.pn} value={p.pn}>{p.pn}</option>)}
+                      </select>
+                      <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot (A1234)" maxLength={5}
+                        onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => !pret && sauverLot(l)}
+                        style={{ width: 110, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, fontWeight: 700 }} />
+                      <label style={{ fontSize: 11, color: "#6b7280" }}>Palettes <input type="number" step={0.5} min={0.5} disabled={pret} value={l.palettes ?? 0.5} onChange={e => setPalettes(l, Number(e.target.value) || 0.5)} style={{ width: 56, padding: "3px 4px", borderRadius: 6, border: "1.5px solid #e5e7eb" }} /></label>
+                    </div>
+                  ) : (
+                    <>
+                      <input value={lotsSaisis[l.id] ?? l.lot} disabled placeholder="—" style={{ width: 150, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, background: "#f3f4f6" }} />
+                      {l.ferme && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{l.ferme}</div>}
+                    </>
+                  )}
+                </td>
+                <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
+                  {pret ? (
+                    <span>
+                      <span style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</span>
+                      <span style={{ fontSize: 10.5, color: "#9ca3af", marginLeft: 6 }}>{l.pretPar} {l.pretLe}</span>
+                      {l.depart === "sud" && <button type="button" onClick={() => annulerPret(l)} style={{ marginLeft: 8, background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>}
+                    </span>
+                  ) : l.depart !== "sud" ? (
+                    <span style={{ color: "#b45309", fontWeight: 700, fontSize: 12 }}>À préparer</span>
+                  ) : (
+                    <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>Prêt</button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const pastille = (t: string, c: string, b: string) => <span style={{ background: b, color: c, borderRadius: 12, padding: "2px 9px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap" }}>{t}</span>;
+  const etatTraca = (j: string) => {
+    const e = envois[j] || {};
+    if (e.erreur) return pastille("❌ Traça : échec", "#b91c1c", "#fee2e2");
+    if (e.version > 0) return pastille(`📧 Traça envoyée${e.dernierEnvoi ? ` ${String(e.dernierEnvoi).split(" ")[1]?.slice(0, 5) || ""}` : ""}${e.mode === "test" ? " (test)" : ""}`, "#15803d", "#dcfce7");
+    return pastille("⏳ Traça pas envoyée", "#6b7280", "#f3f4f6");
+  };
+  const btnJour = (lib: string, onClick: () => void, plein = false) => (
+    <button type="button" onClick={e => { e.stopPropagation(); onClick(); }}
+      style={{ background: plein ? couleur : "#fff", color: plein ? "#fff" : couleur, border: `1.5px solid ${couleur}`, borderRadius: 8, padding: "5px 10px", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>{lib}</button>
+  );
+
+  const contenuJour = (j: string) => {
+    const ls = trierJour((parJour.get(j) || []).filter(l => commercial || !filtreTransporteur || (l.transporteur || "Sans transporteur") === filtreTransporteur));
+    if (!commercial && !ls.length) return <div style={{ padding: "8px 12px", fontSize: 12.5, color: "#6b7280" }}>Aucune commande {filtreTransporteur} ce jour-là.</div>;
+    if (commercial) return (
+      <div style={{ padding: "8px 10px 12px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <select value="" onChange={e => { if (e.target.value) choisirRefTout(j, e.target.value); }} style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12.5, fontWeight: 700 }}>
+            <option value="">Tout le jour en…</option>
+            {REFS_LIDL.map(r => <option key={r.k} value={r.k}>{libRef(r)}</option>)}
+          </select>
+          <button type="button" onClick={() => supprimerJour(j)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ Supprimer ce jour</button>
+        </div>
+        {tableauCommercial(ls)}
+      </div>
+    );
+    // 05/10/2026 — Demande d'Elinathan : en général toutes les commandes du jour ont le même produit ;
+    // sous-accordéon par produit (le produit n'est plus répété sur chaque ligne), puis par transporteur.
+    const produits = new Map<string, LigneLidl[]>();
+    ls.forEach(l => produits.set(cleProduit(l), [...(produits.get(cleProduit(l)) || []), l]));
+    const groupes = [...produits.entries()].sort((x, y) => y[1].reduce((s, l) => s + l.quantite, 0) - x[1].reduce((s, l) => s + l.quantite, 0));
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "6px 0 4px" }}>
+        {groupes.map(([cp, lp]) => {
+          const cle = `${j}|${cp}`, ouvertP = !produitsFermes.has(cle);
+          // Les commandes prêtes descendent en bas de la liste (repliées en une ligne fine).
+          const vis = lp.filter(l => l.statut !== "pret");
+          const pretesP = lp.filter(l => l.statut === "pret");
+          const pretsP = lp.filter(l => l.statut === "pret").length;
+          return (
+            <div key={cp} style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+              <div onClick={() => basculer(setProduitsFermes, cle)} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 10px", padding: "8px 12px", cursor: "pointer", background: "#f8fafc" }}>
+                <span style={{ fontSize: 13, color: "#0050aa", transform: ouvertP ? "rotate(90deg)" : "none", transition: "transform .15s", display: "inline-block", width: 10 }}>›</span>
+                <span style={{ fontWeight: 900, fontSize: 14.5, color: "#0050aa" }}>📦 {libReference(lp[0])}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "#4b5563" }}>{lp.length} commande{lp.length > 1 ? "s" : ""} · {lp.reduce((s, l) => s + l.quantite, 0)} colis</span>
+                {pretsP === lp.length ? pastille("✅ Toutes prêtes", "#15803d", "#dcfce7") : pastille(`⏳ ${pretsP}/${lp.length} prêtes`, "#b45309", "#fef3c7")}
+              </div>
+              {ouvertP && (vis.length ? vis.map((l, i) => {
+                const t = l.transporteur || "Sans transporteur";
+                const nouveauT = i === 0 || (vis[i - 1].transporteur || "Sans transporteur") !== t;
+                const duT = lp.filter(x => (x.transporteur || "Sans transporteur") === t);
+                return (
+                  <div key={l.id}>
+                    {nouveauT && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", background: "#f5f3ff", borderTop: "1px solid #e5e7eb", fontSize: 12.5 }}>
+                        <span style={{ fontWeight: 900, color: "#6d28d9" }}>🚚 {t}</span>
+                        <span style={{ color: "#6b7280", fontWeight: 600 }}>{duT.length - duT.filter(x => x.statut === "pret").length} à préparer · {duT.filter(x => x.statut !== "pret").reduce((s, x) => s + x.quantite, 0)} colis</span>
+                      </div>
+                    )}
+                    {ligneTerrain(l, false)}
+                  </div>
+                );
+              }) : <div style={{ padding: "8px 12px", borderTop: "1px solid #e5e7eb", fontSize: 12.5, color: "#15803d", fontWeight: 700 }}>Tout est prêt pour ce produit.</div>)}
+              {ouvertP && pretesP.length > 0 && (
+                <>
+                  <div style={{ padding: "5px 12px", background: "#dcfce7", borderTop: "1px solid #bbf7d0", fontSize: 12.5, fontWeight: 900, color: "#15803d" }}>✅ Prêtes ({pretesP.length})</div>
+                  {pretesP.map(l => ligneTerrain(l, false))}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const enteteJour = (j: string) => {
+    const ls = parJour.get(j) || [];
+    const prets = ls.filter(l => l.statut === "pret");
+    const colis = ls.reduce((s, l) => s + l.quantite, 0), colisP = prets.reduce((s, l) => s + l.quantite, 0);
+    const ouvert = joursOuverts.has(j);
+    const fini = ls.length > 0 && prets.length === ls.length;
+    return (
+      <div onClick={() => basculer(setJoursOuverts, j)} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 10px", padding: "9px 12px", cursor: "pointer", background: ouvert ? "#eff6ff" : "#f9fafb", border: `1.5px solid ${ouvert ? "#bfdbfe" : "#e5e7eb"}`, borderRadius: 12 }}>
+        <span style={{ fontSize: 13, color: couleur, transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .15s", display: "inline-block", width: 10 }}>›</span>
+        <span style={{ fontWeight: 900, fontSize: 14, color: "#111827" }}><span style={{ fontWeight: 600, fontSize: 11.5, color: "#6b7280" }}>Livraison du </span>{JOURS_COURTS[new Date(j + "T12:00:00").getDay()]} {dateFr(j)}</span>
+        {j === iso(new Date()) && pastille("Aujourd'hui", couleur, `${couleur}1a`)}
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: "#4b5563" }}>{ls.length} commande{ls.length > 1 ? "s" : ""} · {colisP}/{colis} colis</span>
+        {fini ? pastille("✅ Toutes prêtes", "#15803d", "#dcfce7") : prets.length ? pastille(`⏳ ${prets.length}/${ls.length} prêtes`, "#b45309", "#fef3c7") : pastille("À préparer", "#b91c1c", "#fee2e2")}
+        {commercial && etatTraca(j)}
+        {commercial && (
+          <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {btnJour("📄 Geslot", () => imprimerGeslot(j))}
+            {ls.some(l => l.depart === "paris") && btnJour("🏭 Bon entrepôt", () => imprimerBonEntrepot(j))}
+            {ls.some(l => l.depart === "sud") && btnJour("📧 Récap Medina", async () => { const r = await envoyerRecapMedina(j); flash(r?.ok ? "ok" : "err", r?.ok ? `Récap Medina du ${dateFr(j)} envoyé à Jordan.` : `Récap Medina non envoyé : ${r?.erreur}`); })}
+            {btnJour("📊 Tableau Lidl", () => telechargerTableau(j))}
+          </span>
+        )}
+        {colis > 0 && (
+          <div style={{ flexBasis: "100%", height: 4, background: "#e5e7eb", borderRadius: 4, overflow: "hidden" }}>
+            <div style={{ width: `${Math.round((colisP / colis) * 100)}%`, height: "100%", background: fini ? "#16a34a" : "#f59e0b" }} />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const listeSemaines = semaines.map(([lun, js]) => {
+    const { n, annee } = numeroSemaine(lun);
+    const ouverte = semainesOuvertes.has(lun);
+    const ls = js.flatMap(j => parJour.get(j) || []);
+    const prets = ls.filter(l => l.statut === "pret").length;
+    return (
+      <div key={lun} style={{ border: "1.5px solid #e5e7eb", borderRadius: 14, background: "#fff", marginBottom: 10, overflow: "hidden" }}>
+        <div onClick={() => basculer(setSemainesOuvertes, lun)} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "11px 14px", cursor: "pointer" }}>
+          <span style={{ fontWeight: 900, fontSize: 14, color: "#111827" }}>📅 Semaine {n} · {annee}</span>
+          <span style={{ fontSize: 12.5, color: "#6b7280", fontWeight: 600 }}>({js.length} jour{js.length > 1 ? "s" : ""} · {ls.length} commande{ls.length > 1 ? "s" : ""})</span>
+          <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+            {prets < ls.length && pastille(`⏳ ${ls.length - prets} à préparer`, "#b45309", "#fef3c7")}
+            {prets > 0 && pastille(`✅ ${prets} prêtes`, "#15803d", "#dcfce7")}
+            <span style={{ fontSize: 14, color: couleur, transform: ouverte ? "rotate(90deg)" : "none", transition: "transform .15s", display: "inline-block" }}>›</span>
+          </span>
+        </div>
+        {ouverte && (
+          <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {js.map(j => (
+              <div key={j}>
+                {enteteJour(j)}
+                {joursOuverts.has(j) && contenuJour(j)}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  });
+
+  const messageBox = message && (
+    <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
+  );
+
+  // Module commercial : bouton d'import en haut, hors des journées, puis l'historique par semaine.
+  const champ = { padding: "9px 10px", borderRadius: 10, border: "1.5px solid #d1d5db", fontSize: 14, width: "100%", boxSizing: "border-box" as const };
+  const fenetre = fenetreImport && (
+    <div onClick={() => !import_ && setFenetreImport(false)} style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Importer une nouvelle commande Lidl" style={{ background: "#fff", borderRadius: 16, padding: 20, width: "100%", maxWidth: 460, boxShadow: "0 20px 50px rgba(0,0,0,.25)" }}>
+        <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 14, color: "#111827" }}>📥 Importer une nouvelle commande Lidl</div>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374151", marginBottom: 6 }}>1. Tableau de répartition reçu de Lidl</div>
+        <button type="button" onClick={() => inputRef.current?.click()} style={{ ...champ, textAlign: "left", cursor: "pointer", background: fichierLu ? "#f0fdf4" : "#fff", borderColor: fichierLu ? "#86efac" : "#d1d5db", fontWeight: 700 }}>
+          {fichierLu ? `✅ ${fichierLu.nom} — ${fichierLu.lignes.length} commande${fichierLu.lignes.length > 1 ? "s" : ""}` : "Choisir le fichier (AU-….xlsx)"}
+        </button>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374151", margin: "14px 0 6px" }}>2. Départ</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {([["paris", "🏙️ Paris"], ["sud", "☀️ Medina (Perpignan)"]] as const).map(([k, lib]) => (
+            <button key={k} type="button" onClick={() => setDepart(k)} style={{ flex: 1, padding: "10px 8px", borderRadius: 10, border: `2px solid ${depart === k ? couleur : "#e5e7eb"}`, background: depart === k ? `${couleur}12` : "#fff", color: depart === k ? couleur : "#374151", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{lib}</button>
+          ))}
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374151", margin: "14px 0 6px" }}>3. Date de livraison</div>
+        <input type="date" value={dateImport} onChange={e => setDateImport(e.target.value)} style={champ} />
+        <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 4 }}>
+          {fichierLu?.dateFichier ? `Date de livraison lue dans le fichier : ${dateFr(fichierLu.dateFichier)}${dateImport && dateImport !== fichierLu.dateFichier ? " — ⚠️ tu as choisi une autre date" : ""}` : fichierLu ? "Pas de date de livraison dans le fichier : date du jour proposée." : "Remplie automatiquement avec la date de livraison du fichier."}
+        </div>
+        {depart && <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 10 }}>{depart === "paris" ? "Après l'import : bon Geslot (bureau) + bon de préparation (entrepôt)." : "Après l'import : bon Geslot (bureau) + récap de préparation envoyé par mail à Jordan."}</div>}
+        {erreurImport && <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c" }}>{erreurImport}</div>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button type="button" disabled={import_} onClick={() => setFenetreImport(false)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+          <button type="button" disabled={import_ || !fichierLu || !depart || !dateImport} onClick={enregistrerImport}
+            style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: import_ || !fichierLu || !depart || !dateImport ? "#9ca3af" : couleur, color: "#fff", fontWeight: 900, cursor: import_ ? "wait" : "pointer" }}>{import_ ? "Import…" : "Importer"}</button>
+        </div>
+      </div>
+    </div>
+  );
+  const apresImport = dernierImport && (
+    <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 12, background: "#f0fdf4", border: "1.5px solid #86efac" }}>
+      <div style={{ fontWeight: 800, fontSize: 13.5, color: "#166534", marginBottom: 8 }}>Commandes importées — {libDepart(dernierImport.depart)} — livraison du {dateFr(dernierImport.date)}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <button type="button" onClick={() => imprimerGeslot(dernierImport.date, dernierImport.depart)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Bon Geslot (bureau)</button>
+        {dernierImport.depart === "paris" && <button type="button" onClick={() => imprimerBonEntrepot(dernierImport.date)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Bon de préparation (entrepôt)</button>}
+        {recapMedina && <span style={{ fontSize: 12.5, fontWeight: 700, color: recapMedina.startsWith("❌") ? "#b91c1c" : "#166534" }}>{recapMedina}</span>}
+        <button type="button" onClick={() => setDernierImport(null)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#6b7280", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>fermer</button>
+      </div>
+    </div>
+  );
+  if (commercial) return (
+    <div>
+      <input ref={inputRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) lireFichier(f); }} />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+        <button type="button" onClick={() => { setFenetreImport(true); setFichierLu(null); setDepart(""); setDateImport(""); setErreurImport(""); }}
+          style={{ background: couleur, color: "#fff", border: "none", borderRadius: 12, padding: "12px 18px", fontWeight: 900, fontSize: 14, cursor: "pointer", boxShadow: "0 3px 10px rgba(0,80,170,.25)" }}>
+          📥 Importer une nouvelle commande
+        </button>
+      </div>
+      {fenetre}
+      {apresImport}
+      {messageBox}
+      {jours.length === 0
+        ? <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13, background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14 }}>Aucune commande Lidl. Clique sur « Importer une nouvelle commande » et choisis le tableau reçu de Lidl (fichier « AU-…xlsx »).</div>
+        : listeSemaines}
+    </div>
+  );
+
+  // Préparation : cellule « 🛒 Lidl » repliable, résumé du jour en cours dans l'en-tête.
   return (
     <div style={{ background: "#fff", border: `1.5px solid ${couleur}33`, borderRadius: 18, marginBottom: 16, overflow: "hidden", boxShadow: "0 4px 14px rgba(0,0,0,.06)" }}>
       <div onClick={() => setOuvert(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", cursor: "pointer", background: `${couleur}0d` }}>
@@ -341,185 +831,33 @@ tr{page-break-inside:avoid}@media print{button{display:none}}</style></head><bod
         <span style={{ fontSize: 12, color: "#6b7280" }}>{ouvert ? "▲" : "▼"}</span>
       </div>
       {ouvert && (
-        <div style={{ padding: 14 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
-            {commercial && <>
-            <input ref={inputRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importer(f); }} />
-            {/* Un clic = on choisit le départ ET le fichier : plus rien à cocher avant d'importer. */}
-            {([["sud", "☀️ Importer — départ Sud (Perpignan)"], ["paris", "🏙️ Importer — départ Paris"]] as const).map(([k, lib]) => (
-              <button key={k} type="button" disabled={import_} onClick={() => { setDepart(k); inputRef.current?.click(); }}
-                style={{ background: import_ ? "#9ca3af" : couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, fontSize: 13, cursor: import_ ? "wait" : "pointer" }}>
-                {import_ ? "Import…" : lib}
-              </button>
-            ))}
-            </>}
-            {jours.length > 0 && (
-              <select value={jourAffiche} onChange={e => setJour(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }}>
-                {jours.map(j => <option key={j} value={j}>{dateFr(j)}</option>)}
-              </select>
-            )}
-            {commercial && duJour.length > 0 && (
-              <select value="" onChange={e => { if (e.target.value) choisirRefTout(e.target.value); }} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13, fontWeight: 700 }}>
-                <option value="">Tout le jour en…</option>
-                {REFS_LIDL.map(r => <option key={r.k} value={r.k}>{libRef(r)}</option>)}
-              </select>
-            )}
-            {commercial && duJour.length > 0 && <button type="button" onClick={imprimerGeslot} style={{ background: "#fff", color: couleur, border: `1.5px solid ${couleur}`, borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>🖨️ Imprimer pour Geslot</button>}
-            {commercial && duJour.length > 0 && <button type="button" onClick={supprimerJour} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🗑️ Supprimer ce jour</button>}
-          </div>
-          {duJour.length > 0 && totalColis > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ height: 10, background: "#e5e7eb", borderRadius: 8, overflow: "hidden" }}>
-                <div style={{ width: `${Math.round((colisPrets / totalColis) * 100)}%`, height: "100%", background: colisPrets === totalColis ? "#16a34a" : "linear-gradient(90deg,#fbbf24,#f59e0b)", borderRadius: 8, transition: "width .5s" }} />
+        <div style={{ padding: 12 }}>
+          {messageBox}
+          {jours.length > 0 && (() => {
+            // Transporteurs présents (dans l'ordre de préparation) avec le nombre de commandes encore à préparer
+            const ts = [...new Set(trierPourPrepa(lignesParis).map(l => l.transporteur || "Sans transporteur"))];
+            const reste = (t: string) => lignesParis.filter(l => l.statut !== "pret" && (!t || (l.transporteur || "Sans transporteur") === t)).length;
+            const puce = (t: string, lib: string) => {
+              const actif = filtreTransporteur === t, n = reste(t);
+              return (
+                <button key={t || "tous"} type="button" onClick={() => setFiltreTransporteur(t)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 20, border: `1.5px solid ${actif ? "#6d28d9" : "#e5e7eb"}`, background: actif ? "#6d28d9" : "#fff", color: actif ? "#fff" : "#374151", fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {lib}{n > 0 && <span style={{ background: actif ? "rgba(255,255,255,.25)" : "#fef3c7", color: actif ? "#fff" : "#b45309", borderRadius: 10, padding: "0 7px", fontSize: 11.5 }}>{n}</span>}
+                </button>
+              );
+            };
+            return ts.length > 1 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                {puce("", "Tous")}{ts.map(t => puce(t, `🚚 ${t}`))}
               </div>
-              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: colisPrets === totalColis ? "#15803d" : "#6b7280" }}>
-                {colisPrets === totalColis ? "Tout est prêt" : `${colisPrets} / ${totalColis} colis prêts`}
-              </div>
-            </div>
-          )}
-          {message && (
-            <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
-          )}
-          {duJour.length === 0 ? (
-            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>{commercial ? "Aucune commande Lidl. Clique sur « Importer » du bon départ (Sud ou Paris) et choisis le tableau reçu de Lidl (fichier « AU-…xlsx »)." : "Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl »."}</div>
-          ) : !commercial ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <label style={{ fontSize: 13, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <input type="checkbox" checked={masquerPretes} onChange={e => setMasquerPretes(e.target.checked)} style={{ width: 18, height: 18 }} /> Cacher les lignes déjà prêtes
-              </label>
-              {groupesBase.map(g => {
-                const inf = infoBase(g.base);
-                const lignesVisibles = masquerPretes ? g.lignes.filter(l => l.statut !== "pret") : g.lignes;
-                if (!lignesVisibles.length) return null;
-                const toutPret = g.lignes.every(l => l.statut === "pret");
-                return (
-                  <div key={g.base} style={{ border: `2px solid ${toutPret ? "#86efac" : "#e5e7eb"}`, borderRadius: 16, overflow: "hidden", background: toutPret ? "#f0fdf4" : "#fff" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: toutPret ? "#dcfce7" : "#eff6ff", flexWrap: "wrap", gap: 6 }}>
-                      <div>
-                        <span style={{ fontSize: 18, fontWeight: 900 }}>{inf?.nom || g.base}</span>
-                        <span style={{ marginLeft: 8, fontSize: 12, color: "#6b7280" }}>{inf ? `base n° ${inf.num}` : g.base}</span>
-                        {inf?.nationale && <span style={{ marginLeft: 6, fontSize: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>NATIONALE</span>}
-                      </div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#7c3aed" }}>🚚 {g.lignes[0].transporteur || "—"}</div>
-                    </div>
-                    {lignesVisibles.map(l => {
-                      const pret = l.statut === "pret";
-                      return (
-                        <div key={l.id} style={{ padding: "12px 14px", borderTop: "1px solid #f3f4f6", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, opacity: pret ? 0.85 : 1 }}>
-                          <div style={{ flex: "1 1 160px", minWidth: 140 }}>
-                            <div style={{ fontWeight: 800, fontSize: 15 }}>{l.article}</div>
-                            {(l.emballage || l.origine) && <div style={{ fontSize: 12, fontWeight: 700, color: "#0050aa" }}>{[l.emballage, l.origine].filter(Boolean).join(" · ")}</div>}
-                            {l.quantiteModifieeApresPret && <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ quantité modifiée après « prêt »</div>}
-                            {l.absenteDuFichier && <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</div>}
-                          </div>
-                          <div style={{ background: "#0050aa", color: "#fff", borderRadius: 14, padding: "6px 14px", textAlign: "center", minWidth: 70 }}>
-                            <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.1 }}>{l.quantite}</div>
-                            <div style={{ fontSize: 10, opacity: 0.85 }}>colis</div>
-                          </div>
-                          <select value={l.ferme || ""} disabled={pret} onChange={e => choisirFerme(l, e.target.value)}
-                            style={{ flex: "1 1 150px", maxWidth: 220, padding: "12px", border: "2px solid #e5e7eb", borderRadius: 12, fontSize: 15, background: pret ? "#f3f4f6" : "#fff" }}>
-                            <option value="">Producteur…</option>
-                            {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
-                            <option value="__new">Il manque un producteur — prévenir</option>
-                          </select>
-                          <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot (A1234)" maxLength={5} autoCapitalize="characters"
-                            onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => !pret && sauverLot(l)}
-                            style={{ flex: "0 1 120px", padding: "12px", border: `2px solid ${(lotsSaisis[l.id] ?? l.lot) && !LOT_OK.test(lotsSaisis[l.id] ?? l.lot) ? "#f59e0b" : "#e5e7eb"}`, borderRadius: 12, fontSize: 16, fontWeight: 700, letterSpacing: 1, background: pret ? "#f3f4f6" : "#fff" }} />
-                          <div style={{ textAlign: "center" }}>
-                            <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700 }}>Palettes</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <button type="button" disabled={pret} onClick={() => setPalettes(l, (l.palettes ?? 0.5) - 0.5)} style={{ width: 32, height: 32, borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", fontSize: 18, cursor: pret ? "default" : "pointer" }}>−</button>
-                              <span style={{ minWidth: 34, textAlign: "center", fontWeight: 800, fontSize: 16 }}>{String(l.palettes ?? 0.5).replace(".", ",")}</span>
-                              <button type="button" disabled={pret} onClick={() => setPalettes(l, (l.palettes ?? 0.5) + 0.5)} style={{ width: 32, height: 32, borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", fontSize: 18, cursor: pret ? "default" : "pointer" }}>+</button>
-                            </div>
-                          </div>
-                          {pret ? (
-                            <div style={{ textAlign: "center" }}>
-                              <div style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</div>
-                              <div style={{ fontSize: 10.5, color: "#9ca3af" }}>{l.pretPar} {l.pretLe}</div>
-                              <button type="button" onClick={() => annulerPret(l)} style={{ background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>
-                            </div>
-                          ) : (
-                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 14, padding: "14px 22px", fontWeight: 900, fontSize: 16, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>Prêt</button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
+            );
+          })()}
+          {jours.length === 0 ? (
+            <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl ».</div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-                <thead>
-                  <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
-                    {["Base", "ID livraison", "Article", "Quantité", "N° de traçabilité (lot)", ""].map(h => <th key={h} style={{ padding: "8px", textAlign: "left", color: "#374151", fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {duJour.map(l => {
-                    const pret = l.statut === "pret";
-                    return (
-                      <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6", background: pret ? "#f0fdf4" : "#fff" }}>
-                        <td style={{ padding: "8px" }}>
-                          <div style={{ fontWeight: 800 }}>{infoBase(l.base)?.nom || l.base}{infoBase(l.base)?.nationale && <span style={{ marginLeft: 6, fontSize: 10, background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "1px 6px" }}>NATIONALE</span>}</div>
-                          <div style={{ fontSize: 11, color: "#9ca3af" }}>{infoBase(l.base) ? `${l.base} · base n° ${infoBase(l.base)!.num}` : `${l.base} · base à identifier`}</div>
-                          {l.depart && <div style={{ fontSize: 11, fontWeight: 700, color: l.depart === "paris" ? "#7c3aed" : "#b45309" }}>🚚 Départ {l.depart === "paris" ? "Paris" : "Perpignan"} : {l.transporteur || "—"}</div>}
-                        </td>
-                        <td style={{ padding: "8px", color: "#6b7280" }}>{l.camion}</td>
-                        <td style={{ padding: "8px", maxWidth: 260 }}>
-                          {commercial ? (
-                            <select value={l.refLidl || ""} disabled={l.statut === "pret"} onChange={e => choisirRef(l, e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12.5, fontWeight: 600, maxWidth: 250 }}>
-                              {!l.refLidl && <option value="">{l.article || "— choisir —"}{l.origine ? ` (${l.origine})` : ""}</option>}
-                              {REFS_LIDL.map(r => <option key={r.k} value={r.k}>{libRef(r)}</option>)}
-                            </select>
-                          ) : <div style={{ fontWeight: 600 }}>{l.article}</div>}
-                          {!commercial && <div style={{ fontSize: 11, color: "#9ca3af" }}>{l.articleNum}{l.emballage ? ` · ${l.emballage}` : ""}{l.origine ? ` · ${l.origine}` : ""}</div>}
-                        </td>
-                        <td style={{ padding: "8px", fontWeight: 800 }}>
-                          {l.quantite} <span style={{ fontWeight: 500, color: "#9ca3af", fontSize: 11 }}>colis</span>
-                          {l.quantiteModifieeApresPret && <div style={{ fontSize: 10.5, color: "#b45309", fontWeight: 700 }}>⚠️ quantité modifiée après « prêt »</div>}
-                          {l.absenteDuFichier && <div style={{ fontSize: 10.5, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</div>}
-                        </td>
-                        <td style={{ padding: "8px" }}>
-                          {l.depart === "sud" ? (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              <select value={l.ferme || ""} disabled={pret} onChange={e => choisirFerme(l, e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12.5 }}>
-                                <option value="">Producteur…</option>
-                                {producteurs.map(p => <option key={p.pn} value={p.pn}>{p.pn}</option>)}
-                              </select>
-                              <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot (A1234)" maxLength={5}
-                                onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => !pret && sauverLot(l)}
-                                style={{ width: 110, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, fontWeight: 700 }} />
-                              <label style={{ fontSize: 11, color: "#6b7280" }}>Palettes <input type="number" step={0.5} min={0.5} disabled={pret} value={l.palettes ?? 0.5} onChange={e => setPalettes(l, Number(e.target.value) || 0.5)} style={{ width: 56, padding: "3px 4px", borderRadius: 6, border: "1.5px solid #e5e7eb" }} /></label>
-                            </div>
-                          ) : (
-                            <>
-                              <input value={lotsSaisis[l.id] ?? l.lot} disabled placeholder="—" style={{ width: 150, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, background: "#f3f4f6" }} />
-                              {l.ferme && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{l.ferme}</div>}
-                            </>
-                          )}
-                        </td>
-                        <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
-                          {pret ? (
-                            <span>
-                              <span style={{ color: "#15803d", fontWeight: 800 }}>✅ Prêt</span>
-                              <span style={{ fontSize: 10.5, color: "#9ca3af", marginLeft: 6 }}>{l.pretPar} {l.pretLe}</span>
-                              {(!commercial || l.depart === "sud") && <button type="button" onClick={() => annulerPret(l)} style={{ marginLeft: 8, background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>annuler</button>}
-                            </span>
-                          ) : commercial && l.depart !== "sud" ? (
-                            <span style={{ color: "#b45309", fontWeight: 700, fontSize: 12 }}>À préparer</span>
-                          ) : (
-                            <button type="button" onClick={() => marquerPret(l)} style={{ background: "linear-gradient(135deg,#16a34a,#22c55e)", color: "#fff", border: "none", borderRadius: 20, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "0 3px 8px rgba(22,163,74,.35)" }}>Prêt</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {listeSemaines}
+            </>
           )}
         </div>
       )}
