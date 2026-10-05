@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import emailjs from "@emailjs/browser";
-import jsPDF from "jspdf";
 
 export const EMAILJS_SERVICE_ID = "service_xheyrpi";
 export const EMAILJS_TEMPLATE_ID = "template_ct6xaeg";

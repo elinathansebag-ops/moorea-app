@@ -4,7 +4,6 @@
 import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
-import jsPDF from "jspdf";
 import { useProfilGenerique, avecProfil } from "./ProfilGenerique";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
@@ -2682,6 +2681,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   // ─── GÉNÉRER PDF EN BASE64 (pour email) ───
   const generatePDFBase64 = async (r: any): Promise<string> => {
+    // 05/10/2026 — jsPDF chargé à la demande (plus dans le fichier principal de l'appli).
+    const { default: jsPDF } = await import("jspdf");
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const W = 210; const M = 14; const CW = W - M * 2;
     let y = 0;
@@ -2960,6 +2961,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const canvas = signatureCanvasRef.current;
     const signatureDataUrl = canvas ? canvas.toDataURL("image/png") : null;
 
+    // 05/10/2026 — jsPDF chargé à la demande (plus dans le fichier principal de l'appli).
+    const { default: jsPDF } = await import("jspdf");
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const W = 210; const M = 14; const CW = W - M * 2;
 
