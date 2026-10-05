@@ -1790,7 +1790,9 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
               }
             }
           });
-          updateMetricsC(); sRenderTable(); setTimeout(setupTableDelegation, 100);
+          // 05/10/2026 — Retiré : setTimeout(setupTableDelegation, 100) appelait une fonction qui n'a jamais
+          // existé (erreur dans la console, sans effet visible : le tableau gère ses clics via onclick).
+          updateMetricsC(); sRenderTable();
         });
         const srchEl = document.getElementById("s-srch");
         if (srchEl) {
