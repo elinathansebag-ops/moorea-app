@@ -47,16 +47,20 @@ export function AccueilModulesV2({ modules, sombre }: { modules: Module[]; sombr
   const familles = FAMILLES.map(f => ({ nom: f.nom, modules: f.cles.map(c => parCle.get(c)).filter(Boolean) as Module[] }));
   const autres = modules.filter(m => !m.key || !rangees.has(m.key));
   if (autres.length) familles.push({ nom: "Autres", modules: autres });
+  // Peu de modules (compte limité) : une seule grille, sans titres de familles — des sections presque
+  // vides dispersaient la page (retour d'Elinathan). L'ordre des familles est gardé.
+  const SEUIL_FAMILLES = 10;
+  const groupes = modules.length > SEUIL_FAMILLES ? familles : [{ nom: "", modules: familles.flatMap(f => f.modules) }];
   const carte = sombre ? "#171b21" : "#ffffff", fondIcone = sombre ? "#1d2e2b" : "#eaf2ee", ligne = sombre ? "#2e3540" : "#dde6e3";
   const titre = sombre ? "#8cc79a" : "#305a55", encre = sombre ? "#e6e8eb" : "#1e2b29", gris = sombre ? "#aab1bb" : "#5e6b69";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, marginBottom: 16 }}>
-      {familles.filter(f => f.modules.length).map(f => (
-        <section key={f.nom} aria-label={f.nom}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+      {groupes.filter(f => f.modules.length).map(f => (
+        <section key={f.nom || "modules"} aria-label={f.nom || "Modules"}>
+          {f.nom && <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: titre, letterSpacing: "0.08em", textTransform: "uppercase" }}>{f.nom}</span>
             <span style={{ flex: 1, height: 1, background: ligne }} />
-          </div>
+          </div>}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
             {f.modules.map(m => (
               <button key={m.key || m.label} type="button" onClick={m.action}

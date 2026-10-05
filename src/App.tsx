@@ -3731,14 +3731,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <select value={cfgApparence.defaut || "ancienne"} title="Apparence par défaut pour tout le monde (chacun peut changer sur son appareil)"
                 onChange={e => update(ref(db, "config/apparence"), { defaut: e.target.value })}
-                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
+                style={{ ...(v2 ? { width: "auto", maxWidth: 260 } : {}), padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
                 <option value="ancienne" style={{ color: "#111" }}>Pour tous : ancienne apparence</option>
                 <option value="nouvelle" style={{ color: "#111" }}>Pour tous : nouvelle apparence</option>
               </select>
               <select
                 value={apercuEmail || ""}
                 onChange={e => setApercuEmail(e.target.value || null)}
-                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11.5, fontFamily: "'Syne', sans-serif", fontWeight: 600, cursor: "pointer" }}
+                style={{ ...(v2 ? { width: "auto", maxWidth: 300 } : {}), padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11.5, fontFamily: "'Syne', sans-serif", fontWeight: 600, cursor: "pointer" }}
               >
                 <option value="" style={{ color: "#111" }}>🔐 Voir comme… (ma vue normale)</option>
                 {emailsConnus.map(email => (
@@ -3759,7 +3759,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             sur plusieurs écrans (Elinathan devait checker chacun séparément pour savoir si elle
             avait quelque chose en attente). Volontairement discret et masqué s'il n'y a vraiment
             rien — pas un pop-up, juste des raccourcis cliquables vers chaque source. */}
-        {(nbAttente > 0 || nbLitigesOuverts > 0 || nbNotesCommandesEnAttente > 0 || nbTachesActives > 0) && (
+        {!v2 && (nbAttente > 0 || nbLitigesOuverts > 0 || nbNotesCommandesEnAttente > 0 || nbTachesActives > 0) && (
           <div style={{ background: darkMode ? "#1a1d27" : "#fff", borderBottom: `1px solid ${darkMode ? "#2d3148" : "#e8e0d0"}`, padding: "14px 20px" }}>
             <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 800, color: darkMode ? "#9b97b2" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>📌 À traiter aujourd'hui</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -3803,7 +3803,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           </div>
         )}
 
-        {alerteIfco && (
+        {!v2 && alerteIfco && (
           <div style={{ background: darkMode ? "#2d2410" : "#fffbeb", borderBottom: "3px solid #d97706", padding: "12px 20px", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 20 }}>📦</span>
             <div style={{ flex: 1 }}>
@@ -3817,7 +3817,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           </div>
         )}
 
-        {alertesRetours.length > 0 && (
+        {!v2 && alertesRetours.length > 0 && (
           <div style={{ background: darkMode ? "#2d1a1a" : "#fef2f2", borderBottom: "3px solid #dc2626", padding: "12px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
               <span style={{ fontSize: 20 }}>🔔</span>
@@ -3840,14 +3840,49 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           </div>
         )}
 
-        <div style={{ maxWidth: 800, margin: "0 auto", padding: "12px 12px 100px", boxSizing: "border-box" }}>
+        <div style={{ maxWidth: v2 ? 1100 : 800, margin: "0 auto", padding: v2 ? "20px 16px 100px" : "12px 12px 100px", boxSizing: "border-box" }}>
+          {/* 05/10/2026 — Nouvelle apparence : les bandeaux d'alerte pleine largeur (« À traiter
+              aujourd'hui », IFCO, retours non reçus) deviennent des cartes « Aujourd'hui » au même
+              style que les modules (demande d'Elinathan : « les bandeaux gâchent un peu tout »).
+              Seules les cartes qui demandent une action s'affichent. */}
+          {v2 && (() => {
+            const ATTENTION = "#d9822b", PROBLEME = "#c2453d";
+            const cartes: { titre: string; valeur: string; detail: string; point: string; action: () => void; info?: string }[] = [];
+            if (nbAttente > 0) cartes.push({ titre: "Arrivages", valeur: String(nbAttente), detail: "en attente de pointage", point: ATTENTION, action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } });
+            if (nbLitigesOuverts > 0) cartes.push({ titre: "Litiges", valeur: String(nbLitigesOuverts), detail: `ouvert${nbLitigesOuverts > 1 ? "s" : ""}`, point: PROBLEME, action: () => setShowLitiges(true) });
+            if (alerteIfco) cartes.push({ titre: "Déclaration IFCO", valeur: joursDepuisIfco === null ? "—" : `${joursDepuisIfco} j`, detail: joursDepuisIfco === null ? "aucune déclaration enregistrée" : "sans déclaration des bacs", point: ATTENTION, action: () => { setShowAccueil(false); setShowPrestataires(true); } });
+            if (alertesRetours.length > 0) cartes.push({ titre: "Retours", valeur: String(alertesRetours.length), detail: "non reçus depuis plus de 3 jours", point: PROBLEME, info: alertesRetours.map((r: any) => `${r.client || r.clientConnu || "Client inconnu"} · ${r.date}`).join("\n"), action: () => { setShowAccueil(false); setShowRetours(true); } });
+            if (nbNotesCommandesEnAttente > 0) cartes.push({ titre: "Notes commande", valeur: String(nbNotesCommandesEnAttente), detail: "à rentrer", point: ATTENTION, action: () => { setTachesTabDemande("commandes"); setShowAccueil(false); setShowTaches(true); } });
+            if (nbTachesActives > 0) cartes.push({ titre: "Mes tâches", valeur: String(nbTachesActives), detail: `tâche${nbTachesActives > 1 ? "s" : ""} active${nbTachesActives > 1 ? "s" : ""}`, point: "#5e8f7f", action: () => { setTachesTabDemande("taches"); setShowAccueil(false); setShowTaches(true); } });
+            if (monAccesReel.isAdmin && comptesMailCassesAccueil.length > 0) cartes.push({ titre: "Comptes mail", valeur: String(comptesMailCassesAccueil.length), detail: `déconnecté${comptesMailCassesAccueil.length > 1 ? "s" : ""}`, point: PROBLEME, info: comptesMailCassesAccueil.map((c: any) => c.email).join("\n"), action: () => setShowAdmin(true) });
+            if (!cartes.length) return null;
+            const fond = darkMode ? "#171b21" : "#ffffff", encre = darkMode ? "#e6e8eb" : "#1e2b29", gris = darkMode ? "#aab1bb" : "#5e6b69";
+            return (
+              <section aria-label="Aujourd'hui" style={{ marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: darkMode ? "#8cc79a" : "#305a55", letterSpacing: "0.08em", textTransform: "uppercase" }}>Aujourd'hui</span>
+                  <span style={{ flex: 1, height: 1, background: darkMode ? "#2e3540" : "#dde6e3" }} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 10 }}>
+                  {cartes.map(c => (
+                    <button key={c.titre} type="button" onClick={c.action} title={c.info}
+                      style={{ textAlign: "left", background: fond, border: "none", borderRadius: 12, padding: "12px 14px", boxShadow: darkMode ? "none" : "0 1px 2px rgba(30,43,41,.07)", cursor: "pointer", color: encre }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: gris }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: c.point, flexShrink: 0 }} />{c.titre}</span>
+                      <span style={{ display: "block", fontSize: 24, fontWeight: 700, marginTop: 2 }}>{c.valeur}</span>
+                      <span style={{ display: "block", fontSize: 12, color: gris }}>{c.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            );
+          })()}
 
           {/* BANDEAU RECHERCHE LOT — 17/09/2026 (quater) : Elinathan voulait un peu plus de
               présence visuelle (avant : totalement transparent/discret, demande du 15/09) sans
               retomber dans l'agressif — un léger fond + bordure dorée, cohérent avec le thème de
               l'appli. Le bouton "Chercher" à côté faisait doublon avec Entrée : retiré, l'icône
               🔍 fait maintenant elle-même office de bouton (clic ou Entrée ouvrent la recherche). */}
-          <div style={{ background: darkMode ? "#1a1d27" : "#faf8f3", border: `1.5px solid ${darkMode ? "#3d3620" : "#d9cba3"}`, borderRadius: 12, padding: "8px 12px", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ background: darkMode ? "#1a1d27" : v2 ? "#ffffff" : "#faf8f3", border: `1.5px solid ${darkMode ? "#3d3620" : v2 ? "#dde6e3" : "#d9cba3"}`, borderRadius: 12, padding: "8px 12px", marginBottom: v2 ? 20 : 14, display: "flex", alignItems: "center", gap: 8 }}>
             <span onClick={() => { if (searchLotQuery.trim()) { setShowAccueil(false); setShowRecherche(true); } }}
               style={{ fontSize: 15, flexShrink: 0, cursor: "pointer" }}>🔍</span>
             <input
