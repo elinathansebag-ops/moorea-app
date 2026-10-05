@@ -416,7 +416,7 @@ export default function App() {
   // ─── DÉTECTION DE DOUBLONS (ex: après un import relancé par erreur) ───
   // Regroupe les arrivages par produit+fournisseur+date normalisés ; affiche une liste à
   // valider avant toute suppression — rien n'est jamais effacé automatiquement.
-  const [doublonsGroupes, setDoublonsGroupes] = useState<{ cle: string; items: any[] }[] | null>(null);
+  const [doublonsGroupes, setDoublonsGroupes] = useState<{ cle: string; items: any[]; dateChangee?: boolean }[] | null>(null);
   const [doublonsASupprimer, setDoublonsASupprimer] = useState<Set<string>>(new Set());
   const [suppressionDoublonsEnCours, setSuppressionDoublonsEnCours] = useState(false);
   // Report de date d'un arrivage : si la nouvelle date choisie contient déjà un arrivage
@@ -2010,14 +2010,32 @@ export default function App() {
         return (a.items[0].fournisseur || "").toLowerCase().localeCompare((b.items[0].fournisseur || "").toLowerCase());
       });
 
-    if (suspects.length === 0) {
+    // 05/10/2026 — Doublons créés par un changement de date dans Geslot (avant la règle de
+    // remplacement à l'import) : même lot interne + produit + fournisseur + quantité, à des dates
+    // différentes, dont au moins un encore en attente. On garde le plus RÉCENT (dernière date
+    // envoyée par Geslot) et on présélectionne les anciens encore en attente — jamais un validé.
+    const dejaPris = new Set(suspects.flatMap(g => g.items.map((it: any) => it.id)));
+    const parLot: Record<string, any[]> = {};
+    arrivages.forEach((a: any) => {
+      const lot = String(a.lot_interne || "").trim();
+      if (!lot || dejaPris.has(a.id)) return;
+      const cle = `date:${lot}|${(a.produit || "").toLowerCase().trim()}|${(a.fournisseur || "").toLowerCase().trim()}|${String(a.quantite ?? "").trim()}`;
+      (parLot[cle] = parLot[cle] || []).push(a);
+    });
+    const suspectsDate = Object.entries(parLot)
+      .filter(([, items]) => new Set(items.map(it => it.date)).size > 1 && items.some(it => (it.statut || "en attente") === "en attente"))
+      .map(([cle, items]) => ({ cle, dateChangee: true, items: items.sort((x, y) => (y.timestamp || 0) - (x.timestamp || 0)) }));
+
+    if (suspects.length === 0 && suspectsDate.length === 0) {
       showToast("✅ Aucun doublon détecté");
       return;
     }
     // Présélection : on garde le plus ancien de chaque groupe, on coche les autres pour suppression.
+    // Date changée : on garde le plus récent, on coche les anciens encore en attente.
     const preselection = new Set<string>();
     suspects.forEach(g => { g.items.slice(1).forEach((it: any) => preselection.add(it.id)); });
-    setDoublonsGroupes(suspects);
+    suspectsDate.forEach(g => { g.items.slice(1).forEach((it: any) => { if ((it.statut || "en attente") === "en attente") preselection.add(it.id); }); });
+    setDoublonsGroupes([...suspectsDate, ...suspects]);
     setDoublonsASupprimer(preselection);
   };
 
@@ -4550,14 +4568,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <button onClick={() => setDoublonsGroupes(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
                     </div>
                     <p style={{ margin: 0, fontSize: 12.5, color: "#6b7280" }}>
-                      Même produit + fournisseur + date + quantité trouvés plusieurs fois. Touche une ligne pour la cocher (rouge = sera supprimée). Le plus ancien de chaque groupe est décoché par défaut, pour être conservé. Rien n'est supprimé tant que tu n'appuies pas sur le bouton en bas.
+                      Même produit + fournisseur + date + quantité trouvés plusieurs fois. Touche une ligne pour la cocher (rouge = sera supprimée). Le plus ancien de chaque groupe est décoché par défaut, pour être conservé. En bleu : même lot à des dates différentes (date changée dans Geslot) — le plus récent est conservé, les anciens encore en attente sont cochés. Rien n'est supprimé tant que tu n'appuies pas sur le bouton en bas.
                     </p>
                   </div>
                   <div style={{ overflowY: "auto", padding: "0 20px", flex: 1 }}>
                     {doublonsGroupes.map(g => (
-                      <div key={g.cle} style={{ border: "1.5px solid #fcd34d", background: "#fffbeb", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
-                        <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 13, color: "#92400e" }}>
-                          {g.items[0].produit} · {g.items[0].fournisseur} · {g.items[0].date} ({g.items.length} exemplaires)
+                      <div key={g.cle} style={{ border: `1.5px solid ${g.dateChangee ? "#93c5fd" : "#fcd34d"}`, background: g.dateChangee ? "#eff6ff" : "#fffbeb", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
+                        <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 13, color: g.dateChangee ? "#1e40af" : "#92400e" }}>
+                          {g.dateChangee ? <>📅 Date changée dans Geslot — {g.items[0].produit} · {g.items[0].fournisseur} · lot {g.items[0].lot_interne} ({g.items.map((it: any) => it.date).join(" / ")})</> : <>{g.items[0].produit} · {g.items[0].fournisseur} · {g.items[0].date} ({g.items.length} exemplaires)</>}
                         </p>
                         {g.items.map((it: any, idx: number) => {
                           const coche = doublonsASupprimer.has(it.id);
@@ -4572,7 +4590,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                                 {coche && <span style={{ color: "#fff", fontSize: 13, fontWeight: 900, lineHeight: 1 }}>✓</span>}
                               </div>
                               <span style={{ fontSize: 12.5, color: coche ? "#991b1b" : "#374151", fontWeight: coche ? 700 : 400 }}>
-                                {idx === 0 ? "🕐 Le plus ancien — " : ""}{it.quantite} {it.unite} · statut : {it.statut || "-"} {it.lot_interne ? `· lot ${it.lot_interne}` : ""}
+                                {idx === 0 ? (g.dateChangee ? "🆕 Le plus récent — " : "🕐 Le plus ancien — ") : ""}{g.dateChangee ? `${it.date} · ` : ""}{it.quantite} {it.unite} · statut : {it.statut || "-"} {it.lot_interne ? `· lot ${it.lot_interne}` : ""}
                               </span>
                             </div>
                           );
