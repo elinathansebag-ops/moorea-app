@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { db, ref, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
-import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl } from "./LidlCommandes";
+import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl, BASES_LIDL, ADRESSES_LIDL, useAdressesLidl } from "./LidlCommandes";
 import { genererXlsxLidl, envoyerTracabiliteLidl, nomFichierLidl, lireConfigLidl, EMAIL_LIDL_DEFAUT, EMAIL_TEST, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : le commercial a son propre module « Commandes Lidl » (il n'a
@@ -26,6 +26,7 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
   const [filtreDepart, setFiltreDepart] = useState<"tous" | "sud" | "paris">("tous");
 
   const producteurs = useProducteursLidl();
+  const adresses = useAdressesLidl();
   const [cfg, setCfg] = useState(lireConfigLidl(null));
   const [envois, setEnvois] = useState<Record<string, any>>({});
   const [jourTraca, setJourTraca] = useState("");
@@ -240,6 +241,24 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
               <label style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Adresse de Lidl (mode réel)</label>
               <input defaultValue={cfg.emailLidl} key={cfg.emailLidl} onBlur={e => { const v = e.target.value.trim(); if (v && v !== cfg.emailLidl) update(ref(db, "lidl_config"), { emailLidl: v }); }}
                 placeholder={EMAIL_LIDL_DEFAUT} style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 360, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+            </div>
+            {/* 05/10/2026 — Adresses de livraison des bases (étiquettes palettes). Pré-remplies avec celles des bons Geslot. */}
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>🏷️ Adresses de livraison des bases (étiquettes palettes)</div>
+              <div style={{ fontSize: 11.5, color: "#6b7280", margin: "2px 0 8px" }}>Une ligne par ligne d'adresse, comme sur l'étiquette. Enregistré automatiquement en quittant la case. {Object.keys(BASES_LIDL).filter(k => !adresses[k]).length} base(s) sans adresse.</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+                {Object.entries(BASES_LIDL).sort((a, b) => a[1].nom.localeCompare(b[1].nom)).map(([code, b]) => {
+                  const actuelle = (adresses[code] || []).join("\n");
+                  return (
+                    <label key={code} style={{ display: "block", fontSize: 12, fontWeight: 700, color: adresses[code] ? "#374151" : "#b45309" }}>
+                      {b.nom} <span style={{ fontWeight: 500, color: "#9ca3af" }}>({code} · n° {b.num})</span>{!adresses[code] && " — à compléter"}
+                      <textarea key={actuelle} defaultValue={actuelle} rows={4} placeholder={`LIDL ${b.nom.toUpperCase()}\nRue…\nCode postal Ville\nFRANCE`}
+                        onBlur={e => { const v = e.target.value.trim(); if (v !== actuelle) update(ref(db, "lidl_config/adresses"), { [code]: v || (ADRESSES_LIDL[code] ? ADRESSES_LIDL[code].join("\n") : null) }); }}
+                        style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 4, padding: "6px 8px", border: `1.5px solid ${adresses[code] ? "#e5e7eb" : "#fcd34d"}`, borderRadius: 8, fontSize: 12.5, fontFamily: "inherit", resize: "vertical" }} />
+                    </label>
+                  );
+                })}
+              </div>
             </div>
             <div style={{ marginTop: 14, fontSize: 12, color: "#6b7280" }}>Nom du fichier et objet du mail : MOOREA_LIVRAISON JJ MOIS AAAA (puis _02, _03 pour une mise à jour). Producteurs connus : {producteurs.length}.</div>
           </div>

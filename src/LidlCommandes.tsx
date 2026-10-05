@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { db, ref, onValue, update, remove, get, push } from "./firebase";
-import { pdfBonGeslot, pdfBonPreparation, envoyerPdfImprimante, type LigneBon } from "./lidlImpression";
+import { pdfBonGeslot, pdfBonPreparation, pdfEtiquettesPalettes, envoyerPdfImprimante, type LigneBon, type EtiquettePalette } from "./lidlImpression";
 import { PRODUCTEURS_LIDL, envoyerTracabiliteLidl, genererXlsxLidl, nomFichierLidl, type Producteur, type ContexteExport, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : Lidl envoie chaque jour un tableau de répartition
@@ -64,6 +64,35 @@ export const BASES_LIDL: Record<string, { nom: string; num: number; perpignan: s
   BEAUCAIRE: { nom: "Beaucaire", num: 16, perpignan: "REY", paris: "TRADIF", nationale: true },
   "ETAMPES BCD": { nom: "Etampes BCD", num: 60, perpignan: "REY", paris: "SRD", nationale: true },
 };
+// 05/10/2026 — Adresses de livraison des bases Lidl (pour les étiquettes palettes), relevées sur les
+// bons de préparation Geslot du 02/10/2026 fournis par Elinathan. Les bases manquantes se complètent
+// dans Commandes Lidl → Configuration (lidl_config/adresses/{code}, prioritaire sur cette liste).
+export const ADRESSES_LIDL: Record<string, string[]> = {
+  ABL: ["LIDL ABLIS", "ZA ABLIS NORD", "1 RUE DU BOIS DES FAURES", "78660 ABLIS", "FRANCE"],
+  MON: ["LIDL MONTCHANIN", "1 Rue Eugene Herzog", "71210 Montchanin", "FRANCE"],
+  HON: ["LIDL HONGUEMARE GUENOUVILLE", "340 RUE DU PIN", "ZAC ROUMOIS NORD", "27310 HONGUEMARE GUENOUVILLE", "FRANCE"],
+  ASA: ["LIDL LES ARCS", "ZAC LES BREGUIERES", "LOT D RD 555", "83460 LES ARCS SUR ARGENS", "FRANCE"],
+  PRO: ["LIDL PROVENCE", "394 CHEMIN DE FAVARY", "13790 ROUSSET", "FRANCE"],
+  LUN: ["LIDL LUNEL", "logicolis", "avenue George Besse", "33100 BEAUCAIRE", "FRANCE"],
+  BEZ: ["LIDL BEZIERS", "ZAC Beziers Ouest", "34500 BEZIERS", "FRANCE"],
+  BAZ: ["LIDL BAZIEGE", "Chemin de Pigne", "31450 BAZIEGE", "FRANCE"],
+  SQF: ["LIDL ST QUENTIN FALLAVIER", "19 Rue de Bretagne", "38070 ST QUENTIN FALLAVIER", "FRANCE"],
+  PCH: ["LIDL PONTCHARRA", "ZI Les Prés Bruns", "38530 PONTCHARRA", "FRANCE"],
+  CAQ: ["LIDL DR07 CARQUEFOU (EX SAUTRON)", "2 rue du nouveau bele", "44470 Carquefou", "FRANCE"],
+  LIF: ["LIDL LIFFRE", "Parc d'Activités Beauge II", "35340 LIFFRE", "FRANCE"],
+};
+export function useAdressesLidl() {
+  const [ajouts, setAjouts] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const u = onValue(ref(db, "lidl_config/adresses"), snap => setAjouts(snap.val() || {}));
+    return () => u();
+  }, []);
+  return useMemo(() => {
+    const m: Record<string, string[]> = { ...ADRESSES_LIDL };
+    for (const [k, v] of Object.entries(ajouts)) { const ls = String(v || "").split("\n").map(x => x.trim()).filter(Boolean); if (ls.length) m[k] = ls; }
+    return m;
+  }, [ajouts]);
+}
 // 02/10/2026 — Lidl commande 2 références (haricots verts) ; le commercial choisit laquelle (et l'origine) par ligne.
 export const REFS_LIDL = [
   { k: "h250_ke", article: "Haricot vert 250g par 12", emballage: "250g × 12", origine: "Kenya", ian: 82211, g: "HARICOT VERT", h: "BARQUETTE 250G", i: "Haricots verts", j: "KE", l: 12 },
@@ -427,6 +456,25 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     if (!ls.length) return;
     imprimer(`Bon de préparation du ${dateFr(jourB)}`, `LIDL_PREPARATION_${jourB}.pdf`, () => pdfBonPreparation(dateFr(jourB), trierPourPrepa(ls).map(versLigneBon)));
   }
+  // Étiquettes palettes du jour (départ Paris, filtre transporteur respecté) : une par palette.
+  const adresses = useAdressesLidl();
+  function sortirEtiquettes(jourE: string) {
+    const ls = trierPourPrepa((parJour.get(jourE) || []).filter(l => l.depart === "paris" && (!filtreTransporteur || (l.transporteur || "Sans transporteur") === filtreTransporteur)));
+    if (!ls.length) return;
+    const manquantes = new Set<string>();
+    const etiquettes: EtiquettePalette[] = ls.flatMap(l => {
+      const inf = infoBase(l.base);
+      const adr = adresses[l.base] || (() => { manquantes.add(inf?.nom || l.base); return [`LIDL ${(inf?.nom || l.base).toUpperCase()}`]; })();
+      const nb = Math.max(1, Math.ceil(l.palettes ?? 0.5));
+      return Array.from({ length: nb }, (_, k) => ({ destinataire: adr, transporteur: l.transporteur || "", quantite: l.quantite, produit: [l.article, l.origine].filter(Boolean).join(" — "), palette: k + 1, nbPalettes: nb }));
+    });
+    const doc = pdfEtiquettesPalettes(dateFr(jourE), etiquettes);
+    // En attendant le branchement de l'imprimante à étiquettes sur le relais PC : le PDF s'ouvre, prêt à imprimer.
+    const url = URL.createObjectURL(doc.output("blob"));
+    const w = window.open(url, "_blank");
+    if (!w) { const a = document.createElement("a"); a.href = url; a.download = `LIDL_ETIQUETTES_${jourE}.pdf`; a.click(); }
+    notif(manquantes.size ? "err" : "ok", `🏷️ ${etiquettes.length} étiquette${etiquettes.length > 1 ? "s" : ""} palette du ${dateFr(jourE)}${manquantes.size ? ` — adresse manquante pour : ${[...manquantes].join(", ")} (à compléter dans Commandes Lidl → Configuration)` : ""}`);
+  }
   // Départ Medina (Perpignan) : la prépa se fait chez Medina. Récap envoyé à Jordan depuis sa propre
   // boîte (l'envoi direct à Medina sera programmé plus tard).
   async function envoyerRecapMedina(jourM: string, lignesM?: LigneLidl[]) {
@@ -713,6 +761,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
         <span style={{ fontSize: 12.5, fontWeight: 700, color: "#4b5563" }}>{ls.length} commande{ls.length > 1 ? "s" : ""} · {colisP}/{colis} colis</span>
         {fini ? pastille("✅ Toutes prêtes", "#15803d", "#dcfce7") : prets.length ? pastille(`⏳ ${prets.length}/${ls.length} prêtes`, "#b45309", "#fef3c7") : pastille("À préparer", "#b91c1c", "#fee2e2")}
         {commercial && etatTraca(j)}
+        {!commercial && <span style={{ marginLeft: "auto" }}>{btnJour("🏷️ Étiquettes palettes", () => sortirEtiquettes(j))}</span>}
         {commercial && (
           <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
             {btnJour("🖨️ Geslot", () => imprimerGeslot(j))}

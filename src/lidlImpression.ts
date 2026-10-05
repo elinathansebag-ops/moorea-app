@@ -108,3 +108,42 @@ export async function envoyerPdfImprimante(pdfNom: string, pdfBase64: string): P
   const r = await push(ref(db, "printQueue"), { type: "bon_reconditionnement", pdfNom, pdfBase64, status: "pending", createdAt: Date.now(), origine: "lidl" });
   return r.key as string;
 }
+
+// ── Étiquettes palettes Lidl (05/10/2026, modèle = étiquette jaune Moorea montrée par Elinathan) :
+// en-tête Moorea + adresse, date de livraison, destinataire (base Lidl + adresse), transporteur,
+// colis et produit. Une étiquette par palette (une demi-palette = une étiquette). Format 100 × 150 mm.
+export const ADRESSE_MOOREA = ["MOOREA COMMERCE FRUITS", "69 rue de Perpignan  BP 40376  94632 Rungis Cedex - FRANCE", "Tél : +33 1 56 70 62 40 - commercial@moorea.fr"];
+export type EtiquettePalette = { destinataire: string[]; transporteur: string; quantite: number; produit: string; palette: number; nbPalettes: number };
+
+export function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[]) {
+  const LW = 100, LH = 150, LM = 7;
+  const doc = new jsPDF({ unit: "mm", format: [LW, LH], orientation: "portrait" });
+  etiquettes.forEach((e, i) => {
+    if (i) doc.addPage([LW, LH], "portrait");
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(ADRESSE_MOOREA[0], LM, 12);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+    doc.text(ADRESSE_MOOREA[1], LM, 16.5); doc.text(ADRESSE_MOOREA[2], LM, 20);
+    doc.setLineWidth(0.3); doc.line(LM, 23.5, LW - LM, 23.5);
+    doc.setFontSize(10); doc.text("Livraison le :", LM, 31);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(dateFr, LM + 25, 31);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Destinataire :", LM, 42);
+    doc.setLineWidth(0.2); doc.line(LM, 43, LM + 23, 43);
+    let y = 51;
+    e.destinataire.forEach((l, k) => {
+      doc.setFontSize(k === 0 ? 15 : 12.5);
+      for (const morceau of doc.splitTextToSize(l, LW - LM * 2) as string[]) { doc.text(morceau, LM, y); y += k === 0 ? 7 : 6; }
+    });
+    y = Math.max(y + 4, 92);
+    doc.setFontSize(10); doc.text("Transporteur :", LM, y); doc.line(LM, y + 1, LM + 24, y + 1);
+    doc.setFontSize(22); doc.text(e.transporteur || "-", LM, y + 11);
+    y += 22;
+    doc.setLineWidth(0.3); doc.line(LM, y, LW - LM, y);
+    doc.setFontSize(10); doc.setFont("helvetica", "normal");
+    for (const morceau of (doc.splitTextToSize(e.produit, LW - LM * 2) as string[]).slice(0, 2)) { y += 5.5; doc.text(morceau, LM, y); }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+    doc.text(`${e.quantite} colis${e.nbPalettes > 1 ? " au total" : ""}`, LM, LH - 8);
+    if (e.nbPalettes > 1) { doc.setFontSize(12); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LW - LM, LH - 8, { align: "right" }); }
+  });
+  return doc;
+}
