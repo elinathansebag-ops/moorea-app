@@ -177,7 +177,7 @@ const num = (v: any) => (typeof v === "number" && isFinite(v) ? v : typeof v ===
 // SRD, MESGUEN, PRIMEVER, puis les autres), et dans chaque transporteur de la plus petite commande à la plus grosse.
 const ORDRE_TRANSPORTEURS = ["PROVIN CAMANDONA", "TRADIF", "SRD", "MESGUEN", "PRIMEVER"];
 const rangTransporteur = (t?: string) => { const i = ORDRE_TRANSPORTEURS.indexOf((t || "").toUpperCase()); return i < 0 ? ORDRE_TRANSPORTEURS.length : i; };
-function trierPourPrepa<T extends { transporteur?: string; quantite: number; base: string }>(ls: T[]) {
+export function trierPourPrepa<T extends { transporteur?: string; quantite: number; base: string }>(ls: T[]) {
   return [...ls].sort((x, y) => rangTransporteur(x.transporteur) - rangTransporteur(y.transporteur)
     || (x.transporteur || "").localeCompare(y.transporteur || "") || x.quantite - y.quantite
     || (infoBase(x.base)?.num ?? 999) - (infoBase(y.base)?.num ?? 999));
