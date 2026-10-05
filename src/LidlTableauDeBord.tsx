@@ -7,7 +7,8 @@ import { infoBase } from "./LidlCommandes";
 // commandes modifiées après import. Lecture seule, à partir de lidl_commandes, lidl_envois et
 // lidl_changements. Couleurs : bleu Lidl (Paris) et orange (Medina), validées daltonisme.
 type L = { id: string; date: string; base: string; quantite: number; statut: string; depart?: string };
-const COUL = { paris: "#0050aa", sud: "#d97706" } as const;
+// En mode nuit, variantes plus lumineuses validées sur le fond sombre (voir src/themeSombre.css).
+const COUL = { paris: "var(--lidl-paris, #0050aa)", sud: "var(--lidl-medina, #d97706)" } as const;
 const LIB = { paris: "Paris", sud: "Medina (Perpignan)" } as const;
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const lundi = (s: string) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
@@ -76,8 +77,8 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="Colis par semaine, Paris et Medina">
         {graduations.map(g => (
           <g key={g}>
-            <line x1={G} x2={W} y1={y(g)} y2={y(g)} stroke="#e5e7eb" strokeWidth={1} />
-            <text x={G - 6} y={y(g) + 4} textAnchor="end" fontSize={11} fill="#6b7280">{nbFr(g)}</text>
+            <line x1={G} x2={W} y1={y(g)} y2={y(g)} strokeWidth={1} style={{ stroke: "var(--grille, #e5e7eb)" }} />
+            <text x={G - 6} y={y(g) + 4} textAnchor="end" fontSize={11} style={{ fill: "var(--axe, #6b7280)" }}>{nbFr(g)}</text>
           </g>
         ))}
         {parSemaine.map((p, i) => {
@@ -87,14 +88,14 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
           const ecart = p.paris && p.sud ? 2 : 0;
           const texte = `Semaine ${numeroSemaine(p.s)} (${dateFr(p.s)}) — Paris ${nbFr(p.paris)} · Medina ${nbFr(p.sud)} · total ${nbFr(p.paris + p.sud)} colis`;
           const segment = (yy: number, h: number, c: string, arrondi: boolean) => h <= 0 ? null : arrondi
-            ? <path d={`M${x},${yy + h} V${yy + Math.min(4, h)} Q${x},${yy} ${x + Math.min(4, h)},${yy} H${x + lb - Math.min(4, h)} Q${x + lb},${yy} ${x + lb},${yy + Math.min(4, h)} V${yy + h} Z`} fill={c} />
-            : <rect x={x} y={yy} width={lb} height={h} fill={c} />;
+            ? <path d={`M${x},${yy + h} V${yy + Math.min(4, h)} Q${x},${yy} ${x + Math.min(4, h)},${yy} H${x + lb - Math.min(4, h)} Q${x + lb},${yy} ${x + lb},${yy + Math.min(4, h)} V${yy + h} Z`} style={{ fill: c }} />
+            : <rect x={x} y={yy} width={lb} height={h} style={{ fill: c }} />;
           return (
             <g key={p.s} onMouseMove={e => { const r = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect(); setSurvol({ x: e.clientX - r.left, y: e.clientY - r.top, texte }); }}>
               <rect x={G + i * largeur} y={0} width={largeur} height={H - B} fill="transparent" />
               {segment(yP, hP, COUL.paris, !p.sud)}
               {segment(ySud, Math.max(0, hS - ecart), COUL.sud, true)}
-              {(i % Math.ceil(parSemaine.length / 12) === 0) && <text x={x + lb / 2} y={H - 6} textAnchor="middle" fontSize={11} fill="#6b7280">S{numeroSemaine(p.s)}</text>}
+              {(i % Math.ceil(parSemaine.length / 12) === 0) && <text x={x + lb / 2} y={H - 6} textAnchor="middle" fontSize={11} style={{ fill: "var(--axe, #6b7280)" }}>S{numeroSemaine(p.s)}</text>}
             </g>
           );
         })}

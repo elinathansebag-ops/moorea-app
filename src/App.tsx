@@ -875,7 +875,21 @@ export default function App() {
     });
     return () => u();
   }, []);
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("moorea-dark") === "1");
+  // 05/10/2026 — Mode nuit en 3 choix : clair, sombre, ou automatique (suit le réglage de l'appareil,
+  // donc passe en sombre le soir si l'iPad / le Mac le fait). Les couleurs sombres de tous les écrans
+  // viennent de src/themeSombre.css (généré par scripts/generer-theme-sombre.py).
+  const [modeTheme, setModeTheme] = useState<"clair" | "sombre" | "auto">(() => {
+    try { const v = localStorage.getItem("moorea-theme"); if (v === "clair" || v === "sombre" || v === "auto") return v; return localStorage.getItem("moorea-dark") === "1" ? "sombre" : "clair"; } catch { return "clair"; }
+  });
+  const [systemeSombre, setSystemeSombre] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+    const maj = () => setSystemeSombre(mq.matches);
+    mq.addEventListener?.("change", maj);
+    return () => mq.removeEventListener?.("change", maj);
+  }, []);
+  const darkMode = modeTheme === "sombre" || (modeTheme === "auto" && systemeSombre);
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [popupEtiquetteRefus, setPopupEtiquetteRefus] = useState<any>(null);
   // 23/09/2026 — Demande d'Elinathan : "plus aucun message whatsapp automatique pour prévenir
@@ -1159,8 +1173,8 @@ export default function App() {
   // ─── DARK MODE ───
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
-    localStorage.setItem("moorea-dark", darkMode ? "1" : "0");
-  }, [darkMode]);
+    try { localStorage.setItem("moorea-theme", modeTheme); } catch { /* stockage bloqué */ }
+  }, [darkMode, modeTheme]);
 
   // ─── ALERTE DÉCLARATION IFCO ───
   // Suit la dernière entrée de l'historique IFCO (ifco_histo, écrit par le module Prestataires à chaque
@@ -3682,8 +3696,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   )}
                 </button>
               )}
-              <button onClick={() => setDarkMode(!darkMode)} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {darkMode ? "☀️" : "🌙"}
+              <button onClick={() => setModeTheme(m => (m === "clair" ? "sombre" : m === "sombre" ? "auto" : "clair"))}
+                title={modeTheme === "clair" ? "Thème clair — toucher pour passer en sombre" : modeTheme === "sombre" ? "Thème sombre — toucher pour passer en automatique" : "Thème automatique (suit l'appareil) — toucher pour passer en clair"}
+                style={{ height: 32, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.85)", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                {modeTheme === "clair" ? "☀️ Clair" : modeTheme === "sombre" ? "🌙 Sombre" : "🌓 Auto"}
               </button>
               <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>Déco</button>
             </div>
