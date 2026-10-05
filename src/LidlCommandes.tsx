@@ -94,6 +94,8 @@ export const ADRESSES_LIDL: Record<string, string[]> = {
   VAR: ["LIDL VARS", "ZAC DES COTEAUX 3", "16330 VARS", "FRANCE"],
   SOR: ["LIDL SORIGNY", "RUE NUNGESSER ET COLI", "ZA ISOPARC", "37250 SORIGNY", "FRANCE"],
   SLC: ["LIDL CAMBRAI", "PARC ACTIPOLE DE L'A2", "59554 SAILLY LEZ CAMBRAI", "FRANCE"],
+  // Base nationale de Beaucaire = même entrepôt que la régionale de Lunel (n° 16, logicolis à Beaucaire).
+  BEAUCAIRE: ["LIDL BEAUCAIRE", "logicolis", "avenue George Besse", "33100 BEAUCAIRE", "FRANCE"],
   "ETAMPES BCD": ["LIDL ETAMPES BCD FRUITS EFL", "8 AVENUE DU 8 MAI 1945", "91150 ETAMPES", "FRANCE"],
 };
 export function useAdressesLidl() {
