@@ -77,36 +77,74 @@ export function preparerLignesExport(lignes: LigneExport[], ctx: ContexteExport)
   return { ok, problemes };
 }
 
-const ENTETES = ["Date de livraison", "Pays livré", "N° de quai de livraison", "Entrepôt / Plateforme livré", "IAN", "Article", "Type de conditionnement",
-  "Sous-Article = Produit de récolte. \nExemple : \nArticle = Pomme de terre 2 kg\nSous-article = Pomme de terre", "Origine", "Classe", "Nb UVC / colis", "Calibre", "Variété", "Marque         ( Lidl)", "N° Lot",
-  "Agent            ( numéro)", "Agent (NOM)", "Fournisseur   ( GLN)", "Fournisseur (NOM)", "Emballeur\n(GLN)", "Emballeur (NOM)", "Producteur\n(GGN)", "Producteur (NOM)",
-  "Quantité livrée ( Nb de colis)", "Nombre de palette / box ", "Etiquette de traçabilité         ( oui / non)\n", "Analyse libératoire (oui / non)", "Plaque immatriculation camion"];
+// 05/10/2026 — Demande d'Elinathan : le tableau doit être IDENTIQUE au fichier de Lidl (couleurs, polices,
+// largeurs, fusions, listes déroulantes, protection et les 5 onglets). On part donc du vrai fichier de Lidl
+// (public/modeles/lidl-tracabilite-modele.xlsx, vidé de ses données) et on n'écrit QUE les cellules de
+// données de « Option 1 » à partir de la ligne 4, en gardant le style de chaque cellule du modèle.
+// Tout le reste du fichier est recopié tel quel.
+const MODELE_LIDL = "/modeles/lidl-tracabilite-modele.xlsx";
+const COLS = ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "AA", "AB", "AC"];
+const echapXml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// Fabrique le fichier .xlsx (base64) — mêmes colonnes B → AC que le modèle de Lidl, feuille « Option 1 ».
+// Fabrique le fichier .xlsx (base64) à partir du modèle de Lidl, feuille « Option 1 ».
 export async function genererXlsxLidl(dateIso: string, lignes: LigneExport[], ctx: ContexteExport) {
   const { ok, problemes } = preparerLignesExport(lignes, ctx);
   if (!ok.length) throw new Error("Aucune ligne complète à exporter.");
-  const XLSX = await import("xlsx");
+  const { default: JSZip } = await import("jszip");
+  const rep = await fetch(MODELE_LIDL, { cache: "no-store" });
+  if (!rep.ok) throw new Error(`Modèle Lidl introuvable (${rep.status})`);
+  const zip = await JSZip.loadAsync(await rep.arrayBuffer());
+  const CHEMIN_FEUILLE = "xl/worksheets/sheet1.xml", CHEMIN_TEXTES = "xl/sharedStrings.xml";
+  let feuille = await zip.file(CHEMIN_FEUILLE)!.async("string");
+  let textes = await zip.file(CHEMIN_TEXTES)!.async("string");
+
+  // Textes partagés : on ajoute les nouveaux à la suite de ceux du modèle (comme le fait Excel).
+  let nbUniques = Number(/uniqueCount="(\d+)"/.exec(textes)?.[1] || 0);
+  let nbTotal = Number(/count="(\d+)"/.exec(textes)?.[1] || 0);
+  const nouveaux: string[] = [];
+  const indexTexte = (v: string) => { nbTotal++; nouveaux.push(`<si><t xml:space="preserve">${echapXml(v)}</t></si>`); return nbUniques++; };
+
+  // Ligne modèle = ligne 4 du fichier de Lidl : ses attributs (hauteur 19…) et le style de chaque colonne.
+  const ligne4 = /<row r="4"([^>]*)>(.*?)<\/row>/s.exec(feuille);
+  if (!ligne4) throw new Error("Modèle Lidl illisible (ligne 4)");
+  const attrsLigne = ligne4[1];
+  const styleCol: Record<string, string> = {};
+  for (const m of ligne4[2].matchAll(/<c r="([A-Z]+)4"(?: s="(\d+)")?/g)) styleCol[m[1]] = m[2] || "";
+
   const [a, m, j] = dateIso.split("-").map(Number);
   const dateLivraison = Math.floor(Date.UTC(a, m - 1, j) / 86400000) + 25569; // n° de série Excel (date sans heure)
-  const aoa: any[][] = [[], [], ENTETES.map(() => null)];
-  aoa[1] = [null, "Information sur la livraison", null, null, null, "Identification du produit", ...Array(10).fill(null), "Identification de l'Agent", null,
-    "Identification du fournisseur", null, "Identification de l'emballeur", null, "Identification du producteur/cultivateur", null, "Identification du colis", null, null, "Analyse", "Information chauffeur"];
-  aoa[2] = [null, ...ENTETES];
-  for (const { l, prod, p, e } of ok) {
-    aoa.push([null, dateLivraison, null, null, e, p.ian, p.g, p.h, p.i, p.j, null, p.l, null, null, null, l.lot, "FR166", "MOOREA",
-      prod.fg, prod.fn, prod.eg, prod.en, prod.pg, prod.pn, l.quantite, l.palettes ?? 0.5, "OUI", "NON", l.transporteur]);
+  const lignesXml = new Map<number, string>();
+  ok.forEach(({ l, prod, p, e }, i) => {
+    const r = 4 + i;
+    const valeurs: (string | number | null | undefined)[] = [dateLivraison, null, null, e, p.ian, p.g, p.h, p.i, p.j, null, p.l, null, null, null, l.lot, "FR166", "MOOREA",
+      prod.fg, prod.fn, prod.eg, prod.en, prod.pg, prod.pn, l.quantite, l.palettes ?? 0.5, "OUI", "NON", l.transporteur];
+    const cellules = COLS.map((col, k) => {
+      const v = valeurs[k], s = styleCol[col] ? ` s="${styleCol[col]}"` : "";
+      if (v == null || v === "") return `<c r="${col}${r}"${s}/>`;
+      if (typeof v === "number") return `<c r="${col}${r}"${s}><v>${v}</v></c>`;
+      return `<c r="${col}${r}"${s} t="s"><v>${indexTexte(String(v))}</v></c>`;
+    }).join("");
+    lignesXml.set(r, `<row r="${r}"${attrsLigne.replace(/\s*r="\d+"/, "")}>${cellules}</row>`);
+  });
+
+  // Remplace les lignes existantes du modèle et crée celles qui manquent (le fichier de Lidl n'a pas
+  // de lignes 20 à 31 ni 115) à leur place, dans l'ordre.
+  const debut = feuille.indexOf("<sheetData>") + "<sheetData>".length, fin = feuille.indexOf("</sheetData>");
+  const lignesModele = [...feuille.slice(debut, fin).matchAll(/<row r="(\d+)"[^>]*?(?:\/>|>.*?<\/row>)/gs)].map(x => ({ r: Number(x[1]), xml: x[0] }));
+  const fusion: string[] = [];
+  const aPlacer = [...lignesXml.keys()].sort((x, y) => x - y);
+  for (const lm of lignesModele) {
+    while (aPlacer.length && aPlacer[0] < lm.r) fusion.push(lignesXml.get(aPlacer.shift()!)!);
+    if (aPlacer.length && aPlacer[0] === lm.r) fusion.push(lignesXml.get(aPlacer.shift()!)!);
+    else fusion.push(lm.xml);
   }
-  const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
-  ws["!merges"] = [
-    { s: { r: 1, c: 1 }, e: { r: 1, c: 4 } }, { s: { r: 1, c: 5 }, e: { r: 1, c: 15 } }, { s: { r: 1, c: 16 }, e: { r: 1, c: 17 } },
-    { s: { r: 1, c: 18 }, e: { r: 1, c: 19 } }, { s: { r: 1, c: 20 }, e: { r: 1, c: 21 } }, { s: { r: 1, c: 22 }, e: { r: 1, c: 23 } }, { s: { r: 1, c: 24 }, e: { r: 1, c: 26 } },
-  ];
-  ws["!cols"] = ENTETES.map((_, i) => ({ wch: [0, 14, 8, 8, 12, 9, 16, 18, 16, 9, 8, 8, 8, 8, 10, 10, 10, 10, 16, 22, 16, 22, 16, 22, 10, 10, 10, 10, 14][i + 1] || 12 }));
-  for (let r = 3; r < aoa.length; r++) { const c = ws[XLSX.utils.encode_cell({ r, c: 1 })]; if (c) { c.t = "n"; c.z = "dd/mm/yyyy"; } }
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Option 1");
-  const base64 = XLSX.write(wb, { type: "base64", bookType: "xlsx", cellDates: true }) as string;
+  for (const r of aPlacer) fusion.push(lignesXml.get(r)!);
+  feuille = feuille.slice(0, debut) + fusion.join("") + feuille.slice(fin);
+
+  textes = textes.replace(/count="\d+"/, `count="${nbTotal}"`).replace(/uniqueCount="\d+"/, `uniqueCount="${nbUniques}"`).replace("</sst>", nouveaux.join("") + "</sst>");
+  zip.file(CHEMIN_FEUILLE, feuille);
+  zip.file(CHEMIN_TEXTES, textes);
+  const base64 = await zip.generateAsync({ type: "base64", compression: "DEFLATE", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   return { base64, nbLignes: ok.length, problemes, totalColis: ok.reduce((s, x) => s + x.l.quantite, 0), totalPalettes: ok.reduce((s, x) => s + (x.l.palettes ?? 0.5), 0) };
 }
 
