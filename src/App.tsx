@@ -5,6 +5,7 @@ import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
 import jsPDF from "jspdf";
+import { useProfilGenerique, avecProfil } from "./ProfilGenerique";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
@@ -485,7 +486,11 @@ export default function App() {
   const [sortBy, setSortBy] = useState("date_desc");
   const [openFournisseurs, setOpenFournisseurs] = useState<Set<string>>(new Set());
   const [editRapport, setEditRapport] = useState<any | null>(null);
-  const [user, setUser] = useState<any | null>(undefined);
+  const [userCompte, setUser] = useState<any | null>(undefined);
+  // 05/10/2026 — Compte partagé (commercial@, entrepot@, agreage@) : le prénom choisi dans
+  // « Qui es-tu ? » (ProfilGenerique.tsx) remplace le nom du compte partout dans l'appli.
+  const profilGenerique = useProfilGenerique();
+  const user = useMemo(() => avecProfil(userCompte, profilGenerique), [userCompte, profilGenerique]);
   // 02/09/2026 — Demande d'Elinathan : après un rafraîchissement de la page, un module ouvert
   // apparaissait souvent "vide" (aucune donnée) le temps que tous les listeners Firebase se
   // reconnectent et reçoivent leur première réponse — il fallait refermer/rouvrir le module
@@ -766,7 +771,7 @@ export default function App() {
   };
   useEffect(() => {
     verifierSanteComptesMail(false);
-  }, [monAccesReel.isAdmin, user]);
+  }, [monAccesReel.isAdmin, userCompte]);
   useEffect(() => {
     if (!chargerJournal) return;
     const unsub = onValue(ref(db, "activity_log"), snap => {
@@ -1060,7 +1065,7 @@ export default function App() {
     const t0 = setTimeout(verifier, 20 * 1000);
     const t = setInterval(verifier, 5 * 60 * 1000);
     return () => { clearTimeout(t0); clearInterval(t); };
-  }, [user]);
+  }, [userCompte]);
 
   // ─── FIREBASE: arrivages ───
   const [arrivagesCharges, setArrivagesCharges] = useState(false);
