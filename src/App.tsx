@@ -5,9 +5,11 @@ import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
 import { useProfilGenerique, avecProfil } from "./ProfilGenerique";
+import { definirV2, lireChoixLocal, ecrireChoixLocal, apparenceEffective, type ChoixApparence, type ConfigApparence } from "./apparence";
+import { AccueilModulesV2 } from "./AccueilModulesV2";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
-import { PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
+import { LogoMoorea, PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 
 // 29/09/2026 — Demande d'Elinathan (vitesse) : chaque module est maintenant téléchargé à part,
@@ -890,6 +892,10 @@ export default function App() {
     return () => mq.removeEventListener?.("change", maj);
   }, []);
   const darkMode = modeTheme === "sombre" || (modeTheme === "auto" && systemeSombre);
+  // 05/10/2026 — Nouvelle apparence (charte Moorea) avec retour possible à l'ancienne (src/apparence.ts).
+  const [cfgApparence, setCfgApparence] = useState<ConfigApparence>({});
+  const [choixApparenceLocal, setChoixApparenceLocal] = useState<ChoixApparence | null>(() => lireChoixLocal());
+  useEffect(() => onValue(ref(db, "config/apparence"), snap => setCfgApparence(snap.val() || {})), []);
   const [popupEtiquette, setPopupEtiquette] = useState<any>(null);
   const [popupEtiquetteRefus, setPopupEtiquetteRefus] = useState<any>(null);
   // 23/09/2026 — Demande d'Elinathan : "plus aucun message whatsapp automatique pour prévenir
@@ -1171,6 +1177,10 @@ export default function App() {
   }, [printRelayLastSeen]);
 
   // ─── DARK MODE ───
+  const apparence = apparenceEffective(choixApparenceLocal, cfgApparence, cleEmail(userCompte?.email || ""));
+  const v2 = apparence === "nouvelle";
+  useEffect(() => { definirV2(v2); }, [v2]);
+  const changerApparence = () => { const c: ChoixApparence = v2 ? "ancienne" : "nouvelle"; ecrireChoixLocal(c); setChoixApparenceLocal(c); };
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
     try { localStorage.setItem("moorea-theme", modeTheme); } catch { /* stockage bloqué */ }
@@ -3678,13 +3688,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       <>{fabScanner}
       <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
-        <div style={{ background: darkMode ? "#080a12" : "linear-gradient(135deg, #1a3a1a 0%, #2d5a1e 40%, #8a6f2e 100%)", padding: "calc(env(safe-area-inset-top, 0px) + 16px) 16px 20px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ background: v2 ? "#305a55" : darkMode ? "#080a12" : "linear-gradient(135deg, #1a3a1a 0%, #2d5a1e 40%, #8a6f2e 100%)", padding: "calc(env(safe-area-inset-top, 0px) + 16px) 16px 20px" }}>
+          {v2 && <div style={{ marginBottom: 14 }}><LogoMoorea taille={14} /></div>}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <div>
-              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{today}</p>
-              <h1 style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, color: "#fff" }}>{getHello()}, {user?.displayName?.split(" ")[0] || "!"} 👋</h1>
+              <p style={{ margin: 0, fontSize: v2 ? 12.5 : 11, color: v2 ? "#cfe0dc" : "rgba(255,255,255,0.5)", ...(v2 ? { textTransform: "capitalize" as const, letterSpacing: "0.04em" } : {}) }}>{v2 ? new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : today}</p>
+              <h1 style={{ margin: "2px 0 0", fontSize: v2 ? 24 : 18, fontWeight: v2 ? 700 : 800, color: "#fff" }}>{getHello()}, {user?.displayName?.split(" ")[0] || "!"}{v2 ? "" : " 👋"}</h1>
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button onClick={changerApparence} title={v2 ? "Revenir à l'ancienne apparence de l'appli (sur cet appareil)" : "Essayer la nouvelle apparence de l'appli (sur cet appareil)"}
+                style={{ height: 32, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: v2 ? "rgba(255,255,255,0.1)" : "rgba(116,180,132,0.25)", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>
+                {v2 ? "Ancienne apparence" : "✨ Nouvelle apparence"}
+              </button>
               {monAccesReel.isAdmin && (
                 <button onClick={() => setShowAdmin(true)}
                   style={{ position: "relative", padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: "'Syne', sans-serif", fontWeight: 600 }}>
@@ -3714,6 +3729,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               garde toujours la main pour revenir à sa propre vue. */}
           {monAccesReel.isAdmin && (
             <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <select value={cfgApparence.defaut || "ancienne"} title="Apparence par défaut pour tout le monde (chacun peut changer sur son appareil)"
+                onChange={e => update(ref(db, "config/apparence"), { defaut: e.target.value })}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>
+                <option value="ancienne" style={{ color: "#111" }}>Pour tous : ancienne apparence</option>
+                <option value="nouvelle" style={{ color: "#111" }}>Pour tous : nouvelle apparence</option>
+              </select>
               <select
                 value={apercuEmail || ""}
                 onChange={e => setApercuEmail(e.target.value || null)}
@@ -3876,7 +3897,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   </div>
                 )}
 
-                {modulesAffiches.length > 0 && (
+                {modulesAffiches.length > 0 && v2 && <AccueilModulesV2 modules={modulesAffiches as any} sombre={darkMode} />}
+                {modulesAffiches.length > 0 && !v2 && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 16 }}>
                     {modulesAffiches.map((b, i) => <CardCarré key={i} {...b} />)}
                   </div>

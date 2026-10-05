@@ -80,3 +80,62 @@ for sombre, clairs in TEXTES.items():
 # sur un fond devenu sombre est éclairci par les règles ci-dessus.
 open("src/themeSombre.css", "w").write("\n".join(lignes) + "\n")
 print("src/themeSombre.css :", sum(l.count('[style*=') for l in lignes), "sélecteurs")
+
+# ─── 05/10/2026 — Nouvelle apparence « charte Moorea » (classe v2 sur <html>, voir src/apparence.ts).
+# Même principe : les couleurs de l'ancienne apparence (or, noir, beiges) sont remplacées par celles
+# de la charte (vert sapin #305A55, vert sauge #74B484, gris-verts). Les gris clairs ne sont changés
+# qu'en mode clair : en mode nuit, c'est src/themeSombre.css qui décide.
+SAPIN, SAUGE, SAPIN_TEXTE, ENCRE = "#305a55", "#74b484", "#3f8a55", "#1e2b29"
+V2_FONDS = {SAPIN: ["#c8a84b", "#0a0a0a", "#1a2e1a"]}
+V2_FONDS_CLAIR = {"#f3f6f5": ["#f5f3ee", "#faf8f3", "#faf9f6", "#f8f6f2", "#faf8f0", "#faf8f5"]}
+V2_BORDURES = {SAPIN: ["#c8a84b"]}
+V2_BORDURES_CLAIR = {"#dde6e3": ["#e8e0d0", "#f0ede6"]}
+# L'or était surtout un texte posé sur fond noir (devenu vert sapin) : il devient vert sauge, la
+# variante claire du logo, lisible sur le vert sapin.
+V2_TEXTES = {SAUGE: ["#c8a84b"], SAPIN: ["#8a6f2e", "#92722c"]}
+V2_TEXTES_CLAIR = {ENCRE: ["#1a2e1a"]}
+
+v2 = ["/* Généré par scripts/generer-theme-sombre.py — ne pas modifier à la main. */",
+      # Une seule police partout (Figtree) ; le logo garde sa police (classe v2-marque).
+      ':root.v2 body, :root.v2 *:not(.v2-marque):not(code):not(pre):not(.v2-marque *) { font-family: "Figtree", system-ui, -apple-system, sans-serif !important; }',
+      ':root.v2 .v2-marque { font-family: "Montserrat", "Figtree", sans-serif !important; }',
+      ':root.v2:not(.dark), :root.v2:not(.dark) body { background-color: #f3f6f5; }',
+      # Classes communes de shared.tsx (fond de page, cartes, champs, boutons principaux, titres de section).
+      ':root.v2:not(.dark) body, :root.v2:not(.dark) .app { background: #f3f6f5 !important; }',
+      ':root.v2:not(.dark) .card { border-color: #dde6e3 !important; box-shadow: 0 1px 2px rgba(30,43,41,.07) !important; }',
+      ':root.v2 input:focus, :root.v2 select:focus, :root.v2 textarea:focus { border-color: #305a55 !important; box-shadow: 0 0 0 3px rgba(48,90,85,.15) !important; }',
+      ':root.v2 .btn-primary { background: #305a55 !important; box-shadow: none !important; }',
+      ':root.v2 .section-title { color: #305a55 !important; } :root.v2 .section-title::before { background: #74b484 !important; }',
+      # Module Stock (StockApp.tsx) : il a sa propre feuille de style (#stock-root).
+      ':root.v2:not(.dark) #stock-root, :root.v2:not(.dark) #stock-pdf-overlay { background: #f3f6f5 !important; color: #1e2b29 !important; }',
+      ':root.v2 #stock-root .topbar, :root.v2 #stock-root .nav-wrap { background: #305a55 !important; border-bottom-color: rgba(116,180,132,.35) !important; }',
+      ':root.v2 #stock-root .logo { color: #ffffff !important; } :root.v2 #stock-root .nav-btn.active { border-bottom-color: #74b484 !important; }',
+      ':root.v2:not(.dark) #stock-root .card, :root.v2:not(.dark) #stock-root .stat-card, :root.v2:not(.dark) #stock-root td, :root.v2:not(.dark) #stock-root thead tr, :root.v2:not(.dark) #stock-root .stock-item, :root.v2:not(.dark) #stock-root .team-card { border-color: #dde6e3 !important; }',
+      ':root.v2 #stock-root .section-title { color: #305a55 !important; } :root.v2 #stock-root .section-title::before { background: #74b484 !important; }',
+      ':root.v2:not(.dark) #stock-root .btn, :root.v2:not(.dark) #stock-root .search-input, :root.v2:not(.dark) #stock-root .qty-in, :root.v2:not(.dark) #stock-root .pill { border-color: #c9d6d2 !important; }',
+      ':root.v2:not(.dark) #stock-root .btn:hover { background: #f3f6f5 !important; }',
+      ':root.v2 #stock-root .btn-gold, :root.v2 #stock-root .pill.active, :root.v2 #stock-calc-modal .calc-btn.eq, :root.v2 #stock-calc-modal .calc-btn.use { background: #305a55 !important; border-color: #305a55 !important; color: #ffffff !important; }',
+      ':root.v2 #stock-root .progress-bar, :root.v2 #stock-root .toggle-switch.gms input:checked + .toggle-slider { background: #74b484 !important; } :root.v2:not(.dark) #stock-root .progress-bg { background: #dde6e3 !important; }',
+      ':root.v2 #stock-root .add-loc-btn { border-color: #305a55 !important; color: #305a55 !important; } :root.v2 #stock-root .team-card.gms::before { background: #305a55 !important; }',
+      ':root.v2 #stock-toast.info, :root.v2 #stock-fusion-bar { background: #305a55 !important; color: #ffffff !important; border-color: #305a55 !important; }',
+      ':root.v2 #stock-calc-fab { background: #305a55 !important; box-shadow: none !important; } :root.v2 #stock-calc-modal .calc-btn.op { color: #305a55 !important; }',
+      # Téléphone : le titre de l'écran a besoin de la place du logo.
+      '@media (max-width: 640px) { :root.v2 .v2-logo-entete, :root.v2 .v2-logo-entete + span { display: none !important; } }']
+def bloc(table, prefixe, prop, formes_fn):
+    for nouveau, anciens in table.items():
+        sel = [f'{prefixe} [style*="{x}"]' for c in anciens for x in formes_fn(c)]
+        v2.append(",\n".join(sel) + f" {{ {prop}: {nouveau} !important; }}")
+fonds = lambda c: [x for p in ("background", "background-color") for x in formes(p, c)]
+bords = lambda c: [rgb(c), c, c.upper()]
+textes = lambda c: formes("color", c)
+bloc(V2_FONDS, ":root.v2", "background-color", fonds)
+bloc(V2_FONDS_CLAIR, ":root.v2:not(.dark)", "background-color", fonds)
+bloc(V2_BORDURES, ":root.v2", "border-color", bords)
+bloc(V2_BORDURES_CLAIR, ":root.v2:not(.dark)", "border-color", bords)
+bloc(V2_TEXTES, ":root.v2", "color", textes)
+bloc(V2_TEXTES_CLAIR, ":root.v2:not(.dark)", "color", textes)
+# Boutons en dégradé vert ou or → vert sapin uni (les dégradés d'autres couleurs gardent leur sens).
+grad = [f':root.v2 button[style*="linear-gradient"][style*="{x}"]' for c in ["#16a34a", "#22c55e", "#27ae60", "#c8a84b", "#8a6f2e"] for x in (rgb(c), c)]
+v2.append(",\n".join(grad) + f" {{ background: {SAPIN} !important; box-shadow: none !important; }}")
+open("src/apparenceV2.css", "w").write("\n".join(v2) + "\n")
+print("src/apparenceV2.css :", sum(l.count('[style*=') for l in v2), "sélecteurs")

@@ -1,3 +1,4 @@
+import { useV2, sansEmoji } from "./apparence";
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import emailjs from "@emailjs/browser";
@@ -160,7 +161,37 @@ export const styles = `
 
 
 // ─── HEADER UNIFORME ───
+// 05/10/2026 — Nouvelle apparence (charte Moorea) : en-tête vert sapin, logo, titre sans emoji,
+// icônes fines. L'ancienne version reste en dessous (interrupteur : voir src/apparence.ts).
+export function LogoMoorea({ taille = 15 }: { taille?: number }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: Math.round(taille * 0.6) }}>
+      <span className="v2-marque" style={{ width: taille * 2, height: taille * 2, boxSizing: "border-box", border: "1.5px solid #74b484", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: taille, color: "#74b484" }}>M</span>
+      <span className="v2-marque" style={{ fontWeight: 700, fontSize: taille, letterSpacing: "0.32em", color: "#ffffff" }}>MOOREA</span>
+    </span>
+  );
+}
+export function IconeTrait({ d, taille = 20 }: { d: string; taille?: number }) {
+  return <svg width={taille} height={taille} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
+}
+function PageHeaderV2({ titre, onBack, onHome }: { titre: string; onBack?: () => void; onHome?: () => void }) {
+  const bouton = { height: 40, minWidth: 40, padding: "0 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.25)", background: "transparent", color: "#ffffff", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600 } as const;
+  return (
+    <div style={{ background: "#305a55", position: "sticky", top: 0, zIndex: 200, paddingTop: "env(safe-area-inset-top, 0px)" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", height: 60, display: "flex", alignItems: "center", gap: 14, padding: "0 16px" }}>
+        {onBack && <button type="button" onClick={onBack} style={bouton} aria-label="Retour"><IconeTrait d="M19 12H5 M12 19l-7-7 7-7" taille={18} /><span>Retour</span></button>}
+        <span style={{ display: "inline-flex" }} className="v2-logo-entete"><LogoMoorea taille={13} /></span>
+        <span style={{ width: 1, height: 22, background: "rgba(255,255,255,0.25)" }} />
+        <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 17, fontWeight: 600, color: "#ffffff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sansEmoji(titre)}</p>
+        {onHome && <button type="button" onClick={onHome} style={bouton} aria-label="Accueil"><IconeTrait d="M3 10.5 12 3l9 7.5 M5 9.5V21h14V9.5" taille={18} /></button>}
+      </div>
+    </div>
+  );
+}
+
 export function PageHeader({ titre, couleur = "#c8a84b", onBack, onHome }: { titre: string; couleur?: string; onBack?: () => void; onHome?: () => void }) {
+  const v2 = useV2();
+  if (v2) return <PageHeaderV2 titre={titre} onBack={onBack} onHome={onHome} />;
   return (
     <div style={{ background: "#0a0a0a", borderBottom: `3px solid ${couleur}`, position: "sticky", top: 0, zIndex: 200, paddingTop: "env(safe-area-inset-top, 0px)" }}>
       <div style={{ maxWidth: 800, margin: "0 auto", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px" }}>

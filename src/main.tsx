@@ -9,6 +9,7 @@ import { installerJetonApi } from './apiAuth'
 
 installerJetonApi()
 import './cases-a-cocher.css'
+import './apparenceV2.css'
 import './themeSombre.css'
 
 // 24/09/2026 — pdf.js (lecture des bons Geslot) utilise Map.getOrInsertComputed, fonction JS

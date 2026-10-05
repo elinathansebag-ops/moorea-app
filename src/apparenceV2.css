@@ -1,0 +1,151 @@
+/* Généré par scripts/generer-theme-sombre.py — ne pas modifier à la main. */
+:root.v2 body, :root.v2 *:not(.v2-marque):not(code):not(pre):not(.v2-marque *) { font-family: "Figtree", system-ui, -apple-system, sans-serif !important; }
+:root.v2 .v2-marque { font-family: "Montserrat", "Figtree", sans-serif !important; }
+:root.v2:not(.dark), :root.v2:not(.dark) body { background-color: #f3f6f5; }
+:root.v2:not(.dark) body, :root.v2:not(.dark) .app { background: #f3f6f5 !important; }
+:root.v2:not(.dark) .card { border-color: #dde6e3 !important; box-shadow: 0 1px 2px rgba(30,43,41,.07) !important; }
+:root.v2 input:focus, :root.v2 select:focus, :root.v2 textarea:focus { border-color: #305a55 !important; box-shadow: 0 0 0 3px rgba(48,90,85,.15) !important; }
+:root.v2 .btn-primary { background: #305a55 !important; box-shadow: none !important; }
+:root.v2 .section-title { color: #305a55 !important; } :root.v2 .section-title::before { background: #74b484 !important; }
+:root.v2:not(.dark) #stock-root, :root.v2:not(.dark) #stock-pdf-overlay { background: #f3f6f5 !important; color: #1e2b29 !important; }
+:root.v2 #stock-root .topbar, :root.v2 #stock-root .nav-wrap { background: #305a55 !important; border-bottom-color: rgba(116,180,132,.35) !important; }
+:root.v2 #stock-root .logo { color: #ffffff !important; } :root.v2 #stock-root .nav-btn.active { border-bottom-color: #74b484 !important; }
+:root.v2:not(.dark) #stock-root .card, :root.v2:not(.dark) #stock-root .stat-card, :root.v2:not(.dark) #stock-root td, :root.v2:not(.dark) #stock-root thead tr, :root.v2:not(.dark) #stock-root .stock-item, :root.v2:not(.dark) #stock-root .team-card { border-color: #dde6e3 !important; }
+:root.v2 #stock-root .section-title { color: #305a55 !important; } :root.v2 #stock-root .section-title::before { background: #74b484 !important; }
+:root.v2:not(.dark) #stock-root .btn, :root.v2:not(.dark) #stock-root .search-input, :root.v2:not(.dark) #stock-root .qty-in, :root.v2:not(.dark) #stock-root .pill { border-color: #c9d6d2 !important; }
+:root.v2:not(.dark) #stock-root .btn:hover { background: #f3f6f5 !important; }
+:root.v2 #stock-root .btn-gold, :root.v2 #stock-root .pill.active, :root.v2 #stock-calc-modal .calc-btn.eq, :root.v2 #stock-calc-modal .calc-btn.use { background: #305a55 !important; border-color: #305a55 !important; color: #ffffff !important; }
+:root.v2 #stock-root .progress-bar, :root.v2 #stock-root .toggle-switch.gms input:checked + .toggle-slider { background: #74b484 !important; } :root.v2:not(.dark) #stock-root .progress-bg { background: #dde6e3 !important; }
+:root.v2 #stock-root .add-loc-btn { border-color: #305a55 !important; color: #305a55 !important; } :root.v2 #stock-root .team-card.gms::before { background: #305a55 !important; }
+:root.v2 #stock-toast.info, :root.v2 #stock-fusion-bar { background: #305a55 !important; color: #ffffff !important; border-color: #305a55 !important; }
+:root.v2 #stock-calc-fab { background: #305a55 !important; box-shadow: none !important; } :root.v2 #stock-calc-modal .calc-btn.op { color: #305a55 !important; }
+@media (max-width: 640px) { :root.v2 .v2-logo-entete, :root.v2 .v2-logo-entete + span { display: none !important; } }
+:root.v2 [style*="background: rgb(200, 168, 75)"],
+:root.v2 [style*="background:#c8a84b"],
+:root.v2 [style*="background: #c8a84b"],
+:root.v2 [style*="background:#C8A84B"],
+:root.v2 [style*="background: #C8A84B"],
+:root.v2 [style*="background-color: rgb(200, 168, 75)"],
+:root.v2 [style*="background-color:#c8a84b"],
+:root.v2 [style*="background-color: #c8a84b"],
+:root.v2 [style*="background-color:#C8A84B"],
+:root.v2 [style*="background-color: #C8A84B"],
+:root.v2 [style*="background: rgb(10, 10, 10)"],
+:root.v2 [style*="background:#0a0a0a"],
+:root.v2 [style*="background: #0a0a0a"],
+:root.v2 [style*="background:#0A0A0A"],
+:root.v2 [style*="background: #0A0A0A"],
+:root.v2 [style*="background-color: rgb(10, 10, 10)"],
+:root.v2 [style*="background-color:#0a0a0a"],
+:root.v2 [style*="background-color: #0a0a0a"],
+:root.v2 [style*="background-color:#0A0A0A"],
+:root.v2 [style*="background-color: #0A0A0A"],
+:root.v2 [style*="background: rgb(26, 46, 26)"],
+:root.v2 [style*="background:#1a2e1a"],
+:root.v2 [style*="background: #1a2e1a"],
+:root.v2 [style*="background:#1A2E1A"],
+:root.v2 [style*="background: #1A2E1A"],
+:root.v2 [style*="background-color: rgb(26, 46, 26)"],
+:root.v2 [style*="background-color:#1a2e1a"],
+:root.v2 [style*="background-color: #1a2e1a"],
+:root.v2 [style*="background-color:#1A2E1A"],
+:root.v2 [style*="background-color: #1A2E1A"] { background-color: #305a55 !important; }
+:root.v2:not(.dark) [style*="background: rgb(245, 243, 238)"],
+:root.v2:not(.dark) [style*="background:#f5f3ee"],
+:root.v2:not(.dark) [style*="background: #f5f3ee"],
+:root.v2:not(.dark) [style*="background:#F5F3EE"],
+:root.v2:not(.dark) [style*="background: #F5F3EE"],
+:root.v2:not(.dark) [style*="background-color: rgb(245, 243, 238)"],
+:root.v2:not(.dark) [style*="background-color:#f5f3ee"],
+:root.v2:not(.dark) [style*="background-color: #f5f3ee"],
+:root.v2:not(.dark) [style*="background-color:#F5F3EE"],
+:root.v2:not(.dark) [style*="background-color: #F5F3EE"],
+:root.v2:not(.dark) [style*="background: rgb(250, 248, 243)"],
+:root.v2:not(.dark) [style*="background:#faf8f3"],
+:root.v2:not(.dark) [style*="background: #faf8f3"],
+:root.v2:not(.dark) [style*="background:#FAF8F3"],
+:root.v2:not(.dark) [style*="background: #FAF8F3"],
+:root.v2:not(.dark) [style*="background-color: rgb(250, 248, 243)"],
+:root.v2:not(.dark) [style*="background-color:#faf8f3"],
+:root.v2:not(.dark) [style*="background-color: #faf8f3"],
+:root.v2:not(.dark) [style*="background-color:#FAF8F3"],
+:root.v2:not(.dark) [style*="background-color: #FAF8F3"],
+:root.v2:not(.dark) [style*="background: rgb(250, 249, 246)"],
+:root.v2:not(.dark) [style*="background:#faf9f6"],
+:root.v2:not(.dark) [style*="background: #faf9f6"],
+:root.v2:not(.dark) [style*="background:#FAF9F6"],
+:root.v2:not(.dark) [style*="background: #FAF9F6"],
+:root.v2:not(.dark) [style*="background-color: rgb(250, 249, 246)"],
+:root.v2:not(.dark) [style*="background-color:#faf9f6"],
+:root.v2:not(.dark) [style*="background-color: #faf9f6"],
+:root.v2:not(.dark) [style*="background-color:#FAF9F6"],
+:root.v2:not(.dark) [style*="background-color: #FAF9F6"],
+:root.v2:not(.dark) [style*="background: rgb(248, 246, 242)"],
+:root.v2:not(.dark) [style*="background:#f8f6f2"],
+:root.v2:not(.dark) [style*="background: #f8f6f2"],
+:root.v2:not(.dark) [style*="background:#F8F6F2"],
+:root.v2:not(.dark) [style*="background: #F8F6F2"],
+:root.v2:not(.dark) [style*="background-color: rgb(248, 246, 242)"],
+:root.v2:not(.dark) [style*="background-color:#f8f6f2"],
+:root.v2:not(.dark) [style*="background-color: #f8f6f2"],
+:root.v2:not(.dark) [style*="background-color:#F8F6F2"],
+:root.v2:not(.dark) [style*="background-color: #F8F6F2"],
+:root.v2:not(.dark) [style*="background: rgb(250, 248, 240)"],
+:root.v2:not(.dark) [style*="background:#faf8f0"],
+:root.v2:not(.dark) [style*="background: #faf8f0"],
+:root.v2:not(.dark) [style*="background:#FAF8F0"],
+:root.v2:not(.dark) [style*="background: #FAF8F0"],
+:root.v2:not(.dark) [style*="background-color: rgb(250, 248, 240)"],
+:root.v2:not(.dark) [style*="background-color:#faf8f0"],
+:root.v2:not(.dark) [style*="background-color: #faf8f0"],
+:root.v2:not(.dark) [style*="background-color:#FAF8F0"],
+:root.v2:not(.dark) [style*="background-color: #FAF8F0"],
+:root.v2:not(.dark) [style*="background: rgb(250, 248, 245)"],
+:root.v2:not(.dark) [style*="background:#faf8f5"],
+:root.v2:not(.dark) [style*="background: #faf8f5"],
+:root.v2:not(.dark) [style*="background:#FAF8F5"],
+:root.v2:not(.dark) [style*="background: #FAF8F5"],
+:root.v2:not(.dark) [style*="background-color: rgb(250, 248, 245)"],
+:root.v2:not(.dark) [style*="background-color:#faf8f5"],
+:root.v2:not(.dark) [style*="background-color: #faf8f5"],
+:root.v2:not(.dark) [style*="background-color:#FAF8F5"],
+:root.v2:not(.dark) [style*="background-color: #FAF8F5"] { background-color: #f3f6f5 !important; }
+:root.v2 [style*="rgb(200, 168, 75)"],
+:root.v2 [style*="#c8a84b"],
+:root.v2 [style*="#C8A84B"] { border-color: #305a55 !important; }
+:root.v2:not(.dark) [style*="rgb(232, 224, 208)"],
+:root.v2:not(.dark) [style*="#e8e0d0"],
+:root.v2:not(.dark) [style*="#E8E0D0"],
+:root.v2:not(.dark) [style*="rgb(240, 237, 230)"],
+:root.v2:not(.dark) [style*="#f0ede6"],
+:root.v2:not(.dark) [style*="#F0EDE6"] { border-color: #dde6e3 !important; }
+:root.v2 [style*="color: rgb(200, 168, 75)"],
+:root.v2 [style*="color:#c8a84b"],
+:root.v2 [style*="color: #c8a84b"],
+:root.v2 [style*="color:#C8A84B"],
+:root.v2 [style*="color: #C8A84B"] { color: #74b484 !important; }
+:root.v2 [style*="color: rgb(138, 111, 46)"],
+:root.v2 [style*="color:#8a6f2e"],
+:root.v2 [style*="color: #8a6f2e"],
+:root.v2 [style*="color:#8A6F2E"],
+:root.v2 [style*="color: #8A6F2E"],
+:root.v2 [style*="color: rgb(146, 114, 44)"],
+:root.v2 [style*="color:#92722c"],
+:root.v2 [style*="color: #92722c"],
+:root.v2 [style*="color:#92722C"],
+:root.v2 [style*="color: #92722C"] { color: #305a55 !important; }
+:root.v2:not(.dark) [style*="color: rgb(26, 46, 26)"],
+:root.v2:not(.dark) [style*="color:#1a2e1a"],
+:root.v2:not(.dark) [style*="color: #1a2e1a"],
+:root.v2:not(.dark) [style*="color:#1A2E1A"],
+:root.v2:not(.dark) [style*="color: #1A2E1A"] { color: #1e2b29 !important; }
+:root.v2 button[style*="linear-gradient"][style*="rgb(22, 163, 74)"],
+:root.v2 button[style*="linear-gradient"][style*="#16a34a"],
+:root.v2 button[style*="linear-gradient"][style*="rgb(34, 197, 94)"],
+:root.v2 button[style*="linear-gradient"][style*="#22c55e"],
+:root.v2 button[style*="linear-gradient"][style*="rgb(39, 174, 96)"],
+:root.v2 button[style*="linear-gradient"][style*="#27ae60"],
+:root.v2 button[style*="linear-gradient"][style*="rgb(200, 168, 75)"],
+:root.v2 button[style*="linear-gradient"][style*="#c8a84b"],
+:root.v2 button[style*="linear-gradient"][style*="rgb(138, 111, 46)"],
+:root.v2 button[style*="linear-gradient"][style*="#8a6f2e"] { background: #305a55 !important; box-shadow: none !important; }
