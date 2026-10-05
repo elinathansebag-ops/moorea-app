@@ -30,11 +30,11 @@ function entete(doc: jsPDF, titre: string, sousTitre: string) {
 }
 
 // Dessine un tableau avec saut de page automatique (l'en-tête du tableau est répété).
-function tableau(doc: jsPDF, y: number, cols: Col[], lignes: string[][], hLigne: number, opts: { taille?: number; total?: string[] } = {}) {
+function tableau(doc: jsPDF, y: number, cols: Col[], lignes: string[][], hLigne: number, opts: { taille?: number; total?: string[]; noirEtBlanc?: boolean; hEntete?: number } = {}) {
   const taille = opts.taille ?? 10;
   const ligne = (cells: string[], yy: number, h: number, style: "entete" | "corps" | "total") => {
     let x = M;
-    if (style !== "corps") { doc.setFillColor(style === "entete" ? 230 : 242, style === "entete" ? 230 : 242, style === "entete" ? 230 : 242); doc.rect(M, yy, CW, h, "F"); }
+    if (style !== "corps" && !opts.noirEtBlanc) { doc.setFillColor(style === "entete" ? 230 : 242, style === "entete" ? 230 : 242, style === "entete" ? 230 : 242); doc.rect(M, yy, CW, h, "F"); }
     cols.forEach((c, i) => {
       doc.setDrawColor(0); doc.setLineWidth(0.25); doc.rect(x, yy, c.l, h);
       const t = cells[i] ?? "";
@@ -51,7 +51,7 @@ function tableau(doc: jsPDF, y: number, cols: Col[], lignes: string[][], hLigne:
       x += c.l;
     });
   };
-  const hEntete = 7;
+  const hEntete = opts.hEntete ?? 7;
   ligne(cols.map(c => c.titre), y, hEntete, "entete"); y += hEntete;
   for (const l of lignes) {
     if (y + hLigne > H - M) { doc.addPage(); y = M; ligne(cols.map(c => c.titre), y, hEntete, "entete"); y += hEntete; }
@@ -64,42 +64,65 @@ function tableau(doc: jsPDF, y: number, cols: Col[], lignes: string[][], hLigne:
 const enBase64 = (doc: jsPDF) => doc.output("datauristring").split(",")[1];
 const libDepart = (d?: string) => (d === "paris" ? "Départ Paris" : d === "sud" ? "Départ Medina (Perpignan)" : "");
 
+// 05/10/2026 — Classé par produit (puis par base), en grand pour remplir la page (demande d'Elinathan).
 export function pdfBonGeslot(dateFr: string, lignes: LigneBon[]) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   let y = entete(doc, "Commandes Lidl — à saisir dans Geslot", `Date de livraison : ${dateFr}`);
+  const total = lignes.reduce((s, l) => s + l.quantite, 0);
   const deps = [...new Set(lignes.map(l => l.depart || ""))];
   for (const d of deps) {
-    const ls = lignes.filter(l => (l.depart || "") === d).sort((a, b) => a.nomBase.localeCompare(b.nomBase) || a.produit.localeCompare(b.produit));
-    if (d) { if (y + 20 > H - M) { doc.addPage(); y = M; } doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(libDepart(d), M, y + 5); y += 8; }
-    y = tableau(doc, y, [
-      { titre: "Base", l: 55, gras: true }, { titre: "Produit", l: 95 }, { titre: "Quantité", l: 22, align: "right", gras: true }, { titre: "OK", l: 14, align: "center" },
-    ], ls.map(l => [`${l.nomBase}${l.numBase != null ? `  (n° ${l.numBase})` : ""}`, l.produit, String(l.quantite), ""]), 7.5,
-    { total: ["Total", "", String(ls.reduce((s, l) => s + l.quantite, 0)), ""] }) + 6;
+    const lsD = lignes.filter(l => (l.depart || "") === d);
+    if (d) { if (y + 24 > H - M) { doc.addPage(); y = M; } doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(0, 0, 0); doc.text(libDepart(d), M, y + 6); y += 10; }
+    const produits = [...new Set(lsD.map(l => l.produit))].sort((p1, p2) => lsD.filter(l => l.produit === p2).reduce((s, l) => s + l.quantite, 0) - lsD.filter(l => l.produit === p1).reduce((s, l) => s + l.quantite, 0));
+    for (const p of produits) {
+      const ls = lsD.filter(l => l.produit === p).sort((a, b) => a.nomBase.localeCompare(b.nomBase));
+      const tot = ls.reduce((s, l) => s + l.quantite, 0);
+      if (y + 30 > H - M) { doc.addPage(); y = M; }
+      doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(0, 0, 0);
+      doc.text(p, M, y + 6);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+      doc.text(`${ls.length} commande${ls.length > 1 ? "s" : ""} · ${tot} colis`, W - M, y + 6, { align: "right" });
+      y += 9;
+      y = tableau(doc, y, [
+        { titre: "Base", l: 110, gras: true }, { titre: "Quantité (colis)", l: 50, align: "right", gras: true }, { titre: "OK", l: CW - 160, align: "center" },
+      ], ls.map(l => [`${l.nomBase}${l.numBase != null ? `   (n° ${l.numBase})` : ""}`, String(l.quantite), ""]), 10,
+      { taille: 13, hEntete: 8, total: ["Total", String(tot), ""] }) + 7;
+    }
+  }
+  if (deps.length > 1 || lignes.some((l, i) => i && l.produit !== lignes[0].produit)) {
+    if (y + 10 > H - M) { doc.addPage(); y = M; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.text(`TOTAL GÉNÉRAL : ${total} colis`, W - M, y + 4, { align: "right" });
   }
   return enBase64(doc);
 }
 
-// lignes déjà triées dans l'ordre de préparation (transporteur, puis quantité croissante)
+// lignes déjà triées dans l'ordre de préparation (transporteur, puis quantité croissante).
+// 05/10/2026 — Demande d'Elinathan : très simple et très lisible, en noir et blanc, sans les colonnes
+// producteur / lot / palettes (saisis par le directeur d'entrepôt avec l'iPad).
 export function pdfBonPreparation(dateFr: string, lignes: LigneBon[]) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const total = lignes.reduce((s, l) => s + l.quantite, 0);
   const deps = [...new Set(lignes.map(l => l.depart).filter(Boolean))];
-  let y = entete(doc, "Préparation Lidl", `Date de livraison : ${dateFr}${deps.length === 1 ? `  ·  ${libDepart(deps[0])}` : ""}  ·  ${lignes.length} commandes  ·  ${total} colis`);
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(22); doc.text("PRÉPARATION LIDL", M, 18);
+  doc.setFontSize(15); doc.text(`Livraison du ${dateFr}`, W - M, 18, { align: "right" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(12);
+  doc.text(`${deps.length === 1 ? libDepart(deps[0]) + "   ·   " : ""}${lignes.length} commandes   ·   ${total} colis`, M, 26);
+  doc.setLineWidth(0.8); doc.line(M, 30, W - M, 30);
+  let y = 36;
   const parT: [string, LigneBon[]][] = [];
   lignes.forEach(l => { const t = l.transporteur || "Sans transporteur"; const g = parT.find(x => x[0] === t); if (g) g[1].push(l); else parT.push([t, [l]]); });
   for (const [t, lt] of parT) {
-    if (y + 26 > H - M) { doc.addPage(); y = M; }
-    doc.setFillColor(237, 233, 254); doc.rect(M, y, CW, 8, "F");
-    doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(0, 0, 0);
-    doc.text(`Transporteur : ${t}`, M + 2, y + 5.6);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
-    doc.text(`${lt.length} commande${lt.length > 1 ? "s" : ""} · ${lt.reduce((s, l) => s + l.quantite, 0)} colis`, W - M - 2, y + 5.6, { align: "right" });
-    y += 10;
+    if (y + 34 > H - M) { doc.addPage(); y = M; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+    doc.text(t, M, y + 6);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(12);
+    doc.text(`${lt.length} commande${lt.length > 1 ? "s" : ""}  ·  ${lt.reduce((s, l) => s + l.quantite, 0)} colis`, W - M, y + 6, { align: "right" });
+    doc.setLineWidth(0.6); doc.line(M, y + 8.5, W - M, y + 8.5);
+    y += 11;
     y = tableau(doc, y, [
-      { titre: "Base", l: 36, gras: true }, { titre: "Produit", l: 58 }, { titre: "Colis", l: 15, align: "right", gras: true },
-      { titre: "Producteur", l: 31 }, { titre: "Lot", l: 20 }, { titre: "Palettes", l: 15 }, { titre: "OK", l: 11, align: "center" },
-    ],
-    lt.map(l => [`${l.nomBase}${l.numBase != null ? ` (${l.numBase})` : ""}`, l.produit, String(l.quantite), "", "", "", ""]), 10, { taille: 11 }) + 5;
+      { titre: "Base", l: 62, gras: true }, { titre: "Produit", l: 82 }, { titre: "Colis", l: 26, align: "right", gras: true }, { titre: "OK", l: CW - 170, align: "center" },
+    ], lt.map(l => [`${l.nomBase}${l.numBase != null ? ` (${l.numBase})` : ""}`, l.produit, String(l.quantite), ""]), 11, { taille: 14, noirEtBlanc: true, hEntete: 8 }) + 8;
   }
   return enBase64(doc);
 }
