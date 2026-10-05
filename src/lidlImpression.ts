@@ -122,7 +122,7 @@ export function pdfBonPreparation(dateFr: string, lignes: LigneBon[]) {
     y += 11;
     y = tableau(doc, y, [
       { titre: "Base", l: 62, gras: true }, { titre: "Produit", l: 82 }, { titre: "Colis", l: 26, align: "right", gras: true }, { titre: "OK", l: CW - 170, align: "center" },
-    ], lt.map(l => [`${l.nomBase}${l.numBase != null ? ` (${l.numBase})` : ""}`, l.produit, String(l.quantite), ""]), 11, { taille: 14, noirEtBlanc: true, hEntete: 8 }) + 8;
+    ], lt.map(l => [l.nomBase, l.produit, String(l.quantite), ""]), 11, { taille: 14, noirEtBlanc: true, hEntete: 8 }) + 8;
   }
   return enBase64(doc);
 }

@@ -241,6 +241,15 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const [produitsFermes, setProduitsFermes] = useState<Set<string>>(new Set());
   // Filtre par transporteur (Préparation) : "" = tous
   const [filtreTransporteur, setFiltreTransporteur] = useState("");
+  // 05/10/2026 — Recherche par client (base Lidl : nom, code, n°) — Préparation et module commercial.
+  const [recherche, setRecherche] = useState("");
+  const sansAccents = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const correspond = (l: { base: string }) => {
+    const q = sansAccents(recherche.trim());
+    if (!q) return true;
+    const inf = infoBase(l.base);
+    return sansAccents(`${inf?.nom || ""} ${l.base} ${inf ? `n°${inf.num} ${inf.num}` : ""}`).includes(q);
+  };
   const initOuverture = useRef("");
   useEffect(() => {
     if (!jourAffiche || initOuverture.current === jourAffiche) return;
@@ -777,7 +786,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   );
 
   const contenuJour = (j: string) => {
-    const ls = trierJour((parJour.get(j) || []).filter(l => commercial || !filtreTransporteur || (l.transporteur || "Sans transporteur") === filtreTransporteur));
+    const ls = trierJour((parJour.get(j) || []).filter(l => (commercial || !filtreTransporteur || (l.transporteur || "Sans transporteur") === filtreTransporteur) && correspond(l)));
     if (!commercial && !ls.length) return <div style={{ padding: "8px 12px", fontSize: 12.5, color: "#6b7280" }}>Aucune commande {filtreTransporteur} ce jour-là.</div>;
     if (commercial) return (
       <div style={{ padding: "8px 10px 12px" }}>
@@ -845,7 +854,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     const ls = parJour.get(j) || [];
     const prets = ls.filter(l => l.statut === "pret");
     const colis = ls.reduce((s, l) => s + l.quantite, 0), colisP = prets.reduce((s, l) => s + l.quantite, 0);
-    const ouvert = joursOuverts.has(j);
+    const ouvert = joursOuverts.has(j) !== !!recherche.trim();
     const fini = ls.length > 0 && prets.length === ls.length;
     return (
       <div onClick={() => basculer(setJoursOuverts, j)} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 10px", padding: "9px 12px", cursor: "pointer", background: ouvert ? "#eff6ff" : "#f9fafb", border: `1.5px solid ${ouvert ? "#bfdbfe" : "#e5e7eb"}`, borderRadius: 12 }}>
@@ -873,9 +882,11 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     );
   };
 
-  const listeSemaines = semaines.map(([lun, js]) => {
+  const enRecherche = !!recherche.trim();
+  const listeSemaines = semaines.map(([lunS, jsTous]) => [lunS, enRecherche ? jsTous.filter(j => (parJour.get(j) || []).some(correspond)) : jsTous] as const).filter(([, js]) => js.length > 0).map(([lun, js]) => {
     const { n, annee } = numeroSemaine(lun);
-    const ouverte = semainesOuvertes.has(lun);
+    // Pendant une recherche, semaines et jours trouvés s'ouvrent d'eux-mêmes (un clic les referme).
+    const ouverte = semainesOuvertes.has(lun) !== enRecherche;
     const ls = js.flatMap(j => parJour.get(j) || []);
     const prets = ls.filter(l => l.statut === "pret").length;
     return (
@@ -894,7 +905,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
             {js.map(j => (
               <div key={j}>
                 {enteteJour(j)}
-                {joursOuverts.has(j) && contenuJour(j)}
+                {(joursOuverts.has(j) !== enRecherche) && contenuJour(j)}
               </div>
             ))}
           </div>
@@ -1035,6 +1046,14 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       ))}
     </div>
   );
+  const champRecherche = (
+    <div style={{ position: "relative", flex: "1 1 220px", minWidth: 180 }}>
+      <input value={recherche} onChange={e => { setRecherche(e.target.value); setJoursOuverts(new Set()); setSemainesOuvertes(new Set()); }} placeholder="🔍 Rechercher une base (ex. Meaux, BAR, 19)" aria-label="Rechercher une base Lidl"
+        style={{ width: "100%", boxSizing: "border-box", height: 42, padding: "0 34px 0 12px", borderRadius: 10, border: `1.5px solid ${recherche ? couleur : "#d1d5db"}`, fontSize: 14, background: "#fff" }} />
+      {recherche && <button type="button" aria-label="Effacer la recherche" onClick={() => { setRecherche(""); setJoursOuverts(new Set(jourAffiche ? [jourAffiche] : [])); setSemainesOuvertes(new Set(jourAffiche ? [lundiDe(jourAffiche)] : [])); }} style={{ position: "absolute", right: 6, top: 6, width: 30, height: 30, border: "none", background: "transparent", fontSize: 18, cursor: "pointer", color: "#6b7280" }}>×</button>}
+    </div>
+  );
+  const aucunResultat = enRecherche && listeSemaines.length === 0 && <div style={{ textAlign: "center", color: "#6b7280", padding: "16px 0", fontSize: 13.5, background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14 }}>Aucune commande pour « {recherche} ».</div>;
   const messageBox = message && (
     <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: message.type === "ok" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${message.type === "ok" ? "#86efac" : "#fca5a5"}`, color: message.type === "ok" ? "#166534" : "#b91c1c" }}>{message.texte}</div>
   );
@@ -1093,6 +1112,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
           style={{ background: couleur, color: "#fff", border: "none", borderRadius: 12, padding: "12px 18px", fontWeight: 900, fontSize: 14, cursor: "pointer", boxShadow: "0 3px 10px rgba(0,80,170,.25)" }}>
           📥 Importer une nouvelle commande
         </button>
+        {jours.length > 0 && champRecherche}
       </div>
       {fenetre}
       {popupCommercial}
@@ -1101,7 +1121,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       {messageBox}
       {jours.length === 0
         ? <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13, background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14 }}>Aucune commande Lidl. Clique sur « Importer une nouvelle commande » et choisis le tableau reçu de Lidl (fichier « AU-…xlsx »).</div>
-        : listeSemaines}
+        : <>{aucunResultat}{listeSemaines}</>}
     </div>
   );
 
@@ -1147,6 +1167,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
             <div style={{ textAlign: "center", color: "#9ca3af", padding: "18px 0", fontSize: 13 }}>Rien à préparer pour Lidl (au départ de Paris). Le commercial les importe dans le module « Commandes Lidl ».</div>
           ) : (
             <>
+              <div style={{ display: "flex", marginBottom: 10 }}>{champRecherche}</div>
+              {aucunResultat}
               {listeSemaines}
             </>
           )}
