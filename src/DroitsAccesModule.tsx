@@ -82,7 +82,18 @@ function formatDateFr(ts: number | null | undefined): string {
 }
 
 export default function DroitsAccesModule({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<"modules" | "comptes">("comptes");
+  const [tab, setTab] = useState<"modules" | "comptes" | "partages">("comptes");
+  // 05/10/2026 — Journal des comptes partagés (commercial@, entrepot@, agreage@) : qui a dit
+  // l'utiliser, quand et sur quel appareil (écrit par ProfilGenerique.tsx dans connexions_profils).
+  const [connexionsProfils, setConnexionsProfils] = useState<{ id: string; compte: string; personne: string; ts: number; appareil?: string }[]>([]);
+  const [filtreCompte, setFiltreCompte] = useState("");
+  useEffect(() => {
+    if (tab !== "partages") return;
+    return onValue(ref(db, "connexions_profils"), snap => {
+      const v = snap.val() || {};
+      setConnexionsProfils(Object.entries(v).map(([id, x]: any) => ({ id, ...x })).sort((a, b) => b.ts - a.ts).slice(0, 500));
+    });
+  }, [tab]);
   const [moduleOuvert, setModuleOuvert] = useState<string | null>(null);
   const [roles, setRoles] = useState<Record<string, AccesRole>>({});
   const [users, setUsers] = useState<Record<string, AccesUser>>({});
@@ -198,7 +209,40 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <button onClick={() => setTab("comptes")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "comptes" ? "#7c3aed" : "#fff", color: tab === "comptes" ? "#fff" : "#555" }}>📋 Comptes</button>
           <button onClick={() => setTab("modules")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "modules" ? "#7c3aed" : "#fff", color: tab === "modules" ? "#fff" : "#555" }}>🧩 Par module</button>
+          <button onClick={() => setTab("partages")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "partages" ? "#7c3aed" : "#fff", color: tab === "partages" ? "#fff" : "#555" }}>👥 Comptes partagés</button>
         </div>
+
+        {tab === "partages" && (() => {
+          const appareil = (ua = "") => /iPad/.test(ua) ? "iPad" : /iPhone/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" : /Macintosh/.test(ua) ? (navigator.maxTouchPoints > 1 && /Safari/.test(ua) && !/Chrome/.test(ua) ? "iPad/Mac" : "Mac") : /Windows/.test(ua) ? "PC Windows" : "Autre";
+          const comptesListe = [...new Set(connexionsProfils.map(c => c.compte))].sort();
+          const liste = connexionsProfils.filter(c => !filtreCompte || c.compte === filtreCompte);
+          const parJour = new Map<string, typeof liste>();
+          liste.forEach(c => { const j = new Date(c.ts).toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" }); parJour.set(j, [...(parJour.get(j) || []), c]); });
+          return (
+            <div style={{ background: "#fff", border: "1.5px solid #e9d8fd", borderRadius: 14, padding: 14 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 13, color: "#555" }}>Qui a utilisé un compte partagé (choix fait dans « Qui es-tu ? »). 500 derniers.</span>
+                <select value={filtreCompte} onChange={e => setFiltreCompte(e.target.value)} style={{ marginLeft: "auto", padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e9d8fd", fontSize: 13 }}>
+                  <option value="">Tous les comptes</option>
+                  {comptesListe.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              {liste.length === 0 ? <div style={{ textAlign: "center", color: "#999", padding: 20, fontSize: 13 }}>Aucune connexion enregistrée pour l'instant.</div> : [...parJour.entries()].map(([jour, cs]) => (
+                <div key={jour} style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#7c3aed", textTransform: "capitalize", marginBottom: 4 }}>{jour}</div>
+                  {cs.map(c => (
+                    <div key={c.id} style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", alignItems: "baseline", padding: "6px 8px", borderTop: "1px solid #f3f0fa", fontSize: 13 }}>
+                      <span style={{ fontWeight: 800, minWidth: 48 }}>{new Date(c.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
+                      <span style={{ fontWeight: 800, color: "#111", minWidth: 110 }}>👤 {c.personne}</span>
+                      <span style={{ color: "#555" }}>{c.compte}</span>
+                      <span style={{ color: "#999", fontSize: 12 }}>{appareil(c.appareil)}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* 17/09/2026 — Demande d'Elinathan : "2 systèmes d'attribution qui marchent ensemble" —
             en plus de la vue par personne ("Comptes"), une vue par module : pour CE module,
