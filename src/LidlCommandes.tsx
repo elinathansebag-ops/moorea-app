@@ -586,7 +586,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
         body: JSON.stringify({
           sender: "jordan", to: ["jordan.jouanest@moorea.fr"],
           subject: `Lidl — Préparation Medina (Perpignan) — livraison du ${dateFr(jourM)}`,
-          html: `<div style="font-family:Arial,sans-serif;color:#111">${htmlBonPrepa(jourM, ls)}<p style="font-size:12px;color:#6b7280">Envoyé automatiquement par l'app Moorea après l'import des commandes Lidl${userName ? ` par ${echapHtml(userName)}` : ""}.</p></div>`,
+          html: `<div style="font-family:Arial,sans-serif;color:#111">${htmlBonPrepa(jourM, ls)}<p style="font-size:12px;color:#6b7280">Envoyé automatiquement par l'app Moorea après l'import des commandes Lidl.</p></div>`,
         }),
       });
       const data = await res.json().catch(() => null);

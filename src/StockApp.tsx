@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { db, db as rtdb, ref, onValue, update, push, get, auth } from "./firebase";
 import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, documentId } from "firebase/firestore";
 import { PageHeader, styles } from "./shared";
+import { nomSignataire } from "./ProfilGenerique";
 import { ScannerQR } from "./ArrivageModule";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import jsPDF from "jspdf";
@@ -1377,7 +1378,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         try { const v = (await get(ref(rtdb, "ifco_stock/levels/moorea"))).val(); stockAppli = typeof v === "number" ? v : null; } catch { /* ignore */ }
         const info = {
           caisses, stockAppli, ecart: stockAppli == null ? null : caisses - stockAppli,
-          par: auth.currentUser?.displayName || auth.currentUser?.email || "",
+          par: nomSignataire(),
           ts: Date.now(), dateLabel: new Date().toLocaleString("fr-FR"), importId, filename,
         };
         await setDoc(doc(db, "stocks", importId), { ifcoVides: info }, { merge: true });
@@ -1493,7 +1494,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const avant = typeof actuel === "number" ? actuel : 0;
           const apres = avant + iv.ecart;
           if (!confirm(`Régulariser le stock IFCO vides de l'appli ?\n\nComptage du ${iv.dateLabel || ""} : ${iv.caisses} caisses (appli ${iv.stockAppli} au moment du comptage, écart ${iv.ecart > 0 ? "+" : ""}${iv.ecart}).\n\nStock IFCO Moorea de l'appli : ${avant} → ${apres}`)) return;
-          const par = auth.currentUser?.displayName || auth.currentUser?.email || "";
+          const par = nomSignataire();
           const now = new Date();
           await push(ref(rtdb, "ifco_stock/movements"), {
             date: now.toLocaleDateString("fr-FR"), from: iv.ecart > 0 ? "regularisation" : "moorea", to: iv.ecart > 0 ? "moorea" : "regularisation",
@@ -1560,8 +1561,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       };
       // 30/09/2026 — Qui a compté chaque article (comptage à deux appareils).
       const nomCompteur = () => {
-        const u = auth.currentUser;
-        return (u?.displayName || u?.email || "").split(/[ @]/)[0] || "Moi";
+        return nomSignataire().split(" ")[0] || "Moi";
       };
       const majStatutReseau = () => {
         if (!navigator.onLine) setSyncStatus("loading", "📴 Hors ligne — comptage gardé sur l'appareil");

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { auth, onAuthStateChanged, db, ref, push } from "./firebase";
+import { useV2 } from "./apparence";
 
 // 05/10/2026 — Demande d'Elinathan : commercial@, entrepot@ et agreage@ sont des comptes partagés,
 // impossible de savoir qui a fait quoi. Quand l'appli est ouverte avec l'un d'eux, on demande
@@ -40,6 +41,7 @@ const ecrireLocal = (k: string, v: string) => { try { localStorage.setItem(k, v)
 export function ProfilGenerique() {
   const [email, setEmail] = useState<string | null>(null);
   const actuel = useProfilGenerique();
+  const v2 = useV2();
   const [autre, setAutre] = useState<string | null>(null);
   const derniereActivite = useRef(Date.now());
   const cacheLe = useRef<number | null>(null);
@@ -82,8 +84,8 @@ export function ProfilGenerique() {
 
   if (actuel) return (
     <button type="button" onClick={() => definirProfil(null)} title="Changer de profil"
-      style={{ position: "fixed", top: 6, right: 8, zIndex: 1900, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: "1px solid rgba(200,168,75,.6)", background: "rgba(10,10,10,.85)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.25)" }}>
-      👤 {actuel} <span style={{ color: "#c8a84b" }}>· Changer de profil</span>
+      style={{ position: "fixed", top: 6, right: 8, zIndex: 1900, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: v2 ? "1px solid rgba(255,255,255,.45)" : "1px solid rgba(200,168,75,.6)", background: v2 ? "rgba(48,90,85,.95)" : "rgba(10,10,10,.85)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.25)" }}>
+      👤 {actuel} <span style={{ color: v2 ? "#bfe0c8" : "#c8a84b" }}>· Changer de profil</span>
     </button>
   );
 
@@ -117,4 +119,24 @@ export function ProfilGenerique() {
       </div>
     </div>
   );
+}
+
+// 05/10/2026 — Demande d'Elinathan : tous les mails / messages WhatsApp sont signés par la personne
+// qui les envoie — sur un compte partagé, celle choisie dans « Qui es-tu ? » ; sinon la personne
+// liée au compte Google (son nom), à défaut le prénom tiré de l'adresse mail.
+export function nomSignataire(): string {
+  if (profil) return profil;
+  const u = auth.currentUser;
+  if (u?.displayName) return u.displayName;
+  const local = (u?.email || "").split("@")[0].split(/[._-]/)[0];
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "L'équipe Moorea";
+}
+// Signature HTML standard ajoutée à la fin des mails (voir src/apiAuth.ts).
+export function signatureHtml(nom = nomSignataire()) {
+  const echap = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<div data-signature-moorea style="margin-top:18px;font-family:Arial,sans-serif;font-size:14px;color:#1e2b29">${echap(nom)}<br><span style="color:#5e6b69;font-size:12.5px">Moorea Commerce Fruits · Rungis</span></div>`;
+}
+// Message WhatsApp signé (« — Prénom » en dernière ligne), ouvert dans WhatsApp.
+export function ouvrirWhatsApp(message: string) {
+  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(`${message.trimEnd()}\n\n— ${nomSignataire()}`)}`, "_blank");
 }

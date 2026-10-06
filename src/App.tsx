@@ -4,7 +4,7 @@
 import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
-import { useProfilGenerique, avecProfil } from "./ProfilGenerique";
+import { useProfilGenerique, avecProfil, ouvrirWhatsApp } from "./ProfilGenerique";
 import { definirV2, lireChoixLocal, ecrireChoixLocal, apparenceEffective, type ChoixApparence, type ConfigApparence } from "./apparence";
 import { AccueilModulesV2 } from "./AccueilModulesV2";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
@@ -2116,7 +2116,7 @@ ${scoreLine}
 
 _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+    ouvrirWhatsApp(msg);
   };
 
   const decisionLabel = (d: string) => d === "stock" ? "ENTREE EN STOCK" : d === "reserve" ? "RESERVE" : "REFUS";
@@ -3738,7 +3738,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <select
                 value={apercuEmail || ""}
                 onChange={e => setApercuEmail(e.target.value || null)}
-                style={{ ...(v2 ? { width: "auto", maxWidth: 300 } : {}), padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11.5, fontFamily: "'Syne', sans-serif", fontWeight: 600, cursor: "pointer" }}
+                style={{ ...(v2 ? { width: "auto", maxWidth: 300 } : {}), padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11.5, fontFamily: v2 ? "inherit" : "'Syne', sans-serif", fontWeight: 600, cursor: "pointer" }}
               >
                 <option value="" style={{ color: "#111" }}>🔐 Voir comme… (ma vue normale)</option>
                 {emailsConnus.map(email => (
@@ -3746,7 +3746,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 ))}
               </select>
               {apercuEmail && (
-                <span style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", fontSize: 11, color: "#fbbf24", fontWeight: 700 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, ...(v2 ? { background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.45)", color: "#ffffff" } : { background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.4)", color: "#fbbf24" }) }}>
                   👁️ Aperçu : {apercuEmail}
                   <button onClick={() => setApercuEmail(null)} style={{ border: "none", background: "rgba(0,0,0,0.2)", color: "#fff", borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>Quitter</button>
                 </span>
@@ -4239,7 +4239,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <button onClick={() => setEcartPopup(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 Fermer
               </button>
-              <button onClick={() => { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(ecartPopup.message)}`, "_blank"); setEcartPopup(null); }}
+              <button onClick={() => { ouvrirWhatsApp(ecartPopup.message); setEcartPopup(null); }}
                 style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 📲 Envoyer par WhatsApp
               </button>

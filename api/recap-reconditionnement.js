@@ -54,7 +54,13 @@ const EMBALLAGE_CHAMP = { nlt: "caissesIfcoEnvoyees", andes: "cartonsBabyBlancEn
 // salutation adressée à l'équipe du dépôt plutôt qu'un "Bonjour," générique, et un encart visuel
 // du stock d'emballage avant/après cet envoi (le stock affiché dans l'app est déjà net de ce lot,
 // déduit dès la création de chaque demande — donc "avant" = stock actuel + total de ce lot).
-function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
+// 06/10/2026 — Demande d'Elinathan : le mail est signé par la personne qui l'envoie depuis l'appli
+// (prénom choisi sur un compte partagé), « signataire » ajouté par src/apiAuth.ts. Envoi
+// automatique (sans signataire) : signature habituelle.
+const echapSig = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const signatureRecap = signataire => signataire ? `${echapSig(signataire).slice(0, 80)} — Moorea Agréage` : "Jordan — Moorea Agréage";
+
+function construireEmailHtml({ depot, enAttente, dateFr, stockActuel, signataire }) {
   const totalEmballage = enAttente.reduce((s, d) => s + (d[EMBALLAGE_CHAMP[depot]] || 0), 0);
   const emballageLabel = EMBALLAGE_LABEL[depot];
   const hasStock = typeof stockActuel === "number" && totalEmballage > 0;
@@ -141,7 +147,7 @@ function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
       </table>
 
       <p style="font-size:13px;color:#444;margin:22px 0 2px;">Merci et bonne journée !</p>
-      <p style="font-size:13px;color:#0a0a0a;font-weight:700;margin:0;">Jordan — Moorea Agréage</p>
+      <p style="font-size:13px;color:#0a0a0a;font-weight:700;margin:0;">${signatureRecap(signataire)}</p>
     </div>
   </div>`;
 }
@@ -151,7 +157,7 @@ function construireEmailHtml({ depot, enAttente, dateFr, stockActuel }) {
 // court que le récap envoyé au reconditionneur (le transporteur n'a pas besoin du détail
 // produit/quantité par référence, juste "il y a X référence(s) prête(s) à Moorea, viens les
 // chercher pour les amener chez [dépôt]").
-function construireEmailTransporteurHtml({ transporteurNom, depot, nbReferences, dateFr }) {
+function construireEmailTransporteurHtml({ transporteurNom, depot, nbReferences, dateFr, signataire }) {
   return `
   <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -174,7 +180,7 @@ function construireEmailTransporteurHtml({ transporteurNom, depot, nbReferences,
         Merci de passer les chercher dès que possible.
       </p>
       <p style="font-size:13px;color:#444;margin:22px 0 2px;">Merci et bonne journée !</p>
-      <p style="font-size:13px;color:#0a0a0a;font-weight:700;margin:0;">Jordan — Moorea Agréage</p>
+      <p style="font-size:13px;color:#0a0a0a;font-weight:700;margin:0;">${signatureRecap(signataire)}</p>
     </div>
   </div>`;
 }
@@ -238,7 +244,7 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
   let accepted = [], rejected = [], patchEchoues = [];
   const maintenant = Date.now();
   if (mode !== "transporteur") {
-  const emailHtml = construireEmailHtml({ depot, enAttente, dateFr, stockActuel });
+  const emailHtml = construireEmailHtml({ depot, enAttente, dateFr, stockActuel, signataire: opts.signataire });
 
   let attachments;
   try {
@@ -316,7 +322,7 @@ async function envoyerRecapPourDepot(depot, stockActuel, ids = null, opts = {}) 
           from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
           to: t.email,
           subject: `${force ? "RENVOI — " : ""}🚚 Enlèvement à faire aujourd'hui — Moorea → ${DEPOT_LABEL[depot]} (${dateFr})`,
-          html: construireEmailTransporteurHtml({ transporteurNom: t.nom, depot, nbReferences: demandesLot.length, dateFr }),
+          html: construireEmailTransporteurHtml({ transporteurNom: t.nom, depot, nbReferences: demandesLot.length, dateFr, signataire: opts.signataire }),
         });
         await Promise.all(demandesLot.map(d => adminDb.ref(`reconditionnement_demandes/${d.id}`).update({ mailTransporteurTs: maintenant }).catch(() => {})));
         return { transporteurId, transporteurNom: t.nom || null, envoye: true, accepted: infoT.accepted || [], rejected: infoT.rejected || [] };
@@ -350,18 +356,20 @@ export default async function handler(req, res) {
   let ids = null;
   let force = false;
   let mode = "tout";
+  let signataire = null;
   try {
     const body = req.body && typeof req.body === "object" ? req.body : JSON.parse(req.body || "{}");
     stockActuel = typeof body.stockActuel === "number" ? body.stockActuel : null;
     force = body.force === true;
     mode = ["reconditionneur", "transporteur"].includes(body.mode) ? body.mode : "tout";
     ids = Array.isArray(body.ids) && body.ids.length ? body.ids.map(String) : null;
+    signataire = typeof body.signataire === "string" && body.signataire.trim() ? body.signataire.trim() : null;
   } catch {
     stockActuel = null;
   }
 
   try {
-    const resultat = await envoyerRecapPourDepot(depot, stockActuel, ids, { force, mode });
+    const resultat = await envoyerRecapPourDepot(depot, stockActuel, ids, { force, mode, signataire });
     return res.status(200).json({ success: true, ...resultat });
   } catch (err) {
     console.error("Erreur récap reconditionnement:", err);

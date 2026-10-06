@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { db, ref, onValue, remove, update, auth } from "./firebase";
 import { set } from "firebase/database";
+import { nomSignataire } from "./ProfilGenerique";
 import { PageHeader, styles, MODULE_DEFS, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, toutesLesClesModules, AccesRole, AccesUser } from "./shared";
 import { Commercial } from "./MessagerieModule";
 
@@ -163,7 +164,7 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
 </ol>
 <p><b>Astuce :</b> sur iPad ou téléphone, ajoute l'appli à ton écran d'accueil (Safari : bouton Partager → « Sur l'écran d'accueil » ; Chrome : menu ⋮ → « Installer l'application ») pour l'ouvrir comme une vraie appli.</p>
 <p>Une question ? Réponds simplement à ce mail.</p>
-<p>À bientôt,<br>Elinathan</p>
+<p>À bientôt,</p>
 </div>`;
     try {
       const res = await fetch("/api/send-email", {
@@ -172,7 +173,7 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) throw new Error(data?.error || `Erreur ${res.status}`);
-      const invitation = { prenom: prenom || existant?.invitation?.prenom || "", par: auth.currentUser?.displayName || auth.currentUser?.email || "", ts: Date.now(), dateLabel: new Date().toLocaleString("fr-FR"), nbEnvois: (existant?.invitation?.nbEnvois || 0) + 1 };
+      const invitation = { prenom: prenom || existant?.invitation?.prenom || "", par: nomSignataire(), ts: Date.now(), dateLabel: new Date().toLocaleString("fr-FR"), nbEnvois: (existant?.invitation?.nbEnvois || 0) + 1 };
       if (existant) await update(ref(db, `acces_permissions/users/${cle}`), { invitation });
       else await sauverUser(cle, { email, role: null, admin: false, modeBase: "total", extraModules: {}, extraTabs: {}, denyModules: toutesLesClesModules(), denyTabs: {}, invitation });
       setInvitMessage({ ok: true, texte: `✉️ Invitation envoyée à ${email} depuis ta boîte mail. Elle apparaît ci-dessous en attente.` });

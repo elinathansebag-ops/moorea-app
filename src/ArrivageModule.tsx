@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { createPortal } from "react-dom";
+import { ouvrirWhatsApp } from "./ProfilGenerique";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
 import emailjs from "@emailjs/browser";
@@ -912,7 +913,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               <button onClick={() => setRecap(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 Fermer
               </button>
-              <button onClick={() => { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(recap.message)}`, "_blank"); setRecap(null); }}
+              <button onClick={() => { ouvrirWhatsApp(recap.message); setRecap(null); }}
                 style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 📲 Envoyer par WhatsApp
               </button>
@@ -1137,7 +1138,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
               <button onClick={() => setRecap(null)} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 Fermer
               </button>
-              <button onClick={() => { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(recap.message)}`, "_blank"); setRecap(null); }}
+              <button onClick={() => { ouvrirWhatsApp(recap.message); setRecap(null); }}
                 style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", background: "#25d366", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 📲 Envoyer par WhatsApp
               </button>
@@ -2372,7 +2373,7 @@ export function PalettePublique({ id }: { id: string }) {
           )}
           <button onClick={() => {
               const msg = `📦 MRA.${String(arrivage.lot_interne || "").padStart(4, "0")} — ${arrivage.produit || ""}\nFournisseur : ${arrivage.fournisseur || "-"}\nStatut : ${arrivage.statut || "en attente"}\nQuantité : ${arrivage.quantite || "-"} ${arrivage.unite || ""}\nTraça fournisseur : ${arrivage.rapport?.lot_fournisseur || arrivage.lot_fournisseur || "-"}${arrivage.litige?.raison ? `\nMotif : ${arrivage.litige.raison}` : ""}`;
-              window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+              ouvrirWhatsApp(msg);
             }}
             style={{ flex: "1 1 auto", padding: "11px 14px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #25d366, #128c7e)", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>
             📲 Prévenir les commerciaux
@@ -2782,7 +2783,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
       : "";
 
     const msg = `ARRIVAGES MOOREA - ${date}\n${synthese}\n\n${lignes.join("\n")}${ligneDetruire}`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+    ouvrirWhatsApp(msg);
   };
 
   // ─── RÉCAP WHATSAPP NLT DU JOUR ───
@@ -2810,7 +2811,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     ].filter(Boolean).join(" · ");
 
     const msg = `ARRIVAGES NLT MOOREA - ${date}\n${synthese}\n\n${lignes.join("\n")}`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+    ouvrirWhatsApp(msg);
   };
 
   // ─── PRÉVENIR DES ÉCARTS DU JOUR (WhatsApp, UN SEUL message) ───
@@ -2832,7 +2833,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
     });
 
     const msg = `⚠️ ÉCARTS ARRIVAGES MOOREA - ${date}\n${avecEcart.length} écart${avecEcart.length > 1 ? "s" : ""}\n\n${lignes.join("\n")}`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+    ouvrirWhatsApp(msg);
   };
 
   // Aperçu de traçabilité fournisseur : au lieu de générer un PDF (qui s'affichait dans le

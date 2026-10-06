@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove, auth } from "./firebase";
 import { PageHeader, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, rechercheIntelligente, styles } from "./shared";
 import { ScannerQR } from "./ArrivageModule";
+import { nomSignataire } from "./ProfilGenerique";
 import emailjs from "@emailjs/browser";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -191,7 +192,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
   // laissaient aucune trace. On écrit directement dans le même chemin Firebase.
   const logActiviteRack = (action: string, details: string) => {
     push(ref(db, "activity_log"), {
-      user: auth.currentUser?.displayName || auth.currentUser?.email || "Inconnu",
+      user: nomSignataire(),
       action, details, timestamp: Date.now(),
     }).catch(() => {});
   };

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { db, ref, push, onValue, update, remove, auth, get, set } from "./firebase";
 import { PageHeader, styles, cleTab } from "./shared";
+import { signatureHtml } from "./ProfilGenerique";
 
 // ── Module Messagerie (16/09/2026, démarrage du projet — demande d'Elinathan) ──
 //
@@ -933,10 +934,14 @@ export function MessagerieModule({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composeA, composeCc, composeSujet]);
 
+  // 06/10/2026 — Demande d'Elinathan : mails signés par la personne qui écrit (profil choisi sur
+  // un compte partagé). La signature est posée dans l'éditeur, au-dessus de la citation, pour
+  // qu'on la voie et puisse la retoucher avant l'envoi.
+  const debutCorps = () => `<br><br>${signatureHtml()}`;
   const citationOriginaleHtml = () => {
-    if (!detailMail) return "";
+    if (!detailMail) return debutCorps();
     const texteOriginal = (detailMail.texte || "").replace(/</g, "&lt;");
-    return `<br><br><div style="border-left:2px solid #ccc;padding-left:10px;color:#555;">--- Message original ---<br>De : ${detailMail.de}<br>Date : ${formatDateMail(detailMail.date)}<br>Sujet : ${detailMail.sujet}<br><br><pre style="white-space:pre-wrap;font-family:inherit;margin:0;">${texteOriginal}</pre></div>`;
+    return `${debutCorps()}<br><div style="border-left:2px solid #ccc;padding-left:10px;color:#555;">--- Message original ---<br>De : ${detailMail.de}<br>Date : ${formatDateMail(detailMail.date)}<br>Sujet : ${detailMail.sujet}<br><br><pre style="white-space:pre-wrap;font-family:inherit;margin:0;">${texteOriginal}</pre></div>`;
   };
 
   const ouvrirNouveauMessage = () => {
@@ -944,7 +949,7 @@ export function MessagerieModule({
     setComposeA([]);
     setComposeCc([]);
     setComposeSujet("");
-    setComposeCorpsInitial("");
+    setComposeCorpsInitial(debutCorps());
     setComposeInclurePieces(false);
     setComposeErreur(null);
   };

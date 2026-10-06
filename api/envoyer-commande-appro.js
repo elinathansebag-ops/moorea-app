@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { fournisseur, vagueLabel, semaineKey, dateDepartLabel, numeroVol, lignes, cc = [], modeTest = false, destinatairesReels = [] } = req.body;
+    const { fournisseur, vagueLabel, semaineKey, dateDepartLabel, numeroVol, lignes, cc = [], modeTest = false, destinatairesReels = [], signataire = "" } = req.body;
 
     if (!fournisseur?.emails?.length) {
       return res.status(400).json({ error: "Aucun email fournisseur fourni" });
@@ -103,6 +103,7 @@ export default async function handler(req, res) {
         </table>
         ${uneLigneADdm ? `<p style="color:#4b5563;font-size:11px;margin-top:14px;">DDM = minimum best-before / consumption date. Please print the date shown in the "Date" column on the corresponding punnets/packaging.</p>` : ""}
         <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Please confirm receipt of this order.</p>
+        ${typeof signataire === "string" && signataire.trim() ? `<p style="color:#1e2b29;font-size:13px;margin-top:14px;">Best regards,<br/><b>${signataire.trim().slice(0, 80).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</b><br/><span style="color:#6b7280">Moorea Commerce Fruits · Rungis</span></p>` : ""}
       </div>
     `;
 

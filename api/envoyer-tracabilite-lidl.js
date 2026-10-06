@@ -16,7 +16,7 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   try {
-    const { to = [], modeTest = true, emailLidlReel = "", objet, nomFichier, xlsxBase64, dateLongue, version = 1, nbLignes = 0 } = req.body || {};
+    const { to = [], modeTest = true, emailLidlReel = "", objet, nomFichier, xlsxBase64, dateLongue, version = 1, nbLignes = 0, signataire = "" } = req.body || {};
     if (!xlsxBase64 || !objet || !nomFichier) return res.status(400).json({ error: "Fichier ou objet manquant" });
     const autorises = modeTest ? AUTORISES_TEST : [String(emailLidlReel).toLowerCase()];
     const destinataires = (Array.isArray(to) ? to : []).map(x => String(x).toLowerCase());
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
       ${banniere}
       <p>Bonjour,</p>
       <p>Veuillez trouver ci-joint le tableau d'avis de livraison (traçabilité) de MOOREA pour la livraison du <b>${dateLongue || ""}</b>${version > 1 ? ` — version ${String(version).padStart(2, "0")} (mise à jour)` : ""}, soit ${nbLignes} ligne${nbLignes > 1 ? "s" : ""}.</p>
-      <p>Cordialement,<br/>MOOREA</p></div>`;
+      <p>Cordialement,<br/>${typeof signataire === "string" && signataire.trim() ? `${String(signataire).trim().slice(0, 80).replace(/&/g, "&amp;").replace(/</g, "&lt;")}<br/>` : ""}MOOREA</p></div>`;
     const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: "jordan.jouanest@moorea.fr", pass: process.env.GMAIL_PASS_JORDAN } });
     const info = await transporter.sendMail({
       from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
