@@ -47,10 +47,10 @@ export function AccueilModulesV2({ modules, sombre }: { modules: Module[]; sombr
   const familles = FAMILLES.map(f => ({ nom: f.nom, modules: f.cles.map(c => parCle.get(c)).filter(Boolean) as Module[] }));
   const autres = modules.filter(m => !m.key || !rangees.has(m.key));
   if (autres.length) familles.push({ nom: "Autres", modules: autres });
-  // Peu de modules (compte limité) : une seule grille, sans titres de familles — des sections presque
-  // vides dispersaient la page (retour d'Elinathan). L'ordre des familles est gardé.
-  const SEUIL_FAMILLES = 10;
-  const groupes = modules.length > SEUIL_FAMILLES ? familles : [{ nom: "", modules: familles.flatMap(f => f.modules) }];
+  // 10/10/2026 — Toujours une seule grille, sans titres de familles, quel que soit le nombre de
+  // modules : les sections séparées dispersaient la page (retour d'Elinathan). L'ordre des familles
+  // est gardé pour que les modules proches restent côte à côte.
+  const groupes = [{ nom: "", modules: familles.flatMap(f => f.modules) }];
   const carte = sombre ? "#171b21" : "#ffffff", fondIcone = sombre ? "#1d2e2b" : "#eaf2ee", ligne = sombre ? "#2e3540" : "#dde6e3";
   const titre = sombre ? "#8cc79a" : "#305a55", encre = sombre ? "#e6e8eb" : "#1e2b29", gris = sombre ? "#aab1bb" : "#5e6b69";
   return (

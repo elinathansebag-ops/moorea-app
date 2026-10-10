@@ -1,4 +1,3 @@
-import { useV2 } from "./apparence";
 import { useEffect, useState } from "react";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -62,7 +61,6 @@ export function VersionChecker() {
     };
   }, []);
 
-  const v2 = useV2();
   if (!updateAvailable) return null;
 
   return (
@@ -79,11 +77,11 @@ export function VersionChecker() {
       <button
         onClick={() => window.location.reload()}
         style={{
-          padding: "8px 18px", borderRadius: 20, border: "none", cursor: "pointer",
-          background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 13,
+          padding: "8px 18px", borderRadius: 20, cursor: "pointer",
+          fontWeight: 700, fontSize: 13,
           fontFamily: "'DM Sans', sans-serif",
-          // 05/10/2026 — Nouvelle apparence : bouton blanc à contour sur le bandeau vert sapin (bien visible).
-          ...(v2 ? { background: "#ffffff", color: "#305a55", border: "2px solid #ffffff", boxShadow: "0 0 0 2px rgba(255,255,255,.35)" } : {}),
+          // Bouton blanc à contour sur le bandeau vert sapin (bien visible).
+          background: "#ffffff", color: "#305a55", border: "2px solid #ffffff", boxShadow: "0 0 0 2px rgba(255,255,255,.35)",
         }}
       >
         Actualiser maintenant

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { auth, onAuthStateChanged, db, ref, push } from "./firebase";
-import { useV2 } from "./apparence";
 
 // 05/10/2026 — Demande d'Elinathan : commercial@, entrepot@ et agreage@ sont des comptes partagés,
 // impossible de savoir qui a fait quoi. Quand l'appli est ouverte avec l'un d'eux, on demande
@@ -41,7 +40,6 @@ const ecrireLocal = (k: string, v: string) => { try { localStorage.setItem(k, v)
 export function ProfilGenerique() {
   const [email, setEmail] = useState<string | null>(null);
   const actuel = useProfilGenerique();
-  const v2 = useV2();
   const [autre, setAutre] = useState<string | null>(null);
   const derniereActivite = useRef(Date.now());
   const cacheLe = useRef<number | null>(null);
@@ -84,8 +82,8 @@ export function ProfilGenerique() {
 
   if (actuel) return (
     <button type="button" onClick={() => definirProfil(null)} title="Changer de profil"
-      style={{ position: "fixed", top: 6, right: 8, zIndex: 1900, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: v2 ? "1px solid rgba(255,255,255,.45)" : "1px solid rgba(200,168,75,.6)", background: v2 ? "rgba(48,90,85,.95)" : "rgba(10,10,10,.85)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.25)" }}>
-      👤 {actuel} <span style={{ color: v2 ? "#bfe0c8" : "#c8a84b" }}>· Changer de profil</span>
+      style={{ position: "fixed", top: 6, right: 8, zIndex: 1900, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: "1px solid rgba(255,255,255,.45)", background: "rgba(48,90,85,.95)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.25)" }}>
+      👤 {actuel} <span style={{ color: "#bfe0c8" }}>· Changer de profil</span>
     </button>
   );
 

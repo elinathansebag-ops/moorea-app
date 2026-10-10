@@ -1,4 +1,4 @@
-import { useV2, sansEmoji } from "./apparence";
+import { sansEmoji } from "./apparence";
 import { useState, useEffect, useRef } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import emailjs from "@emailjs/browser";
@@ -192,26 +192,10 @@ function PageHeaderV2({ titre, onBack, onHome }: { titre: string; onBack?: () =>
   );
 }
 
-export function PageHeader({ titre, couleur = "#c8a84b", onBack, onHome }: { titre: string; couleur?: string; onBack?: () => void; onHome?: () => void }) {
-  const v2 = useV2();
-  if (v2) return <PageHeaderV2 titre={titre} onBack={onBack} onHome={onHome} />;
-  return (
-    <div style={{ background: "#0a0a0a", borderBottom: `3px solid ${couleur}`, position: "sticky", top: 0, zIndex: 200, paddingTop: "env(safe-area-inset-top, 0px)" }}>
-      <div style={{ maxWidth: 800, margin: "0 auto", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px" }}>
-        <div style={{ minWidth: 70, flexShrink: 0 }}>
-          {onBack && (
-            <button onClick={onBack} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>← Retour</button>
-          )}
-        </div>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: couleur, fontFamily: "'Syne', sans-serif", textAlign: "center", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 6px" }}>{titre}</p>
-        <div style={{ minWidth: 70, flexShrink: 0, display: "flex", justifyContent: "flex-end" }}>
-          {onHome && (
-            <button onClick={onHome} style={{ padding: "6px 10px", borderRadius: 9, border: "none", background: "#c8a84b", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#0a0a0a" }}>🏠</button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+// 10/10/2026 — Seule la nouvelle apparence existe : l'en-tête est toujours PageHeaderV2.
+// « couleur » reste accepté (beaucoup d'écrans le passent encore) mais n'est plus utilisé.
+export function PageHeader({ titre, onBack, onHome }: { titre: string; couleur?: string; onBack?: () => void; onHome?: () => void }) {
+  return <PageHeaderV2 titre={titre} onBack={onBack} onHome={onHome} />;
 }
 
 export function NoteSelector({ value, onChange }: { value: number; onChange: (n: number) => void }) {

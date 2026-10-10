@@ -1,8 +1,7 @@
 // 05/10/2026 — Nouvelle apparence : les emojis décoratifs disparaissent des écrans (« 📋 Import »
 // → « Import »), sans réécrire chaque module. Seulement quand la classe « v2 » est active ; un
 // emoji qui est le SEUL contenu de son élément (bouton-icône 🗑️, 🏠…) est gardé, pour ne jamais
-// laisser un bouton vide. Retour à l'ancienne apparence : la page est rechargée (voir App.tsx),
-// donc tous les textes d'origine reviennent.
+// laisser un bouton vide. (10/10/2026 : toujours actif, l'ancienne apparence a été retirée.)
 const EMOJI = /(?:\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic})*️?⃣?)+\s?/gu;
 const IGNORER = new Set(["SCRIPT", "STYLE", "TEXTAREA", "INPUT", "CODE", "PRE"]);
 
