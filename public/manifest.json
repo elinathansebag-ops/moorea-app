@@ -3,9 +3,9 @@
   "short_name": "Moorea",
   "description": "Rapports qualité arrivages Rungis",
   "start_url": "/",
-  "display": "minimal-ui",
-  "background_color": "#0a0a0a",
-  "theme_color": "#c8a84b",
+  "display": "standalone",
+  "background_color": "#305a55",
+  "theme_color": "#305a55",
   "orientation": "portrait",
   "icons": [
     {
