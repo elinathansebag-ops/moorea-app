@@ -4,6 +4,7 @@ import { ouvrirWhatsApp } from "./ProfilGenerique";
 import jsPDF from "jspdf";
 import { CLIENTS_LIST } from "./ClientsList";
 import { PageHeader, rechercheIntelligente, styles } from "./shared";
+import { alerterPush } from "./NotificationsPush";
 
 // ── Types ──
 interface ProduitLigne {
@@ -405,6 +406,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     const numero = await getNextNumero();
     const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "commercial", client: fCli.trim(), bl: fBl.trim(), transporteur: fTra.trim(), dateLiv: fDat, commercial: fCom.trim(), comment: fCmt.trim(), products: prods, statut: "nouveau", commentPrep: "" };
     const r = await push(ref(db, "retours"), fiche);
+    alerterPush({ type: "retour_client", titre: `↩️ Nouveau retour client n° ${numero}`, corps: `${fiche.client} — BL ${fiche.bl} — ${prods.length} produit${prods.length > 1 ? "s" : ""}${fiche.commercial ? ` — ${fiche.commercial}` : ""}` }); // 10/10/2026
     setFCli(""); setFBl(""); setFTra(""); setFDat(""); setFCom(""); setFCmt(""); setFRows([emptyPrevu()]);
     setModal("success"); setModalData({ fiche: { ...fiche, id: (r as any).key }, source: "commercial" });
   }
@@ -420,6 +422,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     const numero = await getNextNumero();
     const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "entrepot", agent: eAgt.trim(), products: prods, comment: eCmt.trim(), dateLiv: eDat, clientConnu: eCli.trim() || null, transporteurConnu: eTra.trim() || null, rattache: false, statut: "nouveau", commentPrep: "" };
     const r = await push(ref(db, "retours_entrepot"), fiche);
+    alerterPush({ type: "retour_client", titre: `↩️ Retour reçu à l'entrepôt n° ${numero}`, corps: `${fiche.clientConnu || "Client à rattacher"} — ${prods.length} article${prods.length > 1 ? "s" : ""} — reçu par ${fiche.agent}` }); // 10/10/2026
     setEAgt(""); setECli(""); setETra(""); setECmt(""); setEDat(new Date().toISOString().split("T")[0]); setERows([emptyPrevu()]);
     setModal("success"); setModalData({ fiche: { ...fiche, id: (r as any).key, client: "(non rattaché)", bl: "—" }, source: "entrepot" });
   }

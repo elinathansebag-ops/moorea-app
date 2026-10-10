@@ -1,3 +1,4 @@
+import { alerter } from "./_push.js";
 export const config = { runtime: "nodejs" };
 
 // Endpoint public (pas d'authentification) : le prestataire clique sur le lien reçu par email
@@ -63,6 +64,12 @@ export default async function handler(req, res) {
         dateReception: new Date().toISOString().split("T")[0],
         confirmationPresta: { confirme: true, date: dateFr },
       }),
+    });
+
+    // 10/10/2026 — Notification push (voir api/_push.js).
+    await alerter("cartons_livres", {
+      titre: type === "palette" ? "📦 Livraison de palettes IFCO confirmée" : "📦 Livraison de cartons confirmée",
+      corps: `${(Array.isArray(commande.lignes) ? commande.lignes.map(l => [l?.nbPalettes && `${l.nbPalettes} pal.`, l?.type].filter(Boolean).join(" ")).filter(Boolean).join(", ") : "") || "Commande"} — confirmée le ${dateFr}`,
     });
 
     // Cartons BABY BLANC livrés directement chez Andès (hors site) : c'est LE moment réel de

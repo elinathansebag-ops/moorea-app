@@ -3,6 +3,7 @@ import { db, ref, onValue, update, remove, get, push } from "./firebase";
 import { pdfBonGeslot, pdfBonPreparation, pdfEtiquettesPalettes, envoyerPdfImprimante, envoyerEtiquettesImprimante, type LigneBon, type EtiquettePalette } from "./lidlImpression";
 import { LidlScanner } from "./LidlScanner";
 import { PRODUCTEURS_LIDL, envoyerTracabiliteLidl, genererXlsxLidl, nomFichierLidl, type Producteur, type ContexteExport, type LigneExport } from "./lidlExport";
+import { alerterPush } from "./NotificationsPush";
 
 // 02/10/2026 — Demande d'Elinathan : Lidl envoie chaque jour un tableau de répartition
 // (« Répartition fournisseur/camion mix », fichier AU-xxxxx.xlsx). Le commercial l'importe ici dès
@@ -417,8 +418,10 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       if (changements.length) {
         await push(ref(db, "lidl_changements"), { date: d, depart: dep, ts: Date.now(), par: userName || "", changements, vu: false });
         setPopupChangements({ date: d, depart: dep, liste: changements });
+        alerterPush({ type: "lidl_changement", titre: `🛒 Commande Lidl modifiée (${d})`, corps: changements.slice(0, 6).map((c: any) => `${c.base} ${c.avant}→${c.apres}`).join(" · ") + (userName ? ` — par ${userName}` : "") }); // 10/10/2026
       }
       await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichierLu.nom, dates: [d], depart: dep, dateFichier: fichierLu.dateFichier || null, lignes: lues.length });
+      alerterPush({ type: "lidl_import", titre: `🛒 Commandes Lidl importées (${d})`, corps: `${lues.length} ligne${lues.length > 1 ? "s" : ""}${dep ? ` — départ ${dep}` : ""}${userName ? ` — par ${userName}` : ""}` }); // 10/10/2026
       setJour(d);
       setJoursOuverts(x => new Set(x).add(d));
       setSemainesOuvertes(x => new Set(x).add(lundiDe(d)));

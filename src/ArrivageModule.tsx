@@ -494,14 +494,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         else setRecap({ message });
       }
       if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
-      // 10/10/2026 — Demande d'Elinathan : notification push à chaque litige (voir src/NotificationsPush.tsx).
-      if (hasLitige) {
-        alerterPush({
-          type: "litige",
-          titre: isRetourRecond ? "⚠️ Problème au retour de reconditionnement" : "🚩 Litige déclaré à l'agréage",
-          corps: [`${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""}`, arrivage.fournisseur, raisonFinal].filter(Boolean).join(" — "),
-          tag: `litige-${arrivage.id}`,
-        });
+      // 10/10/2026 — Demande d'Elinathan : notifications push (voir src/NotificationsPush.tsx).
+      const lignePush = [`${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""}`, arrivage.fournisseur, raisonFinal].filter(Boolean).join(" — ");
+      if (isRetourRecond) {
+        alerterPush({ type: "retour_recond_arrive", titre: hasLitige ? "⚠️ Retour de reconditionnement pointé, avec problème" : "✅ Retour de reconditionnement pointé", corps: `${lignePush} — reçu ${colisRecusNum}`, tag: `retour-${arrivage.id}` });
+      } else if (hasLitige) {
+        alerterPush({ type: "litige", titre: "🚩 Litige déclaré à l'agréage", corps: lignePush, tag: `litige-${arrivage.id}` });
       }
     } catch (err: any) {
       alert(`❌ Erreur pendant la validation : ${err?.message || "erreur inconnue"}\n\nRien n'a été enregistré côté impression/récap — réessaie ou préviens Elinathan si ça persiste.`);
@@ -1020,6 +1018,9 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
         recapLignes.push({ produit: a.produit, lot: a.lot_interne, attendu, recu, ecart });
       }
       effacerBrouillon(brouillonPointage);
+      // 10/10/2026 — Une seule notification push pour tout le pointage groupé.
+      const nbProblemes = rows.filter(r => problemes[r.a.id]).length;
+      alerterPush({ type: "retour_recond_arrive", titre: `${nbProblemes || recapLignes.some(r => r.ecart !== 0) ? "⚠️" : "✅"} Retour ${groupe} pointé (${recapLignes.length} réf.)`, corps: recapLignes.map(r => `${r.produit || "-"} ${r.recu}/${r.attendu}`).slice(0, 6).join(" · ") + (nbProblemes ? ` — ${nbProblemes} problème${nbProblemes > 1 ? "s" : ""} signalé${nbProblemes > 1 ? "s" : ""}` : ""), tag: `retour-${groupe}-${date}` });
       const lignesMsg = recapLignes.map(r => `${r.ecart !== 0 ? "⚠️" : "✅"} ${r.produit || "-"}${r.lot ? ` · lot ${r.lot}` : ""} — reçu ${r.recu}/${r.attendu}${r.ecart !== 0 ? ` (${r.ecart > 0 ? "+" : ""}${r.ecart})` : ""}`);
       // 29/09/2026 — Plus de total global (on travaille par référence) : écarts d'abord.
       const nbEcarts = recapLignes.filter(r => r.ecart !== 0).length;
@@ -1618,7 +1619,7 @@ export function PalettePerteForm({ arrivage }: { arrivage: any }) {
       });
       setDone(true);
       // 10/10/2026 — notification push à Elinathan (voir src/NotificationsPush.tsx).
-      alerterPush({ type: "litige", titre: "🗑 Perte déclarée", corps: `${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""} — ${perteQty} colis — ${perteRaison}`, tag: `perte-${arrivage.id}` });
+      alerterPush({ type: "perte_lot", titre: "🗑 Perte déclarée", corps: `${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""} — ${perteQty} colis — ${perteRaison}`, tag: `perte-${arrivage.id}` });
     } catch { alert("Erreur enregistrement"); }
     setSaving(false);
   };

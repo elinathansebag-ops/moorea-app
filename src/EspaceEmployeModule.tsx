@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { db, ref, onValue, update, push, get, auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "./firebase";
 import { styles } from "./shared";
 import { calculerHeuresJour, fmtMinutesPointeuse, type HoraireJour } from "./pointeuseCalc";
+import { alerterPush } from "./NotificationsPush";
 
 // ─── Espace personnel employé (public, accessible via ?espace=<employeId>&email=... pour le
 // premier lien reçu par mail, ou ?espace=1 pour se reconnecter ensuite) ───
@@ -79,6 +80,7 @@ export function EspaceEmployeModule({ employeIdInvite, emailInvite }: { employeI
         employeId, nom: infosPubliques?.nom || "", message: messageDemande.trim(),
         statut: "ouverte", timestamp: Date.now(),
       });
+      alerterPush({ type: "pointeuse_demande", titre: `🙋 Demande de ${infosPubliques?.nom || "un employé"}`, corps: messageDemande.trim() }); // 10/10/2026
       setMessageDemande("");
       setDemandeEnvoyee(true);
       setTimeout(() => setDemandeEnvoyee(false), 4000);

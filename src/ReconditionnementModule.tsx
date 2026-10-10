@@ -2860,6 +2860,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         });
       }
 
+      if (!apresCoup) alerterRecond([demande], "nouvelle", userName); // 10/10/2026 — notification push
       notify("success", dejaChezReconditionneur
         ? "✅ Ligne enregistrée — déjà chez le reconditionneur, aucun envoi ni mail, le retour apparaît dans « Pointer arrivage »"
         : "✅ Demande envoyée à l'entrepôt");
@@ -3161,6 +3162,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       }
       let numeroPalette = "";
       if (caissesIfco > 0) numeroPalette = await creerEnvoiPaletteIfcoNlt(caissesIfco, transporteurIfco?.nom || "");
+      if (!groupeApresCoup) alerterRecond(dejaNumerotes.slice(demandes.length), "nouvelle", userName); // 10/10/2026 — une seule notification push (dejaNumerotes commence par les demandes existantes)
       notify("success", `✅ ${crees} demande${crees > 1 ? "s" : ""} créée${crees > 1 ? "s" : ""}${numeroPalette ? ` + envoi de ${caissesIfco} caisses IFCO (${numeroPalette})` : ""}`);
       // 02/10/2026 — Demande d'Elinathan : le mail part DIRECTEMENT à la validation par le commercial
       // (mail au reconditionneur avec les bons + mail au(x) transporteur(s) hors Moorea).

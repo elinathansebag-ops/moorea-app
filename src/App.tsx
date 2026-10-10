@@ -8,7 +8,7 @@ import { useProfilGenerique, avecProfil, ouvrirWhatsApp } from "./ProfilGeneriqu
 import { AccueilModulesV2 } from "./AccueilModulesV2";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
-import { NotificationsPush, alerterPush } from "./NotificationsPush";
+import { NotificationsPush, AttributionNotifications, alerterPush } from "./NotificationsPush";
 import { LogoMoorea, PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 
@@ -736,6 +736,7 @@ export default function App() {
   // 17/09/2026 — Demande d'Elinathan : "Réglages" par défaut à l'ouverture d'Admin, pas
   // "Activité" (elle n'a pas besoin de voir ça en première page).
   const [adminTab, setAdminTab] = useState<"activite" | "reglages">("reglages");
+  const [showNotifsAppareil, setShowNotifsAppareil] = useState(false); // 10/10/2026 — notifications push
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [rackModePlacementAdmin, setRackModePlacementAdmin] = useState<"manuel" | "scan">("manuel");
   useEffect(() => {
@@ -1584,6 +1585,7 @@ export default function App() {
       ? new Date(formArr.date).toLocaleDateString("fr-FR")
       : now2.toLocaleDateString("fr-FR");
     await push(ref(db, "arrivages"), { ...formArr, date: arrivalDate, statut: "en attente", timestamp: Date.now() });
+    alerterPush({ type: "arrivage_nouveau", titre: "📥 Nouvel arrivage à pointer", corps: `${formArr.produit} — ${formArr.fournisseur} — ${formArr.quantite} ${formArr.unite || "colis"} (${arrivalDate})` }); // 10/10/2026
     setFormArr({ fournisseur: "", produit: "", variete: "", origine: "", quantite: "", unite: "colis", lot_interne: "", lot_fournisseur: "", poids_colis: "", code_article: "", dlc: "", date: "" });
     setPageMode("arrivages"); showToast("Arrivage enregistré ✓");
   };
@@ -1832,6 +1834,8 @@ export default function App() {
     let ecrits = 0;
     setProgImportArr({ texte: `Enregistrement 0/${totalEcritures}`, fait: 0, total: totalEcritures, debut: Date.now(), maj: Date.now() });
     for (const a of nouveaux) { const ca = getCodeArticle(a.produit); await push(ref(db, "arrivages"), { ...a, statut: "en attente", timestamp: Date.now(), ...(ca ? {code_article: ca} : {}) }); ecrits++; majProgImportArr(`Enregistrement ${ecrits}/${totalEcritures}`, ecrits, totalEcritures); }
+    // 10/10/2026 — Une seule notification push pour tout l'import.
+    if (nouveaux.length) alerterPush({ type: "arrivage_nouveau", titre: `📥 ${nouveaux.length} nouvel${nouveaux.length > 1 ? "s" : ""} arrivage${nouveaux.length > 1 ? "s" : ""} à pointer`, corps: [...new Set(nouveaux.map((a: any) => a.fournisseur).filter(Boolean))].slice(0, 6).join(", ") + (nouveaux[0]?.date ? ` — ${nouveaux[0].date}` : "") });
 
     // Modification de calibre/quantité sur un arrivage déjà présent : on met à jour ses infos
     // et, s'il était déjà validé/refusé, on le rouvre en "en attente" pour qu'il soit revérifié
@@ -2032,6 +2036,7 @@ export default function App() {
     if (!horsListe.produit || !horsListe.fournisseur || !horsListe.raison) { showToast("⚠ Produit, fournisseur et raison requis", "error"); return; }
     const now2 = new Date();
     await push(ref(db, "arrivages"), { ...horsListe, statut: horsListe.type, hors_liste: true, archived: true, date: now2.toLocaleDateString("fr-FR"), timestamp: Date.now(), validatedAt: Date.now(), litige: { type: horsListe.type, raison: horsListe.raison, pct: horsListe.pct, lot_fournisseur: horsListe.lot_fournisseur, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } });
+    alerterPush({ type: "litige", titre: "🚩 Litige hors liste", corps: `${horsListe.produit} — ${horsListe.fournisseur} — ${horsListe.raison}` }); // 10/10/2026
     setHorsListeMode(false); setHorsListe({ produit: "", fournisseur: "", lot_interne: "", lot_fournisseur: "", origine: "", quantite: "", unite: "colis", type: "refusé", raison: "", pct: "" });
     showToast("Litige hors liste enregistré ✓");
   };
@@ -3623,8 +3628,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         appli fermée (reconditionnement prêt/parti, perte ou litige, alerte
                         technique). Voir src/NotificationsPush.tsx. */}
                     <TitreSection>🔔 Notifications</TitreSection>
-                    <CarteReglage titre="🔔 Notifications sur cet appareil" desc="Alertes reçues même appli fermée ou écran éteint : reconditionnement prêt / parti, perte ou litige déclaré, relais d'impression ou compte mail en panne. Envoyées pour l'instant à Elinathan uniquement.">
+                    <CarteReglage titre="🔔 Notifications sur cet appareil" desc="Alertes reçues même appli fermée ou écran éteint. Chaque personne active les siennes sur son propre téléphone (bouton 🔔 en haut de l'accueil).">
                       <NotificationsPush darkMode={darkMode} />
+                    </CarteReglage>
+                    <CarteReglage titre="👥 Qui reçoit quelles notifications" desc="Touche une alerte pour choisir les comptes qui la reçoivent.">
+                      <AttributionNotifications comptes={Object.values(permUsers).map(u => (u as any)?.email).filter(Boolean)} darkMode={darkMode} />
                     </CarteReglage>
 
                     {/* 22/09/2026 -- Demande d'Elinathan : voir d'un coup d'œil lequel des 6
@@ -3790,8 +3798,24 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 style={{ height: 32, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.85)", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
                 {modeTheme === "clair" ? "☀️ Clair" : modeTheme === "sombre" ? "🌙 Sombre" : "🌓 Auto"}
               </button>
+              {/* 10/10/2026 — Notifications push : chacun active les notifications sur SON appareil
+                  (pas seulement les admins), voir src/NotificationsPush.tsx. */}
+              <button onClick={() => setShowNotifsAppareil(true)} title="Notifications sur cet appareil"
+                style={{ height: 32, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.85)" }}>🔔</button>
               <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>Déco</button>
             </div>
+            {showNotifsAppareil && (
+              <div onClick={() => setShowNotifsAppareil(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                <div onClick={e => e.stopPropagation()} style={{ background: darkMode ? "#1f1f1f" : "#fff", borderRadius: 16, padding: 20, maxWidth: 420, width: "100%", boxSizing: "border-box" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: darkMode ? "#e5e7eb" : "#1a2e1a" }}>🔔 Notifications sur cet appareil</p>
+                    <button onClick={() => setShowNotifsAppareil(false)} style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", color: "#9ca3af" }}>✕</button>
+                  </div>
+                  <p style={{ margin: "0 0 12px", fontSize: 11.5, color: "#9ca3af" }}>Pour recevoir les alertes même appli fermée. Les alertes reçues par chacun se règlent dans Admin › Réglages.</p>
+                  <NotificationsPush darkMode={darkMode} />
+                </div>
+              </div>
+            )}
           </div>
           {/* 09/09/2026 — Bandeau de stats (En attente / Traités / Litiges / Rapports) retiré à la
               demande d'Elinathan : "ça sert à rien". nbAttente/nbTraitesAujourdHui/nbLitigesOuverts/

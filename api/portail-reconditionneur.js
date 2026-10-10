@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import { getAdminDb } from "./_firebaseAdmin.js";
-import { alerterElinathan } from "./_push.js";
+import { alerter } from "./_push.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -377,7 +377,7 @@ export async function notifierProdPrete(adminDb, depot, demande, id, { quantite,
   const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
 
   // 10/10/2026 — Demande d'Elinathan : notification push (téléphone), en plus du mail.
-  await alerterElinathan({
+  await alerter("recond_presta_prete", {
     titre: `📦 Prod prête / repartie — ${DEPOT_LABEL[depot]}`,
     corps: `${ref} — ${demande.articleFini || demande.articleVrac || "—"} : ${quantite} colis${ecart ? ` (écart ${ecart > 0 ? "+" : ""}${ecart})` : ""}${transporteur ? ` — ${transporteur}` : ""}`,
     tag: `prod-prete-${id}`,
@@ -518,7 +518,7 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
   }
 
   // 10/10/2026 — Demande d'Elinathan : une seule notification push pour tout le lot.
-  await alerterElinathan({
+  await alerter("recond_presta_prete", {
     titre: `📦 ${traitees.length > 1 ? `${traitees.length} prods prêtes / reparties` : "Prod prête / repartie"} — ${DEPOT_LABEL[depot]}`,
     corps: traitees.map(t => `${t.demande.numero || t.id} : ${t.quantite} colis${t.ecart ? ` (écart ${t.ecart > 0 ? "+" : ""}${t.ecart})` : ""}`).slice(0, 6).join(" · "),
     tag: `prod-prete-${traitees[0].id}`,
@@ -665,7 +665,7 @@ async function handleDeclarerPerte(adminDb, depot, id, body) {
   };
   await adminDb.ref(`reconditionnement_demandes/${id}/pertes`).push(perte);
   // 10/10/2026 — Demande d'Elinathan : notification push (téléphone), en plus du mail.
-  await alerterElinathan({
+  await alerter("recond_presta_perte", {
     titre: `⚠️ Perte déclarée par ${DEPOT_LABEL[depot]}`,
     corps: `${demande.numero || id} — ${demande.articleFini || demande.articleVrac || "—"} : ${quantite} colis — ${perte.motif}`,
     tag: `perte-recond-${id}`,
@@ -729,6 +729,11 @@ async function handleConfirmerLivraisonCarton(adminDb, depot, id) {
     statut: "reçu",
     dateReception: new Date().toISOString().split("T")[0],
     confirmationPresta: { confirme: true, date },
+  });
+  // 10/10/2026 — Notification push (voir api/_push.js).
+  await alerter("cartons_livres", {
+    titre: "📦 Andès a confirmé une livraison de cartons",
+    corps: `${(Array.isArray(commande.lignes) ? commande.lignes.map(l => [l?.nbPalettes && `${l.nbPalettes} pal.`, l?.type].filter(Boolean).join(" ")).filter(Boolean).join(", ") : "") || "Commande"} — ${date}`,
   });
 
   // Même logique que confirm-livraison.js : une livraison hors site confirmée est LE moment
@@ -794,6 +799,11 @@ async function handleDemanderReajustement(adminDb, depot, body) {
     statut: "en attente",
   };
   await adminDb.ref("reajustements_stock_demandes").push(demande);
+  // 10/10/2026 — Notification push (voir api/_push.js).
+  await alerter("recond_reajustement", {
+    titre: `📦 Réajustement de stock demandé — ${DEPOT_LABEL[depot]}`,
+    corps: `${quantiteActuelle} → ${quantiteProposee} ${EMBALLAGE_LABEL[depot]} — ${raison}`,
+  });
 
   // Email interne Moorea — best effort. C'est une demande à VALIDER, pas un changement déjà
   // appliqué : le stock n'est modifié que quand quelqu'un valide côté ReconditionnementModule.

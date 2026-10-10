@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { alerterElinathan } from "./_push.js";
+import { alerter } from "./_push.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -260,7 +260,7 @@ export default async function handler(req, res) {
       });
 
       // 10/10/2026 — Demande d'Elinathan : notification push (téléphone), en plus du mail.
-      await alerterElinathan({
+      await alerter("recond_presta_perte", {
         titre: "⚠️ Perte déclarée par le reconditionneur",
         corps: `${demande.numero || id} — ${demande.articleFini || demande.articleVrac || "—"} : ${perte.quantite} colis — ${perte.motif}`,
         tag: `perte-recond-${id}`,

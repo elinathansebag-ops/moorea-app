@@ -3,6 +3,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { PDFParse } from "pdf-parse";
 import { getAdminDb } from "./_firebaseAdmin.js";
+import { alerter } from "./_push.js";
 import { appliquerBlNltSurDemande, lotsIdentiques } from "./portail-reconditionneur.js";
 
 export const config = { runtime: "nodejs" };
@@ -194,6 +195,13 @@ export default async function handler(req, res) {
     try { await client.logout(); } catch { /* déjà déconnecté, sans conséquence */ }
   }
 
+  // 10/10/2026 — Notification push si un BL n'a pas pu être rattaché tout seul (voir api/_push.js).
+  if (resume.lotsAVerifier > 0) {
+    await alerter("nlt_bl_a_verifier", {
+      titre: "🔎 BL NLT à vérifier",
+      corps: `${resume.lotsAVerifier} lot${resume.lotsAVerifier > 1 ? "s" : ""} du BL NLT n'${resume.lotsAVerifier > 1 ? "ont" : "a"} pas pu être rattaché${resume.lotsAVerifier > 1 ? "s" : ""} automatiquement — à traiter dans Reconditionnement.`,
+    });
+  }
   return res.status(200).json({ ok: true, resume });
 }
 
