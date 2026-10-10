@@ -1150,7 +1150,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
   );
 }
 
-export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte }: any) {
+export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   const [open, setOpen] = useState(false);
   // 09/09/2026 — Bug trouvé avec Elinathan : "je viens de valider un arrivage a 0 au lieux de 30
   // et aucun pop up". Le popup d'écart vivait dans le state local de ProduitRow — mais dès que
@@ -1260,6 +1260,22 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
               )}
             </div>
           )}
+          {/* 10/10/2026 — Demande d'Elinathan : mettre en réserve d'un coup TOUS les produits de cet
+              arrivage du fournisseur. Ouvre un seul rapport de réserve pour l'ensemble, qui exige au
+              moins une photo par produit (voir ouvrirRapportGroupeReserve dans App.tsx). */}
+          {canValider && onReserveGroupe && !isRetourRecondGroupe && (() => {
+            const tous = [...produits, ...traites].filter((a: any) => a.statut !== "sous réserve" && a.statut !== "refusé");
+            if (tous.length < 2) return null;
+            return (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                <button type="button"
+                  onClick={e => { e.stopPropagation(); if (window.confirm(`Mettre en réserve les ${tous.length} produits de ${fournisseur} ?\n\nUn rapport de réserve unique va s'ouvrir : il faudra au moins une photo par produit.`)) onReserveGroupe(tous); }}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fffbeb", color: "#92400e", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
+                  ⚠️ Tout mettre en réserve ({tous.length} produits)
+                </button>
+              </div>
+            );
+          })()}
           {!canValider
             ? produits.map((a: any) => <ArrivageLectureSeuleRow key={a.id} arrivage={a} />)
             : isRetourRecondGroupe && produits.length > 0
@@ -2689,7 +2705,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
   );
 }
 
-export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById, canValider = true, onEcartDetecte }: any) {
+export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -2958,6 +2974,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               date={date}
               reconditionnementDemandesById={reconditionnementDemandesById}
               canValider={canValider}
+              onReserveGroupe={onReserveGroupe}
               onEcartDetecte={onEcartDetecte} />
           ))}
         </div>

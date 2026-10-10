@@ -185,7 +185,8 @@ export default function App() {
   const [pourcentage, setPourcentage] = useState("");
   const [nbColisTotal, setNbColisTotal] = useState("");
   const [nbColisAEcarter, setNbColisAEcarter] = useState("");
-  const [photos, setPhotos] = useState<{ name: string; url: string }[]>([]);
+  // arrivageId : photo rattachée à un produit précis (rapport de réserve groupé, voir rapportGroupe).
+  const [photos, setPhotos] = useState<{ name: string; url: string; arrivageId?: string }[]>([]);
   const [poidsStatut, setPoidsStatut] = useState("");
   const [poidsEcart, setPoidsEcart] = useState("");
   const [etiquetteAbsente, setEtiquetteAbsente] = useState(false);
@@ -449,6 +450,8 @@ export default function App() {
   const [horsListeMode, setHorsListeMode] = useState(false);
   const [horsListe, setHorsListe] = useState({ produit: "", fournisseur: "", lot_interne: "", lot_fournisseur: "", origine: "", quantite: "", unite: "colis", type: "refusé", raison: "", pct: "" });
   const [rapportArrivage, setRapportArrivage] = useState<any | null>(null);
+  // 10/10/2026 — Rapport de réserve groupé : tous les produits d'un même arrivage fournisseur.
+  const [rapportGroupe, setRapportGroupe] = useState<any[] | null>(null);
   const [filtersArr, setFiltersArr] = useState({ q: "", statut: "tous" });
   // Accordéons "semaine" ouverts sur l'écran Arrivages (regroupement par semaine ISO, comme
   // dans le module Stock) — fermés par défaut, y compris la semaine la plus récente.
@@ -2037,6 +2040,56 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
+  // 10/10/2026 — « Tout mettre en réserve » (bloc fournisseur de l'arrivage) : un seul rapport de
+  // réserve pour tous les produits, avec au moins une photo par produit (vérifié dans soumettre).
+  const ouvrirRapportGroupeReserve = (arrivagesGroupe: any[]) => {
+    if (!arrivagesGroupe.length) return;
+    const premier = arrivagesGroupe[0];
+    const liste = (f: (a: any) => any) => [...new Set(arrivagesGroupe.map(f).filter(Boolean))].join(" / ");
+    const total = (f: (a: any) => any) => String(arrivagesGroupe.reduce((n, a) => n + (Number(f(a)) || 0), 0));
+    setFournisseur(premier.fournisseur || "");
+    setProduit(arrivagesGroupe.map(a => a.produit).filter(Boolean).join(" + "));
+    setOrigine(liste(a => a.origine));
+    setLotMoorea(liste(a => a.lot_interne));
+    setLotFournisseur(liste(a => a.lot_fournisseur));
+    setNbColisAttendu(total(a => a.quantite));
+    setNbColisRecu(total(a => a.colisRecus ?? a.quantite));
+    setConditionnement(liste(a => a.unite));
+    setPhotos([]);
+    setRapportArrivage(null);
+    setRapportGroupe(arrivagesGroupe);
+    setConformite("non_conforme");
+    setDecision("reserve");
+    setVue("form");
+    setPageMode("arrivages");
+    window.scrollTo(0, 0);
+  };
+
+  // Photos choisies → réduites (1200 px max, JPEG) avant d'être ajoutées au rapport.
+  const ajouterPhotos = (files: File[], arrivageId?: string) => {
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX = 1200;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+            else { w = Math.round(w * MAX / h); h = MAX; }
+          }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL("image/jpeg", 0.75);
+          setPhotos(prev => [...prev, { name: file.name, url: compressed, ...(arrivageId ? { arrivageId } : {}) }]);
+        };
+        img.src = ev.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const showToast = (msg: string, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
@@ -2056,7 +2109,7 @@ export default function App() {
     setProduit(""); setConditionnement(""); setCalibre(""); setPoids("");
     setOrigine(""); setLotMoorea(""); setLotFournisseur(""); setDlc(""); setNumeroTracabilite(""); setTemperature("");
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
-    setPhotos([]); setPoidsStatut(""); setPoidsEcart("");
+    setPhotos([]); setPoidsStatut(""); setPoidsEcart(""); setRapportGroupe(null);
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
     setControles({ temperature: "C", fraicheur: "C", maturite: "C", coloration: "C", sanitaire: "C" });
   };
@@ -2170,6 +2223,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       showToast("⚠ Précisez Réserve ou Refus", "error");
       return;
     }
+    if (rapportGroupe) {
+      const sansPhoto = rapportGroupe.filter(a => !photos.some(p => p.arrivageId === a.id));
+      if (sansPhoto.length) {
+        showToast(`⚠ Il manque au moins une photo pour : ${sansPhoto.map(a => a.produit || "produit sans nom").join(", ")}`, "error");
+        return;
+      }
+    }
     setSendingId("new");
 
     try {
@@ -2203,9 +2263,20 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       };
 
       let photoUrls: string[] = [];
+      let produitsGroupe: any[] | null = null;
       if (photos.length > 0) {
         showToast("⏳ Upload des photos…");
-        photoUrls = await uploadPhotosImgBB(photos);
+        if (rapportGroupe) {
+          produitsGroupe = [];
+          for (const a of rapportGroupe) {
+            const urls = await uploadPhotosImgBB(photos.filter(p => p.arrivageId === a.id));
+            produitsGroupe.push({ arrivage_id: a.id, produit: a.produit || "", lot_interne: a.lot_interne || "", colis: a.colisRecus ?? a.quantite ?? null, photoUrls: urls });
+            photoUrls.push(...urls);
+          }
+          photoUrls.push(...await uploadPhotosImgBB(photos.filter(p => !p.arrivageId)));
+        } else {
+          photoUrls = await uploadPhotosImgBB(photos);
+        }
       }
 
       // photoUrls doit être présent : buildEmailHTML et generatePDFBase64 le
@@ -2214,7 +2285,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       const rapportAvecPhotos = { ...rapport, photos, photoUrls };
 
       const arrivageIdPourEtiquette = rapportArrivage?.id || null;
-      const rapportFinal = { ...rapport, photoUrls, ...(rapportArrivage ? { arrivage_id: rapportArrivage.id } : {}) };
+      const rapportFinal = { ...rapport, photoUrls, ...(rapportArrivage ? { arrivage_id: rapportArrivage.id } : {}),
+        ...(rapportGroupe ? { arrivage_ids: rapportGroupe.map(a => a.id), produitsGroupe } : {}) };
       const rapportsRef = ref(db, "rapports");
       await push(rapportsRef, rapportFinal);
 
@@ -2222,6 +2294,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         const statut = rapport.decision === "stock" ? "validé" : rapport.decision === "reserve" ? "sous réserve" : "refusé";
         await update(ref(db, `arrivages/${rapportArrivage.id}`), { statut, archived: true, rapport_id: rapport.numeroRapport, validatedAt: Date.now() });
         setRapportArrivage(null);
+        setPageMode("historique_arr");
+      } else if (rapportGroupe) {
+        const statut = rapport.decision === "stock" ? "validé" : rapport.decision === "reserve" ? "sous réserve" : "refusé";
+        for (const a of rapportGroupe) {
+          await update(ref(db, `arrivages/${a.id}`), { statut, archived: true, rapport_id: rapport.numeroRapport, validatedAt: Date.now() });
+        }
+        setRapportGroupe(null);
         setPageMode("historique_arr");
       } else {
         setVue("historique");
@@ -3084,7 +3163,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   if (!user || !user.email?.endsWith("@moorea.fr")) return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#0a0a0a", padding: 24 }}>
       <div style={{ marginBottom: 32, textAlign: "center" }}>
-        <img src="/Agreage_1.svg" alt="App Moorea" style={{ width: 96, height: 96, marginBottom: 12 }} />
+        <img src="/icon.svg" alt="App Moorea" style={{ width: 96, height: 96, marginBottom: 12, borderRadius: 22 }} />
         <div style={{ fontSize: 22, fontWeight: 800, color: "#c8a84b", fontFamily: "'Syne', sans-serif", letterSpacing: 2 }}>App Moorea</div>
         <div style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>Hub · Agréage Rungis</div>
       </div>
@@ -4749,7 +4828,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => setEcartPopup({ message })} />
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => setEcartPopup({ message })} onReserveGroupe={ouvrirRapportGroupeReserve} />
                           );
                         })}
                       </div>
@@ -5114,6 +5193,19 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
         {vue === "form" && (
           <div className="fade-up">
+            {rapportGroupe && (
+              <div style={{ marginBottom: 16, background: "#fffbeb", border: "2px solid #fcd34d", borderRadius: 16, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div>
+                  <p style={{ margin: "0 0 3px", fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.5px" }}>⚠️ Réserve sur tout l'arrivage</p>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a2e1a" }}>{rapportGroupe.length} produits · {rapportGroupe[0]?.fournisseur}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>Arrivage du {rapportGroupe[0]?.date} · au moins une photo par produit</p>
+                </div>
+                <button onClick={() => { reset(); setPageMode("historique_arr"); setVue("__none__" as any); window.scrollTo(0,0); }}
+                  style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 13, color: "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>
+                  ← Retour
+                </button>
+              </div>
+            )}
             {rapportArrivage && (
               <div style={{ marginBottom: 16, background: rapportArrivage.litige ? "#fef2f2" : "#f0fdf4", border: `2px solid ${rapportArrivage.litige ? "#fca5a5" : "#bbf7d0"}`, borderRadius: 16, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
@@ -5307,44 +5399,57 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               )}
             </div>
+            {rapportGroupe && (
+              <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
+                <div className="section-title">📷 Photos par produit</div>
+                <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#6b7280" }}>Au moins une photo pour chaque produit de l'arrivage.</p>
+                <div style={{ display: "grid", gap: 10 }}>
+                  {rapportGroupe.map(a => {
+                    const siennes = photos.map((p, i) => ({ p, i })).filter(x => x.p.arrivageId === a.id);
+                    return (
+                      <div key={a.id} style={{ border: `1.5px solid ${siennes.length ? "#bbf7d0" : "#fca5a5"}`, borderRadius: 12, padding: "10px 12px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "#1a2e1a" }}>{a.produit || "Produit sans nom"}</p>
+                            <p style={{ margin: "1px 0 0", fontSize: 11.5, color: siennes.length ? "#15803d" : "#dc2626", fontWeight: 600 }}>
+                              {a.lot_interne ? `Lot ${a.lot_interne} · ` : ""}{siennes.length ? `${siennes.length} photo${siennes.length > 1 ? "s" : ""}` : "Photo obligatoire"}
+                            </p>
+                          </div>
+                          <input type="file" accept="image/*" multiple id={`photo-produit-${a.id}`} style={{ display: "none" }}
+                            onChange={e => { ajouterPhotos(Array.from(e.target.files || []), a.id); e.target.value = ""; }} />
+                          <label htmlFor={`photo-produit-${a.id}`} style={{ cursor: "pointer", padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e8e0d0", background: "#fff", fontSize: 12.5, fontWeight: 700, color: "#8a6f2e" }}>📷 Ajouter</label>
+                        </div>
+                        {siennes.length > 0 && (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: 6, marginTop: 8 }}>
+                            {siennes.map(({ p, i }) => (
+                              <div key={i} style={{ position: "relative", borderRadius: 8, overflow: "hidden", aspectRatio: "1", background: "#f5f5f5" }}>
+                                <img src={p.url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))} aria-label="Retirer la photo"
+                                  style={{ position: "absolute", top: 3, right: 3, width: 20, height: 20, borderRadius: "50%", background: "rgba(0,0,0,0.6)", border: "none", color: "#fff", fontSize: 12, cursor: "pointer" }}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
-              <div className="section-title">📷 Photos</div>
-              <div style={{ border: "2px dashed #e8e0d0", borderRadius: 14, padding: "20px", textAlign: "center", background: "#faf8f5", marginBottom: photos.length ? 16 : 0 }}>
+              <div className="section-title">{rapportGroupe ? "📷 Photos générales (facultatif)" : "📷 Photos"}</div>
+              <div style={{ border: "2px dashed #e8e0d0", borderRadius: 14, padding: "20px", textAlign: "center", background: "#faf8f5", marginBottom: photos.some(p => !p.arrivageId) ? 16 : 0 }}>
                 <input type="file" accept="image/*" multiple id="photo-input" style={{ display: "none" }}
-                  onChange={e => {
-                    const files = Array.from(e.target.files || []);
-                    files.forEach(file => {
-                      const reader = new FileReader();
-                      reader.onload = ev => {
-                        const img = new Image();
-                        img.onload = () => {
-                          const canvas = document.createElement("canvas");
-                          const MAX = 1200;
-                          let w = img.width, h = img.height;
-                          if (w > MAX || h > MAX) {
-                            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-                            else { w = Math.round(w * MAX / h); h = MAX; }
-                          }
-                          canvas.width = w; canvas.height = h;
-                          canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
-                          const compressed = canvas.toDataURL("image/jpeg", 0.75);
-                          setPhotos(prev => [...prev, { name: file.name, url: compressed }]);
-                        };
-                        img.src = ev.target?.result as string;
-                      };
-                      reader.readAsDataURL(file);
-                    });
-                    e.target.value = "";
-                  }} />
+                  onChange={e => { ajouterPhotos(Array.from(e.target.files || [])); e.target.value = ""; }} />
                 <label htmlFor="photo-input" style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 44, height: 44, borderRadius: 12, background: "#f0ebe0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>📷</div>
                   <span style={{ fontSize: 14, color: "#8a6f2e", fontWeight: 600 }}>Ajouter des photos</span>
                   <span style={{ fontSize: 12, color: "#9ca3af" }}>Cliquez pour sélectionner</span>
                 </label>
               </div>
-              {photos.length > 0 && (
+              {photos.some(p => !p.arrivageId) && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  {photos.map((p, i) => (
+                  {photos.map((p, i) => p.arrivageId ? null : (
                     <div key={i} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "1", background: "#f5f5f5" }}>
                       <img src={p.url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
