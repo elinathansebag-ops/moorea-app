@@ -17,13 +17,15 @@ FONDS = {
     N1: ["#fff", "#ffffff", "white"],
     # Gris clairs = fonds de page et zones « en creux » : en sombre, ce sont les plus foncés, pour
     # que les cartes (blanches en clair) ressortent au-dessus comme en mode clair.
-    N0: ["#f9fafb", "#f5f3ee", "#f3f4f6", "#f5f5f5", "#fafafa", "#faf8f3", "#faf9f6", "#f8f6f2", "#f0f0f0", "#faf8f0", "#faf8f5", "#f8fafc", "#f4f4f4", "#e5e7eb", "#e8e0d0"],
+    N0: ["#f9fafb", "#f5f3ee", "#f3f4f6", "#f5f5f5", "#fafafa", "#faf8f3", "#faf9f6", "#f8f6f2", "#f0f0f0", "#faf8f0", "#faf8f5", "#f8fafc", "#f4f4f4", "#e5e7eb", "#e8e0d0",
+         # 10/10/2026 — fonds pâles oubliés (restaient clairs sous un texte devenu clair)
+         "#f7f7f5", "#fffdf7", "#f9f8f6", "#f3efe6", "#f0ebe0", "#f3f4f1", "#faf7ef", "#fffdf5", "#fffef8", "#fafaf8", "#eee", "#f4f7f5", "#f3f6f5", "#eaf2ee", "#dde6e3"],
     "#334155": ["#111827"],                                             # boutons noirs : un cran plus clair pour rester visibles
-    "#2a1416": ["#fef2f2", "#fff5f5", "#fee2e2"],                       # rouge (erreur)
-    "#2a2110": ["#fffbeb", "#fef3c7", "#fffbf0", "#fffbe6"],            # orange (attente)
-    "#10241a": ["#f0fdf4", "#dcfce7", "#f0fff6", "#f0fff4", "#eafaf1", "#f8fffe"],  # vert (prêt)
-    "#12203a": ["#eff6ff", "#dbeafe"],                                  # bleu (info)
-    "#1f1a33": ["#f5f3ff", "#faf5ff", "#ede9fe"],                       # violet
+    "#2a1416": ["#fef2f2", "#fff5f5", "#fee2e2", "#fdedec"],                       # rouge (erreur)
+    "#2a2110": ["#fffbeb", "#fef3c7", "#fffbf0", "#fffbe6", "#fdf6ec", "#fff3e0", "#fff7ed", "#fef9e6", "#fffaf3", "#fff8e6", "#fff3cd", "#fef9c3"],            # orange (attente)
+    "#10241a": ["#f0fdf4", "#dcfce7", "#f0fff6", "#f0fff4", "#eafaf1", "#f8fffe", "#e8f0ea", "#eef6f0"],  # vert (prêt)
+    "#12203a": ["#eff6ff", "#dbeafe", "#f0f4ff", "#eaf4fb", "#e6eeff", "#f0f9ff", "#f0f8ff", "#f0f7ff"],                                  # bleu (info)
+    "#1f1a33": ["#f5f3ff", "#faf5ff", "#ede9fe", "#f4ecf7", "#f3e8ff", "#faf7fc"],                       # violet
 }
 BORDURES = {
     BORD: ["#e8e0d0", "#e5e7eb", "#f0f0f0", "#d1d5db", "#f3f4f6", "#f4f4f4", "#f5f3ee", "#f5f5f5", "#e9d8fd"],
@@ -76,6 +78,30 @@ for sombre, clairs in BORDURES.items():
 for sombre, clairs in TEXTES.items():
     sel = [f':root.dark [style*="{x}"]' for c in clairs for x in formes("color", c)]
     lignes.append(",\n".join(sel) + f" {{ color: {sombre} !important; }}")
+# 10/10/2026 — Textes foncés oubliés (noirs, violets, bleus, bruns, vert sapin de la charte) : ils
+# restaient foncés sur fond devenu sombre (« le texte disparaît »). Éclaircis seulement quand
+# l'élément n'a pas de fond à lui, ou quand ce fond est lui-même assombri ci-dessus : un texte noir
+# sur un bouton jaune vif garde son noir.
+TEXTES_SANS_FOND = {
+    T1: ["#0a0a0a", "#000", "#000000", "#333", "#1a1a1a", "#1e2b29", "#222"],
+    T2: ["#3f3f46", "#52525b", "#5b5b68", "#5e6b69"],
+    "#c4b5fd": ["#5b21b6", "#4338ca", "#6b46c1"],
+    "#93c5fd": ["#2452b8", "#1e3a8a"],
+    "#fbbf24": ["#78350f"],
+    "#f87171": ["#a93226"],
+    "#8cc79a": ["#305a55", "#3f8a55"],
+}
+# Fonds (blancs et pastels) réellement posés sous ces textes dans le code — liste courte : chaque
+# fond ajouté multiplie les sélecteurs.
+fonds_assombris = ["#fff", "#ffffff", "white", "#e6eeff", "#eff6ff", "#ede9fe", "#f5f3ff"]
+for sombre, clairs in TEXTES_SANS_FOND.items():
+    sel = []
+    for c in clairs:
+        for x in formes("color", c):
+            sel.append(f':root.dark [style*="{x}"]:not([style*="background"])')
+            if x == formes("color", c)[0]:  # React écrit les couleurs en rgb() : une seule forme suffit
+                sel += [f':root.dark [style*="{x}"][style*="{y}"]' for f in fonds_assombris for p in ("background", "background-color") for y in formes(p, f)[:1]]
+    lignes.append(",\n".join(dict.fromkeys(sel)) + f" {{ color: {sombre} !important; }}")
 # Les fonds blancs servent aussi de « pastille » derrière du texte coloré : le texte foncé posé
 # sur un fond devenu sombre est éclairci par les règles ci-dessus.
 open("src/themeSombre.css", "w").write("\n".join(lignes) + "\n")
@@ -152,7 +178,9 @@ bloc(V2_FONDS_CLAIR, ":root.v2:not(.dark)", "background-color", fonds)
 bloc(V2_FONDS_TEINTES, ":root.v2:not(.dark)", "background-color", fonds)
 bloc(V2_BORDURES, ":root.v2", "border-color", bords)
 bloc(V2_BORDURES_CLAIR, ":root.v2:not(.dark)", "border-color", bords)
-bloc(V2_TEXTES, ":root.v2", "color", textes)
+bloc({SAUGE: V2_TEXTES[SAUGE]}, ":root.v2", "color", textes)
+bloc({SAPIN: V2_TEXTES[SAPIN]}, ":root.v2:not(.dark)", "color", textes)
+bloc({"#8cc79a": V2_TEXTES[SAPIN]}, ":root.v2.dark", "color", textes)
 bloc(V2_TEXTES_CLAIR, ":root.v2:not(.dark)", "color", textes)
 # Boutons en dégradé vert ou or → vert sapin uni (les dégradés d'autres couleurs gardent leur sens).
 grad = [f':root.v2 button[style*="linear-gradient"][style*="{x}"]' for c in ["#16a34a", "#22c55e", "#27ae60", "#c8a84b", "#8a6f2e"] for x in (rgb(c), c)]
