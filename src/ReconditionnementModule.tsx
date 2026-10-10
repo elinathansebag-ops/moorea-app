@@ -1598,6 +1598,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   }
 
   async function creerEnvoiPaletteIfcoNlt(qte: number, transporteurNomSaisi: string): Promise<string> {
+    const refus = await refusEnvoiIfcoSansStock(qte);
+    if (refus) throw new Error(refus.replace(/^✗ /, ""));
     await pousserEnvoiPaletteIfco(qte, "Envoi manuel de palette IFCO à NLT");
 
     const now = new Date();
@@ -1667,6 +1669,19 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       notify("error", `⚠️ Demande enregistrée, mais la génération du bordereau a échoué : ${errPdf?.message || "erreur inconnue"}`);
     }
     return numero;
+  }
+
+  // 10/10/2026 — Demande d'Elinathan : on ne peut pas envoyer plus de caisses IFCO vides que ce
+  // qu'il y a réellement en bas (stock « moorea ») — une palette qui n'existe pas ne peut pas
+  // partir. Le stock NLT, lui, peut toujours passer en négatif (aucun contrôle de ce côté).
+  // Lu directement dans Firebase (pas l'état local) pour ne jamais se baser sur un chiffre périmé.
+  // Renvoie un message d'erreur si c'est impossible, sinon null.
+  async function refusEnvoiIfcoSansStock(caissesEnPlus: number): Promise<string | null> {
+    if (!(caissesEnPlus > 0)) return null;
+    const { get } = await import("firebase/database");
+    const dispo = ((await get(ref(db, "ifco_stock/levels"))).val() || {}).moorea || 0;
+    if (caissesEnPlus <= dispo) return null;
+    return `✗ Pas assez de caisses IFCO en bas : ${caissesEnPlus} à envoyer, ${Math.max(0, dispo)} disponible${dispo > 1 ? "s" : ""} chez Moorea`;
   }
 
   async function pousserEnvoiPaletteIfco(caissesAEnvoyer: number, raison: string) {
@@ -2313,6 +2328,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const anciennesPleines = d.retour?.caissesIfcoPleinesRecues || 0;
     const dEnvoye = nEnvoye - ancienEnvoye;
     const dPleines = d.depot === "nlt" ? nPleines - anciennesPleines : 0;
+    if (d.depot === "nlt") { const refus = await refusEnvoiIfcoSansStock(dEnvoye); if (refus) { notify("error", refus); return; } }
     setCorrEnCours(true);
     try {
       const { get } = await import("firebase/database");
@@ -2509,6 +2525,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const nEntrerNum = parseInt(nbColisAEntrer) || 0;
     const parColisNum = parseFloat(qtePerColis) || 0;
     const qteConditionnementTotal = (nEntrerNum > 0 && parColisNum > 0) ? Math.round(parColisNum * nEntrerNum) : undefined;
+    // 10/10/2026 — Blocage remis, mais uniquement sur le stock d'en bas (voir refusEnvoiIfcoSansStock) :
+    // en modification, seules les caisses AJOUTÉES par rapport au bon d'origine sont contrôlées.
+    {
+      const orig = editDemandeId ? demandes.find(d => d.id === editDemandeId) : null;
+      const dejaEnvoyees = (orig?.depot === "nlt" ? orig?.caissesIfcoEnvoyees : 0) || 0;
+      const refus = await refusEnvoiIfcoSansStock(caisses - dejaEnvoyees);
+      if (refus) { notify("error", refus); return; }
+    }
     // 28/08/2026 — Simplifié à la demande d'Elinathan : plus de blocage sur le stock IFCO à la
     // création d'une demande (l'envoi d'une palette est désormais systématique, voir plus haut) —
     // le stock se corrige simplement après coup si besoin, plutôt que d'empêcher d'enregistrer
@@ -3010,6 +3034,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     if (aDesNlt && groupeIfcoEnvoi === "") { notify("error", "✗ Envoi de caisses IFCO vides à NLT : Oui ou Non ?"); return; }
     if (groupeIfcoEnvoi === "oui" && caissesIfco <= 0) { notify("error", "✗ Indique combien de palettes (ou de caisses) IFCO vides envoyer"); return; }
     if (aCreer.length === 0 && caissesIfco <= 0) { notify("error", "✗ Aucun bon sélectionné"); return; }
+    { const refus = await refusEnvoiIfcoSansStock(caissesIfco); if (refus) { notify("error", refus); return; } }
     for (const l of aCreer) {
       const dep = (l.depot || groupeDepot) as Depot;
       if (dep && !l.dejaChez && !groupeApresCoup && !transporteurDeLigne(l, dep)) { notify("error", `✗ Choisis un transporteur pour chaque bon ${DEPOT_LABEL[dep]}`); return; }
@@ -4128,7 +4153,20 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, fontSize: 12, color: COLORS.gray600, marginBottom: 10 }}>
                       {d.nbColisASortir != null && <div>Colis à sortir : <b>{d.nbColisASortir}</b> — {d.articleVrac}</div>}
                       {d.nbColisAEntrer != null && <div>Colis à entrer : <b>{d.nbColisAEntrer}</b> — {d.articleFini}</div>}
-                      {d.qteConditionnement != null && <div>Qté conditionnement : <b>{d.qteConditionnement} {UNITE_QTE[d.depot]}</b></div>}
+                      {/* 10/10/2026 — Demande d'Elinathan : voir d'un coup d'œil ce qui a été demandé et ce
+                          qui est vraiment revenu (retour.nbColisRecus, saisi au pointage du retour). */}
+                      {d.nbColisAEntrer != null && (() => {
+                        const recu = d.retour?.nbColisRecus;
+                        if (recu == null) return <div>Vraiment entrés : <b style={{ color: "#999" }}>— pas encore revenu</b></div>;
+                        const ecart = recu - d.nbColisAEntrer;
+                        return (
+                          <div>Vraiment entrés : <b style={{ color: ecart === 0 ? COLORS.gray700 : ecart < 0 ? COLORS.danger : "#15803d" }}>{recu}</b>
+                            {ecart !== 0 && <b style={{ color: ecart < 0 ? COLORS.danger : "#15803d" }}> ({ecart > 0 ? "+" : ""}{ecart})</b>}
+                          </div>
+                        );
+                      })()}
+                      {d.qteConditionnement != null && <div>Qté conditionnement : <b>{d.qteConditionnement} {UNITE_QTE[d.depot]}</b>
+                        {d.retour?.qteConditionnementRecue != null && <> · reçu <b>{d.retour.qteConditionnementRecue}</b></>}</div>}
                       {d.caissesIfcoEnvoyees != null && <div>Caisses IFCO envoyées : <b>{d.caissesIfcoEnvoyees}</b></div>}
                       {d.cartonsBabyBlancEnvoyes != null && <div>Cartons BABY BLANC utilisés : <b>{d.cartonsBabyBlancEnvoyes}</b></div>}
                       {d.transporteurNom && <div>Transporteur : <b>{d.transporteurNom}</b></div>}
@@ -5467,6 +5505,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               />
               <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
                 ≈ {Math.max(1, Math.round((parseInt(envoiPaletteQte) || 0) / CAISSES_PAR_PALETTE))} palette{Math.max(1, Math.round((parseInt(envoiPaletteQte) || 0) / CAISSES_PAR_PALETTE)) > 1 ? "s" : ""}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 6, color: (parseInt(envoiPaletteQte) || 0) > stockIfco.moorea ? COLORS.danger : COLORS.gray600 }}>
+                {Math.max(0, stockIfco.moorea)} caisse{stockIfco.moorea > 1 ? "s" : ""} disponible{stockIfco.moorea > 1 ? "s" : ""} en bas (Moorea)
+                {(parseInt(envoiPaletteQte) || 0) > stockIfco.moorea ? " — pas assez pour cet envoi" : ""}
               </div>
             </div>
             <div style={{ marginBottom: 20 }}>
