@@ -8,6 +8,7 @@ import { useProfilGenerique, avecProfil, ouvrirWhatsApp } from "./ProfilGeneriqu
 import { AccueilModulesV2 } from "./AccueilModulesV2";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
+import { NotificationsPush, alerterPush } from "./NotificationsPush";
 import { LogoMoorea, PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 
@@ -780,6 +781,10 @@ export default function App() {
       const data = await reponse.json();
       if (reponse.ok && data?.comptes) {
         await update(ref(db, "sante_comptes_mail"), { ...data.comptes, derniereVerification: Date.now() });
+        // 10/10/2026 — Notification push si un compte est déconnecté (le serveur n'alerte que
+        // si la liste des comptes en panne a changé depuis la dernière fois).
+        const comptesKo = Object.values(data.comptes as Record<string, { email: string; ok: boolean | null }>).filter(c => c?.ok === false).map(c => c.email);
+        alerterPush({ type: "comptes_mail", comptesKo });
       }
     } catch {
       // échec silencieux -- pas grave, on retentera à la prochaine ouverture de l'appli (ou au
@@ -1173,6 +1178,14 @@ export default function App() {
     const t = setInterval(recalc, 10000);
     return () => clearInterval(t);
   }, [printRelayLastSeen]);
+  // 10/10/2026 — Notification push si le relais tombe : l'appli ouverte quelque part demande au
+  // serveur de vérifier (il n'alerte qu'au changement d'état, au-delà de 3 min sans signal) —
+  // le robot GitHub surveillance-push.yml fait la même chose quand l'appli n'est ouverte nulle part.
+  useEffect(() => {
+    if (!user) return;
+    const t = setInterval(() => { alerterPush({ type: "relais" }); }, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [user?.uid]);
 
   // ─── DARK MODE ───
   useEffect(() => {
@@ -3604,6 +3617,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </CarteReglage>
                     <CarteReglage titre="📧 Messagerie" desc="Rattachement des adresses aux commerciaux, tri automatique.">
                       <BoutonReglage label="Ouvrir la configuration →" onClick={() => { setShowAdmin(false); setMessagerieInitialTab("configuration"); setShowMessagerie(true); }} />
+                    </CarteReglage>
+
+                    {/* 10/10/2026 — Demande d'Elinathan : être prévenue sur son téléphone même
+                        appli fermée (reconditionnement prêt/parti, perte ou litige, alerte
+                        technique). Voir src/NotificationsPush.tsx. */}
+                    <TitreSection>🔔 Notifications</TitreSection>
+                    <CarteReglage titre="🔔 Notifications sur cet appareil" desc="Alertes reçues même appli fermée ou écran éteint : reconditionnement prêt / parti, perte ou litige déclaré, relais d'impression ou compte mail en panne. Envoyées pour l'instant à Elinathan uniquement.">
+                      <NotificationsPush darkMode={darkMode} />
                     </CarteReglage>
 
                     {/* 22/09/2026 -- Demande d'Elinathan : voir d'un coup d'œil lequel des 6

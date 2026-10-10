@@ -1,0 +1,24 @@
+name: Surveillance du relais d'impression (notification push)
+
+# 10/10/2026 — Demande d'Elinathan : être prévenue sur son téléphone, même appli fermée, si le
+# PC d'impression (print-relay.js) ne répond plus. L'appli fait déjà ce contrôle quand elle est
+# ouverte quelque part (voir App.tsx) ; ce robot couvre les moments où elle ne l'est nulle part.
+# Une seule notification par changement d'état (tombé / revenu), voir api/push-envoyer.js.
+#
+# Mêmes secrets que nlt-bl-poll.yml (rien à ajouter sur GitHub) : APP_URL, NLT_BL_POLL_SECRET.
+# Comme pour nlt-bl-poll.yml, GitHub lance en pratique ce genre de robot bien moins souvent que
+# demandé sur un compte gratuit — c'est un filet de sécurité, pas une garantie à la minute.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  relais:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifie le relais d'impression
+        run: |
+          curl -sS "${{ secrets.APP_URL }}/api/push-envoyer?type=relais&secret=${{ secrets.NLT_BL_POLL_SECRET }}" \
+            --fail-with-body \
+            --max-time 30

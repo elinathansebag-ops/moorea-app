@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { noterHistoriqueDemande } from "./historiqueRecond";
+import { alerterRecond } from "./NotificationsPush";
 import { aPdfDemande, lirePdfDemande } from "./pdfsRecond";
 import { db, ref, push, onValue, update, remove } from "./firebase";
 import { PageHeader, styles, DEPOT_ACCENT, weekdayAccent } from "./shared";
@@ -340,6 +341,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       nbPalettesDepart: null,
     });
     noterHistoriqueDemande(id, "Marquée prête (entrepôt)", userName);
+    // 10/10/2026 — Notification push à Elinathan (voir src/NotificationsPush.tsx).
+    const demande = demandes.find(d => d.id === id);
+    if (demande) alerterRecond([demande], "prêt", userName);
   }
 
   // Quand le transport est assuré par Moorea elle-même, pas de nombre de palettes à indiquer —
@@ -353,6 +357,8 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
       nbPalettesDepart: null,
     });
     noterHistoriqueDemande(id, "Marquée prête (transport Moorea)", userName);
+    const demande = demandes.find(d => d.id === id);
+    if (demande) alerterRecond([demande], "prêt", userName); // 10/10/2026 — notification push
     notify("success", "✅ Marqué prêt — transport Moorea, pas de palette à indiquer");
   }
 
@@ -415,6 +421,8 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     for (const id of idsSansPalette) {
       await marquerPartiSilencieux(id);
     }
+    // 10/10/2026 — Une seule notification push pour tout le départ groupé.
+    alerterRecond([...idsAvecPalette, ...idsSansPalette].map(id => demandes.find(d => d.id === id)).filter((d): d is Demande => !!d && d.nbColisAEntrer != null), "parti", userName);
     await envoyerEtiquetteIfcoMooreaPourImpressionPC(depot, grandes + demi, transporteur, recap);
     const total = idsAvecPalette.length + idsSansPalette.length;
     // 02/10/2026 — Le mail part normalement à la création (commercial). Ici, simple filet de sécurité :
@@ -554,6 +562,8 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
 
   async function marquerParti(id: string) {
     await marquerPartiSilencieux(id);
+    const demande = demandes.find(d => d.id === id);
+    if (demande && demande.nbColisAEntrer != null) alerterRecond([demande], "parti", userName); // 10/10/2026 — notification push
     notify("success", "🚚 Marqué parti — le retour apparaîtra dans « Pointer arrivage »");
   }
 

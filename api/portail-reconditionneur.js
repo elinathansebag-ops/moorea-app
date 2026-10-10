@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { getAdminDb } from "./_firebaseAdmin.js";
+import { alerterElinathan } from "./_push.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -375,6 +376,13 @@ export async function notifierProdPrete(adminDb, depot, demande, id, { quantite,
     : `<li><strong>Quantité :</strong> ${quantite} colis</li>`;
   const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
 
+  // 10/10/2026 — Demande d'Elinathan : notification push (téléphone), en plus du mail.
+  await alerterElinathan({
+    titre: `📦 Prod prête / repartie — ${DEPOT_LABEL[depot]}`,
+    corps: `${ref} — ${demande.articleFini || demande.articleVrac || "—"} : ${quantite} colis${ecart ? ` (écart ${ecart > 0 ? "+" : ""}${ecart})` : ""}${transporteur ? ` — ${transporteur}` : ""}`,
+    tag: `prod-prete-${id}`,
+  });
+
   // 01/09/2026 — Prévient D'ABORD directement le transporteur (pas seulement Moorea en
   // interne), si son email est renseigné dans l'annuaire (Reconditionnement > Configuration >
   // Transporteurs) — demande d'Elinathan : jusqu'ici seul Moorea était prévenu, à charge pour
@@ -508,6 +516,13 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
   if (traitees.length === 0) {
     throw Object.assign(new Error("Aucune demande valide trouvée"), { statusCode: 404 });
   }
+
+  // 10/10/2026 — Demande d'Elinathan : une seule notification push pour tout le lot.
+  await alerterElinathan({
+    titre: `📦 ${traitees.length > 1 ? `${traitees.length} prods prêtes / reparties` : "Prod prête / repartie"} — ${DEPOT_LABEL[depot]}`,
+    corps: traitees.map(t => `${t.demande.numero || t.id} : ${t.quantite} colis${t.ecart ? ` (écart ${t.ecart > 0 ? "+" : ""}${t.ecart})` : ""}`).slice(0, 6).join(" · "),
+    tag: `prod-prete-${traitees[0].id}`,
+  });
 
   const palettesHtml = nbPalettes ? `<li><strong>Palettes :</strong> ${nbPalettes.grandes} grande(s) + ${nbPalettes.demi} demi-palette(s)</li>` : "";
   const creneauHtml = creneauReste
@@ -649,6 +664,12 @@ async function handleDeclarerPerte(adminDb, depot, id, body) {
     ts: Date.now(),
   };
   await adminDb.ref(`reconditionnement_demandes/${id}/pertes`).push(perte);
+  // 10/10/2026 — Demande d'Elinathan : notification push (téléphone), en plus du mail.
+  await alerterElinathan({
+    titre: `⚠️ Perte déclarée par ${DEPOT_LABEL[depot]}`,
+    corps: `${demande.numero || id} — ${demande.articleFini || demande.articleVrac || "—"} : ${quantite} colis — ${perte.motif}`,
+    tag: `perte-recond-${id}`,
+  });
 
   // Email interne Moorea — best effort, ne bloque pas l'enregistrement si l'envoi échoue.
   try {

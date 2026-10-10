@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ouvrirWhatsApp } from "./ProfilGenerique";
 import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
+import { alerterPush } from "./NotificationsPush";
 import emailjs from "@emailjs/browser";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { PageHeader, NoteSelector, ScoreCircle, F, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, DESTINATAIRES, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, CRITERES, styles } from "./shared";
@@ -493,6 +494,15 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         else setRecap({ message });
       }
       if (hasLitige && !isRetourRecond) onOuvreRapport(arrivage, true);
+      // 10/10/2026 — Demande d'Elinathan : notification push à chaque litige (voir src/NotificationsPush.tsx).
+      if (hasLitige) {
+        alerterPush({
+          type: "litige",
+          titre: isRetourRecond ? "⚠️ Problème au retour de reconditionnement" : "🚩 Litige déclaré à l'agréage",
+          corps: [`${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""}`, arrivage.fournisseur, raisonFinal].filter(Boolean).join(" — "),
+          tag: `litige-${arrivage.id}`,
+        });
+      }
     } catch (err: any) {
       alert(`❌ Erreur pendant la validation : ${err?.message || "erreur inconnue"}\n\nRien n'a été enregistré côté impression/récap — réessaie ou préviens Elinathan si ça persiste.`);
     } finally {
@@ -1607,6 +1617,8 @@ export function PalettePerteForm({ arrivage }: { arrivage: any }) {
         destruction: { quantite: parseInt(perteQty), raison: perteRaison, date: new Date().toLocaleDateString("fr-FR"), effectuee: true }
       });
       setDone(true);
+      // 10/10/2026 — notification push à Elinathan (voir src/NotificationsPush.tsx).
+      alerterPush({ type: "litige", titre: "🗑 Perte déclarée", corps: `${arrivage.produit || "-"}${arrivage.lot_interne ? ` · lot ${arrivage.lot_interne}` : ""} — ${perteQty} colis — ${perteRaison}`, tag: `perte-${arrivage.id}` });
     } catch { alert("Erreur enregistrement"); }
     setSaving(false);
   };

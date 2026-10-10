@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { alerterElinathan } from "./_push.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -256,6 +257,13 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(perte),
+      });
+
+      // 10/10/2026 — Demande d'Elinathan : notification push (téléphone), en plus du mail.
+      await alerterElinathan({
+        titre: "⚠️ Perte déclarée par le reconditionneur",
+        corps: `${demande.numero || id} — ${demande.articleFini || demande.articleVrac || "—"} : ${perte.quantite} colis — ${perte.motif}`,
+        tag: `perte-recond-${id}`,
       });
 
       // Email interne Moorea — best effort, ne bloque pas l'enregistrement de la perte si l'envoi échoue.

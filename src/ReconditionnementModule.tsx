@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
 import { BarreMailsRecond } from "./BarreMailsRecond";
 import { noterHistoriqueDemande } from "./historiqueRecond";
+import { alerterRecond } from "./NotificationsPush";
 import { aPdfDemande, lirePdfDemande, ecrirePdfDemande, type ChampPdfRecond } from "./pdfsRecond";
 import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
@@ -3203,6 +3204,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const statutFinal = d.nbColisAEntrer == null ? "reçu" : "parti";
     await update(ref(db, `reconditionnement_demandes/${d.id}`), { statut: statutFinal, departDate: nowFr() });
     noterHistoriqueDemande(d.id, statutFinal === "reçu" ? "Marquée partie et terminée" : "Marquée partie chez le reconditionneur", userName);
+    if (statutFinal === "parti") alerterRecond([d], "parti", userName); // 10/10/2026 — notification push à Elinathan
 
     const quantitePrevue = typeof d.nbColisAEntrer === "number" ? d.nbColisAEntrer : null;
     const quantiteDeclareePresta = typeof d.retourPresta?.quantiteDeclaree === "number" ? d.retourPresta.quantiteDeclaree : null;

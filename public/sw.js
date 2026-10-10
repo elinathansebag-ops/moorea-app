@@ -54,3 +54,40 @@ self.addEventListener('fetch', event => {
       })
   );
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 10/10/2026 — Demande d'Elinathan : notifications push, même appli fermée ou écran éteint
+// (voir api/_push.js et src/NotificationsPush.tsx). Le serveur envoie { titre, corps, url, tag }.
+// Ne touche pas au cache ci-dessus.
+// ═══════════════════════════════════════════════════════════════════════════
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { corps: event.data ? event.data.text() : '' }; }
+  event.waitUntil(
+    self.registration.showNotification(data.titre || 'Moorea', {
+      body: data.corps || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: data.tag || undefined,
+      renotify: !!data.tag,
+      data: { url: data.url || '/' },
+    })
+  );
+});
+
+// Clic sur la notification : remet au premier plan l'appli si elle est déjà ouverte, sinon l'ouvre.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(fenetres => {
+      for (const f of fenetres) {
+        if (new URL(f.url).origin === self.location.origin && 'focus' in f) {
+          if (url !== self.location.origin + '/' && 'navigate' in f) f.navigate(url).catch(() => {});
+          return f.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
