@@ -148,21 +148,28 @@ export async function envoyerPdfImprimante(pdfNom: string, pdfBase64: string): P
 export const ADRESSE_MOOREA = ["MOOREA COMMERCE FRUITS", "69 rue de Perpignan  BP 40376  94632 Rungis Cedex - FRANCE", "Tél : +33 1 56 70 62 40 - commercial@moorea.fr"];
 export type EtiquettePalette = { destinataire: string[]; transporteur: string; quantite: number; produit: string; palette: number; nbPalettes: number; qrUrl?: string };
 
-export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[]) {
+// 11/10/2026 — Police au choix (fichiers TTF en base64) ; sans police : Helvetica intégrée.
+export type PoliceEtiquette = { nom: string; normal: string; gras: string };
+export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[], police?: PoliceEtiquette) {
   const LW = 100, LH = 150, LM = 7, QR = 30;
   const doc = new jsPDF({ unit: "mm", format: [LW, LH], orientation: "portrait" });
+  if (police) {
+    doc.addFileToVFS(`${police.nom}-normal.ttf`, police.normal); doc.addFont(`${police.nom}-normal.ttf`, police.nom, "normal");
+    doc.addFileToVFS(`${police.nom}-gras.ttf`, police.gras); doc.addFont(`${police.nom}-gras.ttf`, police.nom, "bold");
+  }
+  const F = police?.nom || "helvetica";
   // 11/10/2026 — QR dessiné en carrés vectoriels (et non plus collé en image PNG 300 px) : net à
   // n'importe quelle résolution sur l'imprimante thermique (une image agrandie bave sur les bords).
   const qrs = etiquettes.map(e => (e.qrUrl ? QRCode.create(e.qrUrl, { errorCorrectionLevel: "M" }).modules : null));
   etiquettes.forEach((e, i) => {
     if (i) doc.addPage([LW, LH], "portrait");
     doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(ADRESSE_MOOREA[0], LM, 12);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+    doc.setFont(F, "bold"); doc.setFontSize(13); doc.text(ADRESSE_MOOREA[0], LM, 12);
+    doc.setFont(F, "normal"); doc.setFontSize(6.5);
     doc.text(ADRESSE_MOOREA[1], LM, 16.5); doc.text(ADRESSE_MOOREA[2], LM, 20);
     doc.setLineWidth(0.3); doc.line(LM, 23.5, LW - LM, 23.5);
     doc.setFontSize(10); doc.text("Livraison le :", LM, 31);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(dateFr, LM + 25, 31);
+    doc.setFont(F, "bold"); doc.setFontSize(13); doc.text(dateFr, LM + 25, 31);
     // 11/10/2026 — Demande d'Elinathan : destinataire et transporteur bien plus grands (il restait
     // beaucoup de vide). Taille calculée pour remplir la zone libre (entre la date et le bas de
     // l'étiquette) : on part en très grand et on réduit juste assez si l'adresse est longue.
@@ -170,7 +177,7 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
     const mm = (pt: number) => pt * 0.3528 * 1.12; // hauteur d'une ligne de texte en mm
     const mise = (k: number) => {
       const tNom = 26 * k, tAdr = 16 * k, tTr = 40 * k;
-      doc.setFont("helvetica", "bold");
+      doc.setFont(F, "bold");
       const lignes: { t: string; pt: number }[] = [];
       e.destinataire.forEach((l, n) => {
         const pt = n === 0 ? tNom : tAdr;
@@ -187,21 +194,21 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
     let k = 1, m = mise(k);
     while (m.hauteur > BAS - HAUT && k > 0.45) { k -= 0.05; m = mise(k); }
     let y = HAUT;
-    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Destinataire :", LM, y + 3.5);
-    doc.setLineWidth(0.2); doc.line(LM, y + 4.5, LM + 23, y + 4.5);
+    doc.setFont(F, "bold"); doc.setFontSize(10); doc.text("Destinataire :", LM, y + 3.5);
+    doc.setLineWidth(0.2); doc.line(LM, y + 4.5, LM + doc.getTextWidth("Destinataire :"), y + 4.5);
     y += 5;
     for (const l of m.lignes) { doc.setFontSize(l.pt); y += mm(l.pt); doc.text(l.t, LM, y - mm(l.pt) * 0.22); }
     y += 5;
-    doc.setFontSize(10); doc.text("Transporteur :", LM, y + 3.5); doc.line(LM, y + 4.5, LM + 24, y + 4.5);
+    doc.setFontSize(10); doc.text("Transporteur :", LM, y + 3.5); doc.line(LM, y + 4.5, LM + doc.getTextWidth("Transporteur :"), y + 4.5);
     y += 5;
     doc.setFontSize(m.ptTr); y += mm(m.ptTr); doc.text(m.tr, LM, y - mm(m.ptTr) * 0.22);
     y = BAS + 2;
     doc.setLineWidth(0.3); doc.line(LM, y, qrs[i] ? LW - LM - QR - 3 : LW - LM, y);
     const largeurTexte = LW - LM * 2 - (qrs[i] ? QR + 3 : 0);
-    doc.setFontSize(10); doc.setFont("helvetica", "normal");
+    doc.setFontSize(10); doc.setFont(F, "normal");
     for (const morceau of (doc.splitTextToSize(e.produit, largeurTexte) as string[]).slice(0, 2)) { y += 5.5; doc.text(morceau, LM, y); }
-    if (e.nbPalettes > 1) { doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LM, LH - 16); }
-    doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+    if (e.nbPalettes > 1) { doc.setFont(F, "bold"); doc.setFontSize(12); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LM, LH - 16); }
+    doc.setFont(F, "bold"); doc.setFontSize(16);
     doc.text(`${e.quantite} colis`, LM, LH - 8); // 11/10/2026 — « au total » retiré (Elinathan)
     const qr = qrs[i];
     if (qr) {
