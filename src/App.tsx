@@ -156,6 +156,24 @@ function EcranChargementInitial() {
   );
 }
 
+// 11/10/2026 — Sortis du rendu d'App (Admin › Réglages) : définis à l'intérieur, ces composants
+// étaient recréés à chaque rafraîchissement (toutes les 10 s, état du relais d'impression) — tout
+// leur contenu était démonté puis remonté, la page remontait en haut et l'alerte de notification
+// ouverte se refermait (signalé par Elinathan).
+const TitreSection = ({ children }: { children: React.ReactNode }) => (
+  <p style={{ margin: "18px 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".6px" }}>{children}</p>
+);
+const CarteReglage = ({ titre, desc, children, accent }: { titre: string; desc?: string; children: React.ReactNode; accent?: string }) => (
+  <div style={{ background: "#fff", border: `1.5px solid ${accent || "#e8e0d0"}`, borderRadius: 16, padding: 20, marginBottom: 12 }}>
+    <p style={{ margin: desc ? "0 0 4px" : "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>{titre}</p>
+    {desc && <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#9ca3af" }}>{desc}</p>}
+    {children}
+  </div>
+);
+const BoutonReglage = ({ label, onClick, accent }: { label: string; onClick: () => void; accent?: { bg: string; fg: string; bd: string } }) => (
+  <button onClick={onClick} style={{ padding: "9px 14px", borderRadius: 10, border: `1.5px solid ${accent?.bd || "#e8e0d0"}`, background: accent?.bg || "#faf8f3", color: accent?.fg || "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>{label}</button>
+);
+
 export default function App() {
   const [rapports, setRapports] = useState<any[]>([]);
   const [qrRefusArrivageId, setQrRefusArrivageId] = useState<string | null>(null);
@@ -3588,19 +3606,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 // l'app" — regroupement par catégorie (au lieu d'un empilement de cartes sans
                 // ordre) + un accès direct à la Configuration de chaque module qui en a une,
                 // au lieu de devoir ouvrir le module puis cliquer sur son onglet Configuration.
-                const TitreSection = ({ children }: { children: React.ReactNode }) => (
-                  <p style={{ margin: "18px 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".6px" }}>{children}</p>
-                );
-                const CarteReglage = ({ titre, desc, children, accent }: { titre: string; desc?: string; children: React.ReactNode; accent?: string }) => (
-                  <div style={{ background: "#fff", border: `1.5px solid ${accent || "#e8e0d0"}`, borderRadius: 16, padding: 20, marginBottom: 12 }}>
-                    <p style={{ margin: desc ? "0 0 4px" : "0 0 10px", fontWeight: 800, fontSize: 13, color: "#1a2e1a" }}>{titre}</p>
-                    {desc && <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "#9ca3af" }}>{desc}</p>}
-                    {children}
-                  </div>
-                );
-                const BoutonReglage = ({ label, onClick, accent }: { label: string; onClick: () => void; accent?: { bg: string; fg: string; bd: string } }) => (
-                  <button onClick={onClick} style={{ padding: "9px 14px", borderRadius: 10, border: `1.5px solid ${accent?.bd || "#e8e0d0"}`, background: accent?.bg || "#faf8f3", color: accent?.fg || "#8a6f2e", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>{label}</button>
-                );
                 return (
                   <div>
                     <TitreSection>🔧 Configuration des modules</TitreSection>
