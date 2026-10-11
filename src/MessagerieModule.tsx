@@ -3,6 +3,10 @@ import { db, ref, push, onValue, update, remove, auth, get, set } from "./fireba
 import { PageHeader, styles, cleTab } from "./shared";
 import { signatureHtml } from "./ProfilGenerique";
 
+// 11/10/2026 — Demande d'Elinathan : mini-résumés IA des mails (Claude) retirés de l'écran pour
+// l'instant (clé Anthropic à refaire). Remettre à true pour les réafficher.
+const RESUMES_IA_ACTIFS = false;
+
 // ── Module Messagerie (16/09/2026, démarrage du projet — demande d'Elinathan) ──
 //
 // Objectif du projet (voir la note de cadrage "Plateforme de messagerie commerciale" remise le
@@ -2279,7 +2283,7 @@ export function MessagerieModule({
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Expéditeur</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800 }}>Sujet</th>
                         <th style={{ textAlign:"left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Attribué à</th>
-                        <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Résumé</th>
+                        {RESUMES_IA_ACTIFS && <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Résumé</th>}
                         <th style={{ textAlign: "left", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Statut</th>
                         <th style={{ textAlign: "right", padding: "8px 10px", color: COLORS.gray700, fontWeight: 800, whiteSpace: "nowrap" }}>Date</th>
                       </tr>
@@ -2425,7 +2429,7 @@ export function MessagerieModule({
                                 </button>
                               )}
                             </td>
-                            <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
+                            {RESUMES_IA_ACTIFS && <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
                               {m.resume ? (
                                 <span style={{ fontSize: 11, fontStyle: "italic", color: COLORS.gray600 }}>
                                   🧠 {m.resume}
@@ -2442,7 +2446,7 @@ export function MessagerieModule({
                                   🧠 Générer un résumé
                                 </button>
                               )}
-                            </td>
+                            </td>}
                             <td style={{ padding: "7px 10px", verticalAlign: "top", wordBreak: "break-word" }}>
                               {m.statut ? (
                                 <span
