@@ -994,22 +994,22 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // 11/10/2026 — Nouveau système des BL NLT (demande d'Elinathan) : la DATE de la demande fait le
   // lien. Le bouton « BL NLT du jour » va lire la boîte mail au moment du clic et liste tous les
   // PDF envoyés par NLT ce jour-là (serveur/routes/bl-nlt.js) — marche aussi pour le passé.
-  const [blJour, setBlJour] = useState<null | { date: string; numero: string; chargement: boolean; bls: { uid: number; part: string; nom: string; sujet: string; heure: string }[]; erreur?: string; ouverture?: string }>(null);
+  const [blJour, setBlJour] = useState<null | { date: string; numero: string; chargement: boolean; bls: { boite?: string; uid: number; part: string; nom: string; sujet: string; heure: string }[]; erreur?: string; avertissement?: string; ouverture?: string }>(null);
   async function ouvrirBlsDuJour(d: Demande) {
     const date = String(d.dateCreationFr || "").split(" ")[0];
     setBlJour({ date, numero: d.numero || d.id, chargement: true, bls: [] });
     try {
       const r = await fetch(`/api/bl-nlt?date=${encodeURIComponent(date)}`);
       const out = await r.json().catch(() => ({}));
-      setBlJour(cur => cur && { ...cur, chargement: false, bls: out.bls || [], erreur: r.ok ? undefined : (out.error || `Erreur ${r.status}`) });
+      setBlJour(cur => cur && { ...cur, chargement: false, bls: out.bls || [], avertissement: out.avertissement, erreur: r.ok ? undefined : (out.error || `Erreur ${r.status}`) });
     } catch (e: any) {
       setBlJour(cur => cur && { ...cur, chargement: false, erreur: e?.message || "Erreur réseau" });
     }
   }
-  async function ouvrirUnBl(b: { uid: number; part: string; nom: string }) {
+  async function ouvrirUnBl(b: { boite?: string; uid: number; part: string; nom: string }) {
     setBlJour(cur => cur && { ...cur, ouverture: `${b.uid}-${b.part}` });
     try {
-      const r = await fetch(`/api/bl-nlt?uid=${b.uid}&part=${encodeURIComponent(b.part)}`);
+      const r = await fetch(`/api/bl-nlt?boite=${encodeURIComponent(b.boite || "elinathan")}&uid=${b.uid}&part=${encodeURIComponent(b.part)}`);
       if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || `Erreur ${r.status}`);
       const blob = await r.blob();
       const base64: string = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1] || ""); fr.onerror = ko; fr.readAsDataURL(blob); });
@@ -5617,6 +5617,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             <p style={{ margin: "0 0 14px", fontSize: 12, color: COLORS.gray600 }}>Tous les BL de ce jour, pour toutes les demandes NLT du {blJour.date} (demande {blJour.numero}).</p>
             {blJour.chargement && <p style={{ fontSize: 13, color: COLORS.gray600 }}>⏳ Lecture de la boîte mail…</p>}
             {blJour.erreur && <p style={{ fontSize: 13, color: COLORS.danger, fontWeight: 600 }}>❌ {blJour.erreur}</p>}
+            {blJour.avertissement && <p style={{ fontSize: 11.5, color: COLORS.gray600 }}>ℹ️ Une des boîtes n'a pas pu être lue ({blJour.avertissement}) : la liste vient de l'autre.</p>}
             {!blJour.chargement && !blJour.erreur && blJour.bls.length === 0 && <p style={{ fontSize: 13, color: COLORS.gray600 }}>Aucun BL reçu de NLT le {blJour.date}.</p>}
             <div style={{ display: "grid", gap: 8 }}>
               {blJour.bls.map(b => (
