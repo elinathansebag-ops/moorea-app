@@ -3786,7 +3786,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const today = new Date().toLocaleDateString("fr-FR");
     const nbAttente = arrivages.filter(a => a.statut === "en attente" && a.date === today).length;
     const nbTraitesAujourdHui = arrivages.filter(a => a.date === today && a.statut !== "en attente").length;
-    const nbLitigesOuverts = arrivages.filter(a => a.litige && a.litige.statut === "ouvert").length;
     const nbRapports = rapports.length;
     const comptesMailCassesAccueil = monAccesReel.isAdmin
       ? Object.values(santeComptesMail).filter(c => c && c.ok === false)
@@ -3827,7 +3826,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "appro", icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
       // 29/09/2026 — Module Litiges accessible directement depuis l'accueil (avant : seulement
       // via le bandeau « X litiges ouverts »). Admins par défaut, sinon droit « ⚠️ Litiges ».
-      { key: "litiges", icon: "⚠️", label: "Litiges", color: "#dc2626", badge: nbLitigesOuverts || null, stat: nbLitigesOuverts > 0 ? `${nbLitigesOuverts} ouvert${nbLitigesOuverts > 1 ? "s" : ""}` : "Refus, réserves, reprises", action: () => { setShowAccueil(false); setShowLitiges(true); } },
+      { key: "litiges", icon: "⚠️", label: "Litiges", color: "#dc2626", badge: null, stat: "Refus, réserves, reprises", action: () => { setShowAccueil(false); setShowLitiges(true); } },
       ...(monAcces.isAdmin ? [{ key: "stats_achats", icon: "📊", label: "Stats achats", color: "#7c3aed", badge: null, stat: "Achats, marges, fournisseurs (admin)", action: () => { setShowAccueil(false); setShowStatsAchats(true); } }] : []),
       { key: "chargement", icon: "🚛", label: "Optimisation chargement", color: "#0891b2", badge: null, stat: "Calculateur palettes & camion", action: () => { setShowAccueil(false); setShowChargement(true); } },
     ].filter(b => monAcces.hasModule(b.key));
@@ -3936,7 +3935,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             const ATTENTION = "#d9822b", PROBLEME = "#c2453d";
             const cartes: { titre: string; valeur: string; detail: string; point: string; action: () => void; info?: string }[] = [];
             if (nbAttente > 0) cartes.push({ titre: "Arrivages", valeur: String(nbAttente), detail: "en attente de pointage", point: ATTENTION, action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } });
-            if (nbLitigesOuverts > 0) cartes.push({ titre: "Litiges", valeur: String(nbLitigesOuverts), detail: `ouvert${nbLitigesOuverts > 1 ? "s" : ""}`, point: PROBLEME, action: () => setShowLitiges(true) });
+            // 11/10/2026 — Carte « Litiges ouverts » retirée (Elinathan : un refus ou une réserve envoyé
+            // aux commerciaux, « c'est fini, il n'y a rien à valider après »).
             if (alerteIfco) cartes.push({ titre: "Déclaration IFCO", valeur: joursDepuisIfco === null ? "—" : `${joursDepuisIfco} j`, detail: joursDepuisIfco === null ? "aucune déclaration enregistrée" : "sans déclaration des bacs", point: ATTENTION, action: () => { setShowAccueil(false); setShowPrestataires(true); } });
             if (alertesRetours.length > 0) cartes.push({ titre: "Retours", valeur: String(alertesRetours.length), detail: "non reçus depuis plus de 3 jours", point: PROBLEME, info: alertesRetours.map((r: any) => `${r.client || r.clientConnu || "Client inconnu"} · ${r.date}`).join("\n"), action: () => { setShowAccueil(false); setShowRetours(true); } });
             if (nbNotesCommandesEnAttente > 0) cartes.push({ titre: "Notes commande", valeur: String(nbNotesCommandesEnAttente), detail: "à rentrer", point: ATTENTION, action: () => { setTachesTabDemande("commandes"); setShowAccueil(false); setShowTaches(true); } });
@@ -5127,7 +5127,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
               <StatCardArr label="Total arrivages" value={arrivages.length} color="#c8a84b" />
               <StatCardArr label="Taux conformité" value={arrivages.filter(a=>a.statut!=="en attente"&&a.statut!=="hors site").length ? `${Math.round(arrivages.filter(a=>a.statut==="validé").length/Math.max(arrivages.filter(a=>a.statut!=="en attente"&&a.statut!=="hors site").length,1)*100)}%` : "-"} color="#1a6b3a" />
-              <StatCardArr label="Litiges ouverts" value={arrivages.filter(a=>a.litige?.statut==="ouvert").length} color="#dc2626" />
+              <StatCardArr label="Refus & réserves" value={arrivages.filter(a=>a.litige).length} color="#dc2626" />
             </div>
             {(() => {
               const map: Record<string,{total:number,valides:number,litiges:number,score:number[]}> = {};
