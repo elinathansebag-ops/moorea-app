@@ -23,6 +23,9 @@ export const config = { runtime: "nodejs" };
 for (const k of Object.keys(process.env)) {
   if (k.startsWith("GMAIL_PASS") && process.env[k]) process.env[k] = process.env[k].replace(/\s+/g, "");
 }
+// Jennifer : un seul compte Gmail, mais le mot de passe n'existe sur Vercel que sous le nom utilisé
+// par l'Appro. Sans ça, ses envois de rapports et le test « Comptes mail » ne le trouvaient pas.
+if (!process.env.GMAIL_PASS_JENNIFER && process.env.GMAIL_PASS_JENNIFER_APPRO) process.env.GMAIL_PASS_JENNIFER = process.env.GMAIL_PASS_JENNIFER_APPRO;
 
 const BASE_RTDB = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app/";
 const fetchOrigine = globalThis.fetch;
