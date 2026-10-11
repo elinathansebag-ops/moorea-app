@@ -1024,9 +1024,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     try {
       const r = await fetch(`/api/bl-nlt?boite=${encodeURIComponent(b.boite || "elinathan")}&uid=${b.uid}&part=${encodeURIComponent(b.part)}`);
       if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || `Erreur ${r.status}`);
-      const blob = await r.blob();
-      const base64: string = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1] || ""); fr.onerror = ko; fr.readAsDataURL(blob); });
-      setPdfApercu({ titre: `BL NLT — ${b.nom}`, base64 });
+      // La fenêtre d'aperçu attend une ADRESSE de PDF (iframe src) : lien local vers le fichier
+      // reçu (avant : le contenu brut était passé tel quel → « URI_TOO_LONG »).
+      const blob = new Blob([await r.arrayBuffer()], { type: "application/pdf" });
+      setPdfApercu({ titre: `BL NLT — ${b.nom}`, base64: URL.createObjectURL(blob) });
     } catch (e: any) {
       notify("error", `❌ Ouverture du BL impossible : ${e?.message || "erreur"}`);
     } finally {
