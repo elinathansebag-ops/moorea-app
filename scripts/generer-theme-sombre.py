@@ -20,7 +20,8 @@ FONDS = {
     N0: ["#f9fafb", "#f5f3ee", "#f3f4f6", "#f5f5f5", "#fafafa", "#faf8f3", "#faf9f6", "#f8f6f2", "#f0f0f0", "#faf8f0", "#faf8f5", "#f8fafc", "#f4f4f4", "#e5e7eb", "#e8e0d0",
          # 10/10/2026 — fonds pâles oubliés (restaient clairs sous un texte devenu clair)
          "#f7f7f5", "#fffdf7", "#f9f8f6", "#f3efe6", "#f0ebe0", "#f3f4f1", "#faf7ef", "#fffdf5", "#fffef8", "#fafaf8", "#eee", "#f4f7f5", "#f3f6f5", "#eaf2ee", "#dde6e3"],
-    "#334155": ["#111827"],                                             # boutons noirs : un cran plus clair pour rester visibles
+    "#334155": ["#111827"],
+    N3: ["#e0e0e0", "#e5e5e5"],                                          # pastilles grises                                             # boutons noirs : un cran plus clair pour rester visibles
     "#2a1416": ["#fef2f2", "#fff5f5", "#fee2e2", "#fdedec"],                       # rouge (erreur)
     "#2a2110": ["#fffbeb", "#fef3c7", "#fffbf0", "#fffbe6", "#fdf6ec", "#fff3e0", "#fff7ed", "#fef9e6", "#fffaf3", "#fff8e6", "#fff3cd", "#fef9c3"],            # orange (attente)
     "#10241a": ["#f0fdf4", "#dcfce7", "#f0fff6", "#f0fff4", "#eafaf1", "#f8fffe", "#e8f0ea", "#eef6f0"],  # vert (prêt)
@@ -40,11 +41,11 @@ TEXTES = {
     T3: ["#9ca3af", "#999", "#aaa", "#ccc"],
     "#f87171": ["#dc2626", "#b91c1c", "#c0392b"],
     "#fca5a5": ["#991b1b", "#7f1d1d"],
-    "#fbbf24": ["#92400e", "#b45309", "#d97706"],
+    "#fbbf24": ["#92400e", "#b45309", "#d97706", "#92600a"],
     "#4ade80": ["#15803d", "#166534", "#1a6b3a", "#16a34a", "#1e8449", "#27ae60"],
-    "#93c5fd": ["#1d4ed8", "#1e40af", "#1a5276"],
+    "#93c5fd": ["#1d4ed8", "#1e40af", "#1a5276", "#0369a1"],
     "#7fb0ff": ["#0050aa"],
-    "#c4b5fd": ["#7c3aed", "#6d28d9"],
+    "#c4b5fd": ["#7c3aed", "#6d28d9", "#8e44ad"],
     "#d4b45a": ["#8a6f2e", "#92722c"],
 }
 
@@ -124,7 +125,15 @@ V2_BORDURES_CLAIR = {"#dde6e3": ["#e8e0d0", "#f0ede6"]}
 # L'or était surtout un texte posé sur fond noir (devenu vert sapin) : il devient vert sauge, la
 # variante claire du logo, lisible sur le vert sapin.
 V2_TEXTES = {SAUGE: ["#c8a84b"], SAPIN: ["#8a6f2e", "#92722c", "#0050aa", "#6d28d9", "#7c3aed", "#3b82f6", "#8b5cf6", "#0ea5e9", "#27ae60", "#2563eb", "#9333ea", "#a855f7"]}
-V2_TEXTES_CLAIR = {ENCRE: ["#1a2e1a"]}
+V2_TEXTES_CLAIR = {ENCRE: ["#1a2e1a"],
+                   # 11/10/2026 — gris trop pâles sur fond blanc (rapport de contraste < 3) : un cran plus foncé.
+                   "#6b7570": ["#aaa", "#aaaaaa", "#9ca3af", "#999", "#ccc"],
+                   "#b45309": ["#f59e0b"]}
+# 11/10/2026 — Boutons de couleur vive sous un texte blanc presque illisible : teinte assombrie.
+V2_FONDS_VIFS = {"#1f9d55": ["#25d366"], "#b45309": ["#f59e0b"]}
+# 11/10/2026 — L'or devient vert sauge (lisible sur vert sapin) ; mais posé sur un fond clair, le
+# vert sauge est trop pâle : là, il devient vert sapin.
+FONDS_CLAIRS_SOUS_OR = ["#fff", "#ffffff", "white", "#faf8f3", "#faf8f5", "#f5f3ee", "#fffbeb", "#fffbf0", "#f9fafb"]
 
 v2 = ["/* Généré par scripts/generer-theme-sombre.py — ne pas modifier à la main. */",
       # Une seule police partout (Figtree) ; le logo garde sa police (classe v2-marque).
@@ -173,7 +182,11 @@ textes = lambda c: formes("color", c)
 bloc(V2_FONDS, ":root.v2", "background-color", fonds)
 # Tout ce qui passe sur fond vert sapin prend un texte blanc (l'ancien « bouton or, texte noir »
 # devenait illisible). Les bandeaux noirs avaient déjà un texte clair : rien ne change pour eux.
-texte_blanc = ",\n".join(f':root.v2 [style*="{x}"]' for c in V2_FONDS[SAPIN] for x in fonds(c)) + " { color: #ffffff !important; }"
+# 11/10/2026 — « :not(#v2-sur-sapin) » (un id qui n'existe pas) ne change rien à ce qui est visé mais
+# donne à cette règle la priorité sur TOUTES les autres couleurs de texte : avant, un texte foncé
+# converti par une règle plus précise (ex. « #1a2e1a » en mode clair) restait foncé sur le bouton
+# devenu vert sapin (bouton « + Ajouter » des tâches, signalé par Elinathan).
+texte_blanc = ",\n".join(f':root.v2:not(#v2-sur-sapin) [style*="{x}"]' for c in V2_FONDS[SAPIN] for x in fonds(c)) + " { color: #ffffff !important; }"
 bloc(V2_FONDS_CLAIR, ":root.v2:not(.dark)", "background-color", fonds)
 bloc(V2_FONDS_TEINTES, ":root.v2:not(.dark)", "background-color", fonds)
 bloc(V2_BORDURES, ":root.v2", "border-color", bords)
@@ -182,6 +195,8 @@ bloc({SAUGE: V2_TEXTES[SAUGE]}, ":root.v2", "color", textes)
 bloc({SAPIN: V2_TEXTES[SAPIN]}, ":root.v2:not(.dark)", "color", textes)
 bloc({"#8cc79a": V2_TEXTES[SAPIN]}, ":root.v2.dark", "color", textes)
 bloc(V2_TEXTES_CLAIR, ":root.v2:not(.dark)", "color", textes)
+bloc(V2_FONDS_VIFS, ":root.v2", "background-color", fonds)
+v2.append(",\n".join(dict.fromkeys(f':root.v2:not(.dark) [style*="{formes("color", "#c8a84b")[0]}"][style*="{y}"]' for f in FONDS_CLAIRS_SOUS_OR for p in ("background", "background-color") for y in formes(p, f)[:1])) + f" {{ color: {SAPIN} !important; }}")
 # Boutons en dégradé vert ou or → vert sapin uni (les dégradés d'autres couleurs gardent leur sens).
 grad = [f':root.v2 button[style*="linear-gradient"][style*="{x}"]' for c in ["#16a34a", "#22c55e", "#27ae60", "#c8a84b", "#8a6f2e"] for x in (rgb(c), c)]
 v2.append(",\n".join(grad) + f" {{ background: {SAPIN} !important; box-shadow: none !important; }}")
