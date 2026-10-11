@@ -231,7 +231,20 @@ function nomAppareil() {
 }
 
 const estIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Mac") && navigator.maxTouchPoints > 1);
-export const estInstallee = () => (navigator as any).standalone === true || !!window.matchMedia?.("(display-mode: standalone)").matches;
+// 11/10/2026 — Tous les modes « appli installée » : une appli Chrome installée avec l'ancien manifeste
+// (« minimal-ui ») n'était pas reconnue et Elinathan voyait le tutoriel d'installation dans l'appli.
+export const estInstallee = () => (navigator as any).standalone === true
+  || ["standalone", "minimal-ui", "fullscreen", "window-controls-overlay"].some(m => !!window.matchMedia?.(`(display-mode: ${m})`).matches);
+
+// Une promesse qui ne répond jamais (fenêtre d'autorisation affichée « en silence » par Chrome,
+// service worker pas encore prêt) laissait le bouton figé sur « … » : on abandonne au bout d'un délai.
+function avecDelai<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(message)), ms))]);
+}
+async function serviceWorkerPret() {
+  if (!(await navigator.serviceWorker.getRegistration())) await navigator.serviceWorker.register("/sw.js");
+  return avecDelai(navigator.serviceWorker.ready, 15000, "le service de notifications de l'appli ne démarre pas — recharge la page et réessaie");
+}
 const pushSupporte = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
 // 11/10/2026 — Le tutoriel d'installation n'est pas le même selon l'appareil (demande d'Elinathan :
@@ -252,9 +265,10 @@ export function plateforme(): Plateforme {
 export async function activerSurCetAppareil(): Promise<"actif" | "refuse" | "inactif"> {
   const email = auth.currentUser?.email || "";
   if (!email || !pushSupporte()) return "inactif";
-  const permission = await Notification.requestPermission();
+  const permission = Notification.permission === "granted" ? "granted" : await avecDelai(Notification.requestPermission(), 30000,
+    "la demande d'autorisation n'est pas apparue. Regarde s'il y a une petite icône 🔔 barrée ou un cadenas en haut de la fenêtre (ou dans la barre d'adresse de Chrome) : clique dessus › Notifications › Autoriser, puis réessaie");
   if (permission !== "granted") return permission === "denied" ? "refuse" : "inactif";
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await serviceWorkerPret();
   const sub = (await reg.pushManager.getSubscription())
     || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlVersOctets(VAPID_PUBLIC_KEY) });
   const j = sub.toJSON();
@@ -274,7 +288,7 @@ export function NotificationsPush({ darkMode }: { darkMode?: boolean }) {
   const cle = cleEmail(email);
 
   async function abonnementActuel() {
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await serviceWorkerPret();
     return reg.pushManager.getSubscription();
   }
 
@@ -505,7 +519,7 @@ export function InvitationNotifications({ darkMode }: { darkMode?: boolean }) {
       const installee = estInstallee();
       let abonne = false;
       if (pushSupporte() && Notification.permission === "granted") {
-        try { abonne = !!(await (await navigator.serviceWorker.ready).pushManager.getSubscription()); } catch { /* on propose quand même */ }
+        try { abonne = !!(await (await serviceWorkerPret()).pushManager.getSubscription()); } catch { /* on propose quand même */ }
       }
       if (installee && abonne) return; // appli installée + notifications actives : rien à demander
       if (installee && pushSupporte() && Notification.permission === "denied") { setMode("refuse"); return; }
