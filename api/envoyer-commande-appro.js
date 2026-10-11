@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import handler_envoyer_tracabilite_lidl from "./_route-envoyer-tracabilite-lidl.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -13,7 +14,7 @@ export const config = { runtime: "nodejs" };
 // La DDM (durée de durabilité minimale) est maintenant une DATE PRÉCISE calculée côté client
 // (voir calculerDateDdm dans ApproModule.tsx) et fournie par ligne (l.ddmDate, ISO ou null) —
 // ce endpoint se contente de l'afficher, il ne recalcule rien.
-export default async function handler(req, res) {
+async function handlerPrincipal(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -133,4 +134,13 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
+}
+
+// 11/10/2026 — Le forfait Vercel gratuit limite à 12 fonctions serveur par déploiement. « envoyer-tracabilite-lidl »
+// (api/_route-envoyer-tracabilite-lidl.js, le « _ » l'empêche d'être compté comme une fonction) passe donc par
+// celle-ci : vercel.json réécrit /api/envoyer-tracabilite-lidl vers /api/envoyer-commande-appro?__route=envoyer-tracabilite-lidl, l'adresse
+// appelée par l'appli et les robots ne change pas.
+export default async function handler(req, res) {
+  if (req.query?.__route === "envoyer-tracabilite-lidl") return handler_envoyer_tracabilite_lidl(req, res);
+  return handlerPrincipal(req, res);
 }
