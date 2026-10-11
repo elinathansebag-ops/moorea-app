@@ -163,17 +163,39 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
     doc.setLineWidth(0.3); doc.line(LM, 23.5, LW - LM, 23.5);
     doc.setFontSize(10); doc.text("Livraison le :", LM, 31);
     doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(dateFr, LM + 25, 31);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Destinataire :", LM, 42);
-    doc.setLineWidth(0.2); doc.line(LM, 43, LM + 23, 43);
-    let y = 51;
-    e.destinataire.forEach((l, k) => {
-      doc.setFontSize(k === 0 ? 15 : 12.5);
-      for (const morceau of doc.splitTextToSize(l, LW - LM * 2) as string[]) { doc.text(morceau, LM, y); y += k === 0 ? 7 : 6; }
-    });
-    y = Math.max(y + 4, 92);
-    doc.setFontSize(10); doc.text("Transporteur :", LM, y); doc.line(LM, y + 1, LM + 24, y + 1);
-    doc.setFontSize(22); doc.text(e.transporteur || "-", LM, y + 11);
-    y += 22;
+    // 11/10/2026 — Demande d'Elinathan : destinataire et transporteur bien plus grands (il restait
+    // beaucoup de vide). Taille calculée pour remplir la zone libre (entre la date et le bas de
+    // l'étiquette) : on part en très grand et on réduit juste assez si l'adresse est longue.
+    const HAUT = 37, BAS = LH - LM - QR - 4, LARG = LW - LM * 2;
+    const mm = (pt: number) => pt * 0.3528 * 1.12; // hauteur d'une ligne de texte en mm
+    const mise = (k: number) => {
+      const tNom = 26 * k, tAdr = 16 * k, tTr = 40 * k;
+      doc.setFont("helvetica", "bold");
+      const lignes: { t: string; pt: number }[] = [];
+      e.destinataire.forEach((l, n) => {
+        const pt = n === 0 ? tNom : tAdr;
+        doc.setFontSize(pt);
+        for (const m of doc.splitTextToSize(l, LARG) as string[]) lignes.push({ t: m, pt });
+      });
+      doc.setFontSize(tTr);
+      let ptTr = tTr;
+      const tr = e.transporteur || "-";
+      while (ptTr > 14 && doc.getTextWidth(tr) > LARG) { ptTr -= 1; doc.setFontSize(ptTr); }
+      const hauteur = 5 + lignes.reduce((h, l) => h + mm(l.pt), 0) + 5 + 5 + mm(ptTr);
+      return { lignes, ptTr, tr, hauteur };
+    };
+    let k = 1, m = mise(k);
+    while (m.hauteur > BAS - HAUT && k > 0.45) { k -= 0.05; m = mise(k); }
+    let y = HAUT;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Destinataire :", LM, y + 3.5);
+    doc.setLineWidth(0.2); doc.line(LM, y + 4.5, LM + 23, y + 4.5);
+    y += 5;
+    for (const l of m.lignes) { doc.setFontSize(l.pt); y += mm(l.pt); doc.text(l.t, LM, y - mm(l.pt) * 0.22); }
+    y += 5;
+    doc.setFontSize(10); doc.text("Transporteur :", LM, y + 3.5); doc.line(LM, y + 4.5, LM + 24, y + 4.5);
+    y += 5;
+    doc.setFontSize(m.ptTr); y += mm(m.ptTr); doc.text(m.tr, LM, y - mm(m.ptTr) * 0.22);
+    y = BAS + 2;
     doc.setLineWidth(0.3); doc.line(LM, y, qrs[i] ? LW - LM - QR - 3 : LW - LM, y);
     const largeurTexte = LW - LM * 2 - (qrs[i] ? QR + 3 : 0);
     doc.setFontSize(10); doc.setFont("helvetica", "normal");
