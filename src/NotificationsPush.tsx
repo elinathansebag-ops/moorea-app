@@ -432,11 +432,16 @@ export function EtatNotificationsComptes({ comptes, darkMode }: { comptes: strin
 // 11/10/2026 — Demande d'Elinathan : à la connexion, si les notifications ne sont pas activées sur
 // cet appareil → fenêtre « Activer les notifications » quand l'appli est installée, sinon un
 // tutoriel pour l'ajouter puis activer les notifications, différent pour iPhone / iPad, Android,
-// Mac et Windows. « Plus tard » la cache 3 jours sur cet appareil, « Ne plus demander » pour de bon.
+// Mac et Windows.
+// 11/10/2026 (bis) — « Plus tard » / « Ne plus demander » retirés à sa demande : la fenêtre revient
+// à chaque ouverture tant que l'appareil n'a pas À LA FOIS l'appli installée ET les notifications
+// actives. « Fermer » ne la cache que jusqu'à la prochaine ouverture (sessionStorage) — sinon un
+// appareil qui ne peut pas recevoir de notifications (iPhone sous iOS 16.4…) ne pourrait plus
+// utiliser l'appli du tout.
 // ═══════════════════════════════════════════════════════════════════════════
-const CLE_PLUS_TARD = "moorea-invit-notif";
-function lireReport(): number { try { return Number(localStorage.getItem(CLE_PLUS_TARD) || 0); } catch { return 0; } }
-function ecrireReport(ms: number) { try { localStorage.setItem(CLE_PLUS_TARD, String(ms)); } catch { /* stockage bloqué */ } }
+const CLE_FERMEE = "moorea-invit-notif-fermee";
+function fermeeCetteFois(): boolean { try { return sessionStorage.getItem(CLE_FERMEE) === "1"; } catch { return false; } }
+function fermerCetteFois() { try { sessionStorage.setItem(CLE_FERMEE, "1"); } catch { /* stockage bloqué */ } }
 
 const TUTOS: Record<Plateforme, { titre: string; etapes: string[]; note?: string }> = {
   iphone: { titre: "Sur iPhone", etapes: [
@@ -496,14 +501,14 @@ export function InvitationNotifications({ darkMode }: { darkMode?: boolean }) {
 
   useEffect(() => {
     (async () => {
-      if (!auth.currentUser?.email || lireReport() > Date.now()) return;
+      if (!auth.currentUser?.email || fermeeCetteFois()) return;
       const installee = estInstallee();
-      if (pushSupporte()) {
-        if (Notification.permission === "granted") {
-          try { if (await (await navigator.serviceWorker.ready).pushManager.getSubscription()) return; } catch { /* on propose quand même */ }
-        }
-        if (Notification.permission === "denied") { setMode("refuse"); return; }
+      let abonne = false;
+      if (pushSupporte() && Notification.permission === "granted") {
+        try { abonne = !!(await (await navigator.serviceWorker.ready).pushManager.getSubscription()); } catch { /* on propose quand même */ }
       }
+      if (installee && abonne) return; // appli installée + notifications actives : rien à demander
+      if (installee && pushSupporte() && Notification.permission === "denied") { setMode("refuse"); return; }
       // Appli installée (ou navigateur qui sait déjà recevoir des notifications sans l'installer, sauf
       // iPhone/iPad où c'est obligatoire) → simple bouton ; sinon → tutoriel d'installation.
       if (installee && pushSupporte()) setMode("activer");
@@ -512,13 +517,13 @@ export function InvitationNotifications({ darkMode }: { darkMode?: boolean }) {
   }, []);
 
   if (!mode) return null;
-  const plusTard = () => { ecrireReport(Date.now() + 3 * 86400000); setMode(null); };
-  const jamais = () => { ecrireReport(Date.now() + 3650 * 86400000); setMode(null); };
+  const fermer = () => { fermerCetteFois(); setMode(null); };
   async function activer() {
     setOccupe(true); setMessage(null);
     try {
       const r = await activerSurCetAppareil();
-      if (r === "actif") { setMessage("✅ C'est activé ! Tu recevras les alertes Moorea sur cet appareil."); setTimeout(() => setMode(null), 1800); }
+      if (r === "actif" && estInstallee()) { setMessage("✅ C'est activé ! Tu recevras les alertes Moorea sur cet appareil."); setTimeout(() => setMode(null), 1800); }
+      else if (r === "actif") setMessage("✅ Notifications activées dans ce navigateur. Installe maintenant l'appli (étapes ci-dessus) : cette fenêtre disparaîtra ensuite.");
       else if (r === "refuse") setMode("refuse");
       else setMessage("Pas encore autorisé. Réessaie et touche « Autoriser » dans la fenêtre du navigateur.");
     } catch (err: any) {
@@ -554,9 +559,8 @@ export function InvitationNotifications({ darkMode }: { darkMode?: boolean }) {
           <p style={{ margin: 0, fontSize: 12, color: gris }}>Puis rouvre l'appli : cette fenêtre te proposera d'activer.</p>
         </>}
         {message && <p style={{ margin: "12px 0 0", fontSize: 13, fontWeight: 600 }}>{message}</p>}
-        <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-          <button onClick={plusTard} style={{ ...boutonSecondaire, flex: 1 }}>Plus tard</button>
-          <button onClick={jamais} style={{ ...boutonSecondaire, flex: 1 }}>Ne plus demander ici</button>
+        <div style={{ display: "flex", marginTop: 16 }}>
+          <button onClick={fermer} style={{ ...boutonSecondaire, flex: 1 }}>Fermer</button>
         </div>
       </div>
     </div>
