@@ -9,6 +9,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/bl-nlt",
+      "destination": "/api/routeur?__route=bl-nlt"
+    },
+    {
       "source": "/api/confirm-livraison",
       "destination": "/api/routeur?__route=confirm-livraison"
     },

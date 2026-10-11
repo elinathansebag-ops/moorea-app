@@ -7,7 +7,7 @@ import { signatureHtml, nomSignataire } from "./ProfilGenerique";
 // (une dizaine, dans plusieurs modules), on ajoute ici, une fois pour toutes, le jeton de connexion
 // Firebase (« Authorization: Bearer … ») à toutes les requêtes vers les endpoints protégés.
 // 11/10/2026 — + photos (ImgBB) et lecture d'étiquette (Claude), réservées aux comptes connectés.
-const ENDPOINTS_PROTEGES = ["/api/send-email", "/api/upload-photo", "/api/scan-etiquette"];
+const ENDPOINTS_PROTEGES = ["/api/send-email", "/api/upload-photo", "/api/scan-etiquette", "/api/bl-nlt"];
 // Mails dont le texte est écrit côté serveur : on leur passe le nom du signataire (voir plus bas).
 const ENDPOINTS_SIGNES = ["/api/recap-reconditionnement", "/api/envoyer-tracabilite-lidl", "/api/envoyer-commande-appro"];
 

@@ -27,9 +27,9 @@ name: Détection automatique du BL NLT (mail)
 # Secrets requis (Settings → Secrets and variables → Actions, sur GitHub) :
 #   APP_URL              → l'URL de production de l'appli (ex: https://moorea-app.vercel.app)
 #   NLT_BL_POLL_SECRET   → la même valeur que la variable d'environnement Vercel du même nom
+# 11/10/2026 — Planification arrêtée : nouveau système des BL NLT (la date de la demande fait le
+# lien, l'appli lit la boîte au moment du clic — serveur/routes/bl-nlt.js). Lancement manuel seul.
 on:
-  schedule:
-    - cron: "*/3 6-18 * * *"
   workflow_dispatch: {}
 
 jobs:

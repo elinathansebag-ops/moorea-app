@@ -991,6 +991,35 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // vers un data: URL (d'où le renvoi vers une page Google constaté par l'utilisateur), alors
   // qu'un iframe src="data:..." affiché dans la page fonctionne normalement.
   const [pdfApercu, setPdfApercu] = useState<{ titre: string; base64: string } | null>(null);
+  // 11/10/2026 — Nouveau système des BL NLT (demande d'Elinathan) : la DATE de la demande fait le
+  // lien. Le bouton « BL NLT du jour » va lire la boîte mail au moment du clic et liste tous les
+  // PDF envoyés par NLT ce jour-là (serveur/routes/bl-nlt.js) — marche aussi pour le passé.
+  const [blJour, setBlJour] = useState<null | { date: string; numero: string; chargement: boolean; bls: { uid: number; part: string; nom: string; sujet: string; heure: string }[]; erreur?: string; ouverture?: string }>(null);
+  async function ouvrirBlsDuJour(d: Demande) {
+    const date = String(d.dateCreationFr || "").split(" ")[0];
+    setBlJour({ date, numero: d.numero || d.id, chargement: true, bls: [] });
+    try {
+      const r = await fetch(`/api/bl-nlt?date=${encodeURIComponent(date)}`);
+      const out = await r.json().catch(() => ({}));
+      setBlJour(cur => cur && { ...cur, chargement: false, bls: out.bls || [], erreur: r.ok ? undefined : (out.error || `Erreur ${r.status}`) });
+    } catch (e: any) {
+      setBlJour(cur => cur && { ...cur, chargement: false, erreur: e?.message || "Erreur réseau" });
+    }
+  }
+  async function ouvrirUnBl(b: { uid: number; part: string; nom: string }) {
+    setBlJour(cur => cur && { ...cur, ouverture: `${b.uid}-${b.part}` });
+    try {
+      const r = await fetch(`/api/bl-nlt?uid=${b.uid}&part=${encodeURIComponent(b.part)}`);
+      if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || `Erreur ${r.status}`);
+      const blob = await r.blob();
+      const base64: string = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1] || ""); fr.onerror = ko; fr.readAsDataURL(blob); });
+      setPdfApercu({ titre: `BL NLT — ${b.nom}`, base64 });
+    } catch (e: any) {
+      notify("error", `❌ Ouverture du BL impossible : ${e?.message || "erreur"}`);
+    } finally {
+      setBlJour(cur => cur && { ...cur, ouverture: undefined });
+    }
+  }
   // 08/09/2026 — Demande d'Elinathan : "Envoyer une palette IFCO à NLT" utilisait un simple
   // window.prompt/confirm, sans bon PDF. Remplacé par une vraie modale de validation + bon PDF
   // dédié (voir genererBonEnvoiPaletteIfco), imprimé automatiquement comme les autres bons.
@@ -3813,6 +3842,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           </div>
         )}
 
+        {/* 11/10/2026 — Ancien système des BL NLT (rapprochement par n° de lot + liste « BL à
+            vérifier ») retiré de l'écran : remplacé par le bouton « BL NLT du … » de chaque demande. */}
+        {false && (<>
         {/* 15/09/2026 — Alerte "BL NLT à vérifier" : la détection automatique du mail NLT (voir
             api/nlt-bl-poll.js) n'applique JAMAIS un lot ambigu toute seule — elle le note ici à
             la place pour vérification manuelle plutôt que de risquer une mauvaise saisie. */}
@@ -3908,6 +3940,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             ))}
           </div>
         )}
+
+        </>)}
 
         {/* Onglets simples — scroll horizontal plutôt que wrap : sur téléphone les 4 libellés ne
             tiennent jamais sur une seule ligne, autant permettre de glisser que de casser sur 2
@@ -4193,8 +4227,13 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     )}
 
                     <HistoriqueDemandeRecond d={d} />
-                    {(aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
+                    {(d.depot === "nlt" || aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        {d.depot === "nlt" && d.dateCreationFr && (
+                          <button type="button" onClick={() => ouvrirBlsDuJour(d)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            📬 BL NLT du {String(d.dateCreationFr).split(" ")[0]}
+                          </button>
+                        )}
                         {aPdfDemande(d, "pdfGeslotBase64") && (
                           <button type="button" onClick={() => ouvrirPdfDemande(d, "pdfGeslotBase64", `Bon Geslot — ${d.numero || d.id}`)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                             📄 Bon Geslot
@@ -5571,6 +5610,32 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           un <a target="_blank"> vers une data:URI se fait bloquer/rediriger par Chrome (page
           Google vide constatée par l'utilisateur) car c'est une navigation top-level vers un
           data: URL ; l'iframe, lui, l'affiche sans problème. */}
+      {blJour && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 790, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setBlJour(null)}>
+          <div style={{ background: "#fff", borderRadius: 14, maxWidth: 520, width: "100%", maxHeight: "85vh", overflowY: "auto", padding: 22 }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 800, color: COLORS.gray700 }}>📬 BL envoyés par NLT le {blJour.date}</h3>
+            <p style={{ margin: "0 0 14px", fontSize: 12, color: COLORS.gray600 }}>Tous les BL de ce jour, pour toutes les demandes NLT du {blJour.date} (demande {blJour.numero}).</p>
+            {blJour.chargement && <p style={{ fontSize: 13, color: COLORS.gray600 }}>⏳ Lecture de la boîte mail…</p>}
+            {blJour.erreur && <p style={{ fontSize: 13, color: COLORS.danger, fontWeight: 600 }}>❌ {blJour.erreur}</p>}
+            {!blJour.chargement && !blJour.erreur && blJour.bls.length === 0 && <p style={{ fontSize: 13, color: COLORS.gray600 }}>Aucun BL reçu de NLT le {blJour.date}.</p>}
+            <div style={{ display: "grid", gap: 8 }}>
+              {blJour.bls.map(b => (
+                <div key={`${b.uid}-${b.part}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, border: `1px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis" }}>📄 {b.nom}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11.5, color: COLORS.gray600 }}>{b.heure ? `Reçu à ${b.heure}` : ""}{b.sujet ? ` · ${b.sujet}` : ""}</p>
+                  </div>
+                  <button type="button" onClick={() => ouvrirUnBl(b)} disabled={blJour.ouverture === `${b.uid}-${b.part}`}
+                    style={{ flexShrink: 0, padding: "7px 12px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    {blJour.ouverture === `${b.uid}-${b.part}` ? "…" : "Ouvrir"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={() => setBlJour(null)} style={{ marginTop: 16, width: "100%", padding: "10px", borderRadius: 10, border: `1px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray600, fontWeight: 700, cursor: "pointer" }}>Fermer</button>
+          </div>
+        </div>
+      )}
       {pdfApercu && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 800, display: "flex", flexDirection: "column", padding: 16 }} onClick={() => setPdfApercu(null)}>
           <div style={{ background: "#fff", borderRadius: 14, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", maxWidth: 900, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>

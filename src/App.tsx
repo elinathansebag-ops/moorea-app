@@ -1104,8 +1104,10 @@ export default function App() {
   // déclencheur GitHub seul ne passait que 2-3 fois par jour. Une transaction Firebase
   // (config/nlt_bl_poll) garantit qu'un seul poste le lance à la fois, pas plus d'une fois par
   // tranche de 4 min, pour ne jamais traiter deux fois le même mail en parallèle.
+  // 11/10/2026 — Arrêté : nouveau système des BL NLT (la date de la demande fait le lien, lecture
+  // de la boîte au moment du clic — voir « BL NLT du … » dans ReconditionnementModule.tsx).
   useEffect(() => {
-    if (!user) return;
+    if (!user || true) return;
     const verifier = async () => {
       const h = new Date().getHours();
       if (h < 7 || h >= 20) return;
