@@ -2295,19 +2295,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   // ─── UPLOAD PHOTOS VERS IMGBB ───
   const uploadPhotosImgBB = async (photosList: { name: string; url: string }[]) => {
-    const IMGBB_KEY = "06c9cef29906bf8f060e882ed5540240";
+    // 11/10/2026 — Passe par le serveur (serveur/routes/upload-photo.js) : la clé ImgBB n'est plus
+    // dans l'appli.
     const uploaded: string[] = [];
     for (const photo of photosList) {
       try {
-        const base64 = photo.url.split(",")[1];
-        const formData = new FormData();
-        formData.append("image", base64);
-        const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, {
+        const res = await fetch("/api/upload-photo", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: photo.url.split(",")[1] }),
         });
         const data = await res.json();
-        if (data.success) uploaded.push(data.data.url);
+        if (data.url) uploaded.push(data.url);
       } catch {}
     }
     return uploaded;
@@ -3205,7 +3204,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       const response = await fetch("/api/scan-etiquette", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base64, mediaType: file.type }),
+        body: JSON.stringify({ base64, mediaType: "image/jpeg" }), // photo réduite en JPEG juste au-dessus
       });
 
       const data = await response.json();
@@ -4875,7 +4874,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     };
                     img.src = URL.createObjectURL(f);
                   });
-                  const response = await fetch("/api/scan-etiquette", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base64, mediaType: f.type }) });
+                  const response = await fetch("/api/scan-etiquette", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ base64, mediaType: "image/jpeg" }) }); // réduite en JPEG juste au-dessus
                   const data = await response.json();
                   const text = data.content?.[0]?.text || "";
                   const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());

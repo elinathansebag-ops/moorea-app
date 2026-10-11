@@ -34,7 +34,7 @@ const COLORS = {
   variableLight: "#eff6ff",
 };
 
-const IMGBB_KEY = "06c9cef29906bf8f060e882ed5540240";
+// 11/10/2026 — Clé ImgBB retirée de l'appli : les logos passent par /api/upload-photo (serveur).
 
 type Align = "left" | "center" | "right";
 
@@ -376,17 +376,15 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const formData = new FormData();
-      formData.append("image", base64);
-      const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body: formData });
+      const res = await fetch("/api/upload-photo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: base64 }) });
       const data = await res.json();
-      if (data.success) {
-        setLogoUrl(data.data.url);
+      if (data.url) {
+        setLogoUrl(data.url);
         setLogoActif(true);
         setLogoNoirEtBlanc(false);
         // Reste dans la bibliothèque pour toutes les prochaines étiquettes, pas seulement
         // celle-ci — pas besoin de re-uploader le même logo à chaque fois.
-        await push(ref(db, "etiquettes/logos"), { nom: file.name.replace(/\.[^.]+$/, ""), url: data.data.url });
+        await push(ref(db, "etiquettes/logos"), { nom: file.name.replace(/\.[^.]+$/, ""), url: data.url });
         notify("success", "✅ Logo importé et enregistré dans la bibliothèque");
       } else {
         notify("error", "❌ Échec de l'import du logo");

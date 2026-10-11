@@ -53,12 +53,20 @@
       "destination": "/api/routeur?__route=recap-reconditionnement"
     },
     {
+      "source": "/api/scan-etiquette",
+      "destination": "/api/routeur?__route=scan-etiquette"
+    },
+    {
       "source": "/api/sante-comptes-mail",
       "destination": "/api/routeur?__route=sante-comptes-mail"
     },
     {
       "source": "/api/send-email",
       "destination": "/api/routeur?__route=send-email"
+    },
+    {
+      "source": "/api/upload-photo",
+      "destination": "/api/routeur?__route=upload-photo"
     }
   ]
 }

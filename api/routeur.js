@@ -4,7 +4,7 @@
 // de api/ en est une. Toutes les fonctions Node vivent donc dans serveur/routes/<nom>.js et passent
 // par celle-ci : vercel.json réécrit /api/<nom> vers /api/routeur?__route=<nom>. Les adresses
 // appelées par l'appli, les robots GitHub, le relais d'impression et les liens envoyés par mail
-// ne changent pas. Seules fetch-image.ts et scan-etiquette.ts restent à part (fonctions « edge »).
+// ne changent pas. Seule fetch-image.ts reste à part (fonction « edge »).
 //
 // Ajouter une fonction : créer serveur/routes/<nom>.js (export default handler(req, res)),
 // l'ajouter à ROUTES ci-dessous ET ajouter sa réécriture dans vercel.json (« rewrites »). Chargement à la demande : une route ne charge que ses propres
@@ -24,8 +24,10 @@ const ROUTES = {
   "portail-reconditionneur": () => import("../serveur/routes/portail-reconditionneur.js"),
   "push-envoyer": () => import("../serveur/routes/push-envoyer.js"),
   "recap-reconditionnement": () => import("../serveur/routes/recap-reconditionnement.js"),
+  "scan-etiquette": () => import("../serveur/routes/scan-etiquette.js"),
   "sante-comptes-mail": () => import("../serveur/routes/sante-comptes-mail.js"),
   "send-email": () => import("../serveur/routes/send-email.js"),
+  "upload-photo": () => import("../serveur/routes/upload-photo.js"),
 };
 
 export default async function handler(req, res) {
