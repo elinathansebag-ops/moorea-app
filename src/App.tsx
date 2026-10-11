@@ -3238,7 +3238,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 20px" }}>
             Si ça prend du temps, préviens directement la personne qui gère les accès chez Moorea.
           </p>
-          <button onClick={() => signOut(auth)} style={{ padding: "10px 22px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
+          <button onClick={() => { if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter ?")) signOut(auth); }} style={{ padding: "10px 22px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
             Se déconnecter
           </button>
         </div>
@@ -3802,7 +3802,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   (pas seulement les admins), voir src/NotificationsPush.tsx. */}
               <button onClick={() => setShowNotifsAppareil(true)} title="Notifications sur cet appareil"
                 style={{ height: 32, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", cursor: "pointer", fontSize: 13, color: "rgba(255,255,255,0.85)" }}>🔔</button>
-              <button onClick={() => signOut(auth)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>Déco</button>
+              <button onClick={() => { if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter ?")) signOut(auth); }} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.08)", cursor: "pointer", fontSize: 11, color: "rgba(255,255,255,0.5)", fontFamily: "'Syne', sans-serif" }}>Déco</button>
             </div>
             {showNotifsAppareil && (
               <div onClick={() => setShowNotifsAppareil(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>

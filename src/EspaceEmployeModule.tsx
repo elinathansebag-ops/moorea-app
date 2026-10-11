@@ -122,7 +122,7 @@ export function EspaceEmployeModule({ employeIdInvite, emailInvite }: { employeI
         ) : !employeId ? (
           <div style={carte}>
             <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>Ton compte est bien connecté mais n'est rattaché à aucun employé pour l'instant — préviens un admin.</p>
-            <button onClick={() => signOut(auth)} style={{ ...boutonPrincipal, background: "#f3f4f6", color: "#6b7280", marginTop: 12 }}>Se déconnecter</button>
+            <button onClick={() => { if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter ?")) signOut(auth); }} style={{ ...boutonPrincipal, background: "#f3f4f6", color: "#6b7280", marginTop: 12 }}>Se déconnecter</button>
           </div>
         ) : (
           <>
@@ -198,7 +198,7 @@ export function EspaceEmployeModule({ employeIdInvite, emailInvite }: { employeI
               )}
             </div>
 
-            <button onClick={() => signOut(auth)} style={{ ...boutonPrincipal, background: "#f3f4f6", color: "#6b7280" }}>Se déconnecter</button>
+            <button onClick={() => { if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter ?")) signOut(auth); }} style={{ ...boutonPrincipal, background: "#f3f4f6", color: "#6b7280" }}>Se déconnecter</button>
           </>
         )}
       </div>
