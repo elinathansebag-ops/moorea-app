@@ -755,7 +755,14 @@ export default function App() {
   }, [user?.uid]);
   // 17/09/2026 — Demande d'Elinathan : "Réglages" par défaut à l'ouverture d'Admin, pas
   // "Activité" (elle n'a pas besoin de voir ça en première page).
-  const [adminTab, setAdminTab] = useState<"activite" | "reglages">("reglages");
+  // 11/10/2026 — Admin découpé en rubriques (avant : une seule page à faire défiler, demande
+  // d'Elinathan). La dernière rubrique ouverte est mémorisée sur l'appareil.
+  type RubriqueAdmin = "modules" | "notifications" | "mails" | "acces" | "donnees" | "materiel" | "activite";
+  const [adminTab, setAdminTabEtat] = useState<RubriqueAdmin>(() => {
+    try { const v = localStorage.getItem("moorea-admin-rubrique"); if (v && ["modules", "notifications", "mails", "acces", "donnees", "materiel", "activite"].includes(v)) return v as RubriqueAdmin; } catch { /* stockage bloqué */ }
+    return "modules";
+  });
+  const setAdminTab = (r: RubriqueAdmin) => { setAdminTabEtat(r); try { localStorage.setItem("moorea-admin-rubrique", r); } catch { /* stockage bloqué */ } };
   const [showNotifsAppareil, setShowNotifsAppareil] = useState(false); // 10/10/2026 — notifications push
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [rackModePlacementAdmin, setRackModePlacementAdmin] = useState<"manuel" | "scan">("manuel");
@@ -3648,10 +3655,31 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         <PageHeader titre="⚙️ Admin" couleur="#6b7280" onBack={fermerAdmin} onHome={fermerAdmin} />
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px", boxSizing: "border-box" }}>
           <>
-              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                <button onClick={() => setAdminTab("activite")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${adminTab === "activite" ? "#6b7280" : "#e5e7eb"}`, background: adminTab === "activite" ? "#f3f4f6" : "#fff", fontWeight: 700, fontSize: 13, color: adminTab === "activite" ? "#374151" : "#9ca3af", cursor: "pointer" }}>📜 Activité</button>
-                <button onClick={() => setAdminTab("reglages")} style={{ flex: 1, padding: "10px 4px", borderRadius: 10, border: `2px solid ${adminTab === "reglages" ? "#6b7280" : "#e5e7eb"}`, background: adminTab === "reglages" ? "#f3f4f6" : "#fff", fontWeight: 700, fontSize: 13, color: adminTab === "reglages" ? "#374151" : "#9ca3af", cursor: "pointer" }}>⚙️ Réglages</button>
-              </div>
+              {(() => {
+                const RUBRIQUES: { cle: RubriqueAdmin; label: string; badge?: number }[] = [
+                  { cle: "modules", label: "🔧 Modules" },
+                  { cle: "notifications", label: "🔔 Notifications" },
+                  { cle: "mails", label: "✉️ Comptes mail", badge: Object.values(santeComptesMail).filter((c: any) => c && c.ok === false).length },
+                  { cle: "acces", label: "🔐 Accès", badge: nbComptesEnAttente },
+                  { cle: "donnees", label: "🗄️ Données" },
+                  { cle: "materiel", label: "🖨️ Matériel" },
+                  { cle: "activite", label: "📜 Activité" },
+                ];
+                return (
+                  <nav aria-label="Rubriques Admin" className="admin-rubriques" style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
+                    {RUBRIQUES.map(r => {
+                      const actif = adminTab === r.cle;
+                      return (
+                        <button key={r.cle} type="button" onClick={() => { setAdminTab(r.cle); window.scrollTo(0, 0); }} aria-current={actif ? "page" : undefined}
+                          style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "9px 13px", borderRadius: 10, border: `1.5px solid ${actif ? "#305a55" : "#e5e7eb"}`, background: actif ? "#305a55" : "#fff", color: actif ? "#fff" : "#374151", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", textAlign: "left" }}>
+                          {r.label}
+                          {!!r.badge && <span style={{ minWidth: 18, height: 18, padding: "0 5px", boxSizing: "border-box", borderRadius: 9, background: "#dc2626", color: "#fff", fontSize: 10.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{r.badge}</span>}
+                        </button>
+                      );
+                    })}
+                  </nav>
+                );
+              })()}
 
               {adminTab === "activite" && (
                 <div>
@@ -3673,7 +3701,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               )}
 
-              {adminTab === "reglages" && (() => {
+              {adminTab !== "activite" && (() => {
                 // 17/09/2026 — Refonte demandée par Elinathan : "harmoniser cette page, mettre
                 // tous les réglages dedans, la rendre vraiment centrale à l'utilisation de
                 // l'app" — regroupement par catégorie (au lieu d'un empilement de cartes sans
@@ -3681,6 +3709,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 // au lieu de devoir ouvrir le module puis cliquer sur son onglet Configuration.
                 return (
                   <div>
+                    {adminTab === "modules" && (<>
                     <TitreSection>🔧 Configuration des modules</TitreSection>
                     <CarteReglage titre="📦 Stock" desc="Répartition GMS/Prestige, qui peut lancer un comptage.">
                       <BoutonReglage label="Ouvrir Stock →" onClick={() => { setShowAdmin(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); }} />
@@ -3705,6 +3734,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     {/* 10/10/2026 — Demande d'Elinathan : être prévenue sur son téléphone même
                         appli fermée (reconditionnement prêt/parti, perte ou litige, alerte
                         technique). Voir src/NotificationsPush.tsx. */}
+                    </>)}
+                    {adminTab === "notifications" && (<>
                     <TitreSection>🔔 Notifications</TitreSection>
                     <CarteReglage titre="🔔 Notifications sur cet appareil" desc="Alertes reçues même appli fermée ou écran éteint. Chaque personne active les siennes sur son propre téléphone (bouton 🔔 en haut de l'accueil).">
                       <NotificationsPush darkMode={darkMode} />
@@ -3719,6 +3750,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     {/* 22/09/2026 -- Demande d'Elinathan : voir d'un coup d'œil lequel des 6
                         comptes mail est déconnecté, pas juste "1 compte mail déconnecté" sans
                         savoir lequel. */}
+                    </>)}
+                    {adminTab === "mails" && (<>
                     <TitreSection>✉️ Comptes mail</TitreSection>
                     <CarteReglage titre="✉️ État des comptes mail" desc="Testé automatiquement une fois par jour (IMAP pour la messagerie, SMTP pour les envois de rapports).">
                       {Object.keys(santeComptesMail).length === 0 ? (
@@ -3748,6 +3781,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       </div>
                     </CarteReglage>
 
+                    </>)}
+                    {adminTab === "acces" && (<>
                     <TitreSection>🔐 Accès & sécurité</TitreSection>
                     {/* 09/09/2026 — Demande d'Elinathan : pouvoir choisir quelle adresse mail accède à
                         quel module/onglet. Réservé aux comptes admin (monAccesReel.isAdmin, la vraie
@@ -3758,6 +3793,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       </CarteReglage>
                     )}
 
+                    </>)}
+                    {adminTab === "donnees" && (<>
                     <TitreSection>🗄️ Données</TitreSection>
                     {/* 17/09/2026 — "Archiver" et "Historique" déplacés ici depuis la grille
                         d'accueil (demande d'Elinathan : ça ne méritait pas une carte de module
@@ -3769,8 +3806,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       </div>
                     </CarteReglage>
 
+                    </>)}
+                    {adminTab === "materiel" && (<>
                     <TitreSection>🖨️ Matériel</TitreSection>
                     <CarteReglage titre="🖨️ Imprimante étiquettes" desc="Configurée directement dans le script du PC (print-relay.js, nom de l'imprimante et format papier) — pas encore pilotable depuis ce panneau." children={null} />
+                    </>)}
                   </div>
                 );
               })()}
