@@ -3976,7 +3976,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               value={searchLotQuery}
               onChange={e => setSearchLotQuery(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && searchLotQuery.trim()) { setShowAccueil(false); setShowRecherche(true); } }}
-              placeholder="Chercher un lot, un produit ou un fournisseur…"
+              placeholder="Chercher un lot, un produit, un fournisseur, un n° RC, un retour…"
               style={{ flex: 1, border: "none", outline: "none", fontSize: 13, fontFamily: "'Syne', sans-serif", background: "transparent", color: textMain, minWidth: 0 }}
             />
           </div>
@@ -4115,18 +4115,37 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           (a.fournisseur && a.fournisseur.toLowerCase().includes(searchLotQuery.toLowerCase()))
         )
       : [];
+    // 11/10/2026 — Recherche globale (demande d'Elinathan) : en plus des arrivages, les demandes de
+    // reconditionnement (n° RC… / PAL…), les retours clients et les rapports d'agréage — seulement
+    // ceux des modules auxquels le compte a accès (données déjà chargées pour lui).
+    const q = searchLotQuery.trim().toLowerCase();
+    const contient = (...vals: any[]) => vals.some(v => v != null && String(v).toLowerCase().includes(q));
+    const resRecond = q.length >= 2 && chargerRecond
+      ? reconditionnementDemandesListe.filter((d: any) => contient(d.numero, d.articleVrac, d.articleFini, d.lot, d.transporteurNom, d.fournisseurOrigine)).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)).slice(0, 30)
+      : [];
+    const resRetours = q.length >= 2 && chargerRetours
+      ? retoursAlerte.filter((r: any) => contient(r.numero, r.client, r.clientConnu, r.bl, r.commercial, ...(r.products || []).flatMap((p: any) => [p?.nom, p?.lot]))).sort((a: any, b: any) => (b.ts || 0) - (a.ts || 0)).slice(0, 30)
+      : [];
+    const resRapports = q.length >= 2 && chargerRapports
+      ? rapports.filter((r: any) => contient(r.numeroRapport, r.produit, r.fournisseur, r.lotMoorea, r.lotFournisseur)).sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30)
+      : [];
+    const totalResultats = resultats.length + resRecond.length + resRetours.length + resRapports.length;
+    const fermerRecherche = () => setShowRecherche(false);
+    const carteRes = { background: "#fff", borderRadius: 12, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.05)" } as const;
+    const boutonRes = { flexShrink: 0, padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e8e0d0", background: "#faf8f3", color: "#8a6f2e", fontSize: 12.5, fontWeight: 700, cursor: "pointer" } as const;
+    const titreRes = (t: string, n: number) => n > 0 && <p style={{ margin: "14px 0 8px", fontSize: 11.5, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".5px" }}>{t} · {n}</p>;
 
     return (
       <>{fabScanner}{invitationNotif}
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
-        <PageHeader titre="🔍 Chercher un lot" couleur="#3b82f6" onBack={() => { setShowRecherche(false); setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
+        <PageHeader titre="🔍 Recherche" couleur="#3b82f6" onBack={() => { setShowRecherche(false); setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 20px 60px", boxSizing: "border-box" }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: "16px", marginBottom: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
             <input
               value={searchLotQuery}
               onChange={e => setSearchLotQuery(e.target.value)}
-              placeholder="Ex : 4421, Tomate, GREENYARD..."
+              placeholder="Ex : 4421, Tomate, GREENYARD, RC261009, S41-2026, nom du client…"
               autoFocus
               style={{ width: "100%", padding: "14px 16px", border: "2px solid #3b82f6", borderRadius: 12, fontSize: 16, outline: "none", fontFamily: "'DM Sans', sans-serif", boxSizing: "border-box" }}
             />
@@ -4134,9 +4153,40 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <p style={{ margin: "8px 0 0", fontSize: 12, color: "#9ca3af" }}>Tapez au moins 2 caractères…</p>
             )}
             {searchLotQuery.length >= 2 && (
-              <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280" }}>{resultats.length} résultat{resultats.length > 1 ? "s" : ""}</p>
+              <p style={{ margin: "8px 0 0", fontSize: 12, color: "#6b7280" }}>{totalResultats} résultat{totalResultats > 1 ? "s" : ""}</p>
             )}
           </div>
+          {titreRes("♻️ Reconditionnement", resRecond.length)}
+          {resRecond.map((d: any) => (
+            <div key={d.id} style={carteRes}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a2e1a" }}>{d.numero || "Demande"} · {d.articleVrac}{d.articleFini ? ` → ${d.articleFini}` : ""}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{(d.depot || "").toUpperCase()} · {d.dateCreationFr || ""}{d.lot ? ` · Lot ${d.lot}` : ""} · {d.statut}{d.nbColisAEntrer != null ? ` · ${d.nbColisAEntrer} colis demandés${d.retour?.nbColisRecus != null ? `, ${d.retour.nbColisRecus} entrés` : ""}` : ""}</p>
+              </div>
+              <button onClick={() => { fermerRecherche(); setShowReconditionnement(true); }} style={boutonRes}>Ouvrir</button>
+            </div>
+          ))}
+          {titreRes("↩️ Retours clients", resRetours.length)}
+          {resRetours.map((r: any) => (
+            <div key={r.id} style={carteRes}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a2e1a" }}>Retour {r.numero || ""} · {r.client || r.clientConnu || "Client inconnu"}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{r.date || ""}{r.bl ? ` · BL ${r.bl}` : ""}{r.commercial ? ` · ${r.commercial}` : ""} · {r.statut || ""}</p>
+              </div>
+              <button onClick={() => { fermerRecherche(); setShowRetours(true); }} style={boutonRes}>Ouvrir</button>
+            </div>
+          ))}
+          {titreRes("📄 Rapports d'agréage", resRapports.length)}
+          {resRapports.map((r: any) => (
+            <div key={r.id || r.numeroRapport} style={carteRes}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a2e1a" }}>{r.numeroRapport} · {r.produit}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{r.fournisseur} · {r.date}{r.lotMoorea ? ` · Lot ${r.lotMoorea}` : ""} · {r.decision === "stock" ? "Conforme" : r.decision === "reserve" ? "Réserve" : "Refus"}</p>
+              </div>
+              <button onClick={() => downloadPDF(r)} style={boutonRes}>PDF</button>
+            </div>
+          ))}
+          {titreRes("📦 Arrivages", resultats.length)}
           {resultats.map(a => {
             const rapport = rapports.find(r => r.arrivage_id === a.id);
             return (
