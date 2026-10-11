@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
 import { BarreMailsRecond } from "./BarreMailsRecond";
 import { noterHistoriqueDemande } from "./historiqueRecond";
-import { alerterRecond } from "./NotificationsPush";
+import { alerterRecond, alerterPush } from "./NotificationsPush";
 import { aPdfDemande, lirePdfDemande, ecrirePdfDemande, type ChampPdfRecond } from "./pdfsRecond";
 import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
@@ -1694,6 +1694,10 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     const newMoorea = stockIfco.moorea - caissesAEnvoyer;
     const newNlt = stockIfco.nlt + caissesAEnvoyer;
     await update(ref(db, "ifco_stock/levels"), { moorea: newMoorea, nlt: newNlt });
+    // 11/10/2026 — Demande d'Elinathan : prévenir quand il reste moins d'une palette en bas.
+    if (newMoorea < CAISSES_PAR_PALETTE && stockIfco.moorea >= CAISSES_PAR_PALETTE) {
+      alerterPush({ type: "ifco_stock_bas", titre: "📦 Stock IFCO bas en bas", corps: `Plus que ${Math.max(0, newMoorea)} caisses vides chez Moorea (moins d'une palette)` });
+    }
     await push(ref(db, "ifco_stock/movements"), {
       date: nowFr(),
       from: "moorea",

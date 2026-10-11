@@ -35,6 +35,9 @@ export const TYPES_NOTIF = [
   "recond_reajustement", "nlt_bl_a_verifier", "cartons_livres",
   "lidl_import", "lidl_changement", "retour_client", "pointeuse_demande",
   "relais", "comptes_mail",
+  // 11/10/2026 — Ajoutées à la demande d'Elinathan.
+  "ecart_pointage", "reserve_arrivage", "compte_attente", "ifco_stock_bas", "impression_erreur",
+  "rappel_arrivages", "rappel_ifco", "rappel_retours",
 ];
 
 // Même conversion que cleEmail() de src/shared.tsx (caractères interdits dans une clé Firebase).
@@ -99,8 +102,11 @@ export async function envoyerPush(emails, { titre, corps, url = "/", tag } = {})
 // push/config/{type} sont des cleEmail ; on garde l'adresse en valeur pour pouvoir la relire).
 export async function destinatairesDe(type) {
   const config = await lire("push/config").catch(() => null);
-  if (!config) return DESTINATAIRES_PAR_DEFAUT;
-  return Object.entries(config[type] || {}).filter(([, v]) => v).map(([cle, v]) => (typeof v === "string" ? v : cle));
+  // Type jamais réglé (ex. alerte ajoutée après coup) : même défaut que si rien n'était réglé.
+  if (!config || config[type] === undefined) return DESTINATAIRES_PAR_DEFAUT;
+  // « _vide » : marqueur posé quand on retire la dernière personne (sinon Firebase efface le nœud
+  // et l'alerte retomberait sur le défaut au lieu de « personne »).
+  return Object.entries(config[type] || {}).filter(([cle, v]) => v && !cle.startsWith("_")).map(([cle, v]) => (typeof v === "string" ? v : cle));
 }
 
 // Envoie une alerte d'un type donné à tous les comptes qui l'ont reçue en attribution.

@@ -8,7 +8,8 @@ import { useProfilGenerique, avecProfil, ouvrirWhatsApp } from "./ProfilGeneriqu
 import { AccueilModulesV2 } from "./AccueilModulesV2";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
-import { NotificationsPush, AttributionNotifications, alerterPush } from "./NotificationsPush";
+import { query, orderByChild, equalTo, onChildAdded } from "firebase/database";
+import { NotificationsPush, AttributionNotifications, alerterPush, EtatNotificationsComptes, InvitationNotifications, envoyerUneFois, dejaEnvoye } from "./NotificationsPush";
 import { LogoMoorea, PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 
@@ -739,6 +740,7 @@ export default function App() {
                   html: `<p><b>${displayName || email}</b> (${email}) vient de se connecter à l'appli Moorea pour la première fois.</p><p>Son compte est en attente : aucun module ne lui est accessible tant qu'aucun accès ne lui est donné dans <b>Droits d'accès &gt; Comptes</b>.</p>`,
                 }),
               }).catch(() => { /* pas grave, best-effort */ });
+              alerterPush({ type: "compte_attente", titre: `👤 Nouveau compte à valider — ${displayName || email}`, corps: "Aucun accès pour l'instant : Admin › Droits d'accès › Comptes" });
             }
           }, { onlyOnce: true });
         }
@@ -1266,6 +1268,68 @@ export default function App() {
   const alertesRetours = retoursAlerte.filter((r: any) =>
     r.statut !== "traite" && r.ts && joursOuvresDepuis(r.ts) >= 3 && !retoursAlerteMasquees.has(r.id)
   );
+
+  // ─── 11/10/2026 — NOTIFICATIONS « SURVEILLANCE » (demande d'Elinathan) ───
+  // Le serveur de notifications ne peut pas lire les arrivages/retours (réservés aux comptes
+  // @moorea.fr) : c'est l'appli ouverte qui les déclenche. Plusieurs écrans peuvent être ouverts en
+  // même temps : envoyerUneFois() garantit qu'un seul envoie (verrou dans push/etat/envoyes).
+  const estCompteMoorea = !!user?.email?.toLowerCase().endsWith("@moorea.fr");
+  // Impression en échec (le relais du PC passe le job en « error ») : uniquement les jobs récents,
+  // pour ne pas ressortir les vieilles erreurs au premier lancement.
+  useEffect(() => {
+    if (!estCompteMoorea) return;
+    const LIBELLES: Record<string, string> = { bon_reconditionnement: "Bon A4", etiquette_lidl: "Étiquettes palettes Lidl", etiquette_refus: "Étiquette refus", etiquette_production: "Étiquette de production", etiquette_ifco_moorea: "Étiquette IFCO", etiquette_manifest: "Étiquette manifeste" };
+    const q = query(ref(db, "printQueue"), orderByChild("status"), equalTo("error"));
+    return onChildAdded(q, snap => {
+      const job = snap.val() || {};
+      if (!job.createdAt || Date.now() - job.createdAt > 6 * 3600000) return;
+      const quoi = job.pdfNom || job.lotLabel || job.produit || LIBELLES[job.type] || "Étiquette";
+      envoyerUneFois(`impression_${snap.key}`, {
+        type: "impression_erreur",
+        titre: `🖨️ Impression en échec — ${LIBELLES[job.type] || "étiquette"}`,
+        corps: `${quoi}${job.error ? ` : ${String(job.error).slice(0, 160)}` : ""}`,
+      });
+    });
+  }, [estCompteMoorea]);
+  // Rappels : vérifiés toutes les 5 min tant que l'appli est ouverte quelque part.
+  const etatRappels = useRef({ arrivages, alerteIfco, joursDepuisIfco, retoursAlerte });
+  etatRappels.current = { arrivages, alerteIfco, joursDepuisIfco, retoursAlerte };
+  useEffect(() => {
+    if (!estCompteMoorea) return;
+    const jourCle = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const semaineCle = (d: Date) => { const l = new Date(d); l.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return `s${jourCle(l)}`; };
+    const verifier = async () => {
+      const maintenant = new Date(), h = maintenant.getHours(), dimanche = maintenant.getDay() === 0;
+      const { arrivages: arr, alerteIfco: ifco, joursDepuisIfco: jIfco, retoursAlerte: ret } = etatRappels.current;
+      if (!arr.length) return; // données pas encore chargées
+      // Arrivages pas pointés à 16 h (lundi → samedi).
+      if (!dimanche && h >= 16) {
+        const cle = `rappel_arrivages_${jourCle(maintenant)}`;
+        const aujourdhui = maintenant.toLocaleDateString("fr-FR");
+        const restants = arr.filter((a: any) => a.statut === "en attente" && a.date === aujourdhui);
+        if (restants.length && !(await dejaEnvoye(cle))) {
+          const fournisseurs = [...new Set(restants.map((a: any) => a.fournisseur).filter(Boolean))].slice(0, 5).join(", ");
+          envoyerUneFois(cle, { type: "rappel_arrivages", titre: `⏰ ${restants.length} arrivage${restants.length > 1 ? "s" : ""} pas encore pointé${restants.length > 1 ? "s" : ""}`, corps: fournisseurs ? `Fournisseurs : ${fournisseurs}` : "À pointer avant la fin de journée" });
+        }
+      }
+      // Déclaration IFCO en retard : une fois par semaine (à partir du lundi 9 h).
+      if (ifco && h >= 9 && !dimanche) {
+        const cle = `rappel_ifco_${semaineCle(maintenant)}`;
+        if (!(await dejaEnvoye(cle))) envoyerUneFois(cle, { type: "rappel_ifco", titre: "📦 Déclaration IFCO en retard", corps: jIfco === null ? "Aucune déclaration des bacs enregistrée" : `Pas de déclaration des bacs depuis ${jIfco} jours` });
+      }
+      // Retours clients non reçus depuis 3 jours ouvrés : chaque matin (sans tenir compte des
+      // alertes masquées sur un appareil, qui ne valent que pour l'écran d'accueil de cet appareil).
+      if (h >= 9 && !dimanche) {
+        const enRetard = ret.filter((r: any) => r.statut !== "traite" && r.ts && joursOuvresDepuis(r.ts) >= 3);
+        const cle = `rappel_retours_${jourCle(maintenant)}`;
+        if (enRetard.length && !(await dejaEnvoye(cle))) envoyerUneFois(cle, { type: "rappel_retours", titre: `🔔 ${enRetard.length} retour${enRetard.length > 1 ? "s" : ""} client non reçu${enRetard.length > 1 ? "s" : ""} depuis 3 jours`, corps: enRetard.slice(0, 5).map((r: any) => r.client || r.clientConnu || "Client inconnu").join(", ") });
+      }
+    };
+    const premier = setTimeout(verifier, 20000); // laisse le temps aux données de charger
+    const t = setInterval(verifier, 5 * 60000);
+    return () => { clearTimeout(premier); clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estCompteMoorea]);
 
   // ─── LOAD STOCK OVERRIDES ───
   useEffect(() => {
@@ -2336,6 +2400,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         for (const a of rapportGroupe) {
           await update(ref(db, `arrivages/${a.id}`), { statut, archived: true, rapport_id: rapport.numeroRapport, validatedAt: Date.now() });
         }
+        if (statut === "sous réserve") alerterPush({
+          type: "reserve_arrivage",
+          titre: `⚠️ Réserve sur tout l'arrivage — ${fournisseur}`,
+          corps: `${rapportGroupe.length} produits : ${rapportGroupe.map(a => a.produit).filter(Boolean).slice(0, 6).join(", ")} (rapport ${rapport.numeroRapport})`,
+        });
         setRapportGroupe(null);
         setPageMode("historique_arr");
       } else {
@@ -3163,6 +3232,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   };
 
   // ─── FAB SCANNER GLOBAL ───
+  // 11/10/2026 — Fenêtre « activer les notifications » / tutoriel d'installation à la connexion
+  // (voir InvitationNotifications) — partout où l'appli est utilisable, pas sur l'écran d'attente.
+  const invitationNotif = user ? <InvitationNotifications darkMode={darkMode} /> : null;
   const fabScanner = !showScanner && !showPalette && !showStock && !showRH && !showPointeuse && !showRecapQualite && (
     <button
       onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
@@ -3487,18 +3559,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   if (showRH) {
     if (!monAcces.hasModule("rh")) return <AccesRefuse onRetour={() => { setShowRH(false); setShowAccueil(true); }} />;
-    return <>{fabScanner}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} isAdmin={monAccesReel.isAdmin} currentUserEmail={user?.email || ""} currentUserName={user?.displayName || ""} /></>;
+    return <>{fabScanner}{invitationNotif}<RHApp onClose={() => { setShowRH(false); setShowAccueil(true); }} isAdmin={monAccesReel.isAdmin} currentUserEmail={user?.email || ""} currentUserName={user?.displayName || ""} /></>;
   }
 
   // 22/09/2026 -- Nouveau module "Pointeuse" (écran mural + configuration des employés), séparé
   // du module RH existant -- voir la note plus haut. Réservé aux admins (créer/supprimer des
   // employés, changer les codes de pointage n'est pas anodin).
   if (showRecapQualite) {
-    return <>{fabScanner}<RecapQualiteModule rapports={rapports} arrivages={arrivages} onClose={() => { setShowRecapQualite(false); setShowAccueil(true); }} /></>;
+    return <>{fabScanner}{invitationNotif}<RecapQualiteModule rapports={rapports} arrivages={arrivages} onClose={() => { setShowRecapQualite(false); setShowAccueil(true); }} /></>;
   }
   if (showPointeuse) {
     if (!monAccesReel.isAdmin) return <AccesRefuse onRetour={() => { setShowPointeuse(false); setShowAccueil(true); }} />;
-    return <>{fabScanner}<PointeuseModule onClose={() => { setShowPointeuse(false); setShowAccueil(true); }} /></>;
+    return <>{fabScanner}{invitationNotif}<PointeuseModule onClose={() => { setShowPointeuse(false); setShowAccueil(true); }} /></>;
   }
 
   if (showCatalogue) {
@@ -3513,7 +3585,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   if (showYukon) {
     if (!monAcces.hasModule("yukon")) return <AccesRefuse onRetour={() => { setShowYukon(false); setShowAccueil(true); }} />;
-    return <>{fabScanner}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
+    return <>{fabScanner}{invitationNotif}<YukonApp onClose={() => { setShowYukon(false); setShowAccueil(true); }} /></>;
   }
 
   if (showTaches) {
@@ -3635,6 +3707,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <TitreSection>🔔 Notifications</TitreSection>
                     <CarteReglage titre="🔔 Notifications sur cet appareil" desc="Alertes reçues même appli fermée ou écran éteint. Chaque personne active les siennes sur son propre téléphone (bouton 🔔 en haut de l'accueil).">
                       <NotificationsPush darkMode={darkMode} />
+                    </CarteReglage>
+                    <CarteReglage titre="📋 Statut des comptes" desc="Qui a activé les notifications, et sur quel appareil.">
+                      <EtatNotificationsComptes comptes={Object.values(permUsers).map(u => (u as any)?.email).filter(Boolean)} darkMode={darkMode} />
                     </CarteReglage>
                     <CarteReglage titre="👥 Qui reçoit quelles notifications" desc="Touche une alerte pour choisir les comptes qui la reçoivent.">
                       <AttributionNotifications comptes={Object.values(permUsers).map(u => (u as any)?.email).filter(Boolean)} darkMode={darkMode} />
@@ -3776,7 +3851,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     ].filter(b => !b.key || monAcces.hasModule(b.key));
 
     return (
-      <>{fabScanner}
+      <>{fabScanner}{invitationNotif}
       <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <div style={{ background: "#305a55", padding: "calc(env(safe-area-inset-top, 0px) + 16px) 16px 20px" }}>
@@ -3986,7 +4061,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const nbRefusASigner = arrivages.filter(a => (a.statut === "refusé" || a.litige?.type === "refusé") && !a.recupere && !a.destruction?.effectuee).length;
     const nbRapportsLitiges = rapports.filter(r => (r.decision === "refus" || r.decision === "reserve")).length;
     return (
-      <>{fabScanner}
+      <>{fabScanner}{invitationNotif}
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="⚠️ Litiges Moorea" couleur="#dc2626" onBack={() => { setShowLitiges(false); setShowAccueil(true); }} onHome={() => { setShowLitiges(false); setShowAccueil(true); }} />
@@ -4042,7 +4117,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       : [];
 
     return (
-      <>{fabScanner}
+      <>{fabScanner}{invitationNotif}
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="🔍 Chercher un lot" couleur="#3b82f6" onBack={() => { setShowRecherche(false); setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
@@ -4178,7 +4253,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     if (!monAcces.hasModule("stock")) return <AccesRefuse onRetour={() => { setShowStock(false); setShowAccueil(true); }} />;
     (window as any)._gencodeArticles = gencodeArticles;
     return (
-      <>{fabScanner}<StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} canConfig={monAcces.hasTab("stock.config")} canCompter={monAcces.hasTab("stock.compter")} isAdmin={monAccesReel.isAdmin} /></>
+      <>{fabScanner}{invitationNotif}<StockApp onExit={() => { setShowStock(false); setShowAccueil(true); }} catalogueArticles={catalogueArticles} canConfig={monAcces.hasTab("stock.config")} canCompter={monAcces.hasTab("stock.compter")} isAdmin={monAccesReel.isAdmin} /></>
     );
   }
 
@@ -4878,7 +4953,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => setEcartPopup({ message })} onReserveGroupe={ouvrirRapportGroupeReserve} />
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => { setEcartPopup({ message }); alerterPush({ type: "ecart_pointage", titre: "⚖️ Écart de quantité au pointage", corps: message.replace(/[*_]/g, "").slice(0, 280) }); }} onReserveGroupe={ouvrirRapportGroupeReserve} />
                           );
                         })}
                       </div>
