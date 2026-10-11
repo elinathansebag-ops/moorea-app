@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import { PDFDocument } from "pdf-lib";
-import { getAdminDb } from "./_firebaseAdmin.js";
+import { getAdminDb } from "../../api/_firebaseAdmin.js";
 
 export const config = { runtime: "nodejs" };
 

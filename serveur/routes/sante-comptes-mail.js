@@ -15,8 +15,7 @@
 // App.tsx) — pour ne pas ajouter un 7e robot qui tape sur Gmail.
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
-import { verifierTokenFirebase } from "./_verifyFirebaseToken.js";
-import handler_push_envoyer from "./_route-push-envoyer.js";
+import { verifierTokenFirebase } from "../../api/_verifyFirebaseToken.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -88,7 +87,7 @@ async function testerSmtp(email, motDePasse) {
   }
 }
 
-async function handlerPrincipal(req, res) {
+export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -116,11 +115,3 @@ async function handlerPrincipal(req, res) {
   }
 }
 
-// 11/10/2026 — Le forfait Vercel gratuit limite à 12 fonctions serveur par déploiement. « push-envoyer »
-// (api/_route-push-envoyer.js, le « _ » l'empêche d'être compté comme une fonction) passe donc par
-// celle-ci : vercel.json réécrit /api/push-envoyer vers /api/sante-comptes-mail?__route=push-envoyer, l'adresse
-// appelée par l'appli et les robots ne change pas.
-export default async function handler(req, res) {
-  if (req.query?.__route === "push-envoyer") return handler_push_envoyer(req, res);
-  return handlerPrincipal(req, res);
-}

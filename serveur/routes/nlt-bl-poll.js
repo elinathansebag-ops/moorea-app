@@ -1,11 +1,10 @@
-import "./_pdfPolyfills.js";
+import "../../api/_pdfPolyfills.js";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { PDFParse } from "pdf-parse";
-import { getAdminDb } from "./_firebaseAdmin.js";
-import { alerter } from "./_push.js";
+import { getAdminDb } from "../../api/_firebaseAdmin.js";
+import { alerter } from "../../api/_push.js";
 import { appliquerBlNltSurDemande, lotsIdentiques } from "./portail-reconditionneur.js";
-import handler_nlt_bl_backfill from "./_route-nlt-bl-backfill.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -47,7 +46,7 @@ function nowFr() {
   return new Date().toLocaleString("fr-FR");
 }
 
-async function handlerPrincipal(req, res) {
+export default async function handler(req, res) {
   // Protégé par un secret partagé (variable d'env Vercel NLT_BL_POLL_SECRET) — seul notre
   // déclencheur GitHub Actions le connaît, pour éviter que n'importe qui sur internet déclenche
   // cet endpoint (qui touche à de vraies données de reconditionnement).
@@ -287,11 +286,3 @@ async function traiterUnLot(adminDb, lot, colis, contexteMail) {
   return "applique";
 }
 
-// 11/10/2026 — Le forfait Vercel gratuit limite à 12 fonctions serveur par déploiement. « nlt-bl-backfill »
-// (api/_route-nlt-bl-backfill.js, le « _ » l'empêche d'être compté comme une fonction) passe donc par
-// celle-ci : vercel.json réécrit /api/nlt-bl-backfill vers /api/nlt-bl-poll?__route=nlt-bl-backfill, l'adresse
-// appelée par l'appli et les robots ne change pas.
-export default async function handler(req, res) {
-  if (req.query?.__route === "nlt-bl-backfill") return handler_nlt_bl_backfill(req, res);
-  return handlerPrincipal(req, res);
-}

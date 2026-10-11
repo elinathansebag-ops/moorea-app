@@ -13,8 +13,8 @@
 // Appelé aussi par le robot GitHub (.github/workflows/surveillance-push.yml) avec
 // ?secret=NLT_BL_POLL_SECRET&type=relais, pour détecter un relais tombé même si personne n'a
 // l'appli ouverte.
-import { verifierTokenFirebase } from "./_verifyFirebaseToken.js";
-import { envoyerPush, alerter, lireEtatPush, ecrireEtatPush, TYPES_NOTIF } from "./_push.js";
+import { verifierTokenFirebase } from "../../api/_verifyFirebaseToken.js";
+import { envoyerPush, alerter, lireEtatPush, ecrireEtatPush, TYPES_NOTIF } from "../../api/_push.js";
 
 export const config = { runtime: "nodejs" };
 

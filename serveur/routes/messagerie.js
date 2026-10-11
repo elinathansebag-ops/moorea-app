@@ -1,7 +1,7 @@
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
-import { verifierTokenFirebase } from "./_verifyFirebaseToken.js";
-import { getAdminDb } from "./_firebaseAdmin.js";
+import { verifierTokenFirebase } from "../../api/_verifyFirebaseToken.js";
+import { getAdminDb } from "../../api/_firebaseAdmin.js";
 
 export const config = { runtime: "nodejs" };
 

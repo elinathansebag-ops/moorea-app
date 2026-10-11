@@ -1,4 +1,4 @@
-import { getAdminDb } from "./_firebaseAdmin.js";
+import { getAdminDb } from "../../api/_firebaseAdmin.js";
 
 export const config = { runtime: "nodejs" };
 

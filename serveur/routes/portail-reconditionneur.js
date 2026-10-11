@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
-import { getAdminDb } from "./_firebaseAdmin.js";
-import { alerter } from "./_push.js";
+import { getAdminDb } from "../../api/_firebaseAdmin.js";
+import { alerter } from "../../api/_push.js";
 
 export const config = { runtime: "nodejs" };
 

@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { verifierTokenFirebase } from './_verifyFirebaseToken.js';
+import { verifierTokenFirebase } from '../../api/_verifyFirebaseToken.js';
 
 export const config = { runtime: 'nodejs' };
 

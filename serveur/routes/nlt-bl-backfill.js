@@ -1,8 +1,8 @@
-import "./_pdfPolyfills.js";
+import "../../api/_pdfPolyfills.js";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { PDFParse } from "pdf-parse";
-import { getAdminDb } from "./_firebaseAdmin.js";
+import { getAdminDb } from "../../api/_firebaseAdmin.js";
 
 export const config = { runtime: "nodejs" };
 

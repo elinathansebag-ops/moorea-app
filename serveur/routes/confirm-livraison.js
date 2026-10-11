@@ -1,4 +1,4 @@
-import { alerter } from "./_push.js";
+import { alerter } from "../../api/_push.js";
 export const config = { runtime: "nodejs" };
 
 // Endpoint public (pas d'authentification) : le prestataire clique sur le lien reçu par email

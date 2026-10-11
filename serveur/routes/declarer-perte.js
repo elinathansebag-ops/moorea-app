@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { alerter } from "./_push.js";
+import { alerter } from "../../api/_push.js";
 
 export const config = { runtime: "nodejs" };
 
