@@ -1,0 +1,66 @@
+name: Ménage de la file d'impression (PDF déjà imprimés)
+
+# 11/10/2026 — Demande d'Elinathan : la file d'impression (printQueue) gardait pour toujours le PDF
+# complet de chaque étiquette / bon déjà imprimé (110 Mo, + 67 Mo dans printQueue_archives), sur
+# une base gratuite limitée à 1 Go. Ce robot efface UNIQUEMENT les gros contenus (PDF, images en
+# base64…) des jobs déjà imprimés ; la trace du job (type, statut, date, imprimé le…) reste.
+# Jamais touchés : les jobs en attente / en cours / en erreur de printQueue.
+#
+# Lancement à la main seulement (Actions › ce robot › Run workflow) :
+#   - mode « essai » (par défaut) : n'efface rien, affiche juste ce qui serait effacé ;
+#   - mode « effacer » : fait le ménage.
+# Utilise le secret FIREBASE_DB_SECRET (le même que la sauvegarde de chaque nuit).
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "essai (ne change rien) ou effacer"
+        required: true
+        default: "essai"
+        type: choice
+        options: [essai, effacer]
+
+jobs:
+  menage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Ménage
+        env:
+          SECRET: ${{ secrets.FIREBASE_DB_SECRET }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, urllib.request, urllib.parse
+          RTDB = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app"
+          SECRET, MODE = os.environ["SECRET"], os.environ["MODE"]
+          if not SECRET: raise SystemExit("❌ Secret FIREBASE_DB_SECRET absent")
+          AUTH = "auth=" + urllib.parse.quote(SECRET)
+          def lire(chemin):
+              with urllib.request.urlopen(f"{RTDB}/{chemin}.json?{AUTH}", timeout=600) as r: return json.loads(r.read() or b"null")
+          def ecrire(maj):
+              req = urllib.request.Request(f"{RTDB}/.json?{AUTH}", data=json.dumps(maj).encode(), method="PATCH", headers={"Content-Type": "application/json"})
+              with urllib.request.urlopen(req, timeout=600) as r: r.read()
+          SEUIL = 5000  # un champ texte de plus de 5 000 caractères = un PDF / une image en base64
+          total_maj, total_octets = 0, 0
+          for noeud in ["printQueue", "printQueue_archives"]:
+              donnees = lire(noeud) or {}
+              maj, octets, jobs, champs = {}, 0, 0, {}
+              for cle, job in donnees.items():
+                  if not isinstance(job, dict): continue
+                  if noeud == "printQueue" and job.get("status") != "done": continue  # en attente / erreur : on ne touche pas
+                  gros = [k for k, v in job.items() if isinstance(v, str) and len(v) > SEUIL]
+                  if not gros: continue
+                  jobs += 1
+                  for k in gros:
+                      maj[f"{noeud}/{cle}/{k}"] = None
+                      octets += len(job[k]); champs[k] = champs.get(k, 0) + 1
+              print(f"{noeud} : {len(donnees)} jobs, {jobs} à alléger, {octets // 1048576} Mo à effacer — champs : {champs}")
+              total_maj += len(maj); total_octets += octets
+              if MODE == "effacer":
+                  items = list(maj.items())
+                  for i in range(0, len(items), 500):
+                      ecrire(dict(items[i:i + 500]))
+                  print(f"  ✅ {noeud} allégé")
+          print(("✅ Ménage fait" if MODE == "effacer" else "ℹ️ ESSAI : rien n'a été effacé") + f" — {total_maj} champs, {total_octets // 1048576} Mo")
+          EOF
