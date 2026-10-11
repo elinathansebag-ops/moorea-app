@@ -68,7 +68,7 @@ export default async function handler(req, res) {
     if (!process.env.FIREBASE_DB_SECRET) return res.status(200).json({ secret: "absent" });
     const r = await fetch(BASE_RTDB + ".json?shallow=true").catch(() => null);
     // Présence (oui / non, jamais la valeur) des autres réglages Vercel indispensables.
-    const presents = Object.fromEntries(["IMGBB_KEY", "VAPID_PRIVATE_KEY", "ANTHROPIC_API_KEY", "GMAIL_PASS_ELINATHAN"].map(k => [k, !!process.env[k]]));
+    const presents = Object.fromEntries(["IMGBB_KEY", "VAPID_PRIVATE_KEY", "ANTHROPIC_API_KEY", "GMAIL_PASS_ELINATHAN", "GMAIL_PASS_MESSAGERIE", "GMAIL_PASS_JENNIFER", "GMAIL_PASS_JENNIFER_APPRO"].map(k => [k, !!process.env[k]]));
     return res.status(200).json({ secret: r?.ok ? "valide" : `refusé (HTTP ${r?.status ?? "?"})`, presents });
   }
   const charger = Object.prototype.hasOwnProperty.call(ROUTES, nom) ? ROUTES[nom] : null;
