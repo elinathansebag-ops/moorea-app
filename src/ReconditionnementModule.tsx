@@ -5115,8 +5115,14 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                       complètement, alors que le BL rattaché (automatiquement ou via le rattrapage
                                       historique) reste consultable. On l'affiche donc ici aussi. */}
                                   <HistoriqueDemandeRecond d={d} />
-                    {(aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
+                    {(d.depot === "nlt" || aPdfDemande(d, "pdfBase64") || aPdfDemande(d, "pdfGeslotBase64") || aPdfDemande(d, "blNltPdfBase64") || d.blNltPdfDe) && (
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+                                      {/* 11/10/2026 — BL NLT du jour aussi sur les demandes terminées (Historique). */}
+                                      {d.depot === "nlt" && d.dateCreationFr && (
+                                        <button type="button" onClick={() => ouvrirBlsDuJour(d)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                          📬 BL NLT du {String(d.dateCreationFr).split(" ")[0]}
+                                        </button>
+                                      )}
                                       {aPdfDemande(d, "pdfGeslotBase64") && (
                                         <button type="button" onClick={() => ouvrirPdfDemande(d, "pdfGeslotBase64", `Bon Geslot — ${d.numero || d.id}`)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                                           📄 Bon Geslot
