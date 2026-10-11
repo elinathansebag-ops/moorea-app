@@ -151,7 +151,9 @@ export type EtiquettePalette = { destinataire: string[]; transporteur: string; q
 export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[]) {
   const LW = 100, LH = 150, LM = 7, QR = 30;
   const doc = new jsPDF({ unit: "mm", format: [LW, LH], orientation: "portrait" });
-  const qrs = await Promise.all(etiquettes.map(e => (e.qrUrl ? QRCode.toDataURL(e.qrUrl, { width: 300, margin: 0 }) : Promise.resolve(""))));
+  // 11/10/2026 — QR dessiné en carrés vectoriels (et non plus collé en image PNG 300 px) : net à
+  // n'importe quelle résolution sur l'imprimante thermique (une image agrandie bave sur les bords).
+  const qrs = etiquettes.map(e => (e.qrUrl ? QRCode.create(e.qrUrl, { errorCorrectionLevel: "M" }).modules : null));
   etiquettes.forEach((e, i) => {
     if (i) doc.addPage([LW, LH], "portrait");
     doc.setTextColor(0, 0, 0);
@@ -179,7 +181,22 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
     if (e.nbPalettes > 1) { doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LM, LH - 16); }
     doc.setFont("helvetica", "bold"); doc.setFontSize(16);
     doc.text(`${e.quantite} colis`, LM, LH - 8); // 11/10/2026 — « au total » retiré (Elinathan)
-    if (qrs[i]) doc.addImage(qrs[i], "PNG", LW - LM - QR, LH - LM - QR, QR, QR);
+    const qr = qrs[i];
+    if (qr) {
+      const n = qr.size, pas = QR / n, x0 = LW - LM - QR, y0 = LH - LM - QR;
+      doc.setFillColor(0, 0, 0);
+      for (let ligne = 0; ligne < n; ligne++) {
+        // Carrés noirs consécutifs d'une même ligne fusionnés en un seul rectangle.
+        let c = 0;
+        while (c < n) {
+          if (!qr.get(ligne, c)) { c++; continue; }
+          let fin = c;
+          while (fin + 1 < n && qr.get(ligne, fin + 1)) fin++;
+          doc.rect(x0 + c * pas, y0 + ligne * pas, (fin - c + 1) * pas, pas + 0.01, "F");
+          c = fin + 1;
+        }
+      }
+    }
   });
   return doc;
 }
