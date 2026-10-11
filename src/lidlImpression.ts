@@ -178,7 +178,7 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
     for (const morceau of (doc.splitTextToSize(e.produit, largeurTexte) as string[]).slice(0, 2)) { y += 5.5; doc.text(morceau, LM, y); }
     if (e.nbPalettes > 1) { doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LM, LH - 16); }
     doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-    doc.text(`${e.quantite} colis${e.nbPalettes > 1 ? " au total" : ""}`, LM, LH - 8);
+    doc.text(`${e.quantite} colis`, LM, LH - 8); // 11/10/2026 — « au total » retiré (Elinathan)
     if (qrs[i]) doc.addImage(qrs[i], "PNG", LW - LM - QR, LH - LM - QR, QR, QR);
   });
   return doc;
