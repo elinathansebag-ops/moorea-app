@@ -1135,6 +1135,52 @@ export default function App() {
     return () => { clearTimeout(t0); clearInterval(t); };
   }, [userCompte]);
 
+  // ─── 11/10/2026 — BL NLT : index automatique par jour (demande d'Elinathan) ───
+  // Tant que l'appli est ouverte quelque part, toutes les 10 min, un seul poste (verrou) demande au
+  // serveur de noter quels BL NLT sont arrivés pour les dates des demandes NLT : le jour même (et la
+  // veille) sont rafraîchis régulièrement, les dates passées jamais vues sont remplies petit à petit
+  // (10 par passage). Voir serveur/routes/bl-nlt.js (action=indexer) et bl_nlt_index dans la base.
+  const [blNltIndex, setBlNltIndex] = useState<Record<string, { maj?: number }>>({});
+  useEffect(() => {
+    if (!chargerRecond) return;
+    return onValue(ref(db, "bl_nlt_index"), snap => setBlNltIndex(snap.val() || {}));
+  }, [chargerRecond]);
+  const etatIndexBl = useRef({ demandes: reconditionnementDemandesListe, index: blNltIndex });
+  etatIndexBl.current = { demandes: reconditionnementDemandesListe, index: blNltIndex };
+  useEffect(() => {
+    if (!chargerRecond || !user?.email?.toLowerCase().endsWith("@moorea.fr")) return;
+    const cleJour = (date: string) => { const [j, m, a] = date.split("/"); return `${a}-${m}-${j}`; };
+    const passer = async () => {
+      const { demandes, index } = etatIndexBl.current;
+      if (!demandes.length) return;
+      const maintenant = Date.now();
+      const auj = new Date(), hier = new Date(maintenant - 86400000);
+      const fr = (d: Date) => d.toLocaleDateString("fr-FR");
+      const recentes = new Set([fr(auj), fr(hier)]);
+      const dates = [...new Set(demandes.filter((d: any) => d.depot === "nlt" && d.dateCreationFr).map((d: any) => String(d.dateCreationFr).split(" ")[0]))]
+        .filter(d => /^\d{2}\/\d{2}\/\d{4}$/.test(d));
+      const aFaire = dates.filter(d => {
+        const i = index[cleJour(d)];
+        if (!i) return true;
+        return recentes.has(d) && maintenant - (i.maj || 0) > 15 * 60000;
+      }).sort((a, b) => cleJour(b).localeCompare(cleJour(a))).slice(0, 10);
+      if (!aFaire.length) return;
+      try {
+        const { runTransaction } = await import("firebase/database");
+        const verrou = await runTransaction(ref(db, "config/bl_nlt_index_verrou"), (cur: any) => {
+          if (cur && typeof cur.ts === "number" && maintenant - cur.ts < 4 * 60000) return;
+          return { ts: maintenant, par: user?.email || "" };
+        });
+        if (!verrou.committed) return;
+        await fetch(`/api/bl-nlt?action=indexer&dates=${encodeURIComponent(aFaire.join(","))}`, { method: "POST" });
+      } catch { /* réessai au prochain passage */ }
+    };
+    const t0 = setTimeout(passer, 30000);
+    const t = setInterval(passer, 10 * 60000);
+    return () => { clearTimeout(t0); clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chargerRecond, user?.email]);
+
   // ─── FIREBASE: arrivages ───
   const [arrivagesCharges, setArrivagesCharges] = useState(false);
   useEffect(() => {

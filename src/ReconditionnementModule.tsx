@@ -995,9 +995,22 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // lien. Le bouton « BL NLT du jour » va lire la boîte mail au moment du clic et liste tous les
   // PDF envoyés par NLT ce jour-là (serveur/routes/bl-nlt.js) — marche aussi pour le passé.
   const [blJour, setBlJour] = useState<null | { date: string; numero: string; chargement: boolean; bls: { boite?: string; uid: number; part: string; nom: string; sujet: string; heure: string }[]; erreur?: string; avertissement?: string; ouverture?: string }>(null);
+  // Index tenu à jour automatiquement (robot dans App.tsx) : nombre de BL affiché sans lire la boîte.
+  const [blIndex, setBlIndex] = useState<Record<string, { date?: string; bls?: any[]; maj?: number }>>({});
+  useEffect(() => onValue(ref(db, "bl_nlt_index"), snap => setBlIndex(snap.val() || {})), []);
+  const indexDuJour = (dateFr: string) => { const [j, m, a] = dateFr.split("/"); return blIndex[`${a}-${m}-${j}`]; };
+  const libelleBl = (dateFr: string) => {
+    const i = indexDuJour(dateFr);
+    const court = dateFr.slice(0, 5);
+    if (!i) return `📬 BL NLT du ${court}`;
+    const n = (i.bls || []).length;
+    return n ? `📬 ${n} BL NLT du ${court}` : `📬 Aucun BL NLT le ${court}`;
+  };
   async function ouvrirBlsDuJour(d: Demande) {
     const date = String(d.dateCreationFr || "").split(" ")[0];
-    setBlJour({ date, numero: d.numero || d.id, chargement: true, bls: [] });
+    // Déjà dans l'index : affichage immédiat, puis rafraîchissement en direct en arrière-plan.
+    const i = indexDuJour(date);
+    setBlJour({ date, numero: d.numero || d.id, chargement: !i, bls: i?.bls || [] });
     try {
       const r = await fetch(`/api/bl-nlt?date=${encodeURIComponent(date)}`);
       const out = await r.json().catch(() => ({}));
@@ -4172,7 +4185,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                         })()}
                                       </div>
                                     </div>
-                                    <BarreMailsRecond depot={dep} label={DEPOT_LABEL[dep]} demandes={demandesJourDepot} stockActuel={dep === "nlt" ? stockIfco.nlt : stockBabyBlancAndes} onResultat={(ok, m) => notify(ok ? "success" : "error", m)} regenererBon={async (d: any) => { const pdfBase64 = await genererBonPdf({ ...d } as Demande); await ecrirePdfDemande(d.id, { pdfBase64 }, { pdfNom: `bon-reconditionnement-${d.id}.pdf` }); }} />
+                                    <BarreMailsRecond depot={dep} label={DEPOT_LABEL[dep]} demandes={demandesJourDepot} extra={dep === "nlt" && demandesJourDepot[0]?.dateCreationFr ? (
+                                      <button type="button" onClick={() => ouvrirBlsDuJour(demandesJourDepot[0])} style={{ padding: "5px 11px", borderRadius: 8, border: "1.5px solid #d1d5db", background: "#fff", color: "#374151", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                                        {libelleBl(String(demandesJourDepot[0].dateCreationFr).split(" ")[0])}
+                                      </button>
+                                    ) : null} stockActuel={dep === "nlt" ? stockIfco.nlt : stockBabyBlancAndes} onResultat={(ok, m) => notify(ok ? "success" : "error", m)} regenererBon={async (d: any) => { const pdfBase64 = await genererBonPdf({ ...d } as Demande); await ecrirePdfDemande(d.id, { pdfBase64 }, { pdfNom: `bon-reconditionnement-${d.id}.pdf` }); }} />
                                     {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
                                 {demandesJourDepot.map(d => (
@@ -4231,7 +4248,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         {d.depot === "nlt" && d.dateCreationFr && (
                           <button type="button" onClick={() => ouvrirBlsDuJour(d)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                            📬 BL NLT du {String(d.dateCreationFr).split(" ")[0]}
+                            {libelleBl(String(d.dateCreationFr).split(" ")[0])}
                           </button>
                         )}
                         {aPdfDemande(d, "pdfGeslotBase64") && (
@@ -5120,7 +5137,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                       {/* 11/10/2026 — BL NLT du jour aussi sur les demandes terminées (Historique). */}
                                       {d.depot === "nlt" && d.dateCreationFr && (
                                         <button type="button" onClick={() => ouvrirBlsDuJour(d)} style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", color: COLORS.gray700, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                                          📬 BL NLT du {String(d.dateCreationFr).split(" ")[0]}
+                                          {libelleBl(String(d.dateCreationFr).split(" ")[0])}
                                         </button>
                                       )}
                                       {aPdfDemande(d, "pdfGeslotBase64") && (

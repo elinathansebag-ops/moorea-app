@@ -53,6 +53,23 @@ async function avecBoite(cle, fn) {
   }
 }
 
+// 11/10/2026 — Index des BL par jour (liste seulement, jamais les PDF) dans la base :
+// bl_nlt_index/AAAA-MM-JJ = { bls: [...], maj }. L'appli affiche ainsi « 📬 2 BL » sur chaque
+// demande sans aller lire les boîtes mail. Écriture serveur (secret de la base, voir api/routeur.js).
+const RTDB = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app";
+const cleIndex = date => { const [j, mo, a] = date.split("/"); return `${a}-${mo}-${j}`; };
+async function enregistrerIndex(parDate) {
+  const maj = {};
+  for (const [date, bls] of Object.entries(parDate)) maj[`bl_nlt_index/${cleIndex(date)}`] = { date, bls, maj: Date.now() };
+  if (!Object.keys(maj).length) return;
+  const r = await fetch(`${RTDB}/.json`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(maj) });
+  if (!r.ok) throw new Error(`enregistrement de l'index des BL refusé (HTTP ${r.status})`);
+}
+const sansDoublons = liste => {
+  const vus = new Set();
+  return liste.filter(b => { const k = `${b.nom}|${b.heure}`; if (vus.has(k)) return false; vus.add(k); return true; }).sort((a, b) => a.heure.localeCompare(b.heure));
+};
+
 const dateParis = d => new Date(d).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric" });
 
 async function blsDeLaBoite(client, cleBoite, date, m) {
@@ -76,7 +93,7 @@ async function blsDeLaBoite(client, cleBoite, date, m) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "GET" && req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   if (!(await exigerCompteMoorea(req, res))) return;
   try {
     // ── Un PDF précis ──
@@ -101,6 +118,25 @@ export default async function handler(req, res) {
       return res.status(200).send(fichier.contenu);
     }
 
+    // ── Indexer plusieurs dates d'un coup (robot de l'appli) : ?action=indexer&dates=JJ/MM/AAAA,… ──
+    if (req.query?.action === "indexer") {
+      const dates = String(req.query.dates || "").split(",").map(d => d.trim()).filter(d => /^\d{2}\/\d{2}\/\d{4}$/.test(d)).slice(0, 15);
+      if (!dates.length) return res.status(400).json({ error: "dates manquantes" });
+      const parDate = Object.fromEntries(dates.map(d => [d, []]));
+      const erreurs = [];
+      for (const cle of Object.keys(BOITES)) {
+        try {
+          await avecBoite(cle, async client => {
+            for (const d of dates) parDate[d].push(...await blsDeLaBoite(client, cle, d, d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)));
+          });
+        } catch (err) { erreurs.push(err.message); }
+      }
+      if (erreurs.length === Object.keys(BOITES).length) return res.status(502).json({ error: erreurs.join(" · ") });
+      for (const d of dates) parDate[d] = sansDoublons(parDate[d]);
+      await enregistrerIndex(parDate);
+      return res.status(200).json({ indexees: dates.length, bls: Object.values(parDate).reduce((n, l) => n + l.length, 0), ...(erreurs.length ? { avertissement: erreurs.join(" · ") } : {}) });
+    }
+
     // ── Liste des BL d'une date, dans toutes les boîtes ──
     const date = String(req.query?.date || "");
     const m = date.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -113,9 +149,8 @@ export default async function handler(req, res) {
     }
     if (erreurs.length === Object.keys(BOITES).length) return res.status(502).json({ error: erreurs.join(" · ") });
     // Même PDF reçu dans les deux boîtes (même nom, même minute) : affiché une seule fois.
-    const vus = new Set();
-    const bls = tous.filter(b => { const k = `${b.nom}|${b.heure}`; if (vus.has(k)) return false; vus.add(k); return true; });
-    bls.sort((a, b) => a.heure.localeCompare(b.heure));
+    const bls = sansDoublons(tous);
+    await enregistrerIndex({ [date]: bls }).catch(() => {}); // l'index se met à jour à chaque consultation
     return res.status(200).json({ bls, ...(erreurs.length ? { avertissement: erreurs.join(" · ") } : {}) });
   } catch (err) {
     return res.status(500).json({ error: err.message });

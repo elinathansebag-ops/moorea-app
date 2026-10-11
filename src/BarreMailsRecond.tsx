@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 // 01/10/2026 — Demande d'Elinathan : dans la cellule d'un reconditionneur (NLT / Andès), un état
 // clair des mails (envoyé à quelle heure, ou pas envoyé) + deux boutons de renvoi, au niveau du
@@ -10,7 +10,9 @@ import { useState } from "react";
 
 const heure = (ts: number) => new Date(ts).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", " à");
 
-export function BarreMailsRecond({ depot, label, demandes, stockActuel, onResultat, regenererBon }: {
+export function BarreMailsRecond({ depot, label, demandes, stockActuel, onResultat, regenererBon, extra }: {
+  // 11/10/2026 — bouton « BL NLT du jour » placé dans la même barre (demande d'Elinathan).
+  extra?: ReactNode;
   // Régénère le bon PDF d'une demande (utilisé quand le bon est introuvable côté serveur).
   regenererBon?: (d: any) => Promise<void>;
   depot: "nlt" | "andes";
@@ -92,6 +94,7 @@ export function BarreMailsRecond({ depot, label, demandes, stockActuel, onResult
         : pastille(false, aucunEnvoye ? `📧 Mail ${label} PAS envoyé` : `📧 Mail ${label} : ${actives.filter(d => d.emailEnvoye !== true).length} demande(s) pas envoyée(s)`)}
       {aTransporteur && (tsTransp ? pastille(true, `🚚 Transport annoncé le ${heure(tsTransp)}`) : pastille(false, "🚚 Transport PAS annoncé"))}
       <span style={{ flex: 1 }} />
+      {extra}
       {bouton("reconditionneur", "📧 Renvoyer le mail")}
       {aTransporteur && bouton("transporteur", "🚚 Renvoyer l'annonce transport")}
     </div>
