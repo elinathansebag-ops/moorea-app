@@ -17,6 +17,13 @@ export const config = { runtime: "nodejs" };
 // laisser une vingtaine de rubriques ouvertes à tout Internet dans les règles Firebase. Toutes les
 // routes appellent la base en REST (fetch vers DATABASE_URL) : on ajoute ici « auth=<secret> » à
 // chacun de ces appels, une seule fois pour toutes les routes. Sans la variable, rien ne change.
+// 11/10/2026 — Mots de passe d'application Gmail : Google les affiche en 4 blocs séparés par des
+// espaces ; collés tels quels sur Vercel, la connexion échoue. On retire les espaces une fois ici
+// pour toutes les routes.
+for (const k of Object.keys(process.env)) {
+  if (k.startsWith("GMAIL_PASS") && process.env[k]) process.env[k] = process.env[k].replace(/\s+/g, "");
+}
+
 const BASE_RTDB = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app/";
 const fetchOrigine = globalThis.fetch;
 if (process.env.FIREBASE_DB_SECRET && !globalThis.__fetchAvecSecretRtdb) {

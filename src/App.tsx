@@ -3726,12 +3726,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
                           {Object.entries(santeComptesMail).map(([cle, c]: [string, any]) => (
-                            <div key={cle} title={c?.erreur || ""} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: darkMode ? "#1a1a1a" : "#faf8f3", border: "1px solid #e8e0d0" }}>
+                            <div key={cle} title={c?.erreur || ""} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: darkMode ? "#1a1a1a" : "#faf8f3", border: "1px solid #e8e0d0" }}>
                               <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: c?.ok === true ? "#22c55e" : c?.ok === false ? "#dc2626" : "#9ca3af" }} />
                               <span style={{ fontSize: 12.5, fontWeight: 600, color: darkMode ? "#e5e7eb" : "#1a2e1a" }}>{c?.email || cle}</span>
                               <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: c?.ok === true ? "#16a34a" : c?.ok === false ? "#dc2626" : "#9ca3af" }}>
                                 {c?.ok === true ? "OK" : c?.ok === false ? "Déconnecté" : "?"}
                               </span>
+                              {/* 11/10/2026 — Raison affichée en clair (avant : seulement au survol). */}
+                              {c?.ok !== true && c?.erreur && (
+                                <span style={{ flexBasis: "100%", fontSize: 11, color: c?.ok === false ? "#b91c1c" : "#6b7280", lineHeight: 1.4, wordBreak: "break-word" }}>{c.erreur}</span>
+                              )}
                             </div>
                           ))}
                         </div>

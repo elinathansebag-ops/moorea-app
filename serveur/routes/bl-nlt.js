@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   const motDePasse = process.env.GMAIL_PASS_ELINATHAN;
   if (!motDePasse) return res.status(500).json({ error: "GMAIL_PASS_ELINATHAN manquant sur Vercel" });
 
-  const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user: BOITE, pass: motDePasse }, logger: false });
+  const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user: BOITE, pass: motDePasse.replace(/\s+/g, "") }, logger: false });
   try {
     await client.connect();
   } catch (err) {
