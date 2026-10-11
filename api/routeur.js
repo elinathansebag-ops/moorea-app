@@ -12,6 +12,25 @@
 // ═══════════════════════════════════════════════════════════════════════════
 export const config = { runtime: "nodejs" };
 
+// 11/10/2026 — Accès serveur à la Realtime Database AVEC le secret de la base (variable Vercel
+// FIREBASE_DB_SECRET) : jusqu'ici le serveur lisait/écrivait sans s'identifier, ce qui obligeait à
+// laisser une vingtaine de rubriques ouvertes à tout Internet dans les règles Firebase. Toutes les
+// routes appellent la base en REST (fetch vers DATABASE_URL) : on ajoute ici « auth=<secret> » à
+// chacun de ces appels, une seule fois pour toutes les routes. Sans la variable, rien ne change.
+const BASE_RTDB = "https://moorea-qualite-default-rtdb.europe-west1.firebasedatabase.app/";
+const fetchOrigine = globalThis.fetch;
+if (process.env.FIREBASE_DB_SECRET && !globalThis.__fetchAvecSecretRtdb) {
+  globalThis.__fetchAvecSecretRtdb = true;
+  globalThis.fetch = (entree, init) => {
+    const url = typeof entree === "string" ? entree : entree instanceof URL ? entree.href : null;
+    if (url && url.startsWith(BASE_RTDB) && !/[?&]auth=/.test(url)) {
+      const avecSecret = url + (url.includes("?") ? "&" : "?") + "auth=" + encodeURIComponent(process.env.FIREBASE_DB_SECRET);
+      return fetchOrigine(avecSecret, init);
+    }
+    return fetchOrigine(entree, init);
+  };
+}
+
 const ROUTES = {
   "confirm-livraison": () => import("../serveur/routes/confirm-livraison.js"),
   "declarer-perte": () => import("../serveur/routes/declarer-perte.js"),
@@ -32,6 +51,13 @@ const ROUTES = {
 
 export default async function handler(req, res) {
   const nom = String(req.query?.__route || "");
+  // Contrôle « le secret de la base est-il bien en place ? » : lit la racine en mode « shallow »
+  // (refusée sans identification). Ne renvoie que oui / non, aucune donnée.
+  if (nom === "verifier-base") {
+    if (!process.env.FIREBASE_DB_SECRET) return res.status(200).json({ secret: "absent" });
+    const r = await fetch(BASE_RTDB + ".json?shallow=true").catch(() => null);
+    return res.status(200).json({ secret: r?.ok ? "valide" : `refusé (HTTP ${r?.status ?? "?"})` });
+  }
   const charger = Object.prototype.hasOwnProperty.call(ROUTES, nom) ? ROUTES[nom] : null;
   if (!charger) return res.status(404).json({ error: `Fonction inconnue : ${nom || "(aucune)"}` });
   // Les routes lisent req.query comme avant la réécriture : on retire le paramètre d'aiguillage.

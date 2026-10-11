@@ -67,6 +67,10 @@
     {
       "source": "/api/upload-photo",
       "destination": "/api/routeur?__route=upload-photo"
+    },
+    {
+      "source": "/api/verifier-base",
+      "destination": "/api/routeur?__route=verifier-base"
     }
   ]
 }
