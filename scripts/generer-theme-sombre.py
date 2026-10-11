@@ -119,12 +119,18 @@ SAPIN, SAUGE, SAPIN_TEXTE, ENCRE = "#305a55", "#74b484", "#3f8a55", "#1e2b29"
 V2_FONDS = {SAPIN: ["#c8a84b", "#0a0a0a", "#1a2e1a", "#0050aa", "#111827", "#6d28d9", "#7c3aed",
                     "#3b82f6", "#2563eb", "#0ea5e9", "#8b5cf6", "#27ae60", "#16a34a", "#1e8449", "#0891b2", "#ea580c", "#f97316", "#eab308", "#ca8a04"]}
 V2_FONDS_TEINTES = {"#eef6f0": ["#f5f3ff", "#faf5ff", "#ede9fe", "#eff6ff"]}
-V2_FONDS_CLAIR = {"#f3f6f5": ["#f5f3ee", "#faf8f3", "#faf9f6", "#f8f6f2", "#faf8f0", "#faf8f5"]}
+V2_FONDS_CLAIR = {"#f3f6f5": ["#f5f3ee", "#faf8f3", "#faf9f6", "#f8f6f2", "#faf8f0", "#faf8f5",
+                              # 11/10/2026 — crèmes dorés restants (Tâches, Pointeuse)
+                              "#fef9e6", "#fffdf7"]}
 V2_BORDURES = {SAPIN: ["#c8a84b", "#0050aa", "#6d28d9", "#7c3aed", "#3b82f6", "#8b5cf6", "#27ae60", "#0ea5e9", "#2563eb", "#9333ea", "#a855f7", "#eab308"], "#c9e2cf": ["#e9d8fd", "#bfdbfe", "#93c5fd"]}
-V2_BORDURES_CLAIR = {"#dde6e3": ["#e8e0d0", "#f0ede6"]}
+V2_BORDURES_CLAIR = {"#dde6e3": ["#e8e0d0", "#f0ede6",
+                                 # 11/10/2026 — bordures dorées restantes (Portail presta, Arrivages, Tâches)
+                                 "#e8dcc0", "#e0d0a0", "#e8d9a8", "#f3e8c8", "#f3e3b8"]}
 # L'or était surtout un texte posé sur fond noir (devenu vert sapin) : il devient vert sauge, la
 # variante claire du logo, lisible sur le vert sapin.
-V2_TEXTES = {SAUGE: ["#c8a84b"], SAPIN: ["#8a6f2e", "#92722c", "#0050aa", "#6d28d9", "#7c3aed", "#3b82f6", "#8b5cf6", "#0ea5e9", "#27ae60", "#2563eb", "#9333ea", "#a855f7"]}
+V2_TEXTES = {SAUGE: ["#c8a84b"], SAPIN: ["#8a6f2e", "#92722c",
+                                           # 11/10/2026 — ors foncés restants (Tâches, Stats, Stock, Messagerie)
+                                           "#a16207", "#8a6d1f", "#92710a", "#c2a44a", "#c9a869", "#0050aa", "#6d28d9", "#7c3aed", "#3b82f6", "#8b5cf6", "#0ea5e9", "#27ae60", "#2563eb", "#9333ea", "#a855f7"]}
 V2_TEXTES_CLAIR = {ENCRE: ["#1a2e1a"],
                    # 11/10/2026 — gris trop pâles sur fond blanc (rapport de contraste < 3) : un cran plus foncé.
                    "#6b7570": ["#aaa", "#aaaaaa", "#9ca3af", "#999", "#ccc"],
