@@ -32,7 +32,10 @@ export default async function handler(req, res) {
       ${banniere}
       <p>Bonjour,</p>
       <p>Veuillez trouver ci-joint le tableau d'avis de livraison (traçabilité) de MOOREA pour la livraison du <b>${dateLongue || ""}</b>${version > 1 ? ` — version ${String(version).padStart(2, "0")} (mise à jour)` : ""}, soit ${nbLignes} ligne${nbLignes > 1 ? "s" : ""}.</p>
-      <p>Cordialement,<br/>${typeof signataire === "string" && signataire.trim() ? `${String(signataire).trim().slice(0, 80).replace(/&/g, "&amp;").replace(/</g, "&lt;")}<br/>` : ""}MOOREA</p></div>`;
+      <p>Cordialement,<br/>Jordan Jouanest<br/>MOOREA</p></div>`;
+    // 12/10/2026 — Demande d'Elinathan : le mail de traçabilité est TOUJOURS signé Jordan, quel que
+    // soit le compte ou le profil qui a passé la dernière ligne en « Prêt » (avant : « Jean Marc »…).
+    void signataire;
     const expediteur = modeTest
       ? { user: "elinathan.sebag@moorea.fr", pass: process.env.GMAIL_PASS_ELINATHAN, nom: "Elinathan Sebag" }
       : { user: "jordan.jouanest@moorea.fr", pass: process.env.GMAIL_PASS_JORDAN, nom: "Jordan Jouanest" };
