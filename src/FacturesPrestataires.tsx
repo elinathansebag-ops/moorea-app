@@ -7,7 +7,7 @@ import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prest
 // ═══════════════════════════════════════════════════════════════════════════
 // 12/10/2026 — Demande d'Elinathan : un module pour pointer les factures des prestataires.
 // Tout l'historique de ce qui est réellement arrivé, rangé par date (mois, puis jour), avec un
-// bouton « Facturée » par ligne et « Tout le mois facturé ».
+// bouton « Facturée » par ligne (le bouton « Tout le mois facturé » a été retiré le 12/10/2026, demande d'Elinathan).
 // Sources (rien de nouveau à saisir, on lit ce qui existe déjà) :
 //  - commandes de cartons reçues (prestataires_cartons) → statut « facturé » + dateFacturation,
 //    exactement comme le bouton déjà présent dans Prestataires › Cartons ;
@@ -173,7 +173,6 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
 
         {parMois.map(([mois, jours]) => {
           const lignesMois = [...jours.values()].flat();
-          const restantes = lignesMois.filter(l => !l.facturee);
           const totalHT = lignesMois.reduce((n, l) => n + (l.montantHT || 0), 0);
           // Palettes vierges : facturées au mois, d'où le total par référence pour comparer à la facture.
           const pv: Record<string, number> = {};
@@ -190,9 +189,6 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
                   {lignesMois.length} arrivée{lignesMois.length > 1 ? "s" : ""}{totalHT ? ` · ≈ ${euros(totalHT)} HT (cartons + IFCO, prix catalogue)` : ""}
                 </span>
                 <span style={{ flex: 1 }} />
-                {restantes.length > 0 && (
-                  <button type="button" onClick={() => pointer(restantes, true)} style={{ ...puce(true), fontSize: 12 }}>💳 Tout le mois facturé ({restantes.length})</button>
-                )}
               </div>
               {Object.keys(pv).length > 0 && (
                 <p style={{ margin: "0 0 8px", fontSize: 12, color: gris }}>🟫 Palettes vierges du mois : {Object.entries(pv).map(([r, n]) => `${n} × ${r}`).join(" · ")}</p>
