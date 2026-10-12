@@ -131,7 +131,7 @@ export function pdfBonPreparation(dateFr: string, lignes: LigneBon[]) {
 // À activer dans Commandes Lidl → Configuration une fois le relais mis à jour pour ce type de job.
 // 12/10/2026 — « imprimante » : nom de l'imprimante du PC (Admin › Matériel, voir src/Imprimantes.tsx).
 export async function envoyerEtiquettesImprimante(pdfNom: string, pdfBase64: string, imprimante?: string): Promise<string> {
-  const r = await push(ref(db, "printQueue"), { type: "etiquette_lidl", pdfNom, pdfBase64, format: "100x150", status: "pending", createdAt: Date.now(), origine: "lidl", ...(imprimante ? { imprimante } : {}) });
+  const r = await push(ref(db, "printQueue"), { type: "etiquette_lidl", pdfNom, pdfBase64, format: "110x175", status: "pending", createdAt: Date.now(), origine: "lidl", ...(imprimante ? { imprimante } : {}) });
   return r.key as string;
 }
 
@@ -152,7 +152,9 @@ export type EtiquettePalette = { destinataire: string[]; transporteur: string; q
 // 11/10/2026 — Police au choix (fichiers TTF en base64) ; sans police : Helvetica intégrée.
 export type PoliceEtiquette = { nom: string; normal: string; gras: string };
 export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[], police?: PoliceEtiquette) {
-  const LW = 100, LH = 150, LM = 7, QR = 30;
+  // 12/10/2026 — Format du rouleau jaune mesuré par Elinathan : 110 × 175 mm (avant : 100 × 150,
+  // d'où de grandes marges une fois l'étiquette ajustée au rouleau).
+  const LW = 110, LH = 175, LM = 6, QR = 36;
   const doc = new jsPDF({ unit: "mm", format: [LW, LH], orientation: "portrait" });
   if (police) {
     doc.addFileToVFS(`${police.nom}-normal.ttf`, police.normal); doc.addFont(`${police.nom}-normal.ttf`, police.nom, "normal");
@@ -165,19 +167,19 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
   etiquettes.forEach((e, i) => {
     if (i) doc.addPage([LW, LH], "portrait");
     doc.setTextColor(0, 0, 0);
-    doc.setFont(F, "bold"); doc.setFontSize(13); doc.text(ADRESSE_MOOREA[0], LM, 12);
-    doc.setFont(F, "normal"); doc.setFontSize(6.5);
-    doc.text(ADRESSE_MOOREA[1], LM, 16.5); doc.text(ADRESSE_MOOREA[2], LM, 20);
-    doc.setLineWidth(0.3); doc.line(LM, 23.5, LW - LM, 23.5);
-    doc.setFontSize(10); doc.text("Livraison le :", LM, 31);
-    doc.setFont(F, "bold"); doc.setFontSize(13); doc.text(dateFr, LM + 25, 31);
+    doc.setFont(F, "bold"); doc.setFontSize(15); doc.text(ADRESSE_MOOREA[0], LM, 12);
+    doc.setFont(F, "normal"); doc.setFontSize(7.5);
+    doc.text(ADRESSE_MOOREA[1], LM, 17); doc.text(ADRESSE_MOOREA[2], LM, 21);
+    doc.setLineWidth(0.3); doc.line(LM, 24.5, LW - LM, 24.5);
+    doc.setFontSize(11); doc.text("Livraison le :", LM, 33);
+    doc.setFont(F, "bold"); doc.setFontSize(16); doc.text(dateFr, LM + 27, 33);
     // 11/10/2026 — Demande d'Elinathan : destinataire et transporteur bien plus grands (il restait
     // beaucoup de vide). Taille calculée pour remplir la zone libre (entre la date et le bas de
     // l'étiquette) : on part en très grand et on réduit juste assez si l'adresse est longue.
-    const HAUT = 37, BAS = LH - LM - QR - 4, LARG = LW - LM * 2;
+    const HAUT = 39, BAS = LH - LM - QR - 4, LARG = LW - LM * 2;
     const mm = (pt: number) => pt * 0.3528 * 1.12; // hauteur d'une ligne de texte en mm
     const mise = (k: number) => {
-      const tNom = 26 * k, tAdr = 16 * k, tTr = 40 * k;
+      const tNom = 30 * k, tAdr = 18 * k, tTr = 46 * k;
       doc.setFont(F, "bold");
       const lignes: { t: string; pt: number }[] = [];
       e.destinataire.forEach((l, n) => {
@@ -206,10 +208,10 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
     y = BAS + 2;
     doc.setLineWidth(0.3); doc.line(LM, y, qrs[i] ? LW - LM - QR - 3 : LW - LM, y);
     const largeurTexte = LW - LM * 2 - (qrs[i] ? QR + 3 : 0);
-    doc.setFontSize(10); doc.setFont(F, "normal");
-    for (const morceau of (doc.splitTextToSize(e.produit, largeurTexte) as string[]).slice(0, 2)) { y += 5.5; doc.text(morceau, LM, y); }
-    if (e.nbPalettes > 1) { doc.setFont(F, "bold"); doc.setFontSize(12); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LM, LH - 16); }
-    doc.setFont(F, "bold"); doc.setFontSize(16);
+    doc.setFontSize(12); doc.setFont(F, "normal");
+    for (const morceau of (doc.splitTextToSize(e.produit, largeurTexte) as string[]).slice(0, 3)) { y += 6; doc.text(morceau, LM, y); }
+    if (e.nbPalettes > 1) { doc.setFont(F, "bold"); doc.setFontSize(15); doc.text(`Palette ${e.palette}/${e.nbPalettes}`, LM, LH - 18); }
+    doc.setFont(F, "bold"); doc.setFontSize(22);
     doc.text(`${e.quantite} colis`, LM, LH - 8); // 11/10/2026 — « au total » retiré (Elinathan)
     const qr = qrs[i];
     if (qr) {

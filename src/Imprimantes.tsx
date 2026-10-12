@@ -39,7 +39,7 @@ export async function imprimantePour(cle: CleImprimante): Promise<string> {
 }
 
 // 12/10/2026 — Format de la page test = le vrai format de chaque imprimante (demande d'Elinathan) :
-//  - imprimante des étiquettes palettes Lidl → une étiquette palette Lidl d'exemple (100 × 150 mm) ;
+//  - imprimante des étiquettes palettes Lidl → une étiquette palette Lidl d'exemple (110 × 175 mm) ;
 //  - imprimante des étiquettes d'arrivage (celle du relais) → une étiquette d'arrivage d'exemple,
 //    dessinée par le relais comme les vraies (180 × 110 mm) ;
 //  - toutes les autres (RICOH…) → une page A4.
@@ -62,7 +62,7 @@ async function envoyerPageTest(imprimante: string, format: FormatTest) {
       destinataire: ["PAGE TEST", imprimante, `Envoyée le ${maintenant}`], transporteur: "TEST", quantite: 99,
       produit: "Étiquette palette Lidl d'exemple", palette: 1, nbPalettes: 1, qrUrl: `${window.location.origin}/?test=impression`,
     }]);
-    const r = await push(ref(db, "printQueue"), { ...base, type: "etiquette_lidl", format: "100x150", pdfNom: "PAGE_TEST_LIDL.pdf", pdfBase64: doc.output("datauristring").split(",")[1] });
+    const r = await push(ref(db, "printQueue"), { ...base, type: "etiquette_lidl", format: "110x175", pdfNom: "PAGE_TEST_LIDL.pdf", pdfBase64: doc.output("datauristring").split(",")[1] });
     return r.key as string;
   }
   const doc = new jsPDF({ unit: "mm", format: "a4" });
