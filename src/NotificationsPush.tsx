@@ -78,6 +78,14 @@ export function alerterPush(alerte: AlertePush): Promise<any> {
   return (async () => {
     const u = auth.currentUser;
     if (!u) return null;
+    // 12/10/2026 — Demande d'Elinathan : chaque notification est signée en bas (« — Prénom »), comme
+    // les WhatsApp et les mails : on sait qui a fait le pointage, le rapport, l'import…
+    if ("titre" in alerte && alerte.titre) {
+      const { nomSignataire } = await import("./ProfilGenerique");
+      const nom = nomSignataire();
+      const corps = (alerte.corps || "").trim().slice(0, 250); // la signature ne doit jamais être coupée (limite serveur : 300)
+      if (nom && !corps.endsWith(`— ${nom}`)) alerte = { ...alerte, corps: `${corps}${corps ? "\n" : ""}— ${nom}` };
+    }
     const jeton = await u.getIdToken();
     const r = await fetch("/api/push-envoyer", {
       method: "POST",
