@@ -20,6 +20,7 @@ import type { Depot as DepotRecond, Demande as DemandeRecond, Transporteur as Tr
 // 12/10/2026 — Catalogues (cartons, palettes IFCO, palettes vierges) rangés dans prestatairesCatalogue.ts,
 // partagés avec le module Factures prestataires.
 import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prestatairesCatalogue";
+import { FormulaireAnalyse } from "./DemandesAnalyse";
 
 // 01/09/2026 — Palettes vierges (bois brut, pas les caisses IFCO réutilisables) : livrées
 // plusieurs fois par jour, à différents moments, en piles de quantité variable selon ce qui
@@ -231,7 +232,7 @@ const COLORS = {
 export type RaccourciPresta = "cartons" | "palette-vierge";
 export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne, raccourci }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[]; raccourci?: RaccourciPresta }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap" | "nouvelle-analyse"
   >(raccourci === "cartons" ? "nouvelle-carton" : raccourci === "palette-vierge" ? "palettes-vierges" : initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
   // Raccourci : une fois l'entrée enregistrée, retour à l'accueil (après avoir vu la confirmation).
   const finRaccourci = () => { if (raccourci) setTimeout(onClose, 1400); };
@@ -353,6 +354,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     { key: "cartons", label: "📦 Cartons", action: () => setActiveTab("nouvelle-carton") },
     { key: "palettes-ifco", label: "🟦 Palettes IFCO", action: () => setActiveTab("nouvelle-palette") },
     { key: "palette-vierge", label: "🟫 Palette vierge", action: () => setActiveTab("palettes-vierges") },
+    // 12/10/2026 — Demandes d'analyse du DG qualité, pour la facturation (DemandesAnalyse.tsx).
+    { key: "analyse", label: "🔬 Demande d'analyse", action: () => setActiveTab("nouvelle-analyse") },
   ];
 
   // ══════════════════════════════════════════════════════════════
@@ -3199,6 +3202,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         )}
 
         {/* NOUVELLE PALETTE IFCO FORM */}
+        {activeTab === "nouvelle-analyse" && <FormulaireAnalyse onRetour={() => setActiveTab("dashboard")} />}
+
         {activeTab === "nouvelle-palette" && (
           <div style={{
             background: "white",

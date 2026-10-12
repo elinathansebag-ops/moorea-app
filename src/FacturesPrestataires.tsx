@@ -20,12 +20,13 @@ import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prest
 // 12/10/2026 — « autres » : n'importe quel autre prestataire (transport, nettoyage…), saisi à la
 // main ici (factures_prestataires_autres/{id} = { date AAAA-MM-JJ, prestataire, description,
 // montantFactureHT, facture, creePar, ts }).
-type Source = "cartons" | "ifco" | "vierges" | "entretiens" | "autres";
+type Source = "cartons" | "ifco" | "vierges" | "entretiens" | "analyses" | "autres";
 const SOURCES: Record<Source, { libelle: string; icone: string; chemin: string }> = {
   cartons: { libelle: "Cartons", icone: "📦", chemin: "prestataires_cartons" },
   ifco: { libelle: "Palettes IFCO", icone: "🟦", chemin: "ifco_palettes_commandes" },
   vierges: { libelle: "Palettes vierges", icone: "🟫", chemin: "palettes_vierges_livraisons" },
   entretiens: { libelle: "Entretiens", icone: "🔧", chemin: "entretiens" },
+  analyses: { libelle: "Analyses labo", icone: "🔬", chemin: "analyses_demandes" },
   autres: { libelle: "Autres prestataires", icone: "🧾", chemin: "factures_prestataires_autres" },
 };
 
@@ -85,6 +86,17 @@ function lignesDepuis(source: Source, donnees: Record<string, any>): Ligne[] {
         date: isoDepuisFr(v.date) || isoDepuisTs(v.timestamp),
         titre: "Palettes vierges",
         detail: `${Number(v.quantite) || 0} × ${REFS_PALETTES_VIERGES[v.ref] || v.ref || "?"}${v.heure ? ` · ${v.heure}` : ""}${v.lieuLivraison && v.lieuLivraison !== "Moorea" ? ` · ${v.lieuLivraison}` : ""}`,
+        montantHT: null,
+        facturee: !!v.facture, dateFacture: v.facture?.date, facturePar: v.facture?.par,
+        montantReel: typeof v.montantFactureHT === "number" ? v.montantFactureHT : null, brut: v,
+      }];
+    }
+    if (source === "analyses") {
+      return [{
+        cle: `${source}/${id}`, source, id,
+        date: v.date || isoDepuisTs(v.ts),
+        titre: `Analyse — ${v.laboratoire || "laboratoire"}`,
+        detail: [v.produit, v.lot ? `lot ${v.lot}` : "", v.typeAnalyse, v.nbEchantillons > 1 ? `${v.nbEchantillons} échantillons` : "", v.creePar ? `demandée par ${v.creePar}` : "", v.commentaire].filter(Boolean).join(" · "),
         montantHT: null,
         facturee: !!v.facture, dateFacture: v.facture?.date, facturePar: v.facture?.par,
         montantReel: typeof v.montantFactureHT === "number" ? v.montantFactureHT : null, brut: v,
@@ -167,6 +179,7 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
       maj[`${base}/description`] = description.trim() || null;
       if (date) maj[`${base}/date`] = date;
     }
+    else if (l.source === "analyses" && date) maj[`${base}/date`] = date;
     maj[`${base}/modifieFacture`] = { par: nomSignataire() || null, ts: Date.now() };
     setEnvoi(true);
     try { await update(ref(db), maj); onFin(); }
@@ -237,7 +250,7 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
 export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => void; darkMode?: boolean }) {
   const [donnees, setDonnees] = useState<Partial<Record<Source, Record<string, any>>>>({});
   const [filtre, setFiltre] = useState<"a_facturer" | "facturees" | "tout">("a_facturer");
-  const [sources, setSources] = useState<Record<Source, boolean>>({ cartons: true, ifco: true, vierges: true, entretiens: true, autres: true });
+  const [sources, setSources] = useState<Record<Source, boolean>>({ cartons: true, ifco: true, vierges: true, entretiens: true, analyses: true, autres: true });
   const [ajout, setAjout] = useState<{ prestataire: string; description: string; date: string; montant: string } | null>(null);
   const [fiches, setFiches] = useState<string[]>([]);
   const [erreur, setErreur] = useState("");
