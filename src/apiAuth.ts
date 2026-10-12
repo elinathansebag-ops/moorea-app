@@ -34,7 +34,11 @@ function avecSignature(corps: BodyInit | null | undefined): BodyInit | null | un
   try {
     const d = JSON.parse(corps);
     if (!d || typeof d.html !== "string" || d.sansSignature || d.html.includes("data-signature-moorea")) return corps;
-    d.html = d.html + signatureHtml();
+    // 12/10/2026 — Mail en page complète (rapport d'agréage…) : la signature ajoutée APRÈS </html>
+    // était ignorée par Gmail / Outlook (« les mails de rapport ne sont pas signés »). On l'insère
+    // juste avant </body> quand il existe.
+    const i = d.html.toLowerCase().lastIndexOf("</body>");
+    d.html = i >= 0 ? d.html.slice(0, i) + signatureHtml() + d.html.slice(i) : d.html + signatureHtml();
     return JSON.stringify(d);
   } catch { return corps; }
 }
