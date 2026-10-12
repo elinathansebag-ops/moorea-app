@@ -7,7 +7,9 @@ export const config = { runtime: "nodejs" };
 // uniquement chez Elinathan. Le client génère le .xlsx et nous l'envoie en base64 ; ce endpoint ne
 // touche pas à Firebase. Liste blanche des destinataires pour qu'on ne puisse pas s'en servir pour
 // écrire à n'importe qui.
-const AUTORISES_TEST = ["elinathan.sebag@moorea.fr"];
+// 12/10/2026 — Demande d'Elinathan : en mode test, le mail part de SA boîte vers Jordan (l'inverse
+// d'avant). En mode réel : toujours de Jordan vers Lidl.
+const AUTORISES_TEST = ["jordan.jouanest@moorea.fr"];
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -24,16 +26,20 @@ export default async function handler(req, res) {
     if (!modeTest && !/@lidl\./i.test(destinataires[0])) return res.status(400).json({ error: "En mode réel le destinataire doit être une adresse Lidl" });
 
     const banniere = modeTest
-      ? `<p style="background:#fffbeb;border:1px solid #fde3a8;padding:8px 12px;border-radius:6px;color:#b45309;font-size:12px">🧪 MODE TEST — ce mail est envoyé uniquement à toi. En mode réel il partirait à ${emailLidlReel || "(adresse Lidl non configurée)"}.</p>`
+      ? `<p style="background:#fffbeb;border:1px solid #fde3a8;padding:8px 12px;border-radius:6px;color:#b45309;font-size:12px">🧪 MODE TEST — ce mail est envoyé uniquement à Jordan. En mode réel il partirait à ${emailLidlReel || "(adresse Lidl non configurée)"}.</p>`
       : "";
     const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111">
       ${banniere}
       <p>Bonjour,</p>
       <p>Veuillez trouver ci-joint le tableau d'avis de livraison (traçabilité) de MOOREA pour la livraison du <b>${dateLongue || ""}</b>${version > 1 ? ` — version ${String(version).padStart(2, "0")} (mise à jour)` : ""}, soit ${nbLignes} ligne${nbLignes > 1 ? "s" : ""}.</p>
       <p>Cordialement,<br/>${typeof signataire === "string" && signataire.trim() ? `${String(signataire).trim().slice(0, 80).replace(/&/g, "&amp;").replace(/</g, "&lt;")}<br/>` : ""}MOOREA</p></div>`;
-    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: "jordan.jouanest@moorea.fr", pass: process.env.GMAIL_PASS_JORDAN } });
+    const expediteur = modeTest
+      ? { user: "elinathan.sebag@moorea.fr", pass: process.env.GMAIL_PASS_ELINATHAN, nom: "Elinathan Sebag" }
+      : { user: "jordan.jouanest@moorea.fr", pass: process.env.GMAIL_PASS_JORDAN, nom: "Jordan Jouanest" };
+    if (!expediteur.pass) return res.status(500).json({ error: `Mot de passe Gmail de ${expediteur.user} absent sur Vercel` });
+    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: expediteur.user, pass: expediteur.pass } });
     const info = await transporter.sendMail({
-      from: "Jordan Jouanest <jordan.jouanest@moorea.fr>",
+      from: `${expediteur.nom} <${expediteur.user}>`,
       to: destinataires.join(","),
       subject: `${modeTest ? "[TEST] " : ""}${objet}`,
       html,

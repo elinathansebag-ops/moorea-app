@@ -235,7 +235,7 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
             <div style={{ background: cfg.modeTest ? "#fffbeb" : "#f0fdf4", border: `1.5px solid ${cfg.modeTest ? "#fde3a8" : "#bbf7d0"}`, borderRadius: 12, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 13, color: cfg.modeTest ? "#b45309" : "#15803d" }}>{cfg.modeTest ? "Mode test actif" : "Mode réel actif"}</div>
-                <div style={{ fontSize: 11.5, color: "#4b5563", marginTop: 2 }}>{cfg.modeTest ? `Le tableau part uniquement dans ta boîte (${EMAIL_TEST}), depuis Jordan. Rien n'est envoyé à Lidl.` : `Le tableau part vraiment à Lidl (${cfg.emailLidl}), depuis Jordan.`}</div>
+                <div style={{ fontSize: 11.5, color: "#4b5563", marginTop: 2 }}>{cfg.modeTest ? `Le tableau part uniquement chez Jordan (${EMAIL_TEST}), depuis ta boîte (elinathan.sebag@moorea.fr). Rien n'est envoyé à Lidl.` : `Le tableau part vraiment à Lidl (${cfg.emailLidl}), depuis Jordan.`}</div>
               </div>
               <button type="button" onClick={() => update(ref(db, "lidl_config"), { modeTest: !cfg.modeTest })} title="Basculer entre test et réel"
                 style={{ position: "relative", width: 108, height: 34, borderRadius: 20, border: "none", cursor: "pointer", background: cfg.modeTest ? "#fde3a8" : "#bbf7d0", flexShrink: 0 }}>

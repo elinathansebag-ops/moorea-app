@@ -31,7 +31,7 @@ export const PRODUCTEURS_LIDL: Producteur[] = [
 ];
 
 export const EMAIL_LIDL_DEFAUT = "fl.analyses@lidl.fr";
-export const EMAIL_TEST = "elinathan.sebag@moorea.fr";
+export const EMAIL_TEST = "jordan.jouanest@moorea.fr"; // 12/10/2026 — mode test : d'Elinathan vers Jordan
 
 export type LigneExport = {
   id: string; date: string; base: string; quantite: number; transporteur?: string; depart?: string;
@@ -177,7 +177,7 @@ export async function envoyerTracabiliteLidl(dateIso: string, lignes: LigneExpor
       enCours: null, version, dernierEnvoi: new Date().toLocaleString("fr-FR"), ts: Date.now(), par: auto ? `${par} (automatique)` : par,
       mode: cfg.modeTest ? "test" : "reel", destinataire, nbLignes: gen.nbLignes, totalColis: gen.totalColis, nomFichier: `${nom}.xlsx`, erreur: null,
     });
-    return { ok: true, message: `${cfg.modeTest ? "🧪 [TEST — envoyé uniquement à toi] " : ""}Tableau envoyé à ${destinataire} (${gen.nbLignes} lignes, ${nom})` };
+    return { ok: true, message: `${cfg.modeTest ? "🧪 [TEST — envoyé uniquement à Jordan] " : ""}Tableau envoyé à ${destinataire} (${gen.nbLignes} lignes, ${nom})` };
   } catch (e: any) {
     await update(ref(db, `lidl_envois/${dateIso}`), { enCours: null, erreur: `${new Date().toLocaleString("fr-FR")} — ${e?.message || e}` }).catch(() => {});
     return { ok: false, message: `Échec de l'envoi : ${e?.message || e}` };
