@@ -80,9 +80,10 @@ export function ProfilGenerique() {
     push(ref(db, "connexions_profils"), { compte: email, personne: n, ts: Date.now(), appareil: navigator.userAgent.slice(0, 160) }).catch(() => {});
   }
 
+  // 12/10/2026 — Pastille placée sous la barre d'état de l'iPad/iPhone (heure, batterie) au lieu de passer dessous.
   if (actuel) return (
     <button type="button" onClick={() => definirProfil(null)} title="Changer de profil"
-      style={{ position: "fixed", top: 6, right: 8, zIndex: 1900, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: "1px solid rgba(255,255,255,.45)", background: "rgba(48,90,85,.95)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.25)" }}>
+      style={{ position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 6px)", right: "calc(env(safe-area-inset-right, 0px) + 8px)", zIndex: 1900, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: "1px solid rgba(255,255,255,.45)", background: "rgba(48,90,85,.95)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.25)" }}>
       👤 {actuel} <span style={{ color: "#bfe0c8" }}>· Changer de profil</span>
     </button>
   );
