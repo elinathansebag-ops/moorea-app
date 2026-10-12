@@ -11,6 +11,7 @@ import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverT
 import { query, orderByChild, equalTo, onChildAdded } from "firebase/database";
 import { NotificationsPush, AttributionNotifications, alerterPush, EtatNotificationsComptes, InvitationNotifications, envoyerUneFois, dejaEnvoye } from "./NotificationsPush";
 import { ReglagesImpression } from "./Imprimantes";
+import { SousComptesAcces, useRefusProfils, refusDuProfil } from "./SousComptesAcces";
 import { LogoMoorea, PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 
@@ -623,20 +624,45 @@ export default function App() {
   // les jours. "accueilMasques" est un simple réglage d'AFFICHAGE personnel par compte (stocké
   // dans comptes/{uid}, jamais dans acces_permissions) — ça ne touche à aucun droit réel, juste
   // à ce qui est montré sur SA page d'accueil à elle. Réversible à tout moment via "🎛️ Personnaliser".
-  const [accueilMasques, setAccueilMasques] = useState<Record<string, boolean>>({});
+  // 12/10/2026 — Demande d'Elinathan : sur un compte partagé (agreage@, entrepot@, commercial@),
+  // chaque sous-compte (prénom choisi dans « Qui es-tu ? ») a SON accueil :
+  // comptes/{uid}/accueil_masques_profils/{prénom}. Tant qu'un prénom n'a rien personnalisé, il
+  // voit l'accueil du compte ; sa première modification part de celui-ci.
+  const [accueilMasquesCompte, setAccueilMasquesCompte] = useState<Record<string, boolean>>({});
+  const [accueilMasquesProfil, setAccueilMasquesProfil] = useState<Record<string, boolean> | null>(null);
+  const cleProfilAccueil = profilGenerique ? profilGenerique.replace(/[.#$[\]/]/g, "_") : null;
   useEffect(() => {
-    if (!user?.uid) { setAccueilMasques({}); return; }
-    const unsub = onValue(ref(db, `comptes/${user.uid}/accueil_masques`), snap => setAccueilMasques(snap.val() || {}));
+    if (!user?.uid) { setAccueilMasquesCompte({}); return; }
+    const unsub = onValue(ref(db, `comptes/${user.uid}/accueil_masques`), snap => setAccueilMasquesCompte(snap.val() || {}));
     return () => unsub();
   }, [user?.uid]);
+  useEffect(() => {
+    if (!user?.uid || !cleProfilAccueil) { setAccueilMasquesProfil(null); return; }
+    const unsub = onValue(ref(db, `comptes/${user.uid}/accueil_masques_profils/${cleProfilAccueil}`), snap => setAccueilMasquesProfil(snap.exists() ? (snap.val() || {}) : null));
+    return () => unsub();
+  }, [user?.uid, cleProfilAccueil]);
+  const accueilMasques = (cleProfilAccueil && accueilMasquesProfil) ? accueilMasquesProfil : accueilMasquesCompte;
   const toggleMasqueAccueil = (moduleKey: string) => {
     if (!user?.uid) return;
+    if (cleProfilAccueil) {
+      const suivant: Record<string, boolean> = { ...accueilMasques, _perso: true };
+      if (suivant[moduleKey]) delete suivant[moduleKey]; else suivant[moduleKey] = true;
+      set(ref(db, `comptes/${user.uid}/accueil_masques_profils/${cleProfilAccueil}`), suivant);
+      return;
+    }
     update(ref(db, `comptes/${user.uid}/accueil_masques`), { [moduleKey]: accueilMasques[moduleKey] ? null : true });
   };
   const [showPersonnaliserAccueil, setShowPersonnaliserAccueil] = useState(false);
-  const monAccesReel = (permsChargees || ADMIN_BOOTSTRAP.includes((user?.email || "").toLowerCase()))
+  const monAccesCompte = (permsChargees || ADMIN_BOOTSTRAP.includes((user?.email || "").toLowerCase()))
     ? calculerAcces(user?.email, permRoles, permUsers)
     : { isAdmin: false, hasModule: () => false, hasTab: () => false };
+  // 12/10/2026 — Sous-comptes (comptes partagés) : les modules retirés à la personne choisie dans
+  // « Qui es-tu ? » sont enlevés des droits du compte (voir src/SousComptesAcces.tsx).
+  const refusProfils = useRefusProfils(!!profilGenerique);
+  const refusMonProfil = refusDuProfil(refusProfils, userCompte?.email, profilGenerique);
+  const monAccesReel = Object.keys(refusMonProfil).length
+    ? { ...monAccesCompte, hasModule: (k: string) => !refusMonProfil[k] && monAccesCompte.hasModule(k), hasTab: (k: string) => !refusMonProfil[String(k).split(".")[0]] && monAccesCompte.hasTab(k) }
+    : monAccesCompte;
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
   // 29/09/2026 — Demande d'Elinathan (vitesse) : les grosses collections ne sont plus
   // téléchargées pour un compte qui n'a accès à AUCUN des modules qui s'en servent. Toujours
@@ -3832,6 +3858,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </>)}
                     {adminTab === "acces" && (<>
                     <TitreSection>🔐 Accès & sécurité</TitreSection>
+                    <CarteReglage titre="👥 Sous-comptes des comptes partagés" desc="Choisir les modules de chaque personne sur agreage@, entrepot@ et commercial@ (prénom choisi dans « Qui es-tu ? »).">
+                      <SousComptesAcces permRoles={permRoles} permUsers={permUsers} darkMode={darkMode} />
+                    </CarteReglage>
                     {/* 09/09/2026 — Demande d'Elinathan : pouvoir choisir quelle adresse mail accède à
                         quel module/onglet. Réservé aux comptes admin (monAccesReel.isAdmin, la vraie
                         panneau Admin l'est déjà de toute façon depuis le retrait du code PIN. */}
