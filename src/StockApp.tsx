@@ -2336,30 +2336,29 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
 
       const isIfcoArticle = (article: string) => !!_ifcoByArticle?.[article?.toLowerCase().trim()];
 
-      // 12/10/2026 — Demande d'Elinathan : une ligne scannée (étiquette palette ou gencode) reste
-      // affichée en BLEU dans le tableau pendant la session (la dernière en bleu plus foncé, avec
-      // « 📷 scannée »), et la page défile jusqu'à elle à la fermeture du scanner.
-      const scannesIds = new Set<number>();
-      let dernierScanId: number | null = null;
+      // 12/10/2026 — Demande d'Elinathan : après un scan, le tableau n'affiche QUE la ligne du
+      // produit scanné (sans couleur), pour ajouter d'autres cases dessus ; ça reste ainsi jusqu'à
+      // la prochaine recherche, le prochain scan ou « Tout afficher ».
+      let filtreScanId: number | null = null;
       const marquerScanne = (id: number) => {
-        scannesIds.add(id); dernierScanId = id;
+        filtreScanId = id;
+        const srch = document.getElementById("s-srch") as HTMLInputElement | null;
+        if (srch) srch.value = "";
         sRenderTable();
         const row = document.querySelector(`tr[data-id="${id}"]`) as HTMLElement | null;
-        if (row) row.scrollIntoView({ behavior: "smooth", block: "center" });
-      };
-      (window as any).sMontrerDernierScan = () => {
-        if (dernierScanId == null) return;
-        const row = document.querySelector(`tr[data-id="${dernierScanId}"]`) as HTMLElement | null;
         if (row) setTimeout(() => row.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
       };
+      (window as any).sToutAfficher = () => { filtreScanId = null; sRenderTable(); };
       const sRenderTable = () => {
         const srchEl = document.getElementById("s-srch") as HTMLInputElement;
         const q = srchEl ? srchEl.value.toLowerCase().trim() : "";
+        if (q) filtreScanId = null; // une recherche remplace le filtre « produit scanné »
         // 30/09/2026 — Comptage à deux : chaque appareil prend une moitié de la liste (même ordre
         // sur les deux appareils). La recherche montre toujours tout.
         const moitie = Math.ceil(articles.length / 2);
         const rows = articles.filter((a, idx) => {
           if (!a || !a.article) return false;
+          if (filtreScanId != null) return a.id === filtreScanId;
           if (!q && comptagePartie === 1 && idx >= moitie) return false;
           if (!q && comptagePartie === 2 && idx < moitie) return false;
           if (comptageIfcoFilter === "oui" && !isIfcoArticle(a.article)) return false;
@@ -2370,7 +2369,9 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         const tbody = document.getElementById("s-tbl-body");
         if (!tbody) return;
         if (!rows.length && !q) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
-        let html = "";
+        let html = filtreScanId != null && rows.length
+          ? `<tr><td colspan="6" style="padding:8px 12px;font-size:12px;font-weight:700;color:#1e3a8a;background:#eff6ff">📷 Produit scanné — ajoute d'autres quantités avec « + » <button onclick="sToutAfficher()" style="margin-left:8px;padding:4px 10px;border-radius:8px;border:1.5px solid #bfdbfe;background:#fff;color:#1e3a8a;font-weight:700;cursor:pointer">Tout afficher</button></td></tr>`
+          : "";
         rows.forEach(a => {
           const q1 = a.compte1 !== null && a.compte1 !== undefined ? a.compte1 : "";
           const qd = a.detruire !== null && a.detruire !== undefined ? a.detruire : "";
@@ -2398,11 +2399,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const ifcoBadge = isIfcoArticle(a.article) ? `<br><span style="font-size:10px;color:#1a6b3a;font-weight:700">☑️ Caisse IFCO</span>` : "";
           const moi = nomCompteur();
           const parBadge = counted(a) && a._par ? `<br><span style="font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px;${a._par === moi ? "background:#dcfce7;color:#15803d" : "background:#ede9fe;color:#6d28d9"}">👤 ${a._par === moi ? "Moi" : a._par}</span>` : "";
-          const scanne = scannesIds.has(a.id), dernier = a.id === dernierScanId;
-          const styleScan = scanne ? ` style="background:${dernier ? "#bfdbfe" : "#eff6ff"};box-shadow:inset 5px 0 0 #2563eb"` : "";
-          const badgeScan = scanne ? `<br><span style="font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px;background:#2563eb;color:#fff">📷 scannée${dernier ? " · dernière" : ""}</span>` : "";
-          html += `<tr data-id="${a.id}"${styleScan}>
-            <td style="font-weight:500;color:${scanne ? "#1e3a8a" : "inherit"}">${artLabel}${badgeScan}${parBadge}${ifcoBadge}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
+          html += `<tr data-id="${a.id}">
+            <td style="font-weight:500">${artLabel}${parBadge}${ifcoBadge}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
             <td class="s-tot-cell" style="text-align:center;font-weight:700;color:#c8a84b">${showTot ? tot : "-"}</td>
             <td class="s-ecart-cell" style="text-align:center;font-weight:700;color:${ecartColor}">${ecartStr}</td>
@@ -3585,7 +3583,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         }
         const qty = art.lotsQty?.[baseLot];
         const compte = art.compte !== null && art.compte !== undefined ? art.compte : null;
-        marquerScanne(art.id);
+        // 12/10/2026 — Quantité de la palette connue : ajoutée tout de suite, sans choix à faire.
+        if (qty !== undefined && qty !== null) { (window as any).sAjouterQtePalette(art.id, Number(qty)); return; }
         const html = `
           <div style="font-size:30px;margin-bottom:6px">📦</div>
           <p style="font-size:18px;font-weight:800;color:#1a2e1a;margin:0 0 2px">${art.article}</p>
@@ -3611,21 +3610,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         sRenderTable();
         updateMetricsC();
         clearTimeout(comptageTimeout); comptageTimeout = setTimeout(saveComptages, 1500);
+        // 12/10/2026 — Fermeture du scanner et affichage de la seule ligne du produit.
+        (window as any).sFermerScanner();
         marquerScanne(art.id);
-        (window as any).sAfficherResultatScan({ found: true, html: `
-          <div style="font-size:32px;margin-bottom:8px">✅</div>
-          <p style="font-size:18px;font-weight:800;color:#1a2e1a;margin:0 0 2px">${art.article}</p>
-          <div style="background:#f0fdf4;border-radius:10px;padding:12px;border:1.5px solid #bbf7d0;margin-top:10px">
-            <p style="margin:0;font-size:14px;color:#15803d;font-weight:800">+ ${n} colis (case ${nextLoc}) · total ${t}</p>
-          </div>
-          ${nextLoc < NB_MAX_CELLULES ? `
-          <!-- 12/10/2026 — Demande d'Elinathan : après la palette scannée, ajouter d'autres quantités
-               sur la MÊME ligne (case suivante), sans rescanner. -->
-          <p style="margin:14px 0 6px;font-size:12.5px;font-weight:700;color:#1e3a8a;text-align:left">➕ Ajouter une autre quantité sur cette ligne</p>
-          <div style="display:flex;gap:8px">
-            <input id="s-scan-qte-plus" type="number" min="0" inputmode="numeric" placeholder="Quantité" style="flex:1;min-width:0;padding:12px;border:1.5px solid #bfdbfe;border-radius:10px;font-size:16px;font-weight:700;text-align:center" onkeydown="if(event.key==='Enter')sAjouterQtePalette(${art.id}, this.value)"/>
-            <button onclick="sAjouterQtePalette(${art.id}, document.getElementById('s-scan-qte-plus').value)" style="padding:12px 14px;border-radius:10px;border:none;background:#2563eb;color:#fff;font-weight:800;font-size:14px;cursor:pointer">✓ Ajouter</button>
-          </div>` : ""}` });
+        toast(`✅ +${n} colis · ${art.article} (total ${t})`);
       };
 
       (window as any).sAfficherResultatScan = ({ found, msg, html }: any) => {
@@ -3647,7 +3635,6 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         sScanStream = null;
         const page = document.getElementById("s-page-scanner");
         if (page) page.style.display = "none";
-        (window as any).sMontrerDernierScan?.();
       };
 
       // Load histo on session start
