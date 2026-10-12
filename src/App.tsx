@@ -58,6 +58,7 @@ const TachesModule = chargerModule(() => import("./TachesModule"), "TachesModule
 const RackModule = chargerModule(() => import("./RackModule"), "RackModule");
 const StattModule = chargerModule(() => import("./StattModule"), "StattModule");
 const LidlModule = chargerModule(() => import("./LidlModule"), "LidlModule");
+const FacturesPrestataires = chargerModule(() => import("./FacturesPrestataires"), "FacturesPrestataires");
 const StatsAchatsModule = chargerModule(() => import("./StatsAchatsModule"), "StatsAchatsModule");
 const PrestatairesModule = chargerModule(() => import("./PrestatairesModule"), "PrestatairesModule");
 const ReconditionnementModule = chargerModule(() => import("./ReconditionnementModule"), "ReconditionnementModule");
@@ -529,6 +530,7 @@ export default function App() {
   const [showLitiges, setShowLitiges] = useState(false);
   const [showRecherche, setShowRecherche] = useState(false);
   const [raccourciPresta, setRaccourciPresta] = useState<null | "cartons" | "palette-vierge">(null);
+  const [showFacturesPresta, setShowFacturesPresta] = useState(false);
   const [showYukon, setShowYukon] = useState(false);
   const [showTaches, setShowTaches] = useState(false);
   const [tachesTabDemande, setTachesTabDemande] = useState<"taches" | "commandes">("taches");
@@ -3951,6 +3953,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         { key: "raccourci_cartons", icon: "📦", label: "Commande cartons", color: "#6c757d", badge: null, stat: "Go-Embal — saisie rapide", action: () => { setShowAccueil(false); setRaccourciPresta("cartons"); } },
         { key: "raccourci_palette_vierge", icon: "🟫", label: "Palette vierge", color: "#6c757d", badge: null, stat: "Pointer une livraison", action: () => { setShowAccueil(false); setRaccourciPresta("palette-vierge"); } },
       ] : []),
+      // 12/10/2026 — Pointage des factures prestataires (historique des arrivées + bouton « Facturée »).
+      ...(monAcces.hasModule("factures_prestataires") ? [
+        { key: "factures_prestataires", icon: "💳", label: "Factures prestataires", color: "#305a55", badge: null, stat: "Pointer les factures reçues", action: () => { setShowAccueil(false); setShowFacturesPresta(true); } },
+      ] : []),
       { key: "reconditionnement", icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       { key: "messagerie", icon: "📧", label: "Messagerie", color: "#0f766e", badge: null, stat: "Tri automatique par commercial", action: () => { setShowAccueil(false); setShowMessagerie(true); } },
       { key: "appro", icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
@@ -4234,6 +4240,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       </div>
       </>
     );
+  }
+
+  if (showFacturesPresta) {
+    const fermer = () => { setShowFacturesPresta(false); setShowAccueil(true); };
+    if (!monAcces.hasModule("factures_prestataires")) return <AccesRefuse onRetour={fermer} />;
+    return <>{fabScanner}{invitationNotif}<FacturesPrestataires onClose={fermer} darkMode={darkMode} /></>;
   }
 
   // 12/10/2026 — Raccourcis Prestataires (instance à part, le module complet n'est pas touché).

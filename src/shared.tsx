@@ -410,6 +410,8 @@ export const MODULE_DEFS: ModuleDef[] = [
     { key: "entretiens", label: "Entretiens" },
     { key: "configuration", label: "⚙️ Configuration" },
   ] },
+  // 12/10/2026 — Pointage des factures prestataires (FacturesPrestataires.tsx).
+  { key: "factures_prestataires", label: "💳 Factures prestataires" },
   { key: "reconditionnement", label: "🔄 Reconditionnement", tabs: [
     { key: "en_cours", label: "En cours" },
     { key: "nouvelle", label: "Nouvelle demande" },

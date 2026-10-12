@@ -17,31 +17,15 @@ import {
 } from "./ReconditionnementModule";
 import type { Depot as DepotRecond, Demande as DemandeRecond, Transporteur as TransporteurRecond, Mouvement as MouvementRecond } from "./ReconditionnementModule";
 
-// Types de cartons
-const CARTONS_CATALOGUE = {
-  "DEMOISELLE ÉCRU": { dims: "300×200×80mm", prixHT: 0.44, parPalette: 520 },
-  "ÉCRU 500": { dims: "500×300×105mm", prixHT: 1.04, parPalette: 176 },
-  "BABY BLANC": { dims: "300×200×120mm", prixHT: 0.55, parPalette: 360 },
-  "LIDL VERT": { dims: "400×300×105mm", prixHT: 0.65, parPalette: 120 },
-  "BLANC 145": { dims: "400×300×145mm", prixHT: 0.85, parPalette: 160 },
-  "95 NOIR": { dims: "400×300×95mm", prixHT: 0.78, parPalette: 260 },
-};
-
-// Types de palettes IFCO
-const PALETTES_IFCO = {
-  "BLL4314 (640 caisses)": { dims: "400×300mm", materiel: "BLL4314", caisses: 640, prixHT: 12.5 },
-};
+// 12/10/2026 — Catalogues (cartons, palettes IFCO, palettes vierges) rangés dans prestatairesCatalogue.ts,
+// partagés avec le module Factures prestataires.
+import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prestatairesCatalogue";
 
 // 01/09/2026 — Palettes vierges (bois brut, pas les caisses IFCO réutilisables) : livrées
 // plusieurs fois par jour, à différents moments, en piles de quantité variable selon ce qui
 // reste chez le fournisseur — pas de bon de commande à passer, juste un pointage à chaque
 // arrivée. Facturé mensuellement sur la base de ce qui a été réellement reçu dans le mois
 // (demande d'Elinathan), d'où le récap mensuel par référence pour vérifier la facture.
-const REFS_PALETTES_VIERGES: Record<string, string> = {
-  demi: "Demi-palette",
-  europe: "Palette Europe (80×120)",
-  grande: "Grande palette carrée (100×120)",
-};
 
 type LivraisonPaletteVierge = {
   id: string;
