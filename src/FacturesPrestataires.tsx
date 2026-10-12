@@ -151,6 +151,21 @@ function majFacture(l: Ligne, facturee: boolean): Record<string, any> {
 // ── 12/10/2026 — « ✏️ Modifier » (demande d'Elinathan) : corriger l'arrivée (quantités, références,
 // date) et saisir / changer le montant réel de la facture. Corrige l'enregistrement lui-même
 // (le même que dans Prestataires) ; le stock déjà crédité à la réception n'est pas recalculé.
+// Détail complet d'une ligne de commande (gardé dans la base avec la ligne).
+function calculerLignes(source: "cartons" | "ifco", lignes: any[]): any[] {
+  return lignes.map(x => {
+    if (source === "cartons") {
+      const c = (CARTONS_CATALOGUE as any)[x.type];
+      const nbPalettes = Math.max(0, Number(x.nbPalettes) || 0);
+      const nbCartons = c ? nbPalettes * c.parPalette : null;
+      return { type: x.type, nbPalettes, nbCartons, prixHT: c?.prixHT ?? null, montantHT: c ? Math.round(nbCartons! * c.prixHT * 100) / 100 : null };
+    }
+    const p = (PALETTES_IFCO as any)[x.type];
+    const quantite = Math.max(0, Number(x.quantite) || 0);
+    const nbCaisses = p ? quantite * p.caisses : null;
+    return { type: x.type, quantite, nbCaisses, prixCaisseHT: p?.prixCaisseHT ?? null, montantHT: p ? Math.round(quantite * p.prixHT * 100) / 100 : null };
+  });
+}
 const nombre = (t: string) => { const n = parseFloat(t.replace(/\s/g, "").replace(",", ".")); return isFinite(n) ? n : null; };
 function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; couleurs: { texte: string; gris: string; bord: string; carte: string } }) {
   const v = l.brut || {};
@@ -173,10 +188,31 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
     if (montant.trim() && (m == null || m < 0)) { setErreur("Montant invalide (exemple : 78,50)."); return; }
     maj[`${base}/montantFactureHT`] = m;
     if (l.source === "cartons" || l.source === "ifco") {
-      const propres = lignes.map(x => l.source === "cartons" ? { type: x.type, nbPalettes: Math.max(0, Number(x.nbPalettes) || 0) } : { type: x.type, quantite: Math.max(0, Number(x.quantite) || 0) });
+      // 12/10/2026 — Tout le détail est enregistré avec chaque ligne (cartons/caisses, prix, montant),
+      // facturée ou non, et l'arrivage lié (Pointer arrivage) est mis à jour avec.
+      const propres = calculerLignes(l.source, lignes);
       if (!propres.length) { setErreur("Il faut au moins une ligne."); return; }
       maj[`${base}/lignes`] = propres;
+      maj[`${base}/montantEstimeHT`] = Math.round(propres.reduce((n, x) => n + (x.montantHT || 0), 0) * 100) / 100;
       if (date && date !== l.date) maj[`${base}/dateLivraisonPrevue`] = date;
+      try {
+        const champLien = l.source === "cartons" ? "carton_commande_id" : "ifco_palette_commande_id";
+        const arrivages = (await get(ref(db, "arrivages"))).val() || {};
+        Object.entries(arrivages).forEach(([idA, a]: [string, any]) => {
+          if (a?.[champLien] !== l.id) return;
+          const b = `arrivages/${idA}`;
+          if (l.source === "cartons") {
+            maj[`${b}/produit`] = "Cartons " + propres.map(x => x.type).join(" + ");
+            maj[`${b}/quantite`] = propres.reduce((n, x) => n + (x.nbCartons || 0), 0);
+          } else {
+            maj[`${b}/produit`] = "Palettes IFCO " + propres.map(x => x.type).join(" + ");
+            maj[`${b}/quantite`] = propres.reduce((n, x) => n + (x.nbCaisses || 0), 0);
+            maj[`${b}/nbPalettesCommandees`] = propres.reduce((n, x) => n + (x.quantite || 0), 0);
+            maj[`${b}/repartitionPalettesCommandees`] = propres.flatMap(x => Array.from({ length: x.quantite || 0 }, () => (PALETTES_IFCO as any)[x.type]?.caisses || 0));
+          }
+          if (date && date !== l.date) { const [an, mo, j] = date.split("-"); maj[`${b}/date`] = `${j}/${mo}/${an}`; }
+        });
+      } catch { /* arrivage introuvable : la commande est quand même corrigée */ }
     } else if (l.source === "vierges") {
       const q = nombre(quantite);
       if (q == null || q < 0) { setErreur("Quantité invalide."); return; }
@@ -214,6 +250,12 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
               {lignes.length > 1 && <button type="button" onClick={() => setLignes(ls => ls.filter((_, k) => k !== i))} style={{ border: "none", background: "none", color: "#b91c1c", cursor: "pointer", fontSize: 13 }}>✕ retirer</button>}
             </div>
           ))}
+          {(() => {
+            const apercu = calculerLignes(l.source, lignes);
+            const total = apercu.reduce((n, x) => n + (x.montantHT || 0), 0);
+            const unites = apercu.reduce((n, x) => n + ((l.source === "cartons" ? x.nbCartons : x.nbCaisses) || 0), 0);
+            return <span style={{ fontSize: 12.5, fontWeight: 700, color: texte }}>= {unites.toLocaleString("fr-FR")} {l.source === "cartons" ? "cartons" : "caisses"} · ≈ {euros(total)} HT</span>;
+          })()}
           {l.source === "cartons" && (
             <button type="button" onClick={() => setLignes(ls => [...ls, { type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }])} style={{ alignSelf: "flex-start", border: "none", background: "none", color: texte, fontWeight: 700, cursor: "pointer", fontSize: 12.5, padding: 0 }}>+ Ajouter une référence</button>
           )}
