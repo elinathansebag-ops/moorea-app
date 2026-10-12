@@ -31,6 +31,9 @@ type Ligne = {
   titre: string; detail: string;
   montantHT: number | null;
   facturee: boolean; dateFacture?: string; facturePar?: string;
+  // 12/10/2026 — Montant HT réel de la facture, saisi à la main (remplace l'estimation).
+  montantReel: number | null;
+  brut: any; // l'enregistrement d'origine, pour le formulaire « Modifier »
 };
 
 const isoDepuisFr = (fr?: string) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(fr || ""); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
@@ -69,6 +72,7 @@ function lignesDepuis(source: Source, donnees: Record<string, any>): Ligne[] {
         detail: detail + (v.dateReception && v.dateLivraisonPrevue && v.dateReception !== v.dateLivraisonPrevue ? ` · réception pointée le ${new Date(v.dateReception + "T12:00:00").toLocaleDateString("fr-FR")}` : ""),
         montantHT: connu && lignes.length ? Math.round(montant * 100) / 100 : null,
         facturee: v.statut === "facturé", dateFacture: v.dateFacturation, facturePar: v.facturePar,
+        montantReel: typeof v.montantFactureHT === "number" ? v.montantFactureHT : null, brut: v,
       }];
     }
     if (source === "vierges") {
@@ -79,6 +83,7 @@ function lignesDepuis(source: Source, donnees: Record<string, any>): Ligne[] {
         detail: `${Number(v.quantite) || 0} × ${REFS_PALETTES_VIERGES[v.ref] || v.ref || "?"}${v.heure ? ` · ${v.heure}` : ""}${v.lieuLivraison && v.lieuLivraison !== "Moorea" ? ` · ${v.lieuLivraison}` : ""}`,
         montantHT: null,
         facturee: !!v.facture, dateFacture: v.facture?.date, facturePar: v.facture?.par,
+        montantReel: typeof v.montantFactureHT === "number" ? v.montantFactureHT : null, brut: v,
       }];
     }
     if (v.statut !== "terminé") return [];
@@ -89,6 +94,7 @@ function lignesDepuis(source: Source, donnees: Record<string, any>): Ligne[] {
       detail: [v.motif, v.dureeMinutes ? `${v.dureeMinutes} min` : "", v.technicienPrenom ? `technicien : ${v.technicienPrenom}` : ""].filter(Boolean).join(" · "),
       montantHT: null,
       facturee: !!v.facture, dateFacture: v.facture?.date, facturePar: v.facture?.par,
+      montantReel: typeof v.montantFactureHT === "number" ? v.montantFactureHT : null, brut: v,
     }];
   });
 }
@@ -104,11 +110,103 @@ function majFacture(l: Ligne, facturee: boolean): Record<string, any> {
   return { [`${base}/facture`]: facturee ? { date: aujourdhui(), par: nomSignataire() || null } : null };
 }
 
+// ── 12/10/2026 — « ✏️ Modifier » (demande d'Elinathan) : corriger l'arrivée (quantités, références,
+// date) et saisir / changer le montant réel de la facture. Corrige l'enregistrement lui-même
+// (le même que dans Prestataires) ; le stock déjà crédité à la réception n'est pas recalculé.
+const nombre = (t: string) => { const n = parseFloat(t.replace(/\s/g, "").replace(",", ".")); return isFinite(n) ? n : null; };
+function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; couleurs: { texte: string; gris: string; bord: string; carte: string } }) {
+  const v = l.brut || {};
+  const [lignes, setLignes] = useState<any[]>(() => (Array.isArray(v.lignes) ? v.lignes : Object.values(v.lignes || {})).map((x: any) => ({ ...x })));
+  const [quantite, setQuantite] = useState(String(v.quantite ?? ""));
+  const [refPv, setRefPv] = useState<string>(v.ref || Object.keys(REFS_PALETTES_VIERGES)[0]);
+  const [date, setDate] = useState(l.date);
+  const [montant, setMontant] = useState(l.montantReel != null ? String(l.montantReel).replace(".", ",") : "");
+  const [erreur, setErreur] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const { texte, gris, bord, carte } = couleurs;
+  const champ = { padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13 } as const;
+
+  async function enregistrer() {
+    const base = `${SOURCES[l.source].chemin}/${l.id}`;
+    const maj: Record<string, any> = {};
+    const m = montant.trim() ? nombre(montant) : null;
+    if (montant.trim() && (m == null || m < 0)) { setErreur("Montant invalide (exemple : 78,50)."); return; }
+    maj[`${base}/montantFactureHT`] = m;
+    if (l.source === "cartons" || l.source === "ifco") {
+      const propres = lignes.map(x => l.source === "cartons" ? { type: x.type, nbPalettes: Math.max(0, Number(x.nbPalettes) || 0) } : { type: x.type, quantite: Math.max(0, Number(x.quantite) || 0) });
+      if (!propres.length) { setErreur("Il faut au moins une ligne."); return; }
+      maj[`${base}/lignes`] = propres;
+      if (date && date !== l.date) maj[`${base}/dateLivraisonPrevue`] = date;
+    } else if (l.source === "vierges") {
+      const q = nombre(quantite);
+      if (q == null || q < 0) { setErreur("Quantité invalide."); return; }
+      maj[`${base}/quantite`] = q;
+      maj[`${base}/ref`] = refPv;
+      if (date && date !== l.date) { const [a, mo, j] = date.split("-"); maj[`${base}/date`] = `${j}/${mo}/${a}`; }
+    }
+    maj[`${base}/modifieFacture`] = { par: nomSignataire() || null, ts: Date.now() };
+    setEnvoi(true);
+    try { await update(ref(db), maj); onFin(); }
+    catch (e: any) { setErreur(`Enregistrement refusé : ${e?.message || e}`); setEnvoi(false); }
+  }
+
+  const catalogue: Record<string, any> = l.source === "cartons" ? CARTONS_CATALOGUE : PALETTES_IFCO;
+  return (
+    <div style={{ width: "100%", border: `1px dashed ${bord}`, borderRadius: 10, padding: "10px 12px", marginTop: 4, display: "flex", flexDirection: "column", gap: 8 }}>
+      {(l.source === "cartons" || l.source === "ifco") && (
+        <>
+          {lignes.map((x, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <select value={x.type} onChange={e => setLignes(ls => ls.map((y, k) => k === i ? { ...y, type: e.target.value } : y))} style={{ ...champ, minWidth: 180 }}>
+                {[...new Set([...Object.keys(catalogue), x.type].filter(Boolean))].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <input type="number" inputMode="numeric" min={0} value={l.source === "cartons" ? x.nbPalettes ?? "" : x.quantite ?? ""}
+                onChange={e => setLignes(ls => ls.map((y, k) => k === i ? { ...y, [l.source === "cartons" ? "nbPalettes" : "quantite"]: e.target.value } : y))}
+                style={{ ...champ, width: 80 }} aria-label="Nombre de palettes" />
+              <span style={{ fontSize: 12, color: gris }}>palette(s)</span>
+              {lignes.length > 1 && <button type="button" onClick={() => setLignes(ls => ls.filter((_, k) => k !== i))} style={{ border: "none", background: "none", color: "#b91c1c", cursor: "pointer", fontSize: 13 }}>✕ retirer</button>}
+            </div>
+          ))}
+          {l.source === "cartons" && (
+            <button type="button" onClick={() => setLignes(ls => [...ls, { type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }])} style={{ alignSelf: "flex-start", border: "none", background: "none", color: texte, fontWeight: 700, cursor: "pointer", fontSize: 12.5, padding: 0 }}>+ Ajouter une référence</button>
+          )}
+        </>
+      )}
+      {l.source === "vierges" && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input type="number" inputMode="numeric" min={0} value={quantite} onChange={e => setQuantite(e.target.value)} style={{ ...champ, width: 80 }} aria-label="Quantité" />
+          <span style={{ fontSize: 12, color: gris }}>×</span>
+          <select value={refPv} onChange={e => setRefPv(e.target.value)} style={champ}>
+            {Object.entries(REFS_PALETTES_VIERGES).map(([k, lib]) => <option key={k} value={k}>{lib}</option>)}
+          </select>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        {l.source !== "entretiens" && (
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>
+            Date de livraison <input type="date" value={date} onChange={e => setDate(e.target.value)} style={champ} />
+          </label>
+        )}
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>
+          Montant facture (€ HT) <input inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} placeholder={l.montantHT != null ? `estimé ${String(l.montantHT).replace(".", ",")}` : "ex. 78,50"} style={{ ...champ, width: 120 }} />
+        </label>
+      </div>
+      {erreur && <span style={{ fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>{erreur}</span>}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" onClick={enregistrer} disabled={envoi} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>{envoi ? "…" : "Enregistrer"}</button>
+        <button type="button" onClick={onFin} style={{ padding: "8px 14px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+        {l.source !== "entretiens" && <span style={{ fontSize: 11.5, color: gris }}>Corrige aussi la commande dans Prestataires. Le stock déjà enregistré à la réception ne bouge pas.</span>}
+      </div>
+    </div>
+  );
+}
+
 export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => void; darkMode?: boolean }) {
   const [donnees, setDonnees] = useState<Partial<Record<Source, Record<string, any>>>>({});
   const [filtre, setFiltre] = useState<"a_facturer" | "facturees" | "tout">("a_facturer");
   const [sources, setSources] = useState<Record<Source, boolean>>({ cartons: true, ifco: true, vierges: true, entretiens: true });
   const [erreur, setErreur] = useState("");
+  const [enEdition, setEnEdition] = useState<string | null>(null);
 
   useEffect(() => {
     const arrets = (Object.keys(SOURCES) as Source[]).map(s =>
@@ -173,7 +271,7 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
 
         {parMois.map(([mois, jours]) => {
           const lignesMois = [...jours.values()].flat();
-          const totalHT = lignesMois.reduce((n, l) => n + (l.montantHT || 0), 0);
+          const totalHT = lignesMois.reduce((n, l) => n + (l.montantReel ?? l.montantHT ?? 0), 0);
           // Palettes vierges : facturées au mois, d'où le total par référence pour comparer à la facture.
           const pv: Record<string, number> = {};
           lignesMois.filter(l => l.source === "vierges").forEach(l => {
@@ -186,7 +284,7 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: texte }}>{mois === "sans-date" ? "Sans date" : moisFr(mois)}</h2>
                 <span style={{ fontSize: 12.5, color: gris }}>
-                  {lignesMois.length} arrivée{lignesMois.length > 1 ? "s" : ""}{totalHT ? ` · ≈ ${euros(totalHT)} HT (cartons + IFCO, prix catalogue)` : ""}
+                  {lignesMois.length} arrivée{lignesMois.length > 1 ? "s" : ""}{totalHT ? ` · ${euros(totalHT)} HT (montants saisis, sinon prix catalogue)` : ""}
                 </span>
                 <span style={{ flex: 1 }} />
               </div>
@@ -203,7 +301,18 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
                         <span style={{ display: "block", fontSize: 14, fontWeight: 700 }}>{l.titre}</span>
                         <span style={{ display: "block", fontSize: 12.5, color: gris }}>{l.detail || "—"}</span>
                       </span>
-                      {l.montantHT != null && <span style={{ fontSize: 13, fontWeight: 700 }}>≈ {euros(l.montantHT)} HT</span>}
+                      {l.montantReel != null ? (
+                        <span style={{ textAlign: "right" }}>
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 800 }}>{euros(l.montantReel)} HT</span>
+                          {l.montantHT != null && Math.abs(l.montantReel - l.montantHT) >= 0.01 && (
+                            <span style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#b45309" }}>
+                              estimé {euros(l.montantHT)} · écart {l.montantReel > l.montantHT ? "+" : ""}{euros(l.montantReel - l.montantHT)}
+                            </span>
+                          )}
+                        </span>
+                      ) : l.montantHT != null && <span style={{ fontSize: 13, fontWeight: 700 }}>≈ {euros(l.montantHT)} HT</span>}
+                      <button type="button" onClick={() => setEnEdition(enEdition === l.cle ? null : l.cle)} title="Modifier l'arrivée ou le montant"
+                        style={{ padding: "7px 10px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>✏️ Modifier</button>
                       {l.facturee ? (
                         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: "#15803d" }}>
@@ -214,6 +323,7 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
                       ) : (
                         <button type="button" onClick={() => pointer([l], true)} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: vert, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>💳 Facturée</button>
                       )}
+                      {enEdition === l.cle && <EditeurLigne l={l} onFin={() => setEnEdition(null)} couleurs={{ texte, gris, bord, carte }} />}
                     </div>
                   ))}
                 </div>
@@ -222,7 +332,7 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
           );
         })}
         <p style={{ fontSize: 11.5, color: gris, marginTop: 20 }}>
-          Montants estimés avec les prix du catalogue Prestataires, pour comparer à la facture. Une commande de cartons ou de palettes IFCO pointée ici l'est aussi dans le module Prestataires (même statut « Facturé »).
+          Montants « ≈ » estimés avec les prix du catalogue Prestataires ; « ✏️ Modifier » pour saisir le montant réel de la facture (l'écart avec l'estimation s'affiche en orange). Une commande de cartons ou de palettes IFCO pointée ici l'est aussi dans le module Prestataires (même statut « Facturé »).
         </p>
       </div>
     </div>
