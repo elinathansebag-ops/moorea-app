@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { db, ref, onValue, update } from "./firebase";
 import { MODULE_DEFS, calculerAcces, cleEmail, type AccesRole, type AccesUser } from "./shared";
-import { COMPTES_GENERIQUES, useListeProfils, enregistrerListeProfils } from "./ProfilGenerique";
+import { COMPTES_GENERIQUES, useListeProfils, enregistrerListeProfils, MAX_FAVORIS } from "./ProfilGenerique";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 12/10/2026 — Demande d'Elinathan : sur les comptes partagés (agreage@, entrepot@, commercial@),
@@ -34,7 +34,7 @@ export function SousComptesAcces({ permRoles, permUsers, darkMode }: { permRoles
   const [compte, setCompte] = useState<string>(Object.keys(COMPTES_GENERIQUES)[0]);
   const [personne, setPersonne] = useState<string | null>(null);
   const [nouveau, setNouveau] = useState("");
-  // 12/10/2026 — Liste des personnes et 4 favoris gérés ici (affichés dans « Qui es-tu ? »).
+  // 12/10/2026 — Liste des personnes et 5 favoris gérés ici (affichés dans « Qui es-tu ? »).
   const liste = useListeProfils(compte) || { personnes: COMPTES_GENERIQUES[compte], favoris: [] };
   const enregistrer = (personnes: string[], favoris: string[]) => enregistrerListeProfils(compte, { personnes, favoris: favoris.filter(f => personnes.includes(f)) });
   const ajouter = () => {
@@ -50,7 +50,7 @@ export function SousComptesAcces({ permRoles, permUsers, darkMode }: { permRoles
   };
   const basculerFavori = (p: string) => {
     if (liste.favoris.includes(p)) return enregistrer(liste.personnes, liste.favoris.filter(x => x !== p));
-    if (liste.favoris.length >= 4) { window.alert("4 favoris maximum : enlève d'abord une étoile."); return; }
+    if (liste.favoris.length >= MAX_FAVORIS) { window.alert(`${MAX_FAVORIS} favoris maximum : enlève d'abord une étoile.`); return; }
     enregistrer(liste.personnes, [...liste.favoris, p]);
   };
   const texte = darkMode ? "#e5e7eb" : "#1a2e1a", gris = darkMode ? "#aab1bb" : "#6b7280", bord = darkMode ? "#2e3540" : "#e5e7eb";
@@ -75,7 +75,7 @@ export function SousComptesAcces({ permRoles, permUsers, darkMode }: { permRoles
           <button key={c} type="button" onClick={() => { setCompte(c); setPersonne(null); }} style={puce(c === compte)}>{c.split("@")[0]}</button>
         ))}
       </div>
-      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: texte }}>Personnes de {compte} <span style={{ fontWeight: 500, color: gris }}>· ⭐ = favori (4 max, en gros boutons dans « Qui es-tu ? », les autres en liste déroulante)</span></p>
+      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: texte }}>Personnes de {compte} <span style={{ fontWeight: 500, color: gris }}>· ⭐ = favori ({MAX_FAVORIS} max, en gros boutons dans « Qui es-tu ? », les autres en liste déroulante)</span></p>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
         {liste.personnes.map(p => {
           const n = nbRefuses(p), fav = liste.favoris.includes(p);

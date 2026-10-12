@@ -12,9 +12,10 @@ export const COMPTES_GENERIQUES: Record<string, string[]> = {
   "entrepot@moorea.fr": ["Dimitrie", "Alban", "Julien", "Hamza", "Jean Marc", "Abdoul", "Philipp", "Lasina", "Nourdin", "Saidou", "Roland", "Elinathan"],
   "commercial@moorea.fr": ["Jordan", "Sandra", "Jennifer", "Oumaima", "Hicham", "Marina"],
 };
-// 12/10/2026 — Liste des personnes et 4 favoris par compte, gérés dans Admin › Accès › Sous-comptes
+// 12/10/2026 — Liste des personnes et 5 favoris par compte (4 → 5 le 12/10/2026), gérés dans Admin › Accès › Sous-comptes
 // (acces_permissions/profils_listes/{compte} = { personnes, favoris }). Sans réglage : la liste
 // ci-dessus, et les 4 premières personnes en favoris.
+export const MAX_FAVORIS = 5;
 export type ListeProfils = { personnes: string[]; favoris: string[] };
 const cleCompte = (email: string) => email.toLowerCase().trim().replace(/[.#$[\]/]/g, "_");
 export function useListeProfils(email: string | null): ListeProfils | null {
@@ -25,7 +26,7 @@ export function useListeProfils(email: string | null): ListeProfils | null {
   }, [email]);
   if (!email || !COMPTES_GENERIQUES[email]) return null;
   const personnes = (Array.isArray(v?.personnes) && v!.personnes!.length ? v!.personnes! : COMPTES_GENERIQUES[email]).filter(Boolean);
-  const favoris = (Array.isArray(v?.favoris) ? v!.favoris! : personnes.slice(0, 4)).filter(p => personnes.includes(p)).slice(0, 4);
+  const favoris = (Array.isArray(v?.favoris) ? v!.favoris! : personnes.slice(0, MAX_FAVORIS)).filter(p => personnes.includes(p)).slice(0, MAX_FAVORIS);
   return { personnes, favoris };
 }
 export function enregistrerListeProfils(email: string, liste: ListeProfils) {
@@ -125,7 +126,7 @@ export function ProfilGenerique() {
             C'est moi, {dernier} ✓
           </button>
         )}
-        {/* 12/10/2026 — 4 favoris en gros boutons, les autres (utilisateurs occasionnels) dans une liste. */}
+        {/* 12/10/2026 — 5 favoris en gros boutons, les autres (utilisateurs occasionnels) dans une liste. */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8, marginTop: 12 }}>
           {favoris.filter(p => p !== dernier).map(p => (
             <button key={p} type="button" onClick={() => choisir(p)} style={{ height: 52, borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", color: "#111827", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{p}</button>
