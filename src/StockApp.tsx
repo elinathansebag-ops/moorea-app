@@ -2252,8 +2252,11 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           debutComptageConnu = true;
           setDoc(doc(db, "stocks", currentImportId), { debutComptage: Date.now() }, { merge: true }).catch(() => {});
         }
-        const hasCount = a.compte1 !== null && a.compte1 !== undefined;
-        if (hasCount) { let t = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += a["compte" + i] ?? 0; a.compte = t; } else a.compte = null;
+        // 12/10/2026 — Demande d'Elinathan : un produit mis en destruction EST compté (ex. 10 en stock
+        // Geslot, 10 en destruction → compté, écart 0, considéré comme détruit), il ne doit plus
+        // tomber dans « non comptés ». Le total compté inclut donc la destruction.
+        const hasCount = (a.compte1 !== null && a.compte1 !== undefined) || (a.detruire !== null && a.detruire !== undefined);
+        if (hasCount) { let t = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += a["compte" + i] ?? 0; a.compte = t + (a.detruire ?? 0); } else a.compte = null;
         updateMetricsC();
         const row = document.querySelector(`tr[data-id="${id}"]`);
         if (row) {
@@ -2267,8 +2270,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const totCell = row.querySelector(".s-tot-cell");
           const ecartCell = row.querySelector(".s-ecart-cell");
           if (totCell) {
-            let t = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += a["compte" + i] ?? 0;
-            const hasCnt = a.compte1 !== null && a.compte1 !== undefined;
+            let t = a.detruire ?? 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) t += a["compte" + i] ?? 0;
+            const hasCnt = (a.compte1 !== null && a.compte1 !== undefined) || (a.detruire !== null && a.detruire !== undefined);
             (totCell as any).textContent = hasCnt ? t : "-";
             if (ecartCell) {
               if (!hasCnt) { (ecartCell as any).textContent = "-"; (ecartCell as HTMLElement).style.color = "#6b7280"; }
@@ -2356,8 +2359,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         rows.forEach(a => {
           const q1 = a.compte1 !== null && a.compte1 !== undefined ? a.compte1 : "";
           const qd = a.detruire !== null && a.detruire !== undefined ? a.detruire : "";
-          let tot = 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) tot += parseFloat(a["compte" + i] ?? 0) || 0;
-          const showTot = q1 !== "";
+          let tot = parseFloat(a.detruire ?? 0) || 0; for (let i = 1; i <= NB_MAX_CELLULES; i++) tot += parseFloat(a["compte" + i] ?? 0) || 0;
+          const showTot = q1 !== "" || qd !== ""; // destruction seule = compté (voir sSetCount)
           const other = currentTeam === "GMS" ? "Prestige" : "GMS";
           const moveBtn = `<button onclick="sMoveToOther(${a.id})" style="padding:2px 7px;border:1px solid #e8e0d0;border-radius:6px;background:transparent;color:#6b7280;cursor:pointer;font-size:11px">${other} →</button>`;
           const locs: any[] = []; for (let i = 1; i <= NB_MAX_CELLULES; i++) locs.push(a["compte" + i]);
@@ -2670,7 +2673,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const badge = e === 0 ? `<span class="badge badge-ok">OK</span>` : e > 0 ? `<span class="badge badge-surplus">Surplus</span>` : `<span class="badge badge-manque">Manque</span>`;
           let lotsHtml = "";
           if (e !== 0 && a.lotsQty && Object.keys(a.lotsQty).length > 0) lotsHtml = `<div style="margin-top:3px;font-size:10px;color:#6b7280">${Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" | ")}</div>`;
-          return `<tr><td style="font-weight:500">${a.article}${lotsHtml}</td><td style="text-align:right">${a.nb_colis}</td><td style="text-align:right;font-weight:700">${a.compte}</td><td class="${cls}" style="text-align:right">${sign + e}</td><td>${badge}</td></tr>`;
+          const detruitHtml = a.detruire > 0 ? `<div style="margin-top:3px;font-size:10.5px;font-weight:700;color:#b91c1c">🗑 dont ${a.detruire} détruit${a.detruire > 1 ? "s" : ""}</div>` : "";
+          return `<tr><td style="font-weight:500">${a.article}${lotsHtml}</td><td style="text-align:right">${a.nb_colis}</td><td style="text-align:right;font-weight:700">${a.compte}${detruitHtml}</td><td class="${cls}" style="text-align:right">${sign + e}</td><td>${badge}</td></tr>`;
         }).join("");
       };
       (window as any).sRenderEcarts = sRenderEcarts;
@@ -2679,7 +2683,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       (window as any).sExportCSV = () => {
         const now = new Date().toLocaleString("fr-FR");
         let csv = `Inventaire ${currentTeam} - ${now}\nArticle,Stock sys.,Empl.1,Détruit,Total,Écart,Statut\n`;
-        articles.forEach(a => { const e = counted(a) ? ecart(a) : ""; const st = !counted(a) ? "Non compté" : e === 0 ? "OK" : (e as number) > 0 ? "Surplus" : "Manque"; csv += `"${a.article}",${a.nb_colis},${a.compte1 ?? ""},${a.detruire ?? ""},${counted(a) ? a.compte : ""},${e},"${st}"\n`; });
+        articles.forEach(a => { const e = counted(a) ? ecart(a) : ""; const st = (!counted(a) ? "Non compté" : e === 0 ? "OK" : (e as number) > 0 ? "Surplus" : "Manque") + (a.detruire > 0 ? ` (dont ${a.detruire} détruits)` : ""); csv += `"${a.article}",${a.nb_colis},${a.compte1 ?? ""},${a.detruire ?? ""},${counted(a) ? a.compte : ""},${e},"${st}"\n`; });
         const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const lnk = document.createElement("a"); lnk.href = url; lnk.download = `inventaire_${currentTeam.toLowerCase()}_${TODAY}.csv`; lnk.click(); URL.revokeObjectURL(url);
