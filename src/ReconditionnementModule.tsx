@@ -329,8 +329,11 @@ export { CHEMIN_PDFS_RECOND, DRAPEAU_PDF_RECOND, aPdfDemande, lirePdfDemande, ec
 export type { ChampPdfRecond } from "./pdfsRecond";
 
 export async function envoyerBonReconditionnementPourImpressionPC(pdfNom: string, pdfBase64: string): Promise<string> {
+  const { imprimantePour } = await import("./Imprimantes"); // 12/10/2026 — imprimante choisie dans Admin › Matériel
+  const imprimante = await imprimantePour("bons_reconditionnement");
   const r = await push(ref(db, "printQueue"), {
     type: "bon_reconditionnement",
+    imprimante,
     pdfNom,
     pdfBase64,
     status: "pending",

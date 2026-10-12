@@ -10,6 +10,7 @@ import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 import { query, orderByChild, equalTo, onChildAdded } from "firebase/database";
 import { NotificationsPush, AttributionNotifications, alerterPush, EtatNotificationsComptes, InvitationNotifications, envoyerUneFois, dejaEnvoye } from "./NotificationsPush";
+import { ReglagesImpression } from "./Imprimantes";
 import { LogoMoorea, PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
 import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
 
@@ -3855,7 +3856,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </>)}
                     {adminTab === "materiel" && (<>
                     <TitreSection>🖨️ Matériel</TitreSection>
-                    <CarteReglage titre="🖨️ Imprimante étiquettes" desc="Configurée directement dans le script du PC (print-relay.js, nom de l'imprimante et format papier) — pas encore pilotable depuis ce panneau." children={null} />
+                    {/* 12/10/2026 — Tous les réglages d'impression ici + une page test par imprimante (src/Imprimantes.tsx). */}
+                    <CarteReglage titre="🖨️ Impression" desc="Imprimantes du PC du bureau, page test, et quelle imprimante pour quel document.">
+                      <ReglagesImpression darkMode={darkMode} />
+                    </CarteReglage>
                     </>)}
                   </div>
                 );

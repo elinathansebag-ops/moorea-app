@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { db, ref, onValue, update, remove, get, push } from "./firebase";
 import { pdfBonGeslot, pdfBonPreparation, pdfEtiquettesPalettes, envoyerPdfImprimante, envoyerEtiquettesImprimante, type LigneBon, type EtiquettePalette } from "./lidlImpression";
+import { imprimantePour } from "./Imprimantes";
 import { LidlScanner } from "./LidlScanner";
 import { PRODUCTEURS_LIDL, envoyerTracabiliteLidl, genererXlsxLidl, nomFichierLidl, type Producteur, type ContexteExport, type LigneExport } from "./lidlExport";
 import { alerterPush } from "./NotificationsPush";
@@ -495,9 +496,9 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     });
     setTimeout(() => { if (!fini) { fini = true; stop(); notif("err", `🖨️ ${libelle} : pas imprimé après 90 s — le PC d'impression est-il allumé ?`, id); } }, 90000);
   }
-  async function imprimer(libelle: string, pdfNom: string, fabriquer: () => string) {
+  async function imprimer(libelle: string, pdfNom: string, fabriquer: () => string, imprimante?: Promise<string>) {
     try {
-      const cle = await envoyerPdfImprimante(pdfNom, fabriquer());
+      const cle = await envoyerPdfImprimante(pdfNom, fabriquer(), imprimante ? await imprimante : undefined);
       suivreImpression(cle, libelle, notif("info", `🖨️ ${libelle} : envoyé à l'imprimante…`));
     } catch (e: any) { notif("err", `🖨️ ${libelle} : non envoyé (${e?.message || e})`); }
   }
@@ -509,7 +510,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   function imprimerGeslot(jourG: string, dep?: "sud" | "paris", source?: LigneLidl[]) {
     const ls = (source || parJour.get(jourG) || []).filter(l => !dep || l.depart === dep);
     if (!ls.length) return;
-    imprimer(`Bon Geslot du ${dateFr(jourG)}`, `LIDL_GESLOT_${jourG}${dep ? `_${dep}` : ""}.pdf`, () => pdfBonGeslot(dateFr(jourG), ls.map(versLigneBon)));
+    imprimer(`Bon Geslot du ${dateFr(jourG)}`, `LIDL_GESLOT_${jourG}${dep ? `_${dep}` : ""}.pdf`, () => pdfBonGeslot(dateFr(jourG), ls.map(versLigneBon)), imprimantePour("geslot_lidl"));
   }
 
   // Bon de préparation : par transporteur (PROVIN CAMANDONA → TRADIF → SRD → MESGUEN → PRIMEVER → autres),
@@ -537,7 +538,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   function imprimerBonEntrepot(jourB: string, source?: LigneLidl[]) {
     const ls = (source || parJour.get(jourB) || []).filter(l => l.depart === "paris");
     if (!ls.length) return;
-    imprimer(`Bon de préparation du ${dateFr(jourB)}`, `LIDL_PREPARATION_${jourB}.pdf`, () => pdfBonPreparation(dateFr(jourB), trierPourPrepa(ls).map(versLigneBon)));
+    imprimer(`Bon de préparation du ${dateFr(jourB)}`, `LIDL_PREPARATION_${jourB}.pdf`, () => pdfBonPreparation(dateFr(jourB), trierPourPrepa(ls).map(versLigneBon)), imprimantePour("preparation_lidl"));
   }
   // ── Étiquettes palettes (QR → fiche de la commande). Une par palette ; `de`/`a` = numéros de
   // palette à imprimer, `nb` = nombre total de palettes de la commande.
@@ -559,7 +560,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     try {
       const doc = await pdfEtiquettesPalettes(dateFr(jourE), etiquettes);
       if (etiquettesAuto) {
-        const cle = await envoyerEtiquettesImprimante(`LIDL_ETIQUETTES_${jourE}.pdf`, doc.output("datauristring").split(",")[1]);
+        const cle = await envoyerEtiquettesImprimante(`LIDL_ETIQUETTES_${jourE}.pdf`, doc.output("datauristring").split(",")[1], await imprimantePour("etiquettes_lidl"));
         suivreImpression(cle, libelle, notif("info", `🏷️ ${libelle} : envoyées à l'imprimante…`));
       } else {
         const url = URL.createObjectURL(doc.output("blob"));

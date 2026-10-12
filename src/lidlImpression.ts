@@ -129,14 +129,15 @@ export function pdfBonPreparation(dateFr: string, lignes: LigneBon[]) {
 
 // Étiquettes palettes vers l'imprimante à étiquettes du relais PC (type « etiquette_lidl », PDF 100 × 150 mm).
 // À activer dans Commandes Lidl → Configuration une fois le relais mis à jour pour ce type de job.
-export async function envoyerEtiquettesImprimante(pdfNom: string, pdfBase64: string): Promise<string> {
-  const r = await push(ref(db, "printQueue"), { type: "etiquette_lidl", pdfNom, pdfBase64, format: "100x150", status: "pending", createdAt: Date.now(), origine: "lidl" });
+// 12/10/2026 — « imprimante » : nom de l'imprimante du PC (Admin › Matériel, voir src/Imprimantes.tsx).
+export async function envoyerEtiquettesImprimante(pdfNom: string, pdfBase64: string, imprimante?: string): Promise<string> {
+  const r = await push(ref(db, "printQueue"), { type: "etiquette_lidl", pdfNom, pdfBase64, format: "100x150", status: "pending", createdAt: Date.now(), origine: "lidl", ...(imprimante ? { imprimante } : {}) });
   return r.key as string;
 }
 
 // Envoie un PDF A4 au relais PC d'impression ; renvoie la clé du job pour suivre son état.
-export async function envoyerPdfImprimante(pdfNom: string, pdfBase64: string): Promise<string> {
-  const r = await push(ref(db, "printQueue"), { type: "bon_reconditionnement", pdfNom, pdfBase64, status: "pending", createdAt: Date.now(), origine: "lidl" });
+export async function envoyerPdfImprimante(pdfNom: string, pdfBase64: string, imprimante?: string): Promise<string> {
+  const r = await push(ref(db, "printQueue"), { type: "bon_reconditionnement", pdfNom, pdfBase64, status: "pending", createdAt: Date.now(), origine: "lidl", ...(imprimante ? { imprimante } : {}) });
   return r.key as string;
 }
 
