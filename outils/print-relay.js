@@ -1,14 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // RELAIS D'IMPRESSION MOOREA
 // NOM DE VERSION : lidl-imprimantes
-// NUMERO DE VERSION : V8.1
+// NUMERO DE VERSION : V8.2
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Fichier de référence : outils/print-relay.js dans le projet moorea-app (à copier sur le PC
 // d'impression sous le nom print-relay.js, puis lancer : node print-relay.js).
 //
-// V8.1 (12/10/2026) — Étiquettes d'arrivage : si Acrobat ne répond pas (« TIMEOUT »), le même
-//   PDF est réimprimé aussitôt avec SumatraPDF au lieu de partir en erreur.
+// V8.2 (12/10/2026) — Étiquettes d'arrivage imprimées d'abord avec SumatraPDF, ajustées à la taille
+//   du rouleau (« fit ») : Acrobat bloquait à chaque fois (16 s perdues), et le secours Sumatra de
+//   la V8.1 sortait l'étiquette en petit avec de grandes marges (photo d'Elinathan). Acrobat ne
+//   sert plus qu'en secours si SumatraPDF est absent ou échoue.
+// V8.1 (12/10/2026) — secours SumatraPDF quand Acrobat ne répond pas.
 //
 // V8 (10/10/2026) — pour suivre les nouvelles versions de l'appli :
 //   • NOUVEAU type « etiquette_lidl » (étiquettes palettes Lidl, PDF 100 × 150 mm déjà fait par
@@ -47,7 +50,7 @@ const path = require("path");
 const os = require("os");
 
 console.log("═══════════════════════════════════════════════════════════");
-console.log("  RELAIS D'IMPRESSION MOOREA — VERSION : lidl-imprimantes (V8.1)");
+console.log("  RELAIS D'IMPRESSION MOOREA — VERSION : lidl-imprimantes (V8.2)");
 console.log("═══════════════════════════════════════════════════════════");
 
 // ─── CONFIGURATION ───────────────────────────────────────────────────────
@@ -643,26 +646,25 @@ async function imprimerLot(jobs) {
 
   // Timeout DYNAMIQUE selon la taille du lot: base 15s + 500ms par étiquette (inchangé)
   const timeoutMs = 15000 + (jobs.length * 500);
-  try {
-    await envoyerPdfVersAcrobat(tmpFile, PRINTER_NAME, timeoutMs);
-  } catch (errAcrobat) {
-    // V8.1 — Acrobat bloqué : on retente avec SumatraPDF (déjà utilisé avec succès pour les bons
-    // A4 et les étiquettes Lidl).
-    const sumatraExe = trouverSumatra();
-    if (!sumatraExe) throw errAcrobat;
-    console.warn(`   ↪️  Acrobat ne répond pas — nouvel essai avec SumatraPDF sur "${PRINTER_NAME}"...`);
-    const secours = path.join(os.tmpdir(), `etiquettes_secours_${Date.now()}.pdf`);
-    fs.copyFileSync(fs.existsSync(tmpFile) ? tmpFile : debugFile, secours);
-    await new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("SumatraPDF n'a pas répondu à temps non plus — timeout 30000ms")), 30000);
-      execFile(sumatraExe, ["-print-to", PRINTER_NAME, "-silent", "-exit-when-done", secours], (err) => {
-        clearTimeout(t);
-        setTimeout(() => fs.unlink(secours, () => {}), 2000);
-        err ? reject(err) : resolve();
+  const sumatraExe = trouverSumatra();
+  if (sumatraExe) {
+    try {
+      console.log(`   🖨️  Impression via SumatraPDF sur "${PRINTER_NAME}" (ajustée au rouleau)...`);
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("SumatraPDF n'a pas répondu à temps — timeout 30000ms")), 30000);
+        execFile(sumatraExe, ["-print-to", PRINTER_NAME, "-print-settings", "fit", "-silent", "-exit-when-done", tmpFile], (err) => {
+          clearTimeout(t);
+          err ? reject(err) : resolve();
+        });
       });
-    });
-    console.log(`   ✅ Imprimé avec SumatraPDF (secours)`);
+      setTimeout(() => fs.unlink(tmpFile, () => {}), 2000);
+      console.log(`   ✅ Impression envoyée`);
+      return;
+    } catch (errSumatra) {
+      console.warn(`   ↪️  SumatraPDF a échoué (${errSumatra.message}) — essai avec Acrobat...`);
+    }
   }
+  await envoyerPdfVersAcrobat(tmpFile, PRINTER_NAME, timeoutMs);
 }
 
 // ─── NOUVEAU : IMPRESSION D'UN BON DE RECONDITIONNEMENT (PDF A4 déjà généré côté appli) ──
@@ -810,7 +812,7 @@ onChildAdded(pendingQuery, (snap) => {
 const statusRef = ref(db, "printRelayStatus");
 function envoyerSignalDeVie() {
   // V8 : update (et plus set) pour ne pas effacer la liste des imprimantes à chaque signal.
-  update(statusRef, { online: true, lastSeen: Date.now(), version: "V8.1" }).catch(() => {});
+  update(statusRef, { online: true, lastSeen: Date.now(), version: "V8.2" }).catch(() => {});
 }
 envoyerSignalDeVie();
 setInterval(envoyerSignalDeVie, 15000);
