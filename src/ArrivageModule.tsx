@@ -1163,8 +1163,11 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
   );
 }
 
-export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
+export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   const [open, setOpen] = useState(false);
+  // 12/10/2026 — Demande d'Elinathan : décaler TOUT l'arrivage du fournisseur (tous ses produits
+  // encore à pointer) à une autre date, au lieu de produit par produit.
+  const [reportGroupe, setReportGroupe] = useState<string | null>(null); // date AAAA-MM-JJ choisie
   // 09/09/2026 — Bug trouvé avec Elinathan : "je viens de valider un arrivage a 0 au lieux de 30
   // et aucun pop up". Le popup d'écart vivait dans le state local de ProduitRow — mais dès que
   // la validation écrit dans Firebase, l'arrivage change de statut et ProduitRow est DÉMONTÉ
@@ -1276,6 +1279,26 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
           {/* 10/10/2026 — Demande d'Elinathan : mettre en réserve d'un coup TOUS les produits de cet
               arrivage du fournisseur. Ouvre un seul rapport de réserve pour l'ensemble, qui exige au
               moins une photo par produit (voir ouvrirRapportGroupeReserve dans App.tsx). */}
+          {canValider && onReporterGroupe && produits.length > 1 && (
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {reportGroupe === null ? (
+                <button type="button" onClick={e => { e.stopPropagation(); const [j, m, a] = String(date || produits[0]?.date || "").split("/"); setReportGroupe(a && m && j ? `${a}-${m}-${j}` : ""); }}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e40af", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
+                  📅 Décaler tout l'arrivage ({produits.length} produits)
+                </button>
+              ) : (
+                <>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#1e40af" }}>Décaler les {produits.length} produits à pointer de {fournisseur} au</span>
+                  <input type="date" value={reportGroupe} onChange={e => setReportGroupe(e.target.value)} onClick={e => e.stopPropagation()}
+                    style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #bfdbfe", fontSize: 13, fontWeight: 700 }} />
+                  <button type="button" disabled={!reportGroupe} onClick={e => { e.stopPropagation(); const [a, m, j] = reportGroupe.split("-"); onReporterGroupe(produits, `${j}/${m}/${a}`); setReportGroupe(null); }}
+                    style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: reportGroupe ? "#1e40af" : "#ccc", color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Confirmer</button>
+                  <button type="button" onClick={e => { e.stopPropagation(); setReportGroupe(null); }}
+                    style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Annuler</button>
+                </>
+              )}
+            </div>
+          )}
           {canValider && onReserveGroupe && !isRetourRecondGroupe && (() => {
             const tous = [...produits, ...traites].filter((a: any) => a.statut !== "sous réserve" && a.statut !== "refusé");
             if (tous.length < 2) return null;
@@ -2652,7 +2675,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
   );
 }
 
-export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
+export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -2916,6 +2939,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport}
               onImprimerMulti={onImprimerMulti}
               onReporterDate={onReporterDate}
+              onReporterGroupe={onReporterGroupe}
               selectMode={selectMode} selectedArrivages={selectedArrivages} onToggleSelect={onToggleSelect}
               gencodeArticles={gencodeArticles}
               date={date}

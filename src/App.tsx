@@ -1969,6 +1969,31 @@ export default function App() {
     }
   };
 
+  // 12/10/2026 — Décaler tout l'arrivage d'un fournisseur d'un coup (bouton « 📅 Décaler tout
+  // l'arrivage » dans Pointer arrivage). Un produit qui existe déjà à la nouvelle date (même
+  // lot/produit/fournisseur) n'est pas déplacé, pour ne pas créer de doublon : il reste à
+  // décaler à la main (bouton 📅 de sa ligne, qui demande quoi faire).
+  const handleReporterGroupe = async (liste: any[], nouvelleDateFr: string) => {
+    const maj: Record<string, any> = {};
+    const bloques: any[] = [];
+    for (const a of liste) {
+      if (a.date === nouvelleDateFr) continue;
+      const cle = cleDoublonArrivage(a);
+      if (arrivages.some(x => x.id !== a.id && x.date === nouvelleDateFr && cleDoublonArrivage(x) === cle)) { bloques.push(a); continue; }
+      maj[`arrivages/${a.id}/date`] = nouvelleDateFr;
+    }
+    const nb = Object.keys(maj).length;
+    if (nb) {
+      try { await update(ref(db), maj); }
+      catch (e: any) { showToast(`Décalage refusé : ${e?.message || e}`, "error"); return; }
+      liste.filter(a => maj[`arrivages/${a.id}/date`]).forEach(a => syncDateCommandeLiee(a, nouvelleDateFr));
+      logActivite("Report de date", `${nb} produit${nb > 1 ? "s" : ""} de ${liste[0]?.fournisseur || ""} reporté${nb > 1 ? "s" : ""} au ${nouvelleDateFr}`);
+    }
+    showToast(bloques.length
+      ? `📅 ${nb} produit${nb > 1 ? "s" : ""} décalé${nb > 1 ? "s" : ""} au ${nouvelleDateFr}. ${bloques.length} déjà présent${bloques.length > 1 ? "s" : ""} à cette date (${bloques.map(b => b.produit).slice(0, 3).join(", ")}) : à décaler à la main.`
+      : `📅 ${nb} produit${nb > 1 ? "s" : ""} décalé${nb > 1 ? "s" : ""} au ${nouvelleDateFr}`, bloques.length ? "error" : "success");
+  };
+
   // Résout le conflit détecté par handleReporterDate.
   const resoudreConflitReport = async (choix: "garder2" | "supprimerExistant" | "annuler") => {
     if (!conflitReport) return;
@@ -5163,7 +5188,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => { setEcartPopup({ message }); alerterPush({ type: "ecart_pointage", titre: "⚖️ Écart de quantité au pointage", corps: message.replace(/[*_]/g, "").slice(0, 280) }); }} onReserveGroupe={ouvrirRapportGroupeReserve} />
+                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onReporterGroupe={handleReporterGroupe} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => { setEcartPopup({ message }); alerterPush({ type: "ecart_pointage", titre: "⚖️ Écart de quantité au pointage", corps: message.replace(/[*_]/g, "").slice(0, 280) }); }} onReserveGroupe={ouvrirRapportGroupeReserve} />
                           );
                         })}
                       </div>
