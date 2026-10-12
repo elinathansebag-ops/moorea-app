@@ -14,8 +14,41 @@ import { useEffect, useState } from "react";
 
 const CHECK_INTERVAL_MS = 30_000; // vérifie toutes les 30s
 
+// 12/10/2026 — Mise à jour AUTOMATIQUE : des appareils (iPad de l'entrepôt, PC) gardaient l'appli
+// ouverte des jours sans toucher la bannière, et tournaient sur une vieille version (bon Geslot
+// imprimé au mauvais endroit, WhatsApp non signés…). Quand une nouvelle version est là, l'appli se
+// recharge toute seule, mais seulement sans risque pour une saisie en cours :
+//  - dès qu'elle est rouverte (retour sur l'appli, réveil de l'iPad) ;
+//  - ou après 2 min sans aucune action, si aucun champ n'est en cours de saisie.
+const INACTIVITE_AVANT_RECHARGEMENT_MS = 120_000;
+const enTrainDeSaisir = () => {
+  const el = document.activeElement as HTMLElement | null;
+  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+};
+
 export function VersionChecker() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  useEffect(() => {
+    if (!updateAvailable) return;
+    let derniereAction = Date.now();
+    let cacheeDepuis = 0;
+    const action = () => { derniereAction = Date.now(); };
+    const evts = ["pointerdown", "keydown", "input", "touchstart"];
+    evts.forEach(e => window.addEventListener(e, action, { passive: true }));
+    const recharger = () => { if (!enTrainDeSaisir()) window.location.reload(); };
+    const surVisibilite = () => {
+      if (document.visibilityState === "hidden") cacheeDepuis = Date.now();
+      else if (cacheeDepuis && Date.now() - cacheeDepuis > 5000) recharger();
+    };
+    document.addEventListener("visibilitychange", surVisibilite);
+    const t = setInterval(() => { if (Date.now() - derniereAction > INACTIVITE_AVANT_RECHARGEMENT_MS) recharger(); }, 15_000);
+    return () => {
+      evts.forEach(e => window.removeEventListener(e, action));
+      document.removeEventListener("visibilitychange", surVisibilite);
+      clearInterval(t);
+    };
+  }, [updateAvailable]);
 
   useEffect(() => {
     let cancelled = false;
