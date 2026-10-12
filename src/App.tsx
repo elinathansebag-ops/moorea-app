@@ -58,6 +58,7 @@ const TachesModule = chargerModule(() => import("./TachesModule"), "TachesModule
 const RackModule = chargerModule(() => import("./RackModule"), "RackModule");
 const StattModule = chargerModule(() => import("./StattModule"), "StattModule");
 const LidlModule = chargerModule(() => import("./LidlModule"), "LidlModule");
+const ConsultationLidl = chargerModule(() => import("./ConsultationLidl"), "ConsultationLidl");
 const FacturesPrestataires = chargerModule(() => import("./FacturesPrestataires"), "FacturesPrestataires");
 const StatsAchatsModule = chargerModule(() => import("./StatsAchatsModule"), "StatsAchatsModule");
 const PrestatairesModule = chargerModule(() => import("./PrestatairesModule"), "PrestatairesModule");
@@ -531,6 +532,7 @@ export default function App() {
   const [showRecherche, setShowRecherche] = useState(false);
   const [raccourciPresta, setRaccourciPresta] = useState<null | "cartons" | "palette-vierge">(null);
   const [showFacturesPresta, setShowFacturesPresta] = useState(false);
+  const [showConsultLidl, setShowConsultLidl] = useState(false);
   const [showYukon, setShowYukon] = useState(false);
   const [showTaches, setShowTaches] = useState(false);
   const [tachesTabDemande, setTachesTabDemande] = useState<"taches" | "commandes">("taches");
@@ -3953,6 +3955,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         { key: "raccourci_cartons", icon: "📦", label: "Commande cartons", color: "#6c757d", badge: null, stat: "Go-Embal — saisie rapide", action: () => { setShowAccueil(false); setRaccourciPresta("cartons"); } },
         { key: "raccourci_palette_vierge", icon: "🟫", label: "Palette vierge", color: "#6c757d", badge: null, stat: "Pointer une livraison", action: () => { setShowAccueil(false); setRaccourciPresta("palette-vierge"); } },
       ] : []),
+      // 12/10/2026 — Traçabilité Lidl en consultation seule (qualité).
+      ...(monAcces.hasModule("lidl_consultation") ? [
+        { key: "lidl_consultation", icon: "🔎", label: "Traçabilité Lidl", color: "#0050aa", badge: null, stat: "Consultation des lots envoyés", action: () => { setShowAccueil(false); setShowConsultLidl(true); } },
+      ] : []),
       // 12/10/2026 — Pointage des factures prestataires (historique des arrivées + bouton « Facturée »).
       ...(monAcces.hasModule("factures_prestataires") ? [
         { key: "factures_prestataires", icon: "💳", label: "Factures prestataires", color: "#305a55", badge: null, stat: "Pointer les factures reçues", action: () => { setShowAccueil(false); setShowFacturesPresta(true); } },
@@ -4240,6 +4246,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       </div>
       </>
     );
+  }
+
+  if (showConsultLidl) {
+    const fermer = () => { setShowConsultLidl(false); setShowAccueil(true); };
+    if (!monAcces.hasModule("lidl_consultation")) return <AccesRefuse onRetour={fermer} />;
+    return <>{fabScanner}{invitationNotif}<ConsultationLidl onClose={fermer} darkMode={darkMode} /></>;
   }
 
   if (showFacturesPresta) {

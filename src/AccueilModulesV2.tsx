@@ -8,7 +8,7 @@ type Module = { key?: string; label: string; stat?: string; badge?: number | nul
 const FAMILLES: { nom: string; cles: string[] }[] = [
   { nom: "Opérations", cles: ["arrivages", "preparation", "lidl", "reconditionnement", "retours", "rack", "chargement", "etiquettes"] },
   { nom: "Stock et produits", cles: ["stock", "prestataires", "raccourci_cartons", "raccourci_palette_vierge", "factures_prestataires", "gencodes", "catalogue", "appro", "yukon"] },
-  { nom: "Qualité", cles: ["rapports", "qualite", "litiges"] },
+  { nom: "Qualité", cles: ["rapports", "qualite", "lidl_consultation", "litiges"] },
   { nom: "Pilotage", cles: ["stats_achats", "statt", "dashboard_tv"] },
   { nom: "Équipe et outils", cles: ["messagerie", "taches", "rh", "pointeuse"] },
 ];
@@ -33,6 +33,7 @@ const ICONES: Record<string, string> = {
   yukon: "M5 19C5 10 11 4 20 4c0 9-6 15-15 15z M5 19l7-7",
   rapports: "M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h6",
   qualite: "M9 3h6 M10 3v6L5 19a2 2 0 0 0 1.8 2h10.4A2 2 0 0 0 19 19l-5-10V3 M7.5 15h9",
+  lidl_consultation: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M21 21l-5-5 M8 11h6 M11 8v6",
   litiges: "M12 3 2 20h20z M12 10v4 M12 17h.01",
   stats_achats: "M4 20V4 M4 20h16 M8 16v-4 M12 16V8 M16 16v-6",
   statt: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M12 12h.01",

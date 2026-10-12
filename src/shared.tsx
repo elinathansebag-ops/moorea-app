@@ -400,6 +400,8 @@ export const MODULE_DEFS: ModuleDef[] = [
   ] },
   { key: "retours", label: "🚚 Retours clients" },
   { key: "lidl", label: "🛒 Commandes Lidl (commercial : import du tableau)" },
+  // 12/10/2026 — Consultation seule du tableau Lidl et de la traçabilité (qualité), ConsultationLidl.tsx.
+  { key: "lidl_consultation", label: "🔎 Traçabilité Lidl (consultation seule)" },
   { key: "preparation", label: "🏭 Préparation" },
   { key: "rack", label: "🗄️ Rotation racks" },
   { key: "prestataires", label: "📦 Prestataires", tabs: [
