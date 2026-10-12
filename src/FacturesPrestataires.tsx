@@ -61,9 +61,13 @@ function lignesDepuis(source: Source, donnees: Record<string, any>): Ligne[] {
       }).join(" · ");
       return [{
         cle: `${source}/${id}`, source, id,
-        date: v.dateReception || v.dateLivraisonPrevue || v.dateCommande || "",
+        // 12/10/2026 — Rangé au jour de LIVRAISON, comme le calendrier de Prestataires (avant : jour
+        // du pointage de réception, qui peut être plus tard — la livraison du 31/08 pointée en
+        // septembre n'apparaissait pas au 31/08).
+        date: v.dateLivraisonPrevue || v.dateReception || v.dateCommande || "",
         titre: source === "cartons" ? `Cartons Go-Embal${v.horsSite ? " (livrés chez Andès)" : ""}` : "Palettes IFCO",
-        detail, montantHT: connu && lignes.length ? Math.round(montant * 100) / 100 : null,
+        detail: detail + (v.dateReception && v.dateLivraisonPrevue && v.dateReception !== v.dateLivraisonPrevue ? ` · réception pointée le ${new Date(v.dateReception + "T12:00:00").toLocaleDateString("fr-FR")}` : ""),
+        montantHT: connu && lignes.length ? Math.round(montant * 100) / 100 : null,
         facturee: v.statut === "facturé", dateFacture: v.dateFacturation, facturePar: v.facturePar,
       }];
     }
