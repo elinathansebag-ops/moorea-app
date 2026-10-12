@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { auth, onAuthStateChanged, db, ref, push } from "./firebase";
+import { auth, onAuthStateChanged, db, ref, push, onValue, set } from "./firebase";
 
 // 05/10/2026 — Demande d'Elinathan : commercial@, entrepot@ et agreage@ sont des comptes partagés,
 // impossible de savoir qui a fait quoi. Quand l'appli est ouverte avec l'un d'eux, on demande
@@ -12,6 +12,26 @@ export const COMPTES_GENERIQUES: Record<string, string[]> = {
   "entrepot@moorea.fr": ["Dimitrie", "Alban", "Julien", "Hamza", "Jean Marc", "Abdoul", "Philipp", "Lasina", "Nourdin", "Saidou", "Roland", "Elinathan"],
   "commercial@moorea.fr": ["Jordan", "Sandra", "Jennifer", "Oumaima", "Hicham", "Marina"],
 };
+// 12/10/2026 — Liste des personnes et 4 favoris par compte, gérés dans Admin › Accès › Sous-comptes
+// (acces_permissions/profils_listes/{compte} = { personnes, favoris }). Sans réglage : la liste
+// ci-dessus, et les 4 premières personnes en favoris.
+export type ListeProfils = { personnes: string[]; favoris: string[] };
+const cleCompte = (email: string) => email.toLowerCase().trim().replace(/[.#$[\]/]/g, "_");
+export function useListeProfils(email: string | null): ListeProfils | null {
+  const [v, setV] = useState<{ personnes?: string[]; favoris?: string[] } | null>(null);
+  useEffect(() => {
+    if (!email) { setV(null); return; }
+    return onValue(ref(db, `acces_permissions/profils_listes/${cleCompte(email)}`), snap => setV(snap.val()), () => setV(null));
+  }, [email]);
+  if (!email || !COMPTES_GENERIQUES[email]) return null;
+  const personnes = (Array.isArray(v?.personnes) && v!.personnes!.length ? v!.personnes! : COMPTES_GENERIQUES[email]).filter(Boolean);
+  const favoris = (Array.isArray(v?.favoris) ? v!.favoris! : personnes.slice(0, 4)).filter(p => personnes.includes(p)).slice(0, 4);
+  return { personnes, favoris };
+}
+export function enregistrerListeProfils(email: string, liste: ListeProfils) {
+  return set(ref(db, `acces_permissions/profils_listes/${cleCompte(email)}`), liste);
+}
+
 const INACTIVITE_MS = 5 * 60 * 1000;
 const ARRIERE_PLAN_MS = 60 * 1000;
 
@@ -43,7 +63,8 @@ export function ProfilGenerique() {
   const [autre, setAutre] = useState<string | null>(null);
   const derniereActivite = useRef(Date.now());
   const cacheLe = useRef<number | null>(null);
-  const personnes = email ? COMPTES_GENERIQUES[email] : undefined;
+  const liste = useListeProfils(email);
+  const personnes = liste?.personnes;
   const cleDernier = `profilGenerique:${email}`;
 
   useEffect(() => onAuthStateChanged(auth, u => {
@@ -66,7 +87,7 @@ export function ProfilGenerique() {
     document.addEventListener("visibilitychange", visibilite);
     const minuteur = setInterval(() => { if (profil && Date.now() - derniereActivite.current > INACTIVITE_MS) definirProfil(null); }, 15000);
     return () => { evenements.forEach(ev => window.removeEventListener(ev, activite)); document.removeEventListener("visibilitychange", visibilite); clearInterval(minuteur); };
-  }, [personnes]);
+  }, [!!personnes]);
 
   if (!personnes || !email) return null;
 
@@ -89,7 +110,8 @@ export function ProfilGenerique() {
   );
 
   const dernier = lireLocal(cleDernier);
-  const ordre = dernier && personnes.includes(dernier) ? [dernier, ...personnes.filter(p => p !== dernier)] : personnes;
+  const favoris = liste?.favoris || [];
+  const autres = personnes.filter(p => p !== dernier && !favoris.includes(p));
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(10,10,10,.92)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto", fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <div role="dialog" aria-label="Qui es-tu ?" style={{ background: "#fff", borderRadius: 20, padding: 20, width: "100%", maxWidth: 560 }}>
@@ -103,12 +125,18 @@ export function ProfilGenerique() {
             C'est moi, {dernier} ✓
           </button>
         )}
+        {/* 12/10/2026 — 4 favoris en gros boutons, les autres (utilisateurs occasionnels) dans une liste. */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8, marginTop: 12 }}>
-          {ordre.filter(p => p !== dernier).map(p => (
+          {favoris.filter(p => p !== dernier).map(p => (
             <button key={p} type="button" onClick={() => choisir(p)} style={{ height: 52, borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", color: "#111827", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>{p}</button>
           ))}
-          <button type="button" onClick={() => setAutre("")} style={{ height: 52, borderRadius: 12, border: "1.5px dashed #9ca3af", background: "#f9fafb", color: "#4b5563", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Autre…</button>
         </div>
+        <select value="" onChange={e => { const v = e.target.value; if (v === "__autre") setAutre(""); else if (v) choisir(v); }} aria-label="Autre personne"
+          style={{ marginTop: 10, width: "100%", height: 50, padding: "0 12px", borderRadius: 12, border: "1.5px solid #d1d5db", background: "#f9fafb", color: "#111827", fontSize: 15, fontWeight: 700 }}>
+          <option value="">{autres.length ? "Autre personne…" : "Quelqu'un d'autre…"}</option>
+          {autres.map(p => <option key={p} value={p}>{p}</option>)}
+          <option value="__autre">✏️ Quelqu'un d'autre (taper le prénom)</option>
+        </select>
         {autre !== null && (
           <form onSubmit={e => { e.preventDefault(); choisir(autre); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <input autoFocus value={autre} onChange={e => setAutre(e.target.value)} placeholder="Ton prénom" aria-label="Ton prénom" style={{ flex: 1, height: 48, padding: "0 12px", borderRadius: 12, border: "1.5px solid #d1d5db", fontSize: 16 }} />

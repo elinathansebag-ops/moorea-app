@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { db, ref, onValue, update } from "./firebase";
 import { MODULE_DEFS, calculerAcces, cleEmail, type AccesRole, type AccesUser } from "./shared";
-import { COMPTES_GENERIQUES } from "./ProfilGenerique";
+import { COMPTES_GENERIQUES, useListeProfils, enregistrerListeProfils } from "./ProfilGenerique";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 12/10/2026 — Demande d'Elinathan : sur les comptes partagés (agreage@, entrepot@, commercial@),
@@ -33,6 +33,26 @@ export function SousComptesAcces({ permRoles, permUsers, darkMode }: { permRoles
   const refus = useRefusProfils(true);
   const [compte, setCompte] = useState<string>(Object.keys(COMPTES_GENERIQUES)[0]);
   const [personne, setPersonne] = useState<string | null>(null);
+  const [nouveau, setNouveau] = useState("");
+  // 12/10/2026 — Liste des personnes et 4 favoris gérés ici (affichés dans « Qui es-tu ? »).
+  const liste = useListeProfils(compte) || { personnes: COMPTES_GENERIQUES[compte], favoris: [] };
+  const enregistrer = (personnes: string[], favoris: string[]) => enregistrerListeProfils(compte, { personnes, favoris: favoris.filter(f => personnes.includes(f)) });
+  const ajouter = () => {
+    const n = nouveau.trim().replace(/\s+/g, " ");
+    if (!n) return;
+    if (!liste.personnes.some(p => p.toLowerCase() === n.toLowerCase())) enregistrer([...liste.personnes, n], liste.favoris);
+    setNouveau("");
+  };
+  const retirer = (p: string) => {
+    if (!window.confirm(`Retirer ${p} de la liste de ${compte} ?`)) return;
+    if (personne === p) setPersonne(null);
+    enregistrer(liste.personnes.filter(x => x !== p), liste.favoris);
+  };
+  const basculerFavori = (p: string) => {
+    if (liste.favoris.includes(p)) return enregistrer(liste.personnes, liste.favoris.filter(x => x !== p));
+    if (liste.favoris.length >= 4) { window.alert("4 favoris maximum : enlève d'abord une étoile."); return; }
+    enregistrer(liste.personnes, [...liste.favoris, p]);
+  };
   const texte = darkMode ? "#e5e7eb" : "#1a2e1a", gris = darkMode ? "#aab1bb" : "#6b7280", bord = darkMode ? "#2e3540" : "#e5e7eb";
 
   const accesCompte = calculerAcces(compte, permRoles, permUsers);
@@ -55,17 +75,26 @@ export function SousComptesAcces({ permRoles, permUsers, darkMode }: { permRoles
           <button key={c} type="button" onClick={() => { setCompte(c); setPersonne(null); }} style={puce(c === compte)}>{c.split("@")[0]}</button>
         ))}
       </div>
-      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: texte }}>Personnes de {compte}</p>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-        {COMPTES_GENERIQUES[compte].map(p => {
-          const n = nbRefuses(p);
+      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: texte }}>Personnes de {compte} <span style={{ fontWeight: 500, color: gris }}>· ⭐ = favori (4 max, en gros boutons dans « Qui es-tu ? », les autres en liste déroulante)</span></p>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {liste.personnes.map(p => {
+          const n = nbRefuses(p), fav = liste.favoris.includes(p);
           return (
-            <button key={p} type="button" onClick={() => setPersonne(p === personne ? null : p)} style={puce(p === personne)}>
-              {p}{n ? ` · ${n} retiré${n > 1 ? "s" : ""}` : ""}
-            </button>
+            <span key={p} style={{ ...puce(p === personne), display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px" }}>
+              <button type="button" onClick={() => basculerFavori(p)} title={fav ? "Retirer des favoris" : "Mettre en favori"} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, padding: 0, opacity: fav ? 1 : 0.35 }}>{fav ? "⭐" : "☆"}</button>
+              <button type="button" onClick={() => setPersonne(p === personne ? null : p)} style={{ border: "none", background: "none", color: "inherit", font: "inherit", cursor: "pointer", padding: 0 }}>
+                {p}{n ? ` · ${n} retiré${n > 1 ? "s" : ""}` : ""}
+              </button>
+              <button type="button" onClick={() => retirer(p)} title={`Retirer ${p}`} style={{ border: "none", background: "none", color: "inherit", cursor: "pointer", fontSize: 13, padding: "0 2px", opacity: 0.6 }}>✕</button>
+            </span>
           );
         })}
       </div>
+      <form onSubmit={e => { e.preventDefault(); ajouter(); }} style={{ display: "flex", gap: 6, marginBottom: 12, maxWidth: 360 }}>
+        <input value={nouveau} onChange={e => setNouveau(e.target.value)} placeholder="Ajouter une personne (prénom)" aria-label="Ajouter une personne"
+          style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, background: darkMode ? "#171b21" : "#fff", color: texte }} />
+        <button type="submit" disabled={!nouveau.trim()} style={{ ...puce(true), opacity: nouveau.trim() ? 1 : 0.5 }}>+ Ajouter</button>
+      </form>
       {!personne && <p style={{ margin: 0, fontSize: 12, color: gris }}>Touche une personne pour choisir ses modules. Par défaut, chacun a tous les modules du compte.</p>}
       {personne && (
         <div style={{ border: `1px solid ${bord}`, borderRadius: 12, padding: "10px 12px" }}>
