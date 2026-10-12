@@ -15,7 +15,14 @@ import { PageHeader, NoteSelector, ScoreCircle, F, AutocompleteInput, EMAILJS_SE
 const NOTE_COLORS_ARR: Record<number, string> = { 1: "#dc2626", 2: "#f97316", 3: "#eab308", 4: "#22c55e", 5: "#15803d" };
 const NOTE_BG_ARR: Record<number, string> = { 1: "#fef2f2", 2: "#fff7ed", 3: "#fefce8", 4: "#f0fdf4", 5: "#dcfce7" };
 
-export function BadgeArrivage({ status }: { status: string }) {
+// 12/10/2026 — Demande d'Elinathan : afficher QUI a pointé chaque arrivage (Alban, Hamza…).
+// validePar = prénom choisi dans « Qui es-tu ? » au moment du pointage (anciens arrivages :
+// rapport.agreeur, le nom du compte).
+export const pointePar = (a: any): string => {
+  const n = String(a?.validePar || a?.rapport?.agreeur || "").trim();
+  return n.includes("@") ? n.split("@")[0] : n;
+};
+export function BadgeArrivage({ status, par }: { status: string; par?: string }) {
   const map: Record<string, { bg: string; color: string; border: string; label: string }> = {
     "en attente": { bg: "#fffbeb", color: "#d97706", border: "#fcd34d", label: "En attente" },
     "validé": { bg: "#eafaf1", color: "#1a6b3a", border: "#d4edda", label: "Validé ✓" },
@@ -26,7 +33,7 @@ export function BadgeArrivage({ status }: { status: string }) {
   const s = map[status] || map["en attente"];
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20 }}>
-      {s.label}
+      {s.label}{par && status !== "en attente" ? <span style={{ fontWeight: 700 }}>· {par}</span> : null}
     </span>
   );
 }
@@ -2442,7 +2449,7 @@ export function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLi
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <BadgeArrivage status={a.statut} />
+          <BadgeArrivage status={a.statut} par={pointePar(a)} />
           <span style={{ fontSize: 18, color: "#c8a84b", fontWeight: 700, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
         </div>
       </div>
@@ -2576,7 +2583,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
               🧹 Nettoyage
             </span>
           )}
-          <BadgeArrivage status={a.statut} />
+          <BadgeArrivage status={a.statut} par={pointePar(a)} />
           <span style={{ fontSize: 14, color: "#c8a84b", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
         </div>
       </div>

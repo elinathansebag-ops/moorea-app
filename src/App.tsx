@@ -4,7 +4,7 @@
 import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
-import { useProfilGenerique, avecProfil, ouvrirWhatsApp } from "./ProfilGenerique";
+import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
 import { AccueilModulesV2 } from "./AccueilModulesV2";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
@@ -1529,7 +1529,7 @@ export default function App() {
     // semaine — d'où "8 arrivages" (tous ceux du lot) en échec systématique. On retombe sur ""
     // comme pour les autres champs optionnels (dlc, lot_fournisseur...) au lieu de laisser
     // passer `undefined`.
-    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut ?? "", poids_net: ctrl.poids_net ?? "", observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: user?.displayName || "" };
+    const rapport = { qualite: ctrl.qualite, temperature: ctrl.temperature, poids_mesure: ctrl.poids_mesure, poids_brut: ctrl.poids_brut ?? "", poids_net: ctrl.poids_net ?? "", observations: ctrl.observations, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, heure_agreage: now2.toTimeString().slice(0, 5), date_rapport: now2.toLocaleDateString("fr-FR"), agreeur: nomSignataire() || user?.displayName || "" };
     const litige = decision === "non_conforme" ? { type: ncType, raison, pct: pct || "", lot_fournisseur: lotFournisseurFinal, date: now2.toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now() } : null;
     // Retour de reconditionnement : les colis triés/écartés reviennent aussi avec le lot (tout
     // n'est pas récupérable au tri) — on garde ce nombre à la racine de l'arrivage (pas seulement
@@ -1544,7 +1544,7 @@ export default function App() {
     // reparser le texte libre de rapport.observations.
     const colisRecusFinal = typeof ctrl.colisRecus === "number" ? ctrl.colisRecus : (arrivage.quantite || 0);
     const ecartColisFinal = colisRecusFinal - (arrivage.quantite || 0);
-    await update(ref(db, `arrivages/${arrivage.id}`), { statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, colisRecus: colisRecusFinal, ecartColis: ecartColisFinal, ...(litige ? { litige } : {}), ...(colisADetruireFinal != null ? { colis_a_detruire: colisADetruireFinal } : {}), validatedAt: Date.now(), ...(nettoyageMasse ? { nettoyageMasse: true } : {}) });
+    await update(ref(db, `arrivages/${arrivage.id}`), { validePar: nomSignataire() || user?.displayName || null, statut, rapport, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal, lot_fournisseur_liste: lotFournisseurListeFinal, colisRecus: colisRecusFinal, ecartColis: ecartColisFinal, ...(litige ? { litige } : {}), ...(colisADetruireFinal != null ? { colis_a_detruire: colisADetruireFinal } : {}), validatedAt: Date.now(), ...(nettoyageMasse ? { nettoyageMasse: true } : {}) });
 
     // Si cet arrivage provient d'une commande de cartons, mettre à jour le statut de la commande.
     // 01/09/2026 — Bug trouvé avec Elinathan : ce n'était fait que si decision === "conforme",
