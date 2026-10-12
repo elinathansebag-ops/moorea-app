@@ -296,11 +296,160 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
   );
 }
 
+// ── 12/10/2026 — « + Ajouter une entrée » (demande d'Elinathan) : comme une entrée habituelle,
+// avec la liste des prestataires existants et leurs références :
+//  - Go-Embal (cartons) / IFCO → une commande reçue dans Prestataires (même enregistrement que le
+//    calendrier), détail complet ; pas d'arrivage à pointer ni de mouvement de stock créé ;
+//  - Palettes vierges → une livraison (comme le pointage habituel) ;
+//  - Entretien → une intervention terminée chez le prestataire choisi ;
+//  - Analyse labo → une demande d'analyse ;
+//  - une fiche Prestataires ou « Autre » → ligne libre (autres prestataires).
+type TypeEntree = "cartons" | "ifco" | "vierges" | "entretiens" | "analyses" | "autres";
+const PRESTATAIRES_ENTRETIEN = ["Porte Accès", "R.E.F", "Fernand"];
+function NouvelleEntree({ nomsPresta, onFin, couleurs }: { nomsPresta: string[]; onFin: () => void; couleurs: { texte: string; gris: string; bord: string; carte: string } }) {
+  const { texte, gris, bord, carte } = couleurs;
+  const [choix, setChoix] = useState<string>("cartons"); // type, ou "fiche:<nom>", ou "autre"
+  const type: TypeEntree = choix.startsWith("fiche:") || choix === "autre" ? "autres" : (choix as TypeEntree);
+  const [date, setDate] = useState(aujourdhui());
+  const [lignes, setLignes] = useState<any[]>([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
+  const [quantite, setQuantite] = useState("1");
+  const [refPv, setRefPv] = useState(Object.keys(REFS_PALETTES_VIERGES)[0]);
+  const [nom, setNom] = useState("");                 // autre prestataire / labo / prestataire entretien
+  const [description, setDescription] = useState(""); // motif, produit analysé, détail libre
+  const [montant, setMontant] = useState("");
+  const [erreur, setErreur] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const champ = { padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13 } as const;
+
+  function changerChoix(c: string) {
+    setChoix(c); setErreur("");
+    if (c === "cartons") setLignes([{ type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }]);
+    if (c === "ifco") setLignes([{ type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
+    if (c === "entretiens") setNom(PRESTATAIRES_ENTRETIEN[0]);
+    else if (c.startsWith("fiche:")) setNom(c.slice(6));
+    else setNom("");
+  }
+
+  async function enregistrer() {
+    const m = montant.trim() ? nombre(montant) : null;
+    if (montant.trim() && (m == null || m < 0)) { setErreur("Montant invalide (exemple : 78,50)."); return; }
+    if (!date) { setErreur("Choisis la date de livraison."); return; }
+    const [an, mo, j] = date.split("-"); const dateFr = `${j}/${mo}/${an}`;
+    const qui = nomSignataire() || null, ts = Date.now();
+    let chemin = "", donnees: any;
+    if (type === "cartons" || type === "ifco") {
+      const propres = calculerLignes(type, lignes).filter(x => (type === "cartons" ? x.nbPalettes : x.quantite) > 0);
+      if (!propres.length) { setErreur("Ajoute au moins une référence avec une quantité."); return; }
+      const commun = { lignes: propres, dateCommande: date, dateLivraisonPrevue: date, dateReception: date, statut: "reçu", montantEstimeHT: Math.round(propres.reduce((n, x) => n + (x.montantHT || 0), 0) * 100) / 100, montantFactureHT: m, saisieFactures: { par: qui, ts } };
+      chemin = SOURCES[type].chemin;
+      donnees = type === "cartons" ? { ...commun, creneau: "1er tour 7h-11h", lieuLivraison: "Moorea Commerce Fruit - Bat D3" } : commun;
+    } else if (type === "vierges") {
+      const q = nombre(quantite);
+      if (!q || q < 0) { setErreur("Quantité invalide."); return; }
+      chemin = SOURCES.vierges.chemin;
+      donnees = { date: dateFr, heure: "", ref: refPv, quantite: q, timestamp: new Date(date + "T12:00:00").getTime(), lieuLivraison: "Moorea", montantFactureHT: m, saisieFactures: { par: qui, ts } };
+    } else if (type === "entretiens") {
+      if (!nom.trim()) { setErreur("Choisis le prestataire."); return; }
+      chemin = SOURCES.entretiens.chemin;
+      donnees = { prestataire: nom.trim(), motif: description.trim() || "Intervention", dateProgrammee: dateFr, statut: "terminé", creePar: qui, ts, montantFactureHT: m, saisieFactures: { par: qui, ts } };
+    } else if (type === "analyses") {
+      if (!nom.trim() || !description.trim()) { setErreur("Indique le laboratoire et le produit analysé."); return; }
+      chemin = SOURCES.analyses.chemin;
+      donnees = { date, laboratoire: nom.trim(), produit: description.trim(), typeAnalyse: "Analyse", nbEchantillons: 1, montantFactureHT: m, creePar: qui, ts };
+    } else {
+      if (!nom.trim()) { setErreur("Nom du prestataire obligatoire."); return; }
+      chemin = SOURCES.autres.chemin;
+      donnees = { date, prestataire: nom.trim(), description: description.trim() || null, montantFactureHT: m, creePar: qui, ts };
+    }
+    setEnvoi(true);
+    try { await push(ref(db, chemin), donnees); onFin(); }
+    catch (e: any) { setErreur(`Enregistrement refusé : ${e?.message || e}`); setEnvoi(false); }
+  }
+
+  const fiches = nomsPresta.filter(n => !/go.?e[mn]+b|ifco/i.test(n));
+  const catalogue: Record<string, any> = type === "cartons" ? CARTONS_CATALOGUE : PALETTES_IFCO;
+  return (
+    <div style={{ background: carte, border: `1px solid ${bord}`, borderRadius: 12, padding: "12px 14px", marginBottom: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <span style={{ fontSize: 13, fontWeight: 800, color: texte }}>Nouvelle entrée</span>
+      <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: gris }}>Prestataire
+        <select value={choix} onChange={e => changerChoix(e.target.value)} style={{ ...champ, minWidth: 240 }}>
+          <option value="cartons">📦 Go-Embal — cartons</option>
+          <option value="ifco">🟦 IFCO — palettes</option>
+          <option value="vierges">🟫 Palettes vierges</option>
+          <option value="entretiens">🔧 Entretien (porte de quai, froid…)</option>
+          <option value="analyses">🔬 Analyse labo</option>
+          {fiches.length > 0 && <optgroup label="Fiches Prestataires">{fiches.map(n => <option key={n} value={`fiche:${n}`}>{n}</option>)}</optgroup>}
+          <option value="autre">✏️ Autre prestataire…</option>
+        </select>
+      </label>
+
+      {(type === "cartons" || type === "ifco") && (
+        <>
+          {lignes.map((x, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <select value={x.type} onChange={e => setLignes(ls => ls.map((y, k) => k === i ? { ...y, type: e.target.value } : y))} style={{ ...champ, minWidth: 200 }}>
+                {Object.keys(catalogue).map(t => <option key={t} value={t}>{t}{type === "cartons" ? ` — ${String(catalogue[t].prixHT).replace(".", ",")} €, ${catalogue[t].parPalette}/pal.` : ""}</option>)}
+              </select>
+              <input type="number" inputMode="numeric" min={0} value={type === "cartons" ? x.nbPalettes : x.quantite}
+                onChange={e => setLignes(ls => ls.map((y, k) => k === i ? { ...y, [type === "cartons" ? "nbPalettes" : "quantite"]: e.target.value } : y))} style={{ ...champ, width: 80 }} aria-label="Nombre de palettes" />
+              <span style={{ fontSize: 12, color: gris }}>palette(s)</span>
+              {lignes.length > 1 && <button type="button" onClick={() => setLignes(ls => ls.filter((_, k) => k !== i))} style={{ border: "none", background: "none", color: "#b91c1c", cursor: "pointer", fontSize: 13 }}>✕ retirer</button>}
+            </div>
+          ))}
+          {type === "cartons" && <button type="button" onClick={() => setLignes(ls => [...ls, { type: Object.keys(CARTONS_CATALOGUE)[0], nbPalettes: 1 }])} style={{ alignSelf: "flex-start", border: "none", background: "none", color: texte, fontWeight: 700, cursor: "pointer", fontSize: 12.5, padding: 0 }}>+ Ajouter une référence</button>}
+          {(() => {
+            const apercu = calculerLignes(type, lignes);
+            const unites = apercu.reduce((n, x) => n + ((type === "cartons" ? x.nbCartons : x.nbCaisses) || 0), 0);
+            return <span style={{ fontSize: 12.5, fontWeight: 700, color: texte }}>= {unites.toLocaleString("fr-FR")} {type === "cartons" ? "cartons" : "caisses"} · ≈ {euros(apercu.reduce((n, x) => n + (x.montantHT || 0), 0))} HT</span>;
+          })()}
+        </>
+      )}
+      {type === "vierges" && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input type="number" inputMode="numeric" min={1} value={quantite} onChange={e => setQuantite(e.target.value)} style={{ ...champ, width: 80 }} aria-label="Quantité" />
+          <span style={{ fontSize: 12, color: gris }}>×</span>
+          <select value={refPv} onChange={e => setRefPv(e.target.value)} style={champ}>{Object.entries(REFS_PALETTES_VIERGES).map(([k, lib]) => <option key={k} value={k}>{lib}</option>)}</select>
+        </div>
+      )}
+      {type === "entretiens" && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input value={nom} onChange={e => setNom(e.target.value)} list="factures-entretien-noms" placeholder="Prestataire" aria-label="Prestataire d'entretien" style={{ ...champ, minWidth: 180 }} />
+          <datalist id="factures-entretien-noms">{PRESTATAIRES_ENTRETIEN.map(n => <option key={n} value={n} />)}</datalist>
+          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Motif (ex. réparation porte quai 3)" aria-label="Motif" style={{ ...champ, flex: 1, minWidth: 200 }} />
+        </div>
+      )}
+      {type === "analyses" && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Laboratoire" aria-label="Laboratoire" style={{ ...champ, minWidth: 180 }} />
+          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Produit analysé" aria-label="Produit analysé" style={{ ...champ, flex: 1, minWidth: 200 }} />
+        </div>
+      )}
+      {type === "autres" && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom du prestataire" list="factures-presta-noms" aria-label="Prestataire" style={{ ...champ, minWidth: 180 }} />
+          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Ce qui a été livré / fait" aria-label="Description" style={{ ...champ, flex: 1, minWidth: 200 }} />
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>Date de livraison <input type="date" value={date} onChange={e => setDate(e.target.value)} style={champ} /></label>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>Montant facture (€ HT) <input inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} placeholder="facultatif" style={{ ...champ, width: 110 }} /></label>
+      </div>
+      {erreur && <span style={{ fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>{erreur}</span>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" onClick={enregistrer} disabled={envoi} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>{envoi ? "…" : "Ajouter"}</button>
+        <button type="button" onClick={onFin} style={{ padding: "8px 14px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+        {(type === "cartons" || type === "ifco") && <span style={{ fontSize: 11.5, color: gris }}>Enregistrée comme livraison reçue dans Prestataires. Rien n'est ajouté au stock ni à « Pointer arrivage ».</span>}
+      </div>
+    </div>
+  );
+}
+
 export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => void; darkMode?: boolean }) {
   const [donnees, setDonnees] = useState<Partial<Record<Source, Record<string, any>>>>({});
   const [filtre, setFiltre] = useState<"a_facturer" | "facturees" | "tout">("a_facturer");
   const [sources, setSources] = useState<Record<Source, boolean>>({ cartons: true, ifco: true, vierges: true, entretiens: true, analyses: true, autres: true });
-  const [ajout, setAjout] = useState<{ prestataire: string; description: string; date: string; montant: string } | null>(null);
+  const [ajout, setAjout] = useState(false);
   const [fiches, setFiches] = useState<string[]>([]);
   const [erreur, setErreur] = useState("");
   const [enEdition, setEnEdition] = useState<string | null>(null);
@@ -343,17 +492,6 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
   }, [visibles]);
 
   const nomsPresta = useMemo(() => [...new Set([...fiches, ...Object.values(donnees.autres || {}).map((v: any) => v?.prestataire)].filter(Boolean))].sort(), [fiches, donnees.autres]);
-  async function ajouter() {
-    if (!ajout) return;
-    const m = ajout.montant.trim() ? parseFloat(ajout.montant.replace(/\s/g, "").replace(",", ".")) : null;
-    if (!ajout.prestataire.trim()) { setErreur("Nom du prestataire obligatoire."); return; }
-    if (ajout.montant.trim() && !(m != null && isFinite(m) && m >= 0)) { setErreur("Montant invalide (exemple : 78,50)."); return; }
-    try {
-      await push(ref(db, SOURCES.autres.chemin), { date: ajout.date || aujourdhui(), prestataire: ajout.prestataire.trim(), description: ajout.description.trim() || null, montantFactureHT: m, creePar: nomSignataire() || null, ts: Date.now() });
-      setAjout(null); setErreur("");
-    } catch (e: any) { setErreur(`Enregistrement refusé : ${e?.message || e}`); }
-  }
-
   // 12/10/2026 — 🗑 sur chaque ligne (demande d'Elinathan). Lignes saisies ici (autres prestataires,
   // analyses) : supprimées. Livraisons venant de Prestataires (cartons, IFCO, palettes vierges,
   // entretiens) : seulement retirées de cette liste, la livraison et le stock ne sont pas touchés.
@@ -406,23 +544,9 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
 
         <datalist id="factures-presta-noms">{nomsPresta.map(n => <option key={n} value={n} />)}</datalist>
         {!ajout ? (
-          <button type="button" onClick={() => setAjout({ prestataire: "", description: "", date: aujourdhui(), montant: "" })} style={{ ...puce(false), marginBottom: 16 }}>+ Ajouter un autre prestataire</button>
+          <button type="button" onClick={() => setAjout(true)} style={{ ...puce(false), marginBottom: 16 }}>+ Ajouter une entrée</button>
         ) : (
-          <div style={{ background: carte, border: `1px solid ${bord}`, borderRadius: 12, padding: "12px 14px", marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 800 }}>🧾 Nouvelle ligne — autre prestataire</span>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <input autoFocus value={ajout.prestataire} onChange={e => setAjout({ ...ajout, prestataire: e.target.value })} placeholder="Prestataire (ex. transport, nettoyage…)" list="factures-presta-noms" aria-label="Prestataire"
-                style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, minWidth: 200 }} />
-              <input value={ajout.description} onChange={e => setAjout({ ...ajout, description: e.target.value })} placeholder="Ce qui a été livré / fait" aria-label="Description"
-                style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, flex: 1, minWidth: 200 }} />
-            </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>Date <input type="date" value={ajout.date} onChange={e => setAjout({ ...ajout, date: e.target.value })} style={{ padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13 }} /></label>
-              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>Montant (€ HT) <input inputMode="decimal" value={ajout.montant} onChange={e => setAjout({ ...ajout, montant: e.target.value })} placeholder="ex. 150,00" style={{ padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, width: 110 }} /></label>
-              <button type="button" onClick={ajouter} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: vert, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Ajouter</button>
-              <button type="button" onClick={() => setAjout(null)} style={{ padding: "8px 14px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-            </div>
-          </div>
+          <NouvelleEntree nomsPresta={nomsPresta} onFin={() => setAjout(false)} couleurs={{ texte, gris, bord, carte }} />
         )}
         {erreur && <p style={{ background: "#fee2e2", color: "#b91c1c", borderRadius: 10, padding: "8px 12px", fontSize: 13, fontWeight: 700 }}>{erreur}</p>}
         {!charge && <p style={{ color: gris, fontSize: 13 }}>Chargement de l'historique…</p>}
