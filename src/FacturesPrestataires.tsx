@@ -55,6 +55,8 @@ type ArrivageLie = { produit?: string; quantite?: number; colisRecus?: number; u
 function lignesDepuis(source: Source, donnees: Record<string, any>, arrivagesLies: Record<string, ArrivageLie> = {}): Ligne[] {
   return Object.entries(donnees || {}).flatMap(([id, v]: [string, any]): Ligne[] => {
     if (!v || typeof v !== "object") return [];
+    // 12/10/2026 — Ligne retirée de la facturation (bouton 🗑) : la livraison reste dans Prestataires.
+    if (v.exclueFacturation) return [];
     if (source === "cartons" || source === "ifco") {
       if (v.statut !== "reçu" && v.statut !== "facturé") return [];
       const lignes: any[] = Array.isArray(v.lignes) ? v.lignes : Object.values(v.lignes || {});
@@ -246,10 +248,6 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" onClick={enregistrer} disabled={envoi} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>{envoi ? "…" : "Enregistrer"}</button>
         <button type="button" onClick={onFin} style={{ padding: "8px 14px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-        {l.source === "autres" && (
-          <button type="button" onClick={async () => { if (!window.confirm(`Supprimer cette ligne (${presta || "prestataire"}) ?`)) return; await remove(ref(db, `${SOURCES.autres.chemin}/${l.id}`)); onFin(); }}
-            style={{ padding: "8px 12px", borderRadius: 10, border: "none", background: "#fee2e2", color: "#b91c1c", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🗑 Supprimer</button>
-        )}
         {l.source !== "entretiens" && l.source !== "autres" && <span style={{ fontSize: 11.5, color: gris }}>Corrige aussi la commande dans Prestataires. Le stock déjà enregistré à la réception ne bouge pas.</span>}
       </div>
     </div>
@@ -312,6 +310,23 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
       await push(ref(db, SOURCES.autres.chemin), { date: ajout.date || aujourdhui(), prestataire: ajout.prestataire.trim(), description: ajout.description.trim() || null, montantFactureHT: m, creePar: nomSignataire() || null, ts: Date.now() });
       setAjout(null); setErreur("");
     } catch (e: any) { setErreur(`Enregistrement refusé : ${e?.message || e}`); }
+  }
+
+  // 12/10/2026 — 🗑 sur chaque ligne (demande d'Elinathan). Lignes saisies ici (autres prestataires,
+  // analyses) : supprimées. Livraisons venant de Prestataires (cartons, IFCO, palettes vierges,
+  // entretiens) : seulement retirées de cette liste, la livraison et le stock ne sont pas touchés.
+  async function supprimer(l: Ligne) {
+    const saisieIci = l.source === "autres" || l.source === "analyses";
+    const question = saisieIci
+      ? `Supprimer « ${l.titre} » du ${l.date ? new Date(l.date + "T12:00:00").toLocaleDateString("fr-FR") : "?"} ?`
+      : `Retirer « ${l.titre} » du ${l.date ? new Date(l.date + "T12:00:00").toLocaleDateString("fr-FR") : "?"} des factures ?\n\nLa livraison reste dans le module Prestataires (calendrier, stock).`;
+    if (!window.confirm(question)) return;
+    const base = `${SOURCES[l.source].chemin}/${l.id}`;
+    try {
+      if (saisieIci) await remove(ref(db, base));
+      else await update(ref(db, base), { exclueFacturation: true, exclueFacturationPar: nomSignataire() || null, exclueFacturationTs: Date.now() });
+      if (enEdition === l.cle) setEnEdition(null);
+    } catch (e: any) { setErreur(`Suppression refusée : ${e?.message || e}`); }
   }
 
   async function pointer(lignes: Ligne[], facturee: boolean) {
@@ -415,6 +430,8 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
                       ) : l.montantHT != null && <span style={{ fontSize: 13, fontWeight: 700 }}>≈ {euros(l.montantHT)} HT</span>}
                       <button type="button" onClick={() => setEnEdition(enEdition === l.cle ? null : l.cle)} title="Modifier l'arrivée ou le montant"
                         style={{ padding: "7px 10px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>✏️ Modifier</button>
+                      <button type="button" onClick={() => supprimer(l)} title="Supprimer ce frais" aria-label="Supprimer ce frais"
+                        style={{ padding: "7px 9px", borderRadius: 10, border: "none", background: "#fee2e2", color: "#b91c1c", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>🗑</button>
                       {l.facturee ? (
                         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: "#15803d" }}>
