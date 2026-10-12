@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { db, ref, onValue, update } from "./firebase";
+import { db, ref, onValue, update, push, remove } from "./firebase";
 import { PageHeader } from "./shared";
 import { nomSignataire } from "./ProfilGenerique";
 import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prestatairesCatalogue";
@@ -17,12 +17,16 @@ import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prest
 // Les commandes pas encore reçues ou annulées n'apparaissent pas (rien à facturer).
 // ═══════════════════════════════════════════════════════════════════════════
 
-type Source = "cartons" | "ifco" | "vierges" | "entretiens";
+// 12/10/2026 — « autres » : n'importe quel autre prestataire (transport, nettoyage…), saisi à la
+// main ici (factures_prestataires_autres/{id} = { date AAAA-MM-JJ, prestataire, description,
+// montantFactureHT, facture, creePar, ts }).
+type Source = "cartons" | "ifco" | "vierges" | "entretiens" | "autres";
 const SOURCES: Record<Source, { libelle: string; icone: string; chemin: string }> = {
   cartons: { libelle: "Cartons", icone: "📦", chemin: "prestataires_cartons" },
   ifco: { libelle: "Palettes IFCO", icone: "🟦", chemin: "ifco_palettes_commandes" },
   vierges: { libelle: "Palettes vierges", icone: "🟫", chemin: "palettes_vierges_livraisons" },
   entretiens: { libelle: "Entretiens", icone: "🔧", chemin: "entretiens" },
+  autres: { libelle: "Autres prestataires", icone: "🧾", chemin: "factures_prestataires_autres" },
 };
 
 type Ligne = {
@@ -86,6 +90,17 @@ function lignesDepuis(source: Source, donnees: Record<string, any>): Ligne[] {
         montantReel: typeof v.montantFactureHT === "number" ? v.montantFactureHT : null, brut: v,
       }];
     }
+    if (source === "autres") {
+      return [{
+        cle: `${source}/${id}`, source, id,
+        date: v.date || isoDepuisTs(v.ts),
+        titre: v.prestataire || "Prestataire",
+        detail: v.description || "",
+        montantHT: null,
+        facturee: !!v.facture, dateFacture: v.facture?.date, facturePar: v.facture?.par,
+        montantReel: typeof v.montantFactureHT === "number" ? v.montantFactureHT : null, brut: v,
+      }];
+    }
     if (v.statut !== "terminé") return [];
     return [{
       cle: `${source}/${id}`, source, id,
@@ -121,6 +136,8 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
   const [refPv, setRefPv] = useState<string>(v.ref || Object.keys(REFS_PALETTES_VIERGES)[0]);
   const [date, setDate] = useState(l.date);
   const [montant, setMontant] = useState(l.montantReel != null ? String(l.montantReel).replace(".", ",") : "");
+  const [presta, setPresta] = useState<string>(v.prestataire || "");
+  const [description, setDescription] = useState<string>(v.description || "");
   const [erreur, setErreur] = useState("");
   const [envoi, setEnvoi] = useState(false);
   const { texte, gris, bord, carte } = couleurs;
@@ -143,6 +160,12 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
       maj[`${base}/quantite`] = q;
       maj[`${base}/ref`] = refPv;
       if (date && date !== l.date) { const [a, mo, j] = date.split("-"); maj[`${base}/date`] = `${j}/${mo}/${a}`; }
+    }
+    else if (l.source === "autres") {
+      if (!presta.trim()) { setErreur("Nom du prestataire obligatoire."); return; }
+      maj[`${base}/prestataire`] = presta.trim();
+      maj[`${base}/description`] = description.trim() || null;
+      if (date) maj[`${base}/date`] = date;
     }
     maj[`${base}/modifieFacture`] = { par: nomSignataire() || null, ts: Date.now() };
     setEnvoi(true);
@@ -172,6 +195,12 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
           )}
         </>
       )}
+      {l.source === "autres" && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input value={presta} onChange={e => setPresta(e.target.value)} placeholder="Prestataire" aria-label="Prestataire" list="factures-presta-noms" style={{ ...champ, minWidth: 180 }} />
+          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Ce qui a été livré / fait" aria-label="Description" style={{ ...champ, flex: 1, minWidth: 200 }} />
+        </div>
+      )}
       {l.source === "vierges" && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input type="number" inputMode="numeric" min={0} value={quantite} onChange={e => setQuantite(e.target.value)} style={{ ...champ, width: 80 }} aria-label="Quantité" />
@@ -195,7 +224,11 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" onClick={enregistrer} disabled={envoi} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>{envoi ? "…" : "Enregistrer"}</button>
         <button type="button" onClick={onFin} style={{ padding: "8px 14px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-        {l.source !== "entretiens" && <span style={{ fontSize: 11.5, color: gris }}>Corrige aussi la commande dans Prestataires. Le stock déjà enregistré à la réception ne bouge pas.</span>}
+        {l.source === "autres" && (
+          <button type="button" onClick={async () => { if (!window.confirm(`Supprimer cette ligne (${presta || "prestataire"}) ?`)) return; await remove(ref(db, `${SOURCES.autres.chemin}/${l.id}`)); onFin(); }}
+            style={{ padding: "8px 12px", borderRadius: 10, border: "none", background: "#fee2e2", color: "#b91c1c", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🗑 Supprimer</button>
+        )}
+        {l.source !== "entretiens" && l.source !== "autres" && <span style={{ fontSize: 11.5, color: gris }}>Corrige aussi la commande dans Prestataires. Le stock déjà enregistré à la réception ne bouge pas.</span>}
       </div>
     </div>
   );
@@ -204,13 +237,17 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
 export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => void; darkMode?: boolean }) {
   const [donnees, setDonnees] = useState<Partial<Record<Source, Record<string, any>>>>({});
   const [filtre, setFiltre] = useState<"a_facturer" | "facturees" | "tout">("a_facturer");
-  const [sources, setSources] = useState<Record<Source, boolean>>({ cartons: true, ifco: true, vierges: true, entretiens: true });
+  const [sources, setSources] = useState<Record<Source, boolean>>({ cartons: true, ifco: true, vierges: true, entretiens: true, autres: true });
+  const [ajout, setAjout] = useState<{ prestataire: string; description: string; date: string; montant: string } | null>(null);
+  const [fiches, setFiches] = useState<string[]>([]);
   const [erreur, setErreur] = useState("");
   const [enEdition, setEnEdition] = useState<string | null>(null);
 
   useEffect(() => {
     const arrets = (Object.keys(SOURCES) as Source[]).map(s =>
       onValue(ref(db, SOURCES[s].chemin), snap => setDonnees(d => ({ ...d, [s]: snap.val() || {} })), e => setErreur(e.message)));
+    // Noms proposés : fiches du module Prestataires.
+    arrets.push(onValue(ref(db, "prestataires_fiches"), snap => setFiches(Object.values(snap.val() || {}).map((f: any) => f?.nom).filter(Boolean)), () => {}));
     return () => arrets.forEach(a => a());
   }, []);
   const charge = (Object.keys(SOURCES) as Source[]).every(s => donnees[s] !== undefined);
@@ -231,6 +268,18 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
     }
     return [...m.entries()];
   }, [visibles]);
+
+  const nomsPresta = useMemo(() => [...new Set([...fiches, ...Object.values(donnees.autres || {}).map((v: any) => v?.prestataire)].filter(Boolean))].sort(), [fiches, donnees.autres]);
+  async function ajouter() {
+    if (!ajout) return;
+    const m = ajout.montant.trim() ? parseFloat(ajout.montant.replace(/\s/g, "").replace(",", ".")) : null;
+    if (!ajout.prestataire.trim()) { setErreur("Nom du prestataire obligatoire."); return; }
+    if (ajout.montant.trim() && !(m != null && isFinite(m) && m >= 0)) { setErreur("Montant invalide (exemple : 78,50)."); return; }
+    try {
+      await push(ref(db, SOURCES.autres.chemin), { date: ajout.date || aujourdhui(), prestataire: ajout.prestataire.trim(), description: ajout.description.trim() || null, montantFactureHT: m, creePar: nomSignataire() || null, ts: Date.now() });
+      setAjout(null); setErreur("");
+    } catch (e: any) { setErreur(`Enregistrement refusé : ${e?.message || e}`); }
+  }
 
   async function pointer(lignes: Ligne[], facturee: boolean) {
     const cibles = lignes.filter(l => l.facturee !== facturee);
@@ -265,6 +314,26 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
           ))}
         </div>
 
+        <datalist id="factures-presta-noms">{nomsPresta.map(n => <option key={n} value={n} />)}</datalist>
+        {!ajout ? (
+          <button type="button" onClick={() => setAjout({ prestataire: "", description: "", date: aujourdhui(), montant: "" })} style={{ ...puce(false), marginBottom: 16 }}>+ Ajouter un autre prestataire</button>
+        ) : (
+          <div style={{ background: carte, border: `1px solid ${bord}`, borderRadius: 12, padding: "12px 14px", marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 800 }}>🧾 Nouvelle ligne — autre prestataire</span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <input autoFocus value={ajout.prestataire} onChange={e => setAjout({ ...ajout, prestataire: e.target.value })} placeholder="Prestataire (ex. transport, nettoyage…)" list="factures-presta-noms" aria-label="Prestataire"
+                style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, minWidth: 200 }} />
+              <input value={ajout.description} onChange={e => setAjout({ ...ajout, description: e.target.value })} placeholder="Ce qui a été livré / fait" aria-label="Description"
+                style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, flex: 1, minWidth: 200 }} />
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>Date <input type="date" value={ajout.date} onChange={e => setAjout({ ...ajout, date: e.target.value })} style={{ padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13 }} /></label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>Montant (€ HT) <input inputMode="decimal" value={ajout.montant} onChange={e => setAjout({ ...ajout, montant: e.target.value })} placeholder="ex. 150,00" style={{ padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, width: 110 }} /></label>
+              <button type="button" onClick={ajouter} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: vert, color: "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Ajouter</button>
+              <button type="button" onClick={() => setAjout(null)} style={{ padding: "8px 14px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+            </div>
+          </div>
+        )}
         {erreur && <p style={{ background: "#fee2e2", color: "#b91c1c", borderRadius: 10, padding: "8px 12px", fontSize: 13, fontWeight: 700 }}>{erreur}</p>}
         {!charge && <p style={{ color: gris, fontSize: 13 }}>Chargement de l'historique…</p>}
         {charge && !visibles.length && <p style={{ color: gris, fontSize: 13 }}>{filtre === "a_facturer" ? "✅ Tout est pointé : aucune arrivée en attente de facture." : "Rien à afficher."}</p>}
