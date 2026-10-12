@@ -873,6 +873,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
           <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
             {btnJour("🖨️ Geslot", () => imprimerGeslot(j))}
             {ls.some(l => l.depart === "paris") && btnJour("🖨️ Bon entrepôt", () => imprimerBonEntrepot(j))}
+            {/* 12/10/2026 — Réimpression des étiquettes palettes aussi côté commercial (avant : Préparation seulement). */}
+            {ls.some(l => l.depart === "paris") && btnJour("🏷️ Étiquettes palettes", () => sortirEtiquettes(j))}
             {ls.some(l => l.depart === "sud") && btnJour("📧 Récap Medina", async () => { const r = await envoyerRecapMedina(j); flash(r?.ok ? "ok" : "err", r?.ok ? `Récap Medina du ${dateFr(j)} envoyé à Jordan.` : `Récap Medina non envoyé : ${r?.erreur}`); })}
             {btnJour("📊 Tableau Lidl", () => telechargerTableau(j))}
           </span>
