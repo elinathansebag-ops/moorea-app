@@ -69,7 +69,7 @@ function lignesDepuis(source: Source, donnees: Record<string, any>, arrivagesLie
         const p = (PALETTES_IFCO as any)[l.type];
         const q = Number(l.quantite) || 0;
         if (p) montant += q * p.prixHT; else connu = false;
-        return `${q} × ${l.type}`;
+        return `${q} pal. × ${l.type}${p?.prixCaisseHT ? ` (${(q * p.caisses).toLocaleString("fr-FR")} caisses × ${String(p.prixCaisseHT).replace(".", ",")} €)` : ""}`;
       }).join(" · ") || (() => {
         const a = arrivagesLies[id];
         if (!a) return "⚠️ Détail manquant — « ✏️ Modifier » pour compléter";

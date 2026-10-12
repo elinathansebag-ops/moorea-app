@@ -13,7 +13,9 @@ export const CARTONS_CATALOGUE = {
 
 // Types de palettes IFCO
 export const PALETTES_IFCO = {
-  "BLL4314 (640 caisses)": { dims: "400×300mm", materiel: "BLL4314", caisses: 640, prixHT: 12.5 },
+  // 12/10/2026 — Prix corrigé (Elinathan) : 0,685 € HT la caisse, soit 640 × 0,685 = 438,40 € HT
+  // la palette (avant : 12,50 € la palette, faux).
+  "BLL4314 (640 caisses)": { dims: "400×300mm", materiel: "BLL4314", caisses: 640, prixCaisseHT: 0.685, prixHT: 640 * 0.685 },
 };
 
 export const REFS_PALETTES_VIERGES: Record<string, string> = {
