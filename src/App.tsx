@@ -527,6 +527,7 @@ export default function App() {
   const [showAccueil, setShowAccueil] = useState(true);
   const [showLitiges, setShowLitiges] = useState(false);
   const [showRecherche, setShowRecherche] = useState(false);
+  const [raccourciPresta, setRaccourciPresta] = useState<null | "cartons" | "palette-vierge">(null);
   const [showYukon, setShowYukon] = useState(false);
   const [showTaches, setShowTaches] = useState(false);
   const [tachesTabDemande, setTachesTabDemande] = useState<"taches" | "commandes">("taches");
@@ -3916,6 +3917,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
     const row2Bureau = [
       { key: "prestataires", icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
+      // 12/10/2026 — Raccourcis directs (demande d'Elinathan) : un formulaire simple, puis retour à l'accueil.
+      ...(monAcces.hasModule("prestataires") ? [
+        { key: "raccourci_cartons", icon: "📦", label: "Commande cartons", color: "#6c757d", badge: null, stat: "Go-Embal — saisie rapide", action: () => { setShowAccueil(false); setRaccourciPresta("cartons"); } },
+        { key: "raccourci_palette_vierge", icon: "🟫", label: "Palette vierge", color: "#6c757d", badge: null, stat: "Pointer une livraison", action: () => { setShowAccueil(false); setRaccourciPresta("palette-vierge"); } },
+      ] : []),
       { key: "reconditionnement", icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       { key: "messagerie", icon: "📧", label: "Messagerie", color: "#0f766e", badge: null, stat: "Tri automatique par commercial", action: () => { setShowAccueil(false); setShowMessagerie(true); } },
       { key: "appro", icon: "🌱", label: "Appro", color: "#16a34a", badge: null, stat: "Commandes Kenya & Tanzanie", action: () => { setShowAccueil(false); setShowAppro(true); } },
@@ -4199,6 +4205,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       </div>
       </>
     );
+  }
+
+  // 12/10/2026 — Raccourcis Prestataires (instance à part, le module complet n'est pas touché).
+  if (raccourciPresta) {
+    return <>{fabScanner}{invitationNotif}<PrestatairesModule raccourci={raccourciPresta} userName={nomAfficheGarde}
+      onClose={() => { setRaccourciPresta(null); setShowAccueil(true); }} demandesRecondExterne={reconditionnementDemandesListe} /></>;
   }
 
   if (showRecherche) {

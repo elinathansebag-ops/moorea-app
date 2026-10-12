@@ -7,7 +7,7 @@ type Module = { key?: string; label: string; stat?: string; badge?: number | nul
 
 const FAMILLES: { nom: string; cles: string[] }[] = [
   { nom: "Opérations", cles: ["arrivages", "preparation", "lidl", "reconditionnement", "retours", "rack", "chargement", "etiquettes"] },
-  { nom: "Stock et produits", cles: ["stock", "prestataires", "gencodes", "catalogue", "appro", "yukon"] },
+  { nom: "Stock et produits", cles: ["stock", "prestataires", "raccourci_cartons", "raccourci_palette_vierge", "gencodes", "catalogue", "appro", "yukon"] },
   { nom: "Qualité", cles: ["rapports", "qualite", "litiges"] },
   { nom: "Pilotage", cles: ["stats_achats", "statt", "dashboard_tv"] },
   { nom: "Équipe et outils", cles: ["messagerie", "taches", "rh", "pointeuse"] },
@@ -24,6 +24,8 @@ const ICONES: Record<string, string> = {
   etiquettes: "M12.6 2.6 21.4 11.4a2 2 0 0 1 0 2.8l-7.2 7.2a2 2 0 0 1-2.8 0L2.6 12.6A2 2 0 0 1 2 11.2V4a2 2 0 0 1 2-2h7.2a2 2 0 0 1 1.4.6Z M7.5 7.5h.01",
   stock: "M3 21V8l9-5 9 5v13 M7 21v-8h10v8 M7 17h10",
   prestataires: "M3 7h18v13H3z M8 7V4h8v3 M3 12h18",
+  raccourci_cartons: "M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8 M16 6l-8 4.5",
+  raccourci_palette_vierge: "M3 15h18 M3 19h18 M5 15v4 M12 15v4 M19 15v4 M4 11h16v4H4z",
   gencodes: "M4 5v14 M7 5v14 M10 5v14 M14 5v14 M18 5v14 M20 5v14",
   catalogue: "M4 4h10a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z M8 20a2 2 0 0 1 0-4h10",
   appro: "M12 21v-9 M12 12c0-4 3-7 8-7 0 5-3 8-8 7 M12 14c0-3-2-5-6-5 0 4 2 6 6 5",

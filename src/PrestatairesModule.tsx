@@ -240,10 +240,17 @@ const COLORS = {
   info: "#06b6d4",
 };
 
-export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[] }) {
+// 12/10/2026 — « raccourci » : ouverture directe depuis l'accueil (demande d'Elinathan) sur un seul
+// formulaire simplifié — commande de cartons Go-Embal ou pointage de palettes vierges — sans le
+// tableau de bord, sans les options rares, et retour à l'accueil une fois enregistré. Le module
+// complet (sans raccourci) ne change pas.
+export type RaccourciPresta = "cartons" | "palette-vierge";
+export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne, raccourci }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[]; raccourci?: RaccourciPresta }) {
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap"
-  >(initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
+  >(raccourci === "cartons" ? "nouvelle-carton" : raccourci === "palette-vierge" ? "palettes-vierges" : initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
+  // Raccourci : une fois l'entrée enregistrée, retour à l'accueil (après avoir vu la confirmation).
+  const finRaccourci = () => { if (raccourci) setTimeout(onClose, 1400); };
   const [commandes, setCommandes] = useState<CartonCommande[]>([]);
   const [palettesCommandes, setPalettesCommandes] = useState<PaletteIFCOCommande[]>([]);
   // 09/09/2026 — Demande d'Elinathan : cet écran (le plus lourd de l'app, une vingtaine de
@@ -1036,6 +1043,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       lieuLivraison: lieu,
     });
     setNotification({ type: "success", message: `✓ ${qte} × ${REFS_PALETTES_VIERGES[cleRef]} enregistrée(s)${lieu !== LIEU_PV_DEFAUT ? ` — ${lieu}` : ""}` });
+    finRaccourci();
     setPvSaisieAutreLieu(false);
     setPvAutreLieu("");
   }
@@ -1837,7 +1845,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       setLivraisonHorsSite(false);
       setEmailPresta("");
       setSaisieRetroactive(false);
-      setActiveTab("cartons");
+      if (raccourci) finRaccourci(); else setActiveTab("cartons");
       setNotification({ type: "success", message: saisieRetroactive
         ? "✓ Palette entrée dans l'historique, aucun mail envoyé"
         : livraisonHorsSite ? "✓ Commande de cartons créée, email de confirmation envoyé au prestataire" : "✓ Commande de cartons créée, arrivage ajouté et email envoyé" });
@@ -2150,8 +2158,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     <div id="presta-root" style={{ background: "linear-gradient(135deg, #f0f9f8 0%, #f9fbf8 100%)", minHeight: "100vh", margin: 0, padding: 0, overflowX: "hidden", maxWidth: "100vw" }}>
       <style>{styles}</style>
       <PageHeader
-        titre="📦 Prestataires & IFCO"
-        onBack={() => { if (activeTab !== "dashboard") setActiveTab("dashboard"); else onClose(); }}
+        titre={raccourci === "cartons" ? "📦 Commande cartons Go-Embal" : raccourci === "palette-vierge" ? "🟫 Palette vierge" : "📦 Prestataires & IFCO"}
+        onBack={() => { if (raccourci) onClose(); else if (activeTab !== "dashboard") setActiveTab("dashboard"); else onClose(); }}
         onHome={onClose}
       />
 
@@ -2178,7 +2186,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
 
       <div className="presta-content" style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
         {/* BANDEAU — déclarations d'entrée IFCO à faire (retours clients en caisses IFCO) */}
-        {declarationsEntree.filter(d => !d.declare).length > 0 && (
+        {!raccourci && declarationsEntree.filter(d => !d.declare).length > 0 && (
           <div style={{ background: COLORS.tertiaryLight, border: `1.5px solid ${COLORS.tertiary}`, borderRadius: 12, padding: "14px 18px", marginBottom: "16px" }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: "#92400e", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
               ⚠️ {declarationsEntree.filter(d => !d.declare).length} déclaration{declarationsEntree.filter(d => !d.declare).length > 1 ? "s" : ""} d'entrée IFCO à faire
@@ -2205,7 +2213,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         {/* Bouton Configuration / retour au Dashboard (en haut à droite) — 02/09/2026 : agrandi
             à la demande d'Elinathan, qui le loupait tout le temps (trop petit / trop discret). */}
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
-          {canConfig && (
+          {canConfig && !raccourci && (
           <button
             onClick={() => setActiveTab(activeTab === "dashboard" ? "configuration" : "dashboard")}
             style={{
@@ -2838,6 +2846,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               />
             </div>
 
+            {!raccourci && (<>
             {/* 23/09/2026 -- Demande d'Elinathan : rattraper une palette de cartons déjà reçue
                 (donc une date dans le passé) sans notifier Go-Embal ni le prestataire par mail
                 d'une commande qui, en réalité, est déjà arrivée depuis longtemps. */}
@@ -2852,6 +2861,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 <strong>📅 Saisie rétroactive</strong> — la palette a déjà été livrée (entrée dans le passé pour l'historique). Aucun mail de commande n'est envoyé à Go-Embal ni au prestataire, et la commande est créée directement comme "reçue".
               </div>
             </label>
+            </>)}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
               <div>
@@ -4889,7 +4899,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 })}
               </div>
 
-              {!pvSaisieHorsPile ? (
+              {raccourci ? null : !pvSaisieHorsPile ? (
                 <button
                   onClick={() => setPvSaisieHorsPile(true)}
                   style={{ display: "block", marginTop: 10, background: "transparent", border: "none", color: COLORS.gray400, fontSize: 11, textDecoration: "underline", cursor: "pointer", padding: 0 }}
@@ -4926,7 +4936,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
 
               {/* Lieu de livraison : Moorea par défaut, quasiment toujours le cas — pas de champ
                   affiché tant qu'on ne précise pas un autre lieu. */}
-              {!pvSaisieAutreLieu ? (
+              {raccourci ? null : !pvSaisieAutreLieu ? (
                 <button
                   onClick={() => setPvSaisieAutreLieu(true)}
                   style={{ display: "block", marginTop: 8, background: "transparent", border: "none", color: COLORS.gray400, fontSize: 11, textDecoration: "underline", cursor: "pointer", padding: 0 }}
@@ -4985,6 +4995,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               )}
             </div>
 
+            {!raccourci && (<>
             {/* Récap mensuel — pour vérifier la facture du fournisseur, basée sur ce qui a
                 réellement été reçu dans le mois. */}
             <div style={{ background: "white", borderRadius: "16px", padding: "24px", border: "1.5px solid #e8e0d0" }}>
@@ -5013,6 +5024,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 </div>
               </div>
             </div>
+            </>)}
           </div>
         )}
       </div>
