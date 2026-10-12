@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import { db, ref, onValue, update, get, push } from "./firebase";
+import { pdfEtiquettesPalettes } from "./lidlImpression";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 12/10/2026 — Demande d'Elinathan : tous les réglages d'impression au même endroit (Admin ›
@@ -37,25 +38,40 @@ export async function imprimantePour(cle: CleImprimante): Promise<string> {
   }
 }
 
-// Une imprimante « à étiquettes » reçoit une page test au format étiquette, les autres en A4.
-const estAEtiquettes = (nom: string) => /etiquette|étiquette|brother|td-|zebra|label/i.test(nom);
+// 12/10/2026 — Format de la page test = le vrai format de chaque imprimante (demande d'Elinathan) :
+//  - imprimante des étiquettes palettes Lidl → une étiquette palette Lidl d'exemple (100 × 150 mm) ;
+//  - imprimante des étiquettes d'arrivage (celle du relais) → une étiquette d'arrivage d'exemple,
+//    dessinée par le relais comme les vraies (180 × 110 mm) ;
+//  - toutes les autres (RICOH…) → une page A4.
+type FormatTest = "lidl" | "arrivage" | "a4";
+const LIBELLE_FORMAT: Record<FormatTest, string> = { lidl: "étiquette palette Lidl", arrivage: "étiquette d'arrivage", a4: "A4" };
 
-async function envoyerPageTest(imprimante: string) {
-  const etiquette = estAEtiquettes(imprimante);
-  const doc = etiquette ? new jsPDF({ unit: "mm", format: [100, 150], orientation: "portrait" }) : new jsPDF({ unit: "mm", format: "a4" });
-  const L = etiquette ? 100 : 210, M = etiquette ? 7 : 20;
+async function envoyerPageTest(imprimante: string, format: FormatTest) {
   const maintenant = new Date().toLocaleString("fr-FR");
-  doc.setLineWidth(0.6); doc.rect(M / 2, M / 2, L - M, (etiquette ? 150 : 297) - M);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(etiquette ? 20 : 28); doc.text("PAGE TEST", M, M + 14);
-  doc.setFontSize(etiquette ? 13 : 16); doc.text(doc.splitTextToSize(imprimante, L - M * 2) as string[], M, M + 26);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(etiquette ? 10 : 12);
-  doc.text([`Envoyée depuis l'appli Moorea le ${maintenant}`, `Format : ${etiquette ? "étiquette 100 × 150 mm" : "A4"}`, "Si cette page est bien sortie, l'imprimante fonctionne."], M, M + 40);
-  const base64 = doc.output("datauristring").split(",")[1];
-  const r = await push(ref(db, "printQueue"), {
-    type: etiquette ? "etiquette_lidl" : "bon_reconditionnement",
-    pdfNom: `PAGE_TEST_${imprimante.replace(/[^\w-]+/g, "_")}.pdf`,
-    pdfBase64: base64, imprimante, status: "pending", createdAt: Date.now(), origine: "test",
-  });
+  const base = { imprimante, status: "pending", createdAt: Date.now(), origine: "test" };
+  if (format === "arrivage") {
+    const r = await push(ref(db, "printQueue"), {
+      ...base, type: "etiquette_palette", lotLabel: "TEST", produit: "PAGE TEST — ÉTIQUETTE ARRIVAGE", qte: 99, unite: "COLIS",
+      lotFournisseur: "TEST", dlcLabel: new Date().toLocaleDateString("fr-FR"), dateArriveeLabel: maintenant.slice(0, 10),
+      url: `${window.location.origin}/?test=impression`,
+    });
+    return r.key as string;
+  }
+  if (format === "lidl") {
+    const doc = await pdfEtiquettesPalettes(new Date().toLocaleDateString("fr-FR"), [{
+      destinataire: ["PAGE TEST", imprimante, `Envoyée le ${maintenant}`], transporteur: "TEST", quantite: 99,
+      produit: "Étiquette palette Lidl d'exemple", palette: 1, nbPalettes: 1, qrUrl: `${window.location.origin}/?test=impression`,
+    }]);
+    const r = await push(ref(db, "printQueue"), { ...base, type: "etiquette_lidl", format: "100x150", pdfNom: "PAGE_TEST_LIDL.pdf", pdfBase64: doc.output("datauristring").split(",")[1] });
+    return r.key as string;
+  }
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  doc.setLineWidth(0.6); doc.rect(10, 10, 190, 277);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(28); doc.text("PAGE TEST", 20, 34);
+  doc.setFontSize(16); doc.text(imprimante, 20, 48);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(12);
+  doc.text([`Envoyée depuis l'appli Moorea le ${maintenant}`, "Format : A4", "Si cette page est bien sortie, l'imprimante fonctionne."], 20, 62);
+  const r = await push(ref(db, "printQueue"), { ...base, type: "bon_reconditionnement", pdfNom: `PAGE_TEST_${imprimante.replace(/[^\w-]+/g, "_")}.pdf`, pdfBase64: doc.output("datauristring").split(",")[1] });
   return r.key as string;
 }
 
@@ -72,10 +88,12 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
     return () => { a(); b(); };
   }, []);
 
+  const imprimanteArrivage = pc.parDefaut?.etiquettes || "Brother TD-4650TNWB";
+  const formatDe = (nom: string): FormatTest => nom === choix.etiquettes_lidl ? "lidl" : nom === imprimanteArrivage ? "arrivage" : "a4";
   async function tester(imprimante: string) {
     setTests(t => ({ ...t, [imprimante]: { etat: "envoi" } }));
     try {
-      const cle = await envoyerPageTest(imprimante);
+      const cle = await envoyerPageTest(imprimante, formatDe(imprimante));
       // Suit le job : imprimé / erreur (au plus 60 s).
       const fin = setTimeout(() => { arret(); setTests(t => ({ ...t, [imprimante]: { etat: "attente", message: "pas de réponse du PC d'impression (relais arrêté ?)" } })); }, 60000);
       const arret = onValue(ref(db, `printQueue/${cle}`), snap => {
@@ -106,7 +124,7 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
         return (
           <div key={nom} style={ligne}>
             <span style={{ flex: 1, minWidth: 180, fontSize: 13, fontWeight: 600, color: texte }}>
-              {nom} <span style={{ fontSize: 11, color: gris, fontWeight: 500 }}>· {estAEtiquettes(nom) ? "étiquettes" : "A4"}</span>
+              {nom} <span style={{ fontSize: 11, color: gris, fontWeight: 500 }}>· {LIBELLE_FORMAT[formatDe(nom)]}</span>
             </span>
             {t && (
               <span style={{ fontSize: 11.5, fontWeight: 700, color: t.etat === "ok" ? "#15803d" : t.etat === "erreur" ? "#b91c1c" : gris }}>
