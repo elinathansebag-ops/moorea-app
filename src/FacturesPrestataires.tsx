@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { db, ref, onValue, update, push, remove } from "./firebase";
+import { db, ref, onValue, update, push, remove, get } from "./firebase";
 import { PageHeader } from "./shared";
 import { nomSignataire } from "./ProfilGenerique";
 import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prestatairesCatalogue";
@@ -48,7 +48,11 @@ const moisFr = (iso: string) => { const t = new Date(iso.slice(0, 7) + "-15T12:0
 const euros = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 const aujourdhui = () => isoDepuisTs(Date.now());
 
-function lignesDepuis(source: Source, donnees: Record<string, any>): Ligne[] {
+// 12/10/2026 — Certaines anciennes commandes de cartons n'ont pas le détail des lignes enregistré
+// (« ⚠️ Détail des lignes manquant » dans Prestataires) : on affiche alors ce que dit l'arrivage
+// lié (produit + nombre de cartons), sinon une invitation à compléter avec « ✏️ Modifier ».
+type ArrivageLie = { produit?: string; quantite?: number; colisRecus?: number; unite?: string };
+function lignesDepuis(source: Source, donnees: Record<string, any>, arrivagesLies: Record<string, ArrivageLie> = {}): Ligne[] {
   return Object.entries(donnees || {}).flatMap(([id, v]: [string, any]): Ligne[] => {
     if (!v || typeof v !== "object") return [];
     if (source === "cartons" || source === "ifco") {
@@ -66,7 +70,12 @@ function lignesDepuis(source: Source, donnees: Record<string, any>): Ligne[] {
         const q = Number(l.quantite) || 0;
         if (p) montant += q * p.prixHT; else connu = false;
         return `${q} × ${l.type}`;
-      }).join(" · ");
+      }).join(" · ") || (() => {
+        const a = arrivagesLies[id];
+        if (!a) return "⚠️ Détail manquant — « ✏️ Modifier » pour compléter";
+        const n = typeof a.colisRecus === "number" ? a.colisRecus : a.quantite;
+        return `${a.produit || "Cartons"}${n ? ` · ${n.toLocaleString("fr-FR")} ${a.unite || "cartons"}` : ""} (d'après l'arrivage — détail à compléter avec « ✏️ Modifier »)`;
+      })();
       return [{
         cle: `${source}/${id}`, source, id,
         // 12/10/2026 — Rangé au jour de LIVRAISON, comme le calendrier de Prestataires (avant : jour
@@ -265,7 +274,18 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
   }, []);
   const charge = (Object.keys(SOURCES) as Source[]).every(s => donnees[s] !== undefined);
 
-  const toutes = useMemo(() => (Object.keys(SOURCES) as Source[]).flatMap(s => lignesDepuis(s, donnees[s] || {})).sort((a, b) => b.date.localeCompare(a.date) || a.titre.localeCompare(b.titre)), [donnees]);
+  // Arrivages liés aux commandes sans détail (lus une seule fois, seulement s'il y en a).
+  const [arrivagesLies, setArrivagesLies] = useState<Record<string, ArrivageLie>>({});
+  const sansDetail = useMemo(() => Object.entries(donnees.cartons || {}).filter(([, v]: any) => v && !(Array.isArray(v.lignes) ? v.lignes.length : Object.keys(v.lignes || {}).length)).map(([id]) => id), [donnees.cartons]);
+  useEffect(() => {
+    if (!sansDetail.length) return;
+    get(ref(db, "arrivages")).then(snap => {
+      const lies: Record<string, ArrivageLie> = {};
+      Object.values(snap.val() || {}).forEach((a: any) => { if (a?.carton_commande_id && sansDetail.includes(a.carton_commande_id)) lies[a.carton_commande_id] = a; });
+      setArrivagesLies(lies);
+    }).catch(() => {});
+  }, [sansDetail.join(",")]);
+  const toutes = useMemo(() => (Object.keys(SOURCES) as Source[]).flatMap(s => lignesDepuis(s, donnees[s] || {}, s === "cartons" ? arrivagesLies : {})).sort((a, b) => b.date.localeCompare(a.date) || a.titre.localeCompare(b.titre)), [donnees, arrivagesLies]);
   const visibles = toutes.filter(l => sources[l.source] && (filtre === "tout" || (filtre === "facturees" ? l.facturee : !l.facturee)));
   const nbAFacturer = toutes.filter(l => sources[l.source] && !l.facturee).length;
 
