@@ -5,7 +5,9 @@ import { db, ref, push, onValue, update, remove, auth, googleProvider, signInWit
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
 import { alerterPush } from "./NotificationsPush";
 import emailjs from "@emailjs/browser";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
+import { demarrerScan, arreterScan, bipScan } from "./scanCamera";
+import { CurseurZoom } from "./CurseurZoom";
 import { PageHeader, NoteSelector, ScoreCircle, F, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, DESTINATAIRES, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, CRITERES, styles } from "./shared";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1869,12 +1871,8 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
   const [manualCode, setManualCode] = useState("");
   const [retryCount, setRetryCount] = useState(0);
   const stopRef = useRef<(() => void) | null>(null);
-  // Zoom numérique (CSS) sur le flux caméra — html5-qrcode injecte lui-même son <video> dans
-  // #qr-scanner-container sans exposer de contrôle de zoom natif ; on zoome donc visuellement
-  // le conteneur (transform:scale), le conteneur parent ayant overflow:hidden pour ne jamais
-  // déborder de l'écran. Le décodage se fait toujours sur le flux vidéo réel, non affecté par
-  // ce zoom purement visuel — donc le scan continue de fonctionner normalement, zoomé ou non.
-  const [zoom, setZoom] = useState(1);
+  // 12/10/2026 — Instance lancée, pour le curseur de vrai zoom (CurseurZoom).
+  const [scannerActif, setScannerActif] = useState<Html5Qrcode | null>(null);
   // Instance active du scanner, gardée à part de stopRef (qui ne sert qu'à l'arrêter) — permet
   // de réappliquer une mise au point via applyVideoConstraints() quand l'utilisateur tape sur
   // l'aperçu (voir plus bas). html5-qrcode expose cette méthode publiquement (v2.3.8+).
@@ -1954,46 +1952,12 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         // à chaque ouverture. html5-qrcode gère lui-même la demande d'accès ci-dessous,
         // et ses erreurs sont interceptées par le catch plus bas via cameraErrorMessage.
 
-        // Limiter les formats scannés = moins de calcul par frame = détection plus rapide
-        const formatsToSupport = [
-          Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
-        ];
-
-        // Résolution vidéo demandée plus haute = image plus nette = décodage plus fiable,
-        // surtout pour scanner un code affiché sur un écran (moins net qu'un code imprimé).
-        // IMPORTANT : ces réglages (advanced/width/height) vont dans `videoConstraints`,
-        // PAS dans le 1er argument de start() — celui-ci doit être un objet à UNE seule clé
-        // (facingMode OU deviceId), sinon html5-qrcode rejette avec "'cameraIdOrConfig'
-        // object should have exactly 1 key".
-        const videoConstraints = {
-          facingMode: "environment",
-          focusMode: "continuous",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        } as any;
-
-        const baseConfig = {
-          fps: 15, // était 10 → plus de tentatives de décodage par seconde
-          // Carré et adaptatif (au lieu d'un rectangle fixe 280x140) : un QR est carré, un
-          // rectangle trop bas le rognait et empêchait sa lecture. On prend ~70% du plus
-          // petit côté du flux vidéo, borné pour rester lisible sur petit ou grand écran.
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const size = Math.floor(Math.max(200, Math.min(minEdge * 0.7, 320)));
-            return { width: size, height: size };
-          },
-          disableFlip: false,
-          ...(formatsToSupport ? { formatsToSupport } : {}),
-          // Utilise le détecteur de code-barres natif du navigateur si dispo (Android Chrome, Safari 17+) : bien plus rapide/fiable que le décodage JS pur
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        };
-
         const onDecoded = (text: string) => {
           if (!done) {
             done = true;
             if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
             stopRef.current?.();
+            bipScan();
             handleRaw(text.trim());
           }
         };
@@ -2001,37 +1965,13 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
         if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
         hintTimerRef.current = setTimeout(() => { if (!done) setAideMiseAuPoint(true); }, 5000);
 
-        // scanner.stop() lève une exception SYNCHRONE (pas une simple rejection de promesse)
-        // si on l'appelle alors que le scanner n'est pas activement en train de tourner
-        // (start() pas encore résolu, déjà arrêté, etc.) — un `.catch()` seul ne suffit donc
-        // pas à l'intercepter. Sans ce garde-fou, cette exception remontait pendant le
-        // nettoyage de l'effet React et faisait planter toute l'appli (page blanche).
-        const safeStop = (s: Html5Qrcode) => {
-          try { if (s.isScanning) s.stop().catch(() => {}); } catch {}
-        };
-
-        // Chaque tentative utilise sa PROPRE instance Html5Qrcode. Rappeler .start() une
-        // 2e fois sur la même instance après un échec provoque l'erreur interne de la
-        // librairie "Cannot transition to a new state, already under transition" — d'où
-        // une instance neuve à chaque essai, avec un vrai nettoyage entre les deux.
-        try {
-          const scanner1 = new Html5Qrcode("qr-scanner-container", { verbose: false });
-          stopRef.current = () => safeStop(scanner1);
-          scannerInstanceRef.current = scanner1;
-          // Tente d'abord avec autofocus continu + haute résolution (meilleure netteté)
-          await scanner1.start({ facingMode: "environment" }, { ...baseConfig, videoConstraints }, onDecoded, () => {});
-        } catch {
-          if (done) return;
-          // Nettoyage de la tentative ratée avant d'en recréer une nouvelle sur le même conteneur
-          try { document.getElementById("qr-scanner-container")!.innerHTML = ""; } catch {}
-          await new Promise(r => setTimeout(r, 150));
-          if (done) return;
-          const scanner2 = new Html5Qrcode("qr-scanner-container", { verbose: false });
-          stopRef.current = () => safeStop(scanner2);
-          scannerInstanceRef.current = scanner2;
-          // Fallback avec des contraintes minimales si les contraintes avancées posaient problème
-          await scanner2.start({ facingMode: "environment" }, baseConfig, onDecoded, () => {});
-        }
+        // 12/10/2026 — Démarrage commun à tous les scanners (scanCamera.ts) : Full HD, zone de
+        // lecture large, essais successifs avec des réglages plus simples, vrai zoom, bip.
+        const scanner = await demarrerScan("qr-scanner-container", onDecoded);
+        if (done) { arreterScan(scanner); return; }
+        stopRef.current = () => arreterScan(scanner);
+        scannerInstanceRef.current = scanner;
+        setScannerActif(scanner);
       } catch (e: any) {
         console.error("Erreur démarrage scanner caméra:", e);
         if (!done) setError(cameraErrorMessage(e));
@@ -2057,20 +1997,14 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
             scannerInstanceRef.current?.applyVideoConstraints({ advanced: [{ focusMode: "continuous" }] } as any).catch(() => {});
             setAideMiseAuPoint(false);
           }}
-          style={{ width: "100%", height: "100%", transform: `scale(${zoom})`, transformOrigin: "center center", cursor: "pointer" }}
+          style={{ width: "100%", height: "100%", cursor: "pointer" }}
         />
         {scanning && !error && aideMiseAuPoint && (
           <div style={{ position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)", maxWidth: "88%", textAlign: "center", background: "rgba(0,0,0,0.7)", borderRadius: 12, padding: "10px 16px", zIndex: 2 }}>
             <p style={{ margin: 0, color: "#fff", fontSize: 12.5 }}>👆 Rien détecté — tape l'écran pour refaire la mise au point, ou rapproche/éloigne un peu le QR.</p>
           </div>
         )}
-        {scanning && !error && (
-          <div style={{ position: "absolute", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 10, background: "rgba(0,0,0,0.55)", borderRadius: 20, padding: "8px 16px", zIndex: 2 }}>
-            <span style={{ color: "#fff", fontSize: 13 }}>🔍</span>
-            <input type="range" min="1" max="3" step="0.1" value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} style={{ width: 140 }} />
-            <span style={{ color: "#fff", fontSize: 12, minWidth: 28, textAlign: "right" }}>{zoom.toFixed(1)}x</span>
-          </div>
-        )}
+        {scanning && !error && <CurseurZoom scanner={scannerActif} />}
         {error && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
             <div style={{ background: "#fff", borderRadius: 12, padding: 20, textAlign: "center" }}>

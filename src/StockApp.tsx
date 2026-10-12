@@ -4,7 +4,7 @@ import { collection, getDocs, getDoc, setDoc, doc, query, where, orderBy, docume
 import { PageHeader, styles } from "./shared";
 import { nomSignataire } from "./ProfilGenerique";
 import { ScannerQR } from "./ArrivageModule";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { demarrerScan, zoomCamera, bipScan } from "./scanCamera";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -831,13 +831,12 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
     <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
       <div id="s-scan-video" style="width:100%;height:100%"></div>
       <canvas id="s-scan-canvas" style="display:none"></canvas>
-      <!-- Zoom numérique — html5-qrcode n'expose pas de zoom natif ; on zoome visuellement
-           #s-scan-video (transform:scale), le conteneur parent ayant overflow:hidden pour ne
-           jamais déborder. Le décodage lit le flux vidéo réel, non affecté par ce zoom visuel. -->
-      <div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.55);border-radius:20px;padding:8px 16px;z-index:2">
+      <!-- 12/10/2026 — VRAI zoom de la caméra (scanCamera.ts), affiché seulement si l'appareil le
+           permet. L'ancien zoom agrandissait juste l'aperçu, sans aider la lecture. -->
+      <div id="s-scan-zoom" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:10px;background:rgba(0,0,0,0.55);border-radius:20px;padding:8px 16px;z-index:2">
         <span style="color:#fff;font-size:13px">🔍</span>
-        <input type="range" min="1" max="3" step="0.1" value="1" style="width:140px"
-          oninput="document.getElementById('s-scan-video').style.transform='scale('+this.value+')';this.nextElementSibling.textContent=parseFloat(this.value).toFixed(1)+'x'">
+        <input id="s-scan-zoom-curseur" type="range" min="1" max="3" step="0.1" value="1" style="width:160px"
+          oninput="window.sAppliquerZoom&&window.sAppliquerZoom(parseFloat(this.value));this.nextElementSibling.textContent=parseFloat(this.value).toFixed(1)+'x'">
         <span style="color:#fff;font-size:12px;min-width:28px;text-align:right">1.0x</span>
       </div>
       <!-- Viseur -->
@@ -3393,30 +3392,25 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
               sScanActive = false;
               const h5 = (sScanStream as any)?._h5;
               try { if (h5?.isScanning) h5.stop().catch(() => {}); } catch {}
+              bipScan();
               handleRaw(text.trim());
             }
           };
-          const baseConfig: any = {
-            fps: 15,
-            qrbox: (vw: number, vh: number) => { const size = Math.floor(Math.max(200, Math.min(Math.min(vw, vh) * 0.7, 320))); return { width: size, height: size }; },
-            disableFlip: false,
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
-            ],
-            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-          };
-          try {
-            const h1 = new Html5Qrcode("s-scan-video", { verbose: false } as any);
-            sScanStream = { _h5: h1 } as any;
-            await h1.start({ facingMode: "environment" }, { ...baseConfig, videoConstraints: { facingMode: "environment", focusMode: "continuous", width: { ideal: 1280 }, height: { ideal: 720 } } as any }, onDecoded, () => {});
-          } catch {
-            try { document.getElementById("s-scan-video")!.innerHTML = ""; } catch {}
-            await new Promise(r => setTimeout(r, 150));
-            const h2 = new Html5Qrcode("s-scan-video", { verbose: false } as any);
-            sScanStream = { _h5: h2 } as any;
-            await h2.start({ facingMode: "environment" }, baseConfig, onDecoded, () => {});
-          }
+          // 12/10/2026 — Démarrage commun à tous les scanners (scanCamera.ts) : Full HD, zone de
+          // lecture large, réglages plus simples en repli, vrai zoom si l'appareil le permet.
+          const h = await demarrerScan("s-scan-video", onDecoded);
+          sScanStream = { _h5: h } as any;
+          const blocZoom = document.getElementById("s-scan-zoom");
+          if (blocZoom) blocZoom.style.display = "none";
+          setTimeout(() => {
+            const z = zoomCamera(h);
+            const curseur = document.getElementById("s-scan-zoom-curseur") as HTMLInputElement | null;
+            (window as any).sAppliquerZoom = z ? (v: number) => { z.appliquer(v).catch(() => {}); } : null;
+            if (!z || !curseur || !blocZoom) return;
+            curseur.min = String(z.min); curseur.max = String(z.max); curseur.step = String(z.pas); curseur.value = String(z.valeur);
+            (curseur.nextElementSibling as HTMLElement).textContent = z.valeur.toFixed(1) + "x";
+            blocZoom.style.display = "flex";
+          }, 400);
         } catch (e: any) {
           const errEl = document.getElementById("s-scan-error") as HTMLElement;
           const msgEl = document.getElementById("s-scan-error-msg");

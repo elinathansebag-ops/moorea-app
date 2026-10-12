@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { db, ref, update, onValue } from "./firebase";
 import { Html5Qrcode } from "html5-qrcode";
+import { demarrerScan, arreterScan, bipScan } from "./scanCamera";
+import { CurseurZoom } from "./CurseurZoom";
 import { PageHeader, styles } from "./shared";
 
 interface Article {
@@ -4572,9 +4574,8 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
   const [scanning, setScanning] = useState(false);
   const [manualEan, setManualEan] = useState('');
   const [scanDebug, setScanDebug] = useState('');
-  // Zoom numérique (CSS scale) sur le conteneur caméra — html5-qrcode n'expose pas de zoom
-  // natif, donc on zoome visuellement le conteneur (overflow:hidden l'empêche de déborder).
-  const [scanZoom, setScanZoom] = useState(1);
+  // 12/10/2026 — Instance lancée, pour le curseur de vrai zoom (CurseurZoom).
+  const [scannerGencode, setScannerGencode] = useState<Html5Qrcode | null>(null);
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrStatus, setOcrStatus] = useState('');
   const scanDebugLastUpdate = useRef(0);
@@ -4913,14 +4914,8 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                       de lecture, ce qui peut empêcher le décodage d'un code-barres pourtant net
                       et bien cadré. Agrandi au maximum disponible pour donner plus de détail. */}
                   <div style={{ position:'relative', borderRadius:12, overflow:'hidden', width:'100%', maxWidth:520, margin:'0 auto', height:380 }}>
-                    <div id="gencode-scan-container" style={{ width:'100%', height:'100%', transform:`scale(${scanZoom})`, transformOrigin:'center center' }} />
-                    {scanning && (
-                      <div style={{ position:'absolute', bottom:10, left:'50%', transform:'translateX(-50%)', display:'flex', alignItems:'center', gap:8, background:'rgba(0,0,0,0.55)', borderRadius:20, padding:'6px 14px', zIndex:2 }}>
-                        <span style={{ color:'#fff', fontSize:12 }}>🔍</span>
-                        <input type="range" min="1" max="3" step="0.1" value={scanZoom} onChange={e => setScanZoom(parseFloat(e.target.value))} style={{ width:120 }} />
-                        <span style={{ color:'#fff', fontSize:11, minWidth:26, textAlign:'right' }}>{scanZoom.toFixed(1)}x</span>
-                      </div>
-                    )}
+                    <div id="gencode-scan-container" style={{ width:'100%', height:'100%' }} />
+                    {scanning && <CurseurZoom scanner={scannerGencode} style={{ bottom: 10 }} />}
                   </div>
                   <button onClick={async () => {
                     // Si un scan est déjà en cours, ce bouton sert à l'annuler (utile si la
@@ -4941,60 +4936,34 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                       setScanDebug('');
                       scanAttempts.current = 0;
                       scanDebugLastUpdate.current = 0;
-                      const scanner = new Html5Qrcode('gencode-scan-container', { verbose: false });
-                      (streamRef.current as any) = scanner;
-                      await scanner.start(
-                        { facingMode: 'environment' },
-                        {
-                          fps: 15,
-                          // Pas de qrbox = on scanne l'image ENTIÈRE plutôt qu'une sous-zone.
-                          // Un rectangle de recadrage mal calé peut couper le code-barres ou
-                          // désaligner la zone réellement analysée vs. celle affichée à l'écran —
-                          // en scannant tout le cadre on élimine ce risque, au prix d'un peu
-                          // plus de calcul par image.
-                          disableFlip: false,
-                          // Pas de formatsToSupport ici : le restreindre à EAN/UPC/CODE128
-                          // provoquait une vraie erreur interne à html5-qrcode ("No MultiFormat
-                          // Readers were...") qui empêchait TOUT décodage, diagnostiquée via le
-                          // compteur affiché à l'écran. Sans ce filtre, la librairie utilise son
-                          // jeu de lecteurs par défaut (qui inclut EAN/UPC) — un peu plus lent
-                          // par image, mais qui fonctionne réellement.
-                          // Le détecteur de code-barres natif du navigateur (BarcodeDetector)
-                          // est peu fiable pour les codes-barres 1D sur certains iPhone/Safari —
-                          // il ne renvoyait jamais de résultat ("Scan en cours..." bloqué en
-                          // permanence). Désactivé ici pour forcer le décodeur JS intégré à
-                          // html5-qrcode, plus lent mais nettement plus fiable pour l'EAN/UPC.
-                          experimentalFeatures: { useBarCodeDetectorIfSupported: false },
-                          // Autofocus continu + résolution plus haute = image plus nette
-                          videoConstraints: {
-                            facingMode: 'environment',
-                            advanced: [{ focusMode: 'continuous' } as any],
-                            width: { ideal: 1920 }, height: { ideal: 1080 },
-                          } as any,
-                        },
-                        (text: string) => {
+                      // 12/10/2026 — Démarrage commun (scanCamera.ts) : Full HD + repli, vrai zoom, bip.
+                      // Réglages propres aux codes-barres produits gardés : tous les formats (le filtre
+                      // EAN/UPC cassait le décodage), pas de détecteur natif (peu fiable en 1D sur
+                      // iPhone), toute l'image analysée.
+                      const scanner = await demarrerScan('gencode-scan-container', (text: string) => {
                           const ean = text.trim();
                           if (/^\d{8,13}$/.test(ean)) {
-                            try { if (scanner.isScanning) scanner.stop().catch(() => {}); } catch {}
+                            arreterScan(scanner);
+                            bipScan();
                             setScanning(false);
                             setScannedEan(ean);
                             const found = articles.find((a:any) => a.ean === ean);
                             setScanResult(found || null);
                           }
-                        },
-                        (errorMessage: string) => {
-                          // Callback appelé à CHAQUE image analysée (souvent "aucun code trouvé"
-                          // — c'est normal). On garde une trace discrète (throttlée à 1x/seconde)
-                          // pour vérifier que le scan tourne bien et voir la vraie raison s'il
-                          // ne s'agit pas juste de "pas encore trouvé".
-                          scanAttempts.current++;
-                          const now = Date.now();
-                          if (now - scanDebugLastUpdate.current > 1000) {
-                            scanDebugLastUpdate.current = now;
-                            setScanDebug(`🔍 ${scanAttempts.current} images analysées — ${errorMessage.slice(0, 60)}`);
-                          }
-                        }
-                      );
+                        }, {
+                          formats: null, detecteurNatif: false, zone: false,
+                          // Appelé à chaque image sans code : compteur discret (1x/seconde) pour voir que ça tourne.
+                          surErreur: (errorMessage: string) => {
+                            scanAttempts.current++;
+                            const now = Date.now();
+                            if (now - scanDebugLastUpdate.current > 1000) {
+                              scanDebugLastUpdate.current = now;
+                              setScanDebug(`🔍 ${scanAttempts.current} images analysées — ${errorMessage.slice(0, 60)}`);
+                            }
+                          },
+                        });
+                      (streamRef.current as any) = scanner;
+                      setScannerGencode(scanner);
                     } catch(e:any) { setScanning(false); setStatus('Camera non disponible : ' + (e?.message || e)); }
                   }} style={{ marginTop:12, background: scanning ? '#e5e7eb' : '#a855f7', color: scanning ? '#374151' : '#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
                     {scanning ? '✕ Annuler le scan' : 'Demarrer le scan'}
