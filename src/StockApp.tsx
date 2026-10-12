@@ -3371,7 +3371,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             sScanActive = false;
             if (/^\d{8,13}$/.test(raw)) { (window as any).sVerifierEANDansStock(raw); return; }
             let lot = "";
-            try { const u = new URL(raw); lot = u.searchParams.get("lot") || u.searchParams.get("id") || ""; } catch {}
+            // 12/10/2026 — Étiquettes imprimées depuis aujourd'hui : le QR porte aussi le nombre de
+            // colis de CETTE palette (q) — utilisé à la place de la quantité totale du lot.
+            let qtePalette: number | null = null;
+            try { const u = new URL(raw); lot = u.searchParams.get("lot") || u.searchParams.get("id") || ""; const q = parseFloat(u.searchParams.get("q") || ""); if (isFinite(q) && q >= 0) qtePalette = q; } catch {}
             // 24/09/2026 — Le QR des étiquettes palette contient l'identifiant Firebase de
             // l'ARRIVAGE (?id=-Nxxxx), pas le n° de lot : il n'était donc jamais trouvé dans les
             // lots du stock (« introuvable »). On retrouve le n° de lot interne de l'arrivage.
@@ -3388,7 +3391,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             if (!lot) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + raw.slice(0, 30) }); return; }
             // 30/09/2026 — Demande d'Elinathan : on scanne d'abord, puis on choisit « palette
             // entière » ou « autre quantité » (un seul bouton de scan au lieu de deux).
-            (window as any).sProposerPaletteScannee(lot);
+            (window as any).sProposerPaletteScannee(lot, qtePalette);
           };
           // html5-qrcode — EAN + QR, fonctionne sur iOS et Android.
           // Importé directement (bundlé par Vite) au lieu d'être chargé depuis un CDN externe
@@ -3567,7 +3570,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
 
       // Après un scan : article trouvé → choix « palette entière » (quantité de la palette) ou
       // « autre quantité » (saisie), ajoutée dans la prochaine case libre du comptage.
-      (window as any).sProposerPaletteScannee = (lot: string) => {
+      (window as any).sProposerPaletteScannee = (lot: string, qtePalette?: number | null) => {
         const paletteMatch = lot.match(/^(.+?)(?:-(\d+))?$/);
         const baseLot = paletteMatch?.[1] || lot;
         const findArt = (list: any[]) => list.find((a: any) =>
@@ -3581,7 +3584,9 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             : `Lot #${baseLot} introuvable dans ce stock` });
           return;
         }
-        const qty = art.lotsQty?.[baseLot];
+        // Quantité de la palette : celle écrite dans le QR de l'étiquette ; sinon (anciennes
+        // étiquettes) la quantité du lot dans le stock.
+        const qty = qtePalette != null ? qtePalette : art.lotsQty?.[baseLot];
         const compte = art.compte !== null && art.compte !== undefined ? art.compte : null;
         // 12/10/2026 — Quantité de la palette connue : ajoutée tout de suite, sans choix à faire.
         if (qty !== undefined && qty !== null) { (window as any).sAjouterQtePalette(art.id, Number(qty)); return; }

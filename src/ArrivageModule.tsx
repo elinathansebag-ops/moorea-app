@@ -1346,7 +1346,11 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
 export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteIndex?: number, colisCount?: number) {
   const lot = arrivage.lot_interne || arrivage.id;
   const palRef = paletteIndex != null ? `${paletteIndex}` : null;
-  const url = `${window.location.origin}${window.location.pathname}?id=${arrivage.id}`;
+  // 12/10/2026 — Bug trouvé avec Elinathan : le QR ne contenait que l'arrivage (?id=…), le même
+  // sur toutes les palettes, et le scan du Stock prenait alors la quantité TOTALE du lot. Chaque
+  // étiquette a maintenant son propre QR : n° de palette (pal) + colis de CETTE palette (q).
+  const qteEtiquette = colisCount != null ? colisCount : arrivage.quantite;
+  const url = `${window.location.origin}${window.location.pathname}?id=${arrivage.id}${palRef ? `&pal=${palRef}` : ""}${qteEtiquette != null && qteEtiquette !== "" ? `&q=${encodeURIComponent(String(qteEtiquette))}` : ""}`;
   const lotLabel = palRef ? `MRA.${String(lot).padStart(4,"0")}-${palRef}` : `MRA.${String(lot).padStart(4,"0")}`;
   const qte = colisCount != null ? colisCount : arrivage.quantite;
 
