@@ -145,8 +145,11 @@ export function useProducteursLidl() {
     return [...m.values()].sort((a, b) => a.pn.localeCompare(b.pn));
   }, [ajouts]);
 }
-// Lot = 1 lettre + 4 chiffres (ex. A1234)
+// Lot = 1 lettre + 4 chiffres (ex. L1234).
+// 12/10/2026 — Demande d'Elinathan : on ne tape plus que les 4 chiffres, le « L » est ajouté tout
+// seul devant (format attendu par la traçabilité Lidl). Les anciens lots d'une autre lettre restent valides.
 const LOT_OK = /^[A-Z]\d{4}$/;
+const saisieLot = (v: string) => { const chiffres = v.replace(/\D/g, "").slice(0, 4); return chiffres ? `L${chiffres}` : ""; };
 const libRef = (r: { article: string; origine: string }) => `${r.article} — ${r.origine}`;
 // Référence par défaut déduite du fichier Lidl (250g → barquette Kenya ; 500g/6x → sachet Maroc)
 function devinerRef(article: string, emballage: string) {
@@ -453,7 +456,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   async function marquerPret(l: LigneLidl): Promise<boolean> {
     const lot = (lotsSaisis[l.id] ?? l.lot).trim();
     if (!l.ferme) { flash("err", `Choisis d'abord le producteur pour ${infoBase(l.base)?.nom || l.base}.`); notif("err", `Choisis d'abord le producteur pour ${infoBase(l.base)?.nom || l.base}.`); return false; }
-    if (!LOT_OK.test(lot)) { flash("err", `Le numéro de lot doit être 1 lettre + 4 chiffres (ex. A1234) pour ${infoBase(l.base)?.nom || l.base}.`); notif("err", `Lot invalide pour ${infoBase(l.base)?.nom || l.base} (1 lettre + 4 chiffres, ex. A1234).`); return false; }
+    if (!LOT_OK.test(lot)) { flash("err", `Le numéro de lot doit faire 4 chiffres (ex. 1234 → L1234) pour ${infoBase(l.base)?.nom || l.base}.`); notif("err", `Lot invalide pour ${infoBase(l.base)?.nom || l.base} (1 lettre + 4 chiffres, ex. A1234).`); return false; }
     await update(ref(db, `lidl_commandes/${l.id}`), { lot, statut: "pret", palettes: l.palettes ?? 0.5, pretPar: userName || "", pretLe: new Date().toLocaleString("fr-FR"), quantiteModifieeApresPret: null });
     setDernierSaisi({ ferme: l.ferme, lot });
     // Plus d'une palette : on imprime les étiquettes qui manquent (« Palette 2/2 »…).
@@ -689,8 +692,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
           {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
           <option value="__new">Il manque un producteur — prévenir</option>
         </select>
-        <input value={lot} placeholder="Lot (A1234)" maxLength={5} autoCapitalize="characters"
-          onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => sauverLot(l)}
+        <input value={lot} placeholder="Lot : 4 chiffres" inputMode="numeric" autoCapitalize="characters"
+          onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: saisieLot(e.target.value) }))} onBlur={() => sauverLot(l)}
           style={{ width: 96, height: 42, padding: "0 8px", border: `1.5px solid ${lot && !LOT_OK.test(lot) ? "#f59e0b" : "#d1d5db"}`, borderRadius: 10, fontSize: 15, fontWeight: 700, letterSpacing: 1 }} />
         <div style={{ display: "flex", alignItems: "center", gap: 4 }} title="Nombre de palettes (grande = 1, demi = 0,5)">
           {fleche(-1)}
@@ -744,8 +747,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
                         <option value="">Producteur…</option>
                         {producteurs.map(p => <option key={p.pn} value={p.pn}>{p.pn}</option>)}
                       </select>
-                      <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot (A1234)" maxLength={5}
-                        onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => !pret && sauverLot(l)}
+                      <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot : 4 chiffres" inputMode="numeric"
+                        onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: saisieLot(e.target.value) }))} onBlur={() => !pret && sauverLot(l)}
                         style={{ width: 110, padding: "6px 8px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, fontWeight: 700 }} />
                       <label style={{ fontSize: 11, color: "#6b7280" }}>Palettes <input type="number" step={0.5} min={0.5} disabled={pret} value={l.palettes ?? 0.5} onChange={e => setPalettes(l, Number(e.target.value) || 0.5)} style={{ width: 56, padding: "3px 4px", borderRadius: 6, border: "1.5px solid #e5e7eb" }} /></label>
                     </div>
@@ -969,8 +972,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
                 {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
                 <option value="__new">Il manque un producteur — prévenir</option>
               </select>
-              <input value={lot} placeholder="Lot (A1234)" maxLength={5} autoCapitalize="characters" aria-label="Numéro de lot"
-                onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} onBlur={() => sauverLot(l)}
+              <input value={lot} placeholder="Lot : 4 chiffres" inputMode="numeric" autoCapitalize="characters" aria-label="Numéro de lot"
+                onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: saisieLot(e.target.value) }))} onBlur={() => sauverLot(l)}
                 style={{ ...gros, padding: "0 12px", letterSpacing: 2, border: `2px solid ${lot && !LOT_OK.test(lot) ? "#f59e0b" : "#d1d5db"}`, boxSizing: "border-box", width: "100%" }} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
