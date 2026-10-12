@@ -3617,7 +3617,15 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           <p style="font-size:18px;font-weight:800;color:#1a2e1a;margin:0 0 2px">${art.article}</p>
           <div style="background:#f0fdf4;border-radius:10px;padding:12px;border:1.5px solid #bbf7d0;margin-top:10px">
             <p style="margin:0;font-size:14px;color:#15803d;font-weight:800">+ ${n} colis (case ${nextLoc}) · total ${t}</p>
-          </div>` });
+          </div>
+          ${nextLoc < NB_MAX_CELLULES ? `
+          <!-- 12/10/2026 — Demande d'Elinathan : après la palette scannée, ajouter d'autres quantités
+               sur la MÊME ligne (case suivante), sans rescanner. -->
+          <p style="margin:14px 0 6px;font-size:12.5px;font-weight:700;color:#1e3a8a;text-align:left">➕ Ajouter une autre quantité sur cette ligne</p>
+          <div style="display:flex;gap:8px">
+            <input id="s-scan-qte-plus" type="number" min="0" inputmode="numeric" placeholder="Quantité" style="flex:1;min-width:0;padding:12px;border:1.5px solid #bfdbfe;border-radius:10px;font-size:16px;font-weight:700;text-align:center" onkeydown="if(event.key==='Enter')sAjouterQtePalette(${art.id}, this.value)"/>
+            <button onclick="sAjouterQtePalette(${art.id}, document.getElementById('s-scan-qte-plus').value)" style="padding:12px 14px;border-radius:10px;border:none;background:#2563eb;color:#fff;font-weight:800;font-size:14px;cursor:pointer">✓ Ajouter</button>
+          </div>` : ""}` });
       };
 
       (window as any).sAfficherResultatScan = ({ found, msg, html }: any) => {
