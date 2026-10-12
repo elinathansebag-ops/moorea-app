@@ -1899,7 +1899,9 @@ export function GencodeChecker({ onClose, expectedEan, expectedArticle }: { onCl
   );
 }
 
-export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; onClose: () => void }) {
+// 12/10/2026 — brut : renvoie le texte lu tel quel (URL complète du QR), pour le Stock qui a besoin
+// du nombre de colis de la palette (&q=…) et pas seulement de l'arrivage.
+export function ScannerQR({ onScan, onClose, brut }: { onScan: (lot: string) => void; onClose: () => void; brut?: boolean }) {
   const [error, setError] = useState("");
   const [scanning, setScanning] = useState(false);
   const [manualCode, setManualCode] = useState("");
@@ -1920,6 +1922,7 @@ export function ScannerQR({ onScan, onClose }: { onScan: (lot: string) => void; 
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleRaw = (raw: string) => {
+    if (brut) { onScan(raw); return; }
     if (/^\d{8,13}$/.test(raw)) { onScan('EAN:' + raw); return; }
     try {
       const url = new URL(raw);

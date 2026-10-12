@@ -3338,8 +3338,13 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         if (errEl) errEl.style.display = "none";
         if (val.startsWith("EAN:")) { (window as any).sVerifierEANDansStock(val.slice(4)); return; }
         if (/^\d{8,13}$/.test(val)) { (window as any).sVerifierEANDansStock(val); return; }
+        // 12/10/2026 — Saisie à la main du n° imprimé sur l'étiquette (« MRA.8166-2 ») acceptée.
+        const mra = /^MRA\.?\s*0*(\d{1,6})(-\d+)?$/i.exec(val);
+        if (mra) val = mra[1] + (mra[2] || "");
         let lot = val;
-        try { const u = new URL(val); lot = u.searchParams.get("lot") || u.searchParams.get("id") || ""; } catch { /* pas une URL */ }
+        // 12/10/2026 — Nombre de colis de CETTE palette, écrit dans le QR des nouvelles étiquettes.
+        let qtePalette: number | null = null;
+        try { const u = new URL(val); lot = u.searchParams.get("lot") || u.searchParams.get("id") || ""; const q = parseFloat(u.searchParams.get("q") || ""); if (isFinite(q) && q >= 0) qtePalette = q; } catch { /* pas une URL */ }
         if (lot && !/^\d{3,6}(-\d+)?$/.test(lot)) {
           try {
             let a = (await get(ref(rtdb, `arrivages/${lot}`))).val();
@@ -3348,7 +3353,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           } catch { /* ignore */ }
         }
         if (!lot || !/^\d{3,6}(-\d+)?$/.test(lot)) { (window as any).sAfficherResultatScan({ found: false, msg: "Code non reconnu : " + val.slice(0, 40) }); return; }
-        (window as any).sProposerPaletteScannee(lot);
+        (window as any).sProposerPaletteScannee(lot, qtePalette);
       };
 
       (window as any).sScannerPalette = async () => {
@@ -3670,7 +3675,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       <div ref={containerRef} />
       {scanOuvert && (
         <div style={{ position: "fixed", inset: 0, zIndex: 900 }}>
-          <ScannerQR
+          <ScannerQR brut
             onClose={() => setScanOuvert(false)}
             onScan={(val) => { setScanOuvert(false); (window as any).sTraiterScanStock?.(String(val || "").trim()); }}
           />
