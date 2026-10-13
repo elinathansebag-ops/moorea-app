@@ -59,6 +59,14 @@ export function idCommandeLidlAncien(d: string, l: { avis: string; base: string 
   return `${d}_${l.avis}_${l.base}_${dep}`.replace(/[.#$\[\]/]/g, "-");
 }
 
+// 13/10/2026 — Jeton secret du lien de l'espace Medina (?medina=…), voir serveur/routes/portail-medina.js.
+// Adresse de Medina donnée par Elinathan le 13/10/2026 (modifiable dans Configuration).
+export const EMAILS_MEDINA_DEFAUT = "Ludovic.Escoda@primever.com";
+export function nouveauJetonMedina() {
+  const o = new Uint8Array(18); crypto.getRandomValues(o);
+  return Array.from(o, x => x.toString(16).padStart(2, "0")).join("");
+}
+
 // 02/10/2026 — Liste des bases Lidl (fournie par Elinathan : « BASE LIDL / N° BASE / TRANSPORT
 // DÉPART SUD »). Le fichier Lidl ne contient que des codes à 3 lettres, rangés dans le MÊME ORDRE
 // que les lignes de cette liste (de Lillers à Les Arcs) — d'où la correspondance ci-dessous
@@ -514,7 +522,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       }
       if (dep === "sud" && (!reimport || changements.length > 0)) {
         const r = await envoyerRecapMedina(d, lues);
-        setRecapMedina(r?.ok ? `📧 Récap de préparation Medina envoyé à Jordan (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}).` : `❌ Récap Medina non envoyé : ${r?.erreur || "erreur"}`);
+        setRecapMedina(r?.ok ? `📧 Commandes Perpignan envoyées à ${r.a} (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}).` : `❌ Mail Medina non envoyé : ${r?.erreur || "erreur"}`);
       }
       bilans.push(`${libDepart(dep)} : ${lues.length} commande${lues.length > 1 ? "s" : ""} (${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""})`);
       }
@@ -676,22 +684,49 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   }
   // Départ Medina (Perpignan) : la prépa se fait chez Medina. Récap envoyé à Jordan depuis sa propre
   // boîte (l'envoi direct à Medina sera programmé plus tard).
+  // 13/10/2026 — Demande d'Elinathan : le récap part maintenant directement chez Medina (adresses
+  // dans Commandes Lidl → Configuration, lidl_config/medina/emails), Jordan en copie, avec le bon
+  // de préparation de LEURS commandes (même bon que l'entrepôt, en PDF joint) et un bouton vers
+  // leur espace (?medina=<jeton>, voir src/PortailMedina.tsx) pour saisir producteur / lot /
+  // palettes par commande. Tant qu'aucune adresse Medina n'est renseignée, il part à Jordan seul.
   async function envoyerRecapMedina(jourM: string, lignesM?: LigneLidl[]) {
     const ls = lignesM || (lignes.filter(l => l.date === jourM && l.depart === "sud"));
     if (!ls.length) return;
     try {
+      const cfgM = (await get(ref(db, "lidl_config/medina"))).val() || {};
+      let jeton: string = cfgM.jeton || "";
+      if (!jeton) { jeton = nouveauJetonMedina(); await update(ref(db, "lidl_config/medina"), { jeton }); }
+      const emailsMedina = String(cfgM.emails ?? EMAILS_MEDINA_DEFAUT).split(/[\s,;]+/).map(x => x.trim()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+      const lien = `${window.location.origin}/?medina=${encodeURIComponent(jeton)}`;
+      const tri = trierPourPrepa(ls);
+      const total = tri.reduce((s2, l) => s2 + l.quantite, 0);
+      const pdf = pdfBonPreparation(dateFr(jourM), tri.map(versLigneBon));
+      const html = `<div style="font-family:Arial,sans-serif;color:#111">
+        <p style="font-size:14px">Bonjour,</p>
+        <p style="font-size:14px">Voici les commandes Lidl à préparer pour la livraison du <b>${dateFr(jourM)}</b> : <b>${tri.length} commande${tri.length > 1 ? "s" : ""}, ${total} colis</b>, rangées par transporteur. Le bon de préparation est aussi en pièce jointe (PDF).</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:14px 0"><tr><td style="background:#faf7ef;border:1.5px solid #e8dcc0;border-radius:8px;padding:12px 16px;text-align:center">
+          <span style="font-size:13px;color:#333">Pour chaque commande : producteur, lot et nombre de palettes, puis « Prêt »</span><br/>
+          <a href="${lien}" style="display:inline-block;margin-top:8px;background:#1f4d45;color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:10px 18px;border-radius:8px">📝 Saisir la traçabilité</a>
+        </td></tr></table>
+        ${htmlBonPrepa(jourM, tri)}
+        <p style="font-size:13px">Merci,<br/>Moorea</p>
+        ${emailsMedina.length ? "" : `<p style="font-size:12px;color:#b45309">⚠️ Adresse de Medina pas encore renseignée (Commandes Lidl → Configuration) : ce mail n'est parti qu'à Jordan.</p>`}
+      </div>`;
       const res = await fetch("/api/send-email", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sender: "jordan", to: ["jordan.jouanest@moorea.fr"],
-          subject: `Lidl — Préparation Medina (Perpignan) — livraison du ${dateFr(jourM)}`,
-          html: `<div style="font-family:Arial,sans-serif;color:#111">${htmlBonPrepa(jourM, ls)}<p style="font-size:12px;color:#6b7280">Envoyé automatiquement par l'app Moorea après l'import des commandes Lidl.</p></div>`,
+          sender: "jordan",
+          to: emailsMedina.length ? emailsMedina : ["jordan.jouanest@moorea.fr"],
+          cc: emailsMedina.length ? ["jordan.jouanest@moorea.fr"] : [],
+          subject: `Lidl — commandes à préparer (départ Perpignan) — livraison du ${dateFr(jourM)}`,
+          html,
+          attachments: [{ filename: `LIDL_PREPARATION_PERPIGNAN_${jourM}.pdf`, content: pdf }],
         }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) throw new Error(data?.error || `Erreur ${res.status}`);
-      await update(ref(db, `lidl_recap_medina/${jourM}`), { envoyeLe: new Date().toLocaleString("fr-FR"), par: userName || "", nbLignes: ls.length, erreur: null }).catch(() => {});
-      return { ok: true as const };
+      await update(ref(db, `lidl_recap_medina/${jourM}`), { envoyeLe: new Date().toLocaleString("fr-FR"), par: userName || "", nbLignes: ls.length, a: (emailsMedina.length ? emailsMedina : ["jordan.jouanest@moorea.fr"]).join(", "), erreur: null }).catch(() => {});
+      return { ok: true as const, a: emailsMedina.length ? `Medina (${emailsMedina.join(", ")}), Jordan en copie` : "Jordan (adresse Medina pas encore renseignée)" };
     } catch (e: any) {
       await update(ref(db, `lidl_recap_medina/${jourM}`), { erreur: `${new Date().toLocaleString("fr-FR")} — ${e?.message || e}` }).catch(() => {});
       return { ok: false as const, erreur: e?.message || String(e) };
@@ -1042,7 +1077,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
             {ls.some(l => l.depart === "paris") && btnJour("🖨️ Bon entrepôt", () => imprimerBonEntrepot(j))}
             {/* 12/10/2026 — Réimpression des étiquettes palettes aussi côté commercial (avant : Préparation seulement). */}
             {ls.some(l => l.depart === "paris") && btnJour("🏷️ Étiquettes palettes", () => sortirEtiquettes(j))}
-            {ls.some(l => l.depart === "sud") && btnJour("📧 Récap Medina", async () => { const r = await envoyerRecapMedina(j); flash(r?.ok ? "ok" : "err", r?.ok ? `Récap Medina du ${dateFr(j)} envoyé à Jordan.` : `Récap Medina non envoyé : ${r?.erreur}`); })}
+            {ls.some(l => l.depart === "sud") && btnJour("📧 Envoyer à Medina", async () => { const r = await envoyerRecapMedina(j); flash(r?.ok ? "ok" : "err", r?.ok ? `Commandes Perpignan du ${dateFr(j)} envoyées à ${r.a}.` : `Mail Medina non envoyé : ${r?.erreur}`); })}
             {btnJour("📊 Tableau Lidl", () => telechargerTableau(j))}
           </span>
         )}
@@ -1329,7 +1364,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
             </div>
             <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>
               {nbParDepart("paris") > 0 && <div>🏙️ Paris : {dejaImporte("paris") ? "jour déjà importé — rien n'est réimprimé en double ; étiquettes seulement pour les commandes nouvelles ou modifiées, avec une étiquette ATTENTION." : "bon Geslot (bureau) + bon de préparation (entrepôt) + étiquettes palettes imprimés automatiquement."}</div>}
-              {nbParDepart("sud") > 0 && <div>☀️ Perpignan : {dejaImporte("sud") ? "jour déjà importé — récap Medina renvoyé seulement s'il y a un changement." : "bon Geslot (bureau) + récap de préparation envoyé par mail à Jordan."}</div>}
+              {nbParDepart("sud") > 0 && <div>☀️ Perpignan : {dejaImporte("sud") ? "jour déjà importé — le mail à Medina n'est renvoyé que s'il y a un changement." : "bon Geslot (bureau) + mail à Medina (bon de préparation + lien pour saisir la traça), Jordan en copie."}</div>}
             </div>
           </>
         )}

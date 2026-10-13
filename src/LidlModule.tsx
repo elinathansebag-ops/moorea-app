@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { db, ref, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
 import { LidlTableauDeBord } from "./LidlTableauDeBord";
-import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl, BASES_LIDL, ADRESSES_LIDL, useAdressesLidl } from "./LidlCommandes";
+import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl, BASES_LIDL, ADRESSES_LIDL, useAdressesLidl, EMAILS_MEDINA_DEFAUT, nouveauJetonMedina } from "./LidlCommandes";
 import { genererXlsxLidl, envoyerTracabiliteLidl, nomFichierLidl, lireConfigLidl, EMAIL_LIDL_DEFAUT, EMAIL_TEST, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : le commercial a son propre module « Commandes Lidl » (il n'a
@@ -27,6 +27,10 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
   const [filtreDepart, setFiltreDepart] = useState<"tous" | "sud" | "paris">("tous");
 
   const producteurs = useProducteursLidl();
+  // 13/10/2026 — Espace Medina : adresse(s) du mail des commandes Perpignan + lien secret de leur espace.
+  const [medina, setMedina] = useState<{ emails?: string; jeton?: string }>({});
+  useEffect(() => { const u = onValue(ref(db, "lidl_config/medina"), snap => setMedina(snap.val() || {})); return () => u(); }, []);
+  const lienMedina = medina.jeton ? `${window.location.origin}/?medina=${medina.jeton}` : "";
   const adresses = useAdressesLidl();
   const [cfgEtiq, setCfgEtiq] = useState(false);
   useEffect(() => onValue(ref(db, "lidl_config/etiquettesAuto"), snap => setCfgEtiq(snap.val() === true)), []);
@@ -254,6 +258,22 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               <label style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Adresse de Lidl (mode réel)</label>
               <input defaultValue={cfg.emailLidl} key={cfg.emailLidl} onBlur={e => { const v = e.target.value.trim(); if (v && v !== cfg.emailLidl) update(ref(db, "lidl_config"), { emailLidl: v }); }}
                 placeholder={EMAIL_LIDL_DEFAUT} style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 360, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+            </div>
+            {/* 13/10/2026 — Demande d'Elinathan : commandes du départ Perpignan envoyées automatiquement à
+                Medina (depuis la boîte de Jordan, Jordan en copie) avec un lien vers leur espace de traça. */}
+            <div style={{ marginTop: 14, background: "#fff7ed", border: "1.5px solid #fed7aa", borderRadius: 12, padding: "12px 16px" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#9a3412" }}>☀️ Medina (départ Perpignan)</div>
+              <div style={{ fontSize: 11.5, color: "#4b5563", marginTop: 2 }}>À chaque import, leurs commandes partent par mail depuis la boîte de Jordan (Jordan en copie), avec le bon de préparation et un bouton « Saisir la traçabilité » vers leur espace.</div>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginTop: 10 }}>Adresse(s) de Medina (séparées par une virgule)</label>
+              <input defaultValue={medina.emails ?? EMAILS_MEDINA_DEFAUT} key={medina.emails ?? EMAILS_MEDINA_DEFAUT} onBlur={e => { const v = e.target.value.trim(); if (v !== (medina.emails ?? EMAILS_MEDINA_DEFAUT)) update(ref(db, "lidl_config/medina"), { emails: v }); }}
+                style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 420, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginTop: 10 }}>Lien de leur espace</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 4 }}>
+                {lienMedina ? <a href={lienMedina} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#0050aa", wordBreak: "break-all" }}>{lienMedina}</a> : <span style={{ fontSize: 12, color: "#6b7280" }}>Créé automatiquement au premier envoi.</span>}
+                {lienMedina && <button type="button" onClick={() => { navigator.clipboard?.writeText(lienMedina); }} style={{ padding: "5px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Copier</button>}
+                <button type="button" onClick={() => { if (!medina.jeton || window.confirm("Créer un nouveau lien ? L'ancien lien (dans les mails déjà envoyés) ne marchera plus.")) update(ref(db, "lidl_config/medina"), { jeton: nouveauJetonMedina() }); }}
+                  style={{ padding: "5px 10px", borderRadius: 8, border: "1.5px solid #fed7aa", background: "#fff", color: "#9a3412", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{medina.jeton ? "Nouveau lien" : "Créer le lien"}</button>
+              </div>
             </div>
             {/* 05/10/2026 — Adresses de livraison des bases (étiquettes palettes). Pré-remplies avec celles des bons Geslot. */}
             <div style={{ marginTop: 18 }}>

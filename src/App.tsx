@@ -66,6 +66,7 @@ const ReconditionnementModule = chargerModule(() => import("./ReconditionnementM
 const MessagerieModule = chargerModule(() => import("./MessagerieModule"), "MessagerieModule");
 const PreparationModule = chargerModule(() => import("./PreparationModule"), "PreparationModule");
 const PortailReconditionneur = chargerModule(() => import("./PortailReconditionneur"), "PortailReconditionneur");
+const PortailMedina = chargerModule(() => import("./PortailMedina"), "PortailMedina");
 const DashboardModule = chargerModule(() => import("./DashboardModule"), "DashboardModule");
 const ApproModule = chargerModule(() => import("./ApproModule"), "ApproModule");
 const ChargementModule = chargerModule(() => import("./ChargementModule"), "ChargementModule");
@@ -982,6 +983,8 @@ export default function App() {
   // Espace public reconditionneur (NLT / Andès), ouvert via ?portail=nlt|andes — voir
   // src/PortailReconditionneur.tsx et le lien envoyé dans le mail récap quotidien.
   const [portailDepot, setPortailDepot] = useState<"nlt" | "andes" | null>(null);
+  // 13/10/2026 — Espace public Medina (traça des commandes Lidl départ Perpignan), ?medina=<jeton>.
+  const [portailMedina, setPortailMedina] = useState<string | null>(null);
   // 22/09/2026 -- écran mural de pointage (public) + espace personnel employé (public) -- voir
   // src/PointeuseEcran.tsx et src/EspaceEmployeModule.tsx. Même principe que portailDepot
   // ci-dessus : détecté avant la connexion @moorea.fr, aucune des deux pages n'en a besoin.
@@ -1444,6 +1447,8 @@ export default function App() {
     // Espace reconditionneur public — voir déclaration de portailDepot plus haut.
     const portail = params.get("portail");
     if (portail === "nlt" || portail === "andes") setPortailDepot(portail);
+    const medina = params.get("medina");
+    if (medina) setPortailMedina(medina);
     // Écran mural (?pointeuse=ecran) et espace employé (?espace=<id ou "1">&email=...).
     if (params.get("pointeuse") === "ecran") setPointeuseEcranPublic(true);
     const espace = params.get("espace");
@@ -3363,6 +3368,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   if (portailDepot) {
     return <PortailReconditionneur depot={portailDepot} />;
+  }
+
+  if (portailMedina) {
+    return <PortailMedina jeton={portailMedina} />;
   }
 
   if (pointeuseEcranPublic) {
