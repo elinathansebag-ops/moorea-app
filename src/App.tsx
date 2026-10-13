@@ -8,6 +8,7 @@ import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from ".
 import { AccueilModulesV2 } from "./AccueilModulesV2";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
+import { EnvoisMails } from "./EnvoisMails";
 import { query, orderByChild, equalTo, onChildAdded } from "firebase/database";
 import { NotificationsPush, AttributionNotifications, alerterPush, EtatNotificationsComptes, InvitationNotifications, envoyerUneFois, dejaEnvoye } from "./NotificationsPush";
 import { ReglagesImpression } from "./Imprimantes";
@@ -3895,6 +3896,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
                     </>)}
                     {adminTab === "acces" && (<>
+                    {/* 13/10/2026 — Demande d'Elinathan : « une section envoi : quel mail de qui à qui ». */}
+                    <CarteReglage titre="📨 Qui envoie quel mail à qui" desc="Tous les mails que l'appli envoie, avec la boîte d'envoi. Point rouge = boîte déconnectée : ses mails ne partent plus.">
+                      <EnvoisMails sante={santeComptesMail} darkMode={darkMode} />
+                    </CarteReglage>
+
                     <TitreSection>🔐 Accès & sécurité</TitreSection>
                     <CarteReglage titre="👥 Sous-comptes des comptes partagés" desc="Choisir les modules de chaque personne sur agreage@, entrepot@ et commercial@ (prénom choisi dans « Qui es-tu ? »).">
                       <SousComptesAcces permRoles={permRoles} permUsers={permUsers} darkMode={darkMode} />
