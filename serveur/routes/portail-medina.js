@@ -79,8 +79,13 @@ export default async function handler(req, res) {
           statut: c.statut || "a_preparer", pretPar: c.pretPar || "", pretLe: c.pretLe || "",
         }));
       const extras = (await adminDb.ref("lidl_config/producteurs").once("value")).val() || {};
-      const producteurs = Object.values(extras).map(p => p?.pn).filter(Boolean);
-      return res.status(200).json({ commandes, producteurs, aujourdhui: isoParis(0) });
+      // 13/10/2026 — producteurs de base supprimés, et producteurs masqués temporairement, dans
+      // Commandes Lidl → Configuration : absents de la liste déroulante de Medina.
+      const supprimes = Object.keys((await adminDb.ref("lidl_config/producteurs_supprimes").once("value")).val() || {});
+      const masques = Object.keys((await adminDb.ref("lidl_config/producteurs_masques").once("value")).val() || {});
+      const cle = pn => String(pn).replace(/[.#$[\]/]/g, "-");
+      const producteurs = Object.values(extras).map(p => p?.pn).filter(pn => pn && !masques.includes(cle(pn)));
+      return res.status(200).json({ commandes, producteurs, supprimes: [...supprimes, ...masques], aujourdhui: isoParis(0) });
     }
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});

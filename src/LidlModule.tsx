@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { db, ref, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
 import { LidlTableauDeBord } from "./LidlTableauDeBord";
+import { LidlProducteurs } from "./LidlProducteurs";
 import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl, BASES_LIDL, ADRESSES_LIDL, useAdressesLidl, EMAILS_MEDINA_DEFAUT, nouveauJetonMedina } from "./LidlCommandes";
 import { genererXlsxLidl, envoyerTracabiliteLidl, nomFichierLidl, lireConfigLidl, EMAIL_LIDL_DEFAUT, EMAIL_TEST, type LigneExport } from "./lidlExport";
 
@@ -258,6 +259,12 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               <label style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Adresse de Lidl (mode réel)</label>
               <input defaultValue={cfg.emailLidl} key={cfg.emailLidl} onBlur={e => { const v = e.target.value.trim(); if (v && v !== cfg.emailLidl) update(ref(db, "lidl_config"), { emailLidl: v }); }}
                 placeholder={EMAIL_LIDL_DEFAUT} style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 360, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+            </div>
+            {/* 13/10/2026 — Demande d'Elinathan : gérer les producteurs (fermes) et leurs coordonnées. */}
+            <div style={{ marginTop: 14, background: "#f0f9ff", border: "1.5px solid #bae6fd", borderRadius: 12, padding: "12px 16px" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#075985" }}>🌾 Producteurs (fermes) et coordonnées</div>
+              <div style={{ fontSize: 11.5, color: "#4b5563", margin: "2px 0 10px" }}>Liste proposée en préparation (et à Medina) et coordonnées reprises dans le tableau de traça Lidl.</div>
+              <LidlProducteurs />
             </div>
             {/* 13/10/2026 — Demande d'Elinathan : commandes du départ Perpignan envoyées automatiquement à
                 Medina (depuis la boîte de Jordan, Jordan en copie) avec un lien vers leur espace de traça. */}

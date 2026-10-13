@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { infoBase } from "./LidlCommandes";
+import { infoBase, cleProducteur } from "./LidlCommandes";
 import { PRODUCTEURS_LIDL } from "./lidlExport";
 
 // ─── Espace Medina (préparation Lidl, départ Perpignan) ───
@@ -25,6 +25,7 @@ const LOT_OK = /^[A-Z]\d{4}$/;
 export function PortailMedina({ jeton }: { jeton: string }) {
   const [commandes, setCommandes] = useState<Commande[] | null>(null);
   const [producteursExtra, setProducteursExtra] = useState<string[]>([]);
+  const [supprimes, setSupprimes] = useState<string[]>([]);
   const [erreur, setErreur] = useState("");
   const [saisies, setSaisies] = useState<Record<string, Partial<Commande>>>({});
   const [occupe, setOccupe] = useState<string | null>(null);
@@ -37,12 +38,13 @@ export function PortailMedina({ jeton }: { jeton: string }) {
       if (!r.ok) throw new Error(d?.error || `Erreur ${r.status}`);
       setCommandes(d.commandes || []);
       setProducteursExtra(d.producteurs || []);
+      setSupprimes(d.supprimes || []);
       setErreur("");
     } catch (e: any) { setErreur(e?.message || String(e)); }
   }, [jeton]);
   useEffect(() => { charger(); const t = setInterval(charger, 30000); return () => clearInterval(t); }, [charger]);
 
-  const producteurs = useMemo(() => [...new Set([...PRODUCTEURS_LIDL.map(p => p.pn), ...producteursExtra])].sort((a, b) => a.localeCompare(b)), [producteursExtra]);
+  const producteurs = useMemo(() => [...new Set([...PRODUCTEURS_LIDL.map(p => p.pn).filter(pn => !supprimes.includes(cleProducteur(pn))), ...producteursExtra])].sort((a, b) => a.localeCompare(b)), [producteursExtra, supprimes]);
 
   async function envoyer(action: "enregistrer" | "pret" | "annuler", c: Commande, champs: Partial<Commande> = {}) {
     if (action !== "enregistrer") setOccupe(c.id);

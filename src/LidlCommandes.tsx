@@ -157,16 +157,33 @@ export function contexteLidl(producteurs: Producteur[]): ContexteExport {
 // Producteurs : les 18 de Lidl + ceux ajoutés par le commercial (lidl_config/producteurs)
 export function useProducteursLidl() {
   const [ajouts, setAjouts] = useState<Producteur[]>([]);
+  // 13/10/2026 — Producteurs de la liste de base supprimés dans Configuration (lidl_config/producteurs_supprimes).
+  const [supprimes, setSupprimes] = useState<Record<string, boolean>>({});
   useEffect(() => {
     const u = onValue(ref(db, "lidl_config/producteurs"), snap => setAjouts(Object.values(snap.val() || {}) as Producteur[]));
-    return () => u();
+    const u2 = onValue(ref(db, "lidl_config/producteurs_supprimes"), snap => setSupprimes(snap.val() || {}));
+    return () => { u(); u2(); };
   }, []);
+  // NB : la liste renvoyée contient aussi les producteurs MASQUÉS (voir useProducteursMasques) : le
+  // tableau de traça doit toujours retrouver leurs coordonnées. Seules les listes déroulantes les cachent.
   return useMemo(() => {
     const m = new Map<string, Producteur>();
-    PRODUCTEURS_LIDL.forEach(p => m.set(p.pn, p)); ajouts.forEach(p => p?.pn && m.set(p.pn, p));
+    PRODUCTEURS_LIDL.forEach(p => { if (!supprimes[cleProducteur(p.pn)]) m.set(p.pn, p); });
+    ajouts.forEach(p => p?.pn && m.set(p.pn, p));
     return [...m.values()].sort((a, b) => a.pn.localeCompare(b.pn));
-  }, [ajouts]);
+  }, [ajouts, supprimes]);
 }
+// 13/10/2026 — Demande d'Elinathan : masquer temporairement un producteur (fournisseur avec qui on
+// travaille par période) sans le supprimer : lidl_config/producteurs_masques/{clé} = true. Il
+// disparaît des listes déroulantes (préparation, commercial, espace Medina) mais garde ses
+// coordonnées pour la traça, et une commande qui l'utilise déjà le garde affiché.
+export function useProducteursMasques() {
+  const [masques, setMasques] = useState<Record<string, boolean>>({});
+  useEffect(() => { const u = onValue(ref(db, "lidl_config/producteurs_masques"), snap => setMasques(snap.val() || {})); return () => u(); }, []);
+  return masques;
+}
+// Clé Firebase d'un producteur (caractères interdits dans une clé remplacés).
+export const cleProducteur = (pn: string) => pn.replace(/[.#$[\]/]/g, "-");
 // Lot = 1 lettre + 4 chiffres (ex. L1234).
 // 12/10/2026 — Demande d'Elinathan : on ne tape plus que les 4 chiffres, le « L » est ajouté tout
 // seul devant (format attendu par la traçabilité Lidl). Les anciens lots d'une autre lettre restent valides.
@@ -330,7 +347,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     return () => u();
   }, [commercial]);
   const producteurs = useProducteursLidl();
-  const fermes = useMemo(() => producteurs.map(p => p.pn), [producteurs]);
+  const masquesP = useProducteursMasques();
+  const fermes = useMemo(() => producteurs.filter(p => !masquesP[cleProducteur(p.pn)]).map(p => p.pn), [producteurs, masquesP]);
   async function signalerFermeManquante(l: LigneLidl) {
     await push(ref(db, "lidl_config/fermes_manquantes"), { base: infoBase(l.base)?.nom || l.base, article: l.article, date: l.date, par: userName || "", ts: Date.now() });
     flash("ok", "Le commercial est prévenu qu'il manque un producteur dans la liste.");
@@ -940,7 +958,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       <select value={l.ferme || ""} disabled={pret} onChange={e => choisirFerme(l, e.target.value)} style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 12.5 }}>
                         <option value="">Producteur…</option>
-                        {producteurs.map(p => <option key={p.pn} value={p.pn}>{p.pn}</option>)}
+                        {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
                       </select>
                       <input value={lotsSaisis[l.id] ?? l.lot} disabled={pret} placeholder="Lot : 4 chiffres" inputMode="numeric"
                         onChange={e => setLotsSaisis(x => ({ ...x, [l.id]: saisieLot(e.target.value) }))} onBlur={() => !pret && sauverLot(l)}
