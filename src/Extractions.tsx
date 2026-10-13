@@ -466,7 +466,7 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
   const [familles, setFamilles] = useState<string[]>(rp?.familles || preset.familles || []);
   const [clients, setClients] = useState<string[]>(rp?.clients || []);
   const [fournisseurs, setFournisseurs] = useState<string[]>(rp?.fournisseurs || []);
-  const [periodeRapide, setPeriodeRapide] = useState<string>(rp?.periode.type === "glissant" ? rp.periode.cle : rp ? "" : "30");
+  const [periodeRapide, setPeriodeRapide] = useState<string>(rp?.periode.type === "glissant" ? rp.periode.cle : rp ? "" : "tout");
   const [enregistrement, setEnregistrement] = useState(false);
   // Ouvert depuis 🌱 Appro : fournisseurs reconnus par mots-clés (noms Geslot).
   useEffect(() => {
@@ -482,8 +482,8 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
     initialise.current = true;
     if (rp?.periode.type === "fixe") { setDebut(rp.periode.debut); setFin(rp.periode.fin); return; }
     if (rp?.periode.type === "glissant") { periode(rp.periode.cle); return; }
-    const d = new Date(maxDate + "T12:00:00"); d.setDate(d.getDate() - 29);
-    setFin(maxDate); setDebut(iso(d));
+    // 14/10/2026 — Par défaut : toute la base (demande d'Elinathan).
+    setDebut(minDate); setFin(maxDate);
   }, [maxDate]);
   function periode(k: string) {
     setPeriodeRapide(k);
@@ -556,11 +556,8 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
           {[["7", "7 derniers jours"], ["30", "30 derniers jours"], ["mois", "Ce mois"], ["moisPrec", "Mois dernier"], ["annee", "Cette année"], ["tout", "Toute la base"]].map(([k, lib]) => (
             <button key={k} type="button" onClick={() => periode(k)} style={puce(c, periodeRapide === k)}>{lib}</button>
           ))}
-          <span style={{ flex: 1 }} />
-          <input type="date" value={debut} onChange={e => { setDebut(e.target.value); setPeriodeRapide(""); }} style={champDate(c)} />
-          <span style={{ color: c.gris, fontWeight: 700 }}>→</span>
-          <input type="date" value={fin} onChange={e => { setFin(e.target.value); setPeriodeRapide(""); }} style={champDate(c)} />
         </div>
+        <ChoixPeriode c={c} debut={debut} fin={fin} min={minDate} max={maxDate} onChange={(d, f) => { setDebut(d); setFin(f); setPeriodeRapide(""); }} />
         {maxDate && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: c.gris }}>« Derniers jours » comptés à partir du dernier jour de la base ({dateFr(maxDate)}).</p>}
       </Bloc>
       <Bloc titre="Quoi ? — familles, articles, clients, fournisseurs (cumulables)" c={c}>
@@ -1002,5 +999,139 @@ function EnregistrerRapport({ c, email, auteur, existant, config, periodeLib, on
         <button type="button" onClick={onFin} style={{ padding: "10px 16px", borderRadius: 10, border: `1.5px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
       </div>
     </Bloc>
+  );
+}
+
+// ── Choix de période « comme pour réserver un vol » ──
+// 14/10/2026 — Demande d'Elinathan : un seul calendrier, on touche le 1er jour puis on navigue
+// et on touche le dernier ; les jours entre les deux se colorent. Onglet « Semaines » : même
+// principe avec les numéros de semaine (S42…), semaine du lundi au dimanche.
+function numSemaine(j: string) {
+  const d = new Date(j + "T12:00:00"); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const s1 = new Date(d.getFullYear(), 0, 4, 12);
+  return { annee: d.getFullYear(), n: 1 + Math.round(((d.getTime() - s1.getTime()) / 86400000 - 3 + ((s1.getDay() + 6) % 7)) / 7) };
+}
+function lundiSemaine(annee: number, n: number) {
+  const j4 = new Date(annee, 0, 4, 12); const l = new Date(j4); l.setDate(j4.getDate() - ((j4.getDay() + 6) % 7) + (n - 1) * 7);
+  return iso(l);
+}
+const plusJours = (j: string, n: number) => { const d = new Date(j + "T12:00:00"); d.setDate(d.getDate() + n); return iso(d); };
+function ChoixPeriode({ c, debut, fin, min, max, onChange }: { c: Couleurs; debut: string; fin: string; min: string; max: string; onChange: (d: string, f: string) => void }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [mode, setMode] = useState<"jours" | "semaines">("jours");
+  const [mois, setMois] = useState(() => (fin || iso(new Date())).slice(0, 7));
+  const [enCours, setEnCours] = useState<string | null>(null); // 1er jour touché, en attente du dernier
+  const [survol, setSurvol] = useState<string | null>(null);
+  const [anneeS, setAnneeS] = useState(() => numSemaine(fin || iso(new Date())).annee);
+  const [semEnCours, setSemEnCours] = useState<number | null>(null);
+  const [semSurvol, setSemSurvol] = useState<number | null>(null);
+  const toucherJour = (j: string) => {
+    if (!enCours) { setEnCours(j); return; }
+    const [a, b] = j < enCours ? [j, enCours] : [enCours, j];
+    setEnCours(null); onChange(a, b);
+  };
+  const borneA = enCours ? (survol && survol < enCours ? survol : enCours) : debut;
+  const borneB = enCours ? (survol && survol > enCours ? survol : enCours) : fin;
+  const changerMois = (n: number) => { const [a, m] = mois.split("-").map(Number); const d = new Date(a, m - 1 + n, 1); setMois(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
+  const grilleMois = (m: string) => {
+    const [a, mm] = m.split("-").map(Number);
+    const nb = new Date(a, mm, 0).getDate(), decal = (new Date(a, mm - 1, 1).getDay() + 6) % 7;
+    const cases: (string | null)[] = [...Array(decal).fill(null), ...Array.from({ length: nb }, (_, i) => `${m}-${String(i + 1).padStart(2, "0")}`)];
+    return (
+      <div style={{ flex: "1 1 260px", minWidth: 250 }}>
+        <p style={{ margin: "0 0 6px", textAlign: "center", fontWeight: 900, fontSize: 14 }}>{MOIS_FR[mm - 1]} {a}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 3 }}>
+          {["L", "M", "M", "J", "V", "S", "D"].map((j, i) => <div key={i} style={{ textAlign: "center", fontSize: 10.5, fontWeight: 800, color: c.gris }}>{j}</div>)}
+          {cases.map((j, i) => {
+            if (!j) return <div key={i} />;
+            const dedans = borneA && borneB && j >= borneA && j <= borneB, bout = j === borneA || j === borneB;
+            const horsBase = (min && j < min) || (max && j > max);
+            return (
+              <button key={j} type="button" onClick={() => toucherJour(j)} onMouseEnter={() => setSurvol(j)}
+                style={{ height: 34, border: "none", cursor: "pointer", fontSize: 13, fontWeight: bout ? 900 : 600, padding: 0,
+                  borderRadius: bout ? 999 : dedans ? 0 : 8,
+                  background: bout ? c.vert : dedans ? (c.sombre ? "#1d2e2b" : "#d6ebdf") : "transparent",
+                  color: bout ? "#fff" : horsBase ? (c.sombre ? "#4b5563" : "#c4c9cf") : c.texte }}>
+                {Number(j.slice(8))}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+  const moisSuivant = (() => { const [a, m] = mois.split("-").map(Number); const d = new Date(a, m, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
+  // Semaines de l'année choisie
+  const nbSem = numSemaine(`${anneeS}-12-28`).n;
+  const semA = semEnCours != null ? Math.min(semEnCours, semSurvol ?? semEnCours) : null, semB = semEnCours != null ? Math.max(semEnCours, semSurvol ?? semEnCours) : null;
+  const semDebut = debut ? numSemaine(debut) : null, semFin = fin ? numSemaine(fin) : null;
+  const toucherSemaine = (n: number) => {
+    if (semEnCours == null) { setSemEnCours(n); return; }
+    const [a, b] = n < semEnCours ? [n, semEnCours] : [semEnCours, n];
+    setSemEnCours(null); onChange(lundiSemaine(anneeS, a), plusJours(lundiSemaine(anneeS, b), 6));
+  };
+  const resume = debut && fin ? `${dateLongue(debut)} → ${dateLongue(fin)}` : "Toute la base";
+  const semLib = debut && fin ? (() => { const a = numSemaine(debut), b = numSemaine(fin); return a.n === b.n && a.annee === b.annee ? ` · S${a.n}` : ` · S${a.n} → S${b.n}`; })() : "";
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button type="button" onClick={() => setOuvert(!ouvert)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 14px", borderRadius: 12, border: `2px solid ${ouvert ? c.vert : c.bord}`, background: c.carte, color: c.texte, cursor: "pointer", textAlign: "left" }}>
+        <span style={{ fontSize: 20 }}>📅</span>
+        <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 15, fontWeight: 900, textTransform: "capitalize" }}>{resume}</span><span style={{ fontSize: 12, color: c.gris }}>{debut && fin ? `${Math.round((new Date(fin + "T12:00:00").getTime() - new Date(debut + "T12:00:00").getTime()) / 86400000) + 1} jours${semLib}` : ""} · touche pour changer</span></span>
+        <span style={{ fontSize: 18, transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .2s" }}>›</span>
+      </button>
+      {ouvert && (
+        <div style={{ border: `1px solid ${c.bord}`, borderTop: "none", borderRadius: "0 0 12px 12px", padding: "12px 14px", background: c.carte }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setMode("jours")} style={puce(c, mode === "jours")}>📅 Jours</button>
+            <button type="button" onClick={() => setMode("semaines")} style={puce(c, mode === "semaines")}>🗓️ Numéros de semaine</button>
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: (enCours || semEnCours != null) ? "#b45309" : c.gris }}>
+              {mode === "jours" ? (enCours ? "Touche maintenant le dernier jour…" : "Touche le premier jour, puis le dernier") : (semEnCours != null ? "Touche maintenant la dernière semaine…" : "Touche la première semaine, puis la dernière (ou la même deux fois)")}
+            </span>
+          </div>
+          {mode === "jours" ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <button type="button" onClick={() => changerMois(-1)} style={puce(c, false)}>‹</button>
+                <span style={{ flex: 1 }} />
+                <button type="button" onClick={() => changerMois(1)} style={puce(c, false)}>›</button>
+              </div>
+              <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }} onMouseLeave={() => setSurvol(null)}>
+                {grilleMois(mois)}
+                {grilleMois(moisSuivant)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <button type="button" onClick={() => setAnneeS(anneeS - 1)} style={puce(c, false)}>‹</button>
+                <span style={{ flex: 1, textAlign: "center", fontWeight: 900 }}>{anneeS}</span>
+                <button type="button" onClick={() => setAnneeS(anneeS + 1)} style={puce(c, false)}>›</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(58px, 1fr))", gap: 5 }} onMouseLeave={() => setSemSurvol(null)}>
+                {Array.from({ length: nbSem }, (_, i) => i + 1).map(n => {
+                  const l = lundiSemaine(anneeS, n);
+                  const dansSel = semA != null ? n >= semA && n <= semB! : !!(semDebut && semFin && l >= lundiSemaine(semDebut.annee, semDebut.n) && l <= lundiSemaine(semFin.annee, semFin.n));
+                  const bout = semA != null ? n === semA || n === semB : !!((semDebut && semDebut.annee === anneeS && semDebut.n === n) || (semFin && semFin.annee === anneeS && semFin.n === n));
+                  const horsBase = (max && l > max) || (min && plusJours(l, 6) < min);
+                  return (
+                    <button key={n} type="button" onClick={() => toucherSemaine(n)} onMouseEnter={() => setSemSurvol(n)} title={`Semaine ${n} : du ${dateFr(l)} au ${dateFr(plusJours(l, 6))}`}
+                      style={{ padding: "7px 0", borderRadius: 10, border: `1.5px solid ${bout ? c.vert : dansSel ? "#b9dcc7" : c.bord}`, cursor: "pointer", fontSize: 13, fontWeight: 800,
+                        background: bout ? c.vert : dansSel ? (c.sombre ? "#1d2e2b" : "#d6ebdf") : c.carte, color: bout ? "#fff" : horsBase ? (c.sombre ? "#4b5563" : "#c4c9cf") : c.texte }}>
+                      S{n}
+                      <span style={{ display: "block", fontSize: 9.5, fontWeight: 600, opacity: 0.75 }}>{dateFr(l).slice(0, 5)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+            {min && max && <button type="button" onClick={() => { setEnCours(null); setSemEnCours(null); onChange(min, max); }} style={puce(c, false)}>Toute la base</button>}
+            <button type="button" onClick={() => setOuvert(false)} style={{ ...puce(c, true), padding: "7px 16px" }}>OK</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
