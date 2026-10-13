@@ -66,7 +66,6 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
     { titre: "👥 Équipe & accès", envois: [
       { quoi: "Invitation à l'appli", de: "elinathan", a: "La personne invitée", quand: "Droits d'accès → Inviter", cle: "invitation", mod: { de: true, cc: true } },
       { quoi: "Nouveau compte à valider", de: "agreage", a: "elinathan.sebag@moorea.fr", quand: "Première connexion d'une nouvelle adresse", cle: "nouveau_compte", mod: TOUT },
-      { quoi: "Lien de l'espace employé", de: "agreage", a: "L'employé", quand: "Pointeuse → envoyer le lien", cle: "lien_employe", mod: { de: true, cc: true } },
     ] },
     { titre: "📧 Messagerie", envois: [
       { quoi: "Mails écrits dans la Messagerie", de: "messagerie", a: "Destinataire choisi", quand: "Bouton « Envoyer » de la Messagerie" },

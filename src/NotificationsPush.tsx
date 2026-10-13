@@ -54,7 +54,6 @@ export const CATALOGUE_NOTIF = [
   ] },
   { groupe: "↩️ Retours & équipe", types: [
     { cle: "retour_client", label: "Nouveau retour client", desc: "Fiche retour créée (commercial ou entrepôt)" },
-    { cle: "pointeuse_demande", label: "Demande d'un employé", desc: "Envoyée depuis l'espace employé (pointeuse)" },
     { cle: "rappel_retours", label: "⏰ Retours clients non reçus depuis 3 jours", desc: "Rappel chaque matin tant qu'il en reste" },
     { cle: "compte_attente", label: "Nouveau compte en attente d'accès", desc: "Première connexion d'une personne à l'appli" },
   ] },

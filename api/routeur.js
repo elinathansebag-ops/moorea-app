@@ -50,7 +50,6 @@ const ROUTES = {
   "messagerie": () => import("../serveur/routes/messagerie.js"),
   "nlt-bl-backfill": () => import("../serveur/routes/nlt-bl-backfill.js"),
   "nlt-bl-poll": () => import("../serveur/routes/nlt-bl-poll.js"),
-  "pointeuse-pointer": () => import("../serveur/routes/pointeuse-pointer.js"),
   "portail-medina": () => import("../serveur/routes/portail-medina.js"),
   "portail-reconditionneur": () => import("../serveur/routes/portail-reconditionneur.js"),
   "push-envoyer": () => import("../serveur/routes/push-envoyer.js"),

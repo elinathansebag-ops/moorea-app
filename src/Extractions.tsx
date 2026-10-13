@@ -20,7 +20,7 @@ const StattModule = lazy(() => import("./StattModule").then(m => ({ default: m.S
 
 type LigneVente = { d: string; f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number; pc: number; kg: number; sa?: number };
 type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme" | "config";
-type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[]; date?: string };
+type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[]; date?: string; fournisseursMotsCles?: string[] };
 type Couleurs = { fond: string; carte: string; texte: string; gris: string; bord: string; vert: string; sombre: boolean };
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -179,9 +179,9 @@ function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]
 }
 
 // ═══ Module ═══
-export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = true, voirProgramme = false, userName }: { onClose: () => void; darkMode?: boolean; voirMarge: boolean; voirExtractions?: boolean; voirProgramme?: boolean; userName?: string }) {
-  const [onglet, setOnglet] = useState<Onglet | null>(null);
-  const [preset, setPreset] = useState<Preset>({});
+export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = true, voirProgramme = false, userName, ongletInitial, presetInitial }: { onClose: () => void; darkMode?: boolean; voirMarge: boolean; voirExtractions?: boolean; voirProgramme?: boolean; userName?: string; ongletInitial?: Onglet; presetInitial?: Preset }) {
+  const [onglet, setOnglet] = useState<Onglet | null>(ongletInitial || null);
+  const [preset, setPreset] = useState<Preset>(presetInitial || {});
   const [ventes, setVentes] = useState<LigneVente[] | null>(null);
   const [arrivages, setArrivages] = useState<any[] | null>(null);
   const [equipes, setEquipes] = useState<Record<string, string>>({});
@@ -426,6 +426,12 @@ function VentesProduits({ c, voirMarge, ventes, equipes, preset }: { c: Couleurs
   const [familles, setFamilles] = useState<string[]>(preset.familles || []);
   const [clients, setClients] = useState<string[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
+  // Ouvert depuis 🌱 Appro : fournisseurs reconnus par mots-clés (noms Geslot).
+  useEffect(() => {
+    if (!preset.fournisseursMotsCles?.length || !ventes?.length) return;
+    const mots = preset.fournisseursMotsCles.map(norm);
+    setFournisseurs([...new Set(ventes.map(l => l.f).filter(f => mots.some(m => norm(f).includes(m))))].sort());
+  }, [ventes]);
   const [compte, setCompte] = useState<"tous" | "GMS" | "PRESTIGE">("tous");
   const [vue, setVue] = useState<Vue>(preset.articles?.length === 1 ? "jour" : "article");
   const initialise = useRef(false);

@@ -41,10 +41,6 @@
       "destination": "/api/routeur?__route=nlt-bl-poll"
     },
     {
-      "source": "/api/pointeuse-pointer",
-      "destination": "/api/routeur?__route=pointeuse-pointer"
-    },
-    {
       "source": "/api/portail-medina",
       "destination": "/api/routeur?__route=portail-medina"
     },

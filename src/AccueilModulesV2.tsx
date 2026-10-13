@@ -10,7 +10,7 @@ const FAMILLES: { nom: string; cles: string[] }[] = [
   { nom: "Stock et produits", cles: ["stock", "prestataires", "raccourci_cartons", "raccourci_palette_vierge", "factures_prestataires", "gencodes", "catalogue", "appro", "yukon"] },
   { nom: "Qualité", cles: ["rapports", "qualite", "lidl_consultation", "litiges"] },
   { nom: "Pilotage", cles: ["extractions", "stats_achats", "statt", "dashboard_tv"] },
-  { nom: "Équipe et outils", cles: ["messagerie", "taches", "rh", "pointeuse"] },
+  { nom: "Équipe et outils", cles: ["taches"] },
 ];
 
 const ICONES: Record<string, string> = {

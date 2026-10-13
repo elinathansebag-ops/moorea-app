@@ -435,9 +435,7 @@ export const MODULE_DEFS: ModuleDef[] = [
   { key: "marge", label: "💶 Voir les achats et la marge (📊 Stats)" },
   { key: "catalogue", label: "📚 Catalogue" },
   { key: "dashboard_tv", label: "📺 Tableau de bord (écran)" },
-  { key: "qrcode", label: "📊 QR Code Leofresh" },
   { key: "gencodes", label: "🏷️ Gencodes GMS" },
-  { key: "rh", label: "👥 RH · Pointeuse" },
   { key: "yukon", label: "🌿 Besoins Yukon" },
   { key: "taches", label: "✅ Tâches", tabs: [
     { key: "mes_taches", label: "Mes tâches" },
