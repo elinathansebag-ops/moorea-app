@@ -1000,6 +1000,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const pastille = (t: string, c: string, b: string) => <span style={{ background: b, color: c, borderRadius: 12, padding: "2px 9px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap" }}>{t}</span>;
   const etatTraca = (j: string) => {
     const e = envois[j] || {};
+    if (e.manuel) return pastille("✅ Traça validée manuellement", "#15803d", "#dcfce7");
     if (e.erreur) return pastille("❌ Traça : échec", "#b91c1c", "#fee2e2");
     if (e.version > 0) return pastille(`📧 Traça envoyée${e.dernierEnvoi ? ` ${String(e.dernierEnvoi).split(" ")[1]?.slice(0, 5) || ""}` : ""}${e.mode === "test" ? " (test)" : ""}`, "#15803d", "#dcfce7");
     return pastille("⏳ Traça pas envoyée", "#6b7280", "#f3f4f6");

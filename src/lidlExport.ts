@@ -148,6 +148,22 @@ export async function genererXlsxLidl(dateIso: string, lignes: LigneExport[], ct
   return { base64, nbLignes: ok.length, problemes, totalColis: ok.reduce((s, x) => s + x.l.quantite, 0), totalPalettes: ok.reduce((s, x) => s + (x.l.palettes ?? 0.5), 0) };
 }
 
+// 13/10/2026 — Demande d'Elinathan : quand l'envoi automatique a échoué (ex. mot de passe Gmail) et
+// que le tableau a été envoyé à Lidl autrement, on efface l'erreur et on note « validé manuellement »
+// (qui, quand) dans lidl_envois/{date}. L'envoi automatique ne repart plus pour ce jour ; un envoi
+// fait ensuite avec le bouton « Envoyer » remplace cette mention.
+export async function validerTracaManuellement(dateIso: string, par: string) {
+  const prev = (await get(ref(db, `lidl_envois/${dateIso}`))).val() || {};
+  await update(ref(db, `lidl_envois/${dateIso}`), {
+    manuel: { par: par || null, ts: Date.now(), le: new Date().toLocaleString("fr-FR"), erreurEffacee: prev.erreur || null },
+    erreur: null, enCours: null,
+  });
+}
+export async function annulerValidationManuelle(dateIso: string) {
+  const prev = (await get(ref(db, `lidl_envois/${dateIso}`))).val() || {};
+  await update(ref(db, `lidl_envois/${dateIso}`), { manuel: null, erreur: prev.manuel?.erreurEffacee || null });
+}
+
 export type ConfigLidl = { modeTest: boolean; emailLidl: string };
 export function lireConfigLidl(v: any): ConfigLidl {
   return { modeTest: v?.modeTest !== false, emailLidl: (v?.emailLidl || EMAIL_LIDL_DEFAUT).trim() };
@@ -160,6 +176,8 @@ export async function envoyerTracabiliteLidl(dateIso: string, lignes: LigneExpor
   const prev = (await get(ref(db, `lidl_envois/${dateIso}`))).val() || {};
   // Anti-doublon (envoi automatique déclenché depuis plusieurs appareils en même temps)
   if (auto && prev.enCours && Date.now() - prev.enCours < 120000) return { ok: false, message: "Envoi déjà en cours" };
+  // 13/10/2026 — Tableau validé à la main (voir validerTracaManuellement) : pas d'envoi automatique.
+  if (auto && prev.manuel) return { ok: false, message: "Envoi déjà en cours" };
   await update(ref(db, `lidl_envois/${dateIso}`), { enCours: Date.now() });
   try {
     const version = (prev.version || 0) + 1;
@@ -175,7 +193,7 @@ export async function envoyerTracabiliteLidl(dateIso: string, lignes: LigneExpor
     if (!data?.accepted?.length) throw new Error("Aucun destinataire accepté par Gmail");
     await update(ref(db, `lidl_envois/${dateIso}`), {
       enCours: null, version, dernierEnvoi: new Date().toLocaleString("fr-FR"), ts: Date.now(), par: auto ? `${par} (automatique)` : par,
-      mode: cfg.modeTest ? "test" : "reel", destinataire, nbLignes: gen.nbLignes, totalColis: gen.totalColis, nomFichier: `${nom}.xlsx`, erreur: null,
+      mode: cfg.modeTest ? "test" : "reel", destinataire, nbLignes: gen.nbLignes, totalColis: gen.totalColis, nomFichier: `${nom}.xlsx`, erreur: null, manuel: null,
     });
     return { ok: true, message: `${cfg.modeTest ? "🧪 [TEST — envoyé uniquement à Jordan] " : ""}Tableau envoyé à ${destinataire} (${gen.nbLignes} lignes, ${nom})` };
   } catch (e: any) {

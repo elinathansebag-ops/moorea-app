@@ -42,7 +42,7 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
     periode.forEach(l => { const g = m.get(l.base) || { base: l.base, colis: 0, nb: 0 }; g.colis += l.quantite; g.nb++; m.set(l.base, g); });
     return [...m.values()].sort((a, b) => b.colis - a.colis);
   }, [periode]);
-  const joursEnvoyes = jours.filter(j => envois[j]?.version > 0 && !envois[j]?.erreur);
+  const joursEnvoyes = jours.filter(j => (envois[j]?.version > 0 || envois[j]?.manuel) && !envois[j]?.erreur);
   const heures = joursEnvoyes.map(j => envois[j]?.ts).filter((t: any) => typeof t === "number").map((t: number) => { const d = new Date(t); return d.getHours() * 60 + d.getMinutes(); });
   const heureMoy = heures.length ? Math.round(heures.reduce((a, b) => a + b, 0) / heures.length) : null;
   const misesAJour = joursEnvoyes.reduce((t, j) => t + Math.max(0, (envois[j]?.version || 1) - 1), 0);
@@ -147,7 +147,7 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
         <div>
           {[...jours].reverse().slice(0, 10).map(j => {
             const e = envois[j] || {};
-            const etat = e.erreur ? { t: "❌ Échec", c: "#b91c1c" } : e.version > 0 ? { t: `✅ Envoyée ${e.dernierEnvoi ? `le ${e.dernierEnvoi}` : ""}${e.mode === "test" ? " (test)" : ""}`, c: "#15803d" } : { t: "⏳ Pas envoyée", c: "#6b7280" };
+            const etat = e.manuel ? { t: `✅ Validée manuellement${e.manuel.par ? ` par ${e.manuel.par}` : ""}`, c: "#15803d" } : e.erreur ? { t: "❌ Échec", c: "#b91c1c" } : e.version > 0 ? { t: `✅ Envoyée ${e.dernierEnvoi ? `le ${e.dernierEnvoi}` : ""}${e.mode === "test" ? " (test)" : ""}`, c: "#15803d" } : { t: "⏳ Pas envoyée", c: "#6b7280" };
             return (
               <div key={j} style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", padding: "6px 0", borderTop: "1px solid #f3f4f6", fontSize: 13 }}>
                 <span style={{ fontWeight: 800, minWidth: 90 }}>{dateFr(j)}</span>

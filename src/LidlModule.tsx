@@ -4,7 +4,7 @@ import { PageHeader } from "./shared";
 import { LidlTableauDeBord } from "./LidlTableauDeBord";
 import { LidlProducteurs } from "./LidlProducteurs";
 import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl, BASES_LIDL, ADRESSES_LIDL, useAdressesLidl, EMAILS_MEDINA_DEFAUT, nouveauJetonMedina } from "./LidlCommandes";
-import { genererXlsxLidl, envoyerTracabiliteLidl, nomFichierLidl, lireConfigLidl, EMAIL_LIDL_DEFAUT, EMAIL_TEST, type LigneExport } from "./lidlExport";
+import { genererXlsxLidl, envoyerTracabiliteLidl, validerTracaManuellement, annulerValidationManuelle, nomFichierLidl, lireConfigLidl, EMAIL_LIDL_DEFAUT, EMAIL_TEST, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : le commercial a son propre module « Commandes Lidl » (il n'a
 // rien à faire dans Préparation). Il y rentre la commande du jour (import du tableau de répartition
@@ -138,10 +138,20 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
           {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}{btnOnglet("bord", "📈 Tableau de bord")}{btnOnglet("traca", "📤 Traçabilité Lidl")}{btnOnglet("config", "⚙️ Configuration")}
         </div>
         {/* 02/10/2026 — Demande d'Elinathan : le commercial voit tout de suite si le mail est bien parti chez Lidl, et à quelle heure. */}
-        <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${envoiJour.version > 0 && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: envoiJour.version > 0 && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: envoiJour.version > 0 && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
-          {envoiJour.erreur ? `❌ Mail Lidl du ${dateFr(jourT)} : échec (${envoiJour.erreur})`
+        <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${(envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
+          {envoiJour.manuel ? `✅ Tableau Lidl du ${dateFr(jourT)} validé manuellement le ${envoiJour.manuel.le || ""}${envoiJour.manuel.par ? ` par ${envoiJour.manuel.par}` : ""}`
+            : envoiJour.erreur ? `❌ Mail Lidl du ${dateFr(jourT)} : échec (${envoiJour.erreur})`
             : envoiJour.version > 0 ? `📧 Mail Lidl du ${dateFr(jourT)} envoyé le ${envoiJour.dernierEnvoi} ${envoiJour.mode === "test" ? "(TEST — à Elinathan)" : "à Lidl"}`
             : `⏳ Mail Lidl du ${dateFr(jourT)} : pas encore envoyé`}
+          {/* 13/10/2026 — Effacer l'erreur et noter que le tableau a été validé à la main. */}
+          {envoiJour.erreur && !envoiJour.manuel && (
+            <button type="button" onClick={async () => { if (window.confirm(`Le tableau Lidl du ${dateFr(jourT)} a bien été envoyé / validé autrement ?\n\nL'erreur sera effacée et l'envoi automatique ne repartira pas pour ce jour.`)) await validerTracaManuellement(jourT, userName || ""); }}
+              style={{ marginLeft: 10, padding: "4px 10px", borderRadius: 8, border: "1.5px solid #15803d", background: "#fff", color: "#15803d", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>✅ Validé manuellement</button>
+          )}
+          {envoiJour.manuel && (
+            <button type="button" onClick={async () => { if (window.confirm("Annuler la validation manuelle ?")) await annulerValidationManuelle(jourT); }}
+              style={{ marginLeft: 10, padding: "2px 8px", borderRadius: 8, border: "none", background: "none", color: "#6b7280", fontWeight: 700, fontSize: 11.5, cursor: "pointer", textDecoration: "underline" }}>annuler</button>
+          )}
         </div>
 
         {signals.length > 0 && (

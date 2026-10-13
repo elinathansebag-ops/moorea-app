@@ -87,7 +87,9 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
         {!q && jourAffiche && (
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", background: carte, border: `1px solid ${bord}`, borderRadius: 12, padding: "10px 14px", marginBottom: 12 }}>
             <span style={{ fontSize: 13, fontWeight: 700 }}>
-              {envoi?.version
+              {envoi?.manuel
+                ? `✅ Tableau validé manuellement le ${envoi.manuel.le || "?"}${envoi.manuel.par ? ` par ${envoi.manuel.par}` : ""}`
+                : envoi?.version
                 ? `📤 Traçabilité envoyée${envoi.mode === "test" ? " (mode test)" : ""} le ${envoi.dernierEnvoi || "?"} à ${envoi.destinataire || "?"}${envoi.version > 1 ? ` — version ${envoi.version}` : ""} · ${envoi.nbLignes ?? "?"} lignes · ${nb(envoi.totalColis || 0)} colis${envoi.par ? ` · par ${envoi.par}` : ""}`
                 : "⏳ Traçabilité pas encore envoyée à Lidl pour ce jour"}
             </span>
