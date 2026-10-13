@@ -43,6 +43,7 @@ if (process.env.FIREBASE_DB_SECRET && !globalThis.__fetchAvecSecretRtdb) {
 
 const ROUTES = {
   "bl-nlt": () => import("../serveur/routes/bl-nlt.js"),
+  "reference-ventes": () => import("../serveur/routes/reference-ventes.js"),
   "confirm-livraison": () => import("../serveur/routes/confirm-livraison.js"),
   "declarer-perte": () => import("../serveur/routes/declarer-perte.js"),
   "envoyer-commande-appro": () => import("../serveur/routes/envoyer-commande-appro.js"),

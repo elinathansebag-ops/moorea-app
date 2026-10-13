@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { reglageMail, listeAdresses, COMPTES_ENVOI } from "../reglagesMails.js";
+import { exigerCompteMoorea } from "../../api/_compteMoorea.js";
 
 export const config = { runtime: "nodejs" };
 
@@ -15,9 +16,11 @@ const AUTORISES_TEST = ["jordan.jouanest@moorea.fr"];
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  // 14/10/2026 — Réservé aux comptes @moorea.fr connectés (avant : n'importe qui avec l'adresse).
+  if (!(await exigerCompteMoorea(req, res))) return;
   try {
     const { to = [], modeTest = true, emailLidlReel = "", objet, nomFichier, xlsxBase64, dateLongue, version = 1, nbLignes = 0, signataire = "" } = req.body || {};
     if (!xlsxBase64 || !objet || !nomFichier) return res.status(400).json({ error: "Fichier ou objet manquant" });

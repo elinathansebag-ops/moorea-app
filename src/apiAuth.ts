@@ -7,7 +7,8 @@ import { signatureHtml, nomSignataire } from "./ProfilGenerique";
 // (une dizaine, dans plusieurs modules), on ajoute ici, une fois pour toutes, le jeton de connexion
 // Firebase (« Authorization: Bearer … ») à toutes les requêtes vers les endpoints protégés.
 // 11/10/2026 — + photos (ImgBB) et lecture d'étiquette (Claude), réservées aux comptes connectés.
-const ENDPOINTS_PROTEGES = ["/api/send-email", "/api/upload-photo", "/api/scan-etiquette", "/api/bl-nlt"];
+// 14/10/2026 — + ventes 2025 du Programme d'achat et envoi de la traçabilité Lidl.
+const ENDPOINTS_PROTEGES = ["/api/send-email", "/api/upload-photo", "/api/scan-etiquette", "/api/bl-nlt", "/api/reference-ventes", "/api/envoyer-tracabilite-lidl"];
 // Mails dont le texte est écrit côté serveur : on leur passe le nom du signataire (voir plus bas).
 const ENDPOINTS_SIGNES = ["/api/recap-reconditionnement", "/api/envoyer-tracabilite-lidl", "/api/envoyer-commande-appro"];
 
@@ -16,7 +17,7 @@ export function installerJetonApi() {
   window.fetch = async (entree: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof entree === "string" ? entree : entree instanceof URL ? entree.pathname : entree.url;
     const chemin = url.startsWith("http") ? new URL(url).pathname : url.split("?")[0];
-    if (ENDPOINTS_SIGNES.includes(chemin)) return fetchOrigine(entree, init && { ...init, body: avecSignataire(init.body) });
+    if (ENDPOINTS_SIGNES.includes(chemin)) init = init && { ...init, body: avecSignataire(init.body) };
     if (!ENDPOINTS_PROTEGES.includes(chemin) || !auth.currentUser) return fetchOrigine(entree, init);
     const jeton = await auth.currentUser.getIdToken();
     const entetes = new Headers(init?.headers || (entree instanceof Request ? entree.headers : undefined));

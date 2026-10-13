@@ -247,7 +247,8 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
     if (dailyRef) return;
     setDailyLoading(true);
     setDailyError(false);
-    fetch("/data/reference_ventes_jour_2025.json", { cache: "no-store" })
+    // 14/10/2026 — Fichier retiré du site public : servi par le serveur aux comptes connectés.
+    fetch("/api/reference-ventes", { cache: "no-store" })
       .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(data => { setDailyRef(data); setDailyLoading(false); })
       .catch(() => { setDailyError(true); setDailyLoading(false); });
