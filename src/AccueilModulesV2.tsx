@@ -9,7 +9,7 @@ const FAMILLES: { nom: string; cles: string[] }[] = [
   { nom: "Opérations", cles: ["arrivages", "preparation", "lidl", "reconditionnement", "retours", "rack", "chargement", "etiquettes"] },
   { nom: "Stock et produits", cles: ["stock", "prestataires", "raccourci_cartons", "raccourci_palette_vierge", "factures_prestataires", "gencodes", "catalogue", "appro", "yukon"] },
   { nom: "Qualité", cles: ["rapports", "qualite", "lidl_consultation", "litiges"] },
-  { nom: "Pilotage", cles: ["stats_achats", "statt", "dashboard_tv"] },
+  { nom: "Pilotage", cles: ["extractions", "stats_achats", "statt", "dashboard_tv"] },
   { nom: "Équipe et outils", cles: ["messagerie", "taches", "rh", "pointeuse"] },
 ];
 
@@ -35,6 +35,7 @@ const ICONES: Record<string, string> = {
   qualite: "M9 3h6 M10 3v6L5 19a2 2 0 0 0 1.8 2h10.4A2 2 0 0 0 19 19l-5-10V3 M7.5 15h9",
   lidl_consultation: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M21 21l-5-5 M8 11h6 M11 8v6",
   litiges: "M12 3 2 20h20z M12 10v4 M12 17h.01",
+  extractions: "M4 4h16v16H4z M4 9h16 M9 9v11 M14 13h3 M14 16h3",
   stats_achats: "M4 20V4 M4 20h16 M8 16v-4 M12 16V8 M16 16v-6",
   statt: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M12 12h.01",
   dashboard_tv: "M3 4h18v12H3z M8 20h8 M12 16v4",

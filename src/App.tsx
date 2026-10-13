@@ -59,6 +59,7 @@ const TachesModule = chargerModule(() => import("./TachesModule"), "TachesModule
 const RackModule = chargerModule(() => import("./RackModule"), "RackModule");
 const StattModule = chargerModule(() => import("./StattModule"), "StattModule");
 const LidlModule = chargerModule(() => import("./LidlModule"), "LidlModule");
+const Extractions = chargerModule(() => import("./Extractions"), "Extractions");
 const ConsultationLidl = chargerModule(() => import("./ConsultationLidl"), "ConsultationLidl");
 const FacturesPrestataires = chargerModule(() => import("./FacturesPrestataires"), "FacturesPrestataires");
 const StatsAchatsModule = chargerModule(() => import("./StatsAchatsModule"), "StatsAchatsModule");
@@ -535,6 +536,7 @@ export default function App() {
   const [raccourciPresta, setRaccourciPresta] = useState<null | "cartons" | "palette-vierge">(null);
   const [showFacturesPresta, setShowFacturesPresta] = useState(false);
   const [showConsultLidl, setShowConsultLidl] = useState(false);
+  const [showExtractions, setShowExtractions] = useState(false);
   const [showYukon, setShowYukon] = useState(false);
   const [showTaches, setShowTaches] = useState(false);
   const [tachesTabDemande, setTachesTabDemande] = useState<"taches" | "commandes">("taches");
@@ -4004,7 +4006,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       // 29/09/2026 — Module Litiges accessible directement depuis l'accueil (avant : seulement
       // via le bandeau « X litiges ouverts »). Admins par défaut, sinon droit « ⚠️ Litiges ».
       { key: "litiges", icon: "⚠️", label: "Litiges", color: "#dc2626", badge: null, stat: "Refus, réserves, reprises", action: () => { setShowAccueil(false); setShowLitiges(true); } },
-      ...(monAcces.isAdmin ? [{ key: "stats_achats", icon: "📊", label: "Stats achats", color: "#7c3aed", badge: null, stat: "Achats, marges, fournisseurs (admin)", action: () => { setShowAccueil(false); setShowStatsAchats(true); } }] : []),
+      // 13/10/2026 — Un seul module « 📊 Stats » (extractions + analyse/marge + programme d'achat).
+      ...(monAcces.hasModule("extractions") || monAcces.isAdmin || monAcces.hasModule("statt") ? [{ key: monAcces.hasModule("extractions") ? "extractions" : "statt", icon: "📊", label: "Stats", color: "#305a55", badge: null, stat: "Commandes, arrivages, ventes, marge — export Excel", action: () => { setShowAccueil(false); setShowExtractions(true); } }] : []),
       { key: "chargement", icon: "🚛", label: "Optimisation chargement", color: "#0891b2", badge: null, stat: "Calculateur palettes & camion", action: () => { setShowAccueil(false); setShowChargement(true); } },
     ].filter(b => monAcces.hasModule(b.key));
 
@@ -4013,7 +4016,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     // principale, avec le même filtrage par droits que les autres.
     const row3Autres = [
       { key: "etiquettes", icon: "🏷️", label: "Étiquettes", color: "#c8a84b", stat: "Créer & imprimer une étiquette", action: () => { setShowAccueil(false); setShowEtiquettes(true); } },
-      { key: "statt", icon: "🛒", label: "Statt", color: "#ea580c", stat: "Ventes réelles + objectifs par période", action: () => { setShowAccueil(false); setShowStatt(true); } },
       { key: "catalogue", icon: "📚", label: "Catalogue", color: "#27ae60", stat: "Base articles Moorea", action: () => { setShowAccueil(false); setShowCatalogue(true); } },
       { key: "dashboard_tv", icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowAccueil(false); setShowDashboard(true); } },
       { key: "gencodes", icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
@@ -4281,6 +4283,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       </div>
       </>
     );
+  }
+
+  if (showExtractions) {
+    const fermer = () => { setShowExtractions(false); setShowAccueil(true); };
+    if (!monAcces.hasModule("extractions") && !monAcces.isAdmin && !monAcces.hasModule("statt")) return <AccesRefuse onRetour={fermer} />;
+    return <>{fabScanner}{invitationNotif}<Extractions onClose={fermer} darkMode={darkMode} voirMarge={!!monAcces.isAdmin} voirExtractions={monAcces.hasModule("extractions") || !!monAcces.isAdmin} voirProgramme={monAcces.hasModule("statt")} userName={nomAfficheGarde} /></>;
   }
 
   if (showConsultLidl) {

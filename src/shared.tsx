@@ -428,6 +428,8 @@ export const MODULE_DEFS: ModuleDef[] = [
   ] },
   { key: "etiquettes", label: "🏷️ Étiquettes" },
   { key: "statt", label: "🛒 Statt" },
+  // 13/10/2026 — Extractions en 3 clics (commande client, arrivage fournisseur, ventes produits) : Extractions.tsx.
+  { key: "extractions", label: "📊 Stats (commande client, arrivage, ventes produits)" },
   { key: "catalogue", label: "📚 Catalogue" },
   { key: "dashboard_tv", label: "📺 Tableau de bord (écran)" },
   { key: "qrcode", label: "📊 QR Code Leofresh" },
