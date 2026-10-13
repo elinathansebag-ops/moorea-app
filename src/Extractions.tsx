@@ -238,11 +238,17 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
   const [erreur, setErreur] = useState("");
   const sombre = !!darkMode;
   const c: Couleurs = { fond: sombre ? "#0f1216" : "#f5f3ee", carte: sombre ? "#171b21" : "#fff", texte: sombre ? "#e5e7eb" : "#1a2e1a", gris: sombre ? "#aab1bb" : "#6b7280", bord: sombre ? "#2e3540" : "#e5e7eb", vert: "#305a55", sombre };
+  // 14/10/2026 — Demande d'Elinathan : montrer le temps qu'il reste pendant le chargement. La base
+  // ne donne pas d'avancement : on estime avec la durée des chargements précédents sur cet appareil.
+  const [equipesOk, setEquipesOk] = useState(false);
+  const [debutChargement] = useState(() => Date.now());
   useEffect(() => {
     if (!voirExtractions) return;
-    chargerVentes().then(setVentes).catch(e => { setErreur(`Base des ventes : ${e?.message || e}`); setVentes([]); });
-    chargerArrivages().then(setArrivages).catch(e => { setErreur(`Arrivages : ${e?.message || e}`); setArrivages([]); });
-    chargerEquipes().then(setEquipes).catch(() => {});
+    const t0 = Date.now();
+    const noter = (cle: string) => { try { localStorage.setItem(`moorea-stats-duree-${cle}`, String(Date.now() - t0)); } catch { /* ignore */ } };
+    chargerVentes().then(v => { noter("ventes"); setVentes(v); }).catch(e => { setErreur(`Base des ventes : ${e?.message || e}`); setVentes([]); });
+    chargerArrivages().then(a => { noter("arrivages"); setArrivages(a); }).catch(e => { setErreur(`Arrivages : ${e?.message || e}`); setArrivages([]); });
+    chargerEquipes().then(eq => { setEquipes(eq); setEquipesOk(true); }).catch(() => setEquipesOk(true));
   }, [voirExtractions]);
 
   // Toutes les valeurs connues, pour la recherche intelligente.
@@ -299,6 +305,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
       <PageHeader titre={titreOnglet ? `📊 Stats · ${titreOnglet.titre}` : "📊 Stats"} onBack={onglet ? retour : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box" }}>
         {erreur && <p style={{ background: "#fee2e2", color: "#b91c1c", borderRadius: 10, padding: "8px 12px", fontSize: 13, fontWeight: 700 }}>{erreur}</p>}
+        {voirExtractions && (ventes === null || arrivages === null) && <BandeauChargement c={c} debut={debutChargement} etapes={[["Base des ventes", ventes !== null, "ventes"], ["Arrivages et archives", arrivages !== null, "arrivages"], ["Comptes GMS / Prestige", equipesOk, ""]]} />}
         {!onglet && (
           <>
             {voirExtractions && (
@@ -1388,6 +1395,35 @@ function FicheRapport({ c, rapport: r, onClose }: { c: Couleurs; rapport: any; o
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Bandeau de chargement : temps restant estimé + étapes ──
+function BandeauChargement({ c, debut, etapes }: { c: Couleurs; debut: number; etapes: [string, boolean, string][] }) {
+  const [maintenant, setMaintenant] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setMaintenant(Date.now()), 250); return () => clearInterval(t); }, []);
+  const lu = (cle: string) => { try { return Number(localStorage.getItem(`moorea-stats-duree-${cle}`)) || 0; } catch { return 0; } };
+  const prevu = Math.max(lu("ventes"), lu("arrivages"));
+  const ecoule = (maintenant - debut) / 1000;
+  const total = prevu ? prevu / 1000 * 1.1 : 0;
+  const reste = total ? Math.max(0, total - ecoule) : null;
+  const faites = etapes.filter(e => e[1]).length;
+  // Sans historique : progression d'après les étapes finies ; avec : d'après le temps prévu.
+  const avance = total ? Math.min(97, ecoule / total * 100) : Math.min(90, (faites / etapes.length) * 80 + Math.min(10, ecoule));
+  const texteReste = reste == null ? `premier chargement sur cet appareil · ${Math.round(ecoule)} s écoulées` : reste > 1 ? `environ ${Math.ceil(reste)} s restantes` : ecoule > total + 3 ? `un peu plus long que d'habitude… (${Math.round(ecoule)} s)` : "presque fini…";
+  return (
+    <div style={{ background: c.carte, border: `1.5px solid ${c.vert}`, borderRadius: 16, padding: "14px 16px", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+        <span style={{ fontSize: 15, fontWeight: 900 }}>⏳ Chargement des données</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: c.gris }}>{texteReste}</span>
+      </div>
+      <div style={{ height: 10, borderRadius: 5, background: c.sombre ? "#2e3540" : "#eef2f0", overflow: "hidden", marginBottom: 10 }}>
+        <div style={{ height: "100%", width: `${avance}%`, background: "linear-gradient(90deg, #74b484, #305a55)", borderRadius: 5, transition: "width .25s linear" }} />
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13 }}>
+        {etapes.map(([lib, ok]) => <span key={lib} style={{ fontWeight: 700, color: ok ? "#15803d" : c.gris }}>{ok ? "✅" : "⏳"} {lib}</span>)}
       </div>
     </div>
   );
