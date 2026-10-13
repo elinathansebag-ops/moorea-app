@@ -22,6 +22,15 @@ export async function reglageMail(cle) {
   }
 }
 
+// Boîtes d'envoi possibles (mêmes mots de passe d'application que /api/send-email).
+export const COMPTES_ENVOI = {
+  agreage: { user: "agreage@moorea.fr", pass: () => process.env.GMAIL_PASS_AGREAGE, nom: "Moorea Agréage" },
+  entrepot: { user: "entrepot@moorea.fr", pass: () => process.env.GMAIL_PASS_ENTREPOT, nom: "Moorea Entrepôt" },
+  elinathan: { user: "elinathan.sebag@moorea.fr", pass: () => process.env.GMAIL_PASS_ELINATHAN, nom: "Elinathan Sebag" },
+  jordan: { user: "jordan.jouanest@moorea.fr", pass: () => process.env.GMAIL_PASS_JORDAN, nom: "Jordan Jouanest" },
+  jennifer: { user: "jennifer.martin@moorea.fr", pass: () => process.env.GMAIL_PASS_JENNIFER, nom: "Jennifer Martin" },
+};
+
 export const listeAdresses = (s) => String(s || "").split(/[,;\s]+/).map(x => x.trim()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
 
 // Destinataires / copie après réglage (le défaut du code si rien n'est réglé).

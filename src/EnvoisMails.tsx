@@ -51,7 +51,7 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
       { quoi: "Réajustement de stock demandé", de: "agreage", a: "commercial@moorea.fr", quand: "Le presta demande un réajustement", cle: "reajustement_stock", mod: { a: true, cc: true } },
     ] },
     { titre: "🛒 Lidl", envois: [
-      { quoi: `Tableau de traçabilité${modeTest ? " (mode TEST)" : ""}`, de: modeTest ? "elinathan" : "jordan", a: modeTest ? "jordan.jouanest@moorea.fr" : (lidl.emailLidl || "adresse Lidl (Configuration)"), quand: "Toutes les commandes du jour prêtes, ou bouton d'envoi" },
+      { quoi: `Tableau de traçabilité${modeTest ? " (mode TEST)" : ""}`, de: modeTest ? "elinathan" : "jordan", a: modeTest ? "jordan.jouanest@moorea.fr" : (lidl.emailLidl || "adresse Lidl (Configuration)"), quand: "Toutes les commandes du jour prêtes, ou bouton d'envoi", cle: modeTest ? "lidl_tracabilite_test" : "lidl_tracabilite", mod: modeTest ? TOUT : { de: true, cc: true } },
       { quoi: "Commandes à préparer départ Perpignan + lien de saisie", de: "jordan", a: medina || "jordan.jouanest@moorea.fr", cc: medina ? "jordan.jouanest@moorea.fr" : undefined, quand: "Import des commandes du jour (départ Perpignan)", cle: "lidl_medina", mod: { de: true, cc: true } },
     ] },
     { titre: "📦 Stock", envois: [
