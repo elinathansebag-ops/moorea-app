@@ -167,6 +167,35 @@ const boutonExport = (c: Couleurs, onClick: () => void, filtres: string[] = []) 
     <button type="button" onClick={() => { formatExport = "pdf"; filtresExport = filtres; onClick(); }} style={{ padding: "9px 14px", borderRadius: 10, border: `2px solid ${c.vert}`, background: c.carte, color: c.vert, fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>📄 PDF</button>
   </span>
 );
+// 14/10/2026 — Liste de choix en tableau (remplace les « bulles », jugées en bazar) : une ligne
+// par élément, valeur alignée à droite et barre de proportion.
+type ElemListe = { cle: string; libelle: string; sous?: string; valeur: number; texteValeur: string; alerte?: boolean };
+function ListeChoix({ c, items, onChoisir, choisi, max = 400, hauteur = 320 }: { c: Couleurs; items: ElemListe[]; onChoisir: (cle: string) => void; choisi?: string; max?: number; hauteur?: number }) {
+  const [filtre, setFiltre] = useState("");
+  const plus = Math.max(1, ...items.map(i => i.valeur));
+  const vus = items.filter(i => !filtre || norm(i.libelle).includes(norm(filtre))).slice(0, max);
+  return (
+    <div>
+      {items.length > 12 && <input value={filtre} onChange={e => setFiltre(e.target.value)} placeholder={`🔍 Filtrer ${items.length} lignes`} style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 13.5, marginBottom: 6 }} />}
+      <div style={{ maxHeight: hauteur, overflowY: "auto", border: `1px solid ${c.bord}`, borderRadius: 12 }}>
+        {vus.map((i, k) => (
+          <button key={i.cle} type="button" onClick={() => onChoisir(i.cle)}
+            style={{ display: "grid", gridTemplateColumns: "28px 1fr minmax(90px, 26%) auto", alignItems: "center", gap: 10, width: "100%", padding: "8px 12px", border: "none", borderTop: k ? `1px solid ${c.bord}` : "none", background: choisi === i.cle ? (c.sombre ? "#1d2e2b" : "#eaf2ee") : "transparent", color: c.texte, cursor: "pointer", textAlign: "left" }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: c.gris, textAlign: "right" }}>{k + 1}</span>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.alerte ? "⚠️ " : ""}{i.libelle}</span>
+              {i.sous && <span style={{ display: "block", fontSize: 11.5, color: c.gris }}>{i.sous}</span>}
+            </span>
+            <span style={{ height: 8, borderRadius: 4, background: c.sombre ? "#2e3540" : "#eef2f0", overflow: "hidden" }}><span style={{ display: "block", height: "100%", width: `${Math.max(2, i.valeur / plus * 100)}%`, background: "linear-gradient(90deg, #74b484, #305a55)", borderRadius: 4 }} /></span>
+            <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", textAlign: "right", minWidth: 70 }}>{i.texteValeur}</span>
+          </button>
+        ))}
+        {!vus.length && <div style={{ padding: "10px 12px", fontSize: 13, color: c.gris }}>Rien à afficher.</div>}
+      </div>
+    </div>
+  );
+}
+
 function Choisi({ libelle, onRetirer, c }: { libelle: string; onRetirer: () => void; c: Couleurs }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 6px 6px 12px", borderRadius: 999, background: c.vert, color: "#fff", fontSize: 13, fontWeight: 800 }}>
@@ -175,7 +204,7 @@ function Choisi({ libelle, onRetirer, c }: { libelle: string; onRetirer: () => v
     </span>
   );
 }
-function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]; lignes: (string | number)[][]; total?: (string | number)[]; c: Couleurs; droite?: number[] }) {
+function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]; lignes: any[][]; total?: (string | number)[]; c: Couleurs; droite?: number[] }) {
   const [limite, setLimite] = useState(300);
   const th = { padding: "8px 10px", fontSize: 11.5, fontWeight: 800, color: c.gris, borderBottom: `1.5px solid ${c.bord}`, whiteSpace: "nowrap" as const, position: "sticky" as const, top: 0, background: c.carte };
   const td = { padding: "7px 10px", fontSize: 13, borderBottom: `1px solid ${c.bord}` };
@@ -312,7 +341,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
         )}
         {onglet === "fiche" && <FicheTiers key={(preset.fiche?.type || "") + (preset.fiche?.nom || "")} c={c} ventes={ventes} arrivages={arrivages} voirMarge={voirMarge} voirEuros={voirEuros} fiche={preset.fiche} options={optionsGlobales.filter(o => o.type === "client" || o.type === "fournisseur")}
           choisir={f => setPreset({ fiche: f })} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
-        {onglet === "client" && <CommandeClient c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} preset={preset} />}
+        {onglet === "client" && <CommandeClient c={c} arrivages={arrivages} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} preset={preset} />}
         {onglet === "arrivage" && <ArrivageFournisseur c={c} arrivages={arrivages} preset={preset} />}
         {onglet === "produits" && <VentesProduits key={preset.rapport?.id || "libre"} email={email} auteur={userName} c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} equipes={equipes} preset={preset} />}
         {onglet === "config" && voirMarge && <ConfigImport c={c} ventes={ventes} userName={userName} estAdmin={estAdmin} onImporte={() => { oublierVentes(); setVentes(null); chargerVentes().then(setVentes).catch(e => setErreur(`Base des ventes : ${e?.message || e}`)); }} />}
@@ -322,9 +351,14 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
 }
 
 // ── 1. Commande d'un client ──
-function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset }: { c: Couleurs; voirMarge: boolean; voirEuros?: boolean; ventes: LigneVente[] | null; preset: Preset }) {
+function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset, arrivages }: { c: Couleurs; voirMarge: boolean; voirEuros?: boolean; arrivages?: any[] | null; ventes: LigneVente[] | null; preset: Preset }) {
   const [client, setClient] = useState(preset.client || "");
   const [date, setDate] = useState(preset.date || "");
+  const [qualite, setQualite] = useState<{ rapports: any[]; retours: any[] } | null>(null);
+  const [rapportOuvert, setRapportOuvert] = useState<any>(null);
+  useEffect(() => { chargerQualite().then(setQualite); }, []);
+  // Arrivages possibles d'une ligne vendue : même fournisseur, même article, arrivés dans les 15 jours avant la livraison.
+  const arrivagesDe = (l: LigneVente) => (arrivages || []).filter(a => { const j = isoArrivage(a.date); return j <= l.d && j >= plusJours(l.d, -15) && memeNom(a.fournisseur || "", l.f) && memeNom(a.produit || "", l.a); });
   const clientsOpts = useMemo<Option[]>(() => {
     const m = new Map<string, number>(); (ventes || []).forEach(l => m.set(l.c, (m.get(l.c) || 0) + l.ven));
     return [...m].filter(([v]) => v).map(([v, p]) => ({ type: "client", valeur: v, detail: voirEuros ? `${eur0(p)} de ventes` : undefined, poids: p }));
@@ -355,20 +389,16 @@ function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset }: { c:
       <Bloc titre={client ? `Date — ${datesClient.length} livraison${datesClient.length > 1 ? "s" : ""} pour ce client` : "Date de livraison"} c={c}
         droite={<input type="date" value={date} onChange={e => setDate(e.target.value)} style={champDate(c)} />}>
         {client && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 200, overflowY: "auto" }}>
-            {datesClient.map(([d, x]) => (
-              <button key={d} type="button" onClick={() => setDate(d)} style={puce(c, date === d)}>{dateLongue(d)} <span style={{ opacity: 0.7, fontWeight: 500 }}>· {ent(x.col)} colis{voirEuros ? ` · ${eur0(x.ven)}` : ""}</span></button>
-            ))}
-            {!datesClient.length && <span style={{ fontSize: 13, color: c.gris }}>Aucune livraison pour ce client dans la base.</span>}
-          </div>
+          datesClient.length ? <ListeChoix c={c} choisi={date} onChoisir={setDate} hauteur={260}
+            items={datesClient.map(([d, x]) => ({ cle: d, libelle: dateLongue(d), sous: `Semaine ${numSemaine(d).n}`, valeur: voirEuros ? x.ven : x.col, texteValeur: voirEuros ? `${eur0(x.ven)} · ${ent(x.col)} colis` : `${ent(x.col)} colis` }))} />
+            : <span style={{ fontSize: 13, color: c.gris }}>Aucune livraison pour ce client dans la base.</span>
         )}
         {!client && date && (
           <>
             <p style={{ margin: "0 0 6px", fontSize: 12.5, color: c.gris }}>{clientsDate.length} client{clientsDate.length > 1 ? "s" : ""} livré{clientsDate.length > 1 ? "s" : ""} le {dateFr(date)} :</p>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 220, overflowY: "auto" }}>
-              {clientsDate.map(([n, x]) => <button key={n} type="button" onClick={() => setClient(n)} style={puce(c, false)}>{n} <span style={{ opacity: 0.7, fontWeight: 500 }}>· {ent(x.col)} colis</span></button>)}
-              {!clientsDate.length && <span style={{ fontSize: 13, color: c.gris }}>Aucune vente ce jour-là.</span>}
-            </div>
+            {clientsDate.length ? <ListeChoix c={c} onChoisir={setClient}
+              items={clientsDate.map(([n, x]) => ({ cle: n, libelle: n, valeur: voirEuros ? x.ven : x.col, texteValeur: voirEuros ? `${eur0(x.ven)} · ${ent(x.col)} colis` : `${ent(x.col)} colis` }))} />
+              : <span style={{ fontSize: 13, color: c.gris }}>Aucune vente ce jour-là.</span>}
           </>
         )}
       </Bloc>
@@ -377,10 +407,16 @@ function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset }: { c:
           droite={choisies.length > 0 && boutonExport(c, () => exporterExcel(`Commande ${client} ${dateFr(date)}`, `Commande de ${client} — livraison du ${dateFr(date)}`, entetes,
             choisies.map(l => [l.a, l.fam, l.f, r2(l.col), r2(l.pc), r2(l.kg), ...ve(r2(l.ven)), ...(voirMarge ? [l.sa ? "" : r2(l.ach), l.sa ? "" : r2(l.res), l.sa || !l.ven ? "" : r2(l.res / l.ven * 100)] : [])]),
             ["TOTAL", "", "", r2(t.col), r2(t.pc), r2(t.kg), ...ve(r2(t.ven)), ...(voirMarge ? [r2(t.ach), r2(t.res), t.ven ? r2(t.res / t.ven * 100) : ""] : [])]))}>
+          {rapportOuvert && <FicheRapport c={c} rapport={rapportOuvert} onClose={() => setRapportOuvert(null)} />}
           {!choisies.length ? <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Pas de commande de ce client à cette date.</p> : (
-            <Tableau c={c} entetes={entetes} droite={[3, 4, 5, 6, 7, 8, 9]}
-              lignes={choisies.map(l => [l.a, l.fam, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...ve(eur(l.ven)), ...(voirMarge ? [l.sa ? "—" : eur(l.ach), l.sa ? "—" : eur(l.res), l.sa ? "—" : pct(l.res, l.ven)] : [])])}
-              total={["TOTAL", "", "", ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...ve(eur(t.ven)), ...(voirMarge ? [eur(t.ach), eur(t.res), pct(t.res, t.ven)] : [])]} />
+            <Tableau c={c} entetes={[...entetes, "Qualité à l'arrivage"]} droite={[3, 4, 5, 6, 7, 8, 9]}
+              lignes={choisies.map(l => {
+                const arr = arrivagesDe(l), pb = arr.filter(a => a.statut === "sous réserve" || a.statut === "refusé");
+                const r = pb.map(a => rapportDeArrivage(a, qualite?.rapports)).find(Boolean);
+                const qual = pb.length ? <span key="q" style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><BadgeQualite statut={pb.some(a => a.statut === "refusé") ? "refusé" : "sous réserve"} />{r && <BoutonRapport c={c} onClick={() => setRapportOuvert(r)} />}</span> : arr.length ? <BadgeQualite key="q" statut="validé" /> : "";
+                return [l.a, l.fam, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...ve(eur(l.ven)), ...(voirMarge ? [l.sa ? "—" : eur(l.ach), l.sa ? "—" : eur(l.res), l.sa ? "—" : pct(l.res, l.ven)] : []), qual];
+              })}
+              total={["TOTAL", "", "", ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...ve(eur(t.ven)), ...(voirMarge ? [eur(t.ach), eur(t.res), pct(t.res, t.ven)] : []), ""]} />
           )}
         </Bloc>
       )}
@@ -390,6 +426,9 @@ function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset }: { c:
 
 // ── 2. Arrivage d'un fournisseur ──
 function ArrivageFournisseur({ c, arrivages, preset }: { c: Couleurs; arrivages: any[] | null; preset: Preset }) {
+  const [qualite, setQualite] = useState<{ rapports: any[]; retours: any[] } | null>(null);
+  const [rapportOuvert, setRapportOuvert] = useState<any>(null);
+  useEffect(() => { chargerQualite().then(setQualite); }, []);
   const [fournisseur, setFournisseur] = useState(preset.fournisseur || "");
   const [date, setDate] = useState(preset.date || "");
   const opts = useMemo<Option[]>(() => {
@@ -415,10 +454,12 @@ function ArrivageFournisseur({ c, arrivages, preset }: { c: Couleurs; arrivages:
   const val = (a: any) => { const att = Number(a.quantite) || 0; const rec = typeof a.colisRecus === "number" ? a.colisRecus : null; return { att, rec, ecart: rec == null ? null : rec - att }; };
   const lot = (a: any) => a.lot_interne ? `MRA.${String(a.lot_interne).padStart(4, "0")}` : "";
   const entetes = ["Produit", "Lot Moorea", "Lot fournisseur", "Attendu", "Reçu", "Écart", "Unité", "DLC", "Origine", "Statut", "Pointé par"];
+  const entetesAff = [...entetes, "Rapport"];
   const tAtt = choisis.reduce((s, a) => s + val(a).att, 0), tRec = choisis.reduce((s, a) => s + (val(a).rec ?? 0), 0);
   if (arrivages === null) return <p style={{ color: c.gris }}>Chargement des arrivages…</p>;
   return (
     <>
+      {rapportOuvert && <FicheRapport c={c} rapport={rapportOuvert} onClose={() => setRapportOuvert(null)} />}
       <Bloc titre="Fournisseur" c={c}>
         {fournisseur ? <Choisi libelle={`🏭 ${fournisseur}`} onRetirer={() => setFournisseur("")} c={c} />
           : <RechercheIntelligente options={opts} c={c} autoFocus placeholder="🔍 Tape le nom du fournisseur" onChoisir={o => setFournisseur(o.valeur)} />}
@@ -426,16 +467,14 @@ function ArrivageFournisseur({ c, arrivages, preset }: { c: Couleurs; arrivages:
       <Bloc titre={fournisseur ? `Date — ${datesF.length} arrivage${datesF.length > 1 ? "s" : ""} de ce fournisseur` : "Date d'arrivée"} c={c}
         droite={<input type="date" value={date} onChange={e => setDate(e.target.value)} style={champDate(c)} />}>
         {fournisseur && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 200, overflowY: "auto" }}>
-            {datesF.map(([d, n]) => <button key={d} type="button" onClick={() => setDate(d)} style={puce(c, date === d)}>{dateLongue(d)} <span style={{ opacity: 0.7, fontWeight: 500 }}>· {n} produit{n > 1 ? "s" : ""}</span></button>)}
-            {!datesF.length && <span style={{ fontSize: 13, color: c.gris }}>Aucun arrivage enregistré pour ce fournisseur.</span>}
-          </div>
+          datesF.length ? <ListeChoix c={c} choisi={date} onChoisir={setDate} hauteur={260}
+            items={datesF.map(([d, n]) => ({ cle: d, libelle: dateLongue(d), sous: `Semaine ${numSemaine(d).n}`, valeur: n, texteValeur: `${n} produit${n > 1 ? "s" : ""}` }))} />
+            : <span style={{ fontSize: 13, color: c.gris }}>Aucun arrivage enregistré pour ce fournisseur.</span>
         )}
         {!fournisseur && date && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {fournDate.map(([n, nb]) => <button key={n} type="button" onClick={() => setFournisseur(n)} style={puce(c, false)}>{n} <span style={{ opacity: 0.7, fontWeight: 500 }}>· {nb} produit{nb > 1 ? "s" : ""}</span></button>)}
-            {!fournDate.length && <span style={{ fontSize: 13, color: c.gris }}>Aucun arrivage ce jour-là.</span>}
-          </div>
+          fournDate.length ? <ListeChoix c={c} onChoisir={setFournisseur}
+            items={fournDate.map(([n, nb]) => ({ cle: n, libelle: n, valeur: nb, texteValeur: `${nb} produit${nb > 1 ? "s" : ""}` }))} />
+            : <span style={{ fontSize: 13, color: c.gris }}>Aucun arrivage ce jour-là.</span>
         )}
       </Bloc>
       {fournisseur && date && (
@@ -444,9 +483,9 @@ function ArrivageFournisseur({ c, arrivages, preset }: { c: Couleurs; arrivages:
             choisis.map(a => { const v = val(a); return [a.produit || "", lot(a), a.lot_fournisseur || "", v.att, v.rec ?? "", v.ecart ?? "", a.unite || "colis", dlc(a), a.origine || "", statut(a), par(a)]; }),
             ["TOTAL", "", "", tAtt, tRec, tRec - tAtt, "", "", "", "", ""]))}>
           {!choisis.length ? <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Pas d'arrivage de ce fournisseur à cette date.</p> : (
-            <Tableau c={c} entetes={entetes} droite={[3, 4, 5]}
-              lignes={choisis.map(a => { const v = val(a); return [a.produit || "", lot(a), a.lot_fournisseur || "", ent(v.att), v.rec == null ? "—" : ent(v.rec), v.ecart == null ? "" : (v.ecart > 0 ? "+" : "") + ent(v.ecart), a.unite || "colis", dlc(a), a.origine || "", statut(a), par(a)]; })}
-              total={["TOTAL", "", "", ent(tAtt), ent(tRec), (tRec - tAtt > 0 ? "+" : "") + ent(tRec - tAtt), "", "", "", "", ""]} />
+            <Tableau c={c} entetes={entetesAff} droite={[3, 4, 5]}
+              lignes={choisis.map(a => { const v = val(a); const r = rapportDeArrivage(a, qualite?.rapports); return [a.produit || "", lot(a), a.lot_fournisseur || "", ent(v.att), v.rec == null ? "—" : ent(v.rec), v.ecart == null ? "" : (v.ecart > 0 ? "+" : "") + ent(v.ecart), a.unite || "colis", dlc(a), a.origine || "", <BadgeQualite key="s" statut={a.statut} />, par(a), r ? <BoutonRapport key="r" c={c} onClick={() => setRapportOuvert(r)} /> : ""]; })}
+              total={["TOTAL", "", "", ent(tAtt), ent(tRec), (tRec - tAtt > 0 ? "+" : "") + ent(tRec - tAtt), "", "", "", "", "", ""]} />
           )}
         </Bloc>
       )}
@@ -697,9 +736,9 @@ function CalendrierJournee({ c, ventes, arrivages, voirEuros = true, ouvrir }: {
               <>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 900, textTransform: "capitalize" }}>{new Date(jour + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
                 {titre(`🚚 Arrivages — ${arrJour.length} produit${arrJour.length > 1 ? "s" : ""}, ${fournJour.length} fournisseur${fournJour.length > 1 ? "s" : ""}`)}
-                <div style={ligne}>{fournJour.map(([f, n]) => <button key={f} type="button" onClick={() => ouvrir("arrivage", { fournisseur: f, date: jour })} style={puce(c, false)}>{f} · {n}</button>)}{!fournJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Aucun.</span>}</div>
+                <div style={{ marginTop: 6 }}>{fournJour.length ? <ListeChoix c={c} hauteur={220} onChoisir={f => ouvrir("arrivage", { fournisseur: f, date: jour })} items={fournJour.map(([f, n]) => ({ cle: f, libelle: f, valeur: n, texteValeur: `${n} produit${n > 1 ? "s" : ""}` }))} /> : <span style={{ fontSize: 12.5, color: c.gris }}>Aucun.</span>}</div>
                 {titre(`🧾 Livraisons clients — ${clientsJour.length} client${clientsJour.length > 1 ? "s" : ""} · ${ent(totV.col)} colis${voirEuros ? ` · ${eur0(totV.ven)}` : ""}`)}
-                <div style={ligne}>{clientsJour.slice(0, 30).map(([n, v]) => <button key={n} type="button" onClick={() => ouvrir("client", { client: n, date: jour })} style={puce(c, false)}>{n} · {voirEuros ? eur0(v) : `${ent(v)} colis`}</button>)}{clientsJour.length > 30 && <button type="button" onClick={() => ouvrir("client", { date: jour })} style={puce(c, false)}>+ {clientsJour.length - 30} autres…</button>}{!clientsJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Pas de ventes importées pour ce jour.</span>}</div>
+                <div style={{ marginTop: 6 }}>{clientsJour.length ? <ListeChoix c={c} hauteur={260} onChoisir={n => ouvrir("client", { client: n, date: jour })} items={clientsJour.map(([n, v]) => ({ cle: n, libelle: n, valeur: v, texteValeur: voirEuros ? eur0(v) : `${ent(v)} colis` }))} /> : <span style={{ fontSize: 12.5, color: c.gris }}>Pas de ventes importées pour ce jour.</span>}</div>
                 {autres === null ? <p style={{ fontSize: 12.5, color: c.gris }}>Chargement des commandes Lidl, reconditionnements et retours…</p> : (
                   <>
                     {titre(`🛒 Commandes Lidl préparées — ${lidlJour.filter(l => l.statut === "pret").length}/${lidlJour.length} prêtes · ${ent(lidlJour.reduce((t, l) => t + (Number(l.quantite) || 0), 0))} colis`)}
@@ -803,7 +842,8 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
     const jAvant = parJour.get(decale(dernier, -7));
     const serie = Array.from({ length: 30 }, (_, i) => { const j = decale(dernier, i - 29); const x = parJour.get(j); return { j, v: (voirEuros ? x?.ven : x?.col) || 0 }; });
     const tops = (cle: (l: LigneVente) => string) => { const m = new Map<string, number>(); for (const l of ventes) if (l.d >= decale(dernier, -6)) m.set(cle(l), (m.get(cle(l)) || 0) + (voirEuros ? l.ven : l.col)); return [...m].filter(([k]) => k).sort((a, b) => b[1] - a[1]).slice(0, 5); };
-    return { dernier, jDernier, jAvant, d7, d7avant, mCourant, mPrecMeme, mois, serie, topClients: tops(l => l.c), topArticles: tops(l => l.a) };
+    const dates = { d7deb: decale(dernier, -6), d7avDeb: decale(dernier, -13), d7avFin: decale(dernier, -7), jAvant: decale(dernier, -7), moisDeb: mois + "-01", mpDeb: moisPrec + "-01", mpFin: `${moisPrec}-${String(jourDuMois).padStart(2, "0")}` };
+    return { dernier, jDernier, jAvant, d7, d7avant, mCourant, mPrecMeme, mois, serie, dates, topClients: tops(l => l.c), topArticles: tops(l => l.a) };
   }, [ventes, voirEuros]);
   const evol = (a: number, b: number) => (b ? (a - b) / b * 100 : null);
   const Tendance = ({ v }: { v: number | null }) => v == null ? null : (
@@ -817,6 +857,11 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
     </div>
   );
   const nomMois = new Date(d.mois + "-15T12:00:00").toLocaleDateString("fr-FR", { month: "long" });
+  // 14/10/2026 — Chaque tuile dit de quels jours elle parle (dates + n° de semaine).
+  const court = (j: string) => new Date(j + "T12:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+  const jc = (j: string) => `${new Date(j + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "short" })} ${court(j)} (S${numSemaine(j).n})`;
+  const pc = (a: string, b: string) => { const sa = numSemaine(a).n, sb = numSemaine(b).n; return `${court(a)} → ${court(b)} (S${sa}${sa !== sb ? `-S${sb}` : ""})`; };
+  const lib1 = `Le ${jc(d.dernier)}`, lib7 = `7 jours · ${pc(d.dates.d7deb, d.dernier)}`, libM = `${nomMois} · ${pc(d.dates.moisDeb, d.dernier)}`;
   const liste = (titre: string, icone: string, items: [string, number][], type: "client" | "article") => (
     <div style={{ flex: "1 1 300px", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px" }}>
       <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>{icone} {titre}</div>
@@ -835,23 +880,23 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         {voirEuros ? (
           <>
-            {tuile(`Le ${dateFr(d.dernier)}`, eur0(d.jDernier.ven), `${ent(d.jDernier.col)} colis · vs même jour sem. dernière`, d.jAvant ? evol(d.jDernier.ven, d.jAvant.ven) : null, "#2563eb")}
-            {tuile("7 derniers jours", eur0(d.d7.ven), `${ent(d.d7.col)} colis · vs 7 jours d'avant`, evol(d.d7.ven, d.d7avant.ven), "#16a34a")}
-            {tuile(`Mois de ${nomMois}`, eur0(d.mCourant.ven), `vs même période du mois dernier`, evol(d.mCourant.ven, d.mPrecMeme.ven), "#ea580c")}
+            {tuile(lib1, eur0(d.jDernier.ven), `${ent(d.jDernier.col)} colis · vs ${jc(d.dates.jAvant)}`, d.jAvant ? evol(d.jDernier.ven, d.jAvant.ven) : null, "#2563eb")}
+            {tuile(lib7, eur0(d.d7.ven), `${ent(d.d7.col)} colis · vs ${pc(d.dates.d7avDeb, d.dates.d7avFin)}`, evol(d.d7.ven, d.d7avant.ven), "#16a34a")}
+            {tuile(libM, eur0(d.mCourant.ven), `vs ${pc(d.dates.mpDeb, d.dates.mpFin)}`, evol(d.mCourant.ven, d.mPrecMeme.ven), "#ea580c")}
           </>
         ) : (
           <>
-            {tuile(`Le ${dateFr(d.dernier)}`, `${ent(d.jDernier.col)} colis`, "vs même jour sem. dernière", d.jAvant ? evol(d.jDernier.col, d.jAvant.col) : null, "#2563eb")}
-            {tuile("7 derniers jours", `${ent(d.d7.col)} colis`, "vs 7 jours d'avant", evol(d.d7.col, d.d7avant.col), "#16a34a")}
-            {tuile(`Mois de ${nomMois}`, `${ent(d.mCourant.col)} colis`, "vs même période du mois dernier", evol(d.mCourant.col, d.mPrecMeme.col), "#ea580c")}
+            {tuile(lib1, `${ent(d.jDernier.col)} colis`, `vs ${jc(d.dates.jAvant)}`, d.jAvant ? evol(d.jDernier.col, d.jAvant.col) : null, "#2563eb")}
+            {tuile(lib7, `${ent(d.d7.col)} colis`, `vs ${pc(d.dates.d7avDeb, d.dates.d7avFin)}`, evol(d.d7.col, d.d7avant.col), "#16a34a")}
+            {tuile(libM, `${ent(d.mCourant.col)} colis`, `vs ${pc(d.dates.mpDeb, d.dates.mpFin)}`, evol(d.mCourant.col, d.mPrecMeme.col), "#ea580c")}
           </>
         )}
-        {voirMarge && tuile("Marge 7 jours", pct(d.d7.res, d.d7.ven), `${eur0(d.d7.res)} de résultat`, null, "#7c3aed")}
+        {voirMarge && tuile(`Marge · ${pc(d.dates.d7deb, d.dernier)}`, pct(d.d7.res, d.d7.ven), `${eur0(d.d7.res)} de résultat`, null, "#7c3aed")}
       </div>
       {/* 14/10/2026 — Graphique des 30 jours retiré (demande d'Elinathan : sans les dates, illisible). */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        {liste("Top clients de la semaine", "🏆", d.topClients, "client")}
-        {liste("Top articles de la semaine", "🔥", d.topArticles, "article")}
+        {liste(`Top clients · ${pc(d.dates.d7deb, d.dernier)}`, "🏆", d.topClients, "client")}
+        {liste(`Top articles · ${pc(d.dates.d7deb, d.dernier)}`, "🔥", d.topArticles, "article")}
       </div>
     </div>
   );
@@ -1142,6 +1187,7 @@ function chargerQualite() {
 const isoFr = (fr: string) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(String(fr || "")); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
 function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options, choisir, ouvrir }: { c: Couleurs; ventes: LigneVente[] | null; arrivages: any[] | null; voirMarge: boolean; voirEuros: boolean; fiche?: { type: "client" | "fournisseur"; nom: string }; options: Option[]; choisir: (f: { type: "client" | "fournisseur"; nom: string }) => void; ouvrir: (o: Onglet, p: Preset) => void }) {
   const [q, setQ] = useState<{ rapports: any[]; retours: any[] } | null>(null);
+  const [rapportOuvert, setRapportOuvert] = useState<any>(null);
   useEffect(() => { if (fiche) chargerQualite().then(setQ); }, [fiche?.nom]);
   const estClient = fiche?.type === "client", nom = fiche?.nom || "";
   const lignes = useMemo(() => (ventes || []).filter(l => fiche && (estClient ? l.c === nom : l.f === nom)), [ventes, fiche]);
@@ -1195,6 +1241,7 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
   );
   return (
     <>
+      {rapportOuvert && <FicheRapport c={c} rapport={rapportOuvert} onClose={() => setRapportOuvert(null)} />}
       <div style={{ borderRadius: 18, padding: "18px 20px", marginBottom: 12, background: estClient ? "linear-gradient(135deg, #1e3a8a, #2563eb)" : "linear-gradient(135deg, #92400e, #d97706)", color: "#fff" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ fontSize: 34 }}>{estClient ? "👤" : "🏭"}</span>
@@ -1273,6 +1320,7 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
                   {r.score ? <span style={{ color: c.gris }}>⭐ {r.score}</span> : null}
                   <span style={{ fontWeight: 900, color: coul }}>{dec === "refus" ? "Refus" : dec === "reserve" ? "Réserve" : "Conforme"}</span>
                   {r.numeroRapport && <span style={{ fontSize: 11.5, color: c.gris }}>{r.numeroRapport}</span>}
+                  <BoutonRapport c={c} onClick={() => setRapportOuvert(r)} />
                 </div>
               );
             })}
@@ -1284,5 +1332,63 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
           style={{ padding: "11px 16px", borderRadius: 12, border: "none", background: c.vert, color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>📈 Toutes ses ventes en détail (et export)</button>
       </div>
     </>
+  );
+}
+
+// ── Qualité : statut d'un arrivage et rapport d'agréage ──
+// 14/10/2026 — Demande d'Elinathan : sur chaque article d'une commande et chaque produit d'un
+// arrivage, voir s'il a été mis en réserve ou refusé, avec un bouton vers le rapport.
+// Lien rapport ↔ arrivage : arrivage.rapport_id = rapport.numeroRapport, ou rapport.arrivage_id(s).
+function rapportDeArrivage(a: any, rapports?: any[]): any {
+  if (!a || !rapports?.length) return null;
+  return rapports.find(r => (a.rapport_id && r.numeroRapport === a.rapport_id) || r.arrivage_id === a.id || (Array.isArray(r.arrivage_ids) && r.arrivage_ids.includes(a.id))) || null;
+}
+function BadgeQualite({ statut }: { statut?: string }) {
+  const st = statut === "refusé" ? { t: "⛔ Refusé", f: "#fee2e2", c: "#b91c1c" } : statut === "sous réserve" ? { t: "⚠️ Réserve", f: "#fef3c7", c: "#92400e" } : statut === "validé" ? { t: "✓ Conforme", f: "#dcfce7", c: "#166534" } : statut === "hors site" ? { t: "Hors site", f: "#f3f4f6", c: "#6b7280" } : { t: "En attente", f: "#f3f4f6", c: "#6b7280" };
+  return <span style={{ display: "inline-block", padding: "2px 9px", borderRadius: 999, background: st.f, color: st.c, fontSize: 11.5, fontWeight: 800, whiteSpace: "nowrap" }}>{st.t}</span>;
+}
+function BoutonRapport({ c, onClick }: { c: Couleurs; onClick: () => void }) {
+  return <button type="button" onClick={onClick} style={{ padding: "3px 10px", borderRadius: 8, border: `1.5px solid ${c.vert}`, background: c.carte, color: c.vert, fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>📋 Rapport</button>;
+}
+function FicheRapport({ c, rapport: r, onClose }: { c: Couleurs; rapport: any; onClose: () => void }) {
+  const dec = String(r.decision || "");
+  const st = dec === "refus" ? { t: "⛔ Refus", f: "#b91c1c" } : dec === "reserve" ? { t: "⚠️ Sous réserve", f: "#b45309" } : { t: "✓ Conforme", f: "#15803d" };
+  const ligne = (k: string, v: any) => v === undefined || v === null || v === "" ? null : (
+    <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 8, padding: "6px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
+      <span style={{ color: c.gris, fontWeight: 700 }}>{k}</span><span style={{ fontWeight: 600, whiteSpace: "pre-wrap" }}>{String(v)}</span>
+    </div>
+  );
+  const photos: string[] = Array.isArray(r.photoUrls) ? r.photoUrls.filter(Boolean) : [];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: c.carte, color: c.texte, borderRadius: 18, width: "min(720px, 100%)", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ padding: "16px 18px", background: st.f, color: "#fff", borderRadius: "18px 18px 0 0", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }}>Rapport d'agréage{r.numeroRapport ? ` · ${r.numeroRapport}` : ""}</div>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>{st.t} — {r.produit || ""}</div>
+            <div style={{ fontSize: 12.5, opacity: 0.9 }}>{r.fournisseur || ""} · {r.date || ""}{r.heure ? ` à ${r.heure}` : ""}{r.agreeur ? ` · ${r.agreeur}` : ""}</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 34, height: 34, borderRadius: 17, fontSize: 18, cursor: "pointer" }}>×</button>
+        </div>
+        <div style={{ padding: "8px 18px 18px" }}>
+          {ligne("Lot Moorea", r.lotMoorea)}{ligne("Lot fournisseur", r.lotFournisseur)}{ligne("N° de traçabilité", r.numeroTracabilite)}
+          {ligne("Origine", r.origine)}{ligne("Calibre / conditionnement", [r.calibre, r.conditionnement].filter(Boolean).join(" · "))}
+          {ligne("Colis reçus / attendus", r.nbColisRecu != null || r.nbColisAttendu != null ? `${r.nbColisRecu ?? "?"} / ${r.nbColisAttendu ?? "?"}` : "")}
+          {ligne("Colis refusés / à écarter", [r.nbColisRefuses, r.nbColisAEcarter].filter(x => x != null && x !== "").join(" / "))}
+          {ligne("Pourcentage", r.pourcentage ? `${r.pourcentage} %` : "")}{ligne("Température", r.temperature ? `${r.temperature} °C` : "")}
+          {ligne("Poids", [r.poids, r.poidsStatut, r.poidsEcart].filter(Boolean).join(" · "))}{ligne("DLC", r.dlc)}{ligne("Note", r.score)}
+          {ligne("Conformité", r.conformite)}{ligne("Observations", r.observations)}
+          {typeof r.notes === "object" && r.notes && ligne("Notes qualité", Object.entries(r.notes).map(([k, v]) => `${k} : ${v}`).join(" · "))}
+          {photos.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: c.gris, marginBottom: 6 }}>📷 Photos ({photos.length})</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 6 }}>
+                {photos.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 8 }} /></a>)}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
