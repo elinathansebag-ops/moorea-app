@@ -2259,7 +2259,7 @@ export default function App() {
   };
 
   // 10/10/2026 — « Tout mettre en réserve » (bloc fournisseur de l'arrivage) : un seul rapport de
-  // réserve pour tous les produits, avec au moins une photo par produit (vérifié dans soumettre).
+  // réserve pour tous les produits, photos par produit facultatives (13/10/2026).
   const ouvrirRapportGroupeReserve = (arrivagesGroupe: any[]) => {
     if (!arrivagesGroupe.length) return;
     const premier = arrivagesGroupe[0];
@@ -2439,13 +2439,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     if (conformite === "non_conforme" && !decision) {
       showToast("⚠ Précisez Réserve ou Refus", "error");
       return;
-    }
-    if (rapportGroupe) {
-      const sansPhoto = rapportGroupe.filter(a => !photos.some(p => p.arrivageId === a.id));
-      if (sansPhoto.length) {
-        showToast(`⚠ Il manque au moins une photo pour : ${sansPhoto.map(a => a.produit || "produit sans nom").join(", ")}`, "error");
-        return;
-      }
     }
     setSendingId("new");
 
@@ -5573,7 +5566,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 <div>
                   <p style={{ margin: "0 0 3px", fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.5px" }}>⚠️ Réserve sur tout l'arrivage</p>
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a2e1a" }}>{rapportGroupe.length} produits · {rapportGroupe[0]?.fournisseur}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>Arrivage du {rapportGroupe[0]?.date} · au moins une photo par produit</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>Arrivage du {rapportGroupe[0]?.date}</p>
                 </div>
                 <button onClick={() => { reset(); setPageMode("historique_arr"); setVue("__none__" as any); window.scrollTo(0,0); }}
                   style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", cursor: "pointer", fontSize: 13, color: "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>
@@ -5776,18 +5769,17 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             </div>
             {rapportGroupe && (
               <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
-                <div className="section-title">📷 Photos par produit</div>
-                <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "#6b7280" }}>Au moins une photo pour chaque produit de l'arrivage.</p>
+                <div className="section-title">📷 Photos par produit (facultatif)</div>
                 <div style={{ display: "grid", gap: 10 }}>
                   {rapportGroupe.map(a => {
                     const siennes = photos.map((p, i) => ({ p, i })).filter(x => x.p.arrivageId === a.id);
                     return (
-                      <div key={a.id} style={{ border: `1.5px solid ${siennes.length ? "#bbf7d0" : "#fca5a5"}`, borderRadius: 12, padding: "10px 12px" }}>
+                      <div key={a.id} style={{ border: `1.5px solid ${siennes.length ? "#bbf7d0" : "#e5e7eb"}`, borderRadius: 12, padding: "10px 12px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <div style={{ minWidth: 0 }}>
                             <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "#1a2e1a" }}>{a.produit || "Produit sans nom"}</p>
-                            <p style={{ margin: "1px 0 0", fontSize: 11.5, color: siennes.length ? "#15803d" : "#dc2626", fontWeight: 600 }}>
-                              {a.lot_interne ? `Lot ${a.lot_interne} · ` : ""}{siennes.length ? `${siennes.length} photo${siennes.length > 1 ? "s" : ""}` : "Photo obligatoire"}
+                            <p style={{ margin: "1px 0 0", fontSize: 11.5, color: siennes.length ? "#15803d" : "#6b7280", fontWeight: 600 }}>
+                              {a.lot_interne ? `Lot ${a.lot_interne} · ` : ""}{siennes.length ? `${siennes.length} photo${siennes.length > 1 ? "s" : ""}` : "Aucune photo"}
                             </p>
                           </div>
                           <input type="file" accept="image/*" multiple id={`photo-produit-${a.id}`} style={{ display: "none" }}

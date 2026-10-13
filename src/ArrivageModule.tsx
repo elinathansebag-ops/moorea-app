@@ -1312,7 +1312,7 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
             return (
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
                 <button type="button"
-                  onClick={e => { e.stopPropagation(); if (window.confirm(`Mettre en réserve les ${tous.length} produits de ${fournisseur} ?\n\nUn rapport de réserve unique va s'ouvrir : il faudra au moins une photo par produit.`)) onReserveGroupe(tous); }}
+                  onClick={e => { e.stopPropagation(); if (window.confirm(`Mettre en réserve les ${tous.length} produits de ${fournisseur} ?\n\nUn rapport de réserve unique va s'ouvrir.`)) onReserveGroupe(tous); }}
                   style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fffbeb", color: "#92400e", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
                   ⚠️ Tout mettre en réserve ({tous.length} produits)
                 </button>
