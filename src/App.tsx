@@ -4288,7 +4288,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   if (showExtractions) {
     const fermer = () => { setShowExtractions(false); setShowAccueil(true); };
     if (!monAcces.hasModule("extractions") && !monAcces.isAdmin && !monAcces.hasModule("statt")) return <AccesRefuse onRetour={fermer} />;
-    return <>{fabScanner}{invitationNotif}<Extractions onClose={fermer} darkMode={darkMode} voirMarge={!!monAcces.isAdmin} voirExtractions={monAcces.hasModule("extractions") || !!monAcces.isAdmin} voirProgramme={monAcces.hasModule("statt")} userName={nomAfficheGarde} /></>;
+    return <>{fabScanner}{invitationNotif}<Extractions onClose={fermer} darkMode={darkMode} voirMarge={!!monAcces.isAdmin || monAcces.hasModule("marge")} voirExtractions={monAcces.hasModule("extractions") || !!monAcces.isAdmin} voirProgramme={monAcces.hasModule("statt")} userName={nomAfficheGarde} /></>;
   }
 
   if (showConsultLidl) {

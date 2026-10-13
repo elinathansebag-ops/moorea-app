@@ -430,6 +430,9 @@ export const MODULE_DEFS: ModuleDef[] = [
   { key: "statt", label: "🛒 Statt" },
   // 13/10/2026 — Extractions en 3 clics (commande client, arrivage fournisseur, ventes produits) : Extractions.tsx.
   { key: "extractions", label: "📊 Stats (commande client, arrivage, ventes produits)" },
+  // 13/10/2026 — Demande d'Elinathan : voir les montants d'achat et la marge dans 📊 Stats (et l'Analyse
+  // ventes & marge), à cocher personne par personne au lieu d'être réservé aux admins.
+  { key: "marge", label: "💶 Voir les achats et la marge (📊 Stats)" },
   { key: "catalogue", label: "📚 Catalogue" },
   { key: "dashboard_tv", label: "📺 Tableau de bord (écran)" },
   { key: "qrcode", label: "📊 QR Code Leofresh" },
