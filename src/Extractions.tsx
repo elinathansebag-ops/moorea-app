@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { db, ref, get } from "./firebase";
+import { db, ref, get, onValue, update } from "./firebase";
+import { calculerAcces, cleEmail, type AccesRole, type AccesUser } from "./shared";
 import { PageHeader } from "./shared";
 import { chargerEquipes, equipeArticle } from "./stockEquipes";
 import { importerFichierVentes } from "./statsImport";
@@ -186,8 +187,11 @@ function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]
 }
 
 // ═══ Module ═══
-export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = true, voirProgramme = false, userName, ongletInitial, presetInitial }: { onClose: () => void; darkMode?: boolean; voirMarge: boolean; voirExtractions?: boolean; voirProgramme?: boolean; userName?: string; ongletInitial?: Onglet; presetInitial?: Preset }) {
+export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = true, voirProgramme = false, userName, ongletInitial, presetInitial, voirEuros = true, estAdmin = false }: { onClose: () => void; darkMode?: boolean; voirMarge: boolean; voirEuros?: boolean; estAdmin?: boolean; voirExtractions?: boolean; voirProgramme?: boolean; userName?: string; ongletInitial?: Onglet; presetInitial?: Preset }) {
   const [onglet, setOnglet] = useState<Onglet | null>(ongletInitial || null);
+  // 13/10/2026 — Réglage par personne « montants en € » ou « colis seulement » (droit « euros »).
+  // Sans les euros, pas de marge non plus.
+  voirMarge = voirMarge && voirEuros;
   const [preset, setPreset] = useState<Preset>(presetInitial || {});
   const [ventes, setVentes] = useState<LigneVente[] | null>(null);
   const [arrivages, setArrivages] = useState<any[] | null>(null);
@@ -215,11 +219,11 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
     return { clients, fourn, arts, fams };
   }, [ventes, arrivages]);
   const optionsGlobales = useMemo<Option[]>(() => [
-    ...[...index.clients].map(([v, p]) => ({ type: "client", valeur: v, detail: `Client · ${eur0(p)} de ventes`, poids: p })),
-    ...[...index.fourn].map(([v, p]) => ({ type: "fournisseur", valeur: v, detail: p ? `Fournisseur · ${eur0(p)} de ventes` : "Fournisseur (arrivages)", poids: p })),
+    ...[...index.clients].map(([v, p]) => ({ type: "client", valeur: v, detail: voirEuros ? `Client · ${eur0(p)} de ventes` : "Client", poids: p })),
+    ...[...index.fourn].map(([v, p]) => ({ type: "fournisseur", valeur: v, detail: p && voirEuros ? `Fournisseur · ${eur0(p)} de ventes` : "Fournisseur", poids: p })),
     ...[...index.fams].map(([v, p]) => ({ type: "famille", valeur: v, detail: `Famille · ${ent(p)} colis`, poids: p * 10 })),
     ...[...index.arts].map(([v, p]) => ({ type: "article", valeur: v, detail: `Article · ${ent(p)} colis`, poids: p })),
-  ], [index]);
+  ], [index, voirEuros]);
 
   const periodeBase = useMemo(() => {
     if (!ventes?.length) return "";
@@ -273,8 +277,8 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
                 </div>
               </div>
             )}
-            {voirExtractions && ventes && ventes.length > 0 && <TableauBordStats c={c} ventes={ventes} voirMarge={voirMarge} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
-            {voirExtractions && <CalendrierJournee c={c} ventes={ventes} arrivages={arrivages} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
+            {voirExtractions && ventes && ventes.length > 0 && <TableauBordStats c={c} ventes={ventes} voirMarge={voirMarge} voirEuros={voirEuros} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
+            {voirExtractions && <CalendrierJournee c={c} ventes={ventes} arrivages={arrivages} voirEuros={voirEuros} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
               {cartes.map(x => {
                 const t = TEINTES[x.k] || TEINTES.config;
@@ -293,22 +297,22 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
             </div>
           </>
         )}
-        {onglet === "client" && <CommandeClient c={c} voirMarge={voirMarge} ventes={ventes} preset={preset} />}
+        {onglet === "client" && <CommandeClient c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} preset={preset} />}
         {onglet === "arrivage" && <ArrivageFournisseur c={c} arrivages={arrivages} preset={preset} />}
-        {onglet === "produits" && <VentesProduits c={c} voirMarge={voirMarge} ventes={ventes} equipes={equipes} preset={preset} />}
-        {onglet === "config" && voirMarge && <ConfigImport c={c} ventes={ventes} userName={userName} onImporte={() => { oublierVentes(); setVentes(null); chargerVentes().then(setVentes).catch(e => setErreur(`Base des ventes : ${e?.message || e}`)); }} />}
+        {onglet === "produits" && <VentesProduits c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} equipes={equipes} preset={preset} />}
+        {onglet === "config" && voirMarge && <ConfigImport c={c} ventes={ventes} userName={userName} estAdmin={estAdmin} onImporte={() => { oublierVentes(); setVentes(null); chargerVentes().then(setVentes).catch(e => setErreur(`Base des ventes : ${e?.message || e}`)); }} />}
       </div>
     </div>
   );
 }
 
 // ── 1. Commande d'un client ──
-function CommandeClient({ c, voirMarge, ventes, preset }: { c: Couleurs; voirMarge: boolean; ventes: LigneVente[] | null; preset: Preset }) {
+function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset }: { c: Couleurs; voirMarge: boolean; voirEuros?: boolean; ventes: LigneVente[] | null; preset: Preset }) {
   const [client, setClient] = useState(preset.client || "");
   const [date, setDate] = useState(preset.date || "");
   const clientsOpts = useMemo<Option[]>(() => {
     const m = new Map<string, number>(); (ventes || []).forEach(l => m.set(l.c, (m.get(l.c) || 0) + l.ven));
-    return [...m].filter(([v]) => v).map(([v, p]) => ({ type: "client", valeur: v, detail: `${eur0(p)} de ventes`, poids: p }));
+    return [...m].filter(([v]) => v).map(([v, p]) => ({ type: "client", valeur: v, detail: voirEuros ? `${eur0(p)} de ventes` : undefined, poids: p }));
   }, [ventes]);
   const datesClient = useMemo(() => {
     if (!client) return [];
@@ -323,7 +327,8 @@ function CommandeClient({ c, voirMarge, ventes, preset }: { c: Couleurs; voirMar
     return [...m].sort((a, b) => b[1].ven - a[1].ven);
   }, [ventes, date, client]);
   const choisies = client && date ? (ventes || []).filter(l => l.c === client && l.d === date).sort((a, b) => a.a.localeCompare(b.a)) : [];
-  const entetes = ["Article", "Famille", "Fournisseur", "Colis", "Pièces", "Poids net (kg)", "Vente HT", ...(voirMarge ? ["Achat HT", "Résultat", "Marge"] : [])];
+  const entetes = ["Article", "Famille", "Fournisseur", "Colis", "Pièces", "Poids net (kg)", ...(voirEuros ? ["Vente HT"] : []), ...(voirMarge ? ["Achat HT", "Résultat", "Marge"] : [])];
+  const ve = (v: any) => (voirEuros ? [v] : []);
   const t = choisies.reduce((a, l) => ({ col: a.col + l.col, pc: a.pc + l.pc, kg: a.kg + l.kg, ven: a.ven + l.ven, ach: a.ach + l.ach, res: a.res + l.res }), { col: 0, pc: 0, kg: 0, ven: 0, ach: 0, res: 0 });
   if (ventes === null) return <p style={{ color: c.gris }}>Chargement de la base des ventes…</p>;
   return (
@@ -337,7 +342,7 @@ function CommandeClient({ c, voirMarge, ventes, preset }: { c: Couleurs; voirMar
         {client && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 200, overflowY: "auto" }}>
             {datesClient.map(([d, x]) => (
-              <button key={d} type="button" onClick={() => setDate(d)} style={puce(c, date === d)}>{dateLongue(d)} <span style={{ opacity: 0.7, fontWeight: 500 }}>· {ent(x.col)} colis · {eur0(x.ven)}</span></button>
+              <button key={d} type="button" onClick={() => setDate(d)} style={puce(c, date === d)}>{dateLongue(d)} <span style={{ opacity: 0.7, fontWeight: 500 }}>· {ent(x.col)} colis{voirEuros ? ` · ${eur0(x.ven)}` : ""}</span></button>
             ))}
             {!datesClient.length && <span style={{ fontSize: 13, color: c.gris }}>Aucune livraison pour ce client dans la base.</span>}
           </div>
@@ -355,12 +360,12 @@ function CommandeClient({ c, voirMarge, ventes, preset }: { c: Couleurs; voirMar
       {client && date && (
         <Bloc titre={`Commande de ${client} — livraison du ${dateFr(date)}`} c={c}
           droite={choisies.length > 0 && boutonExport(c, () => exporterExcel(`Commande ${client} ${dateFr(date)}`, `Commande de ${client} — livraison du ${dateFr(date)}`, entetes,
-            choisies.map(l => [l.a, l.fam, l.f, r2(l.col), r2(l.pc), r2(l.kg), r2(l.ven), ...(voirMarge ? [l.sa ? "" : r2(l.ach), l.sa ? "" : r2(l.res), l.sa || !l.ven ? "" : r2(l.res / l.ven * 100)] : [])]),
-            ["TOTAL", "", "", r2(t.col), r2(t.pc), r2(t.kg), r2(t.ven), ...(voirMarge ? [r2(t.ach), r2(t.res), t.ven ? r2(t.res / t.ven * 100) : ""] : [])]))}>
+            choisies.map(l => [l.a, l.fam, l.f, r2(l.col), r2(l.pc), r2(l.kg), ...ve(r2(l.ven)), ...(voirMarge ? [l.sa ? "" : r2(l.ach), l.sa ? "" : r2(l.res), l.sa || !l.ven ? "" : r2(l.res / l.ven * 100)] : [])]),
+            ["TOTAL", "", "", r2(t.col), r2(t.pc), r2(t.kg), ...ve(r2(t.ven)), ...(voirMarge ? [r2(t.ach), r2(t.res), t.ven ? r2(t.res / t.ven * 100) : ""] : [])]))}>
           {!choisies.length ? <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Pas de commande de ce client à cette date.</p> : (
             <Tableau c={c} entetes={entetes} droite={[3, 4, 5, 6, 7, 8, 9]}
-              lignes={choisies.map(l => [l.a, l.fam, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", eur(l.ven), ...(voirMarge ? [l.sa ? "—" : eur(l.ach), l.sa ? "—" : eur(l.res), l.sa ? "—" : pct(l.res, l.ven)] : [])])}
-              total={["TOTAL", "", "", ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", eur(t.ven), ...(voirMarge ? [eur(t.ach), eur(t.res), pct(t.res, t.ven)] : [])]} />
+              lignes={choisies.map(l => [l.a, l.fam, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...ve(eur(l.ven)), ...(voirMarge ? [l.sa ? "—" : eur(l.ach), l.sa ? "—" : eur(l.res), l.sa ? "—" : pct(l.res, l.ven)] : [])])}
+              total={["TOTAL", "", "", ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...ve(eur(t.ven)), ...(voirMarge ? [eur(t.ach), eur(t.res), pct(t.res, t.ven)] : [])]} />
           )}
         </Bloc>
       )}
@@ -440,7 +445,7 @@ const VUES: { k: Vue; lib: string }[] = [
   { k: "jour", lib: "Par jour" }, { k: "semaine", lib: "Par semaine" }, { k: "mois", lib: "Par mois" }, { k: "article", lib: "Par article" },
   { k: "famille", lib: "Par famille" }, { k: "client", lib: "Par client" }, { k: "fournisseur", lib: "Par fournisseur" }, { k: "compte", lib: "GMS / Prestige" }, { k: "detail", lib: "Détail complet" },
 ];
-function VentesProduits({ c, voirMarge, ventes, equipes, preset }: { c: Couleurs; voirMarge: boolean; ventes: LigneVente[] | null; equipes: Record<string, string>; preset: Preset }) {
+function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, preset }: { c: Couleurs; voirMarge: boolean; voirEuros?: boolean; ventes: LigneVente[] | null; equipes: Record<string, string>; preset: Preset }) {
   const maxDate = useMemo(() => (ventes || []).reduce((m, l) => (l.d > m ? l.d : m), ""), [ventes]);
   const minDate = useMemo(() => (ventes || []).reduce((m, l) => (!m || l.d < m ? l.d : m), ""), [ventes]);
   const [debut, setDebut] = useState("");
@@ -480,7 +485,7 @@ function VentesProduits({ c, voirMarge, ventes, equipes, preset }: { c: Couleurs
     const m: Record<string, Map<string, number>> = { article: new Map(), famille: new Map(), client: new Map(), fournisseur: new Map() };
     dansPeriode.forEach(l => { m.article.set(l.a, (m.article.get(l.a) || 0) + l.col); if (l.fam) m.famille.set(l.fam, (m.famille.get(l.fam) || 0) + l.col); m.client.set(l.c, (m.client.get(l.c) || 0) + l.ven); m.fournisseur.set(l.f, (m.fournisseur.get(l.f) || 0) + l.ven); });
     const vers = (t: string, mp: Map<string, number>, lib: (n: number) => string): Option[] => [...mp].filter(([v]) => v).map(([v, n]) => ({ type: t, valeur: v, detail: lib(n), poids: n }));
-    return [...vers("famille", m.famille, n => `Famille · ${ent(n)} colis sur la période`), ...vers("article", m.article, n => `Article · ${ent(n)} colis`), ...vers("client", m.client, n => `Client · ${eur0(n)}`), ...vers("fournisseur", m.fournisseur, n => `Fournisseur · ${eur0(n)}`)];
+    return [...vers("famille", m.famille, n => `Famille · ${ent(n)} colis sur la période`), ...vers("article", m.article, n => `Article · ${ent(n)} colis`), ...vers("client", m.client, n => voirEuros ? `Client · ${eur0(n)}` : "Client"), ...vers("fournisseur", m.fournisseur, n => voirEuros ? `Fournisseur · ${eur0(n)}` : "Fournisseur")];
   }, [dansPeriode]);
   const ajouter = (o: Option) => {
     const add = (l: string[], set: (x: string[]) => void) => { if (!l.includes(o.valeur)) set([...l, o.valeur]); };
@@ -502,12 +507,12 @@ function VentesProduits({ c, voirMarge, ventes, equipes, preset }: { c: Couleurs
     if (vue === "detail") return [];
     const m = new Map<string, { k: string; col: number; pc: number; kg: number; ven: number; ach: number; res: number }>();
     choisies.forEach(l => { const k = cleVue(l); const x = m.get(k) || { k, col: 0, pc: 0, kg: 0, ven: 0, ach: 0, res: 0 }; x.col += l.col; x.pc += l.pc; x.kg += l.kg; x.ven += l.ven; x.ach += l.ach; x.res += l.res; m.set(k, x); });
-    return [...m.values()].sort((a, b) => tri ? a.k.localeCompare(b.k) : b.ven - a.ven);
+    return [...m.values()].sort((a, b) => tri ? a.k.localeCompare(b.k) : voirEuros ? b.ven - a.ven : b.col - a.col);
   }, [choisies, vue, equipes]);
   const t = choisies.reduce((a, l) => ({ col: a.col + l.col, pc: a.pc + l.pc, kg: a.kg + l.kg, ven: a.ven + l.ven, ach: a.ach + l.ach, res: a.res + l.res }), { col: 0, pc: 0, kg: 0, ven: 0, ach: 0, res: 0 });
-  const mAff = (x: { ven: number; ach: number; res: number }) => [eur(x.ven), ...(voirMarge ? [eur(x.ach), eur(x.res), pct(x.res, x.ven)] : [])];
-  const mXl = (x: { ven: number; ach: number; res: number }) => [r2(x.ven), ...(voirMarge ? [r2(x.ach), r2(x.res), x.ven ? r2(x.res / x.ven * 100) : ""] : [])];
-  const colsM = ["Vente HT", ...(voirMarge ? ["Achat HT", "Résultat", "Marge"] : [])];
+  const mAff = (x: { ven: number; ach: number; res: number }) => !voirEuros ? [] : [eur(x.ven), ...(voirMarge ? [eur(x.ach), eur(x.res), pct(x.res, x.ven)] : [])];
+  const mXl = (x: { ven: number; ach: number; res: number }) => !voirEuros ? [] : [r2(x.ven), ...(voirMarge ? [r2(x.ach), r2(x.res), x.ven ? r2(x.res / x.ven * 100) : ""] : [])];
+  const colsM = !voirEuros ? [] : ["Vente HT", ...(voirMarge ? ["Achat HT", "Résultat", "Marge"] : [])];
   const nomVue = VUES.find(v => v.k === vue)?.lib || "";
   let entetes: string[], aff: (string | number)[][], xl: (string | number)[][], n0: number;
   if (vue === "detail") {
@@ -516,9 +521,9 @@ function VentesProduits({ c, voirMarge, ventes, equipes, preset }: { c: Couleurs
     aff = g.map(l => [dateFr(l.d), l.a, l.fam, eq(l.a), l.c, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...mAff(l)]);
     xl = g.map(l => [dateFr(l.d), l.a, l.fam, eq(l.a), l.c, l.f, r2(l.col), r2(l.pc), r2(l.kg), ...mXl(l)]);
   } else {
-    entetes = [nomVue.replace("Par ", "").replace(/^./, s => s.toUpperCase()), "Colis", "Pièces", "Poids net (kg)", ...colsM, "Part des ventes"]; n0 = 1;
-    aff = groupes.map(x => [libCle(x.k), ent(x.col), x.pc ? ent(x.pc) : "", x.kg ? kg(x.kg) : "", ...mAff(x), t.ven ? pct(x.ven, t.ven) : ""]);
-    xl = groupes.map(x => [libCle(x.k), r2(x.col), r2(x.pc), r2(x.kg), ...mXl(x), t.ven ? r2(x.ven / t.ven * 100) : ""]);
+    entetes = [nomVue.replace("Par ", "").replace(/^./, s => s.toUpperCase()), "Colis", "Pièces", "Poids net (kg)", ...colsM, voirEuros ? "Part des ventes" : "Part des colis"]; n0 = 1;
+    aff = groupes.map(x => [libCle(x.k), ent(x.col), x.pc ? ent(x.pc) : "", x.kg ? kg(x.kg) : "", ...mAff(x), voirEuros ? (t.ven ? pct(x.ven, t.ven) : "") : (t.col ? pct(x.col, t.col) : "")]);
+    xl = groupes.map(x => [libCle(x.k), r2(x.col), r2(x.pc), r2(x.kg), ...mXl(x), voirEuros ? (t.ven ? r2(x.ven / t.ven * 100) : "") : (t.col ? r2(x.col / t.col * 100) : "")]);
   }
   const vides = Array(n0 - 1).fill("");
   const totalAff = ["TOTAL", ...vides, ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...mAff(t), ...(vue === "detail" ? [] : ["100 %"])];
@@ -563,7 +568,7 @@ function VentesProduits({ c, voirMarge, ventes, equipes, preset }: { c: Couleurs
           {VUES.map(v => <button key={v.k} type="button" onClick={() => setVue(v.k)} style={puce(c, vue === v.k)}>{v.lib}</button>)}
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          {[["Colis", ent(t.col)], ["Ventes HT", eur0(t.ven)], ...(voirMarge ? [["Résultat", eur0(t.res)], ["Marge", pct(t.res, t.ven)]] : []), ["Lignes", ent(choisies.length)]].map(([k, v]) => (
+          {[["Colis", ent(t.col)], ...(voirEuros ? [["Ventes HT", eur0(t.ven)]] : []), ...(voirMarge ? [["Résultat", eur0(t.res)], ["Marge", pct(t.res, t.ven)]] : []), ["Lignes", ent(choisies.length)]].map(([k, v]) => (
             <div key={k} style={{ flex: "1 1 120px", background: c.sombre ? "#1d2e2b" : "#eaf2ee", borderRadius: 10, padding: "8px 12px" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: c.gris }}>{k}</div>
               <div style={{ fontSize: 18, fontWeight: 900 }}>{v}</div>
@@ -623,7 +628,7 @@ function chargerJournee() {
   ]).then(([lidl, recond, retours]) => ({ lidl, recond, retours }));
   return cacheJournee;
 }
-function CalendrierJournee({ c, ventes, arrivages, ouvrir }: { c: Couleurs; ventes: LigneVente[] | null; arrivages: any[] | null; ouvrir: (o: Onglet, p: Preset) => void }) {
+function CalendrierJournee({ c, ventes, arrivages, voirEuros = true, ouvrir }: { c: Couleurs; ventes: LigneVente[] | null; arrivages: any[] | null; voirEuros?: boolean; ouvrir: (o: Onglet, p: Preset) => void }) {
   const [ouvert, setOuvert] = useState(false);
   const [mois, setMois] = useState(() => iso(new Date()).slice(0, 7));
   const [jour, setJour] = useState("");
@@ -640,7 +645,7 @@ function CalendrierJournee({ c, ventes, arrivages, ouvrir }: { c: Couleurs; vent
   const arrJour = (arrivages || []).filter(a => a.date === fr);
   const fournJour = [...arrJour.reduce((m, a) => m.set(a.fournisseur || "(sans fournisseur)", (m.get(a.fournisseur || "(sans fournisseur)") || 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
   const ventesJour = (ventes || []).filter(l => l.d === jour);
-  const clientsJour = [...ventesJour.reduce((m, l) => m.set(l.c, (m.get(l.c) || 0) + l.ven), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+  const clientsJour = [...ventesJour.reduce((m, l) => m.set(l.c, (m.get(l.c) || 0) + (voirEuros ? l.ven : l.col)), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
   const totV = ventesJour.reduce((a, l) => ({ col: a.col + l.col, ven: a.ven + l.ven }), { col: 0, ven: 0 });
   const lidlJour = (autres?.lidl || []).filter(l => l.date === jour);
   const recondDemandes = (autres?.recond || []).filter(d => String(d.dateCreationFr || "").startsWith(fr));
@@ -667,8 +672,8 @@ function CalendrierJournee({ c, ventes, arrivages, ouvrir }: { c: Couleurs; vent
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 900, textTransform: "capitalize" }}>{new Date(jour + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
                 {titre(`🚚 Arrivages — ${arrJour.length} produit${arrJour.length > 1 ? "s" : ""}, ${fournJour.length} fournisseur${fournJour.length > 1 ? "s" : ""}`)}
                 <div style={ligne}>{fournJour.map(([f, n]) => <button key={f} type="button" onClick={() => ouvrir("arrivage", { fournisseur: f, date: jour })} style={puce(c, false)}>{f} · {n}</button>)}{!fournJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Aucun.</span>}</div>
-                {titre(`🧾 Livraisons clients — ${clientsJour.length} client${clientsJour.length > 1 ? "s" : ""} · ${ent(totV.col)} colis · ${eur0(totV.ven)}`)}
-                <div style={ligne}>{clientsJour.slice(0, 30).map(([n, v]) => <button key={n} type="button" onClick={() => ouvrir("client", { client: n, date: jour })} style={puce(c, false)}>{n} · {eur0(v)}</button>)}{clientsJour.length > 30 && <button type="button" onClick={() => ouvrir("client", { date: jour })} style={puce(c, false)}>+ {clientsJour.length - 30} autres…</button>}{!clientsJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Pas de ventes importées pour ce jour.</span>}</div>
+                {titre(`🧾 Livraisons clients — ${clientsJour.length} client${clientsJour.length > 1 ? "s" : ""} · ${ent(totV.col)} colis${voirEuros ? ` · ${eur0(totV.ven)}` : ""}`)}
+                <div style={ligne}>{clientsJour.slice(0, 30).map(([n, v]) => <button key={n} type="button" onClick={() => ouvrir("client", { client: n, date: jour })} style={puce(c, false)}>{n} · {voirEuros ? eur0(v) : `${ent(v)} colis`}</button>)}{clientsJour.length > 30 && <button type="button" onClick={() => ouvrir("client", { date: jour })} style={puce(c, false)}>+ {clientsJour.length - 30} autres…</button>}{!clientsJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Pas de ventes importées pour ce jour.</span>}</div>
                 {autres === null ? <p style={{ fontSize: 12.5, color: c.gris }}>Chargement des commandes Lidl, reconditionnements et retours…</p> : (
                   <>
                     {titre(`🛒 Commandes Lidl préparées — ${lidlJour.filter(l => l.statut === "pret").length}/${lidlJour.length} prêtes · ${ent(lidlJour.reduce((t, l) => t + (Number(l.quantite) || 0), 0))} colis`)}
@@ -689,7 +694,7 @@ function CalendrierJournee({ c, ventes, arrivages, ouvrir }: { c: Couleurs; vent
 }
 
 // ── Configuration : jours importés / pas encore + import ──
-function ConfigImport({ c, ventes, userName, onImporte }: { c: Couleurs; ventes: LigneVente[] | null; userName?: string; onImporte: () => void }) {
+function ConfigImport({ c, ventes, userName, onImporte, estAdmin }: { c: Couleurs; ventes: LigneVente[] | null; userName?: string; onImporte: () => void; estAdmin?: boolean }) {
   const [mois, setMois] = useState(() => iso(new Date()).slice(0, 7));
   const [etat, setEtat] = useState<{ texte: string; pct: number; erreur?: boolean } | null>(null);
   const entree = useRef<HTMLInputElement>(null);
@@ -724,6 +729,7 @@ function ConfigImport({ c, ventes, userName, onImporte }: { c: Couleurs; ventes:
           </div>
         )}
       </Bloc>
+      {estAdmin && <ReglagesAffichage c={c} />}
       <Bloc titre={`Jours importés — ${bornes}`} c={c}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: c.gris, marginBottom: 10 }}>
           <span><span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#dcfce7", verticalAlign: "middle" }} /> importé avec achats et marge</span>
@@ -753,7 +759,7 @@ const TEINTES: Record<string, { fort: string; doux: string }> = {
 };
 function salutation() { const h = new Date().getHours(); return h < 6 ? "Bonne nuit" : h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; }
 
-function TableauBordStats({ c, ventes, voirMarge, ouvrir }: { c: Couleurs; ventes: LigneVente[]; voirMarge: boolean; ouvrir: (o: Onglet, p: Preset) => void }) {
+function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { c: Couleurs; ventes: LigneVente[]; voirMarge: boolean; voirEuros?: boolean; ouvrir: (o: Onglet, p: Preset) => void }) {
   const d = useMemo(() => {
     const parJour = new Map<string, { ven: number; col: number; res: number }>();
     for (const l of ventes) { const x = parJour.get(l.d) || { ven: 0, col: 0, res: 0 }; x.ven += l.ven; x.col += l.col; x.res += l.sa ? 0 : l.res; parJour.set(l.d, x); }
@@ -769,10 +775,10 @@ function TableauBordStats({ c, ventes, voirMarge, ouvrir }: { c: Couleurs; vente
     const jDernier = parJour.get(dernier)!;
     // Même jour de la semaine précédente, pour comparer le dernier jour.
     const jAvant = parJour.get(decale(dernier, -7));
-    const serie = Array.from({ length: 30 }, (_, i) => { const j = decale(dernier, i - 29); return { j, v: parJour.get(j)?.ven || 0 }; });
-    const tops = (cle: (l: LigneVente) => string) => { const m = new Map<string, number>(); for (const l of ventes) if (l.d >= decale(dernier, -6)) m.set(cle(l), (m.get(cle(l)) || 0) + l.ven); return [...m].filter(([k]) => k).sort((a, b) => b[1] - a[1]).slice(0, 5); };
+    const serie = Array.from({ length: 30 }, (_, i) => { const j = decale(dernier, i - 29); const x = parJour.get(j); return { j, v: (voirEuros ? x?.ven : x?.col) || 0 }; });
+    const tops = (cle: (l: LigneVente) => string) => { const m = new Map<string, number>(); for (const l of ventes) if (l.d >= decale(dernier, -6)) m.set(cle(l), (m.get(cle(l)) || 0) + (voirEuros ? l.ven : l.col)); return [...m].filter(([k]) => k).sort((a, b) => b[1] - a[1]).slice(0, 5); };
     return { dernier, jDernier, jAvant, d7, d7avant, mCourant, mPrecMeme, mois, serie, topClients: tops(l => l.c), topArticles: tops(l => l.a) };
-  }, [ventes]);
+  }, [ventes, voirEuros]);
   const evol = (a: number, b: number) => (b ? (a - b) / b * 100 : null);
   const Tendance = ({ v }: { v: number | null }) => v == null ? null : (
     <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: v >= 0 ? "#dcfce7" : "#fee2e2", color: v >= 0 ? "#166534" : "#b91c1c" }}>{v >= 0 ? "▲" : "▼"} {Math.abs(v).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} %</span>
@@ -794,7 +800,7 @@ function TableauBordStats({ c, ventes, voirMarge, ouvrir }: { c: Couleurs; vente
           style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 4px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
           <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, background: i === 0 ? "#fde68a" : i === 1 ? "#e5e7eb" : i === 2 ? "#fed7aa" : (c.sombre ? "#1d2e2b" : "#eaf2ee"), color: "#1a2e1a" }}>{i + 1}</span>
           <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}</span>
-          <span style={{ fontSize: 13, fontWeight: 800, color: c.gris }}>{eur0(v)}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: c.gris }}>{voirEuros ? eur0(v) : `${ent(v)} colis`}</span>
         </button>
       ))}
     </div>
@@ -802,21 +808,31 @@ function TableauBordStats({ c, ventes, voirMarge, ouvrir }: { c: Couleurs; vente
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-        {tuile(`Le ${dateFr(d.dernier)}`, eur0(d.jDernier.ven), `${ent(d.jDernier.col)} colis · vs même jour sem. dernière`, d.jAvant ? evol(d.jDernier.ven, d.jAvant.ven) : null, "#2563eb")}
-        {tuile("7 derniers jours", eur0(d.d7.ven), `${ent(d.d7.col)} colis · vs 7 jours d'avant`, evol(d.d7.ven, d.d7avant.ven), "#16a34a")}
-        {tuile(`Mois de ${nomMois}`, eur0(d.mCourant.ven), `vs même période du mois dernier`, evol(d.mCourant.ven, d.mPrecMeme.ven), "#ea580c")}
+        {voirEuros ? (
+          <>
+            {tuile(`Le ${dateFr(d.dernier)}`, eur0(d.jDernier.ven), `${ent(d.jDernier.col)} colis · vs même jour sem. dernière`, d.jAvant ? evol(d.jDernier.ven, d.jAvant.ven) : null, "#2563eb")}
+            {tuile("7 derniers jours", eur0(d.d7.ven), `${ent(d.d7.col)} colis · vs 7 jours d'avant`, evol(d.d7.ven, d.d7avant.ven), "#16a34a")}
+            {tuile(`Mois de ${nomMois}`, eur0(d.mCourant.ven), `vs même période du mois dernier`, evol(d.mCourant.ven, d.mPrecMeme.ven), "#ea580c")}
+          </>
+        ) : (
+          <>
+            {tuile(`Le ${dateFr(d.dernier)}`, `${ent(d.jDernier.col)} colis`, "vs même jour sem. dernière", d.jAvant ? evol(d.jDernier.col, d.jAvant.col) : null, "#2563eb")}
+            {tuile("7 derniers jours", `${ent(d.d7.col)} colis`, "vs 7 jours d'avant", evol(d.d7.col, d.d7avant.col), "#16a34a")}
+            {tuile(`Mois de ${nomMois}`, `${ent(d.mCourant.col)} colis`, "vs même période du mois dernier", evol(d.mCourant.col, d.mPrecMeme.col), "#ea580c")}
+          </>
+        )}
         {voirMarge && tuile("Marge 7 jours", pct(d.d7.res, d.d7.ven), `${eur0(d.d7.res)} de résultat`, null, "#7c3aed")}
       </div>
       <div style={{ background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 900 }}>📈 Ventes des 30 derniers jours</span>
+          <span style={{ fontSize: 13, fontWeight: 900 }}>📈 {voirEuros ? "Ventes" : "Colis vendus"} des 30 derniers jours</span>
           <span style={{ fontSize: 12, color: c.gris }}>touche une barre pour voir le jour</span>
         </div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 110 }}>
           {d.serie.map(x => {
             const dim = new Date(x.j + "T12:00:00").getDay() === 0;
             return (
-              <button key={x.j} type="button" title={`${dateLongue(x.j)} : ${eur0(x.v)}`} onClick={() => x.v && ouvrir("client", { date: x.j })}
+              <button key={x.j} type="button" title={`${dateLongue(x.j)} : ${voirEuros ? eur0(x.v) : `${ent(x.v)} colis`}`} onClick={() => x.v && ouvrir("client", { date: x.j })}
                 style={{ flex: 1, minWidth: 0, height: `${Math.max(3, x.v / max * 100)}%`, borderRadius: "5px 5px 2px 2px", border: "none", padding: 0, cursor: x.v ? "pointer" : "default",
                   background: x.j === d.dernier ? "#74b484" : dim ? (c.sombre ? "#2e3540" : "#e5e7eb") : "linear-gradient(180deg, #4f8a6f, #305a55)" }} />
             );
@@ -829,5 +845,50 @@ function TableauBordStats({ c, ventes, voirMarge, ouvrir }: { c: Couleurs; vente
         {liste("Top articles de la semaine", "🔥", d.topArticles, "article")}
       </div>
     </div>
+  );
+}
+
+// ── Réglage par personne : stats en € ou en colis, et marge (droits « euros » et « marge ») ──
+// Même logique que Droits d'accès : décocher = denyModules, cocher = lever le refus + extraModules.
+function ReglagesAffichage({ c }: { c: Couleurs }) {
+  const [roles, setRoles] = useState<Record<string, AccesRole>>({});
+  const [users, setUsers] = useState<Record<string, AccesUser> | null>(null);
+  const [filtre, setFiltre] = useState("");
+  useEffect(() => {
+    const a = onValue(ref(db, "acces_permissions/roles"), s => setRoles(s.val() || {}));
+    const b = onValue(ref(db, "acces_permissions/users"), s => setUsers(s.val() || {}));
+    return () => { a(); b(); };
+  }, []);
+  const regler = (email: string, cle: string, oui: boolean) => update(ref(db, `acces_permissions/users/${cleEmail(email)}`), oui
+    ? { [`denyModules/${cle}`]: null, [`extraModules/${cle}`]: true }
+    : { [`denyModules/${cle}`]: true });
+  const liste = Object.values(users || {}).filter(u => u?.email && (!filtre || norm(u.email).includes(norm(filtre)))).sort((a, b) => a.email.localeCompare(b.email));
+  const bouton = (actif: boolean, lib: string, onClick: () => void) => (
+    <button type="button" onClick={onClick} style={{ padding: "6px 11px", border: "none", background: actif ? c.vert : "transparent", color: actif ? "#fff" : c.texte, fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>{lib}</button>
+  );
+  const groupe = (enfants: any) => <span style={{ display: "inline-flex", border: `1.5px solid ${c.bord}`, borderRadius: 999, overflow: "hidden" }}>{enfants}</span>;
+  return (
+    <Bloc titre="👥 Affichage des stats par personne" c={c}>
+      <p style={{ margin: "0 0 8px", fontSize: 12.5, color: c.gris }}>Choisis pour chacun : stats <b>en €</b> ou <b>en colis seulement</b> (aucun montant affiché ni exporté), et s'il voit la <b>marge</b>. Les admins voient tout.</p>
+      <input value={filtre} onChange={e => setFiltre(e.target.value)} placeholder="🔍 Chercher une personne" style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 13.5, marginBottom: 8 }} />
+      {users === null && <p style={{ fontSize: 13, color: c.gris }}>Chargement…</p>}
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        {liste.map(u => {
+          const acces = calculerAcces(u.email, roles, users);
+          const euros = acces.hasModule("euros"), marge = acces.hasModule("marge"), stats = acces.hasModule("extractions");
+          return (
+            <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 0", borderTop: `1px solid ${c.bord}` }}>
+              <span style={{ flex: 1, minWidth: 200, fontSize: 13.5, fontWeight: 700 }}>{u.email}{!stats && !acces.isAdmin && <span style={{ fontSize: 11, color: c.gris, fontWeight: 500 }}> · n'a pas 📊 Stats</span>}</span>
+              {acces.isAdmin ? <span style={{ fontSize: 12, fontWeight: 800, color: c.gris }}>Admin — voit tout</span> : (
+                <>
+                  {groupe(<>{bouton(euros, "€ Montants", () => !euros && regler(u.email, "euros", true))}{bouton(!euros, "📦 Colis", () => euros && regler(u.email, "euros", false))}</>)}
+                  {groupe(<>{bouton(marge && euros, "Marge ✓", () => { if (!euros) regler(u.email, "euros", true); if (!marge) regler(u.email, "marge", true); })}{bouton(!marge || !euros, "Sans marge", () => marge && regler(u.email, "marge", false))}</>)}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Bloc>
   );
 }

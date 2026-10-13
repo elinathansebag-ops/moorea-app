@@ -433,6 +433,8 @@ export const MODULE_DEFS: ModuleDef[] = [
   // 13/10/2026 — Demande d'Elinathan : voir les montants d'achat et la marge dans 📊 Stats (et l'Analyse
   // ventes & marge), à cocher personne par personne au lieu d'être réservé aux admins.
   { key: "marge", label: "💶 Voir les achats et la marge (📊 Stats)" },
+  // 13/10/2026 — Stats en € ou en colis seulement, personne par personne (📊 Stats › Configuration).
+  { key: "euros", label: "💶 Voir les montants en € dans 📊 Stats (sinon colis seulement)" },
   { key: "catalogue", label: "📚 Catalogue" },
   { key: "dashboard_tv", label: "📺 Tableau de bord (écran)" },
   { key: "gencodes", label: "🏷️ Gencodes GMS" },
