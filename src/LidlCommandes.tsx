@@ -285,7 +285,10 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   useEffect(() => {
     if (!jourAffiche || initOuverture.current === jourAffiche) return;
     initOuverture.current = jourAffiche;
-    setJoursOuverts(x => new Set(x).add(jourAffiche));
+    // 13/10/2026 — Demande d'Elinathan : dans le module Commandes Lidl, les journées sont fermées
+    // par défaut (seule la semaine s'ouvre). Restent ouvertes : un jour demandé depuis
+    // « Commandes passées » (jourForce), le jour qu'on vient d'importer, et la Préparation.
+    if (!commercial || jourForce) setJoursOuverts(x => new Set(x).add(jourAffiche));
     setSemainesOuvertes(x => new Set(x).add(lundiDe(jourAffiche)));
   }, [jourAffiche]);
   const basculer = (set: Dispatch<SetStateAction<Set<string>>>, k: string) => set(x => { const n = new Set(x); if (n.has(k)) n.delete(k); else n.add(k); return n; });
@@ -1187,7 +1190,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     <div style={{ position: "relative", flex: "1 1 220px", minWidth: 180 }}>
       <input value={recherche} onChange={e => { setRecherche(e.target.value); setJoursOuverts(new Set()); setSemainesOuvertes(new Set()); }} placeholder="🔍 Rechercher une base (ex. Meaux, BAR, 19)" aria-label="Rechercher une base Lidl"
         style={{ width: "100%", boxSizing: "border-box", height: 42, padding: "0 34px 0 12px", borderRadius: 10, border: `1.5px solid ${recherche ? couleur : "#d1d5db"}`, fontSize: 14, background: "#fff" }} />
-      {recherche && <button type="button" aria-label="Effacer la recherche" onClick={() => { setRecherche(""); setJoursOuverts(new Set(jourAffiche ? [jourAffiche] : [])); setSemainesOuvertes(new Set(jourAffiche ? [lundiDe(jourAffiche)] : [])); }} style={{ position: "absolute", right: 6, top: 6, width: 30, height: 30, border: "none", background: "transparent", fontSize: 18, cursor: "pointer", color: "#6b7280" }}>×</button>}
+      {recherche && <button type="button" aria-label="Effacer la recherche" onClick={() => { setRecherche(""); setJoursOuverts(new Set(jourAffiche && (!commercial || jourForce) ? [jourAffiche] : [])); setSemainesOuvertes(new Set(jourAffiche ? [lundiDe(jourAffiche)] : [])); }} style={{ position: "absolute", right: 6, top: 6, width: 30, height: 30, border: "none", background: "transparent", fontSize: 18, cursor: "pointer", color: "#6b7280" }}>×</button>}
     </div>
   );
   const aucunResultat = enRecherche && listeSemaines.length === 0 && <div style={{ textAlign: "center", color: "#6b7280", padding: "16px 0", fontSize: 13.5, background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14 }}>Aucune commande pour « {recherche} ».</div>;
