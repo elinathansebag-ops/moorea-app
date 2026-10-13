@@ -69,3 +69,17 @@ describe("ordre de préparation Lidl", () => {
     expect(trierPourPrepa(ls).map(l => l.base)).toEqual(["E", "C", "D", "B", "G", "A", "F"]);
   });
 });
+
+// 13/10/2026 — Fichier du 14/10 : deux articles (250 g et 500 g) sur le même avis / camion pour
+// Aquitaine. Les deux commandes doivent garder chacune leur identifiant.
+describe("identifiant d'une commande Lidl", () => {
+  it("distingue deux articles du même avis pour la même base", async () => {
+    const { idCommandeLidl, idCommandeLidlAncien } = await import("../LidlCommandes");
+    const h250 = { avis: "AV260405676", base: "CET", articleNum: "82211", sousArticle: "15" };
+    const h500 = { avis: "AV260405676", base: "CET", articleNum: "82212", sousArticle: "77" };
+    const h500ke = { ...h500, sousArticle: "79" };
+    const ids = [h250, h500, h500ke].map(l => idCommandeLidl("2026-10-14", l, "paris"));
+    expect(new Set(ids).size).toBe(3);
+    expect(idCommandeLidlAncien("2026-10-14", h250, "paris")).toBe(idCommandeLidlAncien("2026-10-14", h500, "paris"));
+  });
+});

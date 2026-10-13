@@ -11,7 +11,7 @@ import { alerterPush } from "./NotificationsPush";
 // qu'il le reçoit ; l'app en tire une ligne par commande (camion × base Lidl) dans la cellule
 // « 🛒 Lidl » de Préparation : base, article, quantité, numéro de traçabilité (lot) utilisé, et un
 // bouton « Prêt ». Réimporter le même fichier ne crée jamais de doublon (identifiant = date +
-// n° d'avis + base) et conserve les « Prêt » et les lots déjà saisis.
+// n° d'avis + article + base, voir idCommandeLidl) et conserve les « Prêt » et les lots déjà saisis.
 // Chemin Firebase : lidl_commandes/{id}. Aucun lien avec le stock IFCO ni les autres modules.
 
 type LigneLidl = {
@@ -19,6 +19,7 @@ type LigneLidl = {
   date: string;          // AAAA-MM-JJ (date de livraison Lidl)
   camion: string;
   avis: string;
+  sousArticle?: string;  // n° de sous-article Lidl (UA000) : distingue ex. 500 g Maroc / 500 g Kenya
   base: string;          // code de la base Lidl (SAI, LCA, BAR…)
   depart?: "sud" | "paris"; // départ choisi à l'import par le commercial (sud = Perpignan, paris = Moorea/Rungis)
   transporteur?: string; // transporteur de la base pour ce départ
@@ -44,6 +45,19 @@ type LigneLidl = {
   etiquetteQuantite?: number;     // nb de colis écrit sur l'étiquette imprimée
   etiquetteAReimprimer?: boolean; // quantité modifiée par un réimport après impression
 };
+
+// 13/10/2026 — Demande d'Elinathan : « il me manque au départ du jour une ligne Aquitaine (colis
+// en 250g par 12) ». Cause : le fichier du 14/10 mettait DEUX articles sur le même avis et le même
+// camion pour Aquitaine (50 colis de 250 g et 5 colis de 500 g). L'identifiant d'une commande
+// était « date + avis + base + départ », sans l'article : les deux lignes avaient le même, et la
+// 500 g écrasait la 250 g. L'identifiant contient maintenant l'article et le sous-article.
+export function idCommandeLidl(d: string, l: { avis: string; base: string; articleNum?: string; sousArticle?: string }, dep: string) {
+  return `${d}_${l.avis}_${l.articleNum || ""}-${l.sousArticle || ""}_${l.base}_${dep}`.replace(/[.#$\[\]/]/g, "-");
+}
+// Ancien format (avant le 13/10/2026), pour retrouver les commandes déjà importées au réimport.
+export function idCommandeLidlAncien(d: string, l: { avis: string; base: string }, dep: string) {
+  return `${d}_${l.avis}_${l.base}_${dep}`.replace(/[.#$\[\]/]/g, "-");
+}
 
 // 02/10/2026 — Liste des bases Lidl (fournie par Elinathan : « BASE LIDL / N° BASE / TRANSPORT
 // DÉPART SUD »). Le fichier Lidl ne contient que des codes à 3 lettres, rangés dans le MÊME ORDRE
@@ -332,7 +346,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       const codes = m[iCodes].map(txt);
       const libelles = (m[iCodes + 1] || []).map(txt);
       const col = (code: string) => codes.indexOf(code);
-      const cCamion = col("RA002"), cAvis = col("RA001"), cArt = col("RA003"), cDes = col("RA004"), cEmb = col("RA005"), cOri = col("UA015"), cPrix = col("PP005"), cDate = col("ME003");
+      const cCamion = col("RA002"), cAvis = col("RA001"), cArt = col("RA003"), cSousArt = col("UA000"), cDes = col("RA004"), cEmb = col("RA005"), cOri = col("UA015"), cPrix = col("PP005"), cDate = col("ME003");
       const colsBases = codes.map((c, i) => ({ c, i })).filter(x => x.c.startsWith("AS9")).map(x => ({ i: x.i, base: txt(libelles[x.i]) || x.c }));
       if (!colsBases.length || cArt < 0 || cAvis < 0) throw new Error("Colonnes de quantités par base introuvables.");
       // Date de livraison : colonne ME003 (date de livraison Lidl), sinon « Date » en haut du fichier (B1)
@@ -354,7 +368,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
           if (q <= 0) continue;
           const l: LigneBrute = {
             camion: txt(row[cCamion]), avis: txt(row[cAvis]), base: cb.base,
-            articleNum: txt(row[cArt]), article: txt(row[cDes]), emballage: txt(row[cEmb]), origine: cOri >= 0 ? txt(row[cOri]) : "",
+            articleNum: txt(row[cArt]), sousArticle: cSousArt >= 0 ? txt(row[cSousArt]) : "", article: txt(row[cDes]), emballage: txt(row[cEmb]), origine: cOri >= 0 ? txt(row[cOri]) : "",
             quantite: q, prix: cPrix >= 0 ? num(row[cPrix]) || undefined : undefined,
           };
           const dr = devinerRef(txt(row[cDes]), txt(row[cEmb]));
@@ -382,7 +396,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     setImport(true); setErreurImport("");
     try {
       const lues: LigneLidl[] = fichierLu.lignes.map(l => ({
-        ...l, id: `${d}_${l.avis}_${l.base}_${dep}`.replace(/[.#$\[\]/]/g, "-"),
+        ...l, id: idCommandeLidl(d, l, dep),
         date: d, depart: dep, transporteur: (infoBase(l.base) as any)?.[dep === "paris" ? "paris" : "perpignan"] || "",
         lot: "", statut: "a_preparer",
       }));
@@ -395,7 +409,21 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       const changements: Changement[] = [];
       const nomB = (c: string) => infoBase(c)?.nom || c;
       for (const l of lues) {
-        const ex = existantes.get(l.id);
+        let ex = existantes.get(l.id);
+        // 13/10/2026 — Commande enregistrée avant l'ajout de l'article dans l'identifiant (voir
+        // idCommandeLidl) : on la retrouve sous son ancien identifiant, si c'est bien le même
+        // article, et on la déplace sous le nouveau en gardant tout (Prêt, lot, ferme, étiquettes…).
+        if (!ex) {
+          const ancien = idCommandeLidlAncien(d, l, dep);
+          const old = existantes.get(ancien);
+          if (old && (!old.articleNum || old.articleNum === l.articleNum)) {
+            ex = old;
+            existantes.delete(ancien);
+            maj[`lidl_commandes/${ancien}`] = null;
+            for (const [k, v] of Object.entries(old)) maj[`lidl_commandes/${l.id}/${k}`] = v;
+            tout[l.id] = old;
+          }
+        }
         if (reimport && !ex) changements.push({ base: nomB(l.base), avant: 0, apres: l.quantite, id: l.id });
         if (ex && ex.quantite !== l.quantite) {
           changements.push({ base: nomB(l.base), avant: ex.quantite, apres: l.quantite, pret: ex.statut === "pret", etiquette: (ex.etiquettes || 0) > 0, id: l.id });
