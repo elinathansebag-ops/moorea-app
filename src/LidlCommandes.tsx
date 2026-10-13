@@ -230,6 +230,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const [dateImport, setDateImport] = useState("");
   const [erreurImport, setErreurImport] = useState("");
   const [dernierImport, setDernierImport] = useState<{ date: string; depart: "sud" | "paris" } | null>(null);
+  const [reimportSansImpression, setReimportSansImpression] = useState(false); // 13/10/2026 — voir enregistrerImport
   const [recapMedina, setRecapMedina] = useState("");
   // Réimport qui modifie une commande déjà importée : pop-up d'alerte (commercial) + alerte en Préparation
   type Changement = { base: string; avant: number; apres: number; pret?: boolean; etiquette?: boolean; id?: string };
@@ -469,9 +470,15 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       setSemainesOuvertes(x => new Set(x).add(lundiDe(d)));
       setDernierImport({ date: d, depart: dep });
       // Impression automatique : bon Geslot (bureau) toujours ; bon de préparation (entrepôt) pour Paris.
-      imprimerGeslot(d, dep, lues);
+      // 13/10/2026 — Demande d'Elinathan (« si j'importe le tableau du jour ça va tout réimprimer en
+      // doublon ? ») : au RÉIMPORT d'un jour déjà importé, les bons Geslot et de préparation ne
+      // repartent plus tout seuls (boutons « Réimprimer » juste après l'import si besoin), et le
+      // récap Medina n'est renvoyé que si quelque chose a changé. Les étiquettes palettes, elles,
+      // ne sortent déjà que pour les commandes qui n'en ont pas encore.
+      setReimportSansImpression(reimport);
+      if (!reimport) imprimerGeslot(d, dep, lues);
       if (dep === "paris") {
-        imprimerBonEntrepot(d, lues);
+        if (!reimport) imprimerBonEntrepot(d, lues);
         // Étiquettes palettes (option 1) : une par commande dès l'import ; les palettes en plus
         // s'impriment quand le directeur saisit la taille de palette. Les étiquettes déjà imprimées
         // ne repartent pas (sauf quantité modifiée : voir l'alerte de réimport).
@@ -479,7 +486,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
         if (etiquettesAuto) imprimerEtiquettes(lues.filter(l => ids.includes(l.id)).map(l => ({ l, de: 1, a: 1, nb: 1 })));
         else setAImprimerApresImport(ids);
       } else setAImprimerApresImport([]);
-      if (dep === "sud") {
+      if (dep === "sud" && (!reimport || changements.length > 0)) {
         const r = await envoyerRecapMedina(d, lues);
         setRecapMedina(r?.ok ? `📧 Récap de préparation Medina envoyé à Jordan (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}).` : `❌ Récap Medina non envoyé : ${r?.erreur || "erreur"}`);
       } else setRecapMedina("");
@@ -1238,7 +1245,9 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
         <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 4 }}>
           {fichierLu?.dateFichier ? `Date de livraison lue dans le fichier : ${dateFr(fichierLu.dateFichier)}${dateImport && dateImport !== fichierLu.dateFichier ? " — ⚠️ tu as choisi une autre date" : ""}` : fichierLu ? "Pas de date de livraison dans le fichier : date du jour proposée." : "Remplie automatiquement avec la date de livraison du fichier."}
         </div>
-        {depart && <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 10 }}>{depart === "paris" ? "Après l'import : impression automatique du bon Geslot (bureau) et du bon de préparation (entrepôt)." : "Après l'import : impression automatique du bon Geslot (bureau) + récap de préparation envoyé par mail à Jordan."}</div>}
+        {depart && lignes.some(x => x.date === dateImport && (x.depart || "sud") === depart) ? (
+          <div style={{ fontSize: 11.5, color: "#166534", fontWeight: 700, marginTop: 10 }}>🔁 Ce jour est déjà importé : rien ne sera réimprimé en double. Seules les nouvelles commandes auront leur étiquette palette{depart === "sud" ? " ; le récap Medina n'est renvoyé que s'il y a un changement" : ""}.</div>
+        ) : depart && <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 10 }}>{depart === "paris" ? "Après l'import : impression automatique du bon Geslot (bureau) et du bon de préparation (entrepôt)." : "Après l'import : impression automatique du bon Geslot (bureau) + récap de préparation envoyé par mail à Jordan."}</div>}
         {erreurImport && <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c" }}>{erreurImport}</div>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
           <button type="button" disabled={import_} onClick={() => setFenetreImport(false)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Annuler</button>
@@ -1250,7 +1259,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   );
   const apresImport = dernierImport && (
     <div style={{ marginBottom: 12, padding: "12px 14px", borderRadius: 12, background: "#f0fdf4", border: "1.5px solid #86efac" }}>
-      <div style={{ fontWeight: 800, fontSize: 13.5, color: "#166534", marginBottom: 8 }}>Commandes importées — {libDepart(dernierImport.depart)} — livraison du {dateFr(dernierImport.date)} · {dernierImport.depart === "paris" ? "bon Geslot et bon de préparation envoyés à l'imprimante" : "bon Geslot envoyé à l'imprimante"}</div>
+      <div style={{ fontWeight: 800, fontSize: 13.5, color: "#166534", marginBottom: 8 }}>Commandes importées — {libDepart(dernierImport.depart)} — livraison du {dateFr(dernierImport.date)} · {reimportSansImpression ? "réimport : rien n'a été réimprimé automatiquement (utilise les boutons ci-dessous si besoin)" : dernierImport.depart === "paris" ? "bon Geslot et bon de préparation envoyés à l'imprimante" : "bon Geslot envoyé à l'imprimante"}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <button type="button" onClick={() => imprimerGeslot(dernierImport.date, dernierImport.depart)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Réimprimer le bon Geslot</button>
         {dernierImport.depart === "paris" && <button type="button" onClick={() => imprimerBonEntrepot(dernierImport.date)} style={{ background: couleur, color: "#fff", border: "none", borderRadius: 10, padding: "9px 14px", fontWeight: 800, cursor: "pointer" }}>🖨️ Réimprimer le bon de préparation</button>}
