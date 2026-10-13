@@ -816,7 +816,6 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: c.gris }}><Tendance v={tendance} />{sous}</div>
     </div>
   );
-  const max = Math.max(1, ...d.serie.map(x => x.v));
   const nomMois = new Date(d.mois + "-15T12:00:00").toLocaleDateString("fr-FR", { month: "long" });
   const liste = (titre: string, icone: string, items: [string, number][], type: "client" | "article") => (
     <div style={{ flex: "1 1 300px", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px" }}>
@@ -849,23 +848,7 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
         )}
         {voirMarge && tuile("Marge 7 jours", pct(d.d7.res, d.d7.ven), `${eur0(d.d7.res)} de résultat`, null, "#7c3aed")}
       </div>
-      <div style={{ background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 900 }}>📈 {voirEuros ? "Ventes" : "Colis vendus"} des 30 derniers jours</span>
-          <span style={{ fontSize: 12, color: c.gris }}>touche une barre pour voir le jour</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 110 }}>
-          {d.serie.map(x => {
-            const dim = new Date(x.j + "T12:00:00").getDay() === 0;
-            return (
-              <button key={x.j} type="button" title={`${dateLongue(x.j)} : ${voirEuros ? eur0(x.v) : `${ent(x.v)} colis`}`} onClick={() => x.v && ouvrir("client", { date: x.j })}
-                style={{ flex: 1, minWidth: 0, height: `${Math.max(3, x.v / max * 100)}%`, borderRadius: "5px 5px 2px 2px", border: "none", padding: 0, cursor: x.v ? "pointer" : "default",
-                  background: x.j === d.dernier ? "#74b484" : dim ? (c.sombre ? "#2e3540" : "#e5e7eb") : "linear-gradient(180deg, #4f8a6f, #305a55)" }} />
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: c.gris, marginTop: 4 }}><span>{dateFr(d.serie[0].j)}</span><span>{dateFr(d.dernier)}</span></div>
-      </div>
+      {/* 14/10/2026 — Graphique des 30 jours retiré (demande d'Elinathan : sans les dates, illisible). */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         {liste("Top clients de la semaine", "🏆", d.topClients, "client")}
         {liste("Top articles de la semaine", "🔥", d.topArticles, "article")}
