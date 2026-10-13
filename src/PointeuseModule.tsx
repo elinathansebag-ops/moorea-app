@@ -329,6 +329,7 @@ export function PointeuseModule({ onClose }: { onClose: () => void }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          envoi: "lien_employe",
           to: [emp.email],
           subject: "🕐 Ton espace Moorea — consulte tes horaires",
           html: `<p>Bonjour ${emp.nom.split(" ")[0]},</p><p>Tu peux maintenant consulter tes horaires et pointages depuis chez toi, et demander une modification si besoin.</p><p><a href="${lien}">👉 Créer mon compte</a></p><p>Garde ce lien de côté, il te resservira pour te reconnecter ensuite.</p>`,

@@ -169,7 +169,7 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
     try {
       const res = await fetch("/api/send-email", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: "elinathan", to: [email], subject: "Ton accès à l'appli Moorea", html }),
+        body: JSON.stringify({ sender: "elinathan", envoi: "invitation", to: [email], subject: "Ton accès à l'appli Moorea", html }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.success) throw new Error(data?.error || `Erreur ${res.status}`);

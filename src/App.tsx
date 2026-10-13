@@ -769,6 +769,7 @@ export default function App() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                  envoi: "nouveau_compte",
                   to: ["elinathan.sebag@moorea.fr"], // pas de 'sender' -> compte agreage par defaut (plus fiable que le sien)
                   subject: `🆕 Nouveau compte à valider — ${displayName || email}`,
                   html: `<p><b>${displayName || email}</b> (${email}) vient de se connecter à l'appli Moorea pour la première fois.</p><p>Son compte est en attente : aucun module ne lui est accessible tant qu'aucun accès ne lui est donné dans <b>Droits d'accès &gt; Comptes</b>.</p>`,
@@ -2803,6 +2804,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       const pdfFilename = `rapport-${r.numeroRapport || r.date}-${r.produit}.pdf`.replace(/\s+/g, "-");
 
       const body: any = {
+        envoi: "rapport_agreage",
         subject,
         html: htmlContent,
         cc: ccList,

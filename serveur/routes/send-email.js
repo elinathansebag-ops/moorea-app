@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { verifierTokenFirebase } from '../../api/_verifyFirebaseToken.js';
+import { destinatairesRegles } from '../reglagesMails.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -24,7 +25,13 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: `Non autorisé : ${err.message}` });
   }
   try {
-    const { subject, html, cc = [], attachments = [], to, sender } = req.body;
+    const { subject, html, attachments = [], envoi } = req.body;
+    let { cc = [], to, sender } = req.body;
+    // 13/10/2026 — Réglages d'Admin › Accès › « Qui envoie quel mail à qui » (config/mails/{envoi}).
+    if (envoi) {
+      const r = await destinatairesRegles(envoi, Array.isArray(to) ? to : [], Array.isArray(cc) ? cc : []);
+      to = r.a; cc = r.cc; if (r.de) sender = r.de;
+    }
 
     // Comptes d'envoi disponibles : par défaut agreage@moorea.fr, mais les mails de stock
     // (envoi à Jordan) partent depuis entrepot@moorea.fr — voir `sender: "entrepot"` envoyé

@@ -1401,7 +1401,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const r = await fetch("/api/send-email", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              sender: "entrepot",
+              sender: "entrepot", envoi: "ecart_ifco_vides",
               to: ["elinathan.sebag@moorea.fr"],
               subject: `⚠️ Écart caisses IFCO vides : ${signe}${iv.ecart} (${d.dateLabel || ""})`,
               html: `<div style="font-family:Arial,sans-serif;color:#333;line-height:1.7;max-width:560px">
@@ -2156,7 +2156,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              sender: "entrepot",
+              sender: "entrepot", envoi: "inventaire_stock",
               to: ["jordan.jouanest@moorea.fr"],
               cc: ["commercial@moorea.fr"],
               subject: `📦 Inventaire ${team} - ${s.dateLabel}`,
@@ -2862,7 +2862,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              sender: "entrepot",
+              sender: "entrepot", envoi: "inventaire_stock",
               to: ["jordan.jouanest@moorea.fr"],
               cc: ["commercial@moorea.fr"],
               subject: `📦 Inventaire Stock ${currentTeam} - ${TODAY}`,

@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { destinatairesRegles } from "../reglagesMails.js";
 import { alerter } from "../../api/_push.js";
 
 export const config = { runtime: "nodejs" };
@@ -297,7 +298,8 @@ export default async function handler(req, res) {
         `;
         await transporter.sendMail({
           from: "Moorea Agréage <agreage@moorea.fr>",
-          to: NOTIF_EMAILS.join(","),
+          // 13/10/2026 — Adresses réglables dans Admin › Accès (config/mails/perte_declaree).
+          ...(await destinatairesRegles("perte_declaree", NOTIF_EMAILS, []).then(r => ({ to: r.a.join(","), cc: r.cc.length ? r.cc.join(",") : undefined }))),
           subject: `⚠️ Perte déclarée — Reconditionnement ${ref}`,
           html: emailHtml,
           attachments,

@@ -733,7 +733,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       const res = await fetch("/api/send-email", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sender: "jordan",
+          sender: "jordan", envoi: "lidl_medina",
           to: emailsMedina.length ? emailsMedina : ["jordan.jouanest@moorea.fr"],
           cc: emailsMedina.length ? ["jordan.jouanest@moorea.fr"] : [],
           subject: `Lidl — commandes à préparer (départ Perpignan) — livraison du ${dateFr(jourM)}`,

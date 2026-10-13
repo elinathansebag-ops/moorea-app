@@ -1771,6 +1771,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              envoi: "commande_cartons",
               subject: `Confirmation de commande cartons #${commandeId}`,
               html: emailHtml,
               to: ["contact@go-embal.fr"],
@@ -1812,6 +1813,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
+                envoi: "reception_cartons_presta",
                 subject: `Confirmation de réception - Commande cartons #${commandeId}`,
                 html: emailHtmlPresta,
                 to: emailPresta.split(",").map(e => e.trim()).filter(Boolean),
@@ -2030,6 +2032,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            envoi: "commande_cartons",
             subject: `Commande annulée - Cartons #${id}`,
             html: emailHtml,
             to: destinataires,

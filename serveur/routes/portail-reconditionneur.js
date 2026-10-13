@@ -1,4 +1,7 @@
 import nodemailer from "nodemailer";
+import { destinatairesRegles } from "../reglagesMails.js";
+// 13/10/2026 — Adresses réglables dans Admin › Accès (config/mails/{clé}), défaut = listes ci-dessous.
+const adresses = async (cle, defaut) => { const r = await destinatairesRegles(cle, defaut, []); return { to: r.a.join(","), cc: r.cc.length ? r.cc.join(",") : undefined }; };
 import { getAdminDb } from "../../api/_firebaseAdmin.js";
 import { alerter } from "../../api/_push.js";
 
@@ -449,7 +452,7 @@ export async function notifierProdPrete(adminDb, depot, demande, id, { quantite,
       : `<p style="margin-top:10px;padding:10px 14px;background:#fffbeb;border:1px solid #fde3a8;border-radius:8px;">⚠️ Transporteur non prévenu automatiquement : ${transporteurRaisonEchec || "raison inconnue"} — à contacter directement.</p>`;
     await creerMailer().sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
-      to: PROD_PRETE_EMAILS.join(","),
+      ...(await adresses("prod_prete", PROD_PRETE_EMAILS)),
       subject: `📦 Prod prête à récupérer — ${ref} (${DEPOT_LABEL[depot]})`,
       html: `
         <p>📦 <strong>${DEPOT_LABEL[depot]}</strong> a signalé une production prête, à aller chercher.</p>
@@ -623,7 +626,7 @@ async function handleConfirmerRepartieGroupee(adminDb, depot, body) {
       : "";
     await creerMailer().sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
-      to: PROD_PRETE_EMAILS.join(","),
+      ...(await adresses("prod_prete", PROD_PRETE_EMAILS)),
       subject: `📦 ${traitees.length} production${traitees.length > 1 ? "s" : ""} prête${traitees.length > 1 ? "s" : ""} à récupérer — ${DEPOT_LABEL[depot]}`,
       html: `
         <p>📦 <strong>${DEPOT_LABEL[depot]}</strong> a signalé ${traitees.length} production${traitees.length > 1 ? "s" : ""} prête${traitees.length > 1 ? "s" : ""}, à aller chercher.</p>
@@ -687,7 +690,7 @@ async function handleDeclarerPerte(adminDb, depot, id, body) {
     `;
     await transporter.sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
-      to: NOTIF_EMAILS.join(","),
+      ...(await adresses("perte_declaree", NOTIF_EMAILS)),
       subject: `⚠️ Perte déclarée — Reconditionnement ${ref} (${DEPOT_LABEL[depot]})`,
       html: `
         <p>⚠️ Une perte a été déclarée par ${DEPOT_LABEL[depot]} depuis son espace en ligne, sur la commande <strong>${ref}</strong>.</p>
@@ -814,7 +817,7 @@ async function handleDemanderReajustement(adminDb, depot, body) {
     });
     await transporter.sendMail({
       from: "Moorea Agréage <agreage@moorea.fr>",
-      to: NOTIF_EMAILS.join(","),
+      ...(await adresses("reajustement_stock", NOTIF_EMAILS)),
       subject: `📦 Réajustement de stock demandé — ${DEPOT_LABEL[depot]}`,
       html: `
         <p>📦 ${DEPOT_LABEL[depot]} a demandé un réajustement de son stock de ${EMBALLAGE_LABEL[depot]}, depuis son espace en ligne.</p>
