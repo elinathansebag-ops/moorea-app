@@ -364,6 +364,10 @@ function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset, arriva
   const [qualite, setQualite] = useState<{ rapports: any[]; retours: any[] } | null>(null);
   const [rapportOuvert, setRapportOuvert] = useState<any>(null);
   useEffect(() => { chargerQualite().then(setQualite); }, []);
+  const [litigesC, setLitigesC] = useState<any[]>([]);
+  useEffect(() => { chargerLitigesClients().then(setLitigesC); }, []);
+  // Litiges clients (refus, manquants, avoirs…) rattachés à la ligne : même client facturé, article et jour de livraison.
+  const litigesDe = (l: LigneVente) => litigesC.filter(x => x.clientFacture === l.c && x.article === l.a && x.dateLivraison === l.d);
   // Arrivages possibles d'une ligne vendue : même fournisseur, même article, arrivés dans les 15 jours avant la livraison.
   const arrivagesDe = (l: LigneVente) => (arrivages || []).filter(a => { const j = isoArrivage(a.date); return j <= l.d && j >= plusJours(l.d, -15) && memeNom(a.fournisseur || "", l.f) && memeNom(a.produit || "", l.a); });
   const clientsOpts = useMemo<Option[]>(() => {
@@ -416,14 +420,16 @@ function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset, arriva
             ["TOTAL", "", "", r2(t.col), r2(t.pc), r2(t.kg), ...ve(r2(t.ven)), ...(voirMarge ? [r2(t.ach), r2(t.res), t.ven ? r2(t.res / t.ven * 100) : ""] : [])]))}>
           {rapportOuvert && <FicheRapport c={c} rapport={rapportOuvert} onClose={() => setRapportOuvert(null)} />}
           {!choisies.length ? <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Pas de commande de ce client à cette date.</p> : (
-            <Tableau c={c} entetes={[...entetes, "Qualité à l'arrivage"]} droite={[3, 4, 5, 6, 7, 8, 9]}
+            <Tableau c={c} entetes={[...entetes, "Qualité à l'arrivage", "Litige client"]} droite={[3, 4, 5, 6, 7, 8, 9]}
               lignes={choisies.map(l => {
                 const arr = arrivagesDe(l), pb = arr.filter(a => a.statut === "sous réserve" || a.statut === "refusé");
                 const r = pb.map(a => rapportDeArrivage(a, qualite?.rapports)).find(Boolean);
                 const qual = pb.length ? <span key="q" style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><BadgeQualite statut={pb.some(a => a.statut === "refusé") ? "refusé" : "sous réserve"} />{r && <BoutonRapport c={c} onClick={() => setRapportOuvert(r)} />}</span> : arr.length ? <BadgeQualite key="q" statut="validé" /> : "";
-                return [l.a, l.fam, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...ve(eur(l.ven)), ...(voirMarge ? [l.sa ? "—" : eur(l.ach), l.sa ? "—" : eur(l.res), l.sa ? "—" : pct(l.res, l.ven)] : []), qual];
+                const lit = litigesDe(l);
+                const litAff = lit.length ? <span key="l" style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>{lit.map(x => <BadgeLitigeClient key={x.id} litige={x} />)}</span> : "";
+                return [l.a, l.fam, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...ve(eur(l.ven)), ...(voirMarge ? [l.sa ? "—" : eur(l.ach), l.sa ? "—" : eur(l.res), l.sa ? "—" : pct(l.res, l.ven)] : []), qual, litAff];
               })}
-              total={["TOTAL", "", "", ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...ve(eur(t.ven)), ...(voirMarge ? [eur(t.ach), eur(t.res), pct(t.res, t.ven)] : []), ""]} />
+              total={["TOTAL", "", "", ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...ve(eur(t.ven)), ...(voirMarge ? [eur(t.ach), eur(t.res), pct(t.res, t.ven)] : []), "", ""]} />
           )}
         </Bloc>
       )}
@@ -801,6 +807,7 @@ function ConfigImport({ c, ventes, userName, onImporte, estAdmin }: { c: Couleur
           </div>
         )}
       </Bloc>
+      <ImportLitigesClients c={c} userName={userName} />
       {estAdmin && <ReglagesAffichage c={c} />}
       <Bloc titre={`Jours importés — ${bornes}`} c={c}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: c.gris, marginBottom: 10 }}>
@@ -1214,6 +1221,9 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
   const arrF = useMemo(() => !fiche || estClient ? [] : (arrivages || []).filter(a => memeNom(a.fournisseur || "", nom)), [arrivages, fiche]);
   const rapportsF = useMemo(() => !fiche || estClient ? [] : (q?.rapports || []).filter(r => memeNom(r.fournisseur || "", nom)).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)), [q, fiche]);
   const retoursC = useMemo(() => !fiche || !estClient ? [] : (q?.retours || []).filter(r => memeNom(r.client || r.clientConnu || "", nom)).sort((a, b) => (b.ts || 0) - (a.ts || 0)), [q, fiche]);
+  const [litigesC, setLitigesC] = useState<any[] | null>(null);
+  useEffect(() => { chargerLitigesClients().then(setLitigesC); }, []);
+  const litigesFiche = useMemo(() => !fiche || !estClient ? [] : (litigesC || []).filter(x => x.clientFacture === nom).sort((a, b) => String(b.dateLivraison).localeCompare(String(a.dateLivraison))), [litigesC, fiche]);
 
   if (!fiche) return (
     <Bloc titre="📇 Choisis un client ou un fournisseur" c={c}>
@@ -1293,6 +1303,16 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {d.derniers.map(([j, x]) => <button key={j} type="button" onClick={() => ouvrir("client", { client: nom, date: j })} style={puce(c, false)}>{dateLongue(j)} · {val(x)}</button>)}
             </div>
+          </Bloc>
+          <Bloc titre={`⛔ Litiges clients (refus, manquants, avoirs) — ${litigesC ? `${litigesFiche.length} · ${ent(litigesFiche.reduce((t, x) => t + (Number(x.colisRefuses) || 0), 0))} colis` : "…"}`} c={c}>
+            {litigesC && !litigesFiche.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Aucun litige client importé pour ce client.</p>}
+            {litigesFiche.slice(0, 60).map(x => (
+              <div key={x.id} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "7px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
+                <span style={{ minWidth: 86, fontWeight: 800 }}>{dateFr(x.dateLivraison)}</span>
+                <span style={{ flex: 1, minWidth: 200 }}>{x.article}<span style={{ color: c.gris }}>{x.site ? ` · ${x.site}` : ""} · {x.bl}</span></span>
+                <BadgeLitigeClient litige={x} />
+              </div>
+            ))}
           </Bloc>
           <Bloc titre={`🔁 Retours clients — ${q ? retoursC.length : "…"}`} c={c}>
             {q && !retoursC.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Aucun retour enregistré pour ce client.</p>}
@@ -1426,5 +1446,88 @@ function BandeauChargement({ c, debut, etapes }: { c: Couleurs; debut: number; e
         {etapes.map(([lib, ok]) => <span key={lib} style={{ fontWeight: 700, color: ok ? "#15803d" : c.gris }}>{ok ? "✅" : "⏳"} {lib}</span>)}
       </div>
     </div>
+  );
+}
+
+// ── ⛔ Litiges clients (refus, manquants, avoirs) ──
+// 14/10/2026 — Demande d'Elinathan : litiges reçus par mail sur commercial@ (compilés hors appli),
+// importés depuis un CSV (« litiges_surs_153.csv » : Date litige ; Client (mail) ; Client facturé ;
+// Site / plateforme ; Type ; BL ; Date livraison ; Code article ; Article ; Colis livrés ; Colis
+// refusés / manquants ; Motif ; Lien mail ; Fichier PDF). Rangés dans litiges_clients/{BL_code_n} :
+// réimporter le même fichier remplace les mêmes lignes, sans doublon. Rattachés aux ventes par
+// client facturé + article + date de livraison (tels qu'écrits dans l'export Geslot).
+let cacheLitigesC: Promise<any[]> | null = null;
+function chargerLitigesClients(): Promise<any[]> {
+  if (cacheLitigesC) return cacheLitigesC;
+  cacheLitigesC = get(ref(db, "litiges_clients")).then(s => Object.entries(s.val() || {}).map(([id, v]: any) => ({ id, ...v }))).catch(() => []);
+  return cacheLitigesC;
+}
+function BadgeLitigeClient({ litige: x }: { litige: any }) {
+  const refus = /refus/i.test(x.type || ""), manq = /manquant/i.test(x.type || ""), avoir = /avoir/i.test(x.type || "");
+  const st = refus ? { f: "#fee2e2", c: "#b91c1c", i: "⛔" } : manq ? { f: "#ffedd5", c: "#c2410c", i: "📦" } : avoir ? { f: "#ede9fe", c: "#6d28d9", i: "💶" } : { f: "#fef3c7", c: "#92400e", i: "⚠️" };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }} title={x.motif || ""}>
+      <span style={{ padding: "2px 9px", borderRadius: 999, background: st.f, color: st.c, fontSize: 11.5, fontWeight: 800, whiteSpace: "nowrap" }}>{st.i} {x.type}{Number(x.colisRefuses) ? ` · ${x.colisRefuses} colis` : ""}</span>
+      {x.motif && <span style={{ fontSize: 11.5, color: "#6b7280" }}>{String(x.motif).slice(0, 60)}</span>}
+      {x.lienMail && <a href={x.lienMail} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 800, color: "#2563eb", whiteSpace: "nowrap" }}>📧 Mail</a>}
+    </span>
+  );
+}
+function lireCsv(texte: string): string[][] {
+  const t = texte.replace(/^\uFEFF/, ""); const lignes: string[][] = []; let champ = "", ligne: string[] = [], guillemets = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (guillemets) { if (ch === '"') { if (t[i + 1] === '"') { champ += '"'; i++; } else guillemets = false; } else champ += ch; continue; }
+    if (ch === '"') guillemets = true;
+    else if (ch === ";") { ligne.push(champ); champ = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && t[i + 1] === "\n") i++; ligne.push(champ); if (ligne.some(x => x.trim())) lignes.push(ligne); ligne = []; champ = ""; }
+    else champ += ch;
+  }
+  ligne.push(champ); if (ligne.some(x => x.trim())) lignes.push(ligne);
+  return lignes;
+}
+function ImportLitigesClients({ c, userName }: { c: Couleurs; userName?: string }) {
+  const [etat, setEtat] = useState<{ texte: string; erreur?: boolean } | null>(null);
+  const [nb, setNb] = useState<number | null>(null);
+  const entree = useRef<HTMLInputElement>(null);
+  useEffect(() => { chargerLitigesClients().then(l => setNb(l.length)); }, []);
+  async function importer(f: File) {
+    setEtat({ texte: "Lecture du fichier…" });
+    try {
+      const lignes = lireCsv(await f.text());
+      const ent0 = (lignes[0] || []).map(h => norm(h));
+      const col = (...n: string[]) => ent0.findIndex(h => n.some(x => h.startsWith(norm(x))));
+      const I = { dl: col("date litige"), cm: col("client (mail)"), cf: col("client facture"), site: col("site"), type: col("type"), bl: col("bl"), dliv: col("date livraison"), code: col("code article"), art: col("article"), livres: col("colis livres"), refuses: col("colis refuses"), motif: col("motif"), mail: col("lien mail"), pdf: col("fichier pdf") };
+      if (I.bl < 0 || I.cf < 0 || I.art < 0 || I.dliv < 0) throw new Error("Colonnes attendues introuvables (Client facturé, BL, Date livraison, Article…).");
+      const maj: Record<string, any> = {}; const vus: Record<string, number> = {};
+      const isoD = (v: string) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(String(v || "").trim()); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
+      for (const r of lignes.slice(1)) {
+        const bl = String(r[I.bl] || "").trim(), code = String(r[I.code] || "").replace(/\s+/g, "").toUpperCase();
+        if (!bl) continue;
+        const base = `${bl}_${code}`.replace(/[.#$[\]/]/g, "_");
+        vus[base] = (vus[base] || 0) + 1;
+        maj[`litiges_clients/${base}_${vus[base]}`] = {
+          dateLitige: isoD(r[I.dl]), clientMail: r[I.cm] || "", clientFacture: String(r[I.cf] || "").trim(), site: r[I.site] || "", type: r[I.type] || "",
+          bl, dateLivraison: isoD(r[I.dliv]), codeArticle: String(r[I.code] || "").trim(), article: String(r[I.art] || "").trim(),
+          colisLivres: Number(String(r[I.livres] || "").replace(",", ".")) || 0, colisRefuses: Number(String(r[I.refuses] || "").replace(",", ".")) || 0,
+          motif: r[I.motif] || "", lienMail: r[I.mail] || "", pdf: I.pdf >= 0 ? r[I.pdf] || "" : "", importePar: userName || "", importeLe: Date.now(), fichier: f.name,
+        };
+      }
+      const n = Object.keys(maj).length;
+      if (!n) throw new Error("Aucune ligne de litige dans le fichier.");
+      await update(ref(db), maj);
+      cacheLitigesC = null;
+      const tous = await chargerLitigesClients(); setNb(tous.length);
+      setEtat({ texte: `✅ ${n} litiges clients importés (${f.name}). Ils apparaissent sur les commandes et les fiches clients.` });
+    } catch (e: any) { setEtat({ texte: `Import impossible : ${e?.message || e}`, erreur: true }); }
+    if (entree.current) entree.current.value = "";
+  }
+  return (
+    <Bloc titre={`⛔ Litiges clients${nb != null ? ` — ${nb} dans l'appli` : ""}`} c={c}>
+      <p style={{ margin: "0 0 8px", fontSize: 12.5, color: c.gris }}>Fichier CSV (séparateur « ; ») : Date litige ; Client (mail) ; Client facturé ; Site ; Type ; BL ; Date livraison ; Code article ; Article ; Colis livrés ; Colis refusés ; Motif ; Lien mail ; Fichier PDF. Réimporter le même fichier ne crée pas de doublon.</p>
+      <input ref={entree} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importer(f); }} />
+      <button type="button" onClick={() => entree.current?.click()} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "#b91c1c", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>📥 Importer des litiges clients (CSV)</button>
+      {etat && <p style={{ margin: "8px 0 0", fontSize: 13, fontWeight: 700, color: etat.erreur ? "#b91c1c" : c.texte }}>{etat.texte}</p>}
+    </Bloc>
   );
 }
