@@ -19,8 +19,8 @@ const StatsAchatsModule = lazy(() => import("./StatsAchatsModule"));
 const StattModule = lazy(() => import("./StattModule").then(m => ({ default: m.StattModule })));
 
 type LigneVente = { d: string; f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number; pc: number; kg: number; sa?: number };
-type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme";
-type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[] };
+type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme" | "config";
+type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[]; date?: string };
 type Couleurs = { fond: string; carte: string; texte: string; gris: string; bord: string; vert: string; sombre: boolean };
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -51,6 +51,7 @@ function chargerVentes(): Promise<LigneVente[]> {
   }).catch(e => { cacheVentes = null; throw e; });
   return cacheVentes;
 }
+export function oublierVentes() { cacheVentes = null; }
 let cacheArrivages: Promise<any[]> | null = null;
 function chargerArrivages(): Promise<any[]> {
   if (cacheArrivages) return cacheArrivages;
@@ -237,6 +238,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
     ] : []),
     ...(voirMarge ? [{ k: "analyse" as Onglet, icone: "💶", titre: "Analyse ventes & marge", detail: "Fournisseurs, familles, articles, clients, évolution · import Geslot" }] : []),
     ...(voirProgramme ? [{ k: "programme" as Onglet, icone: "🛒", titre: "Programme d'achat", detail: "Préparer une période (Noël, promo) d'après l'an dernier" }] : []),
+    ...(voirMarge ? [{ k: "config" as Onglet, icone: "⚙️", titre: "Configuration", detail: "Jours importés / pas encore · importer un fichier Geslot" }] : []),
   ];
   const titreOnglet = cartes.find(x => x.k === onglet);
 
@@ -256,6 +258,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
                 </p>
               </div>
             )}
+            {voirExtractions && <CalendrierJournee c={c} ventes={ventes} arrivages={arrivages} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
               {cartes.map(x => (
                 <button key={x.k} type="button" onClick={() => { setPreset({}); setOnglet(x.k); }} style={{ textAlign: "left", padding: "18px", borderRadius: 14, border: `1px solid ${c.bord}`, background: c.carte, color: c.texte, cursor: "pointer", boxShadow: sombre ? "none" : "0 1px 3px rgba(0,0,0,.06)" }}>
@@ -270,6 +273,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
         {onglet === "client" && <CommandeClient c={c} voirMarge={voirMarge} ventes={ventes} preset={preset} />}
         {onglet === "arrivage" && <ArrivageFournisseur c={c} arrivages={arrivages} preset={preset} />}
         {onglet === "produits" && <VentesProduits c={c} voirMarge={voirMarge} ventes={ventes} equipes={equipes} preset={preset} />}
+        {onglet === "config" && voirMarge && <ConfigImport c={c} ventes={ventes} userName={userName} onImporte={() => { oublierVentes(); setVentes(null); chargerVentes().then(setVentes).catch(e => setErreur(`Base des ventes : ${e?.message || e}`)); }} />}
       </div>
     </div>
   );
@@ -278,7 +282,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
 // ── 1. Commande d'un client ──
 function CommandeClient({ c, voirMarge, ventes, preset }: { c: Couleurs; voirMarge: boolean; ventes: LigneVente[] | null; preset: Preset }) {
   const [client, setClient] = useState(preset.client || "");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(preset.date || "");
   const clientsOpts = useMemo<Option[]>(() => {
     const m = new Map<string, number>(); (ventes || []).forEach(l => m.set(l.c, (m.get(l.c) || 0) + l.ven));
     return [...m].filter(([v]) => v).map(([v, p]) => ({ type: "client", valeur: v, detail: `${eur0(p)} de ventes`, poids: p }));
@@ -344,7 +348,7 @@ function CommandeClient({ c, voirMarge, ventes, preset }: { c: Couleurs; voirMar
 // ── 2. Arrivage d'un fournisseur ──
 function ArrivageFournisseur({ c, arrivages, preset }: { c: Couleurs; arrivages: any[] | null; preset: Preset }) {
   const [fournisseur, setFournisseur] = useState(preset.fournisseur || "");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(preset.date || "");
   const opts = useMemo<Option[]>(() => {
     const m = new Map<string, number>(); (arrivages || []).forEach(a => a.fournisseur && m.set(a.fournisseur, (m.get(a.fournisseur) || 0) + 1));
     return [...m].map(([v, n]) => ({ type: "fournisseur", valeur: v, detail: `${n} produit${n > 1 ? "s" : ""} reçus`, poids: n }));
@@ -539,6 +543,176 @@ function VentesProduits({ c, voirMarge, ventes, equipes, preset }: { c: Couleurs
         </div>
         {!choisies.length ? <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Aucune vente pour ce choix sur la période.</p>
           : <Tableau c={c} entetes={entetes} lignes={aff} total={totalAff} droite={droite} />}
+      </Bloc>
+    </>
+  );
+}
+
+// ── Calendrier mensuel (commun) ──
+const MOIS_FR = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+function Calendrier({ c, mois, setMois, marque, onJour, jourChoisi }: { c: Couleurs; mois: string; setMois: (m: string) => void; marque: (d: string) => { fond: string; texte: string; info?: string } | null; onJour: (d: string) => void; jourChoisi?: string }) {
+  const [a, m] = mois.split("-").map(Number);
+  const premier = new Date(a, m - 1, 1), nbJours = new Date(a, m, 0).getDate();
+  const decal = (premier.getDay() + 6) % 7;
+  const cases: (string | null)[] = [...Array(decal).fill(null), ...Array.from({ length: nbJours }, (_, i) => `${mois}-${String(i + 1).padStart(2, "0")}`)];
+  const changer = (n: number) => { const d = new Date(a, m - 1 + n, 1); setMois(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
+  const auj = iso(new Date());
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <button type="button" onClick={() => changer(-1)} style={puce(c, false)}>‹</button>
+        <span style={{ flex: 1, textAlign: "center", fontWeight: 800, fontSize: 15 }}>{MOIS_FR[m - 1]} {a}</span>
+        <button type="button" onClick={() => changer(1)} style={puce(c, false)}>›</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+        {["L", "M", "M", "J", "V", "S", "D"].map((j, i) => <div key={i} style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: c.gris }}>{j}</div>)}
+        {cases.map((d, i) => {
+          if (!d) return <div key={i} />;
+          const mq = marque(d);
+          return (
+            <button key={d} type="button" onClick={() => onJour(d)} title={mq?.info || ""}
+              style={{ minHeight: 46, borderRadius: 8, border: `2px solid ${jourChoisi === d ? c.vert : d === auj ? "#c8a84b" : "transparent"}`, background: mq ? mq.fond : (c.sombre ? "#111" : "#f9fafb"), color: mq ? mq.texte : c.gris, cursor: "pointer", padding: 2, fontSize: 12.5, fontWeight: 800 }}>
+              {Number(d.slice(8))}
+              {mq?.info && <div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.1, marginTop: 1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{mq.info}</div>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Calendrier de la page d'accueil (repliable) : ce qui s'est passé un jour donné ──
+let cacheJournee: Promise<{ lidl: any[]; recond: any[]; retours: any[] }> | null = null;
+function chargerJournee() {
+  if (cacheJournee) return cacheJournee;
+  const liste = (v: any) => Object.entries(v || {}).map(([id, x]: any) => ({ id, ...x }));
+  cacheJournee = Promise.all([
+    get(ref(db, "lidl_commandes")).then(s => liste(s.val())).catch(() => []),
+    get(ref(db, "reconditionnement_demandes")).then(s => liste(s.val())).catch(() => []),
+    Promise.all([get(ref(db, "retours")).catch(() => null), get(ref(db, "retours_entrepot")).catch(() => null)]).then(([a, b]) => [...liste(a?.val()), ...liste(b?.val())]),
+  ]).then(([lidl, recond, retours]) => ({ lidl, recond, retours }));
+  return cacheJournee;
+}
+function CalendrierJournee({ c, ventes, arrivages, ouvrir }: { c: Couleurs; ventes: LigneVente[] | null; arrivages: any[] | null; ouvrir: (o: Onglet, p: Preset) => void }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [mois, setMois] = useState(() => iso(new Date()).slice(0, 7));
+  const [jour, setJour] = useState("");
+  const [autres, setAutres] = useState<{ lidl: any[]; recond: any[]; retours: any[] } | null>(null);
+  useEffect(() => { if (ouvert && !autres) chargerJournee().then(setAutres); }, [ouvert]);
+  const parJour = useMemo(() => {
+    const m = new Map<string, { arr: number; ven: number; cli: Set<string> }>();
+    const g = (d: string) => { let x = m.get(d); if (!x) { x = { arr: 0, ven: 0, cli: new Set() }; m.set(d, x); } return x; };
+    (arrivages || []).forEach(a => { g(isoArrivage(a.date)).arr++; });
+    (ventes || []).forEach(l => { const x = g(l.d); x.ven += l.ven; x.cli.add(l.c); });
+    return m;
+  }, [ventes, arrivages]);
+  const fr = dateFr(jour);
+  const arrJour = (arrivages || []).filter(a => a.date === fr);
+  const fournJour = [...arrJour.reduce((m, a) => m.set(a.fournisseur || "(sans fournisseur)", (m.get(a.fournisseur || "(sans fournisseur)") || 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+  const ventesJour = (ventes || []).filter(l => l.d === jour);
+  const clientsJour = [...ventesJour.reduce((m, l) => m.set(l.c, (m.get(l.c) || 0) + l.ven), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+  const totV = ventesJour.reduce((a, l) => ({ col: a.col + l.col, ven: a.ven + l.ven }), { col: 0, ven: 0 });
+  const lidlJour = (autres?.lidl || []).filter(l => l.date === jour);
+  const recondDemandes = (autres?.recond || []).filter(d => String(d.dateCreationFr || "").startsWith(fr));
+  const recondPartis = (autres?.recond || []).filter(d => String(d.departDate || "").startsWith(fr) || String(d.departDate || "").startsWith(jour) || String(d.retourPresta?.parti?.date || "").startsWith(fr));
+  const retoursJour = (autres?.retours || []).filter(r => r.date === fr);
+  const ligne = { display: "flex", gap: 6, flexWrap: "wrap" as const, marginTop: 6 };
+  const titre = (t: string) => <p style={{ margin: "12px 0 0", fontSize: 13, fontWeight: 800 }}>{t}</p>;
+  return (
+    <div style={{ background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 14, marginBottom: 14 }}>
+      <button type="button" onClick={() => setOuvert(!ouvert)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "12px 16px", border: "none", background: "none", color: c.texte, cursor: "pointer", fontSize: 15, fontWeight: 800, textAlign: "left" }}>
+        📅 Calendrier — ce qui s'est passé un jour donné
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 18, transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .2s" }}>›</span>
+      </button>
+      {ouvert && (
+        <div style={{ padding: "0 16px 16px", display: "grid", gridTemplateColumns: "minmax(280px, 380px) 1fr", gap: 16 }} className="stats-cal-grille">
+          <style>{`@media (max-width: 760px) { .stats-cal-grille { grid-template-columns: 1fr !important; } }`}</style>
+          <Calendrier c={c} mois={mois} setMois={setMois} jourChoisi={jour} onJour={setJour}
+            marque={d => { const x = parJour.get(d); if (!x) return null; return { fond: c.sombre ? "#1d2e2b" : "#eaf2ee", texte: c.texte, info: [x.arr ? `${x.arr} arr.` : "", x.cli.size ? `${x.cli.size} cl.` : ""].filter(Boolean).join(" · ") }; }} />
+          <div>
+            {!jour && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Touche un jour du calendrier.</p>}
+            {jour && (
+              <>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 900, textTransform: "capitalize" }}>{new Date(jour + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+                {titre(`🚚 Arrivages — ${arrJour.length} produit${arrJour.length > 1 ? "s" : ""}, ${fournJour.length} fournisseur${fournJour.length > 1 ? "s" : ""}`)}
+                <div style={ligne}>{fournJour.map(([f, n]) => <button key={f} type="button" onClick={() => ouvrir("arrivage", { fournisseur: f, date: jour })} style={puce(c, false)}>{f} · {n}</button>)}{!fournJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Aucun.</span>}</div>
+                {titre(`🧾 Livraisons clients — ${clientsJour.length} client${clientsJour.length > 1 ? "s" : ""} · ${ent(totV.col)} colis · ${eur0(totV.ven)}`)}
+                <div style={ligne}>{clientsJour.slice(0, 30).map(([n, v]) => <button key={n} type="button" onClick={() => ouvrir("client", { client: n, date: jour })} style={puce(c, false)}>{n} · {eur0(v)}</button>)}{clientsJour.length > 30 && <button type="button" onClick={() => ouvrir("client", { date: jour })} style={puce(c, false)}>+ {clientsJour.length - 30} autres…</button>}{!clientsJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Pas de ventes importées pour ce jour.</span>}</div>
+                {autres === null ? <p style={{ fontSize: 12.5, color: c.gris }}>Chargement des commandes Lidl, reconditionnements et retours…</p> : (
+                  <>
+                    {titre(`🛒 Commandes Lidl préparées — ${lidlJour.filter(l => l.statut === "pret").length}/${lidlJour.length} prêtes · ${ent(lidlJour.reduce((t, l) => t + (Number(l.quantite) || 0), 0))} colis`)}
+                    <div style={ligne}>{[...lidlJour.reduce((m, l) => m.set(l.depart === "paris" ? "Départ Paris" : "Départ Medina", (m.get(l.depart === "paris" ? "Départ Paris" : "Départ Medina") || 0) + (Number(l.quantite) || 0)), new Map<string, number>())].map(([k, n]) => <span key={k} style={puce(c, false)}>{k} · {ent(n)} colis</span>)}{!lidlJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Aucune.</span>}</div>
+                    {titre(`♻️ Reconditionnement — ${recondDemandes.length} demande${recondDemandes.length > 1 ? "s" : ""} · ${recondPartis.length} départ${recondPartis.length > 1 ? "s" : ""}`)}
+                    <div style={ligne}>{[...recondDemandes, ...recondPartis.filter(d => !recondDemandes.includes(d))].slice(0, 20).map(d => <span key={d.id} style={puce(c, false)}>{String(d.depot || "").toLowerCase().includes("andes") ? "Andès" : "NLT"} · {d.articleFini || d.articleVrac || d.numero || d.id.slice(-5)}{d.numero ? ` (${d.numero})` : ""} · {d.statut}</span>)}{!recondDemandes.length && !recondPartis.length && <span style={{ fontSize: 12.5, color: c.gris }}>Rien.</span>}</div>
+                    {titre(`🔁 Retours clients — ${retoursJour.length}`)}
+                    <div style={ligne}>{retoursJour.slice(0, 20).map(r => <span key={r.id} style={puce(c, false)}>{r.client || r.clientConnu || "Retour"}{r.numero ? ` · n° ${r.numero}` : ""}</span>)}{!retoursJour.length && <span style={{ fontSize: 12.5, color: c.gris }}>Aucun.</span>}</div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Configuration : jours importés / pas encore + import ──
+function ConfigImport({ c, ventes, userName, onImporte }: { c: Couleurs; ventes: LigneVente[] | null; userName?: string; onImporte: () => void }) {
+  const [mois, setMois] = useState(() => iso(new Date()).slice(0, 7));
+  const [etat, setEtat] = useState<{ texte: string; pct: number; erreur?: boolean } | null>(null);
+  const entree = useRef<HTMLInputElement>(null);
+  const jours = useMemo(() => {
+    const m = new Map<string, { lignes: number; sa: number; ven: number }>();
+    (ventes || []).forEach(l => { const x = m.get(l.d) || { lignes: 0, sa: 0, ven: 0 }; x.lignes++; if (l.sa) x.sa++; x.ven += l.ven; m.set(l.d, x); });
+    return m;
+  }, [ventes]);
+  const bornes = useMemo(() => { const k = [...jours.keys()].sort(); return k.length ? `${dateFr(k[0])} → ${dateFr(k[k.length - 1])} · ${k.length} jours importés` : "Aucun jour importé"; }, [jours]);
+  async function importer(f: File) {
+    setEtat({ texte: "Lecture du fichier…", pct: 2 });
+    try {
+      const { importerFichierVentes } = await import("./StatsAchatsModule");
+      const msg = await importerFichierVentes(f, userName, (texte, pct) => setEtat({ texte, pct }));
+      setEtat({ texte: msg, pct: 100 });
+      onImporte();
+    } catch (e: any) { setEtat({ texte: `Import impossible : ${e?.message || e}`, pct: 0, erreur: true }); }
+    if (entree.current) entree.current.value = "";
+  }
+  const dimanche = (d: string) => new Date(d + "T12:00:00").getDay() === 0;
+  return (
+    <>
+      <Bloc titre="Importer un fichier Geslot" c={c}>
+        <p style={{ margin: "0 0 8px", fontSize: 12.5, color: c.gris }}>
+          « Résultat par ligne » (achats + marge), « Liste des ventes » (quantités) ou la base fusionnée <b>base_ventes_moorea</b>. Les jours du fichier remplacent ceux déjà importés : jamais de doublon.
+        </p>
+        <input ref={entree} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importer(f); }} />
+        <button type="button" disabled={!!etat && etat.pct > 0 && etat.pct < 100} onClick={() => entree.current?.click()} style={{ padding: "12px 18px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>📥 Importer un fichier</button>
+        {etat && (
+          <div style={{ marginTop: 10 }}>
+            {etat.pct > 0 && etat.pct < 100 && <div style={{ height: 8, background: c.bord, borderRadius: 4, overflow: "hidden", marginBottom: 6 }}><div style={{ width: `${etat.pct}%`, height: "100%", background: c.vert }} /></div>}
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: etat.erreur ? "#b91c1c" : c.texte }}>{etat.texte}</p>
+          </div>
+        )}
+      </Bloc>
+      <Bloc titre={`Jours importés — ${bornes}`} c={c}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: c.gris, marginBottom: 10 }}>
+          <span><span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#dcfce7", verticalAlign: "middle" }} /> importé avec achats et marge</span>
+          <span><span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#ede9fe", verticalAlign: "middle" }} /> quantités seules (sans achats)</span>
+          <span><span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 3, background: "#fee2e2", verticalAlign: "middle" }} /> pas encore importé</span>
+        </div>
+        {ventes === null ? <p style={{ color: c.gris, fontSize: 13 }}>Chargement…</p> : (
+          <div style={{ maxWidth: 520 }}>
+            <Calendrier c={c} mois={mois} setMois={setMois} onJour={() => {}}
+              marque={d => {
+                const x = jours.get(d);
+                if (x) return x.sa === x.lignes ? { fond: "#ede9fe", texte: "#5b21b6", info: `${x.lignes} l.` } : { fond: "#dcfce7", texte: "#166534", info: eur0(x.ven) };
+                if (d > iso(new Date()) || dimanche(d)) return null;
+                return { fond: "#fee2e2", texte: "#b91c1c", info: "à importer" };
+              }} />
+          </div>
+        )}
       </Bloc>
     </>
   );
