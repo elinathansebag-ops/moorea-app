@@ -151,7 +151,10 @@ export type EtiquettePalette = { destinataire: string[]; transporteur: string; q
 
 // 11/10/2026 — Police au choix (fichiers TTF en base64) ; sans police : Helvetica intégrée.
 export type PoliceEtiquette = { nom: string; normal: string; gras: string };
-export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[], police?: PoliceEtiquette) {
+// 13/10/2026 — Étiquette « ATTENTION CHANGEMENTS » imprimée en tête quand un nouvel import modifie
+// une journée déjà importée (demande d'Elinathan) : liste des commandes changées.
+export type AlerteEtiquettes = { titre: string; lignes: string[] };
+export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: EtiquettePalette[], police?: PoliceEtiquette, alerte?: AlerteEtiquettes) {
   // 12/10/2026 — Format du rouleau jaune mesuré par Elinathan : 110 × 175 mm (avant : 100 × 150,
   // d'où de grandes marges une fois l'étiquette ajustée au rouleau).
   const LW = 110, LH = 175, LM = 6, QR = 36;
@@ -164,8 +167,34 @@ export async function pdfEtiquettesPalettes(dateFr: string, etiquettes: Etiquett
   // 11/10/2026 — QR dessiné en carrés vectoriels (et non plus collé en image PNG 300 px) : net à
   // n'importe quelle résolution sur l'imprimante thermique (une image agrandie bave sur les bords).
   const qrs = etiquettes.map(e => (e.qrUrl ? QRCode.create(e.qrUrl, { errorCorrectionLevel: "M" }).modules : null));
+  if (alerte) {
+    // Cadre épais + bandeau noir « ATTENTION » ; la liste continue sur une 2e étiquette si besoin.
+    const LARG = LW - LM * 2;
+    let page = 0, y = 0;
+    const nouvellePage = () => {
+      if (page++) doc.addPage([LW, LH], "portrait");
+      doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.6); doc.rect(3, 3, LW - 6, LH - 6);
+      doc.setFillColor(0, 0, 0); doc.rect(3, 3, LW - 6, 22, "F");
+      doc.setTextColor(255, 255, 255); doc.setFont(F, "bold"); doc.setFontSize(26);
+      doc.text("ATTENTION", LW / 2, 19, { align: "center" });
+      doc.setTextColor(0, 0, 0); doc.setFontSize(15);
+      y = 34;
+      for (const t of doc.splitTextToSize(alerte.titre, LARG) as string[]) { doc.text(t, LM, y); y += 6.5; }
+      doc.setFont(F, "normal"); doc.setFontSize(11); doc.text(`Livraison le : ${dateFr}`, LM, y); y += 4;
+      doc.setLineWidth(0.4); doc.line(LM, y, LW - LM, y); y += 7;
+    };
+    nouvellePage();
+    const taille = alerte.lignes.length > 6 ? 13 : 16, pas = taille * 0.45;
+    doc.setFont(F, "bold"); doc.setFontSize(taille);
+    for (const l of alerte.lignes) {
+      const morceaux = doc.splitTextToSize(`• ${l}`, LARG) as string[];
+      if (y + morceaux.length * pas > LH - 10) { nouvellePage(); doc.setFont(F, "bold"); doc.setFontSize(taille); }
+      for (const m of morceaux) { doc.text(m, LM, y); y += pas; }
+      y += 3;
+    }
+  }
   etiquettes.forEach((e, i) => {
-    if (i) doc.addPage([LW, LH], "portrait");
+    if (i || alerte) doc.addPage([LW, LH], "portrait");
     doc.setTextColor(0, 0, 0);
     doc.setFont(F, "bold"); doc.setFontSize(15); doc.text(ADRESSE_MOOREA[0], LM, 12);
     doc.setFont(F, "normal"); doc.setFontSize(7.5);
