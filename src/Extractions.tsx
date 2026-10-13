@@ -257,23 +257,39 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
         {!onglet && (
           <>
             {voirExtractions && (
-              <div style={{ marginBottom: 16 }}>
-                <RechercheIntelligente options={optionsGlobales} c={c} grand autoFocus onChoisir={ouvrir}
-                  placeholder={ventes === null ? "Chargement de la base…" : "🔍 Un client, un fournisseur, un article, une famille…"} />
-                <p style={{ margin: "6px 4px 0", fontSize: 12, color: c.gris }}>
-                  {ventes === null ? "Chargement des ventes et des arrivages…" : `${periodeBase}${periodeBase ? " · " : ""}${ent(index.clients.size)} clients · ${ent(index.fourn.size)} fournisseurs · ${ent(index.arts.size)} articles`}
-                </p>
+              <div style={{ position: "relative", borderRadius: 20, padding: "22px 20px 18px", marginBottom: 16, background: "linear-gradient(135deg, #1f4440 0%, #305a55 55%, #4f8a6f 100%)", color: "#fff", boxShadow: "0 10px 30px rgba(31,68,64,.25)" }}>
+                <div style={{ position: "absolute", inset: 0, borderRadius: 20, overflow: "hidden", pointerEvents: "none" }}>
+                  <div style={{ position: "absolute", right: -60, top: -60, width: 220, height: 220, borderRadius: "50%", background: "rgba(255,255,255,.06)" }} />
+                  <div style={{ position: "absolute", right: 80, bottom: -90, width: 180, height: 180, borderRadius: "50%", background: "rgba(116,180,132,.18)" }} />
+                </div>
+                <div style={{ position: "relative" }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700, opacity: 0.85 }}>{salutation()}{userName ? ` ${String(userName).split(" ")[0]}` : ""} 👋</p>
+                  <p style={{ margin: "2px 0 14px", fontSize: 22, fontWeight: 900, letterSpacing: "-.01em" }}>Qu'est-ce que tu cherches aujourd'hui ?</p>
+                  <RechercheIntelligente options={optionsGlobales} c={c} grand autoFocus onChoisir={ouvrir}
+                    placeholder={ventes === null ? "Chargement de la base…" : "🔍 Un client, un fournisseur, un article, une famille…"} />
+                  <p style={{ margin: "8px 2px 0", fontSize: 12, opacity: 0.8 }}>
+                    {ventes === null ? "Chargement des ventes et des arrivages…" : `${periodeBase}${periodeBase ? " · " : ""}${ent(index.clients.size)} clients · ${ent(index.fourn.size)} fournisseurs · ${ent(index.arts.size)} articles`}
+                  </p>
+                </div>
               </div>
             )}
+            {voirExtractions && ventes && ventes.length > 0 && <TableauBordStats c={c} ventes={ventes} voirMarge={voirMarge} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
             {voirExtractions && <CalendrierJournee c={c} ventes={ventes} arrivages={arrivages} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
-              {cartes.map(x => (
-                <button key={x.k} type="button" onClick={() => { setPreset({}); setOnglet(x.k); }} style={{ textAlign: "left", padding: "18px", borderRadius: 14, border: `1px solid ${c.bord}`, background: c.carte, color: c.texte, cursor: "pointer", boxShadow: sombre ? "none" : "0 1px 3px rgba(0,0,0,.06)" }}>
-                  <span style={{ fontSize: 28 }}>{x.icone}</span>
-                  <span style={{ display: "block", fontSize: 16, fontWeight: 800, marginTop: 6 }}>{x.titre}</span>
-                  <span style={{ display: "block", fontSize: 12.5, color: c.gris, marginTop: 2 }}>{x.detail}</span>
-                </button>
-              ))}
+              {cartes.map(x => {
+                const t = TEINTES[x.k] || TEINTES.config;
+                return (
+                  <button key={x.k} type="button" onClick={() => { setPreset({}); setOnglet(x.k); }} className="stats-carte"
+                    style={{ position: "relative", overflow: "hidden", textAlign: "left", padding: "18px 18px 16px", borderRadius: 16, border: `1px solid ${c.bord}`, background: c.carte, color: c.texte, cursor: "pointer", boxShadow: sombre ? "none" : "0 2px 8px rgba(0,0,0,.05)", transition: "transform .15s, box-shadow .15s" }}>
+                    <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: t.fort }} />
+                    <span style={{ display: "inline-flex", width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", fontSize: 26, background: sombre ? "rgba(255,255,255,.06)" : t.doux }}>{x.icone}</span>
+                    <span style={{ display: "block", fontSize: 16.5, fontWeight: 900, marginTop: 10 }}>{x.titre}</span>
+                    <span style={{ display: "block", fontSize: 12.5, color: c.gris, marginTop: 3 }}>{x.detail}</span>
+                    <span style={{ position: "absolute", right: 16, top: 18, fontSize: 18, color: t.fort, fontWeight: 900 }}>→</span>
+                  </button>
+                );
+              })}
+              <style>{`.stats-carte:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(31,68,64,.14) !important; }`}</style>
             </div>
           </>
         )}
@@ -727,5 +743,91 @@ function ConfigImport({ c, ventes, userName, onImporte }: { c: Couleurs; ventes:
         )}
       </Bloc>
     </>
+  );
+}
+
+// ── Accueil du module : couleurs des cartes, salutation, tableau de bord ──
+const TEINTES: Record<string, { fort: string; doux: string }> = {
+  client: { fort: "#2563eb", doux: "#dbeafe" }, arrivage: { fort: "#d97706", doux: "#fef3c7" }, produits: { fort: "#16a34a", doux: "#dcfce7" },
+  analyse: { fort: "#7c3aed", doux: "#ede9fe" }, programme: { fort: "#ea580c", doux: "#ffedd5" }, config: { fort: "#64748b", doux: "#f1f5f9" },
+};
+function salutation() { const h = new Date().getHours(); return h < 6 ? "Bonne nuit" : h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; }
+
+function TableauBordStats({ c, ventes, voirMarge, ouvrir }: { c: Couleurs; ventes: LigneVente[]; voirMarge: boolean; ouvrir: (o: Onglet, p: Preset) => void }) {
+  const d = useMemo(() => {
+    const parJour = new Map<string, { ven: number; col: number; res: number }>();
+    for (const l of ventes) { const x = parJour.get(l.d) || { ven: 0, col: 0, res: 0 }; x.ven += l.ven; x.col += l.col; x.res += l.sa ? 0 : l.res; parJour.set(l.d, x); }
+    const jours = [...parJour.keys()].sort();
+    const dernier = jours[jours.length - 1];
+    const decale = (j: string, n: number) => { const x = new Date(j + "T12:00:00"); x.setDate(x.getDate() + n); return iso(x); };
+    const somme = (de: string, a: string) => { let ven = 0, col = 0, res = 0; for (const [j, x] of parJour) if (j >= de && j <= a) { ven += x.ven; col += x.col; res += x.res; } return { ven, col, res }; };
+    const d7 = somme(decale(dernier, -6), dernier), d7avant = somme(decale(dernier, -13), decale(dernier, -7));
+    const mois = dernier.slice(0, 7), jourDuMois = Number(dernier.slice(8));
+    const dm = new Date(dernier + "T12:00:00"); dm.setDate(1); dm.setMonth(dm.getMonth() - 1);
+    const moisPrec = iso(dm).slice(0, 7);
+    const mCourant = somme(mois + "-01", dernier), mPrecMeme = somme(moisPrec + "-01", `${moisPrec}-${String(jourDuMois).padStart(2, "0")}`);
+    const jDernier = parJour.get(dernier)!;
+    // Même jour de la semaine précédente, pour comparer le dernier jour.
+    const jAvant = parJour.get(decale(dernier, -7));
+    const serie = Array.from({ length: 30 }, (_, i) => { const j = decale(dernier, i - 29); return { j, v: parJour.get(j)?.ven || 0 }; });
+    const tops = (cle: (l: LigneVente) => string) => { const m = new Map<string, number>(); for (const l of ventes) if (l.d >= decale(dernier, -6)) m.set(cle(l), (m.get(cle(l)) || 0) + l.ven); return [...m].filter(([k]) => k).sort((a, b) => b[1] - a[1]).slice(0, 5); };
+    return { dernier, jDernier, jAvant, d7, d7avant, mCourant, mPrecMeme, mois, serie, topClients: tops(l => l.c), topArticles: tops(l => l.a) };
+  }, [ventes]);
+  const evol = (a: number, b: number) => (b ? (a - b) / b * 100 : null);
+  const Tendance = ({ v }: { v: number | null }) => v == null ? null : (
+    <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: v >= 0 ? "#dcfce7" : "#fee2e2", color: v >= 0 ? "#166534" : "#b91c1c" }}>{v >= 0 ? "▲" : "▼"} {Math.abs(v).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} %</span>
+  );
+  const tuile = (titre: string, valeur: string, sous: string, tendance: number | null, teinte: string) => (
+    <div style={{ flex: "1 1 200px", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px", borderTop: `4px solid ${teinte}` }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: c.gris, textTransform: "uppercase", letterSpacing: ".04em" }}>{titre}</div>
+      <div style={{ fontSize: 26, fontWeight: 900, margin: "4px 0 2px" }}>{valeur}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: c.gris }}><Tendance v={tendance} />{sous}</div>
+    </div>
+  );
+  const max = Math.max(1, ...d.serie.map(x => x.v));
+  const nomMois = new Date(d.mois + "-15T12:00:00").toLocaleDateString("fr-FR", { month: "long" });
+  const liste = (titre: string, icone: string, items: [string, number][], type: "client" | "article") => (
+    <div style={{ flex: "1 1 300px", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px" }}>
+      <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>{icone} {titre}</div>
+      {items.map(([n, v], i) => (
+        <button key={n} type="button" onClick={() => type === "client" ? ouvrir("client", { client: n }) : ouvrir("produits", { articles: [n] })}
+          style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 4px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
+          <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, background: i === 0 ? "#fde68a" : i === 1 ? "#e5e7eb" : i === 2 ? "#fed7aa" : (c.sombre ? "#1d2e2b" : "#eaf2ee"), color: "#1a2e1a" }}>{i + 1}</span>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: c.gris }}>{eur0(v)}</span>
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        {tuile(`Le ${dateFr(d.dernier)}`, eur0(d.jDernier.ven), `${ent(d.jDernier.col)} colis · vs même jour sem. dernière`, d.jAvant ? evol(d.jDernier.ven, d.jAvant.ven) : null, "#2563eb")}
+        {tuile("7 derniers jours", eur0(d.d7.ven), `${ent(d.d7.col)} colis · vs 7 jours d'avant`, evol(d.d7.ven, d.d7avant.ven), "#16a34a")}
+        {tuile(`Mois de ${nomMois}`, eur0(d.mCourant.ven), `vs même période du mois dernier`, evol(d.mCourant.ven, d.mPrecMeme.ven), "#ea580c")}
+        {voirMarge && tuile("Marge 7 jours", pct(d.d7.res, d.d7.ven), `${eur0(d.d7.res)} de résultat`, null, "#7c3aed")}
+      </div>
+      <div style={{ background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 900 }}>📈 Ventes des 30 derniers jours</span>
+          <span style={{ fontSize: 12, color: c.gris }}>touche une barre pour voir le jour</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 110 }}>
+          {d.serie.map(x => {
+            const dim = new Date(x.j + "T12:00:00").getDay() === 0;
+            return (
+              <button key={x.j} type="button" title={`${dateLongue(x.j)} : ${eur0(x.v)}`} onClick={() => x.v && ouvrir("client", { date: x.j })}
+                style={{ flex: 1, minWidth: 0, height: `${Math.max(3, x.v / max * 100)}%`, borderRadius: "5px 5px 2px 2px", border: "none", padding: 0, cursor: x.v ? "pointer" : "default",
+                  background: x.j === d.dernier ? "#74b484" : dim ? (c.sombre ? "#2e3540" : "#e5e7eb") : "linear-gradient(180deg, #4f8a6f, #305a55)" }} />
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: c.gris, marginTop: 4 }}><span>{dateFr(d.serie[0].j)}</span><span>{dateFr(d.dernier)}</span></div>
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {liste("Top clients de la semaine", "🏆", d.topClients, "client")}
+        {liste("Top articles de la semaine", "🔥", d.topArticles, "article")}
+      </div>
+    </div>
   );
 }
