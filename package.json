@@ -13,6 +13,7 @@
     "@emailjs/browser": "^4.3.2",
     "docx": "^8.5.0",
     "dommatrix": "^1.0.3",
+    "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "firebase": "^10.7.0",
     "html2canvas": "^1.4.1",

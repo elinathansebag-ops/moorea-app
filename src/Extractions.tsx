@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { db, ref, get, onValue, update } from "./firebase";
+import { db, ref, get, onValue, update, set, push } from "./firebase";
 import { calculerAcces, cleEmail, type AccesRole, type AccesUser } from "./shared";
 import { PageHeader } from "./shared";
 import { chargerEquipes, equipeArticle } from "./stockEquipes";
@@ -28,7 +28,14 @@ const StattModule = lazy(avecRechargement(() => import("./StattModule").then(m =
 
 type LigneVente = { d: string; f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number; pc: number; kg: number; sa?: number };
 type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme" | "config";
-type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[]; date?: string; fournisseursMotsCles?: string[] };
+type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[]; date?: string; fournisseursMotsCles?: string[]; rapport?: Rapport };
+// 14/10/2026 — Rapports enregistrés (« programmes ») : stats_rapports/{id}. Période fixe ou
+// glissante (« 30 derniers jours » recalculée à chaque ouverture), filtres et vue ; partage avec
+// moi seul, tous les comptes ou certains comptes ; favoris par personne.
+type PeriodeRapport = { type: "fixe"; debut: string; fin: string } | { type: "glissant"; cle: string };
+type ConfigRapport = { periode: PeriodeRapport; articles: string[]; familles: string[]; clients: string[]; fournisseurs: string[]; compte: "tous" | "GMS" | "PRESTIGE"; vue: string };
+type Rapport = { id: string; nom: string; auteur?: string; auteurEmail: string; creeLe: number; majLe?: number; partage: "moi" | "tous" | "choix"; partageAvec?: Record<string, boolean>; favoris?: Record<string, boolean>; config: ConfigRapport };
+const LIB_GLISSANT: Record<string, string> = { "7": "7 derniers jours", "30": "30 derniers jours", mois: "Ce mois", moisPrec: "Mois dernier", annee: "Cette année", tout: "Toute la base" };
 type Couleurs = { fond: string; carte: string; texte: string; gris: string; bord: string; vert: string; sombre: boolean };
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -73,17 +80,16 @@ function chargerArrivages(): Promise<any[]> {
 }
 const isoArrivage = (fr: string) => fr.split("/").reverse().join("-");
 
-// Tableau Excel propre : titre, date d'extraction, en-têtes, lignes, total, filtres, largeurs.
+// 14/10/2026 — Exports aux couleurs de Moorea (logo, en-têtes vert Moorea…), en Excel ou en PDF :
+// voir exportsMoorea.ts. Le bouton choisit le format, puis l'écran appelle exporterExcel(...).
+let formatExport: "excel" | "pdf" = "excel";
+let auteurExport = "";
+let filtresExport: string[] = [];
 async function exporterExcel(nomFichier: string, titre: string, entetes: string[], lignes: (string | number)[][], total?: (string | number)[]) {
-  const XLSX = await import("xlsx");
-  const aoa: (string | number)[][] = [[titre], [`Extrait de l'appli Moorea le ${new Date().toLocaleString("fr-FR")}`], [], entetes, ...lignes];
-  if (total) aoa.push(total);
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = entetes.map((h, i) => ({ wch: Math.min(50, Math.max(h.length + 2, ...lignes.slice(0, 800).map(l => String(l[i] ?? "").length + 2))) }));
-  ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 3, c: 0 }, e: { r: 3 + lignes.length, c: entetes.length - 1 } }) };
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Extraction");
-  XLSX.writeFile(wb, nomFichier.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 120) + ".xlsx");
+  const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
+  const [t, ...reste] = titre.split(" — ");
+  const e = { nomFichier, titre: t, sousTitre: reste.join(" — ") || undefined, filtres: filtresExport, entetes, lignes, total, auteur: auteurExport };
+  if (formatExport === "pdf") await exporterPdfMoorea(e); else await exporterExcelMoorea(e);
 }
 
 // ── Recherche intelligente ──
@@ -155,8 +161,11 @@ function Bloc({ titre, c, children, droite }: { titre: string; c: Couleurs; chil
 }
 const puce = (c: Couleurs, actif: boolean) => ({ padding: "7px 12px", borderRadius: 999, border: `1.5px solid ${actif ? c.vert : c.bord}`, background: actif ? c.vert : c.carte, color: actif ? "#fff" : c.texte, fontSize: 12.5, fontWeight: 700, cursor: "pointer" } as const);
 const champDate = (c: Couleurs) => ({ padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 15, fontWeight: 700 });
-const boutonExport = (c: Couleurs, onClick: () => void) => (
-  <button type="button" onClick={onClick} style={{ padding: "9px 16px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>⬇️ Exporter en Excel</button>
+const boutonExport = (c: Couleurs, onClick: () => void, filtres: string[] = []) => (
+  <span style={{ display: "inline-flex", gap: 6 }}>
+    <button type="button" onClick={() => { formatExport = "excel"; filtresExport = filtres; onClick(); }} style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>📊 Excel</button>
+    <button type="button" onClick={() => { formatExport = "pdf"; filtresExport = filtres; onClick(); }} style={{ padding: "9px 14px", borderRadius: 10, border: `2px solid ${c.vert}`, background: c.carte, color: c.vert, fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>📄 PDF</button>
+  </span>
 );
 function Choisi({ libelle, onRetirer, c }: { libelle: string; onRetirer: () => void; c: Couleurs }) {
   return (
@@ -187,8 +196,9 @@ function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]
 }
 
 // ═══ Module ═══
-export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = true, voirProgramme = false, userName, ongletInitial, presetInitial, voirEuros = true, estAdmin = false }: { onClose: () => void; darkMode?: boolean; voirMarge: boolean; voirEuros?: boolean; estAdmin?: boolean; voirExtractions?: boolean; voirProgramme?: boolean; userName?: string; ongletInitial?: Onglet; presetInitial?: Preset }) {
+export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = true, voirProgramme = false, userName, ongletInitial, presetInitial, voirEuros = true, estAdmin = false, email = "" }: { onClose: () => void; email?: string; darkMode?: boolean; voirMarge: boolean; voirEuros?: boolean; estAdmin?: boolean; voirExtractions?: boolean; voirProgramme?: boolean; userName?: string; ongletInitial?: Onglet; presetInitial?: Preset }) {
   const [onglet, setOnglet] = useState<Onglet | null>(ongletInitial || null);
+  auteurExport = userName || "";
   // 13/10/2026 — Réglage par personne « montants en € » ou « colis seulement » (droit « euros »).
   // Sans les euros, pas de marge non plus.
   voirMarge = voirMarge && voirEuros;
@@ -277,6 +287,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
                 </div>
               </div>
             )}
+            {voirExtractions && email && <MesRapports c={c} email={email} ouvrir={r => { setPreset({ rapport: r }); setOnglet("produits"); }} />}
             {voirExtractions && ventes && ventes.length > 0 && <TableauBordStats c={c} ventes={ventes} voirMarge={voirMarge} voirEuros={voirEuros} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
             {voirExtractions && <CalendrierJournee c={c} ventes={ventes} arrivages={arrivages} voirEuros={voirEuros} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
@@ -299,7 +310,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
         )}
         {onglet === "client" && <CommandeClient c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} preset={preset} />}
         {onglet === "arrivage" && <ArrivageFournisseur c={c} arrivages={arrivages} preset={preset} />}
-        {onglet === "produits" && <VentesProduits c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} equipes={equipes} preset={preset} />}
+        {onglet === "produits" && <VentesProduits key={preset.rapport?.id || "libre"} email={email} auteur={userName} c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} equipes={equipes} preset={preset} />}
         {onglet === "config" && voirMarge && <ConfigImport c={c} ventes={ventes} userName={userName} estAdmin={estAdmin} onImporte={() => { oublierVentes(); setVentes(null); chargerVentes().then(setVentes).catch(e => setErreur(`Base des ventes : ${e?.message || e}`)); }} />}
       </div>
     </div>
@@ -445,31 +456,37 @@ const VUES: { k: Vue; lib: string }[] = [
   { k: "jour", lib: "Par jour" }, { k: "semaine", lib: "Par semaine" }, { k: "mois", lib: "Par mois" }, { k: "article", lib: "Par article" },
   { k: "famille", lib: "Par famille" }, { k: "client", lib: "Par client" }, { k: "fournisseur", lib: "Par fournisseur" }, { k: "compte", lib: "GMS / Prestige" }, { k: "detail", lib: "Détail complet" },
 ];
-function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, preset }: { c: Couleurs; voirMarge: boolean; voirEuros?: boolean; ventes: LigneVente[] | null; equipes: Record<string, string>; preset: Preset }) {
+function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, preset, email = "", auteur = "" }: { c: Couleurs; voirMarge: boolean; voirEuros?: boolean; ventes: LigneVente[] | null; equipes: Record<string, string>; preset: Preset; email?: string; auteur?: string }) {
+  const rp = preset.rapport?.config;
   const maxDate = useMemo(() => (ventes || []).reduce((m, l) => (l.d > m ? l.d : m), ""), [ventes]);
   const minDate = useMemo(() => (ventes || []).reduce((m, l) => (!m || l.d < m ? l.d : m), ""), [ventes]);
   const [debut, setDebut] = useState("");
   const [fin, setFin] = useState("");
-  const [articles, setArticles] = useState<string[]>(preset.articles || []);
-  const [familles, setFamilles] = useState<string[]>(preset.familles || []);
-  const [clients, setClients] = useState<string[]>([]);
-  const [fournisseurs, setFournisseurs] = useState<string[]>([]);
+  const [articles, setArticles] = useState<string[]>(rp?.articles || preset.articles || []);
+  const [familles, setFamilles] = useState<string[]>(rp?.familles || preset.familles || []);
+  const [clients, setClients] = useState<string[]>(rp?.clients || []);
+  const [fournisseurs, setFournisseurs] = useState<string[]>(rp?.fournisseurs || []);
+  const [periodeRapide, setPeriodeRapide] = useState<string>(rp?.periode.type === "glissant" ? rp.periode.cle : rp ? "" : "30");
+  const [enregistrement, setEnregistrement] = useState(false);
   // Ouvert depuis 🌱 Appro : fournisseurs reconnus par mots-clés (noms Geslot).
   useEffect(() => {
     if (!preset.fournisseursMotsCles?.length || !ventes?.length) return;
     const mots = preset.fournisseursMotsCles.map(norm);
     setFournisseurs([...new Set(ventes.map(l => l.f).filter(f => mots.some(m => norm(f).includes(m))))].sort());
   }, [ventes]);
-  const [compte, setCompte] = useState<"tous" | "GMS" | "PRESTIGE">("tous");
-  const [vue, setVue] = useState<Vue>(preset.articles?.length === 1 ? "jour" : "article");
+  const [compte, setCompte] = useState<"tous" | "GMS" | "PRESTIGE">(rp?.compte || "tous");
+  const [vue, setVue] = useState<Vue>((rp?.vue as Vue) || (preset.articles?.length === 1 ? "jour" : "article"));
   const initialise = useRef(false);
   useEffect(() => {
     if (initialise.current || !maxDate) return;
     initialise.current = true;
+    if (rp?.periode.type === "fixe") { setDebut(rp.periode.debut); setFin(rp.periode.fin); return; }
+    if (rp?.periode.type === "glissant") { periode(rp.periode.cle); return; }
     const d = new Date(maxDate + "T12:00:00"); d.setDate(d.getDate() - 29);
     setFin(maxDate); setDebut(iso(d));
   }, [maxDate]);
-  const periode = (k: string) => {
+  function periode(k: string) {
+    setPeriodeRapide(k);
     const ref0 = new Date((maxDate || iso(new Date())) + "T12:00:00");
     const a = new Date(ref0), b = new Date(ref0);
     if (k === "7") a.setDate(a.getDate() - 6);
@@ -479,7 +496,7 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
     else if (k === "annee") a.setMonth(0, 1);
     else if (k === "tout") { setDebut(minDate); setFin(maxDate); return; }
     setDebut(iso(a)); setFin(iso(b));
-  };
+  }
   const dansPeriode = useMemo(() => (ventes || []).filter(l => (!debut || l.d >= debut) && (!fin || l.d <= fin)), [ventes, debut, fin]);
   const options = useMemo(() => {
     const m: Record<string, Map<string, number>> = { article: new Map(), famille: new Map(), client: new Map(), fournisseur: new Map() };
@@ -537,12 +554,12 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
       <Bloc titre="Période" c={c}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
           {[["7", "7 derniers jours"], ["30", "30 derniers jours"], ["mois", "Ce mois"], ["moisPrec", "Mois dernier"], ["annee", "Cette année"], ["tout", "Toute la base"]].map(([k, lib]) => (
-            <button key={k} type="button" onClick={() => periode(k)} style={puce(c, false)}>{lib}</button>
+            <button key={k} type="button" onClick={() => periode(k)} style={puce(c, periodeRapide === k)}>{lib}</button>
           ))}
           <span style={{ flex: 1 }} />
-          <input type="date" value={debut} onChange={e => setDebut(e.target.value)} style={champDate(c)} />
+          <input type="date" value={debut} onChange={e => { setDebut(e.target.value); setPeriodeRapide(""); }} style={champDate(c)} />
           <span style={{ color: c.gris, fontWeight: 700 }}>→</span>
-          <input type="date" value={fin} onChange={e => setFin(e.target.value)} style={champDate(c)} />
+          <input type="date" value={fin} onChange={e => { setFin(e.target.value); setPeriodeRapide(""); }} style={champDate(c)} />
         </div>
         {maxDate && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: c.gris }}>« Derniers jours » comptés à partir du dernier jour de la base ({dateFr(maxDate)}).</p>}
       </Bloc>
@@ -563,7 +580,15 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
         )}
         {rienChoisi && <p style={{ margin: "8px 0 0", fontSize: 12, color: c.gris }}>Rien de choisi : tous les produits de la période sont comptés.</p>}
       </Bloc>
-      <Bloc titre={titre} c={c} droite={choisies.length > 0 && boutonExport(c, () => exporterExcel(`${titre} (${nomVue.toLowerCase()})`, `${titre} (${nomVue.toLowerCase()})`, entetes, xl, totalXl))}>
+      {enregistrement && (
+        <EnregistrerRapport c={c} email={email} auteur={auteur} existant={preset.rapport && preset.rapport.auteurEmail === email ? preset.rapport : undefined}
+          config={{ periode: periodeRapide ? { type: "glissant", cle: periodeRapide } : { type: "fixe", debut, fin }, articles, familles, clients, fournisseurs, compte, vue }}
+          periodeLib={periodeRapide ? LIB_GLISSANT[periodeRapide] : `du ${dateFr(debut)} au ${dateFr(fin)}`} onFin={() => setEnregistrement(false)} />
+      )}
+      <Bloc titre={preset.rapport ? `⭐ ${preset.rapport.nom} — ${titre}` : titre} c={c} droite={<span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+        {email && <button type="button" onClick={() => setEnregistrement(!enregistrement)} style={{ padding: "9px 14px", borderRadius: 10, border: "2px solid #c8a84b", background: "#fffbeb", color: "#92400e", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>⭐ {preset.rapport && preset.rapport.auteurEmail === email ? "Mettre à jour le rapport" : "Enregistrer ce rapport"}</button>}
+        {choisies.length > 0 && boutonExport(c, () => exporterExcel(`${preset.rapport ? preset.rapport.nom + " — " : ""}${titre} (${nomVue.toLowerCase()})`, `${preset.rapport ? preset.rapport.nom + " — " : ""}${titre} (${nomVue.toLowerCase()})`, entetes, xl, totalXl), resume.map(r => r.replace(/^famille /, "Famille : ").replace(/^client /, "Client : ").replace(/^fournisseur /, "Fournisseur : ").replace(/^compte /, "Compte : ")))}
+      </span>}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
           {VUES.map(v => <button key={v.k} type="button" onClick={() => setVue(v.k)} style={puce(c, vue === v.k)}>{v.lib}</button>)}
         </div>
@@ -888,6 +913,93 @@ function ReglagesAffichage({ c }: { c: Couleurs }) {
             </div>
           );
         })}
+      </div>
+    </Bloc>
+  );
+}
+
+// ── Rapports enregistrés ──
+const cleE = (e: string) => e.toLowerCase().trim().replace(/[.#$[\]/]/g, "_");
+function resumeRapport(r: Rapport) {
+  const p = r.config.periode.type === "glissant" ? LIB_GLISSANT[r.config.periode.cle] || "" : `du ${dateFr(r.config.periode.debut)} au ${dateFr(r.config.periode.fin)}`;
+  const quoi = [...r.config.familles.map(f => `🗂️ ${f}`), ...r.config.articles.map(a => `🥬 ${a}`), ...r.config.clients.map(x => `👤 ${x}`), ...r.config.fournisseurs.map(x => `🏭 ${x}`), ...(r.config.compte !== "tous" ? [`Compte ${r.config.compte}`] : [])];
+  return { p, quoi: quoi.length ? quoi.slice(0, 3).join(" · ") + (quoi.length > 3 ? ` +${quoi.length - 3}` : "") : "Tous les produits", vue: VUES.find(v => v.k === r.config.vue)?.lib || "" };
+}
+function MesRapports({ c, email, ouvrir }: { c: Couleurs; email: string; ouvrir: (r: Rapport) => void }) {
+  const [tous, setTous] = useState<Rapport[] | null>(null);
+  const moi = cleE(email);
+  useEffect(() => onValue(ref(db, "stats_rapports"), s => setTous(Object.entries(s.val() || {}).map(([id, v]: any) => ({ ...v, id, config: { articles: [], familles: [], clients: [], fournisseurs: [], compte: "tous", vue: "article", ...(v.config || {}) } }))), () => setTous([])), []);
+  const visibles = (tous || []).filter(r => r.auteurEmail === email || r.partage === "tous" || r.partageAvec?.[moi])
+    .sort((a, b) => Number(!!b.favoris?.[moi]) - Number(!!a.favoris?.[moi]) || (b.majLe || b.creeLe) - (a.majLe || a.creeLe));
+  if (tous === null || !visibles.length) return (
+    <div style={{ background: c.carte, border: `1px dashed ${c.bord}`, borderRadius: 16, padding: "12px 16px", marginBottom: 16, fontSize: 13, color: c.gris }}>
+      ⭐ <b style={{ color: c.texte }}>Mes rapports</b> — compose une recherche dans « Ventes de produits » puis touche « ⭐ Enregistrer ce rapport » : il apparaîtra ici, prêt à rouvrir en 1 clic.
+    </div>
+  );
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 900 }}>⭐ Mes rapports</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 10 }}>
+        {visibles.map(r => {
+          const fav = !!r.favoris?.[moi], aMoi = r.auteurEmail === email, res = resumeRapport(r);
+          return (
+            <div key={r.id} style={{ position: "relative", background: fav ? (c.sombre ? "#2a2410" : "#fffbeb") : c.carte, border: `1.5px solid ${fav ? "#f5d77a" : c.bord}`, borderRadius: 14, padding: "12px 14px" }}>
+              <button type="button" onClick={() => ouvrir(r)} style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "none", color: c.texte, cursor: "pointer", padding: "0 26px 0 0" }}>
+                <span style={{ display: "block", fontSize: 14.5, fontWeight: 900 }}>{r.nom}</span>
+                <span style={{ display: "block", fontSize: 12, color: c.gris, marginTop: 2 }}>📅 {res.p} · {res.vue}</span>
+                <span style={{ display: "block", fontSize: 12, color: c.gris, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{res.quoi}</span>
+                <span style={{ display: "block", fontSize: 11, color: c.gris, marginTop: 4 }}>{aMoi ? (r.partage === "moi" ? "🔒 Pour moi" : r.partage === "tous" ? "👥 Partagé avec tous" : `👥 Partagé avec ${Object.keys(r.partageAvec || {}).length} compte(s)`) : `👤 De ${r.auteur || r.auteurEmail}`}</span>
+              </button>
+              <button type="button" onClick={() => update(ref(db, `stats_rapports/${r.id}/favoris`), { [moi]: fav ? null : true })} title={fav ? "Retirer des favoris" : "Mettre en favori"}
+                style={{ position: "absolute", right: 8, top: 8, border: "none", background: "none", fontSize: 18, cursor: "pointer", opacity: fav ? 1 : 0.35 }}>{fav ? "⭐" : "☆"}</button>
+              {aMoi && <button type="button" onClick={() => { if (window.confirm(`Supprimer le rapport « ${r.nom} » ?`)) set(ref(db, `stats_rapports/${r.id}`), null); }} title="Supprimer"
+                style={{ position: "absolute", right: 8, bottom: 8, border: "none", background: "none", fontSize: 13, cursor: "pointer", opacity: 0.5 }}>🗑</button>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+function EnregistrerRapport({ c, email, auteur, existant, config, periodeLib, onFin }: { c: Couleurs; email: string; auteur?: string; existant?: Rapport; config: ConfigRapport; periodeLib: string; onFin: () => void }) {
+  const [nom, setNom] = useState(existant?.nom || "");
+  const [partage, setPartage] = useState<"moi" | "tous" | "choix">(existant?.partage || "moi");
+  const [avec, setAvec] = useState<Record<string, boolean>>(existant?.partageAvec || {});
+  const [comptes, setComptes] = useState<string[]>([]);
+  const [erreur, setErreur] = useState("");
+  useEffect(() => { get(ref(db, "acces_permissions/users")).then(s => setComptes(Object.values(s.val() || {}).map((u: any) => u?.email).filter((e: any) => e && e !== email).sort())).catch(() => {}); }, []);
+  async function enregistrer() {
+    if (!nom.trim()) { setErreur("Donne un nom au rapport."); return; }
+    if (partage === "choix" && !Object.keys(avec).length) { setErreur("Choisis au moins un compte, ou « Tous les comptes »."); return; }
+    const cfg: ConfigRapport = config;
+    const donnees = { nom: nom.trim(), auteur: auteur || "", auteurEmail: email, partage, partageAvec: partage === "choix" ? avec : null, config: cfg, majLe: Date.now(), creeLe: existant?.creeLe || Date.now(), favoris: existant?.favoris || { [cleE(email)]: true } };
+    try {
+      if (existant) await update(ref(db, `stats_rapports/${existant.id}`), donnees);
+      else await push(ref(db, "stats_rapports"), donnees);
+      onFin();
+    } catch (e: any) { setErreur(`Enregistrement refusé : ${e?.message || e}`); }
+  }
+  const puceP = (k: "moi" | "tous" | "choix", lib: string) => <button type="button" onClick={() => setPartage(k)} style={puce(c, partage === k)}>{lib}</button>;
+  return (
+    <Bloc titre={existant ? `⭐ Mettre à jour « ${existant.nom} »` : "⭐ Enregistrer ce rapport"} c={c}>
+      <input value={nom} autoFocus onChange={e => setNom(e.target.value)} placeholder="Nom du rapport (ex. « Haricots Pomona — 30 jours »)" style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `2px solid ${c.vert}`, background: c.carte, color: c.texte, fontSize: 15, fontWeight: 700, marginBottom: 10 }} />
+      <p style={{ margin: "0 0 6px", fontSize: 12.5, color: c.gris }}>
+        📅 Période : <b style={{ color: c.texte }}>{periodeLib}</b>{config.periode.type === "glissant" && <> — recalculée à chaque ouverture (toujours les {periodeLib.toLowerCase()} de la base)</>}
+      </p>
+      {config.periode.type === "fixe" && <p style={{ margin: "0 0 8px", fontSize: 11.5, color: c.gris }}>Astuce : choisis un bouton rapide (« 30 derniers jours »…) avant d'enregistrer pour un rapport qui se met à jour tout seul.</p>}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "8px 0" }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: c.gris }}>Visible par :</span>
+        {puceP("moi", "🔒 Moi seul")}{puceP("tous", "👥 Tous les comptes")}{puceP("choix", "👤 Certains comptes…")}
+      </div>
+      {partage === "choix" && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 160, overflowY: "auto", marginBottom: 8 }}>
+          {comptes.map(e => { const k = cleE(e), on = !!avec[k]; return <button key={e} type="button" onClick={() => setAvec(a => { const n = { ...a }; if (on) delete n[k]; else n[k] = true; return n; })} style={{ ...puce(c, on), padding: "5px 10px", fontSize: 12 }}>{on ? "✓ " : ""}{e}</button>; })}
+        </div>
+      )}
+      {erreur && <p style={{ margin: "0 0 8px", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>{erreur}</p>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" onClick={enregistrer} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>{existant ? "💾 Mettre à jour" : "⭐ Enregistrer"}</button>
+        <button type="button" onClick={onFin} style={{ padding: "10px 16px", borderRadius: 10, border: `1.5px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
       </div>
     </Bloc>
   );

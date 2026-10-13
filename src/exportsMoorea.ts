@@ -1,0 +1,172 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// 14/10/2026 — Demande d'Elinathan : des exports « sympas », aux couleurs de Moorea, avec le logo.
+//  - Excel (ExcelJS) : logo, titre, filtres, en-têtes vert Moorea, lignes alternées, formats €,
+//    %, nombres, ligne de total, volets figés, filtres automatiques.
+//  - PDF (jsPDF) : même mise en page, paysage si beaucoup de colonnes, pagination, pied de page.
+// Le type de chaque colonne est déduit de son titre (Vente HT → €, Marge → %, Colis → nombre…).
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type ExportMoorea = {
+  nomFichier: string;
+  titre: string;
+  sousTitre?: string;      // ex. « du 01/09/2026 au 30/09/2026 »
+  filtres?: string[];      // ex. ["Famille : HARICOT", "Compte : GMS"]
+  entetes: string[];
+  lignes: (string | number)[][];
+  total?: (string | number)[];
+  auteur?: string;
+};
+type TypeCol = "texte" | "euro" | "pct" | "nombre";
+const VERT = "305A55", VERT_CLAIR = "74B484", FOND = "EAF2EE";
+
+function typeColonne(h: string): TypeCol {
+  const t = h.toLowerCase();
+  if (/vente ht|achat ht|résultat|resultat|montant|€/.test(t)) return "euro";
+  if (/marge|part des/.test(t)) return "pct";
+  if (/colis|pièces|pieces|poids|attendu|reçu|recu|écart|ecart|nombre|quantit/.test(t)) return "nombre";
+  return "texte";
+}
+// Le PDF (polices standard) ne sait pas dessiner les émojis : on les retire.
+// Les espaces insécables (séparateur de milliers français) ne sont pas dans les polices du PDF.
+const sansEmoji = (s: string) => String(s ?? "").replace(/[\u202F\u00A0\u2009]/g, " ").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, "").replace(/\s{2,}/g, " ").trim();
+const nomPropre = (s: string) => s.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 120);
+let logoPng: Promise<string | null> | null = null;
+function chargerLogo(): Promise<string | null> {
+  if (logoPng) return logoPng;
+  logoPng = fetch("/icon-192.png").then(r => r.ok ? r.blob() : null).then(b => b ? new Promise<string>(ok => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result)); fr.readAsDataURL(b); }) : null).catch(() => null);
+  return logoPng;
+}
+function telecharger(blob: Blob, nom: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = nom; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+const maintenant = () => new Date().toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+// ── Excel ──
+export async function exporterExcelMoorea(e: ExportMoorea) {
+  const ExcelJS = (await import("exceljs")).default;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Moorea"; wb.created = new Date();
+  const ws = wb.addWorksheet("Moorea", { views: [{ state: "frozen", ySplit: 6, showGridLines: false }], pageSetup: { orientation: e.entetes.length > 7 ? "landscape" : "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+  const types = e.entetes.map(typeColonne);
+  const n = e.entetes.length;
+  // Bandeau : logo + titre
+  const logo = await chargerLogo();
+  if (logo) {
+    const id = wb.addImage({ base64: logo.split(",")[1], extension: "png" });
+    ws.addImage(id, { tl: { col: 0, row: 0 }, ext: { width: 54, height: 54 } });
+  }
+  for (let r = 1; r <= 3; r++) for (let col = 1; col <= Math.max(n, 4); col++) ws.getCell(r, col).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + VERT } };
+  ws.getRow(1).height = 22; ws.getRow(2).height = 22; ws.getRow(3).height = 16;
+  const t = ws.getCell(1, 2); t.value = e.titre; t.font = { name: "Arial", bold: true, size: 15, color: { argb: "FFFFFFFF" } };
+  const st = ws.getCell(2, 2); st.value = [e.sousTitre, "MOOREA"].filter(Boolean).join("   ·   "); st.font = { name: "Arial", size: 11, color: { argb: "FF" + VERT_CLAIR }, bold: true };
+  const st2 = ws.getCell(3, 2); st2.value = `Extrait le ${maintenant()}${e.auteur ? ` par ${e.auteur}` : ""}`; st2.font = { name: "Arial", size: 9, color: { argb: "FFD9E7E1" } };
+  // Filtres
+  const f = ws.getCell(4, 1); f.value = e.filtres?.length ? `Filtres : ${e.filtres.join("  ·  ")}` : "Filtres : aucun (tous les produits)"; f.font = { name: "Arial", italic: true, size: 10, color: { argb: "FF5E6B69" } };
+  // En-têtes (ligne 6)
+  const hr = ws.getRow(6);
+  e.entetes.forEach((h, i) => {
+    const c = hr.getCell(i + 1);
+    c.value = h; c.font = { name: "Arial", bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + VERT } };
+    c.alignment = { vertical: "middle", horizontal: types[i] === "texte" ? "left" : "right", wrapText: true };
+    c.border = { bottom: { style: "medium", color: { argb: "FF" + VERT_CLAIR } } };
+  });
+  hr.height = 26;
+  const fmt = (ty: TypeCol) => ty === "euro" ? '#,##0.00 "€"' : ty === "pct" ? "0.0%" : ty === "nombre" ? "#,##0.##" : "@";
+  // Pourcentages reçus en « 27,1 » : rangés en 0,271 pour le format % d'Excel.
+  const valeur = (v: string | number, ty: TypeCol) => (v === "" ? null : typeof v === "number" && ty === "pct" ? v / 100 : v);
+  e.lignes.forEach((l, k) => {
+    const row = ws.getRow(7 + k);
+    l.forEach((v, i) => {
+      const c = row.getCell(i + 1);
+      c.value = valeur(v, types[i]);
+      if (typeof v === "number") c.numFmt = fmt(types[i]);
+      c.font = { name: "Arial", size: 10 };
+      c.alignment = { vertical: "middle", horizontal: types[i] === "texte" ? "left" : "right" };
+      if (k % 2 === 1) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + FOND } };
+      c.border = { bottom: { style: "hair", color: { argb: "FFDDE6E3" } } };
+    });
+  });
+  if (e.total) {
+    const row = ws.getRow(7 + e.lignes.length);
+    e.total.forEach((v, i) => {
+      const c = row.getCell(i + 1);
+      c.value = valeur(v, types[i]);
+      if (typeof v === "number") c.numFmt = fmt(types[i]);
+      c.font = { name: "Arial", bold: true, color: { argb: "FF" + VERT } };
+      c.alignment = { horizontal: types[i] === "texte" ? "left" : "right" };
+      c.border = { top: { style: "medium", color: { argb: "FF" + VERT } } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCFCE7" } };
+    });
+    row.height = 20;
+  }
+  ws.autoFilter = { from: { row: 6, column: 1 }, to: { row: 6 + e.lignes.length, column: n } };
+  e.entetes.forEach((h, i) => {
+    const long = Math.max(h.length, ...e.lignes.slice(0, 800).map(l => String(l[i] ?? "").length));
+    ws.getColumn(i + 1).width = Math.min(48, Math.max(i === 0 ? 14 : 10, long + 3));
+  });
+  const buf = await wb.xlsx.writeBuffer();
+  telecharger(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), nomPropre(e.nomFichier) + ".xlsx");
+}
+
+// ── PDF ──
+export async function exporterPdfMoorea(e: ExportMoorea) {
+  const { default: jsPDF } = await import("jspdf");
+  const types = e.entetes.map(typeColonne);
+  const paysage = e.entetes.length > 6;
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: paysage ? "landscape" : "portrait" });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 12;
+  const logo = await chargerLogo();
+  const vert: [number, number, number] = [48, 90, 85], clair: [number, number, number] = [116, 180, 132];
+  const fmtCell = (v: string | number, ty: TypeCol) => sansEmoji(typeof v !== "number" ? String(v ?? "") : ty === "euro" ? v.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €" : ty === "pct" ? v.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " %" : v.toLocaleString("fr-FR", { maximumFractionDigits: 2 }));
+  // Largeurs : proportionnelles au contenu, colonnes de texte plus larges.
+  doc.setFontSize(8.5);
+  const mesures = e.entetes.map((h, i) => Math.max(doc.getTextWidth(h) + 4, ...e.lignes.slice(0, 300).map(l => doc.getTextWidth(fmtCell(l[i], types[i])) + 4), e.total ? doc.getTextWidth(fmtCell(e.total[i], types[i])) + 4 : 0));
+  const dispo = W - 2 * M;
+  let largeurs = mesures.map((m, i) => Math.min(types[i] === "texte" ? 80 : 32, m));
+  const somme = largeurs.reduce((a, b) => a + b, 0);
+  largeurs = largeurs.map(l => l * dispo / somme);
+  const bandeau = (premiere: boolean) => {
+    doc.setFillColor(...vert); doc.rect(0, 0, W, premiere ? 30 : 16, "F");
+    if (logo) doc.addImage(logo, "PNG", M, premiere ? 6 : 3, premiere ? 18 : 10, premiere ? 18 : 10);
+    doc.setTextColor(255, 255, 255);
+    if (premiere) {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text(sansEmoji(e.titre).slice(0, 110), M + 22, 14);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(...clair); doc.text([e.sousTitre, "MOOREA"].filter(Boolean).join("   ·   "), M + 22, 21);
+      doc.setFontSize(8); doc.setTextColor(217, 231, 225); doc.text(`Extrait le ${maintenant()}${e.auteur ? ` par ${e.auteur}` : ""}`, M + 22, 26);
+    } else {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(sansEmoji(e.titre).slice(0, 120), M + 13, 10);
+    }
+  };
+  const pied = (p: number) => { doc.setFontSize(7.5); doc.setTextColor(120, 130, 128); doc.text("Moorea — document généré par l'appli", M, H - 6); doc.text(`Page ${p}`, W - M, H - 6, { align: "right" }); };
+  let page = 1, y: number;
+  bandeau(true);
+  y = 36;
+  doc.setTextColor(94, 107, 105); doc.setFont("helvetica", "italic"); doc.setFontSize(9);
+  const lignesFiltres = doc.splitTextToSize(sansEmoji(e.filtres?.length ? `Filtres : ${e.filtres.join("  ·  ")}` : "Filtres : aucun (tous les produits)"), dispo);
+  doc.text(lignesFiltres, M, y); y += lignesFiltres.length * 4 + 3;
+  const enTete = () => {
+    doc.setFillColor(...vert); doc.rect(M, y, dispo, 8, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255);
+    let x = M; e.entetes.forEach((h, i) => { const t = doc.splitTextToSize(sansEmoji(h), largeurs[i] - 3)[0]; doc.text(t, types[i] === "texte" ? x + 1.5 : x + largeurs[i] - 1.5, y + 5.3, { align: types[i] === "texte" ? "left" : "right" }); x += largeurs[i]; });
+    y += 8;
+  };
+  enTete();
+  const ligne = (l: (string | number)[], k: number, total = false) => {
+    doc.setFont("helvetica", total ? "bold" : "normal"); doc.setFontSize(8.5);
+    const cellules = l.map((v, i) => doc.splitTextToSize(fmtCell(v, types[i]), largeurs[i] - 3) as string[]);
+    const haut = Math.max(6, ...cellules.map(c => c.length * 3.6 + 2.4));
+    if (y + haut > H - 14) { pied(page); doc.addPage(); page++; bandeau(false); y = 22; enTete(); }
+    if (total) { doc.setFillColor(220, 252, 231); doc.rect(M, y, dispo, haut, "F"); doc.setDrawColor(...vert); doc.setLineWidth(0.5); doc.line(M, y, M + dispo, y); }
+    else if (k % 2 === 1) { doc.setFillColor(234, 242, 238); doc.rect(M, y, dispo, haut, "F"); }
+    doc.setTextColor(total ? 48 : 30, total ? 90 : 43, total ? 85 : 41);
+    let x = M; cellules.forEach((c, i) => { doc.text(c, types[i] === "texte" ? x + 1.5 : x + largeurs[i] - 1.5, y + 4.2, { align: types[i] === "texte" ? "left" : "right" }); x += largeurs[i]; });
+    y += haut;
+  };
+  e.lignes.forEach((l, k) => ligne(l, k));
+  if (e.total) ligne(e.total, 0, true);
+  pied(page);
+  telecharger(doc.output("blob"), nomPropre(e.nomFichier) + ".pdf");
+}
