@@ -3715,7 +3715,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // 02/10/2026 — Module « Commandes Lidl » (commercial) : import du tableau de répartition Lidl.
   if (showLidl) {
     if (!monAcces.hasModule("lidl")) return <AccesRefuse onRetour={() => { setShowLidl(false); setShowAccueil(true); }} />;
-    return <LidlModule onClose={() => { setShowLidl(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
+    return <LidlModule admin={monAccesReel.isAdmin} onClose={() => { setShowLidl(false); setShowAccueil(true); }} userName={user?.displayName || (user?.email ? user.email.split('@')[0].split('.')[0].charAt(0).toUpperCase() + user.email.split('@')[0].split('.')[0].slice(1) : "Moorea")} />;
   }
 
   // 01/10/2026 — Module « Stats achats » : réservé aux admins (import manuel des exports Excel).

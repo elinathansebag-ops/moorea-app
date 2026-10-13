@@ -19,7 +19,7 @@ const JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 const nomBase = (c: string) => infoBase(c)?.nom || c;
 const numBase = (c: string) => infoBase(c)?.num ?? 999;
 
-export function LidlModule({ onClose, userName }: { onClose: () => void; userName?: string }) {
+export function LidlModule({ onClose, userName, admin }: { onClose: () => void; userName?: string; admin?: boolean }) {
   const [onglet, setOnglet] = useState<"jour" | "passees" | "stats" | "bord" | "traca" | "config">("jour");
   const [lignes, setLignes] = useState<L[]>([]);
   const [jourOuvert, setJourOuvert] = useState("");
@@ -154,7 +154,7 @@ export function LidlModule({ onClose, userName }: { onClose: () => void; userNam
             ))}
           </div>
         )}
-        {onglet === "jour" && <LidlCommandes userName={userName} mode="commercial" jourForce={jourOuvert || undefined} />}
+        {onglet === "jour" && <LidlCommandes userName={userName} mode="commercial" admin={admin} jourForce={jourOuvert || undefined} />}
 
         {onglet === "passees" && (
           <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 14, boxShadow: "0 2px 8px rgba(0,0,0,.05)" }}>
