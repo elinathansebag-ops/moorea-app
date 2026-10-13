@@ -223,11 +223,10 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   type LigneBrute = Omit<LigneLidl, "id" | "date" | "depart" | "transporteur" | "lot" | "statut">;
   const [fenetreImport, setFenetreImport] = useState(false);
   const [fichierLu, setFichierLu] = useState<{ nom: string; lignes: LigneBrute[]; dateFichier: string } | null>(null);
-  // 13/10/2026 — Commandes du fichier décochées dans le récap de la fenêtre d'import (indices dans
-  // fichierLu.lignes) : elles ne sont pas importées (donc pas préparées ni envoyées).
-  const [exclues, setExclues] = useState<Set<number>>(new Set());
-  const [depart, setDepart] = useState<"" | "sud" | "paris">("");
-  const [dateImport, setDateImport] = useState("");
+  // 13/10/2026 — Départ choisi pour chaque ligne du fichier dans la fenêtre d'import (indice dans
+  // fichierLu.lignes) : Paris, Medina (Perpignan), ou « non » = pas importée (ni préparée ni envoyée).
+  type ChoixDepart = "paris" | "sud" | "non";
+  const [choixDepart, setChoixDepart] = useState<Record<number, ChoixDepart>>({});
   const [erreurImport, setErreurImport] = useState("");
   const [dernierImport, setDernierImport] = useState<{ date: string; depart: "sud" | "paris" } | null>(null);
   const [reimportSansImpression, setReimportSansImpression] = useState(false); // 13/10/2026 — voir enregistrerImport
@@ -394,8 +393,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       if (!lues.length) throw new Error("Aucune quantité à préparer dans ce fichier (toutes les bases sont à 0).");
       const dateFichier = dateLivraisonLue || dateEntete;
       setFichierLu({ nom: fichier.name, lignes: lues, dateFichier });
-      setExclues(new Set());
-      setDateImport(dateFichier || iso(new Date()));
+      setChoixDepart({});
     } catch (e: any) {
       setErreurImport(e?.message || String(e));
     }
@@ -404,22 +402,37 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
 
   // Enregistre les commandes du fichier à la date et au départ choisis. Réimporter le même fichier ne
   // crée jamais de doublon (identifiant = date + n° d'avis + base + départ) et garde les « Prêt » et les lots.
+  // 13/10/2026 — Demande d'Elinathan : le départ (Paris / Medina-Perpignan) se choisit par référence
+  // puis ligne par ligne dans la fenêtre d'import (choixDepart), et la date de livraison est celle du
+  // fichier. Un même fichier peut donc alimenter les deux départs : l'import tourne une fois par départ.
   async function enregistrerImport() {
     if (!fichierLu) { setErreurImport("Choisis d'abord le fichier de Lidl."); return; }
-    if (!depart) { setErreurImport("Choisis le départ : Paris ou Medina (Perpignan)."); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateImport)) { setErreurImport("Choisis la date de livraison."); return; }
-    const aImporter = fichierLu.lignes.filter((_, i) => !exclues.has(i));
-    if (!aImporter.length) { setErreurImport("Toutes les commandes sont décochées : coche au moins une ligne."); return; }
-    const dep = depart, d = dateImport;
+    const d = fichierLu.dateFichier;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { setErreurImport("Date de livraison introuvable dans le fichier Lidl."); return; }
+    const sansChoix = fichierLu.lignes.filter((_, i) => !choixDepart[i]).length;
+    if (sansChoix) { setErreurImport(`Choisis le départ (Paris ou Perpignan) pour toutes les lignes — ${sansChoix} sans départ.`); return; }
+    const parDep: Record<"paris" | "sud", LigneBrute[]> = { paris: [], sud: [] };
+    fichierLu.lignes.forEach((l, i) => { const c = choixDepart[i]; if (c === "paris" || c === "sud") parDep[c].push(l); });
+    if (!parDep.paris.length && !parDep.sud.length) { setErreurImport("Toutes les lignes sont sur « Ne pas envoyer »."); return; }
     setImport(true); setErreurImport("");
     try {
+      const tout = (await get(ref(db, "lidl_commandes"))).val() || {};
+      // Un départ sans aucune ligne cette fois n'est retraité que s'il contient déjà des commandes de
+      // CE fichier (même n° d'avis) pour ce jour : c'est qu'elles ont été basculées sur l'autre départ.
+      const avisFichier = new Set(fichierLu.lignes.map(l => l.avis));
+      const deps = (["paris", "sud"] as const).filter(dep => parDep[dep].length > 0
+        || Object.values(tout).some((x: any) => x?.date === d && (x.depart || "sud") === dep && avisFichier.has(x.avis)));
+      const bilans: string[] = [];
+      const tousChangements: Changement[] = [];
+      let reimportParis = false;
+      for (const dep of deps) {
+      const aImporter = parDep[dep];
       const lues: LigneLidl[] = aImporter.map(l => ({
         ...l, id: idCommandeLidl(d, l, dep),
         date: d, depart: dep, transporteur: (infoBase(l.base) as any)?.[dep === "paris" ? "paris" : "perpignan"] || "",
         lot: "", statut: "a_preparer",
       }));
       const existantes = new Map<string, any>();
-      const tout = (await get(ref(db, "lidl_commandes"))).val() || {};
       Object.entries(tout).forEach(([id, x]: any) => { if (x.date === d && (x.depart || "sud") === dep) existantes.set(id, x); });
       const maj: Record<string, any> = {};
       let nouvelles = 0, modifiees = 0, inchangees = 0, retirees = 0;
@@ -467,22 +480,19 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       await update(ref(db), maj);
       if (changements.length) {
         await push(ref(db, "lidl_changements"), { date: d, depart: dep, ts: Date.now(), par: userName || "", changements, vu: false });
-        setPopupChangements({ date: d, depart: dep, liste: changements });
+        tousChangements.push(...changements);
         alerterPush({ type: "lidl_changement", titre: `🛒 Commande Lidl modifiée (${d})`, corps: changements.slice(0, 6).map((c: any) => `${c.base} ${c.avant}→${c.apres}`).join(" · ") + (userName ? ` — par ${userName}` : "") }); // 10/10/2026
       }
       await push(ref(db, "lidl_imports"), { ts: Date.now(), par: userName || "", fichier: fichierLu.nom, dates: [d], depart: dep, dateFichier: fichierLu.dateFichier || null, lignes: lues.length });
       alerterPush({ type: "lidl_import", titre: `🛒 Commandes Lidl importées (${d})`, corps: `${lues.length} ligne${lues.length > 1 ? "s" : ""}${dep ? ` — départ ${dep}` : ""}${userName ? ` — par ${userName}` : ""}` }); // 10/10/2026
-      setJour(d);
-      setJoursOuverts(x => new Set(x).add(d));
-      setSemainesOuvertes(x => new Set(x).add(lundiDe(d)));
-      setDernierImport({ date: d, depart: dep });
+
       // Impression automatique : bon Geslot (bureau) toujours ; bon de préparation (entrepôt) pour Paris.
       // 13/10/2026 — Demande d'Elinathan (« si j'importe le tableau du jour ça va tout réimprimer en
       // doublon ? ») : au RÉIMPORT d'un jour déjà importé, les bons Geslot et de préparation ne
       // repartent plus tout seuls (boutons « Réimprimer » juste après l'import si besoin), et le
       // récap Medina n'est renvoyé que si quelque chose a changé. Les étiquettes palettes, elles,
       // ne sortent déjà que pour les commandes qui n'en ont pas encore.
-      setReimportSansImpression(reimport);
+      if (dep === "paris") reimportParis = reimport;
       if (!reimport) imprimerGeslot(d, dep, lues);
       if (dep === "paris") {
         if (!reimport) imprimerBonEntrepot(d, lues);
@@ -501,13 +511,23 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
             .map(l => itemEtiquette(l, modifiees.has(l.id)));
           if (items.length || alerte) imprimerEtiquettes(items, alerte);
         } else { setAImprimerApresImport(ids); setModifieesApresImport([...modifiees]); setAlerteApresImport(alerte || null); }
-      } else { setAImprimerApresImport([]); setModifieesApresImport([]); setAlerteApresImport(null); }
+      }
       if (dep === "sud" && (!reimport || changements.length > 0)) {
         const r = await envoyerRecapMedina(d, lues);
         setRecapMedina(r?.ok ? `📧 Récap de préparation Medina envoyé à Jordan (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}).` : `❌ Récap Medina non envoyé : ${r?.erreur || "erreur"}`);
-      } else setRecapMedina("");
-      setFenetreImport(false); setFichierLu(null); setDepart("");
-      flash("ok", `✅ ${libDepart(dep)} : ${lues.length} commande${lues.length > 1 ? "s" : ""} Lidl enregistrée${lues.length > 1 ? "s" : ""} — livraison du ${dateFr(d)} : ${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""}.${dep === "sud" ? " (Départ Medina : pas affiché dans Préparation.)" : ""}`);
+      }
+      bilans.push(`${libDepart(dep)} : ${lues.length} commande${lues.length > 1 ? "s" : ""} (${nouvelles} nouvelle${nouvelles > 1 ? "s" : ""}${modifiees ? `, ${modifiees} quantité(s) modifiée(s)` : ""}${inchangees ? `, ${inchangees} déjà connue(s)` : ""}${retirees ? `, ${retirees} retirée(s)` : ""})`);
+      }
+      if (!deps.includes("paris")) { setAImprimerApresImport([]); setModifieesApresImport([]); setAlerteApresImport(null); }
+      if (!deps.includes("sud")) setRecapMedina("");
+      if (tousChangements.length) setPopupChangements({ date: d, depart: deps.length > 1 ? "paris et sud" : deps[0], liste: tousChangements });
+      setReimportSansImpression(deps.includes("paris") ? reimportParis : false);
+      setJour(d);
+      setJoursOuverts(x => new Set(x).add(d));
+      setSemainesOuvertes(x => new Set(x).add(lundiDe(d)));
+      setDernierImport({ date: d, depart: deps.includes("paris") ? "paris" : "sud" });
+      setFenetreImport(false); setFichierLu(null); setChoixDepart({});
+      flash("ok", `✅ Lidl — livraison du ${dateFr(d)} : ${bilans.join(" · ")}.${deps.includes("sud") ? " (Départ Medina : pas affiché dans Préparation.)" : ""}`);
     } catch (e: any) {
       setErreurImport("Import impossible : " + (e?.message || e));
     }
@@ -1200,10 +1220,16 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
 
   // Module commercial : bouton d'import en haut, hors des journées, puis l'historique par semaine.
   const champ = { padding: "9px 10px", borderRadius: 10, border: "1.5px solid #d1d5db", fontSize: 14, width: "100%", boxSizing: "border-box" as const };
-  // 13/10/2026 — Demande d'Elinathan : dans la fenêtre d'import, « un récap des commandes avec la
-  // base, la quantité, rangé par réf, avec une case à cocher envoyer ou non ». Décocher une ligne =
-  // elle n'est pas importée ; au réimport d'un jour déjà importé, elle est retirée comme une ligne
-  // absente du fichier (ou signalée si elle était déjà « Prêt »).
+  // 13/10/2026 — Demande d'Elinathan : fenêtre d'import en 2 temps — 1. le fichier, 2. toutes les
+  // lignes rangées par référence, avec un départ (Paris / Perpignan) à choisir pour toute la
+  // référence puis modifiable ligne par ligne (ou « ✕ » = ne pas envoyer). Plus de champ date :
+  // c'est celle du fichier. Au réimport d'un jour, une ligne passée sur « ✕ » ou sur l'autre départ
+  // est retirée de son ancien départ (ou signalée si elle était déjà « Prêt »).
+  const OPTIONS_DEPART: { k: ChoixDepart; lib: string; court: string; c: string }[] = [
+    { k: "paris", lib: "🏙️ Paris", court: "Paris", c: "#7c3aed" },
+    { k: "sud", lib: "☀️ Perpignan", court: "Perpignan", c: "#b45309" },
+    { k: "non", lib: "✕ Ne pas envoyer", court: "✕", c: "#6b7280" },
+  ];
   const recapImport = (() => {
     if (!fichierLu) return null;
     const groupes = new Map<string, { titre: string; items: { i: number; l: LigneBrute }[] }>();
@@ -1214,36 +1240,49 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       if (!groupes.has(cle)) groupes.set(cle, { titre, items: [] });
       groupes.get(cle)!.items.push({ i, l });
     });
-    const basculer = (ids: number[], cocher: boolean) => setExclues(x => { const n = new Set(x); ids.forEach(i => cocher ? n.delete(i) : n.add(i)); return n; });
-    const case_ = { width: 17, height: 17, accentColor: couleur, cursor: "pointer", flexShrink: 0 } as const;
+    const choisir = (ids: number[], c: ChoixDepart) => setChoixDepart(x => { const n = { ...x }; ids.forEach(i => { n[i] = c; }); return n; });
+    const segment = (actif: ChoixDepart | undefined, onChoix: (c: ChoixDepart) => void, petit: boolean) => (
+      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+        {OPTIONS_DEPART.map(o => {
+          const on = actif === o.k;
+          return (
+            <button key={o.k} type="button" onClick={() => onChoix(o.k)} title={o.lib}
+              style={{ padding: petit ? "4px 8px" : "7px 10px", borderRadius: 8, border: `1.5px solid ${on ? o.c : "#e5e7eb"}`, background: on ? `${o.c}18` : "#fff", color: on ? o.c : "#6b7280", fontWeight: 800, fontSize: petit ? 11.5 : 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>
+              {petit ? o.court : o.lib}
+            </button>
+          );
+        })}
+      </div>
+    );
     return (
-      <div style={{ marginTop: 10, border: "1.5px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "8px 10px", background: "#f9fafb", fontSize: 12, fontWeight: 800, color: "#374151" }}>
-          Récap des commandes — décoche celles à ne pas envoyer
-        </div>
+      <div style={{ border: "1.5px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
         {[...groupes.values()].map(g => {
           const ids = g.items.map(x => x.i);
-          const cochees = g.items.filter(x => !exclues.has(x.i));
-          const total = cochees.reduce((s2, x) => s2 + x.l.quantite, 0);
-          const toutes = cochees.length === g.items.length;
+          const valeurs = new Set(ids.map(i => choixDepart[i]));
+          const commun = valeurs.size === 1 ? [...valeurs][0] : undefined;
+          const total = (dep: ChoixDepart) => g.items.filter(x => choixDepart[x.i] === dep).reduce((s2, x) => s2 + x.l.quantite, 0);
           return (
             <div key={g.titre} style={{ borderTop: "1px solid #e5e7eb" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: `${couleur}0d`, cursor: "pointer" }}>
-                <input type="checkbox" checked={toutes} ref={el => { if (el) el.indeterminate = !toutes && cochees.length > 0; }} onChange={() => basculer(ids, !toutes)} style={case_} />
-                <span style={{ fontWeight: 800, fontSize: 13, color: "#111827", flex: 1 }}>{g.titre}</span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: couleur, whiteSpace: "nowrap" }}>{total} colis · {cochees.length}/{g.items.length}</span>
-              </label>
-              {[...g.items].sort((a, b) => (infoBase(a.l.base)?.num ?? 999) - (infoBase(b.l.base)?.num ?? 999)).map(({ i, l }) => {
-                const on = !exclues.has(i);
+              <div style={{ padding: "10px", background: `${couleur}0d` }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+                  <span style={{ fontWeight: 900, fontSize: 13.5, color: "#111827" }}>{g.titre} <span style={{ fontWeight: 600, color: "#6b7280", fontSize: 12 }}>· {g.items.length} ligne{g.items.length > 1 ? "s" : ""} · {g.items.reduce((s2, x) => s2 + x.l.quantite, 0)} colis</span></span>
+                  {segment(commun, c => choisir(ids, c), false)}
+                </div>
+                {valeurs.size > 1 && !valeurs.has(undefined) && (
+                  <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 4 }}>Mélangé : {OPTIONS_DEPART.filter(o => valeurs.has(o.k)).map(o => `${o.court === "✕" ? "pas envoyé" : o.court} ${total(o.k)} colis`).join(" · ")}</div>
+                )}
+              </div>
+              {[...g.items].sort((x, y) => (infoBase(x.l.base)?.num ?? 999) - (infoBase(y.l.base)?.num ?? 999)).map(({ i, l }) => {
                 const b = infoBase(l.base);
+                const c = choixDepart[i];
                 return (
-                  <label key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px 6px 28px", borderTop: "1px solid #f3f4f6", cursor: "pointer", opacity: on ? 1 : 0.45 }}>
-                    <input type="checkbox" checked={on} onChange={() => basculer([i], !on)} style={case_} />
-                    <span style={{ flex: 1, fontSize: 13, color: "#111827", textDecoration: on ? "none" : "line-through" }}>
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px 6px 18px", borderTop: "1px solid #f3f4f6", opacity: c === "non" ? 0.45 : 1, flexWrap: "wrap" }}>
+                    <span style={{ flex: "1 1 140px", fontSize: 13, color: "#111827", textDecoration: c === "non" ? "line-through" : "none" }}>
                       <b>{b?.nom || l.base}</b> <span style={{ color: "#6b7280", fontSize: 11.5 }}>{l.base}{b ? ` · n° ${b.num}` : ""}{l.camion ? ` · camion ${l.camion}` : ""}</span>
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "#111827", whiteSpace: "nowrap" }}>{l.quantite} colis</span>
-                  </label>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#111827", whiteSpace: "nowrap", minWidth: 62, textAlign: "right" }}>{l.quantite} colis</span>
+                    {segment(c, v => choisir([i], v), true)}
+                  </div>
                 );
               })}
             </div>
@@ -1252,34 +1291,45 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       </div>
     );
   })();
+  const nbParDepart = (k: ChoixDepart) => (fichierLu ? fichierLu.lignes.filter((_, i) => choixDepart[i] === k).length : 0);
+  const sansDepart = fichierLu ? fichierLu.lignes.length - Object.keys(choixDepart).length : 0;
+  const dejaImporte = (dep: "paris" | "sud") => !!fichierLu?.dateFichier && lignes.some(x => x.date === fichierLu.dateFichier && (x.depart || "sud") === dep);
   const fenetre = fenetreImport && (
     <div onClick={() => !import_ && setFenetreImport(false)} style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Importer une nouvelle commande Lidl" style={{ background: "#fff", borderRadius: 16, padding: 20, width: "100%", maxWidth: 520, maxHeight: "92vh", overflowY: "auto", boxSizing: "border-box", boxShadow: "0 20px 50px rgba(0,0,0,.25)" }}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Importer une nouvelle commande Lidl" style={{ background: "#fff", borderRadius: 16, padding: 20, width: "100%", maxWidth: 620, maxHeight: "92vh", overflowY: "auto", boxSizing: "border-box", boxShadow: "0 20px 50px rgba(0,0,0,.25)" }}>
         <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 14, color: "#111827" }}>📥 Importer une nouvelle commande Lidl</div>
         <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374151", marginBottom: 6 }}>1. Tableau de répartition reçu de Lidl</div>
         <button type="button" onClick={() => inputRef.current?.click()} style={{ ...champ, textAlign: "left", cursor: "pointer", background: fichierLu ? "#f0fdf4" : "#fff", borderColor: fichierLu ? "#86efac" : "#d1d5db", fontWeight: 700 }}>
           {fichierLu ? `✅ ${fichierLu.nom} — ${fichierLu.lignes.length} commande${fichierLu.lignes.length > 1 ? "s" : ""}` : "Choisir le fichier (AU-….xlsx)"}
         </button>
-        {fichierLu && recapImport}
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374151", margin: "14px 0 6px" }}>2. Départ</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {([["paris", "🏙️ Paris"], ["sud", "☀️ Medina (Perpignan)"]] as const).map(([k, lib]) => (
-            <button key={k} type="button" onClick={() => setDepart(k)} style={{ flex: 1, padding: "10px 8px", borderRadius: 10, border: `2px solid ${depart === k ? couleur : "#e5e7eb"}`, background: depart === k ? `${couleur}12` : "#fff", color: depart === k ? couleur : "#374151", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{lib}</button>
-          ))}
-        </div>
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374151", margin: "14px 0 6px" }}>3. Date de livraison</div>
-        <input type="date" value={dateImport} onChange={e => setDateImport(e.target.value)} style={champ} />
-        <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 4 }}>
-          {fichierLu?.dateFichier ? `Date de livraison lue dans le fichier : ${dateFr(fichierLu.dateFichier)}${dateImport && dateImport !== fichierLu.dateFichier ? " — ⚠️ tu as choisi une autre date" : ""}` : fichierLu ? "Pas de date de livraison dans le fichier : date du jour proposée." : "Remplie automatiquement avec la date de livraison du fichier."}
-        </div>
-        {depart && lignes.some(x => x.date === dateImport && (x.depart || "sud") === depart) ? (
-          <div style={{ fontSize: 11.5, color: "#166534", fontWeight: 700, marginTop: 10 }}>🔁 Ce jour est déjà importé : rien ne sera réimprimé en double. Les étiquettes palettes ne ressortent que pour les commandes nouvelles ou modifiées, avec une étiquette ATTENTION qui liste les changements{depart === "sud" ? " ; le récap Medina n'est renvoyé que s'il y a un changement" : ""}.</div>
-        ) : depart && <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 10 }}>{depart === "paris" ? "Après l'import : impression automatique du bon Geslot (bureau) et du bon de préparation (entrepôt)." : "Après l'import : impression automatique du bon Geslot (bureau) + récap de préparation envoyé par mail à Jordan."}</div>}
+        {fichierLu && (
+          <div style={{ fontSize: 12, color: "#374151", marginTop: 6 }}>
+            {fichierLu.dateFichier ? <>Livraison du <b>{dateFr(fichierLu.dateFichier)}</b> (date lue dans le fichier)</> : <span style={{ color: "#b91c1c", fontWeight: 700 }}>⚠️ Pas de date de livraison dans ce fichier.</span>}
+          </div>
+        )}
+        {fichierLu && (
+          <>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374151", margin: "14px 0 6px" }}>2. Départ de chaque commande — par référence, puis ligne par ligne si besoin</div>
+            {recapImport}
+            <div style={{ fontSize: 12, color: "#374151", marginTop: 8, fontWeight: 700 }}>
+              🏙️ Paris : {nbParDepart("paris")} · ☀️ Perpignan : {nbParDepart("sud")} · ✕ pas envoyé : {nbParDepart("non")}{sansDepart ? <span style={{ color: "#b45309" }}> · {sansDepart} sans départ</span> : null}
+            </div>
+            <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>
+              {nbParDepart("paris") > 0 && <div>🏙️ Paris : {dejaImporte("paris") ? "jour déjà importé — rien n'est réimprimé en double ; étiquettes seulement pour les commandes nouvelles ou modifiées, avec une étiquette ATTENTION." : "bon Geslot (bureau) + bon de préparation (entrepôt) + étiquettes palettes imprimés automatiquement."}</div>}
+              {nbParDepart("sud") > 0 && <div>☀️ Perpignan : {dejaImporte("sud") ? "jour déjà importé — récap Medina renvoyé seulement s'il y a un changement." : "bon Geslot (bureau) + récap de préparation envoyé par mail à Jordan."}</div>}
+            </div>
+          </>
+        )}
         {erreurImport && <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: "#fef2f2", border: "1px solid #fca5a5", color: "#b91c1c" }}>{erreurImport}</div>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
           <button type="button" disabled={import_} onClick={() => setFenetreImport(false)} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Annuler</button>
-          <button type="button" disabled={import_ || !fichierLu || !depart || !dateImport} onClick={enregistrerImport}
-            style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: import_ || !fichierLu || !depart || !dateImport ? "#9ca3af" : couleur, color: "#fff", fontWeight: 900, cursor: import_ ? "wait" : "pointer" }}>{import_ ? "Import…" : fichierLu && exclues.size ? `Importer (${fichierLu.lignes.length - exclues.size}/${fichierLu.lignes.length})` : "Importer"}</button>
+          {(() => {
+            const bloque = import_ || !fichierLu || !fichierLu.dateFichier || sansDepart > 0 || nbParDepart("paris") + nbParDepart("sud") === 0;
+            return (
+              <button type="button" disabled={bloque} onClick={enregistrerImport}
+                style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: bloque ? "#9ca3af" : couleur, color: "#fff", fontWeight: 900, cursor: import_ ? "wait" : bloque ? "default" : "pointer" }}>{import_ ? "Import…" : "Importer"}</button>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -1303,7 +1353,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     <div>
       <input ref={inputRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) lireFichier(f); }} />
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
-        <button type="button" onClick={() => { setFenetreImport(true); setFichierLu(null); setDepart(""); setDateImport(""); setErreurImport(""); }}
+        <button type="button" onClick={() => { setFenetreImport(true); setFichierLu(null); setChoixDepart({}); setErreurImport(""); }}
           style={{ background: couleur, color: "#fff", border: "none", borderRadius: 12, padding: "12px 18px", fontWeight: 900, fontSize: 14, cursor: "pointer", boxShadow: "0 3px 10px rgba(0,80,170,.25)" }}>
           📥 Importer une nouvelle commande
         </button>
