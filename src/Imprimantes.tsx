@@ -79,8 +79,9 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
   const [choix, setChoix] = useState<Record<CleImprimante, string>>(IMPRIMANTES_DEFAUT);
   const [pc, setPc] = useState<{ imprimantes: string[]; lastSeen?: number; version?: string; parDefaut?: { etiquettes?: string; a4?: string } }>({ imprimantes: [] });
   const [tests, setTests] = useState<Record<string, { etat: string; message?: string }>>({});
+  const [modeArrivage, setModeArrivage] = useState("acrobat");
   useEffect(() => {
-    const a = onValue(ref(db, "config/imprimantes"), snap => setChoix({ ...IMPRIMANTES_DEFAUT, ...(snap.val() || {}) }));
+    const a = onValue(ref(db, "config/imprimantes"), snap => { const v = snap.val() || {}; setChoix({ ...IMPRIMANTES_DEFAUT, ...v }); setModeArrivage(typeof v.modeArrivage === "string" ? v.modeArrivage : "acrobat"); });
     const b = onValue(ref(db, "printRelayStatus"), snap => {
       const v = snap.val() || {};
       setPc({ imprimantes: Array.isArray(v.imprimantes) ? v.imprimantes : [], lastSeen: v.lastSeen, version: v.version, parDefaut: v.imprimantesParDefaut });
@@ -155,6 +156,19 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
         <span style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 600, color: texte }}>🏷️ Étiquettes d'arrivage, refus, IFCO</span>
         <span style={{ fontSize: 12.5, color: gris }}>{pc.parDefaut?.etiquettes || "Brother TD-4650TNWB"} (réglé dans le relais du PC)</span>
       </div>
+      {/* 13/10/2026 — Étiquettes d'arrivage sorties en tout petit avec le relais V8.2 : la façon
+          d'imprimer se choisit ici (relais V8.3 et plus), à essayer avec « 🧪 Page test » de l'imprimante. */}
+      <label style={ligne}>
+        <span style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 600, color: texte }}>📐 Impression des étiquettes d'arrivage</span>
+        <select value={modeArrivage} onChange={e => update(ref(db, "config/imprimantes"), { modeArrivage: e.target.value })}
+          style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, minWidth: 200 }}>
+          <option value="acrobat">Acrobat — comme avant (recommandé)</option>
+          <option value="sumatra-reel">SumatraPDF — taille réelle</option>
+          <option value="sumatra-reduire">SumatraPDF — réduire seulement si trop grand</option>
+          <option value="sumatra-ajuster">SumatraPDF — ajuster au papier (V8.2, sortait petit)</option>
+        </select>
+        {pc.version && !/V8\.[3-9]|V9/.test(pc.version) && <span style={{ fontSize: 11, color: "#b91c1c" }}>relais {pc.version} : installer la V8.3 pour que ce réglage compte</span>}
+      </label>
     </div>
   );
 }

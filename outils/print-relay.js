@@ -1,12 +1,17 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // RELAIS D'IMPRESSION MOOREA
 // NOM DE VERSION : lidl-imprimantes
-// NUMERO DE VERSION : V8.2
+// NUMERO DE VERSION : V8.3
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // Fichier de référence : outils/print-relay.js dans le projet moorea-app (à copier sur le PC
 // d'impression sous le nom print-relay.js, puis lancer : node print-relay.js).
 //
+// V8.3 (13/10/2026) — Étiquettes d'arrivage sorties en tout petit avec la V8.2 (« fit » de SumatraPDF,
+//   photo d'Elinathan) : la façon d'imprimer se choisit maintenant DEPUIS L'APPLI (Admin › Réglages ›
+//   Matériel › Impression des étiquettes d'arrivage), sans réinstaller le relais :
+//   « acrobat » (comme avant la V8.1, défaut), « sumatra-reel » (taille réelle), « sumatra-reduire »
+//   (réduit seulement si trop grand), « sumatra-ajuster » (V8.2). Lu dans config/imprimantes/modeArrivage.
 // V8.2 (12/10/2026) — Étiquettes d'arrivage imprimées d'abord avec SumatraPDF, ajustées à la taille
 //   du rouleau (« fit ») : Acrobat bloquait à chaque fois (16 s perdues), et le secours Sumatra de
 //   la V8.1 sortait l'étiquette en petit avec de grandes marges (photo d'Elinathan). Acrobat ne
@@ -618,6 +623,17 @@ async function envoyerPdfVersImprimante(tmpFile, printerName, timeoutMs) {
   });
 }
 
+// V8.3 — Mode d'impression des étiquettes d'arrivage, choisi dans l'appli (config/imprimantes/modeArrivage).
+async function modeArrivage() {
+  try {
+    const v = await new Promise((resolve) => {
+      const t = setTimeout(() => resolve(null), 4000);
+      onValue(ref(db, "config/imprimantes/modeArrivage"), snap => { clearTimeout(t); resolve(snap.val()); }, () => { clearTimeout(t); resolve(null); }, { onlyOnce: true });
+    });
+    return ["acrobat", "sumatra-reel", "sumatra-reduire", "sumatra-ajuster"].includes(v) ? v : "acrobat";
+  } catch { return "acrobat"; }
+}
+
 // ─── GÉNÈRE LE PDF (1 à N étiquettes) PUIS L'ENVOIE À L'IMPRIMANTE ──────
 async function imprimerLot(jobs) {
   const html = await genererHtmlLot(jobs);
@@ -646,13 +662,34 @@ async function imprimerLot(jobs) {
 
   // Timeout DYNAMIQUE selon la taille du lot: base 15s + 500ms par étiquette (inchangé)
   const timeoutMs = 15000 + (jobs.length * 500);
+  const mode = await modeArrivage();
+  const reglageSumatra = { "sumatra-reel": "noscale", "sumatra-reduire": "shrink", "sumatra-ajuster": "fit" }[mode];
+  console.log(`   ⚙️  Mode d'impression des étiquettes d'arrivage : ${mode}`);
+  if (!reglageSumatra) {
+    // Acrobat (comme avant la V8.1) ; SumatraPDF en taille réelle seulement si Acrobat échoue.
+    try { await envoyerPdfVersAcrobat(tmpFile, PRINTER_NAME, timeoutMs); return; }
+    catch (errAcrobat) {
+      // Acrobat reste souvent ouvert après avoir imprimé : un « timeout » ne veut pas dire que rien
+      // n'est sorti. On ne relance PAS SumatraPDF dans ce cas (sinon l'étiquette sortirait 2 fois).
+      if (/timeout/i.test(String(errAcrobat.message))) { console.warn(`   ⚠️  Acrobat n'a pas rendu la main (l'étiquette est normalement sortie)`); return; }
+      const exe = trouverSumatra();
+      if (!exe) throw errAcrobat;
+      console.warn(`   ↪️  Acrobat a échoué (${errAcrobat.message}) — essai avec SumatraPDF (taille réelle)...`);
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("SumatraPDF n'a pas répondu à temps — timeout 30000ms")), 30000);
+        execFile(exe, ["-print-to", PRINTER_NAME, "-print-settings", "noscale", "-silent", "-exit-when-done", tmpFile], (err) => { clearTimeout(t); err ? reject(err) : resolve(); });
+      });
+      console.log(`   ✅ Impression envoyée (SumatraPDF)`);
+      return;
+    }
+  }
   const sumatraExe = trouverSumatra();
   if (sumatraExe) {
     try {
-      console.log(`   🖨️  Impression via SumatraPDF sur "${PRINTER_NAME}" (ajustée au rouleau)...`);
+      console.log(`   🖨️  Impression via SumatraPDF sur "${PRINTER_NAME}" (${reglageSumatra})...`);
       await new Promise((resolve, reject) => {
         const t = setTimeout(() => reject(new Error("SumatraPDF n'a pas répondu à temps — timeout 30000ms")), 30000);
-        execFile(sumatraExe, ["-print-to", PRINTER_NAME, "-print-settings", "fit", "-silent", "-exit-when-done", tmpFile], (err) => {
+        execFile(sumatraExe, ["-print-to", PRINTER_NAME, "-print-settings", reglageSumatra, "-silent", "-exit-when-done", tmpFile], (err) => {
           clearTimeout(t);
           err ? reject(err) : resolve();
         });
@@ -812,7 +849,7 @@ onChildAdded(pendingQuery, (snap) => {
 const statusRef = ref(db, "printRelayStatus");
 function envoyerSignalDeVie() {
   // V8 : update (et plus set) pour ne pas effacer la liste des imprimantes à chaque signal.
-  update(statusRef, { online: true, lastSeen: Date.now(), version: "V8.2" }).catch(() => {});
+  update(statusRef, { online: true, lastSeen: Date.now(), version: "V8.3" }).catch(() => {});
 }
 envoyerSignalDeVie();
 setInterval(envoyerSignalDeVie, 15000);
