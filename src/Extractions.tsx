@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { db, ref, get } from "./firebase";
 import { PageHeader } from "./shared";
 import { chargerEquipes, equipeArticle } from "./stockEquipes";
+import { importerFichierVentes } from "./statsImport";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 13/10/2026 — Demande d'Elinathan : un seul module « 📊 Stats », outil du quotidien.
@@ -15,8 +16,14 @@ import { chargerEquipes, equipeArticle } from "./stockEquipes";
 // arrivages_archives, compte de stock des articles (stockEquipes.ts). Achats et marge : admins seulement.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const StatsAchatsModule = lazy(() => import("./StatsAchatsModule"));
-const StattModule = lazy(() => import("./StattModule").then(m => ({ default: m.StattModule })));
+// Morceau introuvable juste après une mise à jour de l'appli : on recharge la page une fois.
+const avecRechargement = <T,>(f: () => Promise<T>) => () => f().catch(err => {
+  let deja = false; try { deja = sessionStorage.getItem("moorea-rechargement-stats") === "1"; sessionStorage.setItem("moorea-rechargement-stats", "1"); } catch { /* ignore */ }
+  if (!deja) { window.location.reload(); return new Promise<T>(() => {}); }
+  throw err;
+});
+const StatsAchatsModule = lazy(avecRechargement(() => import("./StatsAchatsModule")));
+const StattModule = lazy(avecRechargement(() => import("./StattModule").then(m => ({ default: m.StattModule }))));
 
 type LigneVente = { d: string; f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number; pc: number; kg: number; sa?: number };
 type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme" | "config";
@@ -679,7 +686,6 @@ function ConfigImport({ c, ventes, userName, onImporte }: { c: Couleurs; ventes:
   async function importer(f: File) {
     setEtat({ texte: "Lecture du fichier…", pct: 2 });
     try {
-      const { importerFichierVentes } = await import("./StatsAchatsModule");
       const msg = await importerFichierVentes(f, userName, (texte, pct) => setEtat({ texte, pct }));
       setEtat({ texte: msg, pct: 100 });
       onImporte();
