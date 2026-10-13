@@ -903,6 +903,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         <div>
           <div class="section-title" style="margin:0" id="s-comptage-title">Comptage</div>
           <div id="s-session-id-display" style="font-size:11px;color:#6b7280;margin-top:3px"></div>
+          <div id="s-compteurs-comptage" style="display:none;margin-top:6px;padding:4px 10px;border-radius:10px;background:#f5f3ff;border:1px solid #ddd6fe;color:#5b21b6;font-size:12.5px"></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-gold" onclick="sTerminerComptage()">✓ Terminer et voir les écarts</button>
@@ -962,7 +963,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
     </div>
     <div id="s-page-ecarts" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px">
-        <div class="section-title" style="margin:0" id="s-ecarts-title">Écarts</div>
+        <div><div class="section-title" style="margin:0" id="s-ecarts-title">Écarts</div>
+        <div id="s-compteurs-ecarts" style="display:none;margin-top:6px;padding:4px 10px;border-radius:10px;background:#f5f3ff;border:1px solid #ddd6fe;color:#5b21b6;font-size:12.5px"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-sm" onclick="sShowPage('comptage')">← Modifier</button>
           <button class="btn btn-sm" onclick="sExportPDF()">📄 PDF</button>
@@ -1562,6 +1564,22 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       const nomCompteur = () => {
         return nomSignataire().split(" ")[0] || "Moi";
       };
+      // 13/10/2026 — Demande d'Elinathan : savoir qui a compté quel produit. Stock compté par une
+      // seule personne → son nom en haut de la page ; par plusieurs → le nom ligne par ligne
+      // (Comptage, Écarts, Consultation et PDF). Un article compté ici et pas encore envoyé n'a
+      // pas encore de _par : c'est la personne de cet appareil.
+      const parDe = (a: any) => (a?._par || "").trim() || nomCompteur();
+      const compteursDe = (pars: string[]) => [...new Set(pars.map(p => (p || "").trim()).filter(Boolean))];
+      const htmlCompteurs = (noms: string[]) => !noms.length ? "" : noms.length === 1
+        ? `👤 Stock compté par <b>${noms[0]}</b>`
+        : `👥 Stock compté à ${noms.length} : <b>${noms.join(", ")}</b> — le nom est indiqué ligne par ligne`;
+      const badgePar = (nom: string) => `<br><span style="font-size:10.5px;font-weight:800;padding:1px 8px;border-radius:10px;background:#ede9fe;color:#6d28d9">👤 ${nom}</span>`;
+      const afficherCompteurs = (id: string, noms: string[]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.innerHTML = htmlCompteurs(noms);
+        el.style.display = noms.length ? "inline-block" : "none";
+      };
       const majStatutReseau = () => {
         if (!navigator.onLine) setSyncStatus("loading", "📴 Hors ligne — comptage gardé sur l'appareil");
       };
@@ -1969,6 +1987,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
                   <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
                 </div>
                 <div style="font-size:11px;color:#6b7280;margin-top:3px">${done}/${total} · ${pct}%</div>
+                ${(() => { const noms = compteursDe(Object.values(c?.data || {}).map((d: any) => (d && typeof d === "object" ? d._par || "" : ""))); return noms.length ? `<div style="font-size:11px;margin-top:3px;color:#6d28d9;font-weight:700">${noms.length === 1 ? "👤 Compté par " + noms[0] : "👥 Compté par " + noms.join(", ")}</div>` : ""; })()}
                 ${s.ifcoVides
                   ? `<div style="font-size:11px;margin-top:4px;color:#1d4ed8;font-weight:700">📦 IFCO vides : ${s.ifcoVides.caisses}${s.ifcoVides.ecart != null ? ` <span style="color:${s.ifcoVides.ecart === 0 || s.ifcoVides.regularise ? "#15803d" : "#b45309"}">(appli ${s.ifcoVides.stockAppli} · écart ${s.ifcoVides.ecart > 0 ? "+" : ""}${s.ifcoVides.ecart})</span>` : ""}
                       ${s.ifcoVides.regularise
@@ -2366,6 +2385,9 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           if (!q) return true;
           return (a.article + " " + (a.famille || "")).toLowerCase().includes(q);
         });
+        const nomsCpt = compteursDe(articles.filter(counted).map(parDe));
+        const plusieursCompteurs = nomsCpt.length > 1;
+        afficherCompteurs("s-compteurs-comptage", nomsCpt);
         const tbody = document.getElementById("s-tbl-body");
         if (!tbody) return;
         if (!rows.length && !q) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
@@ -2398,7 +2420,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           if (q) { try { const esc = q.split(" ").filter((w: string) => w).map((w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); artLabel = a.article.replace(new RegExp("(" + esc.join("|") + ")", "gi"), '<mark style="background:#fef3c7;border-radius:2px;padding:0 1px">$1</mark>'); } catch {} }
           const ifcoBadge = isIfcoArticle(a.article) ? `<br><span style="font-size:10px;color:#1a6b3a;font-weight:700">☑️ Caisse IFCO</span>` : "";
           const moi = nomCompteur();
-          const parBadge = counted(a) && a._par ? `<br><span style="font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px;${a._par === moi ? "background:#dcfce7;color:#15803d" : "background:#ede9fe;color:#6d28d9"}">👤 ${a._par === moi ? "Moi" : a._par}</span>` : "";
+          const parA = parDe(a);
+          const parBadge = counted(a) && plusieursCompteurs ? `<br><span style="font-size:10px;font-weight:800;padding:1px 7px;border-radius:10px;${parA === moi ? "background:#dcfce7;color:#15803d" : "background:#ede9fe;color:#6d28d9"}">👤 ${parA === moi ? `Moi (${moi})` : parA}</span>` : "";
           html += `<tr data-id="${a.id}">
             <td style="font-weight:500">${artLabel}${parBadge}${ifcoBadge}${a.comment ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">${a.comment}</span>` : ""}${a._autoRackSlots?.some((x: boolean) => x) ? `<br><span class="s-auto-rack-badge" style="font-size:10px;color:#8b5cf6;font-weight:700">📦 ${a._autoRackSlots.filter((x: boolean) => x).length} palette${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} vue${a._autoRackSlots.filter((x: boolean) => x).length > 1 ? "s" : ""} en rack (cases violettes)</span>${a._autoRackLocs ? a._autoRackSlots.map((on: boolean, i: number) => on && a._autoRackLocs[i] ? `<br><span class="s-auto-rack-badge" style="font-size:9px;color:#a78bfa">　· ${a._autoRackLocs[i]}</span>` : "").join("") : ""}` : ""}<br>${moveBtn}</td>
             <td style="text-align:center"><div style="display:flex;align-items:center;gap:5px;justify-content:center;flex-wrap:wrap">${inp}</div></td>
@@ -2679,6 +2702,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           if (e > 0) return coche("s-efc-plus");
           return coche("s-efc-moins");
         });
+        const nomsCpt = compteursDe(articles.filter(counted).map(parDe));
+        afficherCompteurs("s-compteurs-ecarts", nomsCpt);
         const tbody = document.getElementById("s-etbl-body");
         if (!tbody) return;
         if (!rows.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
@@ -2690,7 +2715,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           let lotsHtml = "";
           if (e !== 0 && a.lotsQty && Object.keys(a.lotsQty).length > 0) lotsHtml = `<div style="margin-top:3px;font-size:10px;color:#6b7280">${Object.entries(a.lotsQty).map(([l, q]: any) => `lot ${l} · ${q} col.`).join(" | ")}</div>`;
           const detruitHtml = a.detruire > 0 ? `<div style="margin-top:3px;font-size:10.5px;font-weight:700;color:#b91c1c">🗑 dont ${a.detruire} détruit${a.detruire > 1 ? "s" : ""}</div>` : "";
-          return `<tr><td style="font-weight:500">${a.article}${lotsHtml}</td><td style="text-align:right">${a.nb_colis}</td><td style="text-align:right;font-weight:700">${a.compte}${detruitHtml}</td><td class="${cls}" style="text-align:right">${sign + e}</td><td>${badge}</td></tr>`;
+          return `<tr><td style="font-weight:500">${a.article}${nomsCpt.length > 1 ? badgePar(parDe(a)) : ""}${lotsHtml}</td><td style="text-align:right">${a.nb_colis}</td><td style="text-align:right;font-weight:700">${a.compte}${detruitHtml}</td><td class="${cls}" style="text-align:right">${sign + e}</td><td>${badge}</td></tr>`;
         }).join("");
       };
       (window as any).sRenderEcarts = sRenderEcarts;
@@ -2748,17 +2773,19 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       (window as any)._doPrintPDF = () => {
         const now = new Date().toLocaleString("fr-FR");
         const sorted = [...articles].sort((a, b) => a.article.localeCompare(b.article, "fr"));
+        const nomsPdf = compteursDe(articles.filter(counted).map(parDe));
+        const plusieursPdf = nomsPdf.length > 1;
         const pdfCSS = `body{font-family:Arial,sans-serif;margin:0;padding:14px;color:#000;font-size:11px}h1{font-size:14px;font-weight:700;margin:0 0 2px}p{font-size:10px;color:#666;margin:0 0 10px}table{width:100%;border-collapse:collapse}th{padding:5px 8px;text-align:left;font-size:10px;font-weight:700;color:#555;text-transform:uppercase;border-bottom:2px solid #c8a84b}td{padding:5px 8px;font-size:11px;border-bottom:1px solid #eee;vertical-align:top}tr{break-inside:avoid;page-break-inside:avoid}.nb{text-align:center}.ec{text-align:center;font-weight:700}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0}}`;
         const rows = sorted.map(a => {
           const e = counted(a) ? ecart(a) : null;
           const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q}`).join(" | ") : (a.lots?.join(" | ") || "");
           const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
-          return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${counted(a) ? a.compte : "-"}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "-"}</td></tr>`;
+          return `<tr><td>${a.article}${lotsStr ? `<div style="font-size:9px;color:#888;margin-top:2px">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${counted(a) ? a.compte : "-"}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "-"}</td>${plusieursPdf ? `<td>${counted(a) ? parDe(a) : ""}</td>` : ""}</tr>`;
         });
         const manq = sorted.filter(a => counted(a) && ecart(a) < 0).length;
         const exc = sorted.filter(a => counted(a) && ecart(a) > 0).length;
         const nc = sorted.filter(a => !counted(a)).length;
-        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>🌿 Moorea · Inventaire ${currentTeam}</h1><p>${now} · ${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
+        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>🌿 Moorea · Inventaire ${currentTeam}</h1><p>${now} · ${sorted.length} articles · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p>${nomsPdf.length ? `<p style="color:#000">${htmlCompteurs(nomsPdf)}</p>` : ""}<table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="ec">Écart</th>${plusieursPdf ? "<th>Compté par</th>" : ""}</tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
         openPdfWindow(html, `Moorea · Inventaire ${currentTeam}`);
       };
 
@@ -2906,6 +2933,9 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const getCompte = (a: any) => { const d = comptData[a.article]; if (!d) return null; return typeof d === "object" ? d.c : d; };
           const getDetruire = (a: any) => { const d = comptData[a.article]; if (!d || typeof d !== "object") return null; return d.cd; };
           const ecartFn = (a: any) => { const c = getCompte(a); return c !== null ? c - a.nb_colis : null; };
+          const getPar = (a: any) => { const d = comptData[a.article]; return d && typeof d === "object" ? (d._par || "") : ""; };
+          const nomsPdf = compteursDe(arts.filter(isCounted).map(getPar));
+          const plusieursPdf = nomsPdf.length > 1;
 
           const sorted = [...arts].sort((a: any, b: any) => a.article.localeCompare(b.article, "fr"));
           const now = new Date().toLocaleString("fr-FR");
@@ -2919,10 +2949,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             const e = ecartFn(a); const ec = e === null ? "#999" : e < 0 ? "#dc2626" : e > 0 ? "#b45309" : "#15803d";
             const lotsStr = a.lotsQty && Object.keys(a.lotsQty||{}).length > 0 ? Object.entries(a.lotsQty).map(([l,q]:any) => `lot ${l} · ${q}`).join(" | ") : (a.lots?.join(" | ") || "");
             const c = getCompte(a); const cd = getDetruire(a);
-            return `<tr><td>${a.article}${lotsStr ? `<div class="lots">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${c !== null ? c : "-"}</td><td class="nb" style="color:#dc2626">${cd || ""}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "-"}</td></tr>`;
+            return `<tr><td>${a.article}${lotsStr ? `<div class="lots">${lotsStr}</div>` : ""}</td><td class="nb">${a.nb_colis}</td><td class="nb" style="font-weight:600">${c !== null ? c : "-"}</td><td class="nb" style="color:#dc2626">${cd || ""}</td><td class="ec" style="color:${ec}">${e !== null ? (e > 0 ? "+" + e : e) : "-"}</td>${plusieursPdf ? `<td>${getPar(a)}</td>` : ""}</tr>`;
           });
 
-          const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>Moorea · Inventaire ${team}</h1><p>${s.dateLabel} · ${arts.length} articles · Imprimé le ${now} · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p><table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="nb" style="color:#dc2626">Détruire</th><th class="ec">Écart</th></tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
+          const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfCSS}</style></head><body><h1>Moorea · Inventaire ${team}</h1><p>${s.dateLabel} · ${arts.length} articles · Imprimé le ${now} · Manquants: ${manq} · Excédents: ${exc} · Non comptés: ${nc}</p>${nomsPdf.length ? `<p style="color:#000">${htmlCompteurs(nomsPdf)}</p>` : ""}<table><thead><tr><th>Article</th><th class="nb">Stock</th><th class="nb">Compté</th><th class="nb" style="color:#dc2626">Détruire</th><th class="ec">Écart</th>${plusieursPdf ? "<th>Compté par</th>" : ""}</tr></thead><tbody>${rows.join("")}</tbody></table></body></html>`;
           const filename = `inventaire_${team.toLowerCase()}_${s.dateLabel || TODAY}.pdf`;
 
           return { html, filename };
@@ -2963,6 +2993,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           if (a.c === null) return coche("s-cons-nc");
           return a.e === 0 ? coche("s-cons-ok") : a.e > 0 ? coche("s-cons-plus") : coche("s-cons-moins");
         });
+        const nomsCons = compteursDe(cnt.map(a => a.par));
+        afficherCompteurs("s-cons-compteurs", nomsCons);
         const tb = document.getElementById("s-cons-body"); if (!tb) return;
         if (!rows.length) { tb.innerHTML = `<tr><td colspan="5" class="empty-state">Aucun article</td></tr>`; return; }
         tb.innerHTML = rows.map(a => {
@@ -2971,7 +3003,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const sign = a.e > 0 ? "+" : "";
           const cls = a.e > 0 ? "ep" : a.e < 0 ? "en" : "ez";
           const badge = a.e === 0 ? `<span class="badge badge-ok">OK</span>` : a.e > 0 ? `<span class="badge badge-surplus">Surplus</span>` : `<span class="badge badge-manque">Manque</span>`;
-          return `<tr><td style="font-weight:500">${a.article}${lots}</td><td style="text-align:right">${a.nb_colis}</td><td style="text-align:right;font-weight:700">${a.c}</td><td class="${cls}" style="text-align:right">${sign}${a.e}</td><td>${badge}</td></tr>`;
+          return `<tr><td style="font-weight:500">${a.article}${nomsCons.length > 1 && a.par ? badgePar(a.par) : ""}${lots}</td><td style="text-align:right">${a.nb_colis}</td><td style="text-align:right;font-weight:700">${a.c}</td><td class="${cls}" style="text-align:right">${sign}${a.e}</td><td>${badge}</td></tr>`;
         }).join("");
       };
       (window as any).sConsulterFermer = () => { document.getElementById("s-consult-overlay")?.remove(); };
@@ -2985,7 +3017,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           consultArts = (s.articles || []).filter((a: any) => a.equipe === team).map((a: any) => {
             const d = comptData[a.article];
             const c = d === undefined || d === null ? null : (typeof d === "object" ? (d.c ?? null) : d);
-            return { ...a, c, e: c === null ? 0 : c - a.nb_colis };
+            return { ...a, c, e: c === null ? 0 : c - a.nb_colis, par: d && typeof d === "object" ? (d._par || "") : "" };
           }).sort((x: any, y: any) => String(x.article).localeCompare(String(y.article), "fr"));
           document.getElementById("s-consult-overlay")?.remove();
           const ov = document.createElement("div");
@@ -2995,7 +3027,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             <div style="max-width:900px;margin:0 auto">
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
                 <div><div style="font-size:16px;font-weight:800">🔍 Consultation · ${team === "GMS" ? "🌿 GMS" : "✨ Prestige"}</div>
-                <div style="font-size:12px;color:#6b7280">${s.dateLabel || ""} · ${s.filename || ""} · lecture seule${s.cloture ? " · ✓ clôturé" : ""}</div></div>
+                <div style="font-size:12px;color:#6b7280">${s.dateLabel || ""} · ${s.filename || ""} · lecture seule${s.cloture ? " · ✓ clôturé" : ""}</div>
+                <div id="s-cons-compteurs" style="display:none;margin-top:6px;padding:4px 10px;border-radius:10px;background:#f5f3ff;border:1px solid #ddd6fe;color:#5b21b6;font-size:12.5px"></div></div>
                 <button class="btn btn-sm" onclick="sConsulterFermer()">✕ Fermer</button>
               </div>
               <div class="stat-grid" id="s-cons-metrics"></div>
