@@ -103,6 +103,52 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
       // Deux formats acceptés : « Résultat par ligne » (achats + marge) ou « Ventes » détaillées
       // (quantités : colis, pièces, poids net — sans montant d'achat).
       const formatVentes = entetes.includes("n° vente") && entetes.includes("nom client");
+      // 13/10/2026 — 3ᵉ format : la base fusionnée « base_ventes_moorea.xlsx » (date_livraison,
+      // fournisseur, client_facture, article, colis, mt_achat, mt_vente, resultat, source…). Une
+      // ligne « Ventes seul » (sans achat) est marquée comme telle (sa = 1), comme l'export Ventes.
+      const formatBase = entetes.includes("date_livraison") && entetes.includes("source") && entetes.includes("mt_vente");
+      if (formatBase) {
+        const j = (n: string) => entetes.indexOf(n);
+        const B = { d: j("date_livraison"), f: j("fournisseur"), cf: j("client_facture"), cl: j("client_livre"), a: j("article"), col: j("colis"), ach: j("mt_achat"), ven: j("mt_vente"), res: j("resultat"), pc: j("pieces"), kg: j("poids_net_kg"), fam: j("famille"), g: j("gamme"), src: j("source") };
+        setImport({ etat: "Regroupement par jour…", progression: 20 });
+        const joursB = new Map<string, Map<string, Ligne>>();
+        let luesB = 0, ignB = 0;
+        for (let i = 1; i < lignes.length; i++) {
+          const r = lignes[i];
+          const dt: any = r[B.d];
+          const d = dt instanceof Date && !isNaN(dt.getTime()) ? iso(new Date(dt.getTime() + 12 * 3600 * 1000))
+            : typeof dt === "number" && dt > 30000 ? iso(new Date(Math.round((dt - 25569) * 86400000) + 12 * 3600 * 1000))
+            : typeof dt === "string" && /^\d{4}-\d{2}-\d{2}/.test(dt) ? dt.slice(0, 10) : "";
+          const f = txt(r[B.f]), c = txt(r[B.cf]) || txt(r[B.cl]), a = txt(r[B.a]);
+          if (!d || !f) { ignB++; continue; }
+          const ventesSeul = txt(r[B.src]) === "Ventes seul";
+          const m = joursB.get(d) || new Map<string, Ligne>();
+          const k = f + "\u0001" + c + "\u0001" + a;
+          const ex = m.get(k) || { f, c, a, fam: txt(r[B.fam]), g: txt(r[B.g]), col: 0, ach: 0, ven: 0, res: 0, pc: 0, kg: 0, sa: ventesSeul ? 1 : 0 };
+          if (!ventesSeul) ex.sa = 0;
+          ex.col += nombre(r[B.col]); ex.ach += nombre(r[B.ach]); ex.ven += nombre(r[B.ven]); ex.res += nombre(r[B.res]);
+          ex.pc += nombre(r[B.pc]); ex.kg += nombre(r[B.kg]);
+          if (!ex.fam && txt(r[B.fam])) ex.fam = txt(r[B.fam]);
+          m.set(k, ex); joursB.set(d, m); luesB++;
+        }
+        if (!joursB.size) throw new Error("Aucune ligne exploitable dans la base (dates introuvables).");
+        const datesB = [...joursB.keys()].sort();
+        const arr = (n: number) => Math.round(n * 100) / 100;
+        let faitsB = 0;
+        for (let i = 0; i < datesB.length; i += 8) {
+          const p = datesB.slice(i, i + 8), maj: Record<string, any> = {};
+          for (const d of p) maj["stats_achats/jours/" + d] = [...joursB.get(d)!.values()].map(l => ({ ...l, col: arr(l.col), ach: arr(l.ach), ven: arr(l.ven), res: arr(l.res), pc: arr(l.pc), kg: arr(l.kg), sa: l.sa ? 1 : 0 }));
+          await update(ref(db), maj);
+          faitsB += p.length;
+          setImport({ etat: `Envoi ${faitsB}/${datesB.length} jours…`, progression: 20 + Math.round((faitsB / datesB.length) * 75) });
+        }
+        await set(ref(db, "stats_achats/meta"), { dernierImport: Date.now(), par: userName || "", fichier: fichier.name, lignes: luesB, du: datesB[0], au: datesB[datesB.length - 1] });
+        setImport({ etat: `✅ Base fusionnée importée : ${luesB.toLocaleString("fr-FR")} lignes (${datesB.length} jours, du ${dateFr(datesB[0])} au ${dateFr(datesB[datesB.length - 1])})${ignB ? ` — ${ignB} ligne(s) ignorée(s)` : ""}`, progression: 100 });
+        setDebut(""); setFin("");
+        await charger();
+        if (inputRef.current) inputRef.current.value = "";
+        return;
+      }
       const iF = formatVentes ? idx("fournisseur") : idx("tri par fournisseur");
       const iC = formatVentes ? idx("nom client") : idx("tri par client");
       const iD = formatVentes ? idx("date liv") : idx("tri par date");
