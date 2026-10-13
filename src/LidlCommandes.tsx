@@ -738,19 +738,32 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       {l.quantiteModifieeApresPret && <span style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ quantité modifiée après « prêt »</span>}
       {l.absenteDuFichier && <span style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠️ absente du dernier fichier</span>}
     </>;
-    if (pret) return (
-      <div key={l.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 12px", padding: "6px 12px", borderTop: "1px solid #dcfce7", background: "#f0fdf4", fontSize: 12.5, color: "#374151" }}>
-        <span style={{ color: "#15803d", fontWeight: 900 }}>✅</span>
-        <span style={{ fontWeight: 800, color: "#111827", minWidth: 110 }}>{inf?.nom || l.base}</span>
-        <span style={{ fontWeight: 700, color: "#7c3aed", minWidth: 90 }}>🚚 {l.transporteur || "—"}</span>
-        {avecRef ? <span style={{ fontWeight: 700, color: "#0050aa", flex: "1 1 160px" }}>{libReference(l)}</span> : <span style={{ flex: "1 1 40px" }} />}
-        <span style={{ fontWeight: 800 }}>{l.quantite} colis</span>
-        <span style={{ color: "#6b7280" }}>{l.ferme || "—"} · lot {l.lot || "—"} · {String(l.palettes ?? 0.5).replace(".", ",")} pal.</span>
-        <span style={{ fontSize: 11, color: "#9ca3af" }}>{l.pretPar} {l.pretLe}</span>
-        {alertes}
-        <button type="button" onClick={() => annulerPret(l)} style={{ background: "transparent", border: "none", color: "#6b7280", fontSize: 11, cursor: "pointer", textDecoration: "underline", padding: 0 }}>annuler</button>
-      </div>
-    );
+    // 13/10/2026 — Demande d'Elinathan : « les commandes validées sont un peu écrasées ». Ligne
+    // « Prêt » sur deux étages : base + transporteur + colis en haut, producteur / lot / palettes
+    // en pastilles et « prêt par » en dessous, bouton « annuler » toujours à droite.
+    if (pret) {
+      const pastilleP = (t: string) => <span style={{ background: "#fff", border: "1px solid #bbf7d0", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}>{t}</span>;
+      return (
+        <div key={l.id} style={{ display: "grid", gridTemplateColumns: "26px 1fr auto", columnGap: 10, rowGap: 6, alignItems: "center", padding: "11px 14px", borderTop: "1px solid #dcfce7", background: "#f0fdf4", color: "#374151" }}>
+          <span style={{ color: "#15803d", fontWeight: 900, fontSize: 18, gridRow: "1 / span 2", alignSelf: "start", marginTop: 1 }}>✅</span>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 12px", minWidth: 0 }}>
+            <span style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>{inf?.nom || l.base}</span>
+            <span style={{ fontSize: 11.5, color: "#9ca3af" }}>{inf ? `n° ${inf.num}` : l.base}{l.camion ? ` · camion ${l.camion}` : ""}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: "#7c3aed" }}>🚚 {l.transporteur || "—"}</span>
+            {avecRef && <span style={{ fontSize: 12.5, fontWeight: 700, color: "#0050aa" }}>{libReference(l)}</span>}
+          </div>
+          <span style={{ fontWeight: 900, fontSize: 16, color: "#111827", whiteSpace: "nowrap", textAlign: "right" }}>{l.quantite} <span style={{ fontSize: 11.5, fontWeight: 600, color: "#6b7280" }}>colis</span></span>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 8px", minWidth: 0 }}>
+            {pastilleP(l.ferme || "Producteur —")}
+            {pastilleP(`Lot ${l.lot || "—"}`)}
+            {pastilleP(`${String(l.palettes ?? 0.5).replace(".", ",")} palette${(l.palettes ?? 0.5) > 1 ? "s" : ""}`)}
+            <span style={{ fontSize: 11.5, color: "#9ca3af" }}>Prêt · {l.pretPar} · {l.pretLe}</span>
+            {alertes}
+          </div>
+          <button type="button" onClick={() => annulerPret(l)} style={{ justifySelf: "end", background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, color: "#6b7280", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: "4px 10px", whiteSpace: "nowrap" }}>Annuler</button>
+        </div>
+      );
+    }
     const fleche = (sens: -1 | 1) => {
       const v = l.palettes ?? 0.5, bloque = sens < 0 && v <= 0.5;
       return (
