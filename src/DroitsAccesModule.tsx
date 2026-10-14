@@ -318,31 +318,48 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                 Ici, choisis un module et coche qui a le droit de le voir — l'inverse de l'onglet "Comptes" (qui part de la personne). Les deux vues modifient la même chose : cocher/décocher ici a exactement le même effet que dans "Comptes".
               </p>
               {emailsConnus.length === 0 && <p style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucune adresse connue pour l'instant (personne ne s'est encore connectée, et personne n'a été ajoutée dans "Comptes").</p>}
-              {emailsConnus.length > 0 && modulesParGroupe().flatMap(g => g.modules.map((m, i) => ({ m, titre: i === 0 ? g.titre : "" }))).map(({ m, titre }) => {
-                const ouvert = moduleOuvert === m.key;
+              {/* 14/10/2026 — Demande d'Elinathan : des carrés au lieu d'une liste sans fin. Une tuile par
+                  module (avec le nombre de personnes qui y ont accès) ; un clic ouvre la fenêtre où l'on
+                  coche qui a accès. */}
+              {emailsConnus.length > 0 && modulesParGroupe().map(g => (
+                <div key={g.titre} style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 900, color: "#1f4440", margin: "6px 0 8px" }}>{g.titre}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(200px, 100%), 1fr))", gap: 10 }}>
+                    {g.modules.map(m => {
+                      const nb = emailsConnus.filter(email => ADMIN_BOOTSTRAP.includes(email.toLowerCase()) || !!users[cleEmail(email)]?.admin || calculerAcces(email, roles, users).hasModule(m.key)).length;
+                      const [icone, ...reste] = m.label.split(" ");
+                      const aIcone = /\p{Extended_Pictographic}/u.test(icone);
+                      return (
+                        <button key={m.key} type="button" onClick={() => setModuleOuvert(m.key)}
+                          style={{ textAlign: "left", padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, minHeight: 104, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
+                          <span style={{ fontSize: 26 }}>{aIcone ? icone : "🧩"}</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.25 }}>{aIcone ? reste.join(" ") : m.label}</span>
+                          <span style={{ marginTop: "auto", fontSize: 12, fontWeight: 700, color: nb ? "#305a55" : "#9ca3af" }}>👤 {nb} personne{nb > 1 ? "s" : ""}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              {moduleOuvert && (() => {
+                const m = MODULE_DEFS.find(x => x.key === moduleOuvert);
+                if (!m) return null;
                 return (
-                  <div key={m.key}>
-                  {titre && <div style={{ fontSize: 13.5, fontWeight: 900, color: "#1f4440", margin: "14px 0 6px" }}>{titre}</div>}
-                  <div className="card" style={{ padding: 14, marginBottom: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setModuleOuvert(ouvert ? null : m.key)}>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{m.label}</span>
-                      <span>{ouvert ? "▲" : "▼"}</span>
-                    </div>
-                    {ouvert && (
-                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #f0ede6", display: "grid", gap: 4 }}>
+                  <div onClick={() => setModuleOuvert(null)} style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                    <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "min(520px, 100%)", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+                      <div style={{ padding: "14px 18px", background: "#305a55", color: "#fff", borderRadius: "18px 18px 0 0", display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ flex: 1, fontSize: 16, fontWeight: 900 }}>{m.label}</span>
+                        <button type="button" onClick={() => setModuleOuvert(null)} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 32, height: 32, borderRadius: 16, fontSize: 18, cursor: "pointer" }}>×</button>
+                      </div>
+                      <div style={{ padding: "8px 14px 14px", overflowY: "auto", display: "grid", gap: 4 }}>
+                        <p style={{ margin: "4px 2px 6px", fontSize: 12, color: "#9ca3af" }}>Coche les personnes qui ont accès à ce module.</p>
                         {emailsConnus.map(email => {
                           const estAdmin = ADMIN_BOOTSTRAP.includes(email.toLowerCase()) || !!users[cleEmail(email)]?.admin;
                           const visible = estAdmin || calculerAcces(email, roles, users).hasModule(m.key);
                           return (
-                            <label key={email} style={{ display: "flex", alignItems: "center", gap: 8, cursor: estAdmin ? "default" : "pointer", fontSize: 12.5, color: "#555", background: "#faf8f3", borderRadius: 8, padding: "6px 10px", opacity: estAdmin ? 0.6 : 1 }}>
+                            <label key={email} style={{ display: "flex", alignItems: "center", gap: 8, cursor: estAdmin ? "default" : "pointer", fontSize: 13, color: "#374151", background: visible ? "#eaf2ee" : "#faf8f3", borderRadius: 8, padding: "8px 10px", opacity: estAdmin ? 0.6 : 1 }}>
                               <span className="mrq-case-conteneur">
-                                <input
-                                  type="checkbox"
-                                  className="mrq-case-native"
-                                  checked={visible}
-                                  disabled={estAdmin}
-                                  onChange={() => toggleModulePourEmail(m.key, email, visible)}
-                                />
+                                <input type="checkbox" className="mrq-case-native" checked={visible} disabled={estAdmin} onChange={() => toggleModulePourEmail(m.key, email, visible)} />
                                 <span className="mrq-case-visuelle" />
                               </span>
                               {email}
@@ -351,11 +368,13 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                           );
                         })}
                       </div>
-                    )}
-                  </div>
+                      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid #f0ede6" }}>
+                        <button type="button" onClick={() => setModuleOuvert(null)} style={{ width: "100%", padding: "11px 0", borderRadius: 12, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✓ Terminé</button>
+                      </div>
+                    </div>
                   </div>
                 );
-              })}
+              })()}
             </div>
           );
         })()}

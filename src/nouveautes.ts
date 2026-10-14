@@ -4,6 +4,7 @@
 // La dernière entrée vue est rangée dans comptes/{uid}/nouveautes_vu (même sur un autre appareil).
 export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 export const NOUVEAUTES: { id: number; date: string; texte: string }[] = [
+  { id: 16, date: "14/10", texte: "🔐 Droits d'accès › Par module : des carrés (avec le nombre de personnes) ; un clic ouvre la fenêtre pour cocher qui a accès. « Refus à faire signer » a sa case sous Rapports d'agréage." },
   { id: 15, date: "14/10", texte: "🛒 Lidl : l'heure d'envoi du mail de traçabilité est affichée (« Envoyée le 14/10 à 13:00 ») dans Commandes Lidl et Traçabilité Lidl." },
   { id: 14, date: "14/10", texte: "🔄 Refus à faire signer : « Récupéré sans signature » marche à chaque fois, et un bouton (admin) marque d'un coup tous les refus en attente comme récupérés." },
   { id: 13, date: "14/10", texte: "🔄 Refus à faire signer : les 4 photos de chaque carte sont maintenant des carrés identiques." },

@@ -388,7 +388,10 @@ export const MODULE_DEFS: ModuleDef[] = [
     { key: "valider", label: "✅ Peut valider (sinon lecture seule : consultation du jour)" },
   ] },
   // 14/10/2026 — Libellés alignés sur les écrans de la carte « 🧪 Récap qualité » de l'accueil.
-  { key: "rapports", label: "📋 Rapports d'agréage" },
+  { key: "rapports", label: "📋 Rapports d'agréage", tabs: [
+    // 14/10/2026 — Module « Refus à faire signer » (carte d'accueil) : coché par défaut avec Rapports.
+    { key: "refus_signer", label: "🔄 Refus à faire signer (bons de reprise)" },
+  ] },
   { key: "qualite", label: "🧪 Traçabilité, températures, poids" },
   { key: "litiges", label: "⛔ Litiges" },
   { key: "stock", label: "📦 Stock", tabs: [
