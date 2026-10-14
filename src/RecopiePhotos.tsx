@@ -23,13 +23,13 @@ export default function RecopiePhotos() {
     const st = { total: urls.size, faites: 0, echecs: 0, rapports: 0 };
     setEtat({ ...st });
     const nouvelles = new Map<string, string>();
-    // 4 rapports traités en parallèle × 3 photos chacun = 12 photos à la fois.
+    // 8 rapports traités en parallèle × 4 photos chacun = 32 photos à la fois.
     const file = [...aFaire];
     const traiter = async ([cle, r]: [string, any]) => {
       const siennes = [...new Set([...(r.photoUrls || []), ...(r.produitsGroupe || []).flatMap((p: any) => p?.photoUrls || [])].filter(estImgBB))] as string[];
-      // 3 photos à la fois par rapport.
-      for (let i = 0; i < siennes.length; i += 3) {
-        await Promise.all(siennes.slice(i, i + 3).map(async u => {
+      // 4 photos à la fois par rapport.
+      for (let i = 0; i < siennes.length; i += 4) {
+        await Promise.all(siennes.slice(i, i + 4).map(async u => {
           if (nouvelles.has(u)) return;
           try { nouvelles.set(u, await recopierPhotoImgBB(u)); st.faites++; }
           catch { st.echecs++; }
@@ -41,7 +41,7 @@ export default function RecopiePhotos() {
       if (Array.isArray(r.produitsGroupe)) maj.produitsGroupe = r.produitsGroupe.map((p: any) => ({ ...p, ...(p?.photoUrls ? { photoUrls: rempl(p.photoUrls) } : {}) }));
       if (siennes.some(u => nouvelles.has(u))) { await update(ref(db, `rapports/${cle}`), maj); st.rapports++; setEtat({ ...st }); }
     };
-    await Promise.all(Array.from({ length: 4 }, async () => {
+    await Promise.all(Array.from({ length: 8 }, async () => {
       while (file.length && !stop.current) await traiter(file.shift()!);
     }));
     setEnCours(false);
