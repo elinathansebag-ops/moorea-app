@@ -459,12 +459,12 @@ export const MODULE_DEFS: ModuleDef[] = [
 // avec dessous les cases des écrans qu'elle contient. Ne change aucun droit, seulement l'affichage.
 export const GROUPES_DROITS: { titre: string; detail: string; cles: string[] }[] = [
   { titre: "🏭 Entrepôt", detail: "Une carte chacun sur l'accueil", cles: ["arrivages", "stock", "lidl", "retours", "preparation", "rack"] },
-  { titre: "🧪 Récap qualité", detail: "Une seule carte sur l'accueil, visible dès qu'un de ces écrans est coché ; à l'intérieur, seulement les écrans cochés", cles: ["rapports", "qualite", "lidl_consultation", "litiges"] },
+  { titre: "🧪 Récap qualité", detail: "Une seule carte sur l'accueil, visible dès qu'un de ces écrans est coché ; à l'intérieur, seulement les écrans cochés", cles: ["rapports", "qualite", "lidl_consultation"] },
   { titre: "🗂️ Bureau", detail: "Une carte chacun sur l'accueil", cles: ["prestataires", "factures_prestataires", "reconditionnement", "chargement"] },
   { titre: "🌱 Appro", detail: "Une seule carte sur l'accueil, visible dès qu'un de ces écrans est coché", cles: ["appro", "yukon"] },
   { titre: "📊 Stats", detail: "Une seule carte sur l'accueil (Stats ou Programme d'achat coché) ; les deux réglages € et marge s'appliquent à l'intérieur", cles: ["extractions", "statt", "euros", "marge"] },
   { titre: "🧰 Autres", detail: "Une carte chacun sur l'accueil", cles: ["catalogue", "gencodes", "taches", "dashboard_tv"] },
-  { titre: "💤 En veille", detail: "Retirés de l'appli pour l'instant : cocher ne fait rien apparaître", cles: ["etiquettes", "messagerie"] },
+  { titre: "💤 En veille", detail: "Retirés de l'appli pour l'instant : cocher ne fait rien apparaître", cles: ["etiquettes", "messagerie", "litiges"] },
 ];
 export function modulesParGroupe(): { titre: string; detail: string; modules: ModuleDef[] }[] {
   const pris = new Set(GROUPES_DROITS.flatMap(g => g.cles));

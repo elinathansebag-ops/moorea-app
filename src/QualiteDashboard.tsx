@@ -1,10 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "./shared";
+import { db, ref, get } from "./firebase";
+import { pointePar } from "./ArrivageModule";
 
 // 14/10/2026 — Demande d'Elinathan : « 🧪 Récap qualité » n'est plus un sommaire de modules mais
 // un vrai tableau de bord qualité (chiffres clés, évolution, fournisseurs / produits à problème,
 // derniers incidents). Les outils (rapports, traçabilité, Lidl, litiges) deviennent des raccourcis.
-// Données : les rapports d'agréage déjà chargés par App.tsx.
+// 14/10/2026 (bis) — Les taux se calculent sur TOUS les arrivages contrôlés (validé / sous réserve /
+// refusé, archives comprises), pas sur les rapports : on ne fait un rapport que quand il y a un
+// souci. Les rapports servent au détail (colis, notes, derniers incidents).
 
 export type RaccourciQualite = { icone: string; titre: string; onClick: () => void };
 type Props = {
@@ -23,7 +27,6 @@ const dateMs = (r: any): number => {
   const [j, m, a] = String(r.date || "").split("/").map(Number);
   return a ? new Date(a, m - 1, j, 12).getTime() : 0;
 };
-const temp = (r: any) => { const n = parseFloat(String(r.temperature ?? "").replace(",", ".")); return isFinite(n) ? n : null; };
 const note = (r: any) => { const n = Number(r.score); return isFinite(n) && n > 0 ? n : null; };
 const colisPb = (r: any) => Number(r.nbColisRefuses) || 0;
 const pctTxt = (a: number, b: number) => b ? `${Math.round((a / b) * 100)} %` : "—";
@@ -33,6 +36,22 @@ const lundi = (ms: number) => { const d = new Date(ms); d.setHours(12, 0, 0, 0);
 const numSemaine = (ms: number) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); const s1 = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d.getTime() - s1.getTime()) / JOUR - 3 + ((s1.getDay() + 6) % 7)) / 7); };
 
 const VERT = "#16a34a", AMBRE = "#d97706", ROUGE = "#dc2626";
+const CONTROLES = ["validé", "sous réserve", "refusé"];
+const dateArr = (a: any): number => { const [j, m, an] = String(a.date || "").split("/").map(Number); return an ? new Date(an, m - 1, j, 12).getTime() : 0; };
+const tempArr = (a: any) => { const n = parseFloat(String(a?.rapport?.temperature ?? a?.temperature ?? "").replace(",", ".")); return isFinite(n) ? n : null; };
+const nom = (x: any) => String(x || "").trim().toUpperCase();
+// Même source que 📊 Stats : arrivages en cours + archives.
+let cacheArr: Promise<any[]> | null = null;
+function chargerArrivagesControles(): Promise<any[]> {
+  if (cacheArr) return cacheArr;
+  cacheArr = Promise.all([get(ref(db, "arrivages")), get(ref(db, "arrivages_archives")).catch(() => null)]).then(([a, b]) => {
+    const m = new Map<string, any>();
+    Object.entries(b?.val() || {}).forEach(([id, v]: any) => m.set(id, { id, ...v }));
+    Object.entries(a.val() || {}).forEach(([id, v]: any) => m.set(id, { id, ...v }));
+    return [...m.values()].filter(x => x && !x.test && CONTROLES.includes(x.statut) && dateArr(x));
+  }).catch(e => { cacheArr = null; throw e; });
+  return cacheArr;
+}
 
 export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrirRecherche, darkMode }: Props) {
   const c = darkMode
@@ -40,40 +59,53 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
     : { fond: "#f5f3ee", carte: "#fff", texte: "#1a2e1a", gris: "#6b7280", bord: "#e8e5dc", doux: "#f6f4ee" };
   const [periode, setPeriode] = useState("30");
   const [triFourn, setTriFourn] = useState<"pb" | "nb">("pb");
+  const [arrivages, setArrivages] = useState<any[] | null>(null);
+  useEffect(() => { chargerArrivagesControles().then(setArrivages).catch(() => setArrivages([])); }, []);
 
   const d = useMemo(() => {
     const jours = PERIODES.find(p => p[0] === periode)![2];
     const maintenant = Date.now();
     const debut = jours ? maintenant - jours * JOUR : 0;
-    const tous = rapports.filter(r => r && dateMs(r));
-    const dans = tous.filter(r => dateMs(r) >= debut);
-    const avant = jours ? tous.filter(r => dateMs(r) >= debut - jours * JOUR && dateMs(r) < debut) : [];
+    const arr = arrivages || [];
+    const arrDans = arr.filter(a => dateArr(a) >= debut);
+    const arrAvant = jours ? arr.filter(a => dateArr(a) >= debut - jours * JOUR && dateArr(a) < debut) : [];
+    const rapDans = rapports.filter(r => r && dateMs(r) >= debut);
+    const rapAvant = jours ? rapports.filter(r => r && dateMs(r) >= debut - jours * JOUR && dateMs(r) < debut) : [];
     const stats = (l: any[]) => {
-      const nb = l.length, conf = l.filter(r => r.decision === "stock").length, res = l.filter(r => r.decision === "reserve").length, ref = l.filter(r => r.decision === "refus").length;
-      return { nb, conf, res, ref, colis: l.reduce((t, r) => t + (r.decision !== "stock" ? colisPb(r) : 0), 0), note: moy(l.map(note).filter((x): x is number => x !== null)), temp: moy(l.map(temp).filter((x): x is number => x !== null)) };
+      const nb = l.length, conf = l.filter(a => a.statut === "validé").length, res = l.filter(a => a.statut === "sous réserve").length, ref = l.filter(a => a.statut === "refusé").length;
+      return { nb, conf, res, ref, temp: moy(l.map(tempArr).filter((x): x is number => x !== null)) };
     };
-    const s = stats(dans), sAvant = stats(avant);
+    const colis = (l: any[]) => l.reduce((t, r) => t + (r.decision !== "stock" ? colisPb(r) : 0), 0);
+    const s = { ...stats(arrDans), colis: colis(rapDans), note: moy(rapDans.map(note).filter((x): x is number => x !== null)) };
+    const sAvant = { ...stats(arrAvant), colis: colis(rapAvant) };
 
-    // Évolution par semaine (12 dernières semaines de la période, au plus).
+    // Évolution par semaine (arrivages contrôlés).
     const nbSem = jours ? Math.min(12, Math.max(4, Math.ceil(jours / 7))) : 12;
     const lundiFin = lundi(maintenant);
     const semaines = Array.from({ length: nbSem }, (_, i) => lundiFin - (nbSem - 1 - i) * 7 * JOUR).map(l0 => {
-      const l = tous.filter(r => { const t = dateMs(r); return t >= l0 - 12 * 3600000 && t < l0 + 7 * JOUR - 12 * 3600000; });
-      return { l0, conf: l.filter(r => r.decision === "stock").length, res: l.filter(r => r.decision === "reserve").length, ref: l.filter(r => r.decision === "refus").length };
+      const l = arr.filter(a => { const t = dateArr(a); return t >= l0 - 12 * 3600000 && t < l0 + 7 * JOUR - 12 * 3600000; });
+      return { l0, conf: l.filter(a => a.statut === "validé").length, res: l.filter(a => a.statut === "sous réserve").length, ref: l.filter(a => a.statut === "refusé").length };
     });
 
-    const groupe = (cle: (r: any) => string) => {
+    // Notes moyennes des rapports, par fournisseur.
+    const notes = new Map<string, number[]>();
+    rapDans.forEach(r => { const n = note(r); if (n !== null) notes.set(nom(r.fournisseur), [...(notes.get(nom(r.fournisseur)) || []), n]); });
+    const colisPar = (cle: (r: any) => string) => { const m = new Map<string, number>(); rapDans.forEach(r => { if (r.decision !== "stock") m.set(nom(cle(r)), (m.get(nom(cle(r))) || 0) + colisPb(r)); }); return m; };
+    const colisF = colisPar(r => r.fournisseur), colisP = colisPar(r => r.produit);
+    const groupe = (cle: (a: any) => string, colisM: Map<string, number>) => {
       const m = new Map<string, any[]>();
-      dans.forEach(r => { const k = (cle(r) || "").trim(); if (k) m.set(k, [...(m.get(k) || []), r]); });
-      return [...m].map(([k, l]) => ({ k, ...stats(l), pb: l.filter(r => r.decision !== "stock").length }));
+      arrDans.forEach(a => { const k = String(cle(a) || "").trim(); if (k) m.set(k, [...(m.get(k) || []), a]); });
+      return [...m].map(([k, l]) => ({ k, ...stats(l), pb: l.filter(a => a.statut !== "validé").length, note: moy(notes.get(nom(k)) || []), colis: colisM.get(nom(k)) || 0 }));
     };
-    const fournisseurs = groupe(r => r.fournisseur);
-    const produits = groupe(r => r.produit);
-    const incidents = dans.filter(r => r.decision === "reserve" || r.decision === "refus").sort((a, b) => dateMs(b) - dateMs(a)).slice(0, 10);
-    const chauds = dans.filter(r => (temp(r) ?? -99) > 8).sort((a, b) => (temp(b) ?? 0) - (temp(a) ?? 0)).slice(0, 6);
-    const agreeurs = groupe(r => r.agreeur).sort((a, b) => b.nb - a.nb);
+    const fournisseurs = groupe(a => a.fournisseur, colisF);
+    const produits = groupe(a => a.produit, colisP);
+    const incidents = rapDans.filter(r => r.decision === "reserve" || r.decision === "refus").sort((a, b) => dateMs(b) - dateMs(a)).slice(0, 10);
+    const chauds = arrDans.filter(a => (tempArr(a) ?? -99) > 8).sort((a, b) => (tempArr(b) ?? 0) - (tempArr(a) ?? 0)).slice(0, 6);
+    const pm = new Map<string, any[]>();
+    arrDans.forEach(a => { const k = pointePar(a); if (k) pm.set(k, [...(pm.get(k) || []), a]); });
+    const agreeurs = [...pm].map(([k, l]) => ({ k, ...stats(l) })).sort((a, b) => b.nb - a.nb);
     return { s, sAvant, jours, semaines, fournisseurs, produits, incidents, chauds, agreeurs };
-  }, [rapports, periode]);
+  }, [rapports, arrivages, periode]);
 
   const { s, sAvant } = d;
   const tendance = (v: number, avant: number, bonSiHausse: boolean) => {
@@ -139,22 +171,22 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
 
         {/* Chiffres clés */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-          {kpi("Rapports d'agréage", String(s.nb), tendance(s.nb, sAvant.nb, true) || `${s.conf} conformes`, "#305a55")}
+          {kpi("Arrivages contrôlés", arrivages === null ? "…" : s.nb.toLocaleString("fr-FR"), tendance(s.nb, sAvant.nb, true) || `${s.conf} validés`, "#305a55")}
           {kpi("Taux de conformité", s.nb ? `${Math.round(tauxConf * 100)} %` : "—", tendance(tauxConf, tauxConfAvant, true) || `${s.conf} / ${s.nb}`, VERT)}
-          {kpi("Réserves", String(s.res), <>{pctTxt(s.res, s.nb)} des rapports {tendance(s.res, sAvant.res, false)}</>, AMBRE)}
-          {kpi("Refus", String(s.ref), <>{pctTxt(s.ref, s.nb)} des rapports {tendance(s.ref, sAvant.ref, false)}</>, ROUGE)}
-          {kpi("Colis en réserve / refusés", s.colis.toLocaleString("fr-FR"), tendance(s.colis, sAvant.colis, false) || "sur les rapports non conformes", "#7c3aed")}
-          {kpi("Note moyenne", s.note === null ? "—" : `${un(s.note)} / 5`, s.temp === null ? "" : `🌡️ ${un(s.temp)} °C en moyenne`, "#0891b2")}
+          {kpi("Sous réserve", String(s.res), <>{pctTxt(s.res, s.nb)} des arrivages {tendance(s.res, sAvant.res, false)}</>, AMBRE)}
+          {kpi("Refusés", String(s.ref), <>{pctTxt(s.ref, s.nb)} des arrivages {tendance(s.ref, sAvant.ref, false)}</>, ROUGE)}
+          {kpi("Colis en réserve / refusés", s.colis.toLocaleString("fr-FR"), tendance(s.colis, sAvant.colis, false) || "d'après les rapports d'agréage", "#7c3aed")}
+          {kpi("Note moyenne des rapports", s.note === null ? "—" : `${un(s.note)} / 5`, s.temp === null ? "" : `🌡️ ${un(s.temp)} °C en moyenne à l'arrivée`, "#0891b2")}
         </div>
 
         {/* Évolution par semaine */}
         <div style={{ ...carte, marginBottom: 14 }}>
-          {titreBloc("📈 Évolution par semaine", <span style={{ display: "flex", gap: 10, fontSize: 11.5, color: c.gris, fontWeight: 700 }}><span><span style={{ color: VERT }}>■</span> Conformes</span><span><span style={{ color: AMBRE }}>■</span> Réserves</span><span><span style={{ color: ROUGE }}>■</span> Refus</span></span>)}
+          {titreBloc("📈 Arrivages contrôlés par semaine", <span style={{ display: "flex", gap: 10, fontSize: 11.5, color: c.gris, fontWeight: 700 }}><span><span style={{ color: VERT }}>■</span> Validés</span><span><span style={{ color: AMBRE }}>■</span> Réserves</span><span><span style={{ color: ROUGE }}>■</span> Refus</span></span>)}
           <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 150 }}>
             {d.semaines.map(w => {
               const t = w.conf + w.res + w.ref;
               return (
-                <div key={w.l0} title={`S${numSemaine(w.l0)} : ${w.conf} conformes, ${w.res} réserves, ${w.ref} refus`} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, height: "100%", justifyContent: "flex-end" }}>
+                <div key={w.l0} title={`S${numSemaine(w.l0)} : ${w.conf} validés, ${w.res} sous réserve, ${w.ref} refusés`} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, height: "100%", justifyContent: "flex-end" }}>
                   <span style={{ fontSize: 10.5, fontWeight: 800, color: c.gris }}>{t || ""}</span>
                   <div style={{ width: "100%", maxWidth: 46, height: `${(t / maxSem) * 100}%`, minHeight: t ? 4 : 0, display: "flex", flexDirection: "column-reverse", borderRadius: "6px 6px 2px 2px", overflow: "hidden" }}>
                     <div style={{ flex: w.conf, background: VERT }} /><div style={{ flex: w.res, background: AMBRE }} /><div style={{ flex: w.ref, background: ROUGE }} />
@@ -171,7 +203,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
           <div style={carte}>
             {titreBloc("🏭 Fournisseurs", <span style={{ display: "flex", gap: 4 }}>
               <button type="button" onClick={() => setTriFourn("pb")} style={{ ...puce(triFourn === "pb"), padding: "4px 10px", fontSize: 11.5 }}>Les + à problème</button>
-              <button type="button" onClick={() => setTriFourn("nb")} style={{ ...puce(triFourn === "nb"), padding: "4px 10px", fontSize: 11.5 }}>Les + agréés</button>
+              <button type="button" onClick={() => setTriFourn("nb")} style={{ ...puce(triFourn === "nb"), padding: "4px 10px", fontSize: 11.5 }}>Les + livrés</button>
             </span>)}
             {!fournTries.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Pas assez de rapports sur la période.</p>}
             <div style={{ maxHeight: 340, overflowY: "auto" }}>
@@ -179,14 +211,14 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
                 <button key={x.k} type="button" onClick={() => ouvrirRecherche(x.k)} style={{ display: "grid", gridTemplateColumns: "1fr 90px 64px", gap: 10, alignItems: "center", width: "100%", padding: "8px 2px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
                   <span style={{ minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.k}</span>
-                    <span style={{ fontSize: 11.5, color: c.gris }}>{x.nb} rapport{x.nb > 1 ? "s" : ""} · {x.res} rés. · {x.ref} refus{x.note !== null ? ` · ${un(x.note)}/5` : ""}</span>
+                    <span style={{ fontSize: 11.5, color: c.gris }}>{x.nb} arrivage{x.nb > 1 ? "s" : ""} · {x.res} rés. · {x.ref} refus{x.note !== null ? ` · ${un(x.note)}/5` : ""}</span>
                   </span>
                   {barre(x.conf, x.res, x.ref)}
                   <span style={{ fontSize: 13, fontWeight: 900, textAlign: "right", color: x.pb / x.nb >= 0.5 ? ROUGE : x.pb ? AMBRE : VERT }}>{pctTxt(x.pb, x.nb)}</span>
                 </button>
               ))}
             </div>
-            <div style={{ fontSize: 11, color: c.gris, marginTop: 6 }}>% = part des rapports en réserve ou refus. Un clic ouvre ses rapports.</div>
+            <div style={{ fontSize: 11, color: c.gris, marginTop: 6 }}>% = part des arrivages sous réserve ou refusés. Un clic ouvre ses rapports.</div>
           </div>
 
           {/* Produits */}
@@ -198,7 +230,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
                 <button key={x.k} type="button" onClick={() => ouvrirRecherche(x.k)} style={{ display: "grid", gridTemplateColumns: "1fr 90px 64px", gap: 10, alignItems: "center", width: "100%", padding: "8px 2px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
                   <span style={{ minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 13, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.k}</span>
-                    <span style={{ fontSize: 11.5, color: c.gris }}>{x.pb} / {x.nb} non conformes · {x.colis.toLocaleString("fr-FR")} colis</span>
+                    <span style={{ fontSize: 11.5, color: c.gris }}>{x.pb} / {x.nb} arrivages non conformes{x.colis ? ` · ${x.colis.toLocaleString("fr-FR")} colis` : ""}</span>
                   </span>
                   {barre(x.conf, x.res, x.ref)}
                   <span style={{ fontSize: 13, fontWeight: 900, textAlign: "right", color: x.pb / x.nb >= 0.5 ? ROUGE : AMBRE }}>{pctTxt(x.pb, x.nb)}</span>
@@ -231,8 +263,8 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
               {titreBloc("🌡️ Températures élevées (> 8 °C)")}
               {!d.chauds.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Aucune température au-dessus de 8 °C sur la période.</p>}
               {d.chauds.map((r, i) => (
-                <button key={r.firebaseKey || r.id || i} type="button" onClick={() => ouvrirRecherche(r.numeroRapport || r.produit || "")} style={{ display: "flex", gap: 10, alignItems: "center", width: "100%", padding: "7px 2px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
-                  <span style={{ padding: "3px 8px", borderRadius: 8, background: "#fef2f2", color: ROUGE, fontSize: 12.5, fontWeight: 900, flexShrink: 0 }}>{un(temp(r))} °C</span>
+                <button key={r.id || i} type="button" onClick={() => ouvrirRecherche(r.produit || "")} style={{ display: "flex", gap: 10, alignItems: "center", width: "100%", padding: "7px 2px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
+                  <span style={{ padding: "3px 8px", borderRadius: 8, background: "#fef2f2", color: ROUGE, fontSize: 12.5, fontWeight: 900, flexShrink: 0 }}>{un(tempArr(r))} °C</span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><b>{r.produit}</b> · {r.fournisseur}</span>
                   <span style={{ fontSize: 11.5, color: c.gris }}>{String(r.date || "").slice(0, 5)}</span>
                 </button>
@@ -240,7 +272,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
             </div>
             {d.agreeurs.length > 0 && (
               <div style={carte}>
-                {titreBloc("👤 Agréages par personne")}
+                {titreBloc("👤 Arrivages contrôlés par personne")}
                 {d.agreeurs.map((x, i) => (
                   <div key={x.k} style={{ display: "grid", gridTemplateColumns: "1fr 90px 40px", gap: 10, alignItems: "center", padding: "6px 2px", borderTop: i ? `1px solid ${c.bord}` : "none" }}>
                     <span style={{ fontSize: 13, fontWeight: 800 }}>{x.k}</span>

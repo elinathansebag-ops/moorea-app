@@ -4050,7 +4050,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const row1 = [
       { key: "arrivages", icon: "📋", label: "Pointer arrivage", color: "#c8a84b", badge: nbAttente || null, stat: nbAttente > 0 ? `${nbAttente} en attente auj.` : nbTraitesAujourdHui > 0 ? `${nbTraitesAujourdHui} traités auj.` : "Aucun arrivage auj.", action: () => { setShowAccueil(false); setPageMode("arrivages"); setVue("__none__" as any); } },
       // 13/10/2026 — Une seule carte « 🧪 Récap qualité » (rapports, traça/températures/poids, Lidl, litiges).
-      ...(["rapports", "qualite", "lidl_consultation", "litiges"].some(k => monAcces.hasModule(k)) ? [{ key: ["qualite", "rapports", "lidl_consultation", "litiges"].find(k => monAcces.hasModule(k))!, icon: "🧪", label: "Récap qualité", color: "#16a34a", badge: null, stat: `Rapports (${nbRapports}), traçabilité, températures, poids, litiges`, action: () => { setShowAccueil(false); setShowQualiteHub(true); } }] : []),
+      ...(["rapports", "qualite", "lidl_consultation"].some(k => monAcces.hasModule(k)) ? [{ key: ["qualite", "rapports", "lidl_consultation"].find(k => monAcces.hasModule(k))!, icon: "🧪", label: "Récap qualité", color: "#16a34a", badge: null, stat: `Rapports (${nbRapports}), traçabilité, températures, poids`, action: () => { setShowAccueil(false); setShowQualiteHub(true); } }] : []),
       { key: "stock", icon: "📦", label: "Stock", color: "#0891b2", badge: null, stat: "GMS & Prestige", action: () => { setShowAccueil(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); } },
     ].filter(b => monAcces.hasModule(b.key));
 
@@ -4407,7 +4407,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", onClick: () => versRapports("") }] : []),
       ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité, températures, poids", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
       ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
-      ...(monAcces.hasModule("litiges") ? [{ icone: "⚠️", titre: "Litiges", onClick: ouvrir(() => setShowLitiges(true)) }] : []),
+      // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
     ];
     return <>{fabScanner}{invitationNotif}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirRecherche={t => monAcces.hasModule("rapports") && versRapports(t)} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
   }
