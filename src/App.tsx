@@ -6655,7 +6655,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               </div>
               );
 
-              // 14/10/2026 — Demande d'Elinathan : page plus lisible. Sans filtre : les 5 derniers
+              // 14/10/2026 — Demande d'Elinathan : page plus lisible. Sans filtre : les 4 derniers
               // rapports en cartes, puis les fournisseurs en carrés (un clic = toutes ses cartes).
               // Avec un filtre / une recherche : toutes les cartes correspondantes en grille.
               // Cartes compactes : 3 photos max, petits boutons à icônes.
@@ -6714,7 +6714,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               return (
                 <>
                   <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: "4px 0 10px" }}>🕒 Derniers rapports</p>
-                  {grilleCartes(sorted.slice(0, 5))}
+                  {grilleCartes(sorted.slice(0, 4))}
                   <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: "26px 0 10px" }}>🏭 Par fournisseur ({fourns.length})</p>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(210px, 100%), 1fr))", gap: 12 }}>
                     {fourns.map(([f, l]) => {
