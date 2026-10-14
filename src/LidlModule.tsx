@@ -147,12 +147,15 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
 
   return (
     <div style={{ minHeight: "100vh", background: "#f9fafb" }}>
-      <PageHeader titre="🛒 Commandes Lidl" couleur="#0050aa" onBack={onClose} onHome={onClose} />
+      <PageHeader titre="🛒 Commandes Lidl" couleur="#0050aa" onBack={onglet !== "accueil" ? () => { setOnglet("accueil"); setImportDirect(false); } : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          {btnOnglet("accueil", "📊 Tableau de bord")}{btnOnglet("jour", "🛒 Commandes")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("config", "⚙️ Configuration")}
-          {/* 14/10/2026 — « Importer une commande » dans la rangée des onglets. */}
-          <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ marginLeft: "auto", padding: "10px 16px", borderRadius: 10, border: "none", background: "#0050aa", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>➕ Importer une commande</button>
+          {/* 14/10/2026 — Onglets retirés (demande d'Elinathan : le tableau de bord donne accès à tout) ;
+              restent Configuration et Importer, et un retour au tableau de bord depuis les autres pages. */}
+          {onglet !== "accueil" && <button type="button" onClick={() => { setOnglet("accueil"); setImportDirect(false); }} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#0050aa", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>← Tableau de bord</button>}
+          <span style={{ flex: 1 }} />
+          {<button type="button" onClick={() => setOnglet("config")} title="Configuration" style={{ padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${onglet === "config" ? "#0050aa" : "#e5e7eb"}`, background: onglet === "config" ? "#eff6ff" : "#fff", color: "#4b5563", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Configuration</button>}
+          <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "#0050aa", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>➕ Importer une commande</button>
         </div>
         {/* 02/10/2026 — Demande d'Elinathan : le commercial voit tout de suite si le mail est bien parti chez Lidl, et à quelle heure. */}
         <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${(envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
