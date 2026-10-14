@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 47, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : « Poids barquettes » sur la même ligne que « + Ajouter un poids » ; Traça four., DLC et Poids barquettes font la même hauteur, bien alignés. Le bouton carré « sans étiquette » a un contour plus visible." },
   { id: 46, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : « Traça four. » aligné sur sa case comme la DLC ; « sans étiquette » devient un petit bouton carré à côté de « Litige ». Bouton « IMPORT » en majuscules, à la taille du texte." },
   { id: 45, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : recherche plus courte, gros bouton « Import » qui prend la place." },
   { id: 44, date: "15/10", pages: ["admin.modules", "arrivages"], texte: "⚙️ Vue en colonnes / en liste de Pointer arrivage : réglage pour tout le monde dans Admin › Modules (colonnes par défaut) ; le bouton est retiré de la page." },

@@ -730,11 +730,13 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       {/* Traçabilité fournisseur, températures et poids de barquettes : trois colonnes sur
           une même ligne. Elles repassent l'une sous l'autre sur écran étroit (flexWrap), et
           les listes de mesures démarrent vides pour ne pas alourdir les autres produits. */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
+      {/* 15/10/2026 — les trois cases (Traça four., DLC, Poids barquettes) ont la même hauteur
+          (alignItems: stretch) et chaque titre est sur la même ligne que sa case. */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "stretch" }}>
         {!isSimple && (
           // 15/10/2026 — « Traça four. » sur la même ligne que sa case, aligné comme « DLC ».
-          <div style={{ flex: 1, minWidth: 210, display: "flex", alignItems: "flex-start", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap", paddingTop: 6 }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
+          <div style={{ flex: 1, minWidth: 210, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 0 }}>
               {tracaList.map((t, idx) => (
                 <div key={idx} style={{ display: "flex", gap: 5, alignItems: "center" }}>
@@ -772,11 +774,11 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
         {!isSimple && [
           { cle: "poids", titre: "⚖️ Poids barquettes (g)", liste: poidsBarquettes, setter: setPoidsBarquettes, step: "1", min: "0", libelle: "un poids" },
         ].map(sec => (
-          <div key={sec.cle} style={{ flex: 1, minWidth: 210, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>
+          <div key={sec.cle} style={{ flex: 1, minWidth: 210, display: "flex", alignItems: "center", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap" }}>
               {sec.titre}{sec.liste.length > 0 ? ` (${sec.liste.length})` : ""}
             </span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 0 }}>
               {sec.liste.map((m, idx) => (
                 <div key={idx} style={{ display: "flex", gap: 5, alignItems: "center" }}>
                   <input type="number" inputMode="decimal" step={sec.step} min={sec.min}
@@ -793,7 +795,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
                 </div>
               ))}
               <button onClick={() => ajouterMesure(sec.setter)}
-                style={{ alignSelf: "flex-start", background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                style={{ alignSelf: "flex-start", background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
                 + Ajouter {sec.libelle}
               </button>
             </div>
@@ -905,8 +907,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           <button onClick={() => setSansEtiquette(v => !v)} disabled={saving}
             title={sansEtiquette ? "Sans étiquette activé : la validation n'imprimera pas d'étiquette (toucher pour annuler)" : "Valider sans imprimer d'étiquette (cas rare)"}
             aria-label="Valider sans étiquette"
-            style={{ flex: "0 0 auto", width: 40, padding: 0, borderRadius: 10, cursor: "pointer", fontSize: 16, border: `1.5px solid ${sansEtiquette ? "#d97706" : "#e5e7eb"}`, background: sansEtiquette ? "#fffbeb" : "#fff", color: sansEtiquette ? "#d97706" : "#9ca3af", position: "relative" }}>
-            🏷️<span style={{ position: "absolute", left: 8, right: 8, top: "50%", height: 2, background: sansEtiquette ? "#d97706" : "#9ca3af", transform: "rotate(-35deg)" }} />
+            style={{ flex: "0 0 auto", width: 40, padding: 0, borderRadius: 10, cursor: "pointer", fontSize: 16, border: `2px solid ${sansEtiquette ? "#d97706" : "#6b7280"}`, background: sansEtiquette ? "#fffbeb" : "#fff", color: sansEtiquette ? "#d97706" : "#4b5563", position: "relative" }}>
+            🏷️<span style={{ position: "absolute", left: 8, right: 8, top: "50%", height: 2, background: sansEtiquette ? "#d97706" : "#4b5563", transform: "rotate(-35deg)" }} />
           </button>
         </div>
       )}
