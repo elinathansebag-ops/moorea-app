@@ -4,6 +4,7 @@
 // La dernière entrée vue est rangée dans comptes/{uid}/nouveautes_vu (même sur un autre appareil).
 export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 export const NOUVEAUTES: { id: number; date: string; texte: string }[] = [
+  { id: 11, date: "14/10", texte: "🔎 Traçabilité Lidl : une carte par commande (bases, départs, avancement, qui l'a préparée, traça envoyée) ; un clic ouvre la commande avec une carte par base." },
   { id: 10, date: "14/10", texte: "🔄 Refus à faire signer : module à part (retiré du Récap qualité), 4 cartes par ligne avec une mosaïque de 4 photos ; pages Rapports plus larges." },
   { id: 9, date: "14/10", texte: "📋 Rapports qualité : les 5 derniers rapports en cartes, puis les fournisseurs en carrés (un clic ouvre toutes leurs cartes) ; 3 photos max et petits boutons à icônes (PDF, mail, WhatsApp, bon de retour, modifier)." },
   { id: 8, date: "14/10", texte: "🎛️ Accueil en grille fixe : chaque module a sa case, on peut laisser des cases vides, et poser un module sur un autre les échange. 🧪 Fiche rapport : PDF (FR/EN), mail, WhatsApp et Modifier directement, et raccourcis en vraies tuiles." },

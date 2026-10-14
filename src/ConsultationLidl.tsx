@@ -31,7 +31,11 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
   }, []);
 
   const jours = useMemo(() => [...new Set((lignes || []).map(l => l.date).filter(Boolean))].sort().reverse(), [lignes]);
-  const jourAffiche = jour && jours.includes(jour) ? jour : jours[0] || "";
+  // 14/10/2026 — Demande d'Elinathan : page d'accueil = une carte par commande (jour de livraison) ;
+  // un clic ouvre la commande. jour vide = page d'accueil.
+  const jourAffiche = jour && jours.includes(jour) ? jour : "";
+  const [vueTableau, setVueTableau] = useState(false);
+  const [nbJours, setNbJours] = useState(24);
   const filtreDepart = (l: Ligne) => depart === "tous" || (depart === "paris" ? l.depart === "paris" : l.depart !== "paris");
   const q = recherche.trim().toLowerCase();
   // Recherche (lot, producteur, base…) : sur TOUS les jours ; sinon le jour choisi.
@@ -63,8 +67,18 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
   const puce = (actif: boolean) => ({ padding: "7px 12px", borderRadius: 999, border: `1.5px solid ${actif ? vert : bord}`, background: actif ? vert : carte, color: actif ? "#fff" : texte, fontSize: 12.5, fontWeight: 700, cursor: "pointer" } as const);
   const th = { textAlign: "left" as const, padding: "8px 10px", fontSize: 11.5, fontWeight: 800, color: gris, borderBottom: `1.5px solid ${bord}`, whiteSpace: "nowrap" as const, position: "sticky" as const, top: 0, background: carte };
   const td = { padding: "8px 10px", fontSize: 13, borderBottom: `1px solid ${bord}`, verticalAlign: "top" as const };
-  const totalColis = visibles.reduce((t, l) => t + (Number(l.quantite) || 0), 0);
-  const totalPalettes = visibles.reduce((t, l) => t + (Number(l.palettes ?? 0.5) || 0), 0);
+
+  const commandes = useMemo(() => jours.map(j => {
+    const l = (lignes || []).filter(x => x.date === j);
+    const prets = l.filter(x => x.statut === "pret").length;
+    const prepa = [...new Set(l.map(x => x.pretPar).filter(Boolean))] as string[];
+    const bases = new Set(l.map(x => x.base)).size;
+    const departs = [...new Set(l.map(x => x.depart === "paris" ? "Paris" : "Medina"))];
+    const lots = [...new Set(l.map(x => x.lot).filter(Boolean))];
+    const produits = [...new Set(l.map(x => { const r = REFS_LIDL.find(y => y.k === x.refLidl); return r ? r.article : x.article; }).filter(Boolean))];
+    return { j, n: l.length, prets, prepa, bases, departs, lots, produits };
+  }), [jours, lignes]);
+  const aujourdHui = new Date().toISOString().slice(0, 10);
 
   return (
     <div style={{ minHeight: "100vh", background: fond, color: texte }}>
@@ -73,11 +87,9 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
         <p style={{ margin: "0 0 12px", fontSize: 12.5, color: gris }}>👁️ Consultation seule : rien ne peut être modifié ici.</p>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-          <select value={jourAffiche} onChange={e => { setJour(e.target.value); setRecherche(""); }} disabled={!!q} aria-label="Jour de livraison"
-            style={{ padding: "8px 10px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 14, fontWeight: 700 }}>
-            {jours.map(j => <option key={j} value={j}>{dateLongueFr(j)}</option>)}
-          </select>
-          {(["tous", "paris", "sud"] as const).map(d => (
+          {jourAffiche && !q && <button type="button" onClick={() => setJour("")} style={{ ...puce(false), fontWeight: 800 }}>← Toutes les commandes</button>}
+          {jourAffiche && !q && <span style={{ fontSize: 16, fontWeight: 900, marginRight: 6 }}>🛒 {dateLongueFr(jourAffiche)}</span>}
+          {jourAffiche && (["tous", "paris", "sud"] as const).map(d => (
             <button key={d} type="button" onClick={() => setDepart(d)} style={puce(depart === d)}>{d === "tous" ? "Tous les départs" : d === "paris" ? "Départ Paris" : "Départ Medina (Perpignan)"}</button>
           ))}
           <input value={recherche} onChange={e => setRecherche(e.target.value)} placeholder="🔍 Lot, producteur, base… (tous les jours)" aria-label="Rechercher"
@@ -101,11 +113,86 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
         {message && <p style={{ margin: "0 0 12px", fontSize: 12.5, fontWeight: 700, color: message.startsWith("Téléchargement impossible") ? "#b91c1c" : gris }}>{message}</p>}
 
         {lignes === null && <p style={{ color: gris }}>Chargement…</p>}
-        {lignes !== null && !visibles.length && <p style={{ color: gris }}>{q ? "Aucune commande ne correspond à la recherche." : "Aucune commande pour ce jour."}</p>}
-
-        {visibles.length > 0 && (
+        {/* Page d'accueil : une carte par commande. */}
+        {lignes !== null && !q && !jourAffiche && (
           <>
-            <p style={{ margin: "0 0 8px", fontSize: 12.5, color: gris }}>{visibles.length} ligne{visibles.length > 1 ? "s" : ""} · {nb(totalColis)} colis · {nb(totalPalettes)} palette{totalPalettes > 1 ? "s" : ""}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(270px, 100%), 1fr))", gap: 12 }}>
+              {commandes.slice(0, nbJours).map(cmd => {
+                const env = envois[cmd.j], fini = cmd.n > 0 && cmd.prets === cmd.n, futur = cmd.j >= aujourdHui;
+                const envoyee = !!(env?.version || env?.manuel);
+                return (
+                  <button key={cmd.j} type="button" onClick={() => { setJour(cmd.j); setVueTableau(false); window.scrollTo(0, 0); }}
+                    style={{ textAlign: "left", padding: 0, border: "none", borderRadius: 16, background: carte, color: texte, cursor: "pointer", overflow: "hidden", boxShadow: darkMode ? "none" : "0 1px 4px rgba(0,0,0,.07)", borderTop: `4px solid ${fini ? "#16a34a" : futur ? "#0050aa" : "#d97706"}` }}>
+                    <div style={{ padding: "12px 14px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ flex: 1, fontSize: 16, fontWeight: 900, textTransform: "capitalize" }}>{dateLongueFr(cmd.j)}</span>
+                        <span title={envoyee ? "Traçabilité envoyée à Lidl" : "Traçabilité pas encore envoyée"} style={{ fontSize: 11.5, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: envoyee ? "#dcfce7" : "#fef3c7", color: envoyee ? "#166534" : "#92400e" }}>{envoyee ? "📤 Envoyée" : "⏳ Pas envoyée"}</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: gris, marginTop: 4 }}>{cmd.bases} base{cmd.bases > 1 ? "s" : ""} · {cmd.departs.join(" + ")}{cmd.produits.length ? ` · ${cmd.produits.slice(0, 2).join(", ")}${cmd.produits.length > 2 ? "…" : ""}` : ""}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                        <div style={{ flex: 1, height: 7, borderRadius: 4, background: darkMode ? "#2e3540" : "#eef0ec", overflow: "hidden" }}>
+                          <div style={{ width: `${cmd.n ? (cmd.prets / cmd.n) * 100 : 0}%`, height: "100%", background: fini ? "#16a34a" : "#d97706" }} />
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: fini ? "#16a34a" : "#b45309", whiteSpace: "nowrap" }}>{fini ? "✓ Toutes prêtes" : `${cmd.prets} / ${cmd.n} prêtes`}</span>
+                      </div>
+                      {cmd.prepa.length > 0 && (
+                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
+                          <span style={{ fontSize: 11.5, color: gris, fontWeight: 700 }}>Préparée par</span>
+                          {cmd.prepa.map(p => <span key={p} style={{ fontSize: 12, fontWeight: 800, padding: "2px 9px", borderRadius: 999, background: darkMode ? "#1d2e2b" : "#eaf2ee", color: "#305a55" }}>👤 {p}</span>)}
+                        </div>
+                      )}
+                      {cmd.lots.length > 0 && <div style={{ fontSize: 11.5, color: gris, marginTop: 8 }}>Lots : {cmd.lots.slice(0, 4).join(" · ")}{cmd.lots.length > 4 ? "…" : ""}</div>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {commandes.length > nbJours && <button type="button" onClick={() => setNbJours(n => n + 24)} style={{ ...puce(false), marginTop: 12 }}>Voir les commandes plus anciennes</button>}
+            {!commandes.length && <p style={{ color: gris }}>Aucune commande Lidl.</p>}
+          </>
+        )}
+
+        {lignes !== null && (q || jourAffiche) && !visibles.length && <p style={{ color: gris }}>{q ? "Aucune commande ne correspond à la recherche." : "Aucune ligne pour ce départ."}</p>}
+
+        {/* Une commande ouverte : une carte par base (ou le tableau). */}
+        {!q && jourAffiche && visibles.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+            <button type="button" onClick={() => setVueTableau(v => !v)} style={puce(vueTableau)}>{vueTableau ? "🗂️ Vue cartes" : "📋 Vue tableau"}</button>
+          </div>
+        )}
+        {!q && jourAffiche && !vueTableau && visibles.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))", gap: 12 }}>
+            {visibles.map(l => {
+              const b = infoBase(l.base), r = REFS_LIDL.find(x => x.k === l.refLidl), p = producteurs.find(x => x.pn === l.ferme);
+              const pret = l.statut === "pret";
+              return (
+                <div key={l.id} style={{ background: carte, borderRadius: 16, padding: "12px 14px", boxShadow: darkMode ? "none" : "0 1px 4px rgba(0,0,0,.07)", borderLeft: `5px solid ${pret ? "#16a34a" : "#d97706"}` }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 16, fontWeight: 900 }}>{b?.nom || l.base}</div>
+                      <div style={{ fontSize: 11.5, color: gris }}>{b ? `Base n° ${b.nationale ? "nationale" : b.num} · ${l.base}` : ""}</div>
+                    </div>
+                    <span style={{ fontSize: 11.5, fontWeight: 800, padding: "3px 9px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8", whiteSpace: "nowrap" }}>🚚 {l.depart === "paris" ? "Paris" : "Medina"}{l.transporteur ? ` · ${l.transporteur}` : ""}{l.camion ? ` · camion ${l.camion}` : ""}</span>
+                  </div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 8 }}>{r ? `${r.article} — ${r.origine}` : [l.article, l.origine].filter(Boolean).join(" — ") || "—"}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 10px", marginTop: 8, fontSize: 12.5 }}>
+                    <span style={{ color: gris, fontWeight: 700 }}>Lot</span><span style={{ fontWeight: 900, fontSize: 14 }}>{l.lot || <span style={{ color: "#b45309" }}>non saisi</span>}</span>
+                    <span style={{ color: gris, fontWeight: 700 }}>Producteur</span><span>{l.ferme || "—"}{p ? <span style={{ color: gris }}> · GGN {p.pg}</span> : null}</span>
+                    {p && <><span style={{ color: gris, fontWeight: 700 }}>Emballeur</span><span>{p.en}<span style={{ color: gris }}> · GLN {p.eg}</span></span></>}
+                    <span style={{ color: gris, fontWeight: 700 }}>Colis</span><span>{nb(Number(l.quantite) || 0)} · {nb(Number(l.palettes ?? 0.5))} pal.</span>
+                  </div>
+                  <div style={{ marginTop: 10, padding: "7px 10px", borderRadius: 10, background: pret ? "#f0fdf4" : "#fffbeb", color: pret ? "#166534" : "#92400e", fontSize: 12.5, fontWeight: 800 }}>
+                    {pret ? `✓ Préparée par ${l.pretPar || "?"}${l.pretLe ? ` · ${l.pretLe}` : ""}` : "⏳ À préparer"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {visibles.length > 0 && (q || vueTableau) && (
+          <>
+            <p style={{ margin: "0 0 8px", fontSize: 12.5, color: gris }}>{visibles.length} ligne{visibles.length > 1 ? "s" : ""}</p>
             <div style={{ overflowX: "auto", background: carte, border: `1px solid ${bord}`, borderRadius: 12, maxHeight: "70vh" }}>
               <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1100 }}>
                 <thead>
