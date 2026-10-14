@@ -6425,6 +6425,12 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <span style={{ fontSize: 12, color: "#9ca3af" }}>({r.pourcentage}%)</span>
                   </div>
                 )}
+                {/* 14/10/2026 — Photos supprimées chez ImgBB, retirées du rapport : on le dit plutôt que rien. */}
+                {r.photosPerdues && !(r.photoUrls?.length > 0) && (
+                  <div style={{ marginBottom: 10, padding: "10px 12px", borderRadius: 10, background: "#fffbeb", border: "1px dashed #f59e0b", color: "#92400e", fontSize: 13, fontWeight: 700 }}>
+                    📷 Photos perdues (bug technique) — à remettre avec ✏️
+                  </div>
+                )}
                 {(r.photoUrls?.length > 0 || r.photos?.length > 0) && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 10 }}>
                     {(r.photoUrls?.length > 0 ? r.photoUrls : r.photos?.map((p: any) => p.url) || []).slice(0, 6).map((url: string, pi: number) => (
