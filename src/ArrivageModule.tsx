@@ -1235,7 +1235,8 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
   };
 
   return (
-    <div style={{ background: "#fff", borderRadius: 14, marginBottom: 10, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent" }}>
+    // 14/10/2026 — Fournisseurs sur plusieurs colonnes (DateBlock) : ouvert, il prend toute la largeur.
+    <div style={{ gridColumn: open ? "1 / -1" : undefined, background: "#fff", borderRadius: 14, marginBottom: 0, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent", alignSelf: "start" }}>
       <div onClick={() => setOpen(!open)} style={{ padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: headerBg, borderBottom: open ? "1px solid #e8e0d0" : headerBorder }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span>{allDone ? "✅" : "🏭"}</span>
@@ -2689,7 +2690,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
   );
 }
 
-export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
+export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
   const [validatingAll, setValidatingAll] = useState(false);
@@ -2945,7 +2946,8 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               jamais utilisé (voir plus haut) : remis. "✅ Tout valider (nettoyage en masse)" et
               "Scanner une étiquette" restent retirés (demandes précédentes d'Elinathan) — leurs
               fonctions restent définies plus haut, juste non appelées ici. */}
-          {/* Fournisseurs - en attente + traités regroupés */}
+          {/* Fournisseurs - en attente + traités regroupés — 14/10/2026 : sur 2 ou 3 colonnes. */}
+          <div style={{ display: "grid", gridTemplateColumns: enColonnes ? "repeat(auto-fill, minmax(min(320px, 100%), 1fr))" : "1fr", gap: 10 }}>
           {allFourn.map(f => (
             <FournisseurBlock key={f} fournisseur={f}
               produits={byFournisseur[f] || []}
@@ -2962,6 +2964,7 @@ export function DateBlock({ date, arrivages, arrivagesArchives, onValidate, onDe
               onReserveGroupe={onReserveGroupe}
               onEcartDetecte={onEcartDetecte} />
           ))}
+          </div>
         </div>
       )}
       {pdfApercuTraca && (

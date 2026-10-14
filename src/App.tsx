@@ -690,6 +690,9 @@ export default function App() {
     update(ref(db, `comptes/${user.uid}/accueil_masques`), { [moduleKey]: accueilMasques[moduleKey] ? null : true });
   };
   const [showPersonnaliserAccueil, setShowPersonnaliserAccueil] = useState(false);
+  // 14/10/2026 — Pointer arrivage : vue en colonnes (fournisseurs sur 2-3 colonnes, page large) ou en liste (comme avant). Par appareil.
+  const [arrivageColonnes, setArrivageColonnes] = useState(() => { try { return localStorage.getItem("moorea-arrivage-vue") !== "liste"; } catch { return true; } });
+  const basculerArrivageVue = () => setArrivageColonnes(v => { const n = !v; try { localStorage.setItem("moorea-arrivage-vue", n ? "colonnes" : "liste"); } catch { /* rien */ } return n; });
   // 14/10/2026 — Demande d'Elinathan : ranger soi-même ses modules et leur donner une couleur
   // pastel. Même principe que accueil_masques : par compte, et par prénom sur un compte partagé.
   // { ordre: [clés…], couleurs: { clé: id } }. Un module masqué garde sa place dans « ordre ».
@@ -5039,7 +5042,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
       />
 
-      <div className="content-wrap" style={vue === "historique" ? { maxWidth: 1300 } : undefined}>
+      <div className="content-wrap" style={vue === "historique" || (pageMode === "arrivages" && vue !== "form" && arrivageColonnes) ? { maxWidth: 1300 } : undefined}>
         {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
             {(() => {
@@ -5061,11 +5064,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               // les autres alertes de la page d'accueil (📦 IFCO, 🔔 retours) : visible mais non
               // bloquant, fermable d'une croix.
               return (
-                <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: 12.5, color: "#991b1b" }}>Contrôles qualité en retard</p>
-                    <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "#7f1d1d" }}>
+                // 14/10/2026 — Partie haute plus compacte : l'alerte tient sur une seule ligne fine.
+                <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 999, padding: "5px 8px 5px 14px", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 12.5, color: "#991b1b" }}>⚠️ Contrôles qualité en retard :</p>
+                    <p style={{ margin: 0, fontSize: 12, color: "#7f1d1d" }}>
                       {tempEnRetard && `🌡️ Aucune température relevée depuis ${dernierTemp ? `${jours(dernierTemp)} jours (dernière le ${new Date(dernierTemp).toLocaleDateString("fr-FR")})` : "le début"}.`}
                       {tempEnRetard && poidsEnRetard && " "}
                       {poidsEnRetard && `⚖️ Aucun poids de barquette relevé depuis ${dernierPoids ? `${jours(dernierPoids)} jours (dernier le ${new Date(dernierPoids).toLocaleDateString("fr-FR")})` : "le début"}.`}
@@ -5226,7 +5229,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               );
             })()}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: "1 1 220px", minWidth: 180, padding: "8px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 13.5, background: "#fff" }} />
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: printRelayOnline ? "#f0fdf4" : "#fef2f2", color: printRelayOnline ? "#15803d" : "#dc2626", border: `1px solid ${printRelayOnline ? "#bbf7d0" : "#fca5a5"}` }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block" }} />
                 🖨️ Imprimante PC : {printRelayOnline === null ? "..." : printRelayOnline ? "en ligne" : "hors ligne"}
@@ -5246,22 +5250,21 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fff", color: "#1a2e1a", border: "1px solid #e8e0d0", cursor: "pointer" }}>
                 📁 Voir l'historique
               </button>
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-              <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+              <label style={{ padding: "6px 11px", borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
                 📊 Import
                 <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
               </label>
-              <button onClick={detecterDoublonsArr} style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1a2e1a", whiteSpace: "nowrap" }}>
+              <button onClick={detecterDoublonsArr} style={{ padding: "6px 11px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1a2e1a", whiteSpace: "nowrap" }}>
                 🧹 Doublons
               </button>
               <button onClick={() => setShowHistoMesures(true)} title="Historique des poids de barquettes et des températures relevés"
-                style={{ padding: "10px 14px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1d4ed8", whiteSpace: "nowrap" }}>
-                🌡 Historique
+                style={{ padding: "6px 11px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", cursor: "pointer", fontSize: 12.5, fontWeight: 700, color: "#1d4ed8", whiteSpace: "nowrap" }}>
+                🌡 Températures et poids
               </button>
               {/* 02/09/2026 — Bouton "📲 Récap WA" global retiré à la demande d'Elinathan (jamais
                   utilisé) — celui du jour (dans chaque DateBlock) a été retiré pour la même raison. */}
-              <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
+              {/* 14/10/2026 — recherche déplacée en tête de la ligne */}
+              <button type="button" onClick={basculerArrivageVue} title="Changer la présentation des fournisseurs" style={{ padding: "6px 11px", borderRadius: 10, border: "1.5px solid #305a55", background: "#eaf2ee", color: "#305a55", fontSize: 12.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>{arrivageColonnes ? "☰ Vue en liste" : "▦ Vue en colonnes"}</button>
             </div>
             {/* 05/10/2026 — Second bandeau « Contrôles qualité en retard » retiré : doublon du bandeau fermable du haut de la page. */}
             {showHistoMesures && (
@@ -5430,7 +5433,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           const enAttente = arr.filter((a: any) => a.statut === "en attente");
                           const traites = arr.filter((a: any) => a.statut !== "en attente");
                           return (
-                            <DateBlock key={date} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onReporterGroupe={handleReporterGroupe} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => { setEcartPopup({ message }); alerterPush({ type: "ecart_pointage", titre: "⚖️ Écart de quantité au pointage", corps: message.replace(/[*_]/g, "").slice(0, 280) }); }} onReserveGroupe={ouvrirRapportGroupeReserve} />
+                            <DateBlock key={date} enColonnes={arrivageColonnes} date={date} arrivages={enAttente} arrivagesArchives={traites} onValidate={handleAgrement} onOuvreRapport={ouvrirRapportDepuisArrivage} onImprimerMulti={setPopupEtiquette} onReporterDate={handleReporterDate} onReporterGroupe={handleReporterGroupe} onScan={handleScanForDate} gencodeArticles={gencodeArticles} reconditionnementDemandesById={reconditionnementDemandesById} canValider={canValiderArrivages} onEcartDetecte={(message: string) => { setEcartPopup({ message }); alerterPush({ type: "ecart_pointage", titre: "⚖️ Écart de quantité au pointage", corps: message.replace(/[*_]/g, "").slice(0, 280) }); }} onReserveGroupe={ouvrirRapportGroupeReserve} />
                           );
                         })}
                       </div>

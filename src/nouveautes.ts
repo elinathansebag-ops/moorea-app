@@ -8,6 +8,8 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 35, date: "14/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : partie haute sur une ligne, page plus large et fournisseurs sur 2-3 colonnes ; bouton « ☰ Vue en liste / ▦ Vue en colonnes » pour basculer." },
+  { id: 34, date: "14/10", pages: ["reconditionnement"], texte: "🔄 Reconditionnement › En cours : un tableau d'aide « À reconditionner aujourd'hui » calcule par article fini combien relancer (ventes du même jour la semaine dernière pour demain + la moitié d'après-demain, moins le stock compté et ce qui est déjà chez NLT / Andès)." },
   { id: 33, date: "14/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : retour à l'apparence d'avant." },
   { id: 31, date: "14/10", pages: ["lidl"], texte: "🛒 Tableau de la semaine Lidl : précisé que les jours sont des dates de livraison chez Lidl (pas de départ)." },
   { id: 30, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : « Tous les départs » est dans le tableau, en haut à droite, à côté de la légende." },

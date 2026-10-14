@@ -6,6 +6,7 @@ import { aPdfDemande, lirePdfDemande, ecrirePdfDemande, type ChampPdfRecond } fr
 import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
 import { useBrouillon, effacerBrouillon, cheminBrouillon } from "./brouillon";
 import { db, ref, push, onValue, update, remove, get, set } from "./firebase";
+import { AReconditionnerAujourdhui } from "./AReconditionnerAujourdhui";
 import { PageHeader, F, styles, DEPOT_ACCENT, weekdayAccent, ChargementEcran } from "./shared";
 // Référence d'URL vers le worker pdf.js (fichier séparé, chargé seulement quand on lit un PDF).
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -4011,6 +4012,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             côtés (ici et dans Préparation) sur demande d'Elinathan, pour ne pas les rater. */}
         {activeTab === "en_cours" && (
           <div>
+            {/* 14/10/2026 — Demande d'Elinathan : tableau d'aide « 🔄 À reconditionner aujourd'hui »
+                (lecture seule : ventes 📊 Stats de la semaine précédente, dernier comptage Stock,
+                demandes déjà en cours). Voir src/AReconditionnerAujourdhui.tsx. */}
+            <AReconditionnerAujourdhui demandes={demandes} />
+
             {/* Demandes de réajustement de stock envoyées par les reconditionneurs (voir
                 PortailReconditionneur.tsx) — mêmes données/actions que dans Préparation entrepôt. */}
             {reajustements.filter(r => r.statut === "en attente").map(r => (
