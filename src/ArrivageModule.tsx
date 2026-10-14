@@ -1170,8 +1170,8 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
   );
 }
 
-export function FournisseurBlock({ ouvertParDefaut = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
-  const [open, setOpen] = useState(!!ouvertParDefaut); // 14/10/2026 — déplié d'office dans la nouvelle apparence
+export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
+  const [open, setOpen] = useState(false);
   // 12/10/2026 — Demande d'Elinathan : décaler TOUT l'arrivage du fournisseur (tous ses produits
   // encore à pointer) à une autre date, au lieu de produit par produit.
   const [reportGroupe, setReportGroupe] = useState<string | null>(null); // date AAAA-MM-JJ choisie

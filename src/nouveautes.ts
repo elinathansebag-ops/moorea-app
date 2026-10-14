@@ -8,7 +8,6 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
-  { id: 32, date: "14/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : nouvelle apparence (une carte par fournisseur à pointer, avancement du jour, traités repliés, menu ⋯) ; le pointage lui-même ne change pas. « Ancienne apparence » dans le menu ⋯." },
   { id: 31, date: "14/10", pages: ["lidl"], texte: "🛒 Tableau de la semaine Lidl : précisé que les jours sont des dates de livraison chez Lidl (pas de départ)." },
   { id: 30, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : « Tous les départs » est dans le tableau, en haut à droite, à côté de la légende." },
   { id: 29, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : bandeau vert retiré (seulement en cas d'échec) ; Jordan reçoit un mail d'entrepot@ avec l'heure et le tableau quand la traça est partie ; boutons Commandes passées / Configuration / Importer sur la ligne de la semaine." },
