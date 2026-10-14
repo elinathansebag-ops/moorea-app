@@ -461,7 +461,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
           choisir={f => setPreset({ fiche: f })} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
         {onglet === "client" && <CommandeClient c={c} arrivages={arrivages} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} preset={preset} />}
         {onglet === "arrivage" && <ArrivageFournisseur c={c} arrivages={arrivages} preset={preset} />}
-        {onglet === "produits" && <VentesProduits key={preset.rapport?.id || "libre"} email={email} auteur={userName} c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} equipes={equipes} preset={preset} />}
+        {onglet === "produits" && <VentesProduits key={preset.rapport?.id || "libre"} arrivages={arrivages} email={email} auteur={userName} c={c} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} equipes={equipes} preset={preset} />}
         {onglet === "config" && voirMarge && <ConfigImport c={c} ventes={ventes} userName={userName} estAdmin={estAdmin} onImporte={() => { oublierVentes(); setVentes(null); chargerVentes().then(setVentes).catch(e => setErreur(`Base des ventes : ${e?.message || e}`)); }} />}
       </div>
     </div>
@@ -623,7 +623,14 @@ const VUES: { k: Vue; lib: string }[] = [
   { k: "jour", lib: "Par jour" }, { k: "semaine", lib: "Par semaine" }, { k: "mois", lib: "Par mois" }, { k: "article", lib: "Par article" },
   { k: "famille", lib: "Par famille" }, { k: "client", lib: "Par client" }, { k: "fournisseur", lib: "Par fournisseur" }, { k: "compte", lib: "GMS / Prestige" }, { k: "detail", lib: "Détail complet" },
 ];
-function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, preset, email = "", auteur = "" }: { c: Couleurs; voirMarge: boolean; voirEuros?: boolean; ventes: LigneVente[] | null; equipes: Record<string, string>; preset: Preset; email?: string; auteur?: string }) {
+function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, preset, email = "", auteur = "", arrivages }: { c: Couleurs; voirMarge: boolean; voirEuros?: boolean; ventes: LigneVente[] | null; equipes: Record<string, string>; preset: Preset; email?: string; auteur?: string; arrivages?: any[] | null }) {
+  // 14/10/2026 — Refus/réserves à l'arrivage et litiges clients aussi dans « Détail complet ».
+  const [qualiteV, setQualiteV] = useState<{ rapports: any[]; retours: any[] } | null>(null);
+  const [litigesV, setLitigesV] = useState<any[]>([]);
+  const [rapportOuvertV, setRapportOuvertV] = useState<any>(null);
+  useEffect(() => { chargerQualite().then(setQualiteV); chargerLitigesClients().then(setLitigesV); }, []);
+  const litigesDeV = (l: LigneVente) => litigesV.filter(x => x.clientFacture === l.c && x.article === l.a && x.dateLivraison === l.d);
+  const arrivagesPbDeV = (l: LigneVente) => (arrivages || []).filter(a => { const j = isoArrivage(a.date); return (a.statut === "sous réserve" || a.statut === "refusé") && j <= l.d && j >= plusJours(l.d, -15) && memeNom(a.fournisseur || "", l.f) && memeNom(a.produit || "", l.a); });
   const rp = preset.rapport?.config;
   const maxDate = useMemo(() => (ventes || []).reduce((m, l) => (l.d > m ? l.d : m), ""), [ventes]);
   const minDate = useMemo(() => (ventes || []).reduce((m, l) => (!m || l.d < m ? l.d : m), ""), [ventes]);
@@ -699,21 +706,29 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
   const mXl = (x: { ven: number; ach: number; res: number }) => !voirEuros ? [] : [r2(x.ven), ...(voirMarge ? [r2(x.ach), r2(x.res), x.ven ? r2(x.res / x.ven * 100) : ""] : [])];
   const colsM = !voirEuros ? [] : ["Vente HT", ...(voirMarge ? ["Achat HT", "Résultat", "Marge"] : [])];
   const nomVue = VUES.find(v => v.k === vue)?.lib || "";
-  let entetes: string[], aff: (string | number)[][], xl: (string | number)[][], n0: number;
+  let entetes: string[], aff: any[][], xl: (string | number)[][], n0: number;
   if (vue === "detail") {
     const g = [...choisies].sort((a, b) => a.d.localeCompare(b.d) || a.c.localeCompare(b.c));
-    entetes = ["Date", "Article", "Famille", "Compte", "Client", "Fournisseur", "Colis", "Pièces", "Poids net (kg)", ...colsM]; n0 = 6;
-    aff = g.map(l => [dateFr(l.d), l.a, l.fam, eq(l.a), l.c, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...mAff(l)]);
-    xl = g.map(l => [dateFr(l.d), l.a, l.fam, eq(l.a), l.c, l.f, r2(l.col), r2(l.pc), r2(l.kg), ...mXl(l)]);
+    entetes = ["Date", "Article", "Famille", "Compte", "Client", "Fournisseur", "Colis", "Pièces", "Poids net (kg)", ...colsM, "Qualité à l'arrivage", "Litige client"]; n0 = 6;
+    aff = g.map(l => {
+      const pb = arrivagesPbDeV(l), r = pb.map(a => rapportDeArrivage(a, qualiteV?.rapports)).find(Boolean), lit = litigesDeV(l);
+      const qual = pb.length ? <span key="q" style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><BadgeQualite statut={pb.some(a => a.statut === "refusé") ? "refusé" : "sous réserve"} />{r && <BoutonRapport c={c} onClick={() => setRapportOuvertV(r)} />}</span> : "";
+      const litAff = lit.length ? <span key="l" style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>{lit.map(x => <BadgeLitigeClient key={x.id} litige={x} />)}</span> : "";
+      return [dateFr(l.d), l.a, l.fam, eq(l.a), l.c, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...mAff(l), qual, litAff];
+    });
+    xl = g.map(l => {
+      const pb = arrivagesPbDeV(l), lit = litigesDeV(l);
+      return [dateFr(l.d), l.a, l.fam, eq(l.a), l.c, l.f, r2(l.col), r2(l.pc), r2(l.kg), ...mXl(l), pb.length ? (pb.some(a => a.statut === "refusé") ? "Refusé à l'arrivage" : "Réserve à l'arrivage") : "", lit.map(x => `${x.type}${Number(x.colisRefuses) ? ` ${x.colisRefuses} colis` : ""}${x.motif ? ` (${x.motif})` : ""}`).join(" · ")];
+    });
   } else {
     entetes = [nomVue.replace("Par ", "").replace(/^./, s => s.toUpperCase()), "Colis", "Pièces", "Poids net (kg)", ...colsM, voirEuros ? "Part des ventes" : "Part des colis"]; n0 = 1;
     aff = groupes.map(x => [libCle(x.k), ent(x.col), x.pc ? ent(x.pc) : "", x.kg ? kg(x.kg) : "", ...mAff(x), voirEuros ? (t.ven ? pct(x.ven, t.ven) : "") : (t.col ? pct(x.col, t.col) : "")]);
     xl = groupes.map(x => [libCle(x.k), r2(x.col), r2(x.pc), r2(x.kg), ...mXl(x), voirEuros ? (t.ven ? r2(x.ven / t.ven * 100) : "") : (t.col ? r2(x.col / t.col * 100) : "")]);
   }
   const vides = Array(n0 - 1).fill("");
-  const totalAff = ["TOTAL", ...vides, ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...mAff(t), ...(vue === "detail" ? [] : ["100 %"])];
-  const totalXl = ["TOTAL", ...vides, r2(t.col), r2(t.pc), r2(t.kg), ...mXl(t), ...(vue === "detail" ? [] : [100])];
-  const droite = entetes.map((_, i) => i).filter(i => i >= n0);
+  const totalAff = ["TOTAL", ...vides, ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...mAff(t), ...(vue === "detail" ? ["", ""] : ["100 %"])];
+  const totalXl = ["TOTAL", ...vides, r2(t.col), r2(t.pc), r2(t.kg), ...mXl(t), ...(vue === "detail" ? ["", ""] : [100])];
+  const droite = entetes.map((_, i) => i).filter(i => i >= n0 && !(vue === "detail" && i >= entetes.length - 2));
   const resume = [...familles.map(f => `famille ${f}`), ...articles, ...(compte !== "tous" ? [`compte ${compte}`] : []), ...clients.map(x => `client ${x}`), ...fournisseurs.map(x => `fournisseur ${x}`)];
   const titre = `Ventes — ${resume.length ? resume.slice(0, 4).join(", ") + (resume.length > 4 ? "…" : "") : "tous les produits"} — du ${dateFr(debut)} au ${dateFr(fin)}`;
   if (ventes === null) return <p style={{ color: c.gris }}>Chargement de la base des ventes…</p>;
@@ -746,6 +761,7 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
         )}
         {rienChoisi && <p style={{ margin: "8px 0 0", fontSize: 12, color: c.gris }}>Rien de choisi : tous les produits de la période sont comptés.</p>}
       </Bloc>
+      {rapportOuvertV && <FicheRapport c={c} rapport={rapportOuvertV} onClose={() => setRapportOuvertV(null)} />}
       {enregistrement && (
         <EnregistrerRapport c={c} email={email} auteur={auteur} existant={preset.rapport && preset.rapport.auteurEmail === email ? preset.rapport : undefined}
           config={{ periode: periodeRapide ? { type: "glissant", cle: periodeRapide } : { type: "fixe", debut, fin }, articles, familles, clients, fournisseurs, compte, vue }}
