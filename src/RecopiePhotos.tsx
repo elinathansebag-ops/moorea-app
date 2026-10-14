@@ -37,7 +37,8 @@ export default function RecopiePhotos() {
       const produitsGroupe = Array.isArray(r?.produitsGroupe) ? r.produitsGroupe.map((p: any) => ({ ...p, ...(p?.photoUrls ? { photoUrls: garde(p.photoUrls) } : {}) })) : null;
       const apres = photoUrls.length + (produitsGroupe || []).reduce((t: number, p: any) => t + (p?.photoUrls || []).length, 0);
       if (apres === avant) continue;
-      await update(ref(db, `rapports/${cle}`), { photoUrls, nbPhotos: photoUrls.length, ...(produitsGroupe ? { produitsGroupe } : {}) });
+      // photosPerdues : affiche le rappel « photos à remettre » sur la page des rapports.
+      await update(ref(db, `rapports/${cle}`), { photoUrls, nbPhotos: photoUrls.length, photosPerdues: true, ...(produitsGroupe ? { produitsGroupe } : {}) });
       n++;
     }
     setErreurs(erreurs.filter(e => !mortes.has(e.url)));

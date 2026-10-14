@@ -2602,6 +2602,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         observations, score,
         photoUrls,
         nbPhotos: photoUrls.length,
+        // 14/10/2026 — Photos remises après la perte ImgBB : le rappel disparaît.
+        photosPerdues: photoUrls.length ? null : (editRapport.photosPerdues || null),
         modifiedAt: Date.now(),
       };
       const rapportRef = ref(db, `rapports/${editRapport.firebaseKey}`);
@@ -6018,6 +6020,28 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       </button>
                     );
                   })}
+                </div>
+              );
+            })()}
+            {/* 14/10/2026 — Photos perdues chez ImgBB (bug technique) : message pour Alban, avec un
+                bouton qui ouvre directement le formulaire du rapport. Rapports de moins de 3 jours. */}
+            {(() => {
+              const limite = Date.now() - 3 * 86400000;
+              const dateRapport = (r: any) => r.timestamp || (() => { const [j, m, a] = String(r.date || "").split("/").map(Number); return a ? new Date(a, m - 1, j).getTime() : 0; })();
+              const aRefaire = rapports.filter(r => r.photosPerdues && !(r.photoUrls?.length) && dateRapport(r) >= limite);
+              if (!aRefaire.length || !(nomSignataire() === "Alban" || monAcces.isAdmin)) return null;
+              return (
+                <div style={{ marginBottom: 12, padding: "14px 16px", borderRadius: 14, background: "#fffbeb", border: "2px solid #fcd34d" }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 800, color: "#92400e", marginBottom: 4 }}>📷 Alban, des photos sont à remettre</div>
+                  <div style={{ fontSize: 13, color: "#78350f", marginBottom: 10 }}>Suite à un bug technique, les photos de ces rapports ont été perdues. Merci de les remettre : ouvre le rapport, ajoute les photos, puis enregistre.</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {aRefaire.map(r => (
+                      <div key={r.firebaseKey || r.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#fff", borderRadius: 10, padding: "8px 12px", border: "1px solid #fde68a" }}>
+                        <span style={{ flex: 1, minWidth: 180, fontSize: 13 }}><b>{r.numeroRapport || ""}</b> · {r.produit || ""}<br /><span style={{ color: "#6b7280", fontSize: 12 }}>{r.fournisseur || ""} · {r.date || ""}{r.heure ? ` à ${r.heure}` : ""}</span></span>
+                        <button type="button" onClick={() => chargerRapportEdition(r)} style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: "#d97706", color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 13 }}>📷 Remettre les photos →</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })()}
