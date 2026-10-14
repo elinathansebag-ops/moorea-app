@@ -215,6 +215,12 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
   const [cfgEchelle, setCfgEchelle] = useState(DEFAULT_ECHELLE);
 
   const [selectedCell, setSelectedCell] = useState<{ row: number; bay: number; slot: number } | null>(null);
+  // 15/10/2026 — Confirmations dans la page (window.confirm était bloqué par une extension du
+  // navigateur → « Sortir du rack » ne faisait rien).
+  const [confirmSortie, setConfirmSortie] = useState(false);
+  const [confirmVider, setConfirmVider] = useState(false);
+  const [viderEnCours, setViderEnCours] = useState(false);
+  useEffect(() => { setConfirmSortie(false); }, [selectedCell]);
   const [moving, setMoving] = useState<{ wallId: string; row: number; bay: number; slot: number; data: PalettePos } | null>(null);
   const [duplicating, setDuplicating] = useState<PalettePos | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -360,6 +366,9 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
   // (pas de renvoi à chaque fois que quelqu'un ouvre la page — une trace "déjà envoyée" est gardée dans Firebase,
   // partagée entre tous les appareils. L'envoi ne se déclenche que pendant que le module Rotation racks est ouvert
   // dans un navigateur : il n'y a pas de tâche automatique côté serveur dans cette appli.)
+  // 15/10/2026 — Clés déjà tentées dans cette session : en cas d'échec d'EmailJS (erreur 400),
+  // on ne renvoie plus à chaque changement de position (des dizaines d'erreurs d'affilée).
+  const alertesTenteesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
     const dejaEnvoyesRef = ref(db, "rack_alertes_envoyees");
@@ -373,11 +382,12 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
           const status = dlcStatus(p.dlc);
           if (status?.label !== "Dépassée") return;
           const alertKey = `${wallId}_${key}_${p.timestamp || p.dlc}`;
-          if (dejaEnvoyes[alertKey]) return;
+          if (dejaEnvoyes[alertKey] || alertesTenteesRef.current.has(alertKey)) return;
           aPrevenir.push({ alertKey, wallLabel: configs[wallId]?.label || WALL_DEFAULT_LABELS[idx], produit: p.produit, dlc: p.dlc || "" });
         });
       });
       if (aPrevenir.length === 0) return;
+      aPrevenir.forEach(a => alertesTenteesRef.current.add(a.alertKey));
       (async () => {
         try {
           const liste = aPrevenir.map(a => `• ${a.produit} — ${a.wallLabel} — DLC du ${a.dlc ? new Date(a.dlc).toLocaleDateString("fr-FR") : "?"}`).join("\n");
@@ -846,8 +856,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
     if (!selectedCell) return;
     const data = positions[cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)];
     if (!data) return;
-    if (data.verrouille) { alert("🔒 Palette verrouillée — déverrouille-la depuis la Configuration avant de la sortir du rack."); return; }
-    if (!window.confirm(`Sortir "${data.produit}" du rack ?`)) return;
+    if (data.verrouille) return;
     try {
       await push(ref(db, "rack_historique"), {
         ...data, wallId: activeWall, wallLabel: cfg.label,
@@ -857,7 +866,31 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)}`));
       logActiviteRack("Sortie palette (rack)", `${data.produit || ""} · ${cfg.label}`);
       setSelectedCell(null);
-    } catch { alert("Erreur"); }
+    } catch (e: any) { console.error("Sortie palette :", e); setConfirmSortie(false); }
+  };
+
+  // 15/10/2026 — Demande d'Elinathan : « un bouton vider le rack ». Sort TOUTES les palettes du mur
+  // affiché (sauf verrouillées) : chacune est d'abord copiée dans l'historique (comme « Sortir du
+  // rack »), puis retirée du mur en une seule écriture.
+  const viderMur = async () => {
+    const aSortir = Object.entries(positions).filter(([, p]) => p && !p.verrouille);
+    if (!aSortir.length) { setConfirmVider(false); return; }
+    setViderEnCours(true);
+    try {
+      const sortieLe = new Date().toLocaleDateString("fr-FR"), sortiePar = nomSignataire() || "";
+      for (const [key, p] of aSortir) {
+        const [row, bay, slot] = key.split("_").map(Number);
+        await push(ref(db, "rack_historique"), { ...p, wallId: activeWall, wallLabel: cfg.label, row, bay, slot, sortieLe, action: "sortie", sortiePar, vidageMur: true });
+      }
+      const maj: Record<string, null> = {};
+      aSortir.forEach(([key]) => { maj[key] = null; });
+      await update(ref(db, `rack_positions/${activeWall}`), maj);
+      logActiviteRack("Mur vidé (rack)", `${aSortir.length} palette(s) · ${cfg.label}`);
+    } catch (e: any) {
+      console.error("Vider le mur :", e);
+    }
+    setViderEnCours(false);
+    setConfirmVider(false);
   };
 
   const nbOccupees = Object.keys(positions).length;
@@ -1218,6 +1251,30 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
                 <button onClick={() => { setScanStatus(""); setShowScanner(true); }} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#8b5cf6", color: "#fff", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Scanner une palette</button>
               </>
             )}
+          </div>
+        )}
+        {Object.keys(positions).length > 0 && (
+          <div style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: 8, marginTop: -6, marginBottom: 10, flexWrap: "wrap" }}>
+            {!confirmVider ? (
+              <button onClick={() => setConfirmVider(true)}
+                style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #fca5a5", background: "#fff", color: "#dc2626", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                🗑 Vider ce mur
+              </button>
+            ) : (() => {
+              const nb = Object.values(positions).filter(p => p && !p.verrouille).length;
+              const nbVerr = Object.keys(positions).length - nb;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 10, padding: "6px 10px", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
+                    Sortir les {nb} palette{nb > 1 ? "s" : ""} de « {cfg.label} » ?{nbVerr > 0 ? ` (${nbVerr} verrouillée${nbVerr > 1 ? "s" : ""} gardée${nbVerr > 1 ? "s" : ""})` : ""} Elles restent dans l'historique.
+                  </span>
+                  <button onClick={viderMur} disabled={viderEnCours || !nb}
+                    style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{viderEnCours ? "⏳ En cours…" : "Oui, tout sortir"}</button>
+                  <button onClick={() => setConfirmVider(false)} disabled={viderEnCours}
+                    style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Annuler</button>
+                </div>
+              );
+            })()}
           </div>
         )}
         {!isStockage && modeEffectif === "scan" && !paletteScanEnAttente && (
@@ -1606,10 +1663,18 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
             <button onClick={startDuplicate} style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #c4b5fd", background: "#faf5ff", color: "#7c3aed", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
               📋 Dupliquer (et modifier)
             </button>
-            <button onClick={handleRemove} disabled={selectedData.verrouille}
-              style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #fca5a5", background: selectedData.verrouille ? "#f9fafb" : "#fef2f2", color: selectedData.verrouille ? "#d1d5db" : "#dc2626", fontWeight: 700, fontSize: 13, cursor: selectedData.verrouille ? "not-allowed" : "pointer" }}>
-              🗑 Sortir du rack
-            </button>
+            {confirmSortie ? (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 10, padding: 6 }}>
+                <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: "#dc2626", paddingLeft: 6 }}>Sortir cette palette du rack ?</span>
+                <button onClick={handleRemove} style={{ padding: "9px 14px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>Oui, sortir</button>
+                <button onClick={() => setConfirmSortie(false)} style={{ padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Annuler</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmSortie(true)} disabled={selectedData.verrouille}
+                style={{ width: "100%", padding: "11px", borderRadius: 10, border: "1.5px solid #fca5a5", background: selectedData.verrouille ? "#f9fafb" : "#fef2f2", color: selectedData.verrouille ? "#d1d5db" : "#dc2626", fontWeight: 700, fontSize: 13, cursor: selectedData.verrouille ? "not-allowed" : "pointer" }}>
+                🗑 Sortir du rack
+              </button>
+            )}
           </div>
         </div>
       )}

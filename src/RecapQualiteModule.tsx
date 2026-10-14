@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { PageHeader } from "./shared";
+import { MesuresQualite } from "./MesuresQualite";
 
 // ─── Module "🧪 Récap Qualité" ───
 // 23/09/2026 -- Demande d'Elinathan : "un module pour la qualité où on voit le récap de tous les
@@ -75,6 +76,8 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
   const [du, setDu] = useState("");
   const [au, setAu] = useState("");
   const [lotOuvert, setLotOuvert] = useState<string | null>(null);
+  // 15/10/2026 — Trois rubriques : traçabilité, températures seules, poids seuls.
+  const [rubrique, setRubrique] = useState<"traca" | "temperature" | "poids">("traca");
   const [filtreDecision, setFiltreDecision] = useState<"" | "ok" | "reserve" | "refus">("");
   const [vue, setVue] = useState<"cartes" | "tableau">(() => {
     try { return localStorage.getItem("recap_qualite_vue") === "tableau" ? "tableau" : "cartes"; } catch { return "cartes"; }
@@ -213,7 +216,16 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
   return (
     <div style={{ minHeight: "100vh", background: "#faf9f6" }}>
       <PageHeader titre="🧪 Récap Qualité" couleur="#16a34a" onBack={onClose} />
-      <div style={{ maxWidth: vue === "cartes" ? 1200 : 900, margin: "0 auto", padding: 16 }}>
+      <div style={{ maxWidth: vue === "cartes" || rubrique !== "traca" ? 1200 : 900, margin: "0 auto", padding: 16 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+          {([["traca", "🏷️ Traçabilité", "#1a2e1a"], ["temperature", "🌡️ Températures", "#1d4ed8"], ["poids", "⚖️ Poids", "#7c3aed"]] as const).map(([cle, lib, c]) => {
+            const actif = rubrique === cle;
+            return (
+              <button key={cle} type="button" onClick={() => setRubrique(cle)}
+                style={{ padding: "9px 18px", borderRadius: 12, border: `2px solid ${actif ? c : "#e8e0d0"}`, background: actif ? c : "#fff", color: actif ? "#fff" : c, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{lib}</button>
+            );
+          })}
+        </div>
         <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginBottom: 14, border: "1.5px solid #e8e0d0" }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
             <label style={{ fontSize: 11, color: "#6b7280" }}>Rechercher
@@ -234,17 +246,17 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
                 ✕
               </button>
             )}
-            <span style={{ marginLeft: "auto", display: "inline-flex", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+            {rubrique === "traca" && <span style={{ marginLeft: "auto", display: "inline-flex", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
               {(["cartes", "tableau"] as const).map(v => (
                 <button key={v} type="button" onClick={() => changerVue(v)}
                   style={{ padding: "7px 12px", border: "none", background: vue === v ? "#1a2e1a" : "#fff", color: vue === v ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                   {v === "cartes" ? "▦ Cartes" : "☰ Tableau"}
                 </button>
               ))}
-            </span>
+            </span>}
           </div>
           {/* Filtres rapides par décision (la plus grave du lot). */}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {rubrique === "traca" && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
             {([["", "Tous", groupes.length, "#1a2e1a", "#f3f4f6"], ["ok", "OK", nbParDecision.ok, "#16a34a", "#f0fdf4"], ["reserve", "Réserve", nbParDecision.reserve, "#d97706", "#fffbeb"], ["refus", "Refusé", nbParDecision.refus, "#dc2626", "#fef2f2"]] as const).map(([cle, lib, n, c, bg]) => {
               const actif = filtreDecision === cle;
               return (
@@ -254,14 +266,16 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
                 </button>
               );
             })}
-          </div>
-          <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
+          </div>}
+          {rubrique === "traca" && <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
             {groupes.length} lot(s) · {rapportsFiltres.length} rapport(s)
             {plageComplete && <> · historique complet : du {plageComplete.min} au {plageComplete.max}</>}
-          </p>
+          </p>}
         </div>
 
-        {groupesVisibles.length === 0 ? (
+        {rubrique !== "traca" ? (
+          <MesuresQualite type={rubrique} rapports={rapports} arrivages={arrivages} recherche={rechercheLot} du={du} au={au} />
+        ) : groupesVisibles.length === 0 ? (
           <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 13, padding: "3rem 0" }}>Aucun rapport qualité sur cette sélection.</p>
         ) : vue === "cartes" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
