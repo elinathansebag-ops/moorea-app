@@ -36,7 +36,7 @@ type PeriodeRapport = { type: "fixe"; debut: string; fin: string } | { type: "gl
 type ConfigRapport = { periode: PeriodeRapport; articles: string[]; familles: string[]; clients: string[]; fournisseurs: string[]; compte: "tous" | "GMS" | "PRESTIGE"; vue: string };
 type Rapport = { id: string; nom: string; auteur?: string; auteurEmail: string; creeLe: number; majLe?: number; partage: "moi" | "tous" | "choix"; partageAvec?: Record<string, boolean>; favoris?: Record<string, boolean>; config: ConfigRapport };
 const LIB_GLISSANT: Record<string, string> = { "7": "7 derniers jours", "30": "30 derniers jours", mois: "Ce mois", moisPrec: "Mois dernier", annee: "Cette année", tout: "Toute la base" };
-type Couleurs = { fond: string; carte: string; texte: string; gris: string; bord: string; vert: string; sombre: boolean };
+export type Couleurs = { fond: string; carte: string; texte: string; gris: string; bord: string; vert: string; sombre: boolean };
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const dateFr = (s: string) => (s ? s.split("-").reverse().join("/") : "");
@@ -1550,7 +1550,8 @@ function BadgeQualite({ statut }: { statut?: string }) {
 function BoutonRapport({ c, onClick }: { c: Couleurs; onClick: () => void }) {
   return <button type="button" onClick={onClick} style={{ padding: "3px 10px", borderRadius: 8, border: `1.5px solid ${c.vert}`, background: c.carte, color: c.vert, fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>📋 Rapport</button>;
 }
-function FicheRapport({ c, rapport: r, onClose }: { c: Couleurs; rapport: any; onClose: () => void }) {
+// 14/10/2026 — Exportée : aussi utilisée par 🧪 Récap qualité (QualiteDashboard.tsx), en lecture seule.
+export function FicheRapport({ c, rapport: r, onClose }: { c: Couleurs; rapport: any; onClose: () => void }) {
   const dec = String(r.decision || "");
   const st = dec === "refus" ? { t: "⛔ Refus", f: "#b91c1c" } : dec === "reserve" ? { t: "⚠️ Sous réserve", f: "#b45309" } : { t: "✓ Conforme", f: "#15803d" };
   const ligne = (k: string, v: any) => v === undefined || v === null || v === "" ? null : (

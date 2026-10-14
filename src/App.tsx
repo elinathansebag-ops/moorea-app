@@ -4402,14 +4402,22 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   if (showQualiteHub) {
     const ouvrir = (f: () => void) => () => { setShowQualiteHub(false); setRetourHub("qualite"); f(); };
     // 14/10/2026 — Tableau de bord qualité (QualiteDashboard.tsx) au lieu d'un sommaire de modules.
-    const versRapports = (texte = "") => { setShowQualiteHub(false); setRetourHub(null); setSearchText(texte); setVue("historique"); setPageMode("arrivages"); window.scrollTo(0, 0); };
+    // 14/10/2026 — Depuis le tableau de bord : filtres exacts (fournisseur / produit) de la page des
+    // rapports, et « Retour » ramène au Récap qualité (retourHub).
+    const nomQ = (x: any) => String(x || "").trim().toUpperCase();
+    const versRapports = (f: { fournisseur?: string; produit?: string } = {}) => {
+      const exact = (champ: "fournisseur" | "produit", v?: string) => v ? (rapports.find(r => nomQ(r[champ]) === nomQ(v))?.[champ] || v) : "";
+      setSearchText(""); setFilterDecision(""); setFilterDateDebut(""); setFilterDateFin("");
+      setFilterFournisseur(exact("fournisseur", f.fournisseur)); setFilterProduit(exact("produit", f.produit));
+      setShowQualiteHub(false); setRetourHub("qualite"); setVue("historique"); setPageMode("arrivages"); window.scrollTo(0, 0);
+    };
     const raccourcis = [
-      ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", onClick: () => versRapports("") }] : []),
+      ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", onClick: () => versRapports() }] : []),
       ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité, températures, poids", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
       ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
       // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
     ];
-    return <>{fabScanner}{invitationNotif}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirRecherche={t => monAcces.hasModule("rapports") && versRapports(t)} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
+    return <>{fabScanner}{invitationNotif}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirFournisseur={n => monAcces.hasModule("rapports") && versRapports({ fournisseur: n })} ouvrirProduit={n => monAcces.hasModule("rapports") && versRapports({ produit: n })} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
   }
 
   if (showApproHub) {
@@ -4526,7 +4534,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       <>{fabScanner}{invitationNotif}{fenetresPdf}
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
-        <PageHeader titre="🔍 Recherche" couleur="#3b82f6" onBack={() => { setShowRecherche(false); setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
+        <PageHeader titre="🔍 Recherche" couleur="#3b82f6" onBack={() => { setShowRecherche(false); if (retourHub) versAccueilOuRubrique(); else setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 20px 60px", boxSizing: "border-box" }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: "16px", marginBottom: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
             <input
@@ -4968,7 +4976,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
       <PageHeader
         titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
-        onBack={vue === "form" ? () => setVue("historique" as any) : () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
+        onBack={vue === "form" ? () => setVue("historique" as any) : retourHub ? () => { setFilterFournisseur(""); setFilterProduit(""); versAccueilOuRubrique(); } : () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
         onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
       />
 
@@ -6114,6 +6122,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               );
             })()}
+            {/* 14/10/2026 — Filtre fournisseur / produit actif (souvent posé depuis 🧪 Récap qualité) : visible. */}
+            {(filterFournisseur || filterProduit) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10, padding: "10px 14px", borderRadius: 12, background: "#eaf2ee", border: "1.5px solid #305a5533" }}>
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 800, color: "#1f4440" }}>
+                  {filterFournisseur ? `🏭 Rapports de ${filterFournisseur}` : `🥬 Rapports de ${filterProduit}`}
+                  <span style={{ fontWeight: 600, color: "#5e6b69" }}> · {rapports.filter(r => (!filterFournisseur || r.fournisseur === filterFournisseur) && (!filterProduit || r.produit === filterProduit)).length} rapport(s)</span>
+                </span>
+                <button type="button" onClick={() => { setFilterFournisseur(""); setFilterProduit(""); }} style={{ padding: "6px 12px", borderRadius: 999, border: "1.5px solid #305a5555", background: "#fff", color: "#1f4440", fontWeight: 800, cursor: "pointer", fontSize: 12.5 }}>✕ Voir tous les rapports</button>
+              </div>
+            )}
             {/* 14/10/2026 — Photos perdues chez ImgBB (bug technique) : message pour Alban, avec un
                 bouton qui ouvre directement le formulaire du rapport. Rapports de moins de 3 jours. */}
             {(() => {
@@ -6175,7 +6193,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       r.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
                       r.fournisseur?.toLowerCase().includes(searchText.toLowerCase()) ||
                       r.lotMoorea?.toLowerCase().includes(searchText.toLowerCase()) ||
-                      r.agreeur?.toLowerCase().includes(searchText.toLowerCase());
+                      r.agreeur?.toLowerCase().includes(searchText.toLowerCase()) ||
+                      String(r.numeroRapport || "").toLowerCase().includes(searchText.toLowerCase());
                     const matchDecision = !filterDecision || r.decision === filterDecision;
                     const matchFournisseur = !filterFournisseur || r.fournisseur === filterFournisseur;
                     const matchProduit = !filterProduit || r.produit === filterProduit;
@@ -6273,7 +6292,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   r.produit?.toLowerCase().includes(searchText.toLowerCase()) ||
                   r.fournisseur?.toLowerCase().includes(searchText.toLowerCase()) ||
                   r.lotMoorea?.toLowerCase().includes(searchText.toLowerCase()) ||
-                  r.agreeur?.toLowerCase().includes(searchText.toLowerCase());
+                  r.agreeur?.toLowerCase().includes(searchText.toLowerCase()) ||
+                  String(r.numeroRapport || "").toLowerCase().includes(searchText.toLowerCase());
                 const matchDecision = !filterDecision || r.decision === filterDecision;
                 const matchFournisseur = !filterFournisseur || r.fournisseur === filterFournisseur;
                 const matchProduit = !filterProduit || r.produit === filterProduit;
