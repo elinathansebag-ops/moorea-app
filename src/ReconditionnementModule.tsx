@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
 import { BarreMailsRecond } from "./BarreMailsRecond";
-import { noterHistoriqueDemande } from "./historiqueRecond";
+import { noterHistoriqueDemande, parDansHistorique } from "./historiqueRecond";
 import { alerterRecond, alerterPush } from "./NotificationsPush";
 import { aPdfDemande, lirePdfDemande, ecrirePdfDemande, type ChampPdfRecond } from "./pdfsRecond";
 import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
@@ -1438,7 +1438,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     try {
       await update(ref(db, `reajustements_stock_demandes/${r.id}`), {
         statut: valider ? "validé" : "refusé",
-        traitePar: userName,
+        traitePar: userName || "",
         traiteDate: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
       });
       if (valider) {
@@ -1450,6 +1450,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           ancienneValeur: r.quantiteActuelle,
           nouvelleValeur: r.quantiteProposee,
           raison: `Réajustement demandé par ${DEPOT_LABEL[r.depot]} (${r.raison}) — validé par ${userName}`,
+          par: userName || "",
           date: new Date().toLocaleDateString("fr-FR"),
           timestamp: Date.now(),
         });
@@ -1492,7 +1493,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     if (!raisonAjustMoorea.trim()) { notify("error", "✗ Indique une raison pour la correction"); return; }
     const ancienneValeur = stockIfco.moorea;
     await update(ref(db, "ifco_stock/levels"), { moorea: v });
-    await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+    await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), par: userName || "", date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
     setAjustStockMoorea(""); setRaisonAjustMoorea("");
     notify("success", "✓ Stock IFCO Moorea ajusté");
   }
@@ -1503,7 +1504,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     if (!raisonAjustNlt.trim()) { notify("error", "✗ Indique une raison pour la correction"); return; }
     const ancienneValeur = stockIfco.nlt;
     await update(ref(db, "ifco_stock/levels"), { nlt: v });
-    await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+    await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), par: userName || "", date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
     setAjustStockNlt(""); setRaisonAjustNlt("");
     notify("success", "✓ Stock IFCO NLT ajusté");
   }
@@ -1514,7 +1515,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     if (!raisonAjustAndes.trim()) { notify("error", "✗ Indique une raison pour la correction"); return; }
     const ancienneValeur = stockBabyBlancAndes;
     await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
-    await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+    await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), par: userName || "", date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
     setAjustStockAndes(""); setRaisonAjustAndes("");
     notify("success", "✓ Stock carton Baby Blanc (Andes) ajusté");
   }
@@ -2242,6 +2243,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       entrepotPretDate: null,
       nbPalettesDepart: null,
       departDate: null,
+      departPar: null,
     });
     notify("success", "↩️ Demande remise à l'étape « en attente »");
   }
@@ -2300,6 +2302,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "prêt",
       departDate: null,
+      departPar: null,
     });
     notify("success", "↩️ Demande repassée à « prêt »");
   }
@@ -3234,7 +3237,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   }
 
   async function annulerDemande(id: string) {
-    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "annulé" });
+    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: "annulé", annulePar: userName || "" }); // 14/10/2026 — qui a annulé
     noterHistoriqueDemande(id, "Annulée", userName);
     // 25/09/2026 — L'arrivage existant dès la création : une demande annulée ne doit plus rien
     // attendre dans « Pointer arrivage ».
@@ -3254,7 +3257,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
     // "reçu" au lieu de rester coincé sur "parti" pour toujours (rien ne le fait jamais avancer
     // ensuite, puisqu'il n'y a pas de retour à pointer dans "Pointer arrivage").
     const statutFinal = d.nbColisAEntrer == null ? "reçu" : "parti";
-    await update(ref(db, `reconditionnement_demandes/${d.id}`), { statut: statutFinal, departDate: nowFr() });
+    await update(ref(db, `reconditionnement_demandes/${d.id}`), { statut: statutFinal, departDate: nowFr(), departPar: userName || "" }); // 14/10/2026 — qui a validé le départ
     noterHistoriqueDemande(d.id, statutFinal === "reçu" ? "Marquée partie et terminée" : "Marquée partie chez le reconditionneur", userName);
     if (statutFinal === "parti") alerterRecond([d], "parti", userName); // 10/10/2026 — notification push à Elinathan
 
@@ -4284,11 +4287,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       </div>
                     )}
                     {(d.statut === "parti" || d.statut === "reçu") && d.departDate && (
-                      <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>Parti le {d.departDate}</div>
+                      <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>Parti le {d.departDate}{(() => { const p = (d as any).departPar || parDansHistorique(d, "Marquée partie", "Départ"); return p ? <span style={{ color: "#9ca3af" }}> · {p}</span> : null; })()}</div>
                     )}
                     {d.statut === "reçu" && d.retour && (
                       <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
-                        Reçu le {d.retour.date} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé"}
+                        Reçu le {d.retour.date}{(() => { const p = (d.retour as any).par || parDansHistorique(d, "Retour pointé"); return p ? <span style={{ color: "#9ca3af" }}> · {p}</span> : null; })()} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé"}
                         {d.retour.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
                         {d.retour.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : ""}
                         {` · ${d.retour.nbPalettes?.grandes || 0} grande(s) + ${d.retour.nbPalettes?.demi || 0} demi-palette(s)`}

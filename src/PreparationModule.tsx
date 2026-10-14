@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { noterHistoriqueDemande } from "./historiqueRecond";
+import { noterHistoriqueDemande, parDansHistorique } from "./historiqueRecond";
 import { alerterRecond } from "./NotificationsPush";
 import { aPdfDemande, lirePdfDemande } from "./pdfsRecond";
 import { db, ref, push, onValue, update, remove } from "./firebase";
@@ -298,7 +298,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     try {
       await update(ref(db, `reajustements_stock_demandes/${r.id}`), {
         statut: valider ? "validé" : "refusé",
-        traitePar: userName,
+        traitePar: userName || "",
         traiteDate: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
       });
       if (valider) {
@@ -310,6 +310,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           ancienneValeur: r.quantiteActuelle,
           nouvelleValeur: r.quantiteProposee,
           raison: `Réajustement demandé par ${DEPOT_LABEL[r.depot]} (${r.raison}) — validé par ${userName}`,
+          par: userName || "",
           date: new Date().toLocaleDateString("fr-FR"),
           timestamp: Date.now(),
         });
@@ -466,7 +467,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     // "Pointer arrivage", qui n'existe pas pour ces envois à sens unique). On le valide donc
     // directement "reçu" dès le départ, plutôt que de le laisser affiché comme en transit.
     const statutFinal = demande && demande.nbColisAEntrer == null ? "reçu" : "parti";
-    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: statutFinal, departDate: nowFr(), ...(extra || {}) });
+    await update(ref(db, `reconditionnement_demandes/${id}`), { statut: statutFinal, departDate: nowFr(), departPar: userName || "", ...(extra || {}) }); // 14/10/2026 — qui a validé le départ
     noterHistoriqueDemande(id, statutFinal === "reçu" ? "Marquée partie et terminée (pas de retour attendu)" : "Marquée partie chez le reconditionneur", userName);
 
     // Le retour n'est plus pointé depuis une modale ici : on crée l'arrivage attendu
@@ -555,6 +556,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
     await update(ref(db, `reconditionnement_demandes/${id}`), {
       statut: "prêt",
       departDate: null,
+      departPar: null,
     });
     noterHistoriqueDemande(id, "Repassée de « partie » à « prête »", userName);
     notify("success", "↩️ Demande repassée à « prêt »");
@@ -1003,6 +1005,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                         {(d.statut === "parti" || d.statut === "reçu") && d.departDate && (
                                           <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
                                             Parti le {d.departDate}
+                                            {(() => { const p = (d as any).departPar || parDansHistorique(d, "Marquée partie"); return p ? <span style={{ color: "#9ca3af" }}> · {p}</span> : null; })()}
                                             {d.nbPalettesDepart
                                               ? ` — ${d.nbPalettesDepart.grandes} grande(s) + ${d.nbPalettesDepart.demi} demi-palette(s) déclarée(s)`
                                               : " — transport assuré par Moorea, pas de palette à indiquer"}
@@ -1010,7 +1013,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                         )}
                                         {d.statut === "reçu" && d.retour && (
                                           <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
-                                            Reçu le {d.retour.date} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé"}
+                                            Reçu le {d.retour.date}{(() => { const p = (d.retour as any).par || parDansHistorique(d, "Retour pointé"); return p ? <span style={{ color: "#9ca3af" }}> · {p}</span> : null; })()} — {d.retour.qualite === "conforme" ? "✅ Conforme" : "⚠️ Problème signalé"}
                                             {d.retour.nbColisRecus != null ? ` · ${d.retour.nbColisRecus} colis reçus` : ""}
                                             {d.retour.qteConditionnementRecue != null ? ` · ${d.retour.qteConditionnementRecue} ${UNITE_QTE[d.depot]}` : ""}
                                             {` · ${d.retour.nbPalettes?.grandes || 0} grande(s) + ${d.retour.nbPalettes?.demi || 0} demi-palette(s)`}

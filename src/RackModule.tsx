@@ -46,6 +46,10 @@ type PalettePos = {
   date_stockage?: string;
   timestamp?: number;
   catalogueArticle?: string; // article STOCK réel — sert directement au comptage auto, pas de correspondance séparée
+  // 14/10/2026 — Demande d'Elinathan : qui a rangé / modifié / déplacé la palette (affiché dans le détail).
+  placePar?: string;
+  modifiePar?: string;
+  deplacePar?: string;
   verrouille?: boolean; // verrouillée depuis la Configuration : ne peut pas être déplacée, montée/descendue ni sortie du rack
 };
 
@@ -625,6 +629,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
         catalogueArticle: rest.type === "produit" ? String(rest.produit || "").trim() : undefined,
         date_stockage: new Date().toLocaleDateString("fr-FR"),
         timestamp: Date.now(),
+        placePar: nomSignataire() || "", // 14/10/2026
       };
       Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
       await update(ref(db, `rack_positions/${activeWall}`), { [key]: payload });
@@ -665,6 +670,9 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
         catalogueArticle: freeForm.type === "produit" ? freeForm.produit.trim() : undefined,
         date_stockage: existing?.date_stockage || new Date().toLocaleDateString("fr-FR"),
         timestamp: existing?.timestamp || Date.now(),
+        // 14/10/2026 — qui a rangé la palette (conservé en modification) et qui l'a modifiée.
+        placePar: existing ? (existing.placePar || "") : (nomSignataire() || ""),
+        modifiePar: existing ? (nomSignataire() || "") : undefined,
       };
       Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
       await update(ref(db, `rack_positions/${activeWall}`), { [key]: payload });
@@ -700,7 +708,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
     if (!data) return;
     if (data.verrouille) { alert("🔒 Palette verrouillée — déverrouille-la depuis la Configuration avant de la déplacer."); return; }
     const destKey = cellKey(destRow, selectedCell.bay, selectedCell.slot);
-    await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: data });
+    await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: { ...data, deplacePar: nomSignataire() || "" } }); // 14/10/2026 — qui a déplacé
     await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)}`));
     logActiviteRack("Déplacement palette (rack)", `${data.produit || ""} · ${cfg.label} · vers ${destKey}`);
     setSelectedCell(null);
@@ -751,7 +759,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
   const finishMove = async (row: number, bay: number, slot: number) => {
     if (!moving) return;
     const destKey = cellKey(row, bay, slot);
-    await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: moving.data });
+    await update(ref(db, `rack_positions/${activeWall}`), { [destKey]: { ...moving.data, deplacePar: nomSignataire() || "" } }); // 14/10/2026 — qui a déplacé
     await remove(ref(db, `rack_positions/${moving.wallId}/${cellKey(moving.row, moving.bay, moving.slot)}`));
     logActiviteRack("Déplacement palette (rack)", `${moving.data.produit || ""} · ${moving.wallId} → ${activeWall}/${destKey}`);
     setMoving(null);
@@ -797,7 +805,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       const destKey = cellKey(target.row, target.bay, target.slot);
       if (positionsRef.current[destKey]) return; // occupé, on ignore le dépôt
       const wall = activeWallRef.current;
-      await update(ref(db, `rack_positions/${wall}`), { [destKey]: info.data });
+      await update(ref(db, `rack_positions/${wall}`), { [destKey]: { ...info.data, deplacePar: nomSignataire() || "" } }); // 14/10/2026 — qui a déplacé
       await remove(ref(db, `rack_positions/${wall}/${cellKey(info.row, info.bay, info.slot)}`));
       logActiviteRack("Déplacement palette (rack, glisser-déposer)", `${info.data.produit || ""} · ${wall} → ${destKey}`);
     };
@@ -844,7 +852,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       await push(ref(db, "rack_historique"), {
         ...data, wallId: activeWall, wallLabel: cfg.label,
         row: selectedCell.row, bay: selectedCell.bay, slot: selectedCell.slot,
-        sortieLe: new Date().toLocaleDateString("fr-FR"), action: "sortie",
+        sortieLe: new Date().toLocaleDateString("fr-FR"), action: "sortie", sortiePar: nomSignataire() || "", // 14/10/2026
       });
       await remove(ref(db, `rack_positions/${activeWall}/${cellKey(selectedCell.row, selectedCell.bay, selectedCell.slot)}`));
       logActiviteRack("Sortie palette (rack)", `${data.produit || ""} · ${cfg.label}`);
@@ -1572,7 +1580,8 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
                   </p>
                 ) : null;
               })()}
-              {selectedData.date_stockage && <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>📅 Stocké le {selectedData.date_stockage}</p>}
+              {selectedData.date_stockage && <p style={{ margin: 0, fontSize: 12, color: "#9ca3af" }}>📅 Stocké le {selectedData.date_stockage}{selectedData.placePar ? ` · ${selectedData.placePar}` : ""}</p>}
+              {(selectedData.modifiePar || selectedData.deplacePar) && <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>{[selectedData.modifiePar ? `✏️ Modifiée par ${selectedData.modifiePar}` : "", selectedData.deplacePar ? `↔️ Déplacée par ${selectedData.deplacePar}` : ""].filter(Boolean).join(" · ")}</p>}
               {selectedData.notes && <p style={{ margin: 0, fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>"{selectedData.notes}"</p>}
               {selectedData.arrivage_id && <p style={{ margin: 0, fontSize: 11, color: "#8b5cf6", fontWeight: 600 }}>🔗 Relié à un arrivage</p>}
             </div>

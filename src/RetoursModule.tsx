@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { db, ref, push, onValue, update, remove } from "./firebase";
-import { ouvrirWhatsApp } from "./ProfilGenerique";
+import { ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
 import jsPDF from "jspdf";
 import { CLIENTS_LIST } from "./ClientsList";
 import { PageHeader, rechercheIntelligente, styles } from "./shared";
@@ -54,6 +54,11 @@ const LBL: React.CSSProperties = { fontSize: 11, color: "#9ca3af", fontWeight: 6
 const BTN = (bg: string, c = "#fff"): React.CSSProperties => ({ background: bg, color: c, border: "none", borderRadius: 10, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" });
 const MOTIFS = ["Défaut sanitaire – moisissure", "Défaut sanitaire – pourriture", "Qualité insuffisante", "Erreur de préparation", "Colis abîmé", "Livraison incomplète", "Mauvais article", "Autre"];
 const ETATS = ["Bon état", "Emballage abîmé", "Produit endommagé", "Moisissure visible", "Pourriture partielle", "Autre"];
+
+// 14/10/2026 — Demande d'Elinathan : afficher qui a fait chaque action (création, pointage,
+// rattachement, archivage, suppression). Comptes partagés → prénom choisi dans « Qui es-tu ? ».
+const horodatage = () => new Date().toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "");
+const PAR: React.CSSProperties = { fontSize: 11, color: "#9ca3af" };
 
 // ── Compteur ──
 async function getNextNumero(): Promise<string> {
@@ -404,7 +409,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     const prods = fRows.filter(r => r.nom.trim());
     if (!fCli.trim() || !fBl.trim() || !prods.length) { alert("Client, BL et au moins un produit requis."); return; }
     const numero = await getNextNumero();
-    const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "commercial", client: fCli.trim(), bl: fBl.trim(), transporteur: fTra.trim(), dateLiv: fDat, commercial: fCom.trim(), comment: fCmt.trim(), products: prods, statut: "nouveau", commentPrep: "" };
+    const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "commercial", client: fCli.trim(), bl: fBl.trim(), transporteur: fTra.trim(), dateLiv: fDat, commercial: fCom.trim(), comment: fCmt.trim(), products: prods, statut: "nouveau", commentPrep: "", creePar: nomSignataire() || "" };
     const r = await push(ref(db, "retours"), fiche);
     alerterPush({ type: "retour_client", titre: `↩️ Nouveau retour client n° ${numero}`, corps: `${fiche.client} — BL ${fiche.bl} — ${prods.length} produit${prods.length > 1 ? "s" : ""}${fiche.commercial ? ` — ${fiche.commercial}` : ""}` }); // 10/10/2026
     setFCli(""); setFBl(""); setFTra(""); setFDat(""); setFCom(""); setFCmt(""); setFRows([emptyPrevu()]);
@@ -420,7 +425,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     }));
     if (!eAgt.trim() || !prods.length) { alert("Reçu par et au moins un article requis."); return; }
     const numero = await getNextNumero();
-    const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "entrepot", agent: eAgt.trim(), products: prods, comment: eCmt.trim(), dateLiv: eDat, clientConnu: eCli.trim() || null, transporteurConnu: eTra.trim() || null, rattache: false, statut: "nouveau", commentPrep: "" };
+    const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "entrepot", agent: eAgt.trim(), products: prods, comment: eCmt.trim(), dateLiv: eDat, clientConnu: eCli.trim() || null, transporteurConnu: eTra.trim() || null, rattache: false, statut: "nouveau", commentPrep: "", creePar: nomSignataire() || "" };
     const r = await push(ref(db, "retours_entrepot"), fiche);
     alerterPush({ type: "retour_client", titre: `↩️ Retour reçu à l'entrepôt n° ${numero}`, corps: `${fiche.clientConnu || "Client à rattacher"} — ${prods.length} article${prods.length > 1 ? "s" : ""} — reçu par ${fiche.agent}` }); // 10/10/2026
     setEAgt(""); setECli(""); setETra(""); setECmt(""); setEDat(new Date().toISOString().split("T")[0]); setERows([emptyPrevu()]);
@@ -430,9 +435,9 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
   async function submitRattach(d: any) {
     if (!d.client || !d.bl) { alert("Client et BL requis."); return; }
     const numero = await getNextNumero();
-    const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "entrepot_rattache", client: d.client, bl: d.bl, transporteur: d.transporteur || "", dateLiv: d.dateLiv || "", commercial: d.commercial || "", comment: d.comment || modalData.comment || "", products: modalData.products || [], statut: "nouveau", commentPrep: "" };
+    const fiche: any = { numero, date: new Date().toLocaleDateString("fr-FR"), ts: Date.now(), source: "entrepot_rattache", client: d.client, bl: d.bl, transporteur: d.transporteur || "", dateLiv: d.dateLiv || "", commercial: d.commercial || "", comment: d.comment || modalData.comment || "", products: modalData.products || [], statut: "nouveau", commentPrep: "", creePar: nomSignataire() || "", rattachePar: nomSignataire() || "" };
     const r = await push(ref(db, "retours"), fiche);
-    await update(ref(db, "retours_entrepot/" + modalData.id), { rattache: true, clientRattache: d.client, blRattache: d.bl });
+    await update(ref(db, "retours_entrepot/" + modalData.id), { rattache: true, clientRattache: d.client, blRattache: d.bl, rattachePar: nomSignataire() || "", rattacheLe: horodatage() });
   }
 
   // 02/09/2026 — Demande d'Elinathan : certaines fiches "à rattacher" n'ont en fait aucune
@@ -443,7 +448,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
   // fiche "retours" liée à aucun client/BL — elle sort juste du compteur "À rattacher".
   async function archiverSansRattachement(id: string) {
     if (!window.confirm("Archiver cette fiche sans la rattacher à une commande ?")) return;
-    await update(ref(db, "retours_entrepot/" + id), { rattache: true, archiveSansCommande: true, archiveDate: new Date().toLocaleDateString("fr-FR") });
+    await update(ref(db, "retours_entrepot/" + id), { rattache: true, archiveSansCommande: true, archiveDate: new Date().toLocaleDateString("fr-FR"), archivePar: nomSignataire() || "" });
     setModal(""); setModalData(null);
   }
 
@@ -457,7 +462,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     // masquer ce réarrangement de liste.
     setOpenId(null);
     setModal("success"); setModalData({ fiche, source: "valide" });
-    await update(ref(db, "retours/" + fiche.id), { products: fiche.products, statut: "traite", commentPrep: commentPrep ?? fiche.commentPrep ?? "" });
+    await update(ref(db, "retours/" + fiche.id), { products: fiche.products, statut: "traite", commentPrep: commentPrep ?? fiche.commentPrep ?? "", traitePar: nomSignataire() || "", traiteLe: horodatage() });
 
     // Caisses IFCO effectivement remises en stock au pointage (uniquement la part "En stock",
     // pas ce qui est détruit ou manquant) : on réalimente le stock de caisses vides Moorea
@@ -473,7 +478,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
         await push(ref(db, "ifco_stock/movements"), {
           date: new Date().toLocaleDateString("fr-FR"), from: "client", to: "moorea", caisses: totalIfco,
           raison: `Retour client — ${fiche.numero || fiche.id}${fiche.client ? ` (${fiche.client})` : ""}`,
-          ts: Date.now(),
+          ts: Date.now(), user: nomSignataire() || "",
         });
         // Un retour client en caisses IFCO doit faire l'objet d'une déclaration d'entrée
         // manuelle auprès d'IFCO (distincte du mouvement de stock ci-dessus) — on ajoute donc un
@@ -482,7 +487,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
         await push(ref(db, "ifco_declarations_entree"), {
           client: fiche.client || "—", bl: fiche.bl || "—", numero: fiche.numero || fiche.id,
           date: new Date().toLocaleDateString("fr-FR"), quantite: totalIfco,
-          declare: false, ts: Date.now(),
+          declare: false, ts: Date.now(), creePar: nomSignataire() || "",
         });
       } catch (err) {
         console.error("Erreur mise à jour stock IFCO suite retour client:", err);
@@ -495,7 +500,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     const path = type === "ret" ? "retours/" + id : "retours_entrepot/" + id;
     const snap = await new Promise<any>(res => { onValue(ref(db, path), s => res(s), { onlyOnce: true }); });
     const data = snap.val();
-    if (data) await push(ref(db, "retours_corbeille"), { ...data, _originalPath: path, _deletedAt: new Date().toLocaleDateString("fr-FR"), _deletedTs: Date.now() });
+    if (data) await push(ref(db, "retours_corbeille"), { ...data, _originalPath: path, _deletedAt: new Date().toLocaleDateString("fr-FR"), _deletedTs: Date.now(), _deletedPar: nomSignataire() || "" });
     await remove(ref(db, path));
     setModal(""); setModalData(null);
   }
@@ -515,7 +520,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
     // listener temps réel reçoit le nouveau statut) avant que l'écran n'ait déjà changé d'onglet.
     setOpenId(fiche.id!);
     setTab("att");
-    await update(ref(db, "retours/" + fiche.id), { statut: "en_attente" });
+    await update(ref(db, "retours/" + fiche.id), { statut: "en_attente", repointePar: nomSignataire() || "" });
   }
 
   // ── Panneau pointage — inputs non-contrôlés, validation métier ──
@@ -762,6 +767,8 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                     {r.transporteur && <span>🚛 {r.transporteur}</span>}
                     {r.commercial && <span>👤 {r.commercial}</span>}
                     <span>📦 {prods.length} article{prods.length > 1 ? "s" : ""}</span>
+                    {(r as any).creePar && <span style={PAR}>Créé par {(r as any).creePar}</span>}
+                    {(r as any).repointePar && <span style={PAR}>· Repointé par {(r as any).repointePar}</span>}
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
                     {prods.map((p, i) => <span key={i} style={{ background: "#f5f3ee", border: "1px solid #e8e0d0", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#6b7280" }}>{p.nom}{p.qteRecue ? ` × ${p.qteRecue}` : ""}</span>)}
@@ -790,7 +797,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                     <span style={{ fontWeight: 700 }}>{r.clientConnu || "Client non identifié"}</span>
                     <span style={{ background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 }}>⏳ À rattacher</span>
                   </div>
-                  <span style={{ fontSize: 12, color: "#6b7280" }}>📅 {r.date} · 👤 {r.agent}</span>
+                  <span style={{ fontSize: 12, color: "#6b7280" }}>📅 {r.date} · 👤 {r.agent}{(r as any).creePar && (r as any).creePar !== r.agent ? <span style={PAR}> · saisi par {(r as any).creePar}</span> : null}</span>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 12 }}>
                   {(r.products || []).map((p, i) => {
@@ -837,6 +844,13 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                     </div>
                   </div>
                   <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>📅 {r.date} · 🚛 {r.transporteur || "—"}{r.commercial ? ` · 👤 ${r.commercial}` : ""}</div>
+                  {((r as any).creePar || (r as any).traitePar) && (
+                    <div style={{ ...PAR, marginTop: 3 }}>
+                      {(r as any).creePar ? `Créé par ${(r as any).creePar}` : ""}
+                      {(r as any).creePar && (r as any).traitePar ? " · " : ""}
+                      {(r as any).traitePar ? `✓ Pointé · ${(r as any).traitePar}${(r as any).traiteLe ? ` · ${(r as any).traiteLe}` : ""}` : ""}
+                    </div>
+                  )}
                   {(totS > 0 || totD > 0 || totM > 0) && (
                     <div style={{ marginTop: 8, fontSize: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
                       {totS > 0 && <span style={{ color: "#15803d", fontWeight: 600 }}>✓ {totS} en stock</span>}
@@ -863,11 +877,11 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                       {numBadge(r.numero || "—")}
                       <span style={{ fontWeight: 700 }}>{(r as any).client || (r as any).clientConnu || "—"}</span>
                     </div>
-                    <span style={{ fontSize: 11, color: "#dc2626" }}>🗑 {(r as any)._deletedAt}</span>
+                    <span style={{ fontSize: 11, color: "#dc2626" }}>🗑 {(r as any)._deletedAt}{(r as any)._deletedPar ? <span style={PAR}> · par {(r as any)._deletedPar}</span> : null}</span>
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button style={BTN("#dcfce7", "#15803d")} onClick={async () => {
-                      const { _originalPath, _deletedAt, _deletedTs, id, ...data } = r as any;
+                      const { _originalPath, _deletedAt, _deletedTs, _deletedPar, id, ...data } = r as any;
                       await push(ref(db, _originalPath?.startsWith("retours_entrepot") ? "retours_entrepot" : "retours"), data);
                       await remove(ref(db, "retours_corbeille/" + id));
                     }}>↩ Restaurer</button>

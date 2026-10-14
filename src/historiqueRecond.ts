@@ -10,3 +10,17 @@ export function noterHistoriqueDemande(id: string | null | undefined, action: st
     ts: Date.now(), date: new Date().toLocaleString("fr-FR"), par: par || "", action,
   }).catch(() => {});
 }
+
+// 14/10/2026 — Demande d'Elinathan : afficher qui a fait l'action à côté de l'action elle-même
+// (« Parti le … · Alban », « Reçu le … · Jean Marc »). Retrouve, dans l'historique de la demande,
+// le nom de la dernière personne dont l'action commence par l'un des préfixes donnés ("" si rien).
+export function parDansHistorique(d: any, ...prefixes: string[]): string {
+  const lignes = d?.historique ? (Object.values(d.historique) as any[]) : [];
+  let meilleur: any = null;
+  for (const l of lignes) {
+    if (!l?.par || typeof l.action !== "string") continue;
+    if (!prefixes.some(p => l.action.startsWith(p))) continue;
+    if (!meilleur || (l.ts || 0) > (meilleur.ts || 0)) meilleur = l;
+  }
+  return meilleur?.par || "";
+}

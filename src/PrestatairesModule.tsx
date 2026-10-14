@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, ChangeEvent } from "react";
 import { ComptagesIfcoVides } from "./ComptagesIfcoVides";
 import { db, ref, push, onValue, update, remove } from "./firebase";
+import { nomSignataire } from "./ProfilGenerique";
 import { PageHeader, styles, ChargementEcran } from "./shared";
 import * as XLSX from "xlsx";
 // 07/09/2026 — Fusion des écrans Configuration (Prestataires ↔ Reconditionnement, demande
@@ -38,6 +39,7 @@ type LivraisonPaletteVierge = {
   quantite: number;
   timestamp: number;
   lieuLivraison: string; // "Moorea" par défaut (voir LIEU_PV_DEFAUT) — champ libre si différent
+  par?: string; // 14/10/2026 — qui a pointé la livraison
 };
 
 // Lieu de livraison par défaut pour les palettes vierges — quasiment toutes livrées chez
@@ -74,6 +76,11 @@ type CartonCommande = {
   // fournisseur correspond bien à ce qui a été réellement reçu (quantités/lignes ci-dessus) et
   // le marque ici — passe le statut en "facturé".
   dateFacturation?: string;
+  // 14/10/2026 — Demande d'Elinathan : qui a fait chaque action (affiché sous la commande).
+  creePar?: string;
+  recuPar?: string | null;
+  facturePar?: string | null;
+  annulePar?: string | null;
 };
 
 type PaletteIFCOCommande = {
@@ -88,6 +95,11 @@ type PaletteIFCOCommande = {
   // statut en "facturé".
   dateFacturation?: string;
   notes?: string;
+  // 14/10/2026 — qui a fait chaque action (affiché sous la commande).
+  creePar?: string;
+  recuPar?: string | null;
+  facturePar?: string | null;
+  annulePar?: string | null;
 };
 
 // ── Entretiens / interventions de prestataires de maintenance (portes de quai, froid...) ──
@@ -106,8 +118,25 @@ type Entretien = {
   signatureBase64?: string;
   commentaire?: string;
   creePar?: string;
+  // 14/10/2026 — qui a validé l'arrivée / le départ / annulé l'intervention.
+  arriveePar?: string;
+  departPar?: string;
+  annulePar?: string;
   ts: number;
 };
+
+// 14/10/2026 — Demande d'Elinathan : « qui a fait quoi » sur une commande (cartons / palettes
+// IFCO), en petit texte gris sous la commande. Rien si aucun nom n'a été enregistré (anciennes).
+function ParCommande({ cmd }: { cmd: { creePar?: string; recuPar?: string | null; facturePar?: string | null; annulePar?: string | null } }) {
+  const morceaux = [
+    cmd.creePar ? `Commandé par ${cmd.creePar}` : "",
+    cmd.recuPar ? `✓ Reçu · ${cmd.recuPar}` : "",
+    cmd.facturePar ? `💳 Facture · ${cmd.facturePar}` : "",
+    cmd.annulePar ? `✗ Annulé · ${cmd.annulePar}` : "",
+  ].filter(Boolean);
+  if (!morceaux.length) return null;
+  return <div style={{ fontSize: "11px", color: "#9ca3af", marginTop: "4px" }}>{morceaux.join(" · ")}</div>;
+}
 
 const PRESTATAIRES_ENTRETIEN_DEFAUT = ["Porte Accès", "R.E.F", "Fernand"];
 
@@ -233,6 +262,8 @@ const COLORS = {
 // complet (sans raccourci) ne change pas.
 export type RaccourciPresta = "cartons" | "palette-vierge";
 export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne, raccourci, voirFactures = false }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[]; raccourci?: RaccourciPresta; voirFactures?: boolean }) {
+  // 14/10/2026 — Nom de la personne qui fait l'action (jamais undefined dans Firebase).
+  const qui = () => userName || nomSignataire() || "";
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap" | "nouvelle-analyse" | "factures"
   >(raccourci === "cartons" ? "nouvelle-carton" : raccourci === "palette-vierge" ? "palettes-vierges" : initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
@@ -825,7 +856,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   }
 
   async function marquerDeclarationFaite(id: string) {
-    await update(ref(db, `ifco_declarations_entree/${id}`), { declare: true });
+    await update(ref(db, `ifco_declarations_entree/${id}`), { declare: true, declarePar: qui(), declareLe: new Date().toLocaleString("fr-FR") }); // 14/10/2026
   }
 
   // Config du projet Firebase "moorea-stock" (séparé de moorea-qualite) — même config que
@@ -1030,6 +1061,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       quantite: qte,
       timestamp: Date.now(),
       lieuLivraison: lieu,
+      par: qui(), // 14/10/2026 — qui a pointé la livraison
     });
     setNotification({ type: "success", message: `✓ ${qte} × ${REFS_PALETTES_VIERGES[cleRef]} enregistrée(s)${lieu !== LIEU_PV_DEFAUT ? ` — ${lieu}` : ""}` });
     finRaccourci();
@@ -1150,7 +1182,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         dateProgrammee: entretienDate ? new Date(entretienDate + "T12:00:00").toLocaleDateString("fr-FR") : "",
         commentaire: entretienCommentaire.trim() || null,
         statut: "programmé",
-        creePar: userName || "",
+        creePar: qui(),
         ts: Date.now(),
       });
       setNotification({ type: "success", message: "✓ Intervention programmée" });
@@ -1168,6 +1200,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     const maintenant = new Date();
     await update(ref(db, `entretiens/${e.id}`), {
       statut: "en cours",
+      arriveePar: qui(), // 14/10/2026
       heureArrivee: `${maintenant.toLocaleDateString("fr-FR")} ${maintenant.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`,
     });
     setNotification({ type: "success", message: "✓ Arrivée validée" });
@@ -1211,6 +1244,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       await update(ref(db, `entretiens/${departModal.id}`), {
         statut: "terminé",
         heureDepart,
+        departPar: qui(), // 14/10/2026
         dureeMinutes,
         technicienPrenom: departTechnicienPrenom.trim(),
         signatureBase64,
@@ -1225,7 +1259,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
 
   async function annulerEntretien(id: string) {
     if (!window.confirm("Annuler cette intervention ?")) return;
-    await update(ref(db, `entretiens/${id}`), { statut: "annulé" });
+    await update(ref(db, `entretiens/${id}`), { statut: "annulé", annulePar: qui() }); // 14/10/2026
   }
 
   async function supprimerEntretien(id: string) {
@@ -1448,7 +1482,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         to: "envoi",
         caisses: qte,
         raison: `Envoi client Geslot - ${getIfcoExportName()}`,
-        user: userName,
+        user: qui(),
         ts: now.getTime(),
       };
       await push(ref(db, "ifco_stock/movements"), movement);
@@ -1521,7 +1555,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         date: now.toLocaleDateString("fr-FR") + " " + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
         from: "pleines", to: "moorea", caisses: qte,
         raison: "Vidage manuel des caisses pleines",
-        user: userName, ts: now.getTime(),
+        user: qui(), ts: now.getTime(),
       });
       setNotification({ type: "success", message: `✓ ${qte} caisse(s) vidée(s) — stock vide Moorea mis à jour` });
     } catch (err: any) {
@@ -1548,7 +1582,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         to: toLoc,
         caisses: qte,
         raison: `Mouvement stock IFCO`,
-        user: userName,
+        user: qui(),
         ts: now.getTime(),
       };
       await push(ref(db, "ifco_stock/movements"), newMovement);
@@ -1710,6 +1744,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       statut: saisieRetroactive ? ("reçu" as const) : ("commandé" as const),
       ...(saisieRetroactive ? { dateReception: dateLivraison } : {}),
       ...(livraisonHorsSite ? { horsSite: true, emailPresta: emailPresta.trim() } : {}),
+      creePar: qui(), // 14/10/2026
+      ...(saisieRetroactive ? { recuPar: qui() } : {}),
     };
 
     try {
@@ -1871,6 +1907,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       dateLivraisonPrevue: dateLivraisonIfco,
       statut: "commandé" as const,
       notes: notesIfco,
+      creePar: qui(), // 14/10/2026
     };
 
     try {
@@ -1927,6 +1964,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     await update(ref(db, `ifco_palettes_commandes/${id}`), {
       statut: "reçu" as const,
       dateReception: new Date().toISOString().split("T")[0],
+      recuPar: qui(), // 14/10/2026
     });
   };
 
@@ -1947,6 +1985,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     await update(ref(db, `prestataires_cartons/${id}`), {
       statut: "reçu" as const,
       dateReception: new Date().toISOString().split("T")[0],
+      recuPar: qui(), // 14/10/2026
     });
   };
 
@@ -1970,6 +2009,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     await update(ref(db, `prestataires_cartons/${id}`), {
       statut: "facturé" as const,
       dateFacturation: new Date().toISOString().split("T")[0],
+      facturePar: qui(), // 14/10/2026
     });
     setNotification({ type: "success", message: "✓ Facture vérifiée et pointée" });
   };
@@ -1977,7 +2017,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   // Repasser une commande "facturé" en "reçu" en cas d'erreur de pointage compta.
   const handleRemettreEnRecuCarton = async (id: string) => {
     if (!window.confirm("Annuler le pointage compta et repasser cette commande en \"reçu\" ?")) return;
-    await update(ref(db, `prestataires_cartons/${id}`), { statut: "reçu" as const, dateFacturation: null });
+    await update(ref(db, `prestataires_cartons/${id}`), { statut: "reçu" as const, dateFacturation: null, facturePar: null });
   };
 
   // Même principe que handleMarquerCartonFacture/handleRemettreEnRecuCarton, pour les
@@ -1988,13 +2028,14 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
     await update(ref(db, `ifco_palettes_commandes/${id}`), {
       statut: "facturé" as const,
       dateFacturation: new Date().toISOString().split("T")[0],
+      facturePar: qui(), // 14/10/2026
     });
     setNotification({ type: "success", message: "✓ Facture vérifiée et pointée" });
   };
 
   const handleRemettreEnRecuPalette = async (id: string) => {
     if (!window.confirm("Annuler le pointage compta et repasser cette commande en \"reçu\" ?")) return;
-    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "reçu" as const, dateFacturation: null });
+    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "reçu" as const, dateFacturation: null, facturePar: null });
   };
 
   // ── Annulation / retour en attente des commandes (cartons & palettes IFCO) ──
@@ -2002,7 +2043,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   // compte plus dans les stats) et annule aussi l'arrivage lié s'il n'a pas encore été traité.
   const handleAnnulerCartonCommande = async (id: string) => {
     if (!window.confirm("Annuler cette commande de cartons ?")) return;
-    await update(ref(db, `prestataires_cartons/${id}`), { statut: "annulé" as const });
+    await update(ref(db, `prestataires_cartons/${id}`), { statut: "annulé" as const, annulePar: qui() });
     const arrivageLie = arrivagesLies.find((a) => a.carton_commande_id === id);
     if (arrivageLie && arrivageLie.statut !== "validé") {
       await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "annulé" });
@@ -2052,7 +2093,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
 
   const handleAnnulerPaletteCommande = async (id: string) => {
     if (!window.confirm("Annuler cette commande de palettes IFCO ?")) return;
-    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "annulé" as const });
+    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "annulé" as const, annulePar: qui() });
     const arrivageLie = arrivagesLies.find((a) => a.ifco_palette_commande_id === id);
     if (arrivageLie && arrivageLie.statut !== "validé") {
       await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "annulé" });
@@ -2065,7 +2106,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   // dans l'écran "Pointer arrivage".
   const handleRemettreEnAttenteCarton = async (id: string) => {
     if (!window.confirm("Repasser cette commande en attente de livraison ? Elle réapparaîtra dans les arrivages à pointer.")) return;
-    await update(ref(db, `prestataires_cartons/${id}`), { statut: "commandé" as const, dateReception: null });
+    await update(ref(db, `prestataires_cartons/${id}`), { statut: "commandé" as const, dateReception: null, recuPar: null });
     const arrivageLie = arrivagesLies.find((a) => a.carton_commande_id === id);
     if (arrivageLie) {
       await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
@@ -2075,7 +2116,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
 
   const handleRemettreEnAttentePalette = async (id: string) => {
     if (!window.confirm("Repasser cette commande en attente de livraison ? Elle réapparaîtra dans les arrivages à pointer.")) return;
-    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "commandé" as const, dateReception: null });
+    await update(ref(db, `ifco_palettes_commandes/${id}`), { statut: "commandé" as const, dateReception: null, recuPar: null });
     const arrivageLie = arrivagesLies.find((a) => a.ifco_palette_commande_id === id);
     if (arrivageLie) {
       await update(ref(db, `arrivages/${arrivageLie.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
@@ -2189,6 +2230,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                   <div style={{ fontSize: 13, color: COLORS.gray700 }}>
                     <strong>{d.client}</strong> · BL {d.bl} · {d.date} · <strong>{d.quantite}</strong> caisse{d.quantite > 1 ? "s" : ""} IFCO
                     <span style={{ color: COLORS.gray400 }}> — retour {d.numero}</span>
+                    {d.creePar && <span style={{ color: "#9ca3af", fontSize: 11 }}> · pointé par {d.creePar}</span>}
                   </div>
                   <button
                     onClick={() => marquerDeclarationFaite(d.id)}
@@ -2560,6 +2602,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                               : `📧 en attente de confirmation${cmd.emailPresta ? ` (${cmd.emailPresta})` : ""}`}
                           </div>
                         )}
+                        <ParCommande cmd={cmd} />
                         {cmd.statut === "facturé" && (
                           <div style={{ fontSize: "11px", color: COLORS.primary, marginTop: "4px", fontWeight: 700 }}>
                             💳 Facture vérifiée par la compta le {cmd.dateFacturation || "-"} — conforme à ce qui a été reçu
@@ -2959,6 +3002,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                           {cmd.lignes[0]?.quantite || 0} palettes BLL4314 ({(cmd.lignes[0]?.quantite || 0) * 640} caisses)
                         </div>
                         {cmd.notes && <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>📝 {cmd.notes}</div>}
+                        <ParCommande cmd={cmd} />
                         {cmd.statut === "facturé" && (
                           <div style={{ fontSize: "11px", color: COLORS.primary, marginTop: "4px", fontWeight: 700 }}>
                             💳 Facture vérifiée par la compta le {cmd.dateFacturation || "-"} — conforme à ce qui a été reçu
@@ -3478,7 +3522,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       if (!raisonAjustMoorea.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
                       const ancienneValeur = stockLevels.moorea;
                       await update(ref(db, "ifco_stock/levels"), { moorea: v });
-                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), par: qui(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockMoorea("");
                       setRaisonAjustMoorea("");
                       setNotification({ type: "success", message: `✓ Stock IFCO Moorea ajusté (${ancienneValeur} → ${v})` });
@@ -3499,7 +3543,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       if (!raisonAjustNlt.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
                       const ancienneValeur = stockLevels.nlt;
                       await update(ref(db, "ifco_stock/levels"), { nlt: v });
-                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), par: qui(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockNlt("");
                       setRaisonAjustNlt("");
                       setNotification({ type: "success", message: `✓ Stock IFCO NLT ajusté (${ancienneValeur} → ${v})` });
@@ -3520,7 +3564,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       if (!raisonAjustAndes.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
                       const ancienneValeur = stockCartonAndes;
                       await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
-                      await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), par: qui(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockAndes("");
                       setRaisonAjustAndes("");
                       setNotification({ type: "success", message: `✓ Stock carton Baby Blanc (Andes) ajusté (${ancienneValeur} → ${v})` });
@@ -3589,7 +3633,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                             <span style={{ fontSize: "11px", color: COLORS.gray600 }}>{a.date}</span>
                           </div>
                           <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
-                            {a.ancienneValeur} → <strong style={{ color: COLORS.gray700 }}>{a.nouvelleValeur}</strong> · {a.raison}
+                            {a.ancienneValeur} → <strong style={{ color: COLORS.gray700 }}>{a.nouvelleValeur}</strong> · {a.raison}{a.par ? <span style={{ color: "#9ca3af", fontSize: "11px" }}> · {a.par}</span> : null}
                           </div>
                         </div>
                       </label>
@@ -4106,7 +4150,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       if (!raisonAjustMoorea.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
                       const ancienneValeur = stockLevels.moorea;
                       await update(ref(db, "ifco_stock/levels"), { moorea: v });
-                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — Moorea", ancienneValeur, nouvelleValeur: v, raison: raisonAjustMoorea.trim(), par: qui(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockMoorea("");
                       setRaisonAjustMoorea("");
                       setNotification({ type: "success", message: `✓ Stock IFCO Moorea ajusté (${ancienneValeur} → ${v})` });
@@ -4127,7 +4171,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       if (!raisonAjustNlt.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
                       const ancienneValeur = stockLevels.nlt;
                       await update(ref(db, "ifco_stock/levels"), { nlt: v });
-                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "IFCO — NLT", ancienneValeur, nouvelleValeur: v, raison: raisonAjustNlt.trim(), par: qui(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockNlt("");
                       setRaisonAjustNlt("");
                       setNotification({ type: "success", message: `✓ Stock IFCO NLT ajusté (${ancienneValeur} → ${v})` });
@@ -4148,7 +4192,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       if (!raisonAjustAndes.trim()) { setNotification({ type: "error", message: "✗ Indique une raison pour la correction" }); return; }
                       const ancienneValeur = stockCartonAndes;
                       await update(ref(db, "stock_carton_andes"), { baby_blanc: v });
-                      await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
+                      await push(ref(db, "stock_ajustements"), { emplacement: "Carton Baby Blanc — Andes", ancienneValeur, nouvelleValeur: v, raison: raisonAjustAndes.trim(), par: qui(), date: new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }), timestamp: Date.now() });
                       setAjustStockAndes("");
                       setRaisonAjustAndes("");
                       setNotification({ type: "success", message: `✓ Stock carton Baby Blanc (Andes) ajusté (${ancienneValeur} → ${v})` });
@@ -4213,7 +4257,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                             <span style={{ fontSize: "11px", color: COLORS.gray600 }}>{a.date}</span>
                           </div>
                           <div style={{ fontSize: "12px", color: COLORS.gray600, marginTop: "2px" }}>
-                            {a.ancienneValeur} → <strong style={{ color: COLORS.gray700 }}>{a.nouvelleValeur}</strong> · {a.raison}
+                            {a.ancienneValeur} → <strong style={{ color: COLORS.gray700 }}>{a.nouvelleValeur}</strong> · {a.raison}{a.par ? <span style={{ color: "#9ca3af", fontSize: "11px" }}> · {a.par}</span> : null}
                           </div>
                         </div>
                       </label>
@@ -4556,7 +4600,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                             <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>{e.prestataire} <span style={{ color: COLORS.gray400, fontWeight: 600 }}>· {e.dateProgrammee || "—"}</span></div>
                             <div style={{ fontSize: 12, color: COLORS.gray600, marginTop: 2 }}>{e.motif}</div>
                             {e.commentaire && <div style={{ fontSize: 11, color: COLORS.gray400, marginTop: 2 }}>📝 {e.commentaire}</div>}
-                            {e.heureArrivee && <div style={{ fontSize: 11, color: COLORS.tertiary, marginTop: 4, fontWeight: 700 }}>🕐 Arrivé à {e.heureArrivee.split(" ")[1] || e.heureArrivee}</div>}
+                            {e.heureArrivee && <div style={{ fontSize: 11, color: COLORS.tertiary, marginTop: 4, fontWeight: 700 }}>🕐 Arrivé à {e.heureArrivee.split(" ")[1] || e.heureArrivee}{e.arriveePar ? <span style={{ color: "#9ca3af", fontWeight: 400 }}> · validé par {e.arriveePar}</span> : null}</div>}
+                            {e.creePar && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Programmé par {e.creePar}</div>}
                           </div>
                           <span style={{
                             background: e.statut === "en cours" ? `${COLORS.tertiary}20` : "#f4ecf7",
@@ -4601,9 +4646,9 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                           <tr key={e.id} style={{ borderTop: `1px solid ${COLORS.gray100}`, background: e.statut === "annulé" ? "#fafafa" : "#fff", opacity: e.statut === "annulé" ? 0.6 : 1 }}>
                             <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.dateProgrammee || "—"}</td>
                             <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.prestataire}</td>
-                            <td style={{ padding: "8px 10px" }}>{e.motif}{e.statut === "annulé" ? " (annulé)" : ""}</td>
-                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.heureArrivee || "—"}</td>
-                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.heureDepart || "—"}</td>
+                            <td style={{ padding: "8px 10px" }}>{e.motif}{e.statut === "annulé" ? ` (annulé${e.annulePar ? ` par ${e.annulePar}` : ""})` : ""}{e.creePar && <div style={{ fontSize: 10.5, color: "#9ca3af" }}>Programmé par {e.creePar}</div>}</td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.heureArrivee || "—"}{e.arriveePar && <div style={{ fontSize: 10.5, color: "#9ca3af" }}>{e.arriveePar}</div>}</td>
+                            <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.heureDepart || "—"}{e.departPar && <div style={{ fontSize: 10.5, color: "#9ca3af" }}>{e.departPar}</div>}</td>
                             <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}><b>{formatDureeEntretien(e.dureeMinutes)}</b></td>
                             <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>{e.technicienPrenom || "—"}</td>
                             <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
@@ -4876,6 +4921,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                         )}
                       </span>
                       <span style={{ fontSize: 14, fontWeight: 800, color: "#92400e" }}>× {l.quantite}</span>
+                      {l.par && <span style={{ fontSize: 11, color: "#9ca3af" }}>{l.par}</span>}
                       <button
                         onClick={() => supprimerLivraisonPaletteVierge(l.id)}
                         style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${COLORS.danger}`, background: COLORS.dangerLight, color: COLORS.danger, cursor: "pointer", fontSize: 11 }}

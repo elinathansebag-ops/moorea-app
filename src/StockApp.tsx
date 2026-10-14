@@ -915,6 +915,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         setSyncStatus("loading", "Enregistrement...");
         await setDoc(doc(db, "stocks", importId), {
           filename, importId,
+          // 14/10/2026 — Demande d'Elinathan : qui a créé le stock (affiché dans la liste des stocks).
+          creePar: nomSignataire() || "",
           date: new Date().toISOString(),
           dateLabel: new Date().toLocaleString("fr-FR"),
           nb: arts.length,
@@ -1364,6 +1366,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             const donePrestige = comptages[s.id + "_PRESTIGE"]?.data ? Object.keys(comptages[s.id + "_PRESTIGE"].data).length : 0;
             return doneGMS > 0 || donePrestige > 0;
           };
+          // 14/10/2026 — nom affiché (créé / clôturé / rouvert par), échappé car injecté en HTML.
+          const echapPar = (t: any) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
           const makeItem = (s: any, team: string) => {
             const c = comptages[s.id + "_" + team];
             const done = c && c.data ? Object.keys(c.data).length : 0;
@@ -1375,7 +1379,9 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             return `<div class="stock-item">
               <div style="flex:1">
                 <div style="font-size:13px;font-weight:700">📅 ${s.dateLabel} <span style="font-size:10px;font-weight:700;color:${color};background:${color}18;padding:2px 7px;border-radius:20px;margin-left:6px">${teamLabel}</span></div>
-                <div style="font-size:12px;color:#6b7280;margin-top:2px">${s.filename} · ${total} articles</div>
+                <div style="font-size:12px;color:#6b7280;margin-top:2px">${s.filename} · ${total} articles${s.creePar ? ` <span style="font-size:11px;color:#9ca3af">· créé par ${echapPar(s.creePar)}</span>` : ""}</div>
+                ${s.cloture && (s.cloturePar || s.clotureDate) ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">✓ Clôturé${s.cloturePar ? " · " + echapPar(s.cloturePar) : ""}${s.clotureDate ? " · " + echapPar(String(s.clotureDate).slice(0, 16)) : ""}</div>` : ""}
+                ${!s.cloture && s.rouvertPar ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">🔓 Rouvert · ${echapPar(s.rouvertPar)}${s.rouvertLe ? " · " + echapPar(String(s.rouvertLe).slice(0, 16)) : ""}</div>` : ""}
                 <div style="margin-top:6px;height:5px;background:#e8e0d0;border-radius:3px;overflow:hidden;max-width:180px">
                   <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
                 </div>
@@ -1599,7 +1605,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           let dureeMsg = "";
           if (snap.exists()) {
             const sdata = snap.data() as any;
-            const upd: any = { ...sdata, cloture: true, clotureDate: new Date().toLocaleString("fr-FR") };
+            const upd: any = { ...sdata, cloture: true, clotureDate: new Date().toLocaleString("fr-FR"), cloturePar: nomSignataire() || "" }; // 14/10/2026 — qui a clôturé
             if (sdata.debutComptage) { upd.dureeComptageMs = Date.now() - sdata.debutComptage; dureeMsg = ` (durée : ${formatDuree(upd.dureeComptageMs)})`; }
             await setDoc(doc(db, "stocks", sid), upd);
           }
@@ -1612,7 +1618,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       (window as any).sReouvrir = async (sid: string, team: string) => {
         if (!confirm("Rouvrir ce stock pour le modifier ?")) return;
         try {
-          await setDoc(doc(db, "stocks", sid), { cloture: false, clotureDate: null }, { merge: true });
+          await setDoc(doc(db, "stocks", sid), { cloture: false, clotureDate: null, cloturePar: null, rouvertPar: nomSignataire() || "", rouvertLe: new Date().toLocaleString("fr-FR") }, { merge: true }); // 14/10/2026 — qui a rouvert
           toast("🔓 Stock rouvert !");
           // Va directement sur la page de comptage de ce stock/équipe au lieu de rester sur la
           // liste des stocks — avant il fallait rouvrir puis chercher/cliquer "Compter" soi-même.
@@ -1628,7 +1634,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           if (!snap.exists()) { toast("Stock introuvable"); return; }
           const data = snap.data() as any;
           const newId = new Date().toISOString().slice(0, 16).replace("T", "_").replace(/:/g, "-");
-          await setDoc(doc(db, "stocks", newId), { ...data, importId: newId, date: new Date().toISOString(), dateLabel: new Date().toLocaleString("fr-FR"), cloture: false, filename: "📋 " + (data.filename || "stock") });
+          await setDoc(doc(db, "stocks", newId), { ...data, importId: newId, date: new Date().toISOString(), dateLabel: new Date().toLocaleString("fr-FR"), cloture: false, clotureDate: null, cloturePar: null, rouvertPar: null, rouvertLe: null, creePar: nomSignataire() || "", filename: "📋 " + (data.filename || "stock") });
           for (const team of ["GMS", "PRESTIGE"]) {
             const cSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
             if (cSnap.exists()) await setDoc(doc(db, "comptages", newId + "_" + team), { ...cSnap.data(), date: TODAY, ts: Date.now() });
@@ -1918,7 +1924,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             const snap = await getDoc(doc(db, "stocks", currentImportId));
             if (snap.exists() && !(snap.data() as any).cloture) {
               const sdata = snap.data() as any;
-              const upd: any = { ...sdata, cloture: true, clotureDate: new Date().toLocaleString("fr-FR") };
+              const upd: any = { ...sdata, cloture: true, clotureDate: new Date().toLocaleString("fr-FR"), cloturePar: nomSignataire() || "" }; // 14/10/2026 — qui a clôturé
               let dureeMsg = "";
               if (sdata.debutComptage) { upd.dureeComptageMs = Date.now() - sdata.debutComptage; dureeMsg = ` — durée du comptage : ${formatDuree(upd.dureeComptageMs)}`; }
               await setDoc(doc(db, "stocks", currentImportId), upd, { merge: true });
