@@ -1170,7 +1170,7 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
   );
 }
 
-export function FournisseurBlock({ fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
+export function FournisseurBlock({ enGrille = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   const [open, setOpen] = useState(false);
   // 12/10/2026 — Demande d'Elinathan : décaler TOUT l'arrivage du fournisseur (tous ses produits
   // encore à pointer) à une autre date, au lieu de produit par produit.
@@ -1236,8 +1236,10 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
 
   return (
     // 14/10/2026 — Fournisseurs sur plusieurs colonnes (DateBlock) : ouvert, il prend toute la largeur.
-    <div style={{ gridColumn: open ? "1 / -1" : undefined, background: "#fff", borderRadius: 14, marginBottom: 0, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent", alignSelf: open ? "start" : "stretch" }}>
-      <div onClick={() => setOpen(!open)} style={{ minHeight: open ? undefined : 70, boxSizing: "border-box", height: open ? undefined : "100%", padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: headerBg, borderBottom: open ? "1px solid #e8e0d0" : headerBorder }}>
+    <>
+    {/* 14/10/2026 — En grille : la case reste à sa place ; le détail s'ouvre en dessous, sur toute la largeur. */}
+    <div style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: 14, marginBottom: 0, overflow: "hidden", boxShadow: open && enGrille ? "0 0 0 3px #c8a84b" : "0 2px 12px rgba(0,0,0,0.06)", border: allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent", alignSelf: "stretch" }}>
+      <div onClick={() => setOpen(!open)} style={{ minHeight: open && !enGrille ? undefined : 70, boxSizing: "border-box", height: open && !enGrille ? undefined : "100%", padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: headerBg, borderBottom: open ? "1px solid #e8e0d0" : headerBorder }}>
         {/* 14/10/2026 — Nom à gauche ; « en attente » / « traités » toujours au même endroit, à droite. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
           <span>{allDone ? "✅" : "🏭"}</span>
@@ -1249,7 +1251,7 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
         </div>
         <span style={{ fontSize: 18, color: allDone ? "#16a34a" : "#c8a84b", fontWeight: 700, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
       </div>
-      {open && (
+      {open && !enGrille && (
         <div style={{ padding: "12px 14px" }}>
           {/* Total de palettes ANNONCÉ pour tout le groupe (pas par arrivage) — voir le calcul
               plus haut. Purement informatif/de recoupement : les étiquettes palette et le
@@ -1337,6 +1339,96 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
         </div>
       )}
     </div>
+    {open && enGrille && (
+      <div style={{ gridColumn: "1 / -1", background: "#fff", borderRadius: 14, boxShadow: "0 0 0 3px #c8a84b", overflow: "hidden" }}>
+        <div style={{ padding: "12px 14px" }}>
+          {/* Total de palettes ANNONCÉ pour tout le groupe (pas par arrivage) — voir le calcul
+              plus haut. Purement informatif/de recoupement : les étiquettes palette et le
+              nombre de palettes saisi à la validation restent individuels à chaque arrivage. */}
+          {paletteAnnonceInfo && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, background: "#fffbf0", border: "1.5px solid #f3e3b8", borderRadius: 10, padding: "8px 12px", marginBottom: 10 }}>
+              {/* 03/09/2026 — Quand rien n'a encore été annoncé (0 grande + 0 demi, aucune
+                  correction manuelle), on affiche directement les cases de saisie vides plutôt
+                  que le texte "0 grande + 0 demi" (demande d'Elinathan) — pas besoin de cliquer
+                  "Modifier" en premier pour renseigner un premier total. */}
+              {!editionPalettesAnnoncees && (paletteAnnonceInfo.grandes > 0 || paletteAnnonceInfo.demi > 0) ? (
+                <>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6f2e" }}>
+                    🎫 Palettes annoncées{paletteAnnonceInfo.source === "manuel" ? " (corrigé)" : ""} : {paletteAnnonceInfo.grandes} grande{paletteAnnonceInfo.grandes > 1 ? "s" : ""} + {paletteAnnonceInfo.demi} demi
+                  </span>
+                  <button
+                    onClick={e => { e.stopPropagation(); setEdiGrandes(String(paletteAnnonceInfo!.grandes)); setEdiDemi(String(paletteAnnonceInfo!.demi)); setEditionPalettesAnnoncees(true); }}
+                    style={{ padding: "4px 10px", borderRadius: 7, border: "1.5px solid #e8d9a8", background: "#fff", color: "#8a6f2e", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ✏️ Modifier
+                  </button>
+                </>
+              ) : (
+                <div onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", width: "100%" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6f2e", whiteSpace: "nowrap" }}>🎫 Palettes annoncées</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#8a6f2e" }}>Grandes</span>
+                  <input type="number" placeholder="0" value={ediGrandes} onChange={e => setEdiGrandes(e.target.value)} style={{ width: 56, padding: "5px 7px", border: "1.5px solid #e8d9a8", borderRadius: 6, fontSize: 12 }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#8a6f2e" }}>Demi</span>
+                  <input type="number" placeholder="0" value={ediDemi} onChange={e => setEdiDemi(e.target.value)} style={{ width: 56, padding: "5px 7px", border: "1.5px solid #e8d9a8", borderRadius: 6, fontSize: 12 }} />
+                  <button onClick={validerPalettesAnnoncees} style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#c8a84b", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✓ Valider</button>
+                  {editionPalettesAnnoncees && (
+                    <button onClick={() => setEditionPalettesAnnoncees(false)} style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e8d9a8", background: "#fff", color: "#8a6f2e", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {/* 10/10/2026 — Demande d'Elinathan : mettre en réserve d'un coup TOUS les produits de cet
+              arrivage du fournisseur. Ouvre un seul rapport de réserve pour l'ensemble, qui exige au
+              moins une photo par produit (voir ouvrirRapportGroupeReserve dans App.tsx). */}
+          {canValider && onReporterGroupe && produits.length > 1 && (
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {reportGroupe === null ? (
+                <button type="button" onClick={e => { e.stopPropagation(); const [j, m, a] = String(date || produits[0]?.date || "").split("/"); setReportGroupe(a && m && j ? `${a}-${m}-${j}` : ""); }}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e40af", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
+                  📅 Décaler tout l'arrivage ({produits.length} produits)
+                </button>
+              ) : (
+                <>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#1e40af" }}>Décaler les {produits.length} produits à pointer de {fournisseur} au</span>
+                  <input type="date" value={reportGroupe} onChange={e => setReportGroupe(e.target.value)} onClick={e => e.stopPropagation()}
+                    style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #bfdbfe", fontSize: 13, fontWeight: 700 }} />
+                  <button type="button" disabled={!reportGroupe} onClick={e => { e.stopPropagation(); const [a, m, j] = reportGroupe.split("-"); onReporterGroupe(produits, `${j}/${m}/${a}`); setReportGroupe(null); }}
+                    style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: reportGroupe ? "#1e40af" : "#ccc", color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Confirmer</button>
+                  <button type="button" onClick={e => { e.stopPropagation(); setReportGroupe(null); }}
+                    style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Annuler</button>
+                </>
+              )}
+            </div>
+          )}
+          {canValider && onReserveGroupe && !isRetourRecondGroupe && (() => {
+            const tous = [...produits, ...traites].filter((a: any) => a.statut !== "sous réserve" && a.statut !== "refusé");
+            if (tous.length < 2) return null;
+            return (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                <button type="button"
+                  onClick={e => { e.stopPropagation(); if (window.confirm(`Mettre en réserve les ${tous.length} produits de ${fournisseur} ?\n\nUn rapport de réserve unique va s'ouvrir.`)) onReserveGroupe(tous); }}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fffbeb", color: "#92400e", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
+                  ⚠️ Tout mettre en réserve ({tous.length} produits)
+                </button>
+              </div>
+            );
+          })()}
+          {!canValider
+            ? produits.map((a: any) => <ArrivageLectureSeuleRow key={a.id} arrivage={a} />)
+            : isRetourRecondGroupe && produits.length > 0
+              ? <PointageGroupeNLT groupe={fournisseur} produits={produits} onValidate={onValidate} date={date} paletteAnnonceInfo={paletteAnnonceInfo} onEcartDetecte={onEcartDetecte} />
+              : produits.map((a: any) => <ProduitRow key={a.id} arrivage={a} onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onReporterDate={onReporterDate} selectMode={selectMode} selected={selectedArrivages?.has(a.id)} onToggleSelect={onToggleSelect} gencodeArticles={gencodeArticles} onEcartDetecte={onEcartDetecte} />)}
+          {nbTraites > 0 && (
+            <div style={{ marginTop: produits.length > 0 ? 10 : 0, borderTop: produits.length > 0 ? "1px solid #e8e0d0" : "none", paddingTop: produits.length > 0 ? 10 : 0 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>📁 Traités · {nbTraites}</p>
+              {traites.map((a: any) => <ArrivageTraiteRow key={a.id} arrivage={a} onDelete={onDelete} onOuvreRapport={onOuvreRapport} onImprimerMulti={onImprimerMulti} />)}
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -2950,9 +3042,9 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
               "Scanner une étiquette" restent retirés (demandes précédentes d'Elinathan) — leurs
               fonctions restent définies plus haut, juste non appelées ici. */}
           {/* Fournisseurs - en attente + traités regroupés — 14/10/2026 : sur 2 ou 3 colonnes. */}
-          <div style={{ display: "grid", gridTemplateColumns: enColonnes ? "repeat(auto-fill, minmax(min(320px, 100%), 1fr))" : "1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: enColonnes ? "repeat(auto-fill, minmax(min(320px, 100%), 1fr))" : "1fr", gridAutoFlow: "row dense", gap: 10 }}>
           {allFourn.map(f => (
-            <FournisseurBlock key={f} fournisseur={f}
+            <FournisseurBlock key={f} enGrille={enColonnes} fournisseur={f}
               produits={byFournisseur[f] || []}
               traites={byFournisseurTraites[f] || []}
               onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport}
