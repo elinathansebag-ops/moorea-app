@@ -1175,8 +1175,12 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
   );
 }
 
-export function FournisseurBlock({ enGrille = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
-  const [open, setOpen] = useState(false);
+export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
+  // 15/10/2026 — Un seul fournisseur ouvert à la fois : si le jour fournit ouvert/onBasculer,
+  // c'est lui qui décide (ouvrir un fournisseur referme le précédent).
+  const [openLocal, setOpenLocal] = useState(false);
+  const open = ouvert !== undefined ? !!ouvert : openLocal;
+  const setOpen = (v: boolean) => (onBasculer ? onBasculer(v) : setOpenLocal(v));
   // 15/10/2026 — En grille : case + détail = une seule forme avec un contour. On repère si la case
   // est collée au bord gauche / droit de la grille pour que le coin du détail soit droit de ce côté.
   const caseRef = useRef<HTMLDivElement>(null);
@@ -2789,6 +2793,8 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
 export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchives, onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, onScan, gencodeArticles, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   const today = new Date().toLocaleDateString("fr-FR");
   const [open, setOpen] = useState(date === today);
+  // 15/10/2026 — Un seul fournisseur ouvert à la fois dans la journée.
+  const [fournOuvert, setFournOuvert] = useState<string | null>(null);
   const [validatingAll, setValidatingAll] = useState(false);
   const scanInputId = `scan-date-${date.replace(/\//g, "-")}`;
   // Aperçu PDF traçabilité intégré à la page (au lieu d'un iframe hors-écran qui déclenche
@@ -3049,6 +3055,7 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
           <div style={{ display: "grid", gridTemplateColumns: enColonnes ? "repeat(auto-fill, minmax(min(320px, 100%), 1fr))" : "1fr", gridAutoFlow: "row dense", gap: 10 }}>
           {allFourn.map(f => (
             <FournisseurBlock key={f} enGrille={enColonnes} fournisseur={f}
+              ouvert={fournOuvert === f} onBasculer={(v: boolean) => setFournOuvert(v ? f : null)}
               produits={byFournisseur[f] || []}
               traites={byFournisseurTraites[f] || []}
               onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport}
