@@ -349,9 +349,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               <b>Semaine du {dateFr(semaine)} au {dateFr(joursSemaine[6])}</b>
               <button type="button" onClick={() => setSemaine(ajouteJours(semaine, 7))} style={{ border: "1.5px solid #e5e7eb", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 800 }}>›</button>
               <button type="button" onClick={() => setSemaine(lundi(iso(new Date())))} style={{ border: "none", background: "transparent", color: "#2563eb", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Cette semaine</button>
-              <select value={filtreDepart} onChange={e => setFiltreDepart(e.target.value as any)} style={{ marginLeft: "auto", padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb" }}>
-                <option value="tous">Tous les départs</option><option value="paris">Départ Paris</option><option value="sud">Départ Perpignan</option>
-              </select>
+              <span style={{ flex: 1 }} />
               {onglet === "accueil" && <>
                 <button type="button" onClick={() => setOnglet("passees")} style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#4b5563", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>🗂️ Commandes passées</button>
                 <button type="button" onClick={() => setOnglet("config")} style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#4b5563", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Configuration</button>
@@ -369,6 +367,9 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 12 }}>
                   {refsSemaine.map(k => { const c = couleurRef(k); return <span key={k} style={{ padding: "3px 10px", borderRadius: 999, background: c.fond, color: c.texte, fontWeight: 800 }}>{libRef(k)}</span>; })}
                   <span style={{ color: "#6b7280" }}><span style={{ fontSize: 10, fontWeight: 900, padding: "0 4px", borderRadius: 4, background: "#fff7ed", color: "#b45309", border: "1px solid #fed7aa" }}>M</span> = départ Medina (Perpignan), sinon Paris</span>
+                  <select value={filtreDepart} onChange={e => setFiltreDepart(e.target.value as any)} style={{ marginLeft: "auto", padding: "6px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 13 }}>
+                    <option value="tous">Tous les départs</option><option value="paris">Départ Paris</option><option value="sud">Départ Perpignan</option>
+                  </select>
                 </div>
               )}
               {matrice.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Rien cette semaine</div> : (
