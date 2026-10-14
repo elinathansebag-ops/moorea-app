@@ -58,6 +58,7 @@ const RackModule = chargerModule(() => import("./RackModule"), "RackModule");
 const StattModule = chargerModule(() => import("./StattModule"), "StattModule");
 const LidlModule = chargerModule(() => import("./LidlModule"), "LidlModule");
 const Extractions = chargerModule(() => import("./Extractions"), "Extractions");
+const QualiteDashboard = chargerModule(() => import("./QualiteDashboard"), "default");
 const HubModules = chargerModule(() => import("./HubModules"), "HubModules");
 const ConsultationLidl = chargerModule(() => import("./ConsultationLidl"), "ConsultationLidl");
 const FacturesPrestataires = chargerModule(() => import("./FacturesPrestataires"), "FacturesPrestataires");
@@ -4342,13 +4343,15 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
   if (showQualiteHub) {
     const ouvrir = (f: () => void) => () => { setShowQualiteHub(false); setRetourHub("qualite"); f(); };
-    const cartes = [
-      ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", detail: `${rapports.length} rapports — conformes, réserves, refus`, onClick: () => { setShowQualiteHub(false); setRetourHub(null); setVue("historique"); setPageMode("arrivages"); } }] : []),
-      ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité, températures, poids", detail: "Tous les lots, températures et poids pesés, par lot et par date", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
-      ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", detail: "Lots, producteurs, envois à Lidl (consultation)", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
-      ...(monAcces.hasModule("litiges") ? [{ icone: "⚠️", titre: "Litiges", detail: "Refus, réserves, reprises fournisseurs", onClick: ouvrir(() => setShowLitiges(true)) }] : []),
+    // 14/10/2026 — Tableau de bord qualité (QualiteDashboard.tsx) au lieu d'un sommaire de modules.
+    const versRapports = (texte = "") => { setShowQualiteHub(false); setRetourHub(null); setSearchText(texte); setVue("historique"); setPageMode("arrivages"); window.scrollTo(0, 0); };
+    const raccourcis = [
+      ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", onClick: () => versRapports("") }] : []),
+      ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité, températures, poids", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
+      ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
+      ...(monAcces.hasModule("litiges") ? [{ icone: "⚠️", titre: "Litiges", onClick: ouvrir(() => setShowLitiges(true)) }] : []),
     ];
-    return <>{fabScanner}{invitationNotif}<HubModules titre="🧪 Récap qualité" intro="Tout ce qui concerne la qualité : rapports, traçabilité, températures, poids, Lidl, litiges." cartes={cartes} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
+    return <>{fabScanner}{invitationNotif}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirRecherche={t => monAcces.hasModule("rapports") && versRapports(t)} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
   }
 
   if (showApproHub) {
