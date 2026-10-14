@@ -4232,6 +4232,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         </div>
 
         <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px 100px", boxSizing: "border-box" }}>
+          {/* 15/10/2026 — Imprimante PC (relais d'impression) déconnectée : alerte sur l'accueil des admins. */}
+          {monAccesReel.isAdmin && printRelayOnline === false && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 16, color: "#991b1b" }}>
+              <span style={{ fontSize: 20 }}>🖨️</span>
+              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 800 }}>Imprimante PC déconnectée — les étiquettes et bons ne s'impriment pas{printRelayLastSeen ? ` (dernier signal ${new Date(printRelayLastSeen).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})` : ""}.</span>
+            </div>
+          )}
           {/* 05/10/2026 — Nouvelle apparence : les bandeaux d'alerte pleine largeur (« À traiter
               aujourd'hui », IFCO, retours non reçus) deviennent des cartes « Aujourd'hui » au même
               style que les modules (demande d'Elinathan : « les bandeaux gâchent un peu tout »).
@@ -5231,10 +5238,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             })()}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
               <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: "1 1 220px", minWidth: 180, padding: "8px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 13.5, background: "#fff" }} />
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: printRelayOnline ? "#f0fdf4" : "#fef2f2", color: printRelayOnline ? "#15803d" : "#dc2626", border: `1px solid ${printRelayOnline ? "#bbf7d0" : "#fca5a5"}` }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block" }} />
-                🖨️ Imprimante PC : {printRelayOnline === null ? "..." : printRelayOnline ? "en ligne" : "hors ligne"}
-              </span>
+              {/* 15/10/2026 — Pastille imprimante retirée : alerte sur l'accueil des admins si elle est déconnectée. */}
               {/* 09/09/2026 — Bouton "Archiver anciens arrivages" retiré d'ici à la demande
                   d'Elinathan : l'app entière était devenue très lente (3-4 min de chargement,
                   parfois un plantage) parce que plusieurs grosses collections Firebase (pas
