@@ -603,7 +603,8 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           // Un arrivage "normal" : plus de champ Colis séparé — on saisit directement la quantité
           // dans chaque case palette (voir "cases" plus haut), le total et les étiquettes en
           // découlent automatiquement. Pleine largeur pour laisser la place aux cases.
-          <div style={{ flex: "1 1 100%", background: hasEcartColis ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
+          // 14/10/2026 — Plus en pleine largeur : Températures et Poids brut / net tiennent sur la même ligne.
+          <div style={{ flex: "1 1 340px", background: hasEcartColis ? "#fef2f2" : "#f9fafb", border: `1.5px solid ${hasEcartColis ? "#fca5a5" : "#e5e7eb"}`, borderRadius: 10, padding: "8px 12px" }}>
             <div style={{ marginBottom: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🎫 Palettes — colis reçus par palette</span>
             </div>
@@ -1234,21 +1235,63 @@ export function FournisseurBlock({ enGrille = false, fournisseur, produits, trai
     setEditionPalettesAnnoncees(false);
   };
 
+  // 14/10/2026 — « Décaler tout l'arrivage » et « Tout mettre en réserve » sur la ligne du fournisseur.
+  const actionsGroupe = (
+    <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap", justifyContent: "flex-end" }}>
+          {/* 10/10/2026 — Demande d'Elinathan : mettre en réserve d'un coup TOUS les produits de cet
+              arrivage du fournisseur. Ouvre un seul rapport de réserve pour l'ensemble, qui exige au
+              moins une photo par produit (voir ouvrirRapportGroupeReserve dans App.tsx). */}
+          {canValider && onReporterGroupe && produits.length > 1 && (
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {reportGroupe === null ? (
+                <button type="button" onClick={e => { e.stopPropagation(); const [j, m, a] = String(date || produits[0]?.date || "").split("/"); setReportGroupe(a && m && j ? `${a}-${m}-${j}` : ""); }}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e40af", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
+                  📅 Décaler tout l'arrivage ({produits.length} produits)
+                </button>
+              ) : (
+                <>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#1e40af" }}>Décaler les {produits.length} produits à pointer de {fournisseur} au</span>
+                  <input type="date" value={reportGroupe} onChange={e => setReportGroupe(e.target.value)} onClick={e => e.stopPropagation()}
+                    style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #bfdbfe", fontSize: 13, fontWeight: 700 }} />
+                  <button type="button" disabled={!reportGroupe} onClick={e => { e.stopPropagation(); const [a, m, j] = reportGroupe.split("-"); onReporterGroupe(produits, `${j}/${m}/${a}`); setReportGroupe(null); }}
+                    style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: reportGroupe ? "#1e40af" : "#ccc", color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Confirmer</button>
+                  <button type="button" onClick={e => { e.stopPropagation(); setReportGroupe(null); }}
+                    style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Annuler</button>
+                </>
+              )}
+            </div>
+          )}
+          {canValider && onReserveGroupe && !isRetourRecondGroupe && (() => {
+            const tous = [...produits, ...traites].filter((a: any) => a.statut !== "sous réserve" && a.statut !== "refusé");
+            if (tous.length < 2) return null;
+            return (
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button"
+                  onClick={e => { e.stopPropagation(); if (window.confirm(`Mettre en réserve les ${tous.length} produits de ${fournisseur} ?\n\nUn rapport de réserve unique va s'ouvrir.`)) onReserveGroupe(tous); }}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fffbeb", color: "#92400e", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
+                  ⚠️ Tout mettre en réserve ({tous.length} produits)
+                </button>
+              </div>
+            );
+          })()}
+    </span>
+  );
   return (
     // 14/10/2026 — Fournisseurs sur plusieurs colonnes (DateBlock) : ouvert, il prend toute la largeur.
     <>
     {/* 14/10/2026 — En grille : la case reste à sa place ; le détail s'ouvre en dessous, sur toute la largeur. */}
-    <div style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: 14, marginBottom: 0, overflow: "hidden", boxShadow: open && enGrille ? "0 0 0 3px #c8a84b" : "0 2px 12px rgba(0,0,0,0.06)", border: allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent", alignSelf: "stretch" }}>
-      <div onClick={() => setOpen(!open)} style={{ minHeight: open && !enGrille ? undefined : 70, boxSizing: "border-box", height: open && !enGrille ? undefined : "100%", padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: headerBg, borderBottom: open ? "1px solid #e8e0d0" : headerBorder }}>
+    <div style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: open && enGrille ? "14px 14px 0 0" : 14, marginBottom: open && enGrille ? -10 : 0, paddingBottom: open && enGrille ? 10 : 0, overflow: "hidden", boxShadow: open && enGrille ? "none" : "0 2px 12px rgba(0,0,0,0.06)", border: open && enGrille ? "1.5px solid transparent" : allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent", alignSelf: "stretch", position: "relative", zIndex: open && enGrille ? 1 : undefined }}>
+      <div onClick={() => setOpen(!open)} style={{ minHeight: open && !enGrille ? undefined : 70, boxSizing: "border-box", height: open && !enGrille ? undefined : "100%", padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: open && enGrille ? "#fff" : headerBg, borderBottom: open ? "1px solid #e8e0d0" : headerBorder }}>
         {/* 14/10/2026 — Nom à gauche ; « en attente » / « traités » toujours au même endroit, à droite. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
           <span>{allDone ? "✅" : "🏭"}</span>
           <span style={{ fontWeight: 700, fontSize: 14, color: nomColor, fontFamily: "'Syne', sans-serif" }}>{fournisseur}</span>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, margin: "0 8px 0 10px", flexShrink: 0 }}>
+        <div style={{ display: "flex", flexDirection: open && !enGrille ? "row" : "column", alignItems: open && !enGrille ? "center" : "flex-end", gap: 4, margin: "0 8px 0 10px", flexShrink: 0, ...(open && !enGrille ? { flex: 1, justifyContent: "center" } : {}) }}>
           {produits.length > 0 && <span style={{ fontSize: 12, background: "#fffbeb", color: "#d97706", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{produits.length} en attente</span>}
           {nbTraites > 0 && <span style={{ fontSize: 12, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{nbTraites} traité{nbTraites > 1 ? "s" : ""}</span>}
         </div>
+        {open && !enGrille && <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", marginRight: 8 }}>{actionsGroupe}</div>}
         <span style={{ fontSize: 18, color: allDone ? "#16a34a" : "#c8a84b", fontWeight: 700, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
       </div>
       {open && !enGrille && (
@@ -1289,42 +1332,6 @@ export function FournisseurBlock({ enGrille = false, fournisseur, produits, trai
               )}
             </div>
           )}
-          {/* 10/10/2026 — Demande d'Elinathan : mettre en réserve d'un coup TOUS les produits de cet
-              arrivage du fournisseur. Ouvre un seul rapport de réserve pour l'ensemble, qui exige au
-              moins une photo par produit (voir ouvrirRapportGroupeReserve dans App.tsx). */}
-          {canValider && onReporterGroupe && produits.length > 1 && (
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              {reportGroupe === null ? (
-                <button type="button" onClick={e => { e.stopPropagation(); const [j, m, a] = String(date || produits[0]?.date || "").split("/"); setReportGroupe(a && m && j ? `${a}-${m}-${j}` : ""); }}
-                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e40af", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
-                  📅 Décaler tout l'arrivage ({produits.length} produits)
-                </button>
-              ) : (
-                <>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#1e40af" }}>Décaler les {produits.length} produits à pointer de {fournisseur} au</span>
-                  <input type="date" value={reportGroupe} onChange={e => setReportGroupe(e.target.value)} onClick={e => e.stopPropagation()}
-                    style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #bfdbfe", fontSize: 13, fontWeight: 700 }} />
-                  <button type="button" disabled={!reportGroupe} onClick={e => { e.stopPropagation(); const [a, m, j] = reportGroupe.split("-"); onReporterGroupe(produits, `${j}/${m}/${a}`); setReportGroupe(null); }}
-                    style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: reportGroupe ? "#1e40af" : "#ccc", color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Confirmer</button>
-                  <button type="button" onClick={e => { e.stopPropagation(); setReportGroupe(null); }}
-                    style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Annuler</button>
-                </>
-              )}
-            </div>
-          )}
-          {canValider && onReserveGroupe && !isRetourRecondGroupe && (() => {
-            const tous = [...produits, ...traites].filter((a: any) => a.statut !== "sous réserve" && a.statut !== "refusé");
-            if (tous.length < 2) return null;
-            return (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-                <button type="button"
-                  onClick={e => { e.stopPropagation(); if (window.confirm(`Mettre en réserve les ${tous.length} produits de ${fournisseur} ?\n\nUn rapport de réserve unique va s'ouvrir.`)) onReserveGroupe(tous); }}
-                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fffbeb", color: "#92400e", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
-                  ⚠️ Tout mettre en réserve ({tous.length} produits)
-                </button>
-              </div>
-            );
-          })()}
           {!canValider
             ? produits.map((a: any) => <ArrivageLectureSeuleRow key={a.id} arrivage={a} />)
             : isRetourRecondGroupe && produits.length > 0
@@ -1339,8 +1346,18 @@ export function FournisseurBlock({ enGrille = false, fournisseur, produits, trai
         </div>
       )}
     </div>
+    {/* Ouvert : la case et son détail forment une seule forme blanche (pas de double cadre). */}
     {open && enGrille && (
-      <div style={{ gridColumn: "1 / -1", background: "#fff", borderRadius: 14, boxShadow: "0 0 0 3px #c8a84b", overflow: "hidden" }}>
+      <div style={{ gridColumn: "1 / -1", background: "#fff", borderRadius: 14, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid #e8e0d0", background: "#faf8f3", flexWrap: "wrap" }}>
+          <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: "#6b7280" }}>Pointage de {fournisseur}</span>
+          <span style={{ flex: 1, display: "flex", justifyContent: "center", gap: 6 }}>
+            {produits.length > 0 && <span style={{ fontSize: 12, background: "#fffbeb", color: "#d97706", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{produits.length} en attente</span>}
+            {nbTraites > 0 && <span style={{ fontSize: 12, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{nbTraites} traité{nbTraites > 1 ? "s" : ""}</span>}
+          </span>
+          <span style={{ flex: "0 0 auto", display: "flex", justifyContent: "flex-end" }}>{actionsGroupe}</span>
+          <button type="button" onClick={() => setOpen(false)} title="Fermer" style={{ border: "none", background: "transparent", fontSize: 18, color: "#c8a84b", fontWeight: 800, cursor: "pointer" }}>✕</button>
+        </div>
         <div style={{ padding: "12px 14px" }}>
           {/* Total de palettes ANNONCÉ pour tout le groupe (pas par arrivage) — voir le calcul
               plus haut. Purement informatif/de recoupement : les étiquettes palette et le
@@ -1378,42 +1395,6 @@ export function FournisseurBlock({ enGrille = false, fournisseur, produits, trai
               )}
             </div>
           )}
-          {/* 10/10/2026 — Demande d'Elinathan : mettre en réserve d'un coup TOUS les produits de cet
-              arrivage du fournisseur. Ouvre un seul rapport de réserve pour l'ensemble, qui exige au
-              moins une photo par produit (voir ouvrirRapportGroupeReserve dans App.tsx). */}
-          {canValider && onReporterGroupe && produits.length > 1 && (
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              {reportGroupe === null ? (
-                <button type="button" onClick={e => { e.stopPropagation(); const [j, m, a] = String(date || produits[0]?.date || "").split("/"); setReportGroupe(a && m && j ? `${a}-${m}-${j}` : ""); }}
-                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e40af", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
-                  📅 Décaler tout l'arrivage ({produits.length} produits)
-                </button>
-              ) : (
-                <>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#1e40af" }}>Décaler les {produits.length} produits à pointer de {fournisseur} au</span>
-                  <input type="date" value={reportGroupe} onChange={e => setReportGroupe(e.target.value)} onClick={e => e.stopPropagation()}
-                    style={{ padding: "6px 8px", borderRadius: 8, border: "1.5px solid #bfdbfe", fontSize: 13, fontWeight: 700 }} />
-                  <button type="button" disabled={!reportGroupe} onClick={e => { e.stopPropagation(); const [a, m, j] = reportGroupe.split("-"); onReporterGroupe(produits, `${j}/${m}/${a}`); setReportGroupe(null); }}
-                    style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: reportGroupe ? "#1e40af" : "#ccc", color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Confirmer</button>
-                  <button type="button" onClick={e => { e.stopPropagation(); setReportGroupe(null); }}
-                    style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>Annuler</button>
-                </>
-              )}
-            </div>
-          )}
-          {canValider && onReserveGroupe && !isRetourRecondGroupe && (() => {
-            const tous = [...produits, ...traites].filter((a: any) => a.statut !== "sous réserve" && a.statut !== "refusé");
-            if (tous.length < 2) return null;
-            return (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-                <button type="button"
-                  onClick={e => { e.stopPropagation(); if (window.confirm(`Mettre en réserve les ${tous.length} produits de ${fournisseur} ?\n\nUn rapport de réserve unique va s'ouvrir.`)) onReserveGroupe(tous); }}
-                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fffbeb", color: "#92400e", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
-                  ⚠️ Tout mettre en réserve ({tous.length} produits)
-                </button>
-              </div>
-            );
-          })()}
           {!canValider
             ? produits.map((a: any) => <ArrivageLectureSeuleRow key={a.id} arrivage={a} />)
             : isRetourRecondGroupe && produits.length > 0
