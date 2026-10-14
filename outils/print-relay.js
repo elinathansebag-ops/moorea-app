@@ -1,8 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // RELAIS D'IMPRESSION MOOREA
 // NOM DE VERSION : lidl-imprimantes
-// NUMERO DE VERSION : V8.3
+// NUMERO DE VERSION : V8.4
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// V8.4 (15/10/2026) — Étiquettes d'arrivage aussi rapides que les étiquettes Lidl : NOUVEAU type
+//   « etiquette_arrivage_pdf » = PDF 180 × 110 mm déjà dessiné par l'appli (mêmes réglages
+//   config/etiquette_arrivage). Imprimé TOUT DE SUITE (pas d'attente de 7 s, pas de navigateur caché
+//   à lancer), avec la même façon d'imprimer que les étiquettes d'arrivage (Admin › Imprimantes).
+//   L'appli n'envoie ce type que si on l'active dans Admin › Imprimantes ET si le relais est en V8.4.
+//   Le reste est INCHANGÉ.
 //
 // Fichier de référence : outils/print-relay.js dans le projet moorea-app (à copier sur le PC
 // d'impression sous le nom print-relay.js, puis lancer : node print-relay.js).
@@ -660,8 +667,14 @@ async function imprimerLot(jobs) {
     console.log(`   📋 Copie de test : ${debugFile}`);
   });
 
+  await imprimerPdfEtiquettesArrivage(tmpFile, jobs.length);
+}
+
+// V8.4 — Impression d'un PDF d'étiquettes d'arrivage déjà sur disque (dessiné ici ou par l'appli),
+// selon la façon choisie dans l'appli (config/imprimantes/modeArrivage).
+async function imprimerPdfEtiquettesArrivage(tmpFile, nbEtiquettes) {
   // Timeout DYNAMIQUE selon la taille du lot: base 15s + 500ms par étiquette (inchangé)
-  const timeoutMs = 15000 + (jobs.length * 500);
+  const timeoutMs = 15000 + (nbEtiquettes * 500);
   const mode = await modeArrivage();
   const reglageSumatra = { "sumatra-reel": "noscale", "sumatra-reduire": "shrink", "sumatra-ajuster": "fit" }[mode];
   console.log(`   ⚙️  Mode d'impression des étiquettes d'arrivage : ${mode}`);
@@ -702,6 +715,27 @@ async function imprimerLot(jobs) {
     }
   }
   await envoyerPdfVersAcrobat(tmpFile, PRINTER_NAME, timeoutMs);
+}
+
+// ─── V8.4 : ÉTIQUETTE D'ARRIVAGE DÉJÀ DESSINÉE PAR L'APPLI (PDF 180 × 110 mm) ──
+async function imprimerEtiquetteArrivagePdf(job, key) {
+  const nomAffiche = job.lotLabel || job.pdfNom || "étiquette d'arrivage";
+  console.log(`🏷️  Étiquette d'arrivage prête (appli) : ${nomAffiche} (${job.produit || ""})`);
+  try {
+    await update(ref(db, `printQueue/${key}`), { status: "printing" });
+    const brut = job.pdfBase64 || "";
+    const base64 = brut.includes(",") ? brut.split(",").pop() : brut;
+    if (!base64) throw new Error("PDF vide (pdfBase64 manquant sur ce job)");
+    const tmpFile = path.join(os.tmpdir(), `etiquette_arrivage_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pdf`);
+    fs.writeFileSync(tmpFile, Buffer.from(base64, "base64"));
+    fs.copyFile(tmpFile, path.join(os.tmpdir(), "moorea-derniere-etiquette.pdf"), () => {});
+    await imprimerPdfEtiquettesArrivage(tmpFile, 1);
+    await update(ref(db, `printQueue/${key}`), { status: "done", printedAt: Date.now(), pdfBase64: null });
+    console.log(`✅ Étiquette d'arrivage imprimée : ${nomAffiche}`);
+  } catch (err) {
+    console.error(`❌ Erreur impression de l'étiquette d'arrivage (${nomAffiche}) :`, err.message);
+    await update(ref(db, `printQueue/${key}`), { status: "error", error: err.message }).catch(() => {});
+  }
 }
 
 // ─── NOUVEAU : IMPRESSION D'UN BON DE RECONDITIONNEMENT (PDF A4 déjà généré côté appli) ──
@@ -777,6 +811,7 @@ const TYPES_ETIQUETTES = [undefined, "", "etiquette", "etiquette_palette", "etiq
 const pendingQuery = query(queueRef, orderByChild("status"), equalTo("pending"));
 
 let lotEnCours = [];
+let fileEtiquettesAppli = Promise.resolve(); // V8.4
 let minuteurLot = null;
 let enTrainDImprimer = false;
 
@@ -825,6 +860,12 @@ onChildAdded(pendingQuery, (snap) => {
     imprimerBonReconditionnement(job, key);
     return;
   }
+  // V8.4 : étiquette d'arrivage déjà dessinée par l'appli → imprimée tout de suite, une à la fois
+  // (chaîne d'attente pour ne pas lancer deux impressions Acrobat en même temps).
+  if (job.type === "etiquette_arrivage_pdf") {
+    fileEtiquettesAppli = fileEtiquettesAppli.then(() => imprimerEtiquetteArrivagePdf(job, key));
+    return;
+  }
   // V8 : étiquettes palettes Lidl = PDF prêt à imprimer, pas d'étiquette à dessiner.
   if (job.type === "etiquette_lidl") {
     imprimerEtiquettesLidl(job, key);
@@ -849,7 +890,7 @@ onChildAdded(pendingQuery, (snap) => {
 const statusRef = ref(db, "printRelayStatus");
 function envoyerSignalDeVie() {
   // V8 : update (et plus set) pour ne pas effacer la liste des imprimantes à chaque signal.
-  update(statusRef, { online: true, lastSeen: Date.now(), version: "V8.3" }).catch(() => {});
+  update(statusRef, { online: true, lastSeen: Date.now(), version: "V8.4" }).catch(() => {});
 }
 envoyerSignalDeVie();
 setInterval(envoyerSignalDeVie, 15000);

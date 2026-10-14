@@ -1467,6 +1467,20 @@ export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteInd
     dateArriveeLabel = isNaN(d.getTime()) ? String(arrivage.date) : d.toLocaleDateString("fr-FR");
   }
 
+  // 15/10/2026 — Étiquette dessinée par l'appli (PDF prêt, sortie immédiate comme Lidl) si c'est
+  // activé dans Admin › Imprimantes ET que le relais du PC est en V8.4+. Sinon (ou en cas
+  // d'erreur), envoi comme avant : le PC dessine l'étiquette.
+  const donnees = { lotLabel, produit: (arrivage.produit || "-").toUpperCase(), qte: qte || 0, unite: (arrivage.unite || "COLIS").toUpperCase(), lotFournisseur: (arrivage.lot_fournisseur || "").toUpperCase(), dlcLabel, dateArriveeLabel, url };
+  try {
+    const { etiquetteParAppliActive, fabriquerPdfEtiquetteArrivage } = await import("./etiquetteArrivagePdf");
+    if (await etiquetteParAppliActive()) {
+      const pdfBase64 = await fabriquerPdfEtiquetteArrivage(donnees);
+      await push(ref(db, "printQueue"), { type: "etiquette_arrivage_pdf", ...donnees, pdfBase64, status: "pending", createdAt: Date.now() });
+      return;
+    }
+  } catch (e) {
+    console.warn("Étiquette dessinée par l'appli impossible, envoi classique :", e);
+  }
   await push(ref(db, "printQueue"), {
     type: "etiquette_palette",
     lotLabel,

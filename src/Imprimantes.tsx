@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import { db, ref, onValue, update, get, push } from "./firebase";
 import { pdfEtiquettesPalettes } from "./lidlImpression";
+import { relaisAccepteEtiquettePdf } from "./etiquetteArrivagePdf";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 12/10/2026 — Demande d'Elinathan : tous les réglages d'impression au même endroit (Admin ›
@@ -83,8 +84,10 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
   const [pc, setPc] = useState<{ imprimantes: string[]; lastSeen?: number; version?: string; parDefaut?: { etiquettes?: string; a4?: string } }>({ imprimantes: [] });
   const [tests, setTests] = useState<Record<string, { etat: string; message?: string }>>({});
   const [modeArrivage, setModeArrivage] = useState("acrobat");
+  const [parAppli, setParAppli] = useState(false); // 15/10/2026 — étiquette d'arrivage dessinée par l'appli
+  const [essai, setEssai] = useState("");
   useEffect(() => {
-    const a = onValue(ref(db, "config/imprimantes"), snap => { const v = snap.val() || {}; setChoix({ ...IMPRIMANTES_DEFAUT, ...v }); setModeArrivage(typeof v.modeArrivage === "string" ? v.modeArrivage : "acrobat"); });
+    const a = onValue(ref(db, "config/imprimantes"), snap => { const v = snap.val() || {}; setChoix({ ...IMPRIMANTES_DEFAUT, ...v }); setModeArrivage(typeof v.modeArrivage === "string" ? v.modeArrivage : "acrobat"); setParAppli(v.etiquetteArrivageAppli === true); });
     const b = onValue(ref(db, "printRelayStatus"), snap => {
       const v = snap.val() || {};
       setPc({ imprimantes: Array.isArray(v.imprimantes) ? v.imprimantes : [], lastSeen: v.lastSeen, version: v.version, parDefaut: v.imprimantesParDefaut });
@@ -172,6 +175,37 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
         </select>
         {pc.version && !/V8\.[3-9]|V9/.test(pc.version) && <span style={{ fontSize: 11, color: "#b91c1c" }}>relais {pc.version} : installer la V8.3 pour que ce réglage compte</span>}
       </label>
+      {/* 15/10/2026 — Étiquette d'arrivage dessinée par l'appli (PDF prêt, sortie immédiate comme Lidl). */}
+      <div style={{ ...ligne, alignItems: "flex-start" }}>
+        <span style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 600, color: texte }}>
+          ⚡ Qui dessine l'étiquette d'arrivage
+          <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, color: gris }}>« L'appli » = sortie immédiate, comme les étiquettes Lidl. Essayer d'abord avec l'étiquette d'essai.</span>
+        </span>
+        <span style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+          <select value={parAppli ? "appli" : "pc"} onChange={e => update(ref(db, "config/imprimantes"), { etiquetteArrivageAppli: e.target.value === "appli" })}
+            style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, minWidth: 200 }}>
+            <option value="pc">Le PC — comme avant (attente ~10 s)</option>
+            <option value="appli">L'appli — plus rapide</option>
+          </select>
+          {!relaisAccepteEtiquettePdf(pc.version) && <span style={{ fontSize: 11, color: "#b91c1c", maxWidth: 260, textAlign: "right" }}>relais {pc.version || "?"} : installer la V8.4 sur le PC (sinon les étiquettes continuent d'être dessinées par le PC)</span>}
+          <button type="button" disabled={!relaisAccepteEtiquettePdf(pc.version) || essai === "…"}
+            onClick={async () => {
+              setEssai("…");
+              try {
+                const { fabriquerPdfEtiquetteArrivage } = await import("./etiquetteArrivagePdf");
+                const d = new Date().toLocaleDateString("fr-FR");
+                const donnees = { lotLabel: "MRA.0000-1", produit: "ÉTIQUETTE D'ESSAI — HARICOT VERT KENYA (BARQUETTE 500G)", qte: 48, unite: "COLIS", lotFournisseur: "ESSAI-123", dlcLabel: d, dateArriveeLabel: d, url: window.location.origin };
+                const pdfBase64 = await fabriquerPdfEtiquetteArrivage(donnees);
+                await push(ref(db, "printQueue"), { type: "etiquette_arrivage_pdf", ...donnees, pdfBase64, status: "pending", createdAt: Date.now(), essai: true });
+                setEssai("✅ Envoyée");
+              } catch (e: any) { setEssai("❌ " + (e?.message || "erreur")); }
+              setTimeout(() => setEssai(""), 5000);
+            }}
+            style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${bord}`, background: "#fff", color: texte, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+            {essai || "🧪 Étiquette d'essai (dessinée par l'appli)"}
+          </button>
+        </span>
+      </div>
     </div>
   );
 }

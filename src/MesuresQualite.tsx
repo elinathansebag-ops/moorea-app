@@ -4,8 +4,9 @@ import { lireMesures } from "./ArrivageModule";
 // 15/10/2026 — Demande d'Elinathan (🧪 Récap qualité) : « un truc dédié au poids et à la
 // température, que je puisse voir que ces données, en plus de la traça ». Lecture seule :
 //   🌡️ Températures = relevés du pointage (arrivage.temperatures) + température des rapports qualité.
-//   ⚖️ Poids        = poids brut / net pesés à l'arrivage (arrivage.rapport) + pesées de barquettes
-//                     (arrivage.poids_barquettes, en grammes).
+//   ⚖️ Poids        = pesées saisies À LA MAIN au pointage : barquettes (arrivage.poids_barquettes, en g),
+//                     et poids brut / net seulement s'ils ont été corrigés (différents de l'import Geslot,
+//                     qui pré-remplit ces cases — demande d'Elinathan le 15/10).
 // Une carte par arrivage, rangées par jour, avec moyenne / min / max en haut et export CSV.
 
 type Releve = { valeur: number; brut: string; at: number; source: "pointage" | "rapport" };
@@ -60,8 +61,10 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
       const c = carteDe(`a_${a.id}`, { at, produit: a.produit || "", fournisseur: a.fournisseur || "", lot: String(a.lot_interne || a.lot_fournisseur || ""), date: a.date || "" });
       lireMesures(a.temperatures).forEach(m => { const v = num(m.valeur); if (v != null) c.temps.push({ valeur: v, brut: m.valeur, at: m.at, source: "pointage" }); });
       lireMesures(a.poids_barquettes).forEach(m => { const v = num(m.valeur); if (v != null) c.barquettes.push({ valeur: v, brut: m.valeur, at: m.at, source: "pointage" }); });
-      c.brut = num(a.rapport?.poids_brut ?? a.poids_brut);
-      c.net = num(a.rapport?.poids_net ?? a.poids_net);
+      // Brut / net : seulement si la valeur validée diffère de celle importée de Geslot.
+      const saisi = (valide: any, importe: any) => { const v = num(valide), i = num(importe); return v != null && v !== i ? v : null; };
+      c.brut = saisi(a.rapport?.poids_brut, a.poids_brut);
+      c.net = saisi(a.rapport?.poids_net, a.poids_net);
     });
     // Température des rapports qualité : rattachée à l'arrivage lié s'il existe, sinon carte du rapport.
     (rapports || []).forEach((r: any) => {
@@ -90,8 +93,8 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
     const series = type === "temperature"
       ? [{ lib: "Température", unite: "°C", vals: cartes.flatMap(c => c.temps.map(t => t.valeur)) }]
       : [
-          { lib: "Poids net", unite: "kg", vals: cartes.map(c => c.net).filter((v): v is number => v != null) },
           { lib: "Barquettes", unite: "g", vals: cartes.flatMap(c => c.barquettes.map(b => b.valeur)) },
+          { lib: "Poids net corrigé", unite: "kg", vals: cartes.map(c => c.net).filter((v): v is number => v != null) },
         ];
     return series.filter(s => s.vals.length).map(s => ({
       ...s, n: s.vals.length, moy: s.vals.reduce((a, b) => a + b, 0) / s.vals.length, min: Math.min(...s.vals), max: Math.max(...s.vals),
@@ -113,7 +116,7 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
     const lignes: string[][] = type === "temperature"
       ? [["Date", "Heure", "Lot", "Produit", "Fournisseur", "Température (°C)", "Source"],
         ...cartes.flatMap(c => c.temps.map(t => [c.date || (t.at ? new Date(t.at).toLocaleDateString("fr-FR") : ""), heure(t.at), c.lot, c.produit, c.fournisseur, t.brut, t.source === "rapport" ? "Rapport qualité" : "Pointage"]))]
-      : [["Date", "Lot", "Produit", "Fournisseur", "Poids brut (kg)", "Poids net (kg)", "Barquettes (g)"],
+      : [["Date", "Lot", "Produit", "Fournisseur", "Poids brut corrigé (kg)", "Poids net corrigé (kg)", "Barquettes (g)"],
         ...cartes.map(c => [c.date, c.lot, c.produit, c.fournisseur, c.brut != null ? String(c.brut) : "", c.net != null ? String(c.net) : "", c.barquettes.map(b => b.brut).join(" / ")])];
     const csv = lignes.map(r => r.map(x => `"${String(x ?? "").replace(/"/g, '""')}"`).join(";")).join("\n");
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }));
@@ -145,15 +148,15 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
             {c.temps.map((t, i) => <span key={i}>{valeurPastille(`${fmt(t.valeur)}°C`, `${t.source === "rapport" ? "Rapport qualité" : "Pointage"}${t.at ? " · " + heure(t.at) : ""}`)}</span>)}
           </div>
         ) : (
-          <div style={{ display: "flex", gap: 6 }}>
-            {[["Brut", c.brut, "kg"], ["Net", c.net, "kg"]].map(([lib, v, u]) => (
+          <div style={{ display: "flex", gap: 6, flexDirection: "row-reverse" }}>
+            {[["Net corrigé", c.net, "kg"], ["Brut corrigé", c.brut, "kg"]].filter(([, v]) => v != null).map(([lib, v, u]) => (
               <div key={lib as string} style={{ flex: 1, background: v != null ? fond : "#f9fafb", border: `1px solid ${v != null ? bord : "#eef0f2"}`, borderRadius: 8, padding: "4px 8px", textAlign: "center" }}>
                 <div style={{ fontSize: 9.5, fontWeight: 700, color: "#9ca3af" }}>{lib as string}</div>
                 <div style={{ fontSize: 14, fontWeight: 900, color: v != null ? couleur : "#d1d5db" }}>{v != null ? `${fmt(v as number)} ${u}` : "—"}</div>
               </div>
             ))}
             <div style={{ flex: 1, background: c.barquettes.length ? fond : "#f9fafb", border: `1px solid ${c.barquettes.length ? bord : "#eef0f2"}`, borderRadius: 8, padding: "4px 8px", textAlign: "center" }}>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#9ca3af" }}>Barquettes</div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#9ca3af" }}>Barquettes{c.barquettes.length > 1 ? ` (moy. de ${c.barquettes.length})` : ""}</div>
               <div style={{ fontSize: 14, fontWeight: 900, color: c.barquettes.length ? couleur : "#d1d5db" }}>
                 {c.barquettes.length ? `${fmt(c.barquettes.reduce((a, b) => a + b.valeur, 0) / c.barquettes.length, 0)} g` : "—"}
               </div>
@@ -188,7 +191,7 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
                 <div style={{ fontSize: 17, fontWeight: 900, color: "#1f2937" }}>{fmt(v as number, s.unite === "g" ? 0 : 1)} <span style={{ fontSize: 11, color: "#9ca3af" }}>{s.unite}</span></div>
               </div>
             ))}
-            {s.lib === "Poids net" && (
+            {s.lib === "Poids net corrigé" && (
               <div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af" }}>Total</div>
                 <div style={{ fontSize: 17, fontWeight: 900, color: "#1f2937" }}>{fmt(s.total, 0)} <span style={{ fontSize: 11, color: "#9ca3af" }}>kg</span></div>
