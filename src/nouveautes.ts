@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 41, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : fournisseurs à pointer d'abord (A → Z), puis ceux terminés (A → Z)." },
   { id: 40, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : cases fournisseurs plus fines (colonnes et liste)." },
   { id: 39, date: "14/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : fournisseur ouvert d'une seule forme blanche, « Décaler tout » et « Tout mettre en réserve » sur la ligne du fournisseur, et Palettes / Températures / Poids sur une même ligne." },
   { id: 38, date: "14/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : un fournisseur ouvert reste à sa place dans la grille, son pointage s'ouvre juste en dessous sur toute la largeur." },

@@ -2799,7 +2799,10 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
   const byFournisseurTraites: Record<string, any[]> = {};
   (arrivagesArchives || []).forEach((a: any) => { const g = libelleGroupe(a); if (!byFournisseurTraites[g]) byFournisseurTraites[g] = []; byFournisseurTraites[g].push(a); });
   // Tous les fournisseurs (en attente + traités)
-  const allFourn = [...new Set([...Object.keys(byFournisseur), ...Object.keys(byFournisseurTraites)])];
+  // 14/10/2026 — Ordre : d'abord les fournisseurs encore à pointer (A → Z), puis les terminés (A → Z).
+  const triAlpha = (x: string, y: string) => x.localeCompare(y, "fr", { sensitivity: "base" });
+  const fournAvecAttente = Object.keys(byFournisseur).filter(f => (byFournisseur[f] || []).length > 0).sort(triAlpha);
+  const allFourn = [...fournAvecAttente, ...[...new Set([...Object.keys(byFournisseur), ...Object.keys(byFournisseurTraites)])].filter(f => !fournAvecAttente.includes(f)).sort(triAlpha)];
 
   const handleValiderTout = async () => {
     const enAttente = arrivages.filter((a: any) => a.statut === "en attente");
