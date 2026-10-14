@@ -514,6 +514,7 @@ export default function App() {
   // 14/10/2026 — Module « 🔄 Refus à faire signer » : rapports refusés dont le bon de reprise n'est
   // ni signé par le transporteur, ni marqué « récupéré sans signature ».
   const [aSignerSeul, setASignerSeul] = useState(false);
+  const [imprimerBonEntrepot, setImprimerBonEntrepot] = useState(false);
   const refusASigner = (r: any) => r?.decision === "refus" && !r?.transporteur?.signatureBase64 && !r?.recupereSansSig;
   const [showStats, setShowStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -3317,7 +3318,22 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     // forcément choisir son imprimante) — voir la modale d'aperçu plus bas, qui
     // déclenche aussi l'impression automatiquement à l'ouverture. On utilise directement
     // la data URI de jsPDF, sans passer par un blob: (page blanche fiable sur iPad/Safari).
-    setPdfApercu(doc.output("datauristring"));
+    // 14/10/2026 — Depuis « Refus à faire signer » : envoyé directement à l'imprimante de
+    // l'entrepôt (file d'impression du relais PC, comme les bons de reconditionnement).
+    if (imprimerBonEntrepot) {
+      try {
+        const { imprimantePour } = await import("./Imprimantes");
+        await push(ref(db, "printQueue"), {
+          type: "bon_reconditionnement", imprimante: await imprimantePour("bons_reprise"),
+          pdfNom: `Bon de reprise ${r.numeroRapport || ""} ${r.fournisseur || ""}`.trim(),
+          pdfBase64: doc.output("datauristring").split(",")[1], status: "pending", createdAt: Date.now(), origine: "bon_reprise",
+        });
+        showToast("🖨️ Bon de reprise envoyé à l'imprimante de l'entrepôt");
+      } catch (e: any) {
+        showToast("Impression impossible : " + (e?.message || e) + " — aperçu affiché", "error");
+        setPdfApercu(doc.output("datauristring"));
+      }
+    } else setPdfApercu(doc.output("datauristring"));
 
     try {
       if (r.firebaseKey) {
@@ -3337,8 +3353,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       }
     } catch {}
 
-    showToast("📄 Bon de reprise généré et sauvegardé");
-    setSignatureModal(null);
+    if (!imprimerBonEntrepot) showToast("📄 Bon de reprise généré et sauvegardé");
+    setSignatureModal(null); setImprimerBonEntrepot(false);
     } catch (e: any) {
       console.error("Erreur génération bon de reprise:", e);
       showToast("Erreur génération PDF : " + (e?.message || String(e)), "error");
@@ -4957,7 +4973,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 🗑 Effacer
               </button>
               <button onClick={genererBonRetourAvecSignature} style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0a0a0a, #2a2a2a)", cursor: "pointer", fontSize: 15, fontWeight: 700, color: "#c8a84b", fontFamily: "'Syne', sans-serif" }}>
-                📄 Générer le bon de reprise
+                {imprimerBonEntrepot ? "🖨️ Imprimer le bon à l'entrepôt" : "📄 Générer le bon de reprise"}
               </button>
             </div>
             <button onClick={async () => {
@@ -4982,7 +4998,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       {fenetresPdf}
 
       <PageHeader
-        titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
+        titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? (aSignerSeul ? "🔄 Refus à faire signer" : "Rapports qualité") : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
         onBack={vue === "form" ? () => setVue("historique" as any) : retourHub ? () => { setFilterFournisseur(""); setFilterProduit(""); setASignerSeul(false); versAccueilOuRubrique(); } : () => { setASignerSeul(false); setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
         onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
       />
@@ -6094,7 +6110,40 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           </div>
         )}
 
-        {vue === "historique" && (
+        {/* 14/10/2026 — « Refus à faire signer » : page simple, une carte par refus en attente
+            (photo, fournisseur, colis) et un bouton qui ouvre la fenêtre de signature puis
+            imprime le bon de reprise à l'entrepôt. */}
+        {vue === "historique" && aSignerSeul && (() => {
+          const liste = rapports.filter(refusASigner).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          return (
+            <div className="fade-up">
+              <p style={{ margin: "0 0 14px", fontSize: 14, color: "#6b7280" }}>{liste.length ? `${liste.length} refus en attente de signature du transporteur.` : ""}</p>
+              {!liste.length && <div style={{ padding: 40, textAlign: "center", background: "#fff", borderRadius: 16, color: "#6b7280", fontSize: 15, fontWeight: 700 }}>✅ Aucun refus à faire signer.</div>}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 14 }}>
+                {liste.map(r => {
+                  const photo = (r.photoUrls || []).find(Boolean);
+                  return (
+                    <div key={r.firebaseKey || r.id} style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.08)", display: "flex", flexDirection: "column" }}>
+                      <div style={{ aspectRatio: "4/3", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 13 }}>
+                        {photo ? <img src={srcPhoto(photo)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "📷 Pas de photo"}
+                      </div>
+                      <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2 }}>{r.fournisseur || "Fournisseur ?"}</div>
+                        <div style={{ fontSize: 12.5, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.produit} · {r.date}</div>
+                        <div style={{ fontSize: 22, fontWeight: 900, color: "#dc2626", margin: "4px 0 8px" }}>{r.nbColisRefuses ?? "?"} <span style={{ fontSize: 14, fontWeight: 700 }}>colis refusés{r.nbColisTotal ? ` / ${r.nbColisTotal}` : ""}</span></div>
+                        <button type="button" onClick={() => { setImprimerBonEntrepot(true); genererBonRetour(r); }}
+                          style={{ marginTop: "auto", padding: "13px 0", borderRadius: 12, border: "none", background: "#dc2626", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                          🖨️ Faire signer et imprimer
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+        {vue === "historique" && !aSignerSeul && (
           <div className="fade-up">
             {(() => {
               const types = [

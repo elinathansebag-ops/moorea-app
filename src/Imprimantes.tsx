@@ -14,18 +14,21 @@ import { pdfEtiquettesPalettes } from "./lidlImpression";
 //   imprimante à étiquettes par défaut (réglée dans print-relay.js).
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type CleImprimante = "etiquettes_lidl" | "geslot_lidl" | "preparation_lidl" | "bons_reconditionnement";
+export type CleImprimante = "etiquettes_lidl" | "geslot_lidl" | "preparation_lidl" | "bons_reconditionnement" | "bons_reprise";
 export const IMPRIMANTES_DEFAUT: Record<CleImprimante, string> = {
   etiquettes_lidl: "ETIQUETTE JAUNE",
   geslot_lidl: "RICOH MP C4504",
   preparation_lidl: "RICOH",
   bons_reconditionnement: "RICOH",
+  bons_reprise: "RICOH",
 };
 const DOCUMENTS: { cle: CleImprimante; libelle: string }[] = [
   { cle: "etiquettes_lidl", libelle: "🏷️ Étiquettes palettes Lidl" },
   { cle: "geslot_lidl", libelle: "📄 Bon Geslot Lidl (bureau)" },
   { cle: "preparation_lidl", libelle: "📦 Bon de préparation Lidl (entrepôt)" },
   { cle: "bons_reconditionnement", libelle: "♻️ Bons de reconditionnement" },
+  // 14/10/2026 — Bons de reprise (refus à faire signer), imprimés à l'entrepôt.
+  { cle: "bons_reprise", libelle: "🔄 Bons de reprise (refus)" },
 ];
 
 // Imprimante à utiliser pour un document (lue au moment de l'envoi : toujours le dernier réglage).
