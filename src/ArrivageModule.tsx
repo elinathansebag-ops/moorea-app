@@ -732,9 +732,10 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           les listes de mesures démarrent vides pour ne pas alourdir les autres produits. */}
       <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
         {!isSimple && (
-          <div style={{ flex: 1, minWidth: 210, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 5 }}>
+          // 15/10/2026 — « Traça four. » sur la même ligne que sa case, aligné comme « DLC ».
+          <div style={{ flex: 1, minWidth: 210, display: "flex", alignItems: "flex-start", gap: 6, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "8px 12px" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", whiteSpace: "nowrap", paddingTop: 6 }}>🏷️ Traça four. {tracaList.length > 1 ? `(${tracaList.length})` : ""}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 0 }}>
               {tracaList.map((t, idx) => (
                 <div key={idx} style={{ display: "flex", gap: 5, alignItems: "center" }}>
                   <input type="text"
@@ -874,12 +875,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
           </div>
         </>
       )}
-      <div style={{ textAlign: "right", marginBottom: 4 }}>
-        <button onClick={() => setSansEtiquette(v => !v)}
-          style={{ background: "none", border: "none", padding: 0, color: sansEtiquette ? "#d97706" : "#9ca3af", fontSize: 10.5, textDecoration: "underline", cursor: "pointer", fontWeight: sansEtiquette ? 700 : 400 }}>
-          {sansEtiquette ? "✓ Sans étiquette à la validation (cas rare)" : "Valider sans étiquette (cas rare)"}
-        </button>
-      </div>
+      {/* 15/10/2026 — « Valider sans étiquette » : petit bouton carré à côté de « Litige » (plus bas). */}
 
       {paletteAbsente ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 10, background: "#fffbeb", border: "1.5px solid #fcd34d" }}>
@@ -905,6 +901,12 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
               seul tap, sans passer par le toggle "⚠️ Litige" ci-dessus puis un second tap. */}
           <button onClick={() => handleValider(true)} disabled={saving} style={{ flex: 1, padding: "9px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 12.5, border: "1.5px solid #dc2626", background: "#fff", color: "#dc2626", fontFamily: "'Syne', sans-serif" }}>
             🚩 Litige
+          </button>
+          <button onClick={() => setSansEtiquette(v => !v)} disabled={saving}
+            title={sansEtiquette ? "Sans étiquette activé : la validation n'imprimera pas d'étiquette (toucher pour annuler)" : "Valider sans imprimer d'étiquette (cas rare)"}
+            aria-label="Valider sans étiquette"
+            style={{ flex: "0 0 auto", width: 40, padding: 0, borderRadius: 10, cursor: "pointer", fontSize: 16, border: `1.5px solid ${sansEtiquette ? "#d97706" : "#e5e7eb"}`, background: sansEtiquette ? "#fffbeb" : "#fff", color: sansEtiquette ? "#d97706" : "#9ca3af", position: "relative" }}>
+            🏷️<span style={{ position: "absolute", left: 8, right: 8, top: "50%", height: 2, background: sansEtiquette ? "#d97706" : "#9ca3af", transform: "rotate(-35deg)" }} />
           </button>
         </div>
       )}

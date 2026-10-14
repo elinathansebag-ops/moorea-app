@@ -5259,9 +5259,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               {/* 04/09/2026 — Elinathan ne trouvait pas comment revoir l'Historique arrivages
                   (aucun bouton n'y menait depuis cet écran) : ajout d'un accès direct. */}
               {/* 15/10/2026 — « Voir l'historique » déplacé en bas, sous les semaines. */}
-              {/* 15/10/2026 — Import mis en avant (le plus important). */}
-              <label style={{ flex: "1 1 260px", justifyContent: "center", padding: "9px 20px", borderRadius: 10, cursor: "pointer", fontSize: 14.5, fontWeight: 900, border: "1.5px solid #305a55", background: "#305a55", color: "#fff", boxShadow: "0 4px 12px rgba(48,90,85,.25)", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
-                📊 Import
+              {/* 15/10/2026 — Import mis en avant (le plus important) : en MAJUSCULES, bouton à la taille du texte. */}
+              <label style={{ flex: "0 0 auto", justifyContent: "center", padding: "8px 18px", letterSpacing: 0.5, borderRadius: 10, cursor: "pointer", fontSize: 14.5, fontWeight: 900, border: "1.5px solid #305a55", background: "#305a55", color: "#fff", boxShadow: "0 4px 12px rgba(48,90,85,.25)", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+                📊 IMPORT
                 <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
               </label>
               <button onClick={detecterDoublonsArr} style={{ padding: "6px 11px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1a2e1a", whiteSpace: "nowrap" }}>
