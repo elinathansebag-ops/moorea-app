@@ -426,7 +426,7 @@ function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset, arriva
                 const r = pb.map(a => rapportDeArrivage(a, qualite?.rapports)).find(Boolean);
                 const qual = pb.length ? <span key="q" style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><BadgeQualite statut={pb.some(a => a.statut === "refusé") ? "refusé" : "sous réserve"} />{r && <BoutonRapport c={c} onClick={() => setRapportOuvert(r)} />}</span> : arr.length ? <BadgeQualite key="q" statut="validé" /> : "";
                 const lit = litigesDe(l);
-                const litAff = lit.length ? <span key="l" style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>{lit.map(x => <BadgeLitigeClient key={x.id} litige={x} />)}</span> : "";
+                const litAff = lit.length ? <span key="l" style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>{lit.map(x => <BadgeLitigeClient key={x.id} litige={x} onStatut={st => changerStatutLitige(x.id, st).then(() => chargerLitigesClients().then(setLitigesC))} />)}</span> : "";
                 return [l.a, l.fam, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...ve(eur(l.ven)), ...(voirMarge ? [l.sa ? "—" : eur(l.ach), l.sa ? "—" : eur(l.res), l.sa ? "—" : pct(l.res, l.ven)] : []), qual, litAff];
               })}
               total={["TOTAL", "", "", ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...ve(eur(t.ven)), ...(voirMarge ? [eur(t.ach), eur(t.res), pct(t.res, t.ven)] : []), "", ""]} />
@@ -1310,7 +1310,7 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
               <div key={x.id} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "7px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
                 <span style={{ minWidth: 86, fontWeight: 800 }}>{dateFr(x.dateLivraison)}</span>
                 <span style={{ flex: 1, minWidth: 200 }}>{x.article}<span style={{ color: c.gris }}>{x.site ? ` · ${x.site}` : ""} · {x.bl}</span></span>
-                <BadgeLitigeClient litige={x} />
+                <BadgeLitigeClient litige={x} onStatut={st => changerStatutLitige(x.id, st).then(() => chargerLitigesClients().then(setLitigesC))} />
               </div>
             ))}
           </Bloc>
@@ -1456,13 +1456,27 @@ function BandeauChargement({ c, debut, etapes }: { c: Couleurs; debut: number; e
 // refusés / manquants ; Motif ; Lien mail ; Fichier PDF). Rangés dans litiges_clients/{BL_code_n} :
 // réimporter le même fichier remplace les mêmes lignes, sans doublon. Rattachés aux ventes par
 // client facturé + article + date de livraison (tels qu'écrits dans l'export Geslot).
+// 14/10/2026 — « je ne suis pas encore sûre à 100 % de ces infos » : chaque litige a un statut
+// (a_verifier par défaut, confirme, ecarte) et un réglage global (config/stats/litigesClients :
+// "tous" | "confirmes" | "aucun") décide lesquels sont pris en compte sur les commandes et fiches.
 let cacheLitigesC: Promise<any[]> | null = null;
-function chargerLitigesClients(): Promise<any[]> {
-  if (cacheLitigesC) return cacheLitigesC;
-  cacheLitigesC = get(ref(db, "litiges_clients")).then(s => Object.entries(s.val() || {}).map(([id, v]: any) => ({ id, ...v }))).catch(() => []);
-  return cacheLitigesC;
+function chargerLitigesClients(tous = false): Promise<any[]> {
+  if (!cacheLitigesC) cacheLitigesC = Promise.all([
+    get(ref(db, "litiges_clients")).then(s => Object.entries(s.val() || {}).map(([id, v]: any) => ({ id, statut: "a_verifier", ...v }))).catch(() => []),
+    get(ref(db, "config/stats/litigesClients")).then(s => s.val() || "tous").catch(() => "tous"),
+  ]).then(([l, mode]) => { (l as any).mode = mode; return l; });
+  return cacheLitigesC.then(l => {
+    if (tous) return l;
+    const mode = (l as any).mode;
+    return mode === "aucun" ? [] : l.filter(x => x.statut !== "ecarte" && (mode !== "confirmes" || x.statut === "confirme"));
+  });
 }
-function BadgeLitigeClient({ litige: x }: { litige: any }) {
+const oublierLitigesC = () => { cacheLitigesC = null; };
+function changerStatutLitige(id: string, statut: "a_verifier" | "confirme" | "ecarte", par?: string) {
+  oublierLitigesC();
+  return update(ref(db, `litiges_clients/${id}`), { statut, statutPar: par || null, statutLe: Date.now() });
+}
+function BadgeLitigeClient({ litige: x, onStatut }: { litige: any; onStatut?: (s: "a_verifier" | "confirme" | "ecarte") => void }) {
   const refus = /refus/i.test(x.type || ""), manq = /manquant/i.test(x.type || ""), avoir = /avoir/i.test(x.type || "");
   const st = refus ? { f: "#fee2e2", c: "#b91c1c", i: "⛔" } : manq ? { f: "#ffedd5", c: "#c2410c", i: "📦" } : avoir ? { f: "#ede9fe", c: "#6d28d9", i: "💶" } : { f: "#fef3c7", c: "#92400e", i: "⚠️" };
   return (
@@ -1470,6 +1484,12 @@ function BadgeLitigeClient({ litige: x }: { litige: any }) {
       <span style={{ padding: "2px 9px", borderRadius: 999, background: st.f, color: st.c, fontSize: 11.5, fontWeight: 800, whiteSpace: "nowrap" }}>{st.i} {x.type}{Number(x.colisRefuses) ? ` · ${x.colisRefuses} colis` : ""}</span>
       {x.motif && <span style={{ fontSize: 11.5, color: "#6b7280" }}>{String(x.motif).slice(0, 60)}</span>}
       {x.lienMail && <a href={x.lienMail} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 800, color: "#2563eb", whiteSpace: "nowrap" }}>📧 Mail</a>}
+      {x.statut === "confirme" ? <span style={{ fontSize: 11, fontWeight: 800, color: "#15803d" }}>✓ confirmé</span>
+        : x.statut === "ecarte" ? <span style={{ fontSize: 11, fontWeight: 800, color: "#6b7280" }}>✗ écarté</span>
+        : <span style={{ fontSize: 11, fontWeight: 800, color: "#b45309", border: "1px dashed #f59e0b", borderRadius: 6, padding: "0 5px" }}>à vérifier</span>}
+      {onStatut && x.statut !== "confirme" && <button type="button" onClick={() => onStatut("confirme")} style={{ padding: "1px 7px", borderRadius: 6, border: "1.5px solid #16a34a", background: "#fff", color: "#15803d", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>✓ Confirmer</button>}
+      {onStatut && x.statut !== "ecarte" && <button type="button" onClick={() => onStatut("ecarte")} style={{ padding: "1px 7px", borderRadius: 6, border: "1.5px solid #9ca3af", background: "#fff", color: "#4b5563", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>✗ Écarter</button>}
+      {onStatut && x.statut !== "a_verifier" && <button type="button" onClick={() => onStatut("a_verifier")} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 11, textDecoration: "underline", cursor: "pointer" }}>remettre à vérifier</button>}
     </span>
   );
 }
@@ -1489,8 +1509,14 @@ function lireCsv(texte: string): string[][] {
 function ImportLitigesClients({ c, userName }: { c: Couleurs; userName?: string }) {
   const [etat, setEtat] = useState<{ texte: string; erreur?: boolean } | null>(null);
   const [nb, setNb] = useState<number | null>(null);
+  const [liste, setListe] = useState<any[]>([]);
+  const [mode, setMode] = useState<string>("tous");
+  const [voirListe, setVoirListe] = useState(false);
   const entree = useRef<HTMLInputElement>(null);
-  useEffect(() => { chargerLitigesClients().then(l => setNb(l.length)); }, []);
+  const recharger = () => { oublierLitigesC(); chargerLitigesClients(true).then(l => { setNb(l.length); setListe(l); setMode((l as any).mode || "tous"); }); };
+  useEffect(recharger, []);
+  const changerMode = (m: string) => { setMode(m); oublierLitigesC(); update(ref(db, "config/stats"), { litigesClients: m }); };
+  const compte = (st: string) => liste.filter(x => x.statut === st).length;
   async function importer(f: File) {
     setEtat({ texte: "Lecture du fichier…" });
     try {
@@ -1500,6 +1526,8 @@ function ImportLitigesClients({ c, userName }: { c: Couleurs; userName?: string 
       const I = { dl: col("date litige"), cm: col("client (mail)"), cf: col("client facture"), site: col("site"), type: col("type"), bl: col("bl"), dliv: col("date livraison"), code: col("code article"), art: col("article"), livres: col("colis livres"), refuses: col("colis refuses"), motif: col("motif"), mail: col("lien mail"), pdf: col("fichier pdf") };
       if (I.bl < 0 || I.cf < 0 || I.art < 0 || I.dliv < 0) throw new Error("Colonnes attendues introuvables (Client facturé, BL, Date livraison, Article…).");
       const maj: Record<string, any> = {}; const vus: Record<string, number> = {};
+      oublierLitigesC();
+      const existants = new Map((await chargerLitigesClients(true)).map(x => [x.id, x]));
       const isoD = (v: string) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(String(v || "").trim()); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
       for (const r of lignes.slice(1)) {
         const bl = String(r[I.bl] || "").trim(), code = String(r[I.code] || "").replace(/\s+/g, "").toUpperCase();
@@ -1511,13 +1539,14 @@ function ImportLitigesClients({ c, userName }: { c: Couleurs; userName?: string 
           bl, dateLivraison: isoD(r[I.dliv]), codeArticle: String(r[I.code] || "").trim(), article: String(r[I.art] || "").trim(),
           colisLivres: Number(String(r[I.livres] || "").replace(",", ".")) || 0, colisRefuses: Number(String(r[I.refuses] || "").replace(",", ".")) || 0,
           motif: r[I.motif] || "", lienMail: r[I.mail] || "", pdf: I.pdf >= 0 ? r[I.pdf] || "" : "", importePar: userName || "", importeLe: Date.now(), fichier: f.name,
+          statut: existants.get(`${base}_${vus[base]}`)?.statut || "a_verifier",
         };
       }
       const n = Object.keys(maj).length;
       if (!n) throw new Error("Aucune ligne de litige dans le fichier.");
       await update(ref(db), maj);
-      cacheLitigesC = null;
-      const tous = await chargerLitigesClients(); setNb(tous.length);
+      oublierLitigesC();
+      const tous = await chargerLitigesClients(true); setNb(tous.length); setListe(tous);
       setEtat({ texte: `✅ ${n} litiges clients importés (${f.name}). Ils apparaissent sur les commandes et les fiches clients.` });
     } catch (e: any) { setEtat({ texte: `Import impossible : ${e?.message || e}`, erreur: true }); }
     if (entree.current) entree.current.value = "";
@@ -1528,6 +1557,29 @@ function ImportLitigesClients({ c, userName }: { c: Couleurs; userName?: string 
       <input ref={entree} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importer(f); }} />
       <button type="button" onClick={() => entree.current?.click()} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "#b91c1c", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>📥 Importer des litiges clients (CSV)</button>
       {etat && <p style={{ margin: "8px 0 0", fontSize: 13, fontWeight: 700, color: etat.erreur ? "#b91c1c" : c.texte }}>{etat.texte}</p>}
+      {nb ? (
+        <>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: c.gris }}>Tenir compte de :</span>
+            {[["tous", "Tous (sauf écartés)"], ["confirmes", "Seulement les confirmés"], ["aucun", "Aucun (masqués)"]].map(([k, lib]) => <button key={k} type="button" onClick={() => changerMode(k)} style={puce(c, mode === k)}>{lib}</button>)}
+          </div>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5, color: c.gris }}>
+            <b style={{ color: "#b45309" }}>{compte("a_verifier")} à vérifier</b> · <b style={{ color: "#15803d" }}>{compte("confirme")} confirmés</b> · <b>{compte("ecarte")} écartés</b>
+            <button type="button" onClick={() => setVoirListe(!voirListe)} style={{ marginLeft: 8, border: "none", background: "none", color: c.vert, fontWeight: 800, textDecoration: "underline", cursor: "pointer" }}>{voirListe ? "masquer la liste" : "vérifier la liste"}</button>
+          </p>
+          {voirListe && (
+            <div style={{ marginTop: 8, maxHeight: 420, overflowY: "auto", border: `1px solid ${c.bord}`, borderRadius: 12 }}>
+              {[...liste].sort((a, b) => (a.statut === "a_verifier" ? 0 : 1) - (b.statut === "a_verifier" ? 0 : 1) || String(a.dateLivraison).localeCompare(String(b.dateLivraison))).map((x, i) => (
+                <div key={x.id} style={{ padding: "8px 12px", borderTop: i ? `1px solid ${c.bord}` : "none", fontSize: 13 }}>
+                  <div style={{ fontWeight: 800 }}>{dateFr(x.dateLivraison)} · {x.clientFacture}{x.site ? ` (${x.site})` : ""} · {x.bl}</div>
+                  <div style={{ color: c.gris, margin: "2px 0 4px" }}>{x.article}</div>
+                  <BadgeLitigeClient litige={x} onStatut={st => changerStatutLitige(x.id, st, userName).then(recharger)} />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
     </Bloc>
   );
 }
