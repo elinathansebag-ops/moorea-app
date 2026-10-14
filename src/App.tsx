@@ -3474,7 +3474,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       </div>
     </div>
   ) : null;
-  const nouveautesAVoir = nouveautesVu === null ? [] : NOUVEAUTES.filter(n => n.id > nouveautesVu).slice(0, 8);
+  const nouveautesAVoir = nouveautesVu === null ? [] : NOUVEAUTES.filter(n => n.id > nouveautesVu).slice(0, nouveautesVu === 0 ? 1 : 8);
   const fermerNouveautes = () => { if (user?.uid) set(ref(db, `comptes/${user.uid}/nouveautes_vu`), NOUVEAUTES[0]?.id || 0).catch(() => {}); setNouveautesVu(NOUVEAUTES[0]?.id || 0); };
   const popupNouveautes = nouveautesAVoir.length > 0 && !popupPhotos ? (
     <div onClick={fermerNouveautes} style={{ position: "fixed", inset: 0, zIndex: 3150, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -4409,9 +4409,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     // 14/10/2026 — Depuis le tableau de bord : filtres exacts (fournisseur / produit) de la page des
     // rapports, et « Retour » ramène au Récap qualité (retourHub).
     const nomQ = (x: any) => String(x || "").trim().toUpperCase();
-    const versRapports = (f: { fournisseur?: string; produit?: string } = {}) => {
+    const versRapports = (f: { fournisseur?: string; produit?: string; numero?: string } = {}) => {
       const exact = (champ: "fournisseur" | "produit", v?: string) => v ? (rapports.find(r => nomQ(r[champ]) === nomQ(v))?.[champ] || v) : "";
-      setSearchText(""); setFilterDecision(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(false);
+      setSearchText(f.numero || ""); setFilterDecision(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(false);
       setFilterFournisseur(exact("fournisseur", f.fournisseur)); setFilterProduit(exact("produit", f.produit));
       setShowQualiteHub(false); setRetourHub("qualite"); setVue("historique"); setPageMode("arrivages"); window.scrollTo(0, 0);
     };
@@ -4422,7 +4422,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       ...(monAcces.hasModule("rapports") ? [{ icone: "🔄", titre: `Refus à faire signer (${rapports.filter(refusASigner).length})`, onClick: () => { setShowQualiteHub(false); setRetourHub("qualite"); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
       // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
     ];
-    return <>{fabScanner}{invitationNotif}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirFournisseur={n => monAcces.hasModule("rapports") && versRapports({ fournisseur: n })} ouvrirProduit={n => monAcces.hasModule("rapports") && versRapports({ produit: n })} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
+    return <>{fabScanner}{invitationNotif}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirFournisseur={n => monAcces.hasModule("rapports") && versRapports({ fournisseur: n })} ouvrirProduit={n => monAcces.hasModule("rapports") && versRapports({ produit: n })} ouvrirRapport={r => monAcces.hasModule("rapports") && versRapports({ numero: r.numeroRapport || r.produit || "" })} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
   }
 
   if (showApproHub) {
@@ -6172,12 +6172,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             )}
             {/* 14/10/2026 — Filtre fournisseur / produit actif (souvent posé depuis 🧪 Récap qualité) : visible. */}
             {(filterFournisseur || filterProduit) && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10, padding: "10px 14px", borderRadius: 12, background: "#eaf2ee", border: "1.5px solid #305a5533" }}>
-                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 800, color: "#1f4440" }}>
-                  {filterFournisseur ? `🏭 Rapports de ${filterFournisseur}` : `🥬 Rapports de ${filterProduit}`}
-                  <span style={{ fontWeight: 600, color: "#5e6b69" }}> · {rapports.filter(r => (!filterFournisseur || r.fournisseur === filterFournisseur) && (!filterProduit || r.produit === filterProduit)).length} rapport(s)</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 14, padding: "18px 20px", borderRadius: 16, background: "linear-gradient(135deg, #1f4440 0%, #305a55 60%, #4f8a6f 100%)", color: "#fff", boxShadow: "0 8px 24px rgba(31,68,64,.2)" }}>
+                <span style={{ fontSize: 34 }}>{filterFournisseur ? "🏭" : "🥬"}</span>
+                <span style={{ flex: 1, minWidth: 200 }}>
+                  <span style={{ display: "block", fontSize: 12, fontWeight: 800, opacity: 0.8, textTransform: "uppercase", letterSpacing: ".06em" }}>{filterFournisseur ? "Rapports du fournisseur" : "Rapports du produit"}</span>
+                  <span style={{ display: "block", fontSize: 21, fontWeight: 900, lineHeight: 1.2 }}>{filterFournisseur || filterProduit}</span>
+                  {(() => { const l = rapports.filter(r => (!filterFournisseur || r.fournisseur === filterFournisseur) && (!filterProduit || r.produit === filterProduit)); return (
+                    <span style={{ display: "block", fontSize: 13, opacity: 0.9, marginTop: 2 }}>{l.length} rapport{l.length > 1 ? "s" : ""} · {l.filter(r => r.decision === "reserve").length} réserve(s) · {l.filter(r => r.decision === "refus").length} refus</span>
+                  ); })()}
                 </span>
-                <button type="button" onClick={() => { setFilterFournisseur(""); setFilterProduit(""); }} style={{ padding: "6px 12px", borderRadius: 999, border: "1.5px solid #305a5555", background: "#fff", color: "#1f4440", fontWeight: 800, cursor: "pointer", fontSize: 12.5 }}>✕ Voir tous les rapports</button>
+                <button type="button" onClick={() => { setFilterFournisseur(""); setFilterProduit(""); }} style={{ padding: "9px 14px", borderRadius: 999, border: "1.5px solid rgba(255,255,255,.5)", background: "rgba(255,255,255,.12)", color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 13 }}>✕ Voir tous les rapports</button>
               </div>
             )}
             {/* 14/10/2026 — Photos perdues chez ImgBB (bug technique) : message pour Alban, avec un
@@ -6186,7 +6190,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               const limite = Date.now() - 3 * 86400000;
               const dateRapport = (r: any) => r.timestamp || (() => { const [j, m, a] = String(r.date || "").split("/").map(Number); return a ? new Date(a, m - 1, j).getTime() : 0; })();
               const aRefaire = rapports.filter(r => r.photosPerdues && !(r.photoUrls?.length) && dateRapport(r) >= limite);
-              if (!aRefaire.length || !(profilGenerique === "Alban" || monAcces.isAdmin)) return null;
+              if (!aRefaire.length || !(profilGenerique === "Alban" || monAcces.isAdmin) || filterFournisseur || filterProduit || searchText || filterDecision) return null;
               return (
                 <div style={{ marginBottom: 12, padding: "14px 16px", borderRadius: 14, background: "#fffbeb", border: "2px solid #fcd34d" }}>
                   <div style={{ fontSize: 14.5, fontWeight: 800, color: "#92400e", marginBottom: 4 }}>📷 Alban, des photos sont à remettre</div>

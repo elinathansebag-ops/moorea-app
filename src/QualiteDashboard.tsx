@@ -20,6 +20,7 @@ type Props = {
   // l'arrivage d'une température, et la fiche d'un rapport en lecture seule (ici même).
   ouvrirFournisseur: (nom: string) => void;
   ouvrirProduit: (nom: string) => void;
+  ouvrirRapport: (r: any) => void;
   darkMode?: boolean;
 };
 
@@ -57,7 +58,7 @@ function chargerArrivagesControles(): Promise<any[]> {
   return cacheArr;
 }
 
-export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrirFournisseur, ouvrirProduit, darkMode }: Props) {
+export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrirFournisseur, ouvrirProduit, ouvrirRapport, darkMode }: Props) {
   const [ficheOuverte, setFicheOuverte] = useState<any>(null);
   const [arrivageOuvert, setArrivageOuvert] = useState<any>(null);
   const c = darkMode
@@ -188,7 +189,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
           </div>
         );
       })()}
-      {ficheOuverte && <FicheRapport c={{ fond: c.fond, carte: c.carte, texte: c.texte, gris: c.gris, bord: c.bord, vert: "#305a55", sombre: !!darkMode }} rapport={ficheOuverte} onClose={() => setFicheOuverte(null)} />}
+      {ficheOuverte && <FicheRapport c={{ fond: c.fond, carte: c.carte, texte: c.texte, gris: c.gris, bord: c.bord, vert: "#305a55", sombre: !!darkMode }} rapport={ficheOuverte} onClose={() => setFicheOuverte(null)} onVoirRapport={r => { setFicheOuverte(null); ouvrirRapport(r); }} />}
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 16px 70px", boxSizing: "border-box" }}>
 
         {/* Raccourcis vers les outils */}

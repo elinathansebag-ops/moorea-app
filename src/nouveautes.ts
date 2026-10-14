@@ -4,6 +4,7 @@
 // La dernière entrée vue est rangée dans comptes/{uid}/nouveautes_vu (même sur un autre appareil).
 export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 export const NOUVEAUTES: { id: number; date: string; texte: string }[] = [
+  { id: 7, date: "14/10", texte: "📋 Fiche rapport refaite (grande photo, chiffres clés, bouton « Voir le rapport complet ») ; les rapports d'un fournisseur ou d'un produit ont un vrai bandeau et n'affichent plus le message d'Alban." },
   { id: 6, date: "14/10", texte: "🎛️ Accueil › Personnaliser : les modules se déplacent en les faisant glisser dans la grille, clic droit (ou appui long) pour la couleur, et un bac « Modules masqués » en bas." },
   { id: 5, date: "14/10", texte: "🔄 Refus à faire signer : une carte par refus (photo, fournisseur, colis) et un bouton qui fait signer le transporteur puis imprime le bon de reprise à l'entrepôt." },
   { id: 4, date: "14/10", texte: "📦 Prestataires : une barre de navigation (Tableau de bord, Commandes, IFCO, Entretiens, Factures, Fiches, Configuration) remplace les gros boutons ; les factures y sont intégrées." },

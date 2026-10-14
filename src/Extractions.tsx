@@ -1551,43 +1551,95 @@ function BoutonRapport({ c, onClick }: { c: Couleurs; onClick: () => void }) {
   return <button type="button" onClick={onClick} style={{ padding: "3px 10px", borderRadius: 8, border: `1.5px solid ${c.vert}`, background: c.carte, color: c.vert, fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>📋 Rapport</button>;
 }
 // 14/10/2026 — Exportée : aussi utilisée par 🧪 Récap qualité (QualiteDashboard.tsx), en lecture seule.
-export function FicheRapport({ c, rapport: r, onClose }: { c: Couleurs; rapport: any; onClose: () => void }) {
+export function FicheRapport({ c, rapport: r, onClose, onVoirRapport }: { c: Couleurs; rapport: any; onClose: () => void; onVoirRapport?: (r: any) => void }) {
+  // 14/10/2026 — Fiche refaite (demande d'Elinathan) : photos en grand, chiffres clés en pastilles,
+  // détails sur deux colonnes, notes lisibles, et un bouton vers le rapport complet.
   const dec = String(r.decision || "");
-  const st = dec === "refus" ? { t: "⛔ Refus", f: "#b91c1c" } : dec === "reserve" ? { t: "⚠️ Sous réserve", f: "#b45309" } : { t: "✓ Conforme", f: "#15803d" };
-  const ligne = (k: string, v: any) => v === undefined || v === null || v === "" ? null : (
-    <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 8, padding: "6px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
-      <span style={{ color: c.gris, fontWeight: 700 }}>{k}</span><span style={{ fontWeight: 600, whiteSpace: "pre-wrap" }}>{String(v)}</span>
+  const st = dec === "refus" ? { t: "⛔ Refus", f: "#b91c1c", clair: "#fef2f2" } : dec === "reserve" ? { t: "⚠️ Sous réserve", f: "#b45309", clair: "#fffbeb" } : { t: "✓ Conforme", f: "#15803d", clair: "#f0fdf4" };
+  const photos: string[] = Array.isArray(r.photoUrls) ? r.photoUrls.filter(Boolean) : [];
+  const [photoAff, setPhotoAff] = useState(0);
+  const note = Number(r.score), noteCoul = !isFinite(note) ? c.gris : note >= 4 ? "#15803d" : note >= 3 ? "#b45309" : "#b91c1c";
+  const LIB_NOTES: Record<string, string> = { qualite: "Qualité visuelle", couleur: "Couleur", emballage: "État emballage", sanitaire: "Sanitaire", etat_general: "État général" };
+  const pastille = (lib: string, val: string, coul = c.texte) => (
+    <div style={{ flex: "1 1 120px", background: c.sombre ? "#1d232b" : "#f6f4ee", borderRadius: 12, padding: "8px 12px" }}>
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: c.gris, textTransform: "uppercase", letterSpacing: ".05em" }}>{lib}</div>
+      <div style={{ fontSize: 18, fontWeight: 900, color: coul }}>{val}</div>
     </div>
   );
-  const photos: string[] = Array.isArray(r.photoUrls) ? r.photoUrls.filter(Boolean) : [];
+  const champ = (k: string, v: any) => v === undefined || v === null || v === "" ? null : (
+    <div style={{ padding: "7px 0", borderTop: `1px solid ${c.bord}` }}>
+      <div style={{ fontSize: 11, color: c.gris, fontWeight: 700 }}>{k}</div>
+      <div style={{ fontSize: 13.5, fontWeight: 700, wordBreak: "break-word" }}>{String(v)}</div>
+    </div>
+  );
+  const colis = r.nbColisRefuses != null && r.nbColisRefuses !== "" ? `${r.nbColisRefuses}${r.nbColisTotal ? ` / ${r.nbColisTotal}` : ""}` : "";
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: c.carte, color: c.texte, borderRadius: 18, width: "min(720px, 100%)", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
-        <div style={{ padding: "16px 18px", background: st.f, color: "#fff", borderRadius: "18px 18px 0 0", display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }}>Rapport d'agréage{r.numeroRapport ? ` · ${r.numeroRapport}` : ""}</div>
-            <div style={{ fontSize: 18, fontWeight: 900 }}>{st.t} — {r.produit || ""}</div>
-            <div style={{ fontSize: 12.5, opacity: 0.9 }}>{r.fournisseur || ""} · {r.date || ""}{r.heure ? ` à ${r.heure}` : ""}{r.agreeur ? ` · ${r.agreeur}` : ""}</div>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: c.carte, color: c.texte, borderRadius: 20, width: "min(760px, 100%)", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 70px rgba(0,0,0,.35)" }}>
+        <div style={{ padding: "16px 20px", background: st.f, color: "#fff", borderRadius: "20px 20px 0 0", display: "flex", alignItems: "flex-start", gap: 10, position: "sticky", top: 0, zIndex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }}>{st.t}{r.numeroRapport ? ` · Rapport ${r.numeroRapport}` : ""}</div>
+            <div style={{ fontSize: 19, fontWeight: 900, lineHeight: 1.2 }}>{r.produit || ""}</div>
+            <div style={{ fontSize: 13, opacity: 0.92, marginTop: 2 }}>{r.fournisseur || ""} · {r.date || ""}{r.heure ? ` à ${r.heure}` : ""}{r.agreeur ? ` · ${r.agreeur}` : ""}</div>
           </div>
-          <button type="button" onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 34, height: 34, borderRadius: 17, fontSize: 18, cursor: "pointer" }}>×</button>
+          <button type="button" onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 34, height: 34, borderRadius: 17, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
         </div>
-        <div style={{ padding: "8px 18px 18px" }}>
-          {ligne("Lot Moorea", r.lotMoorea)}{ligne("Lot fournisseur", r.lotFournisseur)}{ligne("N° de traçabilité", r.numeroTracabilite)}
-          {ligne("Origine", r.origine)}{ligne("Calibre / conditionnement", [r.calibre, r.conditionnement].filter(Boolean).join(" · "))}
-          {ligne("Colis reçus / attendus", r.nbColisRecu != null || r.nbColisAttendu != null ? `${r.nbColisRecu ?? "?"} / ${r.nbColisAttendu ?? "?"}` : "")}
-          {ligne("Colis refusés / à écarter", [r.nbColisRefuses, r.nbColisAEcarter].filter(x => x != null && x !== "").join(" / "))}
-          {ligne("Pourcentage", r.pourcentage ? `${r.pourcentage} %` : "")}{ligne("Température", r.temperature ? `${r.temperature} °C` : "")}
-          {ligne("Poids", [r.poids, r.poidsStatut, r.poidsEcart].filter(Boolean).join(" · "))}{ligne("DLC", r.dlc)}{ligne("Note", r.score)}
-          {ligne("Conformité", r.conformite)}{ligne("Observations", r.observations)}
-          {typeof r.notes === "object" && r.notes && ligne("Notes qualité", Object.entries(r.notes).map(([k, v]) => `${k} : ${v}`).join(" · "))}
-          {photos.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: c.gris, marginBottom: 6 }}>📷 Photos ({photos.length})</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 6 }}>
-                {photos.map((u, i) => <a key={i} href={srcPhoto(u)} target="_blank" rel="noreferrer"><img src={srcPhoto(u)} loading="lazy" alt="" style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 8 }} /></a>)}
+
+        {photos.length > 0 ? (
+          <div style={{ padding: "14px 20px 0" }}>
+            <a href={srcPhoto(photos[photoAff])} target="_blank" rel="noreferrer">
+              <img src={srcPhoto(photos[photoAff])} alt="" style={{ width: "100%", maxHeight: 340, objectFit: "cover", borderRadius: 14, display: "block", background: "#f3f4f6" }} />
+            </a>
+            {photos.length > 1 && (
+              <div style={{ display: "flex", gap: 6, marginTop: 8, overflowX: "auto" }}>
+                {photos.map((u, i) => (
+                  <button key={i} type="button" onClick={() => setPhotoAff(i)} style={{ padding: 0, border: `2.5px solid ${i === photoAff ? st.f : "transparent"}`, borderRadius: 10, cursor: "pointer", flexShrink: 0, background: "none" }}>
+                    <img src={srcPhoto(u)} loading="lazy" alt="" style={{ width: 70, height: 52, objectFit: "cover", borderRadius: 8, display: "block" }} />
+                  </button>
+                ))}
               </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ margin: "14px 20px 0", padding: "14px", borderRadius: 12, background: c.sombre ? "#1d232b" : "#f6f4ee", color: c.gris, fontSize: 13, fontWeight: 700, textAlign: "center" }}>
+            {r.photosPerdues ? "📷 Photos perdues (bug technique) — à remettre" : "📷 Pas de photo sur ce rapport"}
+          </div>
+        )}
+
+        <div style={{ padding: "14px 20px 18px" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            {colis && pastille(dec === "refus" ? "Colis refusés" : "Colis en réserve", colis, st.f)}
+            {r.pourcentage && pastille("Part du lot", `${r.pourcentage} %`, st.f)}
+            {r.temperature && pastille("Température", `${r.temperature} °C`, Number(String(r.temperature).replace(",", ".")) > 8 ? "#b91c1c" : c.texte)}
+            {isFinite(note) && note > 0 && pastille("Note", `${note} / 5`, noteCoul)}
+          </div>
+
+          {r.observations && (
+            <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 12, background: st.clair, borderLeft: `4px solid ${st.f}`, fontSize: 14, fontStyle: "italic", color: "#374151" }}>« {r.observations} »</div>
+          )}
+
+          {typeof r.notes === "object" && r.notes && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              {Object.entries(r.notes).filter(([, v]) => Number(v) > 0).map(([k, v]) => {
+                const n = Number(v), col = n >= 4 ? "#15803d" : n >= 3 ? "#b45309" : "#b91c1c";
+                return <span key={k} style={{ padding: "4px 10px", borderRadius: 999, border: `1.5px solid ${col}44`, color: col, fontSize: 12.5, fontWeight: 800 }}>{LIB_NOTES[k] || k} {n}/5</span>;
+              })}
             </div>
           )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", columnGap: 20 }}>
+            {champ("Lot Moorea", r.lotMoorea)}{champ("Lot fournisseur", r.lotFournisseur)}
+            {champ("N° de traçabilité", r.numeroTracabilite)}{champ("Origine", r.origine)}
+            {champ("Calibre / conditionnement", [r.calibre, r.conditionnement].filter(Boolean).join(" · "))}
+            {champ("Colis reçus / attendus", r.nbColisRecu != null || r.nbColisAttendu != null ? `${r.nbColisRecu ?? "?"} / ${r.nbColisAttendu ?? "?"}` : "")}
+            {champ("Poids", [r.poids && `${r.poids} kg`, r.poidsStatut === "ecart" ? `écart ${r.poidsEcart || ""}` : r.poidsStatut === "ok" ? "poids OK" : ""].filter(Boolean).join(" · "))}
+            {champ("DLC", r.dlc)}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+            {onVoirRapport && <button type="button" onClick={() => onVoirRapport(r)} style={{ flex: "1 1 200px", padding: "12px 0", borderRadius: 12, border: "none", background: "#305a55", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>📋 Voir le rapport complet</button>}
+            <button type="button" onClick={onClose} style={{ flex: "0 1 140px", padding: "12px 0", borderRadius: 12, border: `1.5px solid ${c.bord}`, background: "transparent", color: c.texte, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Fermer</button>
+          </div>
         </div>
       </div>
     </div>
