@@ -290,8 +290,10 @@ function Choisi({ libelle, onRetirer, c }: { libelle: string; onRetirer: () => v
     </span>
   );
 }
-function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]; lignes: any[][]; total?: (string | number)[]; c: Couleurs; droite?: number[] }) {
+function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]; lignes: any[][] | { length: number; ligne: (i: number) => any[] }; total?: (string | number)[]; c: Couleurs; droite?: number[] }) {
   const [limite, setLimite] = useState(300);
+  // 14/10/2026 — Lignes « à la demande » : on ne construit que celles affichées.
+  const visibles = Array.isArray(lignes) ? lignes.slice(0, limite) : Array.from({ length: Math.min(limite, lignes.length) }, (_, i) => lignes.ligne(i));
   const th = { padding: "8px 10px", fontSize: 11.5, fontWeight: 800, color: c.gris, borderBottom: `1.5px solid ${c.bord}`, whiteSpace: "nowrap" as const, position: "sticky" as const, top: 0, background: c.carte };
   const td = { padding: "7px 10px", fontSize: 13, borderBottom: `1px solid ${c.bord}` };
   return (
@@ -300,7 +302,7 @@ function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead><tr>{entetes.map((h, i) => <th key={h} style={{ ...th, textAlign: droite.includes(i) ? "right" : "left" }}>{h}</th>)}</tr></thead>
           <tbody>
-            {lignes.slice(0, limite).map((l, k) => <tr key={k}>{l.map((v, i) => <td key={i} style={{ ...td, textAlign: droite.includes(i) ? "right" : "left", whiteSpace: droite.includes(i) ? "nowrap" : "normal" }}>{v}</td>)}</tr>)}
+            {visibles.map((l, k) => <tr key={k}>{l.map((v, i) => <td key={i} style={{ ...td, textAlign: droite.includes(i) ? "right" : "left", whiteSpace: droite.includes(i) ? "nowrap" : "normal" }}>{v}</td>)}</tr>)}
             {total && <tr>{total.map((v, i) => <td key={i} style={{ ...td, fontWeight: 900, textAlign: droite.includes(i) ? "right" : "left", borderTop: `2px solid ${c.bord}`, position: "sticky", bottom: 0, background: c.carte }}>{v}</td>)}</tr>}
           </tbody>
         </table>
@@ -629,8 +631,11 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
   const [litigesV, setLitigesV] = useState<any[]>([]);
   const [rapportOuvertV, setRapportOuvertV] = useState<any>(null);
   useEffect(() => { chargerQualite().then(setQualiteV); chargerLitigesClients().then(setLitigesV); }, []);
-  const litigesDeV = (l: LigneVente) => litigesV.filter(x => x.clientFacture === l.c && x.article === l.a && x.dateLivraison === l.d);
-  const arrivagesPbDeV = (l: LigneVente) => (arrivages || []).filter(a => { const j = isoArrivage(a.date); return (a.statut === "sous réserve" || a.statut === "refusé") && j <= l.d && j >= plusJours(l.d, -15) && memeNom(a.fournisseur || "", l.f) && memeNom(a.produit || "", l.a); });
+  // 14/10/2026 — Index calculés une fois : « Tout effacer » en Détail complet = toute la base, l'appli plantait.
+  const litigesIdxV = useMemo(() => { const m = new Map<string, any[]>(); litigesV.forEach(x => { const k = `${x.clientFacture}|${x.article}|${x.dateLivraison}`; m.set(k, [...(m.get(k) || []), x]); }); return m; }, [litigesV]);
+  const arrivagesPbV = useMemo(() => (arrivages || []).filter(a => a.statut === "sous réserve" || a.statut === "refusé").map(a => ({ a, j: isoArrivage(a.date) })), [arrivages]);
+  const litigesDeV = (l: LigneVente) => litigesIdxV.get(`${l.c}|${l.a}|${l.d}`) || [];
+  const arrivagesPbDeV = (l: LigneVente) => { const de = plusJours(l.d, -15); return arrivagesPbV.filter(({ a, j }) => j <= l.d && j >= de && memeNom(a.fournisseur || "", l.f) && memeNom(a.produit || "", l.a)).map(x => x.a); };
   const rp = preset.rapport?.config;
   const maxDate = useMemo(() => (ventes || []).reduce((m, l) => (l.d > m ? l.d : m), ""), [ventes]);
   const minDate = useMemo(() => (ventes || []).reduce((m, l) => (!m || l.d < m ? l.d : m), ""), [ventes]);
@@ -706,24 +711,26 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
   const mXl = (x: { ven: number; ach: number; res: number }) => !voirEuros ? [] : [r2(x.ven), ...(voirMarge ? [r2(x.ach), r2(x.res), x.ven ? r2(x.res / x.ven * 100) : ""] : [])];
   const colsM = !voirEuros ? [] : ["Vente HT", ...(voirMarge ? ["Achat HT", "Résultat", "Marge"] : [])];
   const nomVue = VUES.find(v => v.k === vue)?.lib || "";
-  let entetes: string[], aff: any[][], xl: (string | number)[][], n0: number;
+  const detailTrie = useMemo(() => vue === "detail" ? [...choisies].sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : a.c.localeCompare(b.c)) : [], [choisies, vue]);
+  let entetes: string[], aff: any[][] | { length: number; ligne: (i: number) => any[] }, xl: () => (string | number)[][], n0: number;
   if (vue === "detail") {
-    const g = [...choisies].sort((a, b) => a.d.localeCompare(b.d) || a.c.localeCompare(b.c));
+    const g = detailTrie;
     entetes = ["Date", "Article", "Famille", "Compte", "Client", "Fournisseur", "Colis", "Pièces", "Poids net (kg)", ...colsM, "Qualité à l'arrivage", "Litige client"]; n0 = 6;
-    aff = g.map(l => {
+    aff = { length: g.length, ligne: i => { const l = g[i];
       const pb = arrivagesPbDeV(l), r = pb.map(a => rapportDeArrivage(a, qualiteV?.rapports)).find(Boolean), lit = litigesDeV(l);
       const qual = pb.length ? <span key="q" style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><BadgeQualite statut={pb.some(a => a.statut === "refusé") ? "refusé" : "sous réserve"} />{r && <BoutonRapport c={c} onClick={() => setRapportOuvertV(r)} />}</span> : "";
       const litAff = lit.length ? <span key="l" style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>{lit.map(x => <BadgeLitigeClient key={x.id} litige={x} />)}</span> : "";
       return [dateFr(l.d), l.a, l.fam, eq(l.a), l.c, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...mAff(l), qual, litAff];
-    });
-    xl = g.map(l => {
+    } };
+    // Excel : calculé seulement au clic sur le bouton.
+    xl = () => g.map(l => {
       const pb = arrivagesPbDeV(l), lit = litigesDeV(l);
       return [dateFr(l.d), l.a, l.fam, eq(l.a), l.c, l.f, r2(l.col), r2(l.pc), r2(l.kg), ...mXl(l), pb.length ? (pb.some(a => a.statut === "refusé") ? "Refusé à l'arrivage" : "Réserve à l'arrivage") : "", lit.map(x => `${x.type}${Number(x.colisRefuses) ? ` ${x.colisRefuses} colis` : ""}${x.motif ? ` (${x.motif})` : ""}`).join(" · ")];
     });
   } else {
     entetes = [nomVue.replace("Par ", "").replace(/^./, s => s.toUpperCase()), "Colis", "Pièces", "Poids net (kg)", ...colsM, voirEuros ? "Part des ventes" : "Part des colis"]; n0 = 1;
     aff = groupes.map(x => [libCle(x.k), ent(x.col), x.pc ? ent(x.pc) : "", x.kg ? kg(x.kg) : "", ...mAff(x), voirEuros ? (t.ven ? pct(x.ven, t.ven) : "") : (t.col ? pct(x.col, t.col) : "")]);
-    xl = groupes.map(x => [libCle(x.k), r2(x.col), r2(x.pc), r2(x.kg), ...mXl(x), voirEuros ? (t.ven ? r2(x.ven / t.ven * 100) : "") : (t.col ? r2(x.col / t.col * 100) : "")]);
+    xl = () => groupes.map(x => [libCle(x.k), r2(x.col), r2(x.pc), r2(x.kg), ...mXl(x), voirEuros ? (t.ven ? r2(x.ven / t.ven * 100) : "") : (t.col ? r2(x.col / t.col * 100) : "")]);
   }
   const vides = Array(n0 - 1).fill("");
   const totalAff = ["TOTAL", ...vides, ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...mAff(t), ...(vue === "detail" ? ["", ""] : ["100 %"])];
@@ -769,7 +776,7 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
       )}
       <Bloc titre={preset.rapport ? `⭐ ${preset.rapport.nom} — ${titre}` : titre} c={c} droite={<span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
         {email && <button type="button" onClick={() => setEnregistrement(!enregistrement)} style={{ padding: "9px 14px", borderRadius: 10, border: "2px solid #c8a84b", background: "#fffbeb", color: "#92400e", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>⭐ {preset.rapport && preset.rapport.auteurEmail === email ? "Mettre à jour le rapport" : "Enregistrer ce rapport"}</button>}
-        {choisies.length > 0 && boutonExport(c, () => exporterExcel(`${preset.rapport ? preset.rapport.nom + " — " : ""}${titre} (${nomVue.toLowerCase()})`, `${preset.rapport ? preset.rapport.nom + " — " : ""}${titre} (${nomVue.toLowerCase()})`, entetes, xl, totalXl), resume.map(r => r.replace(/^famille /, "Famille : ").replace(/^client /, "Client : ").replace(/^fournisseur /, "Fournisseur : ").replace(/^compte /, "Compte : ")))}
+        {choisies.length > 0 && boutonExport(c, () => exporterExcel(`${preset.rapport ? preset.rapport.nom + " — " : ""}${titre} (${nomVue.toLowerCase()})`, `${preset.rapport ? preset.rapport.nom + " — " : ""}${titre} (${nomVue.toLowerCase()})`, entetes, xl(), totalXl), resume.map(r => r.replace(/^famille /, "Famille : ").replace(/^client /, "Client : ").replace(/^fournisseur /, "Fournisseur : ").replace(/^compte /, "Compte : ")))}
       </span>}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
           {VUES.map(v => <button key={v.k} type="button" onClick={() => setVue(v.k)} style={puce(c, vue === v.k)}>{v.lib}</button>)}
@@ -968,6 +975,8 @@ const TEINTES: Record<string, { fort: string; doux: string }> = {
 function salutation() { const h = new Date().getHours(); return h < 6 ? "Bonne nuit" : h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; }
 
 function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { c: Couleurs; ventes: LigneVente[]; voirMarge: boolean; voirEuros?: boolean; ouvrir: (o: Onglet, p: Preset) => void }) {
+  // 14/10/2026 — Tops : 5 au départ, « Voir plus » pour descendre plus bas.
+  const [nbTop, setNbTop] = useState<Record<string, number>>({ client: 5, article: 5 });
   const d = useMemo(() => {
     const parJour = new Map<string, { ven: number; col: number; res: number }>();
     for (const l of ventes) { const x = parJour.get(l.d) || { ven: 0, col: 0, res: 0 }; x.ven += l.ven; x.col += l.col; x.res += l.sa ? 0 : l.res; parJour.set(l.d, x); }
@@ -984,7 +993,7 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
     // Même jour de la semaine précédente, pour comparer le dernier jour.
     const jAvant = parJour.get(decale(dernier, -7));
     const serie = Array.from({ length: 30 }, (_, i) => { const j = decale(dernier, i - 29); const x = parJour.get(j); return { j, v: (voirEuros ? x?.ven : x?.col) || 0 }; });
-    const tops = (cle: (l: LigneVente) => string) => { const m = new Map<string, number>(); for (const l of ventes) if (l.d >= decale(dernier, -6)) m.set(cle(l), (m.get(cle(l)) || 0) + (voirEuros ? l.ven : l.col)); return [...m].filter(([k]) => k).sort((a, b) => b[1] - a[1]).slice(0, 5); };
+    const tops = (cle: (l: LigneVente) => string) => { const m = new Map<string, number>(); for (const l of ventes) if (l.d >= decale(dernier, -6)) m.set(cle(l), (m.get(cle(l)) || 0) + (voirEuros ? l.ven : l.col)); return [...m].filter(([k]) => k).sort((a, b) => b[1] - a[1]); };
     const dates = { d7deb: decale(dernier, -6), d7avDeb: decale(dernier, -13), d7avFin: decale(dernier, -7), jAvant: decale(dernier, -7), moisDeb: mois + "-01", mpDeb: moisPrec + "-01", mpFin: `${moisPrec}-${String(jourDuMois).padStart(2, "0")}` };
     return { dernier, jDernier, jAvant, d7, d7avant, mCourant, mPrecMeme, mois, serie, dates, topClients: tops(l => l.c), topArticles: tops(l => l.a) };
   }, [ventes, voirEuros]);
@@ -1008,7 +1017,8 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
   const liste = (titre: string, icone: string, items: [string, number][], type: "client" | "article") => (
     <div style={{ flex: "1 1 300px", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px" }}>
       <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>{icone} {titre}</div>
-      {items.map(([n, v], i) => (
+      <div style={nbTop[type] > 15 ? { maxHeight: 480, overflowY: "auto" } : undefined}>
+      {items.slice(0, nbTop[type]).map(([n, v], i) => (
         <button key={n} type="button" onClick={() => type === "client" ? ouvrir("client", { client: n }) : ouvrir("produits", { articles: [n] })}
           style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 4px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
           <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, background: i === 0 ? "#fde68a" : i === 1 ? "#e5e7eb" : i === 2 ? "#fed7aa" : (c.sombre ? "#1d2e2b" : "#eaf2ee"), color: "#1a2e1a" }}>{i + 1}</span>
@@ -1016,6 +1026,12 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
           <span style={{ fontSize: 13, fontWeight: 800, color: c.gris }}>{voirEuros ? eur0(v) : `${ent(v)} colis`}</span>
         </button>
       ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+        {items.length > nbTop[type] && <button type="button" onClick={() => setNbTop(x => ({ ...x, [type]: x[type] + 10 }))} style={puce(c, false)}>Voir plus ▾ ({ent(items.length - nbTop[type])} autres)</button>}
+        {items.length > nbTop[type] && <button type="button" onClick={() => setNbTop(x => ({ ...x, [type]: items.length }))} style={puce(c, false)}>Tout voir</button>}
+        {nbTop[type] > 5 && <button type="button" onClick={() => setNbTop(x => ({ ...x, [type]: 5 }))} style={puce(c, false)}>Réduire ▴</button>}
+      </div>
     </div>
   );
   return (
@@ -1333,7 +1349,25 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
   const [rapportOuvert, setRapportOuvert] = useState<any>(null);
   useEffect(() => { if (fiche) chargerQualite().then(setQ); }, [fiche?.nom]);
   const estClient = fiche?.type === "client", nom = fiche?.nom || "";
-  const lignes = useMemo(() => (ventes || []).filter(l => fiche && (estClient ? l.c === nom : l.f === nom)), [ventes, fiche]);
+  const lignesTout = useMemo(() => (ventes || []).filter(l => fiche && (estClient ? l.c === nom : l.f === nom)), [ventes, fiche]);
+  // 14/10/2026 — Choix de la période sur la fiche (par défaut : toute la base).
+  const minBase = useMemo(() => (ventes || []).reduce((m, l) => (!m || l.d < m ? l.d : m), ""), [ventes]);
+  const maxBase = useMemo(() => (ventes || []).reduce((m, l) => (l.d > m ? l.d : m), ""), [ventes]);
+  const [debut, setDebut] = useState(""), [fin, setFin] = useState(""), [rapide, setRapide] = useState("tout");
+  function periode(k: string) {
+    setRapide(k);
+    if (k === "tout") { setDebut(""); setFin(""); return; }
+    const a = new Date((maxBase || iso(new Date())) + "T12:00:00"), b = new Date(a);
+    if (k === "7") a.setDate(a.getDate() - 6);
+    else if (k === "30") a.setDate(a.getDate() - 29);
+    else if (k === "mois") a.setDate(1);
+    else if (k === "moisPrec") { a.setMonth(a.getMonth() - 1, 1); b.setDate(0); }
+    else if (k === "annee") a.setMonth(0, 1);
+    setDebut(iso(a)); setFin(iso(b));
+  }
+  const dansP = (j: string) => (!debut || j >= debut) && (!fin || j <= fin);
+  const lignes = useMemo(() => lignesTout.filter(l => dansP(l.d)), [lignesTout, debut, fin]);
+  const [tousArticles, setTousArticles] = useState(false), [tousAutres, setTousAutres] = useState(false);
   const d = useMemo(() => {
     const t = lignes.reduce((a, l) => ({ col: a.col + l.col, ven: a.ven + l.ven, res: a.res + (l.sa ? 0 : l.res), venAvecRes: a.venAvecRes + (l.sa ? 0 : l.ven) }), { col: 0, ven: 0, res: 0, venAvecRes: 0 });
     const jours = [...new Set(lignes.map(l => l.d))].sort();
@@ -1341,18 +1375,23 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
     const freq = ecarts.length ? ecarts.reduce((a, b) => a + b, 0) / ecarts.length : null;
     const parMois = new Map<string, { ven: number; col: number }>();
     lignes.forEach(l => { const m = l.d.slice(0, 7); const x = parMois.get(m) || { ven: 0, col: 0 }; x.ven += l.ven; x.col += l.col; parMois.set(m, x); });
-    const top = (cle: (l: LigneVente) => string) => { const m = new Map<string, { ven: number; col: number }>(); lignes.forEach(l => { const k = cle(l); const x = m.get(k) || { ven: 0, col: 0 }; x.ven += l.ven; x.col += l.col; m.set(k, x); }); return [...m].sort((a, b) => voirEuros ? b[1].ven - a[1].ven : b[1].col - a[1].col).slice(0, 10); };
+    const top = (cle: (l: LigneVente) => string) => { const m = new Map<string, { ven: number; col: number }>(); lignes.forEach(l => { const k = cle(l); const x = m.get(k) || { ven: 0, col: 0 }; x.ven += l.ven; x.col += l.col; m.set(k, x); }); return [...m].sort((a, b) => voirEuros ? b[1].ven - a[1].ven : b[1].col - a[1].col); };
     const parJour = new Map<string, { ven: number; col: number; nb: number }>();
     lignes.forEach(l => { const x = parJour.get(l.d) || { ven: 0, col: 0, nb: 0 }; x.ven += l.ven; x.col += l.col; x.nb++; parJour.set(l.d, x); });
-    const finBase = (ventes || []).reduce((m, l) => (l.d > m ? l.d : m), "");
-    return { t, jours, freq, parMois: [...parMois].sort((a, b) => a[0].localeCompare(b[0])).slice(-12), articles: top(l => l.a), autres: top(l => estClient ? l.f : l.c), derniers: [...parJour].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 12), finBase };
-  }, [lignes, voirEuros]);
-  const arrF = useMemo(() => !fiche || estClient ? [] : (arrivages || []).filter(a => memeNom(a.fournisseur || "", nom)), [arrivages, fiche]);
-  const rapportsF = useMemo(() => !fiche || estClient ? [] : (q?.rapports || []).filter(r => memeNom(r.fournisseur || "", nom)).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)), [q, fiche]);
-  const retoursC = useMemo(() => !fiche || !estClient ? [] : (q?.retours || []).filter(r => memeNom(r.client || r.clientConnu || "", nom)).sort((a, b) => (b.ts || 0) - (a.ts || 0)), [q, fiche]);
+    const finBase = maxBase;
+    // Alerte « pas de commande depuis » : toujours sur toute la base, pas sur la période choisie.
+    const joursTout = [...new Set(lignesTout.map(l => l.d))].sort();
+    const ecartsTout = joursTout.slice(1).map((j, i) => (new Date(j + "T12:00:00").getTime() - new Date(joursTout[i] + "T12:00:00").getTime()) / 86400000);
+    const freqTout = ecartsTout.length ? ecartsTout.reduce((a, b) => a + b, 0) / ecartsTout.length : null;
+    return { joursTout, freqTout, t, jours, freq, parMois: [...parMois].sort((a, b) => a[0].localeCompare(b[0])).slice(-12), articles: top(l => l.a), autres: top(l => estClient ? l.f : l.c), derniers: [...parJour].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 12), finBase };
+  }, [lignes, lignesTout, voirEuros]);
+  const arrF = useMemo(() => !fiche || estClient ? [] : (arrivages || []).filter(a => memeNom(a.fournisseur || "", nom) && dansP(isoArrivage(a.date))), [arrivages, fiche, debut, fin]);
+  const dateTs = (t: any) => t ? iso(new Date(Number(t))) : "";
+  const rapportsF = useMemo(() => !fiche || estClient ? [] : (q?.rapports || []).filter(r => memeNom(r.fournisseur || "", nom) && (!r.timestamp || dansP(dateTs(r.timestamp)))).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)), [q, fiche, debut, fin]);
+  const retoursC = useMemo(() => !fiche || !estClient ? [] : (q?.retours || []).filter(r => memeNom(r.client || r.clientConnu || "", nom) && (!r.ts || dansP(dateTs(r.ts)))).sort((a, b) => (b.ts || 0) - (a.ts || 0)), [q, fiche, debut, fin]);
   const [litigesC, setLitigesC] = useState<any[] | null>(null);
   useEffect(() => { chargerLitigesClients().then(setLitigesC); }, []);
-  const litigesFiche = useMemo(() => !fiche || !estClient ? [] : (litigesC || []).filter(x => x.clientFacture === nom).sort((a, b) => String(b.dateLivraison).localeCompare(String(a.dateLivraison))), [litigesC, fiche]);
+  const litigesFiche = useMemo(() => !fiche || !estClient ? [] : (litigesC || []).filter(x => x.clientFacture === nom && dansP(String(x.dateLivraison || ""))).sort((a, b) => String(b.dateLivraison).localeCompare(String(a.dateLivraison))), [litigesC, fiche, debut, fin]);
 
   if (!fiche) return (
     <Bloc titre="📇 Choisis un client ou un fournisseur" c={c}>
@@ -1360,8 +1399,8 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
     </Bloc>
   );
   const val = (x: { ven: number; col: number }) => voirEuros ? eur0(x.ven) : `${ent(x.col)} colis`;
-  const depuis = d.jours.length ? Math.round((new Date(d.finBase + "T12:00:00").getTime() - new Date(d.jours[d.jours.length - 1] + "T12:00:00").getTime()) / 86400000) : null;
-  const alerte = estClient && d.freq && depuis != null && d.jours.length >= 4 && depuis > Math.max(3, d.freq * 2);
+  const depuis = d.joursTout.length ? Math.round((new Date(d.finBase + "T12:00:00").getTime() - new Date(d.joursTout[d.joursTout.length - 1] + "T12:00:00").getTime()) / 86400000) : null;
+  const alerte = estClient && d.freqTout && depuis != null && d.joursTout.length >= 4 && depuis > Math.max(3, d.freqTout * 2);
   const maxMois = Math.max(1, ...d.parMois.map(([, x]) => voirEuros ? x.ven : x.col));
   const nbArr = arrF.length, nbRes = arrF.filter(a => a.statut === "sous réserve").length, nbRef = arrF.filter(a => a.statut === "refusé").length;
   const ecartColis = arrF.reduce((s, a) => s + (typeof a.colisRecus === "number" ? a.colisRecus - (Number(a.quantite) || 0) : 0), 0);
@@ -1374,15 +1413,18 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
       {sous && <div style={{ fontSize: 11.5, color: c.gris }}>{sous}</div>}
     </div>
   );
-  const liste = (titre: string, items: [string, { ven: number; col: number }][], clic: (k: string) => void) => (
-    <Bloc titre={titre} c={c}>
-      {!items.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Rien.</p>}
-      {items.map(([k, x], i) => (
+  const liste = (titre: string, items: [string, { ven: number; col: number }][], clic: (k: string) => void, tout: boolean, setTout: (b: boolean) => void) => (
+    <Bloc titre={`${titre}${items.length > 10 ? ` (${items.length})` : ""}`} c={c}>
+      {!items.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Rien sur la période.</p>}
+      <div style={tout ? { maxHeight: 520, overflowY: "auto" } : undefined}>
+      {(tout ? items : items.slice(0, 10)).map(([k, x], i) => (
         <button key={k} type="button" onClick={() => clic(k)} style={{ display: "flex", gap: 10, alignItems: "center", width: "100%", padding: "6px 2px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
           <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k || "—"}</span>
           <span style={{ fontSize: 12.5, color: c.gris, fontWeight: 700, whiteSpace: "nowrap" }}>{voirEuros ? `${eur0(x.ven)} · ` : ""}{ent(x.col)} colis</span>
         </button>
       ))}
+      </div>
+      {items.length > 10 && <button type="button" onClick={() => setTout(!tout)} style={{ ...puce(c, false), marginTop: 8 }}>{tout ? "Voir moins" : `Voir tout (${items.length})`}</button>}
     </Bloc>
   );
   return (
@@ -1394,12 +1436,20 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.8, textTransform: "uppercase", letterSpacing: ".06em" }}>Fiche {estClient ? "client" : "fournisseur"}</div>
             <div style={{ fontSize: 22, fontWeight: 900 }}>{nom}</div>
-            <div style={{ fontSize: 12.5, opacity: 0.85 }}>{d.jours.length ? `${estClient ? "Livré" : "Vendu"} du ${dateFr(d.jours[0])} au ${dateFr(d.jours[d.jours.length - 1])} · ${d.jours.length} jour${d.jours.length > 1 ? "s" : ""}` : "Aucune vente dans la base"}</div>
+            <div style={{ fontSize: 12.5, opacity: 0.85 }}>{d.jours.length ? `${estClient ? "Livré" : "Vendu"} du ${dateFr(d.jours[0])} au ${dateFr(d.jours[d.jours.length - 1])} · ${d.jours.length} jour${d.jours.length > 1 ? "s" : ""}` : (debut || fin ? "Aucune vente sur la période choisie" : "Aucune vente dans la base")}</div>
           </div>
           <button type="button" onClick={() => choisir(undefined as any)} style={{ padding: "8px 12px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,.5)", background: "rgba(255,255,255,.12)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>Changer</button>
         </div>
       </div>
-      {alerte && <p style={{ margin: "0 0 12px", padding: "10px 14px", borderRadius: 12, background: "#fef3c7", color: "#92400e", fontWeight: 800, fontSize: 13.5 }}>⚠️ Pas de commande depuis {depuis} jours (d'habitude tous les {Math.round(d.freq!)} jours environ).</p>}
+      <Bloc titre="Période" c={c}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {[["7", "7 derniers jours"], ["30", "30 derniers jours"], ["mois", "Ce mois"], ["moisPrec", "Mois dernier"], ["annee", "Cette année"], ["tout", "Toute la base"]].map(([k, lib]) => (
+            <button key={k} type="button" onClick={() => periode(k)} style={puce(c, rapide === k)}>{lib}</button>
+          ))}
+        </div>
+        <ChoixPeriode c={c} debut={debut || minBase} fin={fin || maxBase} min={minBase} max={maxBase} onChange={(a, b) => { setDebut(a); setFin(b); setRapide(""); }} />
+      </Bloc>
+      {alerte && <p style={{ margin: "0 0 12px", padding: "10px 14px", borderRadius: 12, background: "#fef3c7", color: "#92400e", fontWeight: 800, fontSize: 13.5 }}>⚠️ Pas de commande depuis {depuis} jours (d'habitude tous les {Math.round(d.freqTout!)} jours environ).</p>}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         {voirEuros && tuile(estClient ? "Chiffre d'affaires" : "Ventes de ses produits", eur0(d.t.ven), `${ent(d.t.col)} colis`, "#2563eb")}
         {!voirEuros && tuile("Colis", ent(d.t.col), undefined, "#2563eb")}
@@ -1423,8 +1473,8 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
         </Bloc>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-        <div>{liste(`🥬 ${estClient ? "Ce qu'il achète" : "Ses articles vendus"}`, d.articles, a => ouvrir("produits", { articles: [a] }))}</div>
-        <div>{liste(estClient ? "🏭 Ses fournisseurs" : "👤 Ses clients", d.autres, k => choisir({ type: estClient ? "fournisseur" : "client", nom: k }))}</div>
+        <div>{liste(`🥬 ${estClient ? "Ce qu'il achète" : "Ses articles vendus"}`, d.articles, a => ouvrir("produits", { articles: [a] }), tousArticles, setTousArticles)}</div>
+        <div>{liste(estClient ? "🏭 Ses fournisseurs" : "👤 Ses clients", d.autres, k => choisir({ type: estClient ? "fournisseur" : "client", nom: k }), tousAutres, setTousAutres)}</div>
       </div>
       {estClient ? (
         <>
