@@ -143,7 +143,6 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
   const resultats = useMemo(() => tousResultats.filter(o => !typesMasques[o.type]), [tousResultats, typesMasques]);
   const typesPresents = useMemo(() => [...tousResultats.reduce((m, o) => m.set(o.type, (m.get(o.type) || 0) + 1), new Map<string, number>())], [tousResultats]);
   const choisir = (o: Option) => { onChoisir(o); if (!multi) { setQ(""); setOuvert(false); } };
-  const parType = multi ? resultats.reduce((m, o) => m.set(o.type, [...(m.get(o.type) || []), o]), new Map<string, Option[]>()) : null;
   return (
     <div style={{ position: "relative" }}>
       <input value={q} autoFocus={autoFocus} placeholder={placeholder}
@@ -174,16 +173,7 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
           )}
           {resultats.length > 0 && <div style={{ padding: "6px 14px", fontSize: 11.5, fontWeight: 800, color: c.gris, borderBottom: `1px solid ${c.bord}` }}>{resultats.length} résultat{resultats.length > 1 ? "s" : ""}{multi && estChoisi ? ` · ${resultats.filter(o => estChoisi(o)).length} compris dans le calcul` : ""}</div>}
           {!resultats.length && <div style={{ padding: "10px 14px", fontSize: 13, color: c.gris }}>Aucun résultat pour « {q} »</div>}
-          {multi && parType && [...parType].filter(([, l]) => l.length > 1).map(([t, l]) => {
-            const tous = l.every(o => estChoisi?.(o));
-            const lib = t === "article" ? "articles" : t === "famille" ? "familles" : t === "client" ? "clients" : "fournisseurs";
-            return (
-              <button key={"tout" + t} type="button" onMouseDown={e => { e.preventDefault(); l.filter(o => !!estChoisi?.(o) === tous).forEach(o => onChoisir(o)); }}
-                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", borderBottom: `1px solid ${c.bord}`, background: c.sombre ? "#1d2e2b" : "#f0f7f3", color: c.vert, cursor: "pointer", fontSize: 13.5, fontWeight: 900 }}>
-                <span style={{ fontSize: 16 }}>{tous ? "☑" : "☐"}</span>{tous ? "Tout décocher" : "Tout cocher"} : les {l.length} {lib} « {q} »
-              </button>
-            );
-          })}
+          {/* 14/10/2026 — Lignes « Tout cocher » retirées (demande d'Elinathan) : les filtres par type suffisent. */}
           {resultats.map((o, i) => (
             <button key={o.type + o.valeur} type="button" onMouseDown={e => { e.preventDefault(); choisir(o); }} onMouseEnter={() => setActif(i)}
               style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", borderLeft: multi && estChoisi?.(o) ? "4px solid #16a34a" : "4px solid transparent",
