@@ -6,6 +6,7 @@ import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
 import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
 import { AccueilModulesV2, ordonnerModules, COULEURS_PASTEL } from "./AccueilModulesV2";
+import { NOUVEAUTES, NOUVEAUTES_POUR } from "./nouveautes";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, envoyerPhoto, srcPhoto } from "./firebase";
 import { EnvoisMails } from "./EnvoisMails";
@@ -527,6 +528,12 @@ export default function App() {
   const profilGenerique = useProfilGenerique();
   const [popupPhotosFerme, setPopupPhotosFerme] = useState(false);
   const user = useMemo(() => avecProfil(userCompte, profilGenerique), [userCompte, profilGenerique]);
+  // 14/10/2026 — Fenêtre « Nouveautés » après une mise en ligne (src/nouveautes.ts), compte d'Elinathan seulement.
+  const [nouveautesVu, setNouveautesVu] = useState<number | null>(null);
+  useEffect(() => {
+    if (!user?.uid || !NOUVEAUTES_POUR.includes((user.email || "").toLowerCase())) { setNouveautesVu(null); return; }
+    get(ref(db, `comptes/${user.uid}/nouveautes_vu`)).then(snap => setNouveautesVu(Number(snap.val()) || 0)).catch(() => setNouveautesVu(null));
+  }, [user?.uid]);
   // 02/09/2026 — Demande d'Elinathan : après un rafraîchissement de la page, un module ouvert
   // apparaissait souvent "vide" (aucune donnée) le temps que tous les listeners Firebase se
   // reconnectent et reçoivent leur première réponse — il fallait refermer/rouvrir le module
@@ -3467,7 +3474,20 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       </div>
     </div>
   ) : null;
-  const invitationNotif = user ? <><InvitationNotifications darkMode={darkMode} />{popupPhotos}</> : null;
+  const nouveautesAVoir = nouveautesVu === null ? [] : NOUVEAUTES.filter(n => n.id > nouveautesVu).slice(0, 8);
+  const fermerNouveautes = () => { if (user?.uid) set(ref(db, `comptes/${user.uid}/nouveautes_vu`), NOUVEAUTES[0]?.id || 0).catch(() => {}); setNouveautesVu(NOUVEAUTES[0]?.id || 0); };
+  const popupNouveautes = nouveautesAVoir.length > 0 && !popupPhotos ? (
+    <div onClick={fermerNouveautes} style={{ position: "fixed", inset: 0, zIndex: 3150, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "min(460px, 100%)", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ padding: "14px 18px", background: "#305a55", color: "#fff", borderRadius: "18px 18px 0 0", fontSize: 16, fontWeight: 900 }}>✨ Nouveautés</div>
+        <div style={{ padding: "12px 18px 16px", display: "grid", gap: 10 }}>
+          {nouveautesAVoir.map(n => <div key={n.id} style={{ fontSize: 13.5, color: "#1a2e1a", lineHeight: 1.45 }}><span style={{ color: "#9ca3af", fontSize: 11.5, fontWeight: 700, marginRight: 6 }}>{n.date}</span>{n.texte}</div>)}
+          <button type="button" onClick={fermerNouveautes} style={{ marginTop: 4, padding: "10px 0", borderRadius: 12, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, cursor: "pointer" }}>OK</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+  const invitationNotif = user ? <><InvitationNotifications darkMode={darkMode} />{popupPhotos}{popupNouveautes}</> : null;
   const fabScanner = !showScanner && !showPalette && !showStock && !showRH && !showPointeuse && !showRecapQualite && (
     <button
       onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
