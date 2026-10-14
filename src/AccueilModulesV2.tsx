@@ -46,16 +46,33 @@ const ICONES: Record<string, string> = {
 };
 const ICONE_DEFAUT = "M4 4h16v16H4z";
 
-export function AccueilModulesV2({ modules, sombre }: { modules: Module[]; sombre: boolean }) {
-  const parCle = new Map(modules.filter(m => m.key).map(m => [m.key!, m]));
-  const rangees = new Set(FAMILLES.flatMap(f => f.cles));
-  const familles = FAMILLES.map(f => ({ nom: f.nom, modules: f.cles.map(c => parCle.get(c)).filter(Boolean) as Module[] }));
-  const autres = modules.filter(m => !m.key || !rangees.has(m.key));
-  if (autres.length) familles.push({ nom: "Autres", modules: autres });
-  // 10/10/2026 — Toujours une seule grille, sans titres de familles, quel que soit le nombre de
-  // modules : les sections séparées dispersaient la page (retour d'Elinathan). L'ordre des familles
-  // est gardé pour que les modules proches restent côte à côte.
-  const groupes = [{ nom: "", modules: familles.flatMap(f => f.modules) }];
+// 14/10/2026 — Demande d'Elinathan : chacun range ses modules et leur donne une couleur pastel
+// (🎛️ Personnaliser). fond / icône en clair, et une teinte légère en sombre.
+export const COULEURS_PASTEL: { id: string; nom: string; fond: string; icone: string; sombre: string }[] = [
+  { id: "vert", nom: "Vert", fond: "#dcfce7", icone: "#bbf7d0", sombre: "rgba(34,197,94,.16)" },
+  { id: "menthe", nom: "Menthe", fond: "#ccfbf1", icone: "#99f6e4", sombre: "rgba(20,184,166,.16)" },
+  { id: "bleu", nom: "Bleu", fond: "#dbeafe", icone: "#bfdbfe", sombre: "rgba(59,130,246,.18)" },
+  { id: "lavande", nom: "Lavande", fond: "#ede9fe", icone: "#ddd6fe", sombre: "rgba(139,92,246,.18)" },
+  { id: "rose", nom: "Rose", fond: "#fce7f3", icone: "#fbcfe8", sombre: "rgba(236,72,153,.16)" },
+  { id: "peche", nom: "Pêche", fond: "#ffedd5", icone: "#fed7aa", sombre: "rgba(249,115,22,.16)" },
+  { id: "jaune", nom: "Jaune", fond: "#fef9c3", icone: "#fef08a", sombre: "rgba(234,179,8,.16)" },
+  { id: "gris", nom: "Gris", fond: "#f1f5f9", icone: "#e2e8f0", sombre: "rgba(148,163,184,.16)" },
+];
+
+// Ordre par défaut (familles), puis l'ordre choisi par la personne : les modules qu'elle a
+// rangés d'abord, dans son ordre, puis les autres (nouveaux modules) à la suite.
+export function ordonnerModules<T extends { key?: string }>(modules: T[], ordre?: string[]): T[] {
+  const rang = new Map(FAMILLES.flatMap(f => f.cles).map((k, i) => [k, i]));
+  const parDefaut = [...modules].sort((a, b) => (rang.get(a.key || "") ?? 999) - (rang.get(b.key || "") ?? 999));
+  if (!ordre?.length) return parDefaut;
+  const pos = new Map(ordre.map((k, i) => [k, i]));
+  return parDefaut.map((m, i) => ({ m, i })).sort((a, b) => (pos.get(a.m.key || "") ?? 1000 + a.i) - (pos.get(b.m.key || "") ?? 1000 + b.i)).map(x => x.m);
+}
+
+export function AccueilModulesV2({ modules, sombre, ordre, couleurs = {} }: { modules: Module[]; sombre: boolean; ordre?: string[]; couleurs?: Record<string, string> }) {
+  // 10/10/2026 — Toujours une seule grille, sans titres de familles (retour d'Elinathan).
+  // 14/10/2026 — Ordre et couleurs choisis par la personne (🎛️ Personnaliser).
+  const groupes = [{ nom: "", modules: ordonnerModules(modules, ordre) }];
   const carte = sombre ? "#171b21" : "#ffffff", fondIcone = sombre ? "#1d2e2b" : "#eaf2ee", ligne = sombre ? "#2e3540" : "#dde6e3";
   const titre = sombre ? "#8cc79a" : "#305a55", encre = sombre ? "#e6e8eb" : "#1e2b29", gris = sombre ? "#aab1bb" : "#5e6b69";
   return (
@@ -67,10 +84,10 @@ export function AccueilModulesV2({ modules, sombre }: { modules: Module[]; sombr
             <span style={{ flex: 1, height: 1, background: ligne }} />
           </div>}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
-            {f.modules.map(m => (
+            {f.modules.map(m => { const coul = COULEURS_PASTEL.find(x => x.id === couleurs[m.key || ""]); return (
               <button key={m.key || m.label} type="button" onClick={m.action}
-                style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 64, textAlign: "left", background: carte, border: "none", borderRadius: 12, padding: "12px 14px", boxShadow: sombre ? "none" : "0 1px 2px rgba(30,43,41,.07)", cursor: "pointer", color: encre }}>
-                <span style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, background: fondIcone, color: titre, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 64, textAlign: "left", background: coul ? (sombre ? coul.sombre : coul.fond) : carte, border: "none", borderRadius: 12, padding: "12px 14px", boxShadow: sombre ? "none" : "0 1px 2px rgba(30,43,41,.07)", cursor: "pointer", color: encre }}>
+                <span style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, background: coul && !sombre ? coul.icone : fondIcone, color: titre, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <IconeTrait d={ICONES[m.key || ""] || ICONE_DEFAUT} />
                 </span>
                 <span style={{ flex: 1, minWidth: 0 }}>
@@ -79,7 +96,7 @@ export function AccueilModulesV2({ modules, sombre }: { modules: Module[]; sombr
                 </span>
                 {!!m.badge && <span style={{ minWidth: 24, height: 24, padding: "0 7px", boxSizing: "border-box", borderRadius: 12, background: "#74b484", color: "#173430", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{m.badge}</span>}
               </button>
-            ))}
+            ); })}
           </div>
         </section>
       ))}
