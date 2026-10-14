@@ -975,8 +975,6 @@ const TEINTES: Record<string, { fort: string; doux: string }> = {
 function salutation() { const h = new Date().getHours(); return h < 6 ? "Bonne nuit" : h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; }
 
 function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { c: Couleurs; ventes: LigneVente[]; voirMarge: boolean; voirEuros?: boolean; ouvrir: (o: Onglet, p: Preset) => void }) {
-  // 14/10/2026 — Tops : 5 au départ, « Voir plus » pour descendre plus bas.
-  const [nbTop, setNbTop] = useState<Record<string, number>>({ client: 5, article: 5 });
   const d = useMemo(() => {
     const parJour = new Map<string, { ven: number; col: number; res: number }>();
     for (const l of ventes) { const x = parJour.get(l.d) || { ven: 0, col: 0, res: 0 }; x.ven += l.ven; x.col += l.col; x.res += l.sa ? 0 : l.res; parJour.set(l.d, x); }
@@ -1017,8 +1015,9 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
   const liste = (titre: string, icone: string, items: [string, number][], type: "client" | "article") => (
     <div style={{ flex: "1 1 300px", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px" }}>
       <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>{icone} {titre}</div>
-      <div style={nbTop[type] > 15 ? { maxHeight: 480, overflowY: "auto" } : undefined}>
-      {items.slice(0, nbTop[type]).map(([n, v], i) => (
+      {/* 14/10/2026 — Classement complet : on fait défiler dans le cadre. */}
+      <div style={{ maxHeight: 290, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      {items.map(([n, v], i) => (
         <button key={n} type="button" onClick={() => type === "client" ? ouvrir("client", { client: n }) : ouvrir("produits", { articles: [n] })}
           style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 4px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
           <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, background: i === 0 ? "#fde68a" : i === 1 ? "#e5e7eb" : i === 2 ? "#fed7aa" : (c.sombre ? "#1d2e2b" : "#eaf2ee"), color: "#1a2e1a" }}>{i + 1}</span>
@@ -1027,11 +1026,7 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
         </button>
       ))}
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-        {items.length > nbTop[type] && <button type="button" onClick={() => setNbTop(x => ({ ...x, [type]: x[type] + 10 }))} style={puce(c, false)}>Voir plus ▾ ({ent(items.length - nbTop[type])} autres)</button>}
-        {items.length > nbTop[type] && <button type="button" onClick={() => setNbTop(x => ({ ...x, [type]: items.length }))} style={puce(c, false)}>Tout voir</button>}
-        {nbTop[type] > 5 && <button type="button" onClick={() => setNbTop(x => ({ ...x, [type]: 5 }))} style={puce(c, false)}>Réduire ▴</button>}
-      </div>
+      {items.length > 6 && <div style={{ fontSize: 11.5, color: c.gris, marginTop: 6, textAlign: "center" }}>↕ {ent(items.length)} {type === "client" ? "clients" : "articles"} — fais défiler</div>}
     </div>
   );
   return (
@@ -1367,7 +1362,6 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
   }
   const dansP = (j: string) => (!debut || j >= debut) && (!fin || j <= fin);
   const lignes = useMemo(() => lignesTout.filter(l => dansP(l.d)), [lignesTout, debut, fin]);
-  const [tousArticles, setTousArticles] = useState(false), [tousAutres, setTousAutres] = useState(false);
   const d = useMemo(() => {
     const t = lignes.reduce((a, l) => ({ col: a.col + l.col, ven: a.ven + l.ven, res: a.res + (l.sa ? 0 : l.res), venAvecRes: a.venAvecRes + (l.sa ? 0 : l.ven) }), { col: 0, ven: 0, res: 0, venAvecRes: 0 });
     const jours = [...new Set(lignes.map(l => l.d))].sort();
@@ -1413,18 +1407,18 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
       {sous && <div style={{ fontSize: 11.5, color: c.gris }}>{sous}</div>}
     </div>
   );
-  const liste = (titre: string, items: [string, { ven: number; col: number }][], clic: (k: string) => void, tout: boolean, setTout: (b: boolean) => void) => (
+  const liste = (titre: string, items: [string, { ven: number; col: number }][], clic: (k: string) => void) => (
     <Bloc titre={`${titre}${items.length > 10 ? ` (${items.length})` : ""}`} c={c}>
       {!items.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Rien sur la période.</p>}
-      <div style={tout ? { maxHeight: 520, overflowY: "auto" } : undefined}>
-      {(tout ? items : items.slice(0, 10)).map(([k, x], i) => (
+      <div style={{ maxHeight: 360, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      {items.map(([k, x], i) => (
         <button key={k} type="button" onClick={() => clic(k)} style={{ display: "flex", gap: 10, alignItems: "center", width: "100%", padding: "6px 2px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
           <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k || "—"}</span>
           <span style={{ fontSize: 12.5, color: c.gris, fontWeight: 700, whiteSpace: "nowrap" }}>{voirEuros ? `${eur0(x.ven)} · ` : ""}{ent(x.col)} colis</span>
         </button>
       ))}
       </div>
-      {items.length > 10 && <button type="button" onClick={() => setTout(!tout)} style={{ ...puce(c, false), marginTop: 8 }}>{tout ? "Voir moins" : `Voir tout (${items.length})`}</button>}
+      {items.length > 10 && <div style={{ fontSize: 11.5, color: c.gris, marginTop: 6, textAlign: "center" }}>↕ fais défiler pour voir les {ent(items.length)}</div>}
     </Bloc>
   );
   return (
@@ -1473,8 +1467,8 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
         </Bloc>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-        <div>{liste(`🥬 ${estClient ? "Ce qu'il achète" : "Ses articles vendus"}`, d.articles, a => ouvrir("produits", { articles: [a] }), tousArticles, setTousArticles)}</div>
-        <div>{liste(estClient ? "🏭 Ses fournisseurs" : "👤 Ses clients", d.autres, k => choisir({ type: estClient ? "fournisseur" : "client", nom: k }), tousAutres, setTousAutres)}</div>
+        <div>{liste(`🥬 ${estClient ? "Ce qu'il achète" : "Ses articles vendus"}`, d.articles, a => ouvrir("produits", { articles: [a] }))}</div>
+        <div>{liste(estClient ? "🏭 Ses fournisseurs" : "👤 Ses clients", d.autres, k => choisir({ type: estClient ? "fournisseur" : "client", nom: k }))}</div>
       </div>
       {estClient ? (
         <>
