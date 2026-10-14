@@ -376,7 +376,10 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               {matrice.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Rien cette semaine</div> : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                   <colgroup><col style={{ width: "24%" }} />{Array.from({ length: NB_JOURS_AFF }, (_, n) => <col key={n} />)}<col style={{ width: 70 }} /><col style={{ width: 70 }} /></colgroup>
-                  <thead><tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
+                  <thead>
+                  {/* 14/10/2026 — Précision : ce sont les jours de LIVRAISON chez Lidl, pas de départ. */}
+                  <tr><th /><th colSpan={NB_JOURS_AFF} style={{ padding: "2px 8px 4px", textAlign: "center", fontSize: 11.5, fontWeight: 800, color: "#0050aa", borderBottom: "2px solid #bfdbfe" }}>📅 Dates de livraison chez Lidl (pas de départ)</th><th colSpan={2} /></tr>
+                  <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
                     <th style={{ padding: 8, textAlign: "left" }}>Base</th>
                     {joursSemaine.slice(0, NB_JOURS_AFF).map((j, i) => <th key={j} onClick={() => ouvrirJour(j)} title="Ouvrir la commande de ce jour" style={{ padding: 8, textAlign: "right", whiteSpace: "nowrap", cursor: "pointer", color: "#0050aa", textDecoration: "underline dotted" }}>{JOURS[i]} {j.slice(8)}</th>)}
                     <th style={{ padding: 8, textAlign: "right" }}>Total</th><th style={{ padding: 8, textAlign: "right" }}>Prêtes</th>
