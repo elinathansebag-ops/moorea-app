@@ -3,7 +3,7 @@
 
 import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
-import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react";
+import { useState, useEffect, useRef, useMemo, lazy, createElement, Suspense } from "react";
 import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
 import { AccueilModulesV2, ordonnerModules, COULEURS_PASTEL } from "./AccueilModulesV2";
 import { NOUVEAUTES, NOUVEAUTES_POUR } from "./nouveautes";
@@ -848,10 +848,11 @@ export default function App() {
   // "Activité" (elle n'a pas besoin de voir ça en première page).
   // 11/10/2026 — Admin découpé en rubriques (avant : une seule page à faire défiler, demande
   // d'Elinathan). La dernière rubrique ouverte est mémorisée sur l'appareil.
-  type RubriqueAdmin = "modules" | "notifications" | "mails" | "acces" | "donnees" | "materiel" | "activite";
+  // 15/10/2026 — Rubrique « Vue d'ensemble » (état de tout en un coup d'œil), ouverte par défaut.
+  type RubriqueAdmin = "apercu" | "modules" | "notifications" | "mails" | "acces" | "donnees" | "materiel" | "activite";
   const [adminTab, setAdminTabEtat] = useState<RubriqueAdmin>(() => {
-    try { const v = localStorage.getItem("moorea-admin-rubrique"); if (v && ["modules", "notifications", "mails", "acces", "donnees", "materiel", "activite"].includes(v)) return v as RubriqueAdmin; } catch { /* stockage bloqué */ }
-    return "modules";
+    try { const v = localStorage.getItem("moorea-admin-rubrique"); if (v && ["apercu", "modules", "notifications", "mails", "acces", "donnees", "materiel", "activite"].includes(v)) return v as RubriqueAdmin; } catch { /* stockage bloqué */ }
+    return "apercu";
   });
   const setAdminTab = (r: RubriqueAdmin) => { setAdminTabEtat(r); try { localStorage.setItem("moorea-admin-rubrique", r); } catch { /* stockage bloqué */ } };
   const [showNotifsAppareil, setShowNotifsAppareil] = useState(false); // 10/10/2026 — notifications push
@@ -3896,31 +3897,88 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return (
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <PageHeader titre="⚙️ Admin" couleur="#6b7280" onBack={fermerAdmin} onHome={fermerAdmin} />
-        <div style={{ maxWidth: 800, margin: "0 auto", padding: "16px 16px 80px", boxSizing: "border-box" }}>
-          <>
+        {/* 15/10/2026 — Demande d'Elinathan : « ranger, améliorer, rendre plus intuitifs tous les
+            paramètres admin ». Menu à gauche (titre + une ligne d'explication par rubrique), contenu
+            à droite ; sur téléphone le menu repasse en bandeau horizontal au-dessus. */}
+        <style>{`
+          .admin-grille { display: flex; gap: 18px; align-items: flex-start; }
+          .admin-nav { flex: 0 0 240px; position: sticky; top: 12px; display: flex; flex-direction: column; gap: 4px; }
+          .admin-contenu { flex: 1; min-width: 0; }
+          @media (max-width: 860px) {
+            .admin-grille { flex-direction: column; gap: 10px; }
+            .admin-nav { position: static; flex-direction: row; overflow-x: auto; width: 100%; flex-basis: auto; }
+            .admin-nav .admin-desc { display: none; }
+          }
+        `}</style>
+        <div style={{ maxWidth: 1150, margin: "0 auto", padding: "16px 16px 80px", boxSizing: "border-box" }}>
+          <div className="admin-grille">
               {(() => {
-                const RUBRIQUES: { cle: RubriqueAdmin; label: string; badge?: number }[] = [
-                  { cle: "modules", label: "🔧 Modules" },
-                  { cle: "notifications", label: "🔔 Notifications" },
-                  { cle: "mails", label: "✉️ Comptes mail", badge: Object.values(santeComptesMail).filter((c: any) => c && c.ok === false).length },
-                  { cle: "acces", label: "🔐 Accès", badge: nbComptesEnAttente },
-                  { cle: "donnees", label: "🗄️ Données" },
-                  { cle: "materiel", label: "🖨️ Matériel" },
-                  { cle: "activite", label: "📜 Activité" },
+                const nbMailsKO = Object.values(santeComptesMail).filter((c: any) => c && c.ok === false).length;
+                const RUBRIQUES: { cle: RubriqueAdmin; label: string; desc: string; badge?: number }[] = [
+                  { cle: "apercu", label: "🏠 Vue d'ensemble", desc: "Tout ce qui demande ton attention" },
+                  { cle: "acces", label: "🔐 Accès & comptes", desc: "Qui voit quoi, comptes partagés", badge: nbComptesEnAttente },
+                  { cle: "modules", label: "🔧 Modules", desc: "Réglages de chaque module" },
+                  { cle: "mails", label: "✉️ Mails", desc: "Boîtes mail et qui envoie quoi", badge: nbMailsKO },
+                  { cle: "notifications", label: "🔔 Notifications", desc: "Alertes sur téléphone" },
+                  { cle: "materiel", label: "🖨️ Imprimantes", desc: "Imprimantes et page test", badge: printRelayOnline === false ? 1 : 0 },
+                  { cle: "donnees", label: "🗄️ Données", desc: "Archivage, historique, photos" },
+                  { cle: "activite", label: "📜 Activité", desc: "Actions notables (30 jours)" },
                 ];
                 return (
-                  <nav aria-label="Rubriques Admin" className="admin-rubriques" style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }}>
+                  <nav aria-label="Rubriques Admin" className="admin-nav">
                     {RUBRIQUES.map(r => {
                       const actif = adminTab === r.cle;
                       return (
                         <button key={r.cle} type="button" onClick={() => { setAdminTab(r.cle); marquerVu(`admin.${r.cle}`); window.scrollTo(0, 0); }} aria-current={actif ? "page" : undefined}
-                          style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "9px 13px", borderRadius: 10, border: `1.5px solid ${actif ? "#305a55" : "#e5e7eb"}`, background: actif ? "#305a55" : "#fff", color: actif ? "#fff" : "#374151", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", textAlign: "left" }}>
-                          {r.label}<Pastille cle={`admin.${r.cle}`} enLigne />
-                          {!!r.badge && <span style={{ minWidth: 18, height: 18, padding: "0 5px", boxSizing: "border-box", borderRadius: 9, background: "#dc2626", color: "#fff", fontSize: 10.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{r.badge}</span>}
+                          style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${actif ? "#305a55" : "transparent"}`, background: actif ? "#305a55" : "transparent", color: actif ? "#fff" : "#374151", cursor: "pointer", whiteSpace: "nowrap", textAlign: "left" }}>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 800, fontSize: 13 }}>{r.label}<Pastille cle={`admin.${r.cle}`} enLigne /></span>
+                            <span className="admin-desc" style={{ display: "block", fontSize: 11, fontWeight: 500, color: actif ? "rgba(255,255,255,.75)" : "#9ca3af", whiteSpace: "normal" }}>{r.desc}</span>
+                          </span>
+                          {!!r.badge && <span style={{ minWidth: 18, height: 18, padding: "0 5px", boxSizing: "border-box", borderRadius: 9, background: "#dc2626", color: "#fff", fontSize: 10.5, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{r.badge}</span>}
                         </button>
                       );
                     })}
                   </nav>
+                );
+              })()}
+              <div className="admin-contenu">
+
+              {adminTab === "apercu" && (() => {
+                const mails = Object.values(santeComptesMail) as any[];
+                const nbKO = mails.filter(c => c && c.ok === false).length;
+                const tuiles: { titre: string; valeur: string; detail: string; etat: "ok" | "alerte" | "neutre"; cible: RubriqueAdmin }[] = [
+                  { titre: "🖨️ Imprimante du bureau", valeur: printRelayOnline === false ? "Déconnectée" : printRelayOnline ? "En ligne" : "…", detail: printRelayOnline === false ? "Les étiquettes ne s'impriment plus" : "Étiquettes et bons de reprise", etat: printRelayOnline === false ? "alerte" : printRelayOnline ? "ok" : "neutre", cible: "materiel" },
+                  { titre: "✉️ Boîtes mail", valeur: !mails.length ? "Pas testé" : nbKO ? `${nbKO} déconnectée${nbKO > 1 ? "s" : ""}` : "Toutes OK", detail: !mails.length ? "Test automatique chaque jour" : `${mails.length} boîte${mails.length > 1 ? "s" : ""} surveillée${mails.length > 1 ? "s" : ""}`, etat: nbKO ? "alerte" : mails.length ? "ok" : "neutre", cible: "mails" },
+                  { titre: "🔐 Comptes en attente", valeur: nbComptesEnAttente ? `${nbComptesEnAttente} à valider` : "Aucun", detail: nbComptesEnAttente ? "Nouvelles personnes connectées sans accès" : "Tout le monde a ses accès", etat: nbComptesEnAttente ? "alerte" : "ok", cible: "acces" },
+                  { titre: "📜 Dernière action", valeur: activityLog[0]?.action || "—", detail: activityLog[0] ? `${activityLog[0].user || ""} · ${new Date(activityLog[0].timestamp).toLocaleString("fr-FR")}` : "Aucune activité récente", etat: "neutre", cible: "activite" },
+                ];
+                const raccourcis: { lib: string; cible: RubriqueAdmin }[] = [
+                  { lib: "🔐 Droits d'accès", cible: "acces" }, { lib: "📋 Pointer arrivage", cible: "modules" }, { lib: "📨 Qui envoie quel mail", cible: "mails" },
+                  { lib: "🔔 Notifications", cible: "notifications" }, { lib: "🗄️ Archiver", cible: "donnees" }, { lib: "🖨️ Page test", cible: "materiel" },
+                ];
+                const coul = { ok: ["#f0fdf4", "#16a34a", "#bbf7d0"], alerte: ["#fef2f2", "#dc2626", "#fecaca"], neutre: ["#fff", "#374151", "#e8e0d0"] } as const;
+                return (
+                  <div>
+                    <TitreSection>🏠 Vue d'ensemble</TitreSection>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(240px, 100%), 1fr))", gap: 10, marginBottom: 16 }}>
+                      {tuiles.map(t => (
+                        <button key={t.titre} type="button" onClick={() => { setAdminTab(t.cible); window.scrollTo(0, 0); }}
+                          style={{ textAlign: "left", background: coul[t.etat][0], border: `1.5px solid ${coul[t.etat][2]}`, borderRadius: 14, padding: "14px 16px", cursor: "pointer", fontFamily: "inherit" }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#6b7280" }}>{t.titre}</div>
+                          <div style={{ fontSize: 17, fontWeight: 900, color: coul[t.etat][1], margin: "4px 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.valeur}</div>
+                          <div style={{ fontSize: 11, color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.detail}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <TitreSection>⚡ Raccourcis</TitreSection>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {raccourcis.map(r => (
+                        <button key={r.lib} type="button" onClick={() => { setAdminTab(r.cible); window.scrollTo(0, 0); }}
+                          style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", color: "#374151", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{r.lib}</button>
+                      ))}
+                    </div>
+                  </div>
                 );
               })()}
 
@@ -3944,7 +4002,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               )}
 
-              {adminTab !== "activite" && (() => {
+              {adminTab !== "activite" && adminTab !== "apercu" && (() => {
                 // 17/09/2026 — Refonte demandée par Elinathan : "harmoniser cette page, mettre
                 // tous les réglages dedans, la rendre vraiment centrale à l'utilisation de
                 // l'app" — regroupement par catégorie (au lieu d'un empilement de cartes sans
@@ -3954,6 +4012,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   <div>
                     {adminTab === "modules" && (<>
                     <TitreSection>🔧 Configuration des modules</TitreSection>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(330px, 100%), 1fr))", gap: "0 12px" }}>
                     <CarteReglage titre="📦 Stock" desc="Répartition GMS/Prestige, qui peut lancer un comptage.">
                       <BoutonReglage label="Ouvrir Stock →" onClick={() => { setShowAdmin(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); }} />
                     </CarteReglage>
@@ -3979,6 +4038,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <BoutonReglage label="Ouvrir la configuration →" onClick={() => { setShowAdmin(false); setApproInitialTab("configuration"); setShowAppro(true); }} />
                     </CarteReglage>
                     {/* 13/10/2026 — Messagerie en veille : sa configuration est masquée aussi (code gardé). */}
+                    </div>
 
                     {/* 10/10/2026 — Demande d'Elinathan : être prévenue sur son téléphone même
                         appli fermée (reconditionnement prêt/parti, perte ou litige, alerte
@@ -4001,7 +4061,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         savoir lequel. */}
                     </>)}
                     {adminTab === "mails" && (<>
-                    <TitreSection>✉️ Comptes mail</TitreSection>
+                    <TitreSection>✉️ Mails</TitreSection>
                     <CarteReglage titre="✉️ État des comptes mail" desc="Testé automatiquement une fois par jour (IMAP pour la messagerie, SMTP pour les envois de rapports).">
                       {Object.keys(santeComptesMail).length === 0 ? (
                         <p style={{ fontSize: 12, color: "#9ca3af", margin: "0 0 10px" }}>Pas encore testé.</p>
@@ -4030,25 +4090,28 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       </div>
                     </CarteReglage>
 
-                    </>)}
-                    {adminTab === "acces" && (<>
-                    {/* 13/10/2026 — Demande d'Elinathan : « une section envoi : quel mail de qui à qui ». */}
+                    {/* 13/10/2026 — « une section envoi : quel mail de qui à qui » (déplacé ici le 15/10). */}
                     <CarteReglage titre="📨 Qui envoie quel mail à qui" desc="Tous les mails que l'appli envoie, avec la boîte d'envoi. Point rouge = boîte déconnectée : ses mails ne partent plus.">
                       <EnvoisMails sante={santeComptesMail} darkMode={darkMode} />
                     </CarteReglage>
-
-                    <TitreSection>🔐 Accès & sécurité</TitreSection>
+                    </>)}
+                    {adminTab === "acces" && (<>
+                    {/* 15/10/2026 — Droits d'accès affichés directement ici (avant : bouton vers une autre page). */}
+                    <TitreSection>🔐 Droits d'accès</TitreSection>
+                    {monAccesReel.isAdmin && (
+                      <div style={{ background: "#fff", border: "1.5px solid #e9d8fd", borderRadius: 16, padding: 16, marginBottom: 12 }}>
+                        <Suspense fallback={<p style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Chargement…</p>}>
+                          <DroitsAccesModule embarque onClose={() => {}} />
+                        </Suspense>
+                      </div>
+                    )}
+                    <TitreSection>👥 Comptes partagés</TitreSection>
                     <CarteReglage titre="👥 Sous-comptes des comptes partagés" desc="Choisir les modules de chaque personne sur agreage@, entrepot@ et commercial@ (prénom choisi dans « Qui es-tu ? »).">
                       <SousComptesAcces permRoles={permRoles} permUsers={permUsers} darkMode={darkMode} />
                     </CarteReglage>
                     {/* 09/09/2026 — Demande d'Elinathan : pouvoir choisir quelle adresse mail accède à
                         quel module/onglet. Réservé aux comptes admin (monAccesReel.isAdmin, la vraie
                         panneau Admin l'est déjà de toute façon depuis le retrait du code PIN. */}
-                    {monAccesReel.isAdmin && (
-                      <CarteReglage titre="🔐 Droits d'accès" desc="Choisir quelle adresse mail a accès à quel module, panneau de configuration ou onglet." accent="#e9d8fd">
-                        <BoutonReglage label="Gérer les droits d'accès →" onClick={() => { setShowAdmin(false); setShowDroitsAcces(true); }} accent={{ bg: "#faf5ff", fg: "#7c3aed", bd: "#e9d8fd" }} />
-                      </CarteReglage>
-                    )}
 
                     </>)}
                     {adminTab === "donnees" && (<>
@@ -4069,7 +4132,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
                     </>)}
                     {adminTab === "materiel" && (<>
-                    <TitreSection>🖨️ Matériel</TitreSection>
+                    <TitreSection>🖨️ Imprimantes</TitreSection>
                     {/* 12/10/2026 — Tous les réglages d'impression ici + une page test par imprimante (src/Imprimantes.tsx). */}
                     <CarteReglage titre="🖨️ Impression" desc="Imprimantes du PC du bureau, page test, et quelle imprimante pour quel document.">
                       <ReglagesImpression darkMode={darkMode} />
@@ -4078,7 +4141,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   </div>
                 );
               })()}
-            </>
+              </div>
+          </div>
         </div>
       </div>
     );

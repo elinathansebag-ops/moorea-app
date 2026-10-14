@@ -91,7 +91,8 @@ function formatDateFr(ts: number | null | undefined): string {
   return d.toLocaleDateString("fr-FR") + " à " + heure;
 }
 
-export default function DroitsAccesModule({ onClose }: { onClose: () => void }) {
+// 15/10/2026 — « embarque » : affiché directement dans Admin › Accès (sans en-tête ni pleine page).
+export default function DroitsAccesModule({ onClose, embarque = false }: { onClose: () => void; embarque?: boolean }) {
   const [tab, setTab] = useState<"modules" | "comptes" | "partages">("comptes");
   // 05/10/2026 — Journal des comptes partagés (commercial@, entrepot@, agreage@) : qui a dit
   // l'utiliser, quand et sur quel appareil (écrit par ProfilGenerique.tsx dans connexions_profils).
@@ -245,9 +246,9 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
 
   if (!chargeRoles || !chargeUsers) {
     return (
-      <div style={{ minHeight: "100vh", background: "#f5f3ee" }}>
-        <style>{styles}</style>
-        <PageHeader titre="🔐 Gestion des droits" couleur="#7c3aed" onBack={onClose} onHome={onClose} />
+      <div style={{ minHeight: embarque ? undefined : "100vh", background: embarque ? undefined : "#f5f3ee" }}>
+        {!embarque && <style>{styles}</style>}
+        {!embarque && <PageHeader titre="🔐 Gestion des droits" couleur="#7c3aed" onBack={onClose} onHome={onClose} />}
         <p style={{ textAlign: "center", color: "#9ca3af", padding: 40 }}>Chargement…</p>
       </div>
     );
@@ -256,10 +257,10 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
   const userKeys = Object.keys(users).sort((a, b) => (users[a].email || "").localeCompare(users[b].email || ""));
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f5f3ee" }}>
-      <style>{styles}</style>
-      <PageHeader titre="🔐 Gestion des droits" couleur="#7c3aed" onBack={onClose} onHome={onClose} />
-      <div className="content-wrap">
+    <div style={{ minHeight: embarque ? undefined : "100vh", background: embarque ? undefined : "#f5f3ee" }}>
+      {!embarque && <style>{styles}</style>}
+      {!embarque && <PageHeader titre="🔐 Gestion des droits" couleur="#7c3aed" onBack={onClose} onHome={onClose} />}
+      <div className={embarque ? undefined : "content-wrap"}>
         <div style={{ background: "#fff", border: "1.5px solid #e9d8fd", borderRadius: 12, padding: "12px 14px", marginBottom: 16, fontSize: 12.5, color: "#6b46c1" }}>
           ℹ️ Une adresse mail qui n'apparaît nulle part ci-dessous garde l'accès à tout l'appli, comme aujourd'hui. Ajoute une adresse dans "Comptes" seulement quand tu veux la restreindre.
         </div>
