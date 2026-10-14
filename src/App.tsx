@@ -511,6 +511,10 @@ export default function App() {
   const [filterProduit, setFilterProduit] = useState("");
   const [filterDateDebut, setFilterDateDebut] = useState("");
   const [filterDateFin, setFilterDateFin] = useState("");
+  // 14/10/2026 — Module « 🔄 Refus à faire signer » : rapports refusés dont le bon de reprise n'est
+  // ni signé par le transporteur, ni marqué « récupéré sans signature ».
+  const [aSignerSeul, setASignerSeul] = useState(false);
+  const refusASigner = (r: any) => r?.decision === "refus" && !r?.transporteur?.signatureBase64 && !r?.recupereSansSig;
   const [showStats, setShowStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState("date_desc");
@@ -4057,12 +4061,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     // 03/09/2026 — Demande d'Elinathan : les 2 premières lignes (row1 + row2Entrepot) sont des
     // actions d'entrepôt (quai/manutention), la dernière (row2Bureau) des actions de bureau
     // (suivi administratif/commercial) — on les sépare visuellement avec un sous-titre dédié.
+    const nbASigner = rapports.filter(refusASigner).length;
     const row2Entrepot = [
+      ...(monAcces.hasModule("rapports") ? [{ key: "refus_signer", icon: "🔄", label: "Refus à faire signer", color: "#ea580c", badge: nbASigner || null, stat: nbASigner ? `${nbASigner} bon${nbASigner > 1 ? "s" : ""} de reprise en attente` : "Aucun en attente", action: () => { setShowAccueil(false); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
       { key: "lidl", icon: "🛒", label: "Commandes Lidl", color: "#0050aa", badge: null, stat: "Tableau de répartition du jour", action: () => { setShowAccueil(false); setShowLidl(true); } },
       { key: "retours", icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { key: "preparation", icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
       { key: "rack", icon: "🗄️", label: "Rotation racks", color: "#8b5cf6", badge: null, stat: "Palettes en hauteur", action: () => { setShowAccueil(false); setShowRack(true); } },
-    ].filter(b => monAcces.hasModule(b.key));
+    ].filter(b => b.key === "refus_signer" || monAcces.hasModule(b.key));
 
     const row2Bureau = [
       { key: "prestataires", icon: "📦", label: "Prestataires", color: "#6c757d", badge: null, stat: "Suivi cartons et livraisons", action: () => { setShowAccueil(false); setShowPrestataires(true); } },
@@ -4407,7 +4413,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const nomQ = (x: any) => String(x || "").trim().toUpperCase();
     const versRapports = (f: { fournisseur?: string; produit?: string } = {}) => {
       const exact = (champ: "fournisseur" | "produit", v?: string) => v ? (rapports.find(r => nomQ(r[champ]) === nomQ(v))?.[champ] || v) : "";
-      setSearchText(""); setFilterDecision(""); setFilterDateDebut(""); setFilterDateFin("");
+      setSearchText(""); setFilterDecision(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(false);
       setFilterFournisseur(exact("fournisseur", f.fournisseur)); setFilterProduit(exact("produit", f.produit));
       setShowQualiteHub(false); setRetourHub("qualite"); setVue("historique"); setPageMode("arrivages"); window.scrollTo(0, 0);
     };
@@ -4415,6 +4421,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", onClick: () => versRapports() }] : []),
       ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité, températures, poids", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
       ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
+      ...(monAcces.hasModule("rapports") ? [{ icone: "🔄", titre: `Refus à faire signer (${rapports.filter(refusASigner).length})`, onClick: () => { setShowQualiteHub(false); setRetourHub("qualite"); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
       // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
     ];
     return <>{fabScanner}{invitationNotif}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirFournisseur={n => monAcces.hasModule("rapports") && versRapports({ fournisseur: n })} ouvrirProduit={n => monAcces.hasModule("rapports") && versRapports({ produit: n })} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
@@ -4976,7 +4983,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
       <PageHeader
         titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
-        onBack={vue === "form" ? () => setVue("historique" as any) : retourHub ? () => { setFilterFournisseur(""); setFilterProduit(""); versAccueilOuRubrique(); } : () => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
+        onBack={vue === "form" ? () => setVue("historique" as any) : retourHub ? () => { setFilterFournisseur(""); setFilterProduit(""); setASignerSeul(false); versAccueilOuRubrique(); } : () => { setASignerSeul(false); setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
         onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
       />
 
@@ -6122,6 +6129,15 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               );
             })()}
+            {aSignerSeul && (
+              <div style={{ marginBottom: 10, padding: "12px 14px", borderRadius: 12, background: "#fff7ed", border: "1.5px solid #fdba74" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ flex: 1, fontSize: 15, fontWeight: 900, color: "#9a3412" }}>🔄 Refus à faire signer · {rapports.filter(refusASigner).length} en attente</span>
+                  <button type="button" onClick={() => setASignerSeul(false)} style={{ padding: "6px 12px", borderRadius: 999, border: "1.5px solid #fdba74", background: "#fff", color: "#9a3412", fontWeight: 800, cursor: "pointer", fontSize: 12.5 }}>✕ Voir tous les rapports</button>
+                </div>
+                <div style={{ fontSize: 12.5, color: "#9a3412", marginTop: 4 }}>Pour chaque refus : <b>🔄 Bon retour</b> pour faire signer le transporteur, ou <b>📦 Récupéré sans signature</b> dans la même fenêtre. Il sort alors de la liste.</div>
+              </div>
+            )}
             {/* 14/10/2026 — Filtre fournisseur / produit actif (souvent posé depuis 🧪 Récap qualité) : visible. */}
             {(filterFournisseur || filterProduit) && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10, padding: "10px 14px", borderRadius: 12, background: "#eaf2ee", border: "1.5px solid #305a5533" }}>
@@ -6201,7 +6217,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     const rDate = parseDateTraca(r.date);
                     const matchDebut = !filterDateDebut || (rDate && rDate >= new Date(filterDateDebut));
                     const matchFin = !filterDateFin || (rDate && rDate <= new Date(filterDateFin));
-                    return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin;
+                    return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin && (!aSignerSeul || refusASigner(r));
                   }).filter(r => r.lotFournisseur);
                   if (!rapportsFiltres.length) { showToast("Aucun rapport avec un n° de traçabilité fournisseur dans cette liste.", "error"); return; }
                   const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -6300,7 +6316,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 const rDate = parseDate(r.date);
                 const matchDebut = !filterDateDebut || (rDate && rDate >= new Date(filterDateDebut));
                 const matchFin = !filterDateFin || (rDate && rDate <= new Date(filterDateFin));
-                return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin;
+                return matchText && matchDecision && matchFournisseur && matchProduit && matchDebut && matchFin && (!aSignerSeul || refusASigner(r));
               });
 
               const decisionOrder: Record<string, number> = { refus: 0, reserve: 1, stock: 2 };

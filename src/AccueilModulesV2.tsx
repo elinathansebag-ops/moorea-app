@@ -6,7 +6,7 @@ import { IconeTrait } from "./shared";
 type Module = { key?: string; label: string; stat?: string; badge?: number | null; action: () => void };
 
 const FAMILLES: { nom: string; cles: string[] }[] = [
-  { nom: "Opérations", cles: ["arrivages", "preparation", "lidl", "reconditionnement", "retours", "rack", "chargement", "etiquettes"] },
+  { nom: "Opérations", cles: ["arrivages", "refus_signer", "preparation", "lidl", "reconditionnement", "retours", "rack", "chargement", "etiquettes"] },
   { nom: "Stock et produits", cles: ["stock", "prestataires", "raccourci_cartons", "raccourci_palette_vierge", "factures_prestataires", "gencodes", "catalogue", "appro", "yukon"] },
   { nom: "Qualité", cles: ["rapports", "qualite", "lidl_consultation", "litiges"] },
   { nom: "Pilotage", cles: ["extractions", "stats_achats", "statt", "dashboard_tv"] },
@@ -19,6 +19,7 @@ const ICONES: Record<string, string> = {
   lidl: "M3 4h3l2.4 11h10.2L21 7H7 M9 20a1 1 0 1 0 0.01 0 M18 20a1 1 0 1 0 0.01 0",
   reconditionnement: "M4 12a8 8 0 0 1 14-5.3L21 9 M21 4v5h-5 M20 12a8 8 0 0 1-14 5.3L3 15 M3 20v-5h5",
   retours: "M9 14 4 9l5-5 M4 9h11a5 5 0 0 1 0 10h-3",
+  refus_signer: "M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4 M14 20h6",
   rack: "M4 3v18 M20 3v18 M4 8h16 M4 14h16 M4 20h16",
   chargement: "M3 17h18 M5 17V9h6v8 M13 17V5h6v12",
   etiquettes: "M12.6 2.6 21.4 11.4a2 2 0 0 1 0 2.8l-7.2 7.2a2 2 0 0 1-2.8 0L2.6 12.6A2 2 0 0 1 2 11.2V4a2 2 0 0 1 2-2h7.2a2 2 0 0 1 1.4.6Z M7.5 7.5h.01",
