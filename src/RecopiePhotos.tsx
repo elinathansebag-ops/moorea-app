@@ -15,19 +15,29 @@ export default function RecopiePhotos() {
   const [erreurs, setErreurs] = useState<{ url: string; raison: string; rapport: string }[]>([]);
   const stop = useRef(false);
   const [retrait, setRetrait] = useState("");
+  const [confirmer, setConfirmer] = useState(false);
+  const [retraitEnCours, setRetraitEnCours] = useState(false);
 
   // 14/10/2026 — Photos supprimées chez ImgBB (403 / 404, vérifié une par une) : retirées
   // définitivement des rapports, pour ne plus afficher de cases vides. Rien d'autre n'est touché.
   async function retirerSupprimees() {
-    setRetrait("⏳ Vérification des photos une par une…");
+    setConfirmer(false); setRetraitEnCours(true);
+    try {
     const mortes = new Set<string>();
-    for (const e of erreurs) {
-      try {
-        const rep = await fetch(`/api/fetch-image?url=${encodeURIComponent(e.url)}`);
-        const txt = rep.ok ? "" : await rep.text();
-        if (/ImgBB a répondu 40[34]/.test(txt)) mortes.add(e.url);
-      } catch { /* dans le doute, on garde */ }
+    let vues = 0;
+    setRetrait(`⏳ Vérification des photos : 0 / ${erreurs.length}…`);
+    // 14/10/2026 — Vérification 8 par 8 (avant : une par une, ~2 min sans rien voir bouger).
+    for (let i = 0; i < erreurs.length; i += 8) {
+      await Promise.all(erreurs.slice(i, i + 8).map(async e => {
+        try {
+          const rep = await fetch(`/api/fetch-image?url=${encodeURIComponent(e.url)}`);
+          const txt = rep.ok ? "" : await rep.text();
+          if (/ImgBB a répondu 40[34]/.test(txt)) mortes.add(e.url);
+        } catch { /* dans le doute, on garde */ }
+        vues++; setRetrait(`⏳ Vérification des photos : ${vues} / ${erreurs.length}…`);
+      }));
     }
+    setRetrait(`⏳ Mise à jour des rapports (${mortes.size} photos à retirer)…`);
     const tous = Object.entries((await get(ref(db, "rapports"))).val() || {}) as [string, any][];
     let n = 0;
     for (const [cle, r] of tous) {
@@ -42,7 +52,11 @@ export default function RecopiePhotos() {
       n++;
     }
     setErreurs(erreurs.filter(e => !mortes.has(e.url)));
-    setRetrait(`🗑 ${mortes.size} photo(s) supprimée(s) chez ImgBB retirée(s) de ${n} rapport(s).`);
+    setRetrait(`✅ ${mortes.size} photo(s) supprimée(s) chez ImgBB retirée(s) de ${n} rapport(s).`);
+    } catch (e: any) {
+      setRetrait(`❌ Erreur : ${e?.message || String(e)}`);
+    }
+    setRetraitEnCours(false);
   }
 
   async function lancer() {
@@ -105,13 +119,25 @@ export default function RecopiePhotos() {
               </div>
             ))}
           </div>
-          <button type="button" onClick={() => { if (confirm(`Retirer définitivement des rapports les photos supprimées chez ImgBB ?\nChacune est revérifiée avant ; les autres ne sont pas touchées.`)) retirerSupprimees(); }}
-            style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fff", color: "#dc2626", fontWeight: 800, cursor: "pointer" }}>
-            🗑 Retirer définitivement les photos supprimées chez ImgBB
-          </button>
+          {/* Confirmation dans la page (la fenêtre confirm() du navigateur ne s'affichait pas toujours). */}
+          {!confirmer ? (
+            <button type="button" disabled={retraitEnCours} onClick={() => setConfirmer(true)}
+              style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fff", color: "#dc2626", fontWeight: 800, cursor: retraitEnCours ? "wait" : "pointer" }}>
+              {retraitEnCours ? "⏳ Retrait en cours…" : "🗑 Retirer définitivement les photos supprimées chez ImgBB"}
+            </button>
+          ) : (
+            <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 10, background: "#fff", border: "1.5px solid #fca5a5" }}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Retirer définitivement ces photos des rapports ? Chacune est revérifiée avant ; les autres ne sont pas touchées.</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" onClick={retirerSupprimees} style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontWeight: 800, cursor: "pointer" }}>Oui, retirer</button>
+                <button type="button" onClick={() => setConfirmer(false)} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+              </div>
+            </div>
+          )}
+          {retrait && <div style={{ fontSize: 13, fontWeight: 700, marginTop: 8 }}>{retrait}</div>}
         </details>
       )}
-      {retrait && <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{retrait}</div>}
+      {retrait && !erreurs.length && <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{retrait}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" disabled={enCours} onClick={lancer} style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: enCours ? "#d1d5db" : "#16a34a", color: "#fff", fontWeight: 800, cursor: enCours ? "wait" : "pointer" }}>
           {enCours ? "⏳ Recopie en cours… (laisse cette page ouverte)" : "📷 Recopier les anciennes photos vers Firebase"}
