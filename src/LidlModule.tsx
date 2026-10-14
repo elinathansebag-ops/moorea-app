@@ -150,16 +150,17 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
     <div style={{ minHeight: "100vh", background: "#f9fafb" }}>
       <PageHeader titre="🛒 Commandes Lidl" couleur="#0050aa" onBack={onglet !== "accueil" ? () => { setOnglet("accueil"); setImportDirect(false); } : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+        {onglet !== "accueil" && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
           {/* 14/10/2026 — Onglets retirés (demande d'Elinathan : le tableau de bord donne accès à tout) ;
               restent Configuration et Importer, et un retour au tableau de bord depuis les autres pages. */}
-          {onglet !== "accueil" && <button type="button" onClick={() => { setOnglet("accueil"); setImportDirect(false); }} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#0050aa", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>← Tableau de bord</button>}
+          {<button type="button" onClick={() => { setOnglet("accueil"); setImportDirect(false); }} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#0050aa", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>← Tableau de bord</button>}
           <span style={{ flex: 1 }} />
           {<button type="button" onClick={() => setOnglet("config")} title="Configuration" style={{ padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${onglet === "config" ? "#0050aa" : "#e5e7eb"}`, background: onglet === "config" ? "#eff6ff" : "#fff", color: "#4b5563", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Configuration</button>}
           <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "#0050aa", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>➕ Importer une commande</button>
-        </div>
+        </div>}
         {/* 02/10/2026 — Demande d'Elinathan : le commercial voit tout de suite si le mail est bien parti chez Lidl, et à quelle heure. */}
-        <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${(envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
+        {/* 14/10/2026 — Bandeau seulement en cas d'échec : Jordan reçoit un mail de confirmation d'entrepot@ quand c'est parti. */}
+        {envoiJour.erreur && !envoiJour.manuel && <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${(envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
           {envoiJour.manuel ? `✅ Tableau Lidl du ${dateFr(jourT)} validé manuellement le ${envoiJour.manuel.le || ""}${envoiJour.manuel.par ? ` par ${envoiJour.manuel.par}` : ""}`
             : envoiJour.erreur ? `❌ Mail Lidl du ${dateFr(jourT)} : échec (${envoiJour.erreur})`
             : envoiJour.version > 0 ? `📧 Mail Lidl du ${dateFr(jourT)} envoyé le ${envoiJour.dernierEnvoi} ${envoiJour.mode === "test" ? "(TEST — à Elinathan)" : "à Lidl"}`
@@ -176,7 +177,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
             <button type="button" onClick={async () => { if (window.confirm("Annuler la validation manuelle ?")) await annulerValidationManuelle(jourT); }}
               style={{ marginLeft: 10, padding: "2px 8px", borderRadius: 8, border: "none", background: "none", color: "#6b7280", fontWeight: 700, fontSize: 11.5, cursor: "pointer", textDecoration: "underline" }}>annuler</button>
           )}
-        </div>
+        </div>}
 
         {signals.length > 0 && (
           <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 12, padding: 12, marginBottom: 12 }}>
@@ -351,6 +352,11 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               <select value={filtreDepart} onChange={e => setFiltreDepart(e.target.value as any)} style={{ marginLeft: "auto", padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e5e7eb" }}>
                 <option value="tous">Tous les départs</option><option value="paris">Départ Paris</option><option value="sud">Départ Perpignan</option>
               </select>
+              {onglet === "accueil" && <>
+                <button type="button" onClick={() => setOnglet("passees")} style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#4b5563", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>🗂️ Commandes passées</button>
+                <button type="button" onClick={() => setOnglet("config")} style={{ padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#4b5563", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>⚙️ Configuration</button>
+                <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#0050aa", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>➕ Importer une commande</button>
+              </>}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
               {carte("Colis de la semaine", totalSemaine.toLocaleString("fr-FR"), "#0050aa", "📦", "#eff6ff")}

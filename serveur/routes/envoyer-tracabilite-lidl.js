@@ -59,7 +59,33 @@ export default async function handler(req, res) {
     });
     const accepted = info.accepted || [];
     if (!accepted.length) return res.status(502).json({ error: `Aucun destinataire accepté par Gmail (${destinataires.join(", ")})` });
-    return res.status(200).json({ success: true, accepted, rejected: info.rejected || [], messageId: info.messageId });
+    // 14/10/2026 — Demande d'Elinathan : une fois le tableau bien parti chez Lidl (envoi réel), un mail
+    // d'entrepot@ prévient Jordan que les commandes Lidl sont finies, avec l'heure d'envoi et le tableau
+    // en pièce jointe comme preuve. Un échec ici ne remet pas en cause l'envoi à Lidl.
+    let confirmation = false;
+    if (!modeTest) {
+      try {
+        const ent = COMPTES_ENVOI.entrepot, passEnt = ent.pass();
+        if (passEnt) {
+          const quand = new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "full", timeStyle: "short" });
+          const tEnt = nodemailer.createTransport({ service: "gmail", auth: { user: ent.user, pass: passEnt } });
+          await tEnt.sendMail({
+            from: `${ent.nom} <${ent.user}>`,
+            to: "jordan.jouanest@moorea.fr",
+            subject: `✅ Commandes Lidl terminées — tableau envoyé à Lidl (livraison du ${dateLongue || ""})`,
+            html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111">
+              <p>Bonjour Jordan,</p>
+              <p>Les commandes Lidl pour la livraison du <b>${dateLongue || ""}</b> sont <b>terminées</b>.</p>
+              <p>Le tableau de traçabilité est bien parti chez Lidl (<b>${accepted.join(", ")}</b>) le <b>${quand}</b>${version > 1 ? ` (version ${String(version).padStart(2, "0")})` : ""} — ${nbLignes} ligne${nbLignes > 1 ? "s" : ""}.</p>
+              <p>Le tableau envoyé est en pièce jointe. Pour vérifier, tu le retrouves dans les <b>messages envoyés</b> de ta boîte ${expediteur.user}.</p>
+              <p>L'équipe entrepôt — MOOREA</p></div>`,
+            attachments: [{ filename: nomFichier, content: Buffer.from(xlsxBase64, "base64"), contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
+          });
+          confirmation = true;
+        }
+      } catch { /* l'envoi à Lidl reste valable */ }
+    }
+    return res.status(200).json({ success: true, accepted, rejected: info.rejected || [], messageId: info.messageId, confirmation });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

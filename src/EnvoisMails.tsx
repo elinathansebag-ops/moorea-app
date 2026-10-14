@@ -52,6 +52,8 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
     ] },
     { titre: "🛒 Lidl", envois: [
       { quoi: `Tableau de traçabilité${modeTest ? " (mode TEST)" : ""}`, de: modeTest ? "elinathan" : "jordan", a: modeTest ? "jordan.jouanest@moorea.fr" : (lidl.emailLidl || "adresse Lidl (Configuration)"), quand: "Toutes les commandes du jour prêtes, ou bouton d'envoi", cle: modeTest ? "lidl_tracabilite_test" : "lidl_tracabilite", mod: modeTest ? TOUT : { de: true, cc: true } },
+      // 14/10/2026 — Confirmation à Jordan quand le tableau est bien parti chez Lidl.
+      { quoi: "Confirmation : commandes Lidl terminées, tableau parti (heure + tableau en pièce jointe)", de: "entrepot", a: "jordan.jouanest@moorea.fr", quand: "Juste après l'envoi réel du tableau de traçabilité à Lidl" },
       { quoi: "Commandes à préparer départ Perpignan + lien de saisie", de: "jordan", a: medina || "jordan.jouanest@moorea.fr", cc: medina ? "jordan.jouanest@moorea.fr" : undefined, quand: "Import des commandes du jour (départ Perpignan)", cle: "lidl_medina", mod: { de: true, cc: true } },
     ] },
     { titre: "📦 Stock", envois: [
