@@ -115,7 +115,8 @@ function resultatsSpeciaux(q: string, maxDate: string): Option[] {
   }
   return out;
 }
-function chercher(options: Option[], q: string, max = 14): Option[] {
+// 14/10/2026 — Plus de limite de résultats (demande d'Elinathan : « tout ce qui contient un c »).
+function chercher(options: Option[], q: string, max = Infinity): Option[] {
   const mots = norm(q).split(/\s+/).filter(Boolean);
   if (!mots.length) return [];
   const res: { o: Option; s: number }[] = [];
@@ -136,7 +137,7 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
   const [q, setQ] = useState("");
   const [actif, setActif] = useState(0);
   const [ouvert, setOuvert] = useState(false);
-  const resultats = useMemo(() => multi ? chercher(options, q, 60) : [...(extra ? extra(q) : []), ...chercher(options, q)].slice(0, 16), [options, q, extra, multi]);
+  const resultats = useMemo(() => multi ? chercher(options, q) : [...(extra ? extra(q) : []), ...chercher(options, q)], [options, q, extra, multi]);
   const choisir = (o: Option) => { onChoisir(o); if (!multi) { setQ(""); setOuvert(false); } };
   const parType = multi ? resultats.reduce((m, o) => m.set(o.type, [...(m.get(o.type) || []), o]), new Map<string, Option[]>()) : null;
   return (
@@ -152,7 +153,8 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
         }}
         style={{ width: "100%", boxSizing: "border-box", padding: grand ? "14px 16px" : "10px 12px", borderRadius: 12, border: `2px solid ${c.vert}`, background: c.carte, color: c.texte, fontSize: grand ? 17 : 14.5, fontWeight: 600 }} />
       {ouvert && q && (
-        <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", zIndex: 50, background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.15)", maxHeight: 380, overflowY: "auto" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", zIndex: 50, background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.15)", maxHeight: "min(60vh, 520px)", overflowY: "auto" }}>
+          {resultats.length > 0 && <div style={{ padding: "6px 14px", fontSize: 11.5, fontWeight: 800, color: c.gris, borderBottom: `1px solid ${c.bord}` }}>{resultats.length} résultat{resultats.length > 1 ? "s" : ""}{multi && estChoisi ? ` · ${resultats.filter(o => estChoisi(o)).length} compris dans le calcul` : ""}</div>}
           {!resultats.length && <div style={{ padding: "10px 14px", fontSize: 13, color: c.gris }}>Aucun résultat pour « {q} »</div>}
           {multi && parType && [...parType].filter(([, l]) => l.length > 1).map(([t, l]) => {
             const tous = l.every(o => estChoisi?.(o));
@@ -166,13 +168,15 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
           })}
           {resultats.map((o, i) => (
             <button key={o.type + o.valeur} type="button" onMouseDown={e => { e.preventDefault(); choisir(o); }} onMouseEnter={() => setActif(i)}
-              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", background: i === actif ? (c.sombre ? "#1d2e2b" : "#eaf2ee") : "transparent", color: c.texte, cursor: "pointer", fontSize: 14 }}>
+              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", borderLeft: multi && estChoisi?.(o) ? "4px solid #16a34a" : "4px solid transparent",
+                background: multi && estChoisi?.(o) ? (c.sombre ? "#173a24" : "#dcfce7") : i === actif ? (c.sombre ? "#1d2e2b" : "#eaf2ee") : "transparent", color: c.texte, cursor: "pointer", fontSize: 14 }}>
               {multi && <span style={{ fontSize: 17, color: estChoisi?.(o) ? c.vert : c.gris, width: 18 }}>{estChoisi?.(o) ? "☑" : "☐"}</span>}
               <span style={{ fontSize: 16 }}>{ICONES[o.type] || "•"}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: "block", fontWeight: 700 }}>{o.valeur}</span>
                 {o.detail && <span style={{ display: "block", fontSize: 11.5, color: c.gris }}>{o.detail}</span>}
               </span>
+              {multi && estChoisi?.(o) && <span style={{ fontSize: 11.5, fontWeight: 900, color: "#15803d", whiteSpace: "nowrap" }}>✓ compris dans le calcul</span>}
             </button>
           ))}
           {multi && resultats.length > 0 && (
