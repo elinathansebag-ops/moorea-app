@@ -387,9 +387,10 @@ export const MODULE_DEFS: ModuleDef[] = [
   { key: "arrivages", label: "📋 Pointer arrivage", tabs: [
     { key: "valider", label: "✅ Peut valider (sinon lecture seule : consultation du jour)" },
   ] },
-  { key: "rapports", label: "📊 Rapports" },
-  { key: "qualite", label: "🧪 Récap Qualité" },
-  { key: "litiges", label: "⚠️ Litiges" },
+  // 14/10/2026 — Libellés alignés sur les écrans de la carte « 🧪 Récap qualité » de l'accueil.
+  { key: "rapports", label: "📋 Rapports d'agréage" },
+  { key: "qualite", label: "🧪 Traçabilité, températures, poids" },
+  { key: "litiges", label: "⛔ Litiges" },
   { key: "stock", label: "📦 Stock", tabs: [
     { key: "config", label: "⚙️ Configuration (répartition GMS/Prestige)" },
     // 17/09/2026 — Demande d'Elinathan : seule la ou les personnes cochées ici peuvent compter
@@ -427,9 +428,9 @@ export const MODULE_DEFS: ModuleDef[] = [
     { key: "configuration", label: "⚙️ Configuration" },
   ] },
   { key: "etiquettes", label: "🏷️ Étiquettes" },
-  { key: "statt", label: "🛒 Statt" },
+  { key: "statt", label: "🛒 Programme d'achat" },
   // 13/10/2026 — Extractions en 3 clics (commande client, arrivage fournisseur, ventes produits) : Extractions.tsx.
-  { key: "extractions", label: "📊 Stats (commande client, arrivage, ventes produits)" },
+  { key: "extractions", label: "📊 Stats (recherche, ventes, fiches, commandes, arrivages)" },
   // 13/10/2026 — Demande d'Elinathan : voir les montants d'achat et la marge dans 📊 Stats (et l'Analyse
   // ventes & marge), à cocher personne par personne au lieu d'être réservé aux admins.
   { key: "marge", label: "💶 Voir les achats et la marge (📊 Stats)" },
@@ -453,6 +454,25 @@ export const MODULE_DEFS: ModuleDef[] = [
     { key: "configuration", label: "⚙️ Configuration" },
   ] },
 ];
+
+// 14/10/2026 — Page Droits d'accès rangée comme l'accueil : une carte de l'accueil = un groupe,
+// avec dessous les cases des écrans qu'elle contient. Ne change aucun droit, seulement l'affichage.
+export const GROUPES_DROITS: { titre: string; detail: string; cles: string[] }[] = [
+  { titre: "🏭 Entrepôt", detail: "Une carte chacun sur l'accueil", cles: ["arrivages", "stock", "lidl", "retours", "preparation", "rack"] },
+  { titre: "🧪 Récap qualité", detail: "Une seule carte sur l'accueil, visible dès qu'un de ces écrans est coché ; à l'intérieur, seulement les écrans cochés", cles: ["rapports", "qualite", "lidl_consultation", "litiges"] },
+  { titre: "🗂️ Bureau", detail: "Une carte chacun sur l'accueil", cles: ["prestataires", "factures_prestataires", "reconditionnement", "chargement"] },
+  { titre: "🌱 Appro", detail: "Une seule carte sur l'accueil, visible dès qu'un de ces écrans est coché", cles: ["appro", "yukon"] },
+  { titre: "📊 Stats", detail: "Une seule carte sur l'accueil (Stats ou Programme d'achat coché) ; les deux réglages € et marge s'appliquent à l'intérieur", cles: ["extractions", "statt", "euros", "marge"] },
+  { titre: "🧰 Autres", detail: "Une carte chacun sur l'accueil", cles: ["catalogue", "gencodes", "taches", "dashboard_tv"] },
+  { titre: "💤 En veille", detail: "Retirés de l'appli pour l'instant : cocher ne fait rien apparaître", cles: ["etiquettes", "messagerie"] },
+];
+export function modulesParGroupe(): { titre: string; detail: string; modules: ModuleDef[] }[] {
+  const pris = new Set(GROUPES_DROITS.flatMap(g => g.cles));
+  const groupes = GROUPES_DROITS.map(g => ({ titre: g.titre, detail: g.detail, modules: g.cles.map(k => MODULE_DEFS.find(m => m.key === k)).filter(Boolean) as ModuleDef[] }));
+  const reste = MODULE_DEFS.filter(m => !pris.has(m.key));
+  if (reste.length) groupes.splice(groupes.length - 1, 0, { titre: "➕ Divers", detail: "", modules: reste });
+  return groupes.filter(g => g.modules.length);
+}
 
 // Toujours admin, quoi qu'il arrive dans la base de droits (même vide/mal configurée) — pour ne
 // jamais risquer de se retrouver bloquée dehors de son propre écran d'administration.

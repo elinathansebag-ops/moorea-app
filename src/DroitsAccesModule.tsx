@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { db, ref, onValue, remove, update, auth } from "./firebase";
 import { set } from "firebase/database";
 import { nomSignataire } from "./ProfilGenerique";
-import { PageHeader, styles, MODULE_DEFS, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, toutesLesClesModules, AccesRole, AccesUser } from "./shared";
+import { PageHeader, styles, MODULE_DEFS, modulesParGroupe, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, toutesLesClesModules, AccesRole, AccesUser } from "./shared";
 import { Commercial } from "./MessagerieModule";
 
 // ─── 09/09/2026 — Écran d'administration des droits d'accès (demande d'Elinathan : choisir
@@ -33,7 +33,13 @@ function PermissionsChecklist({
 }) {
   return (
     <div style={{ display: "grid", gap: 6 }}>
-      {MODULE_DEFS.map(m => (
+      {modulesParGroupe().map(g => (
+      <div key={g.titre} style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+        <div style={{ marginTop: 4 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 900, color: "#1f4440" }}>{g.titre}</div>
+          {g.detail && <div style={{ fontSize: 11, color: "#9ca3af" }}>{g.detail}</div>}
+        </div>
+      {g.modules.map(m => (
         <div key={m.key} style={{ background: "#faf8f3", borderRadius: 10, padding: "8px 12px" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
             <span className="mrq-case-conteneur">
@@ -59,6 +65,8 @@ function PermissionsChecklist({
             </div>
           )}
         </div>
+      ))}
+      </div>
       ))}
     </div>
   );
@@ -310,10 +318,12 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                 Ici, choisis un module et coche qui a le droit de le voir — l'inverse de l'onglet "Comptes" (qui part de la personne). Les deux vues modifient la même chose : cocher/décocher ici a exactement le même effet que dans "Comptes".
               </p>
               {emailsConnus.length === 0 && <p style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucune adresse connue pour l'instant (personne ne s'est encore connectée, et personne n'a été ajoutée dans "Comptes").</p>}
-              {emailsConnus.length > 0 && MODULE_DEFS.map(m => {
+              {emailsConnus.length > 0 && modulesParGroupe().flatMap(g => g.modules.map((m, i) => ({ m, titre: i === 0 ? g.titre : "" }))).map(({ m, titre }) => {
                 const ouvert = moduleOuvert === m.key;
                 return (
-                  <div key={m.key} className="card" style={{ padding: 14, marginBottom: 10 }}>
+                  <div key={m.key}>
+                  {titre && <div style={{ fontSize: 13.5, fontWeight: 900, color: "#1f4440", margin: "14px 0 6px" }}>{titre}</div>}
+                  <div className="card" style={{ padding: 14, marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setModuleOuvert(ouvert ? null : m.key)}>
                       <span style={{ fontWeight: 700, fontSize: 14 }}>{m.label}</span>
                       <span>{ouvert ? "▲" : "▼"}</span>
@@ -342,6 +352,7 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                         })}
                       </div>
                     )}
+                  </div>
                   </div>
                 );
               })}
