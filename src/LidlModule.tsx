@@ -363,7 +363,8 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               {carte("Bases servies", String(matrice.length), "#b45309", "🏪", "#fffbeb")}
             </div>
             <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 14, overflowX: "auto" }}>
-              {refsSemaine.length > 0 && (
+              {/* Toujours affichée : elle porte aussi le filtre de départ. */}
+              {(
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 12 }}>
                   {refsSemaine.map(k => { const c = couleurRef(k); return <span key={k} style={{ padding: "3px 10px", borderRadius: 999, background: c.fond, color: c.texte, fontWeight: 800 }}>{libRef(k)}</span>; })}
                   <span style={{ color: "#6b7280" }}><span style={{ fontSize: 10, fontWeight: 900, padding: "0 4px", borderRadius: 4, background: "#fff7ed", color: "#b45309", border: "1px solid #fed7aa" }}>M</span> = départ Medina (Perpignan), sinon Paris</span>
