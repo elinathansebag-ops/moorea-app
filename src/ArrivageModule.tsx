@@ -1177,6 +1177,22 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
 
 export function FournisseurBlock({ enGrille = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   const [open, setOpen] = useState(false);
+  // 15/10/2026 — En grille : case + détail = une seule forme avec un contour. On repère si la case
+  // est collée au bord gauche / droit de la grille pour que le coin du détail soit droit de ce côté.
+  const caseRef = useRef<HTMLDivElement>(null);
+  const [bordsCase, setBordsCase] = useState({ gauche: false, droite: false });
+  useEffect(() => {
+    if (!open || !enGrille) return;
+    const mesurer = () => {
+      const el = caseRef.current, grille = el?.parentElement;
+      if (!el || !grille) return;
+      const r = el.getBoundingClientRect(), g = grille.getBoundingClientRect();
+      setBordsCase({ gauche: r.left - g.left < 3, droite: g.right - r.right < 3 });
+    };
+    mesurer();
+    window.addEventListener("resize", mesurer);
+    return () => window.removeEventListener("resize", mesurer);
+  }, [open, enGrille]);
   // 12/10/2026 — Demande d'Elinathan : décaler TOUT l'arrivage du fournisseur (tous ses produits
   // encore à pointer) à une autre date, au lieu de produit par produit.
   const [reportGroupe, setReportGroupe] = useState<string | null>(null); // date AAAA-MM-JJ choisie
@@ -1284,8 +1300,10 @@ export function FournisseurBlock({ enGrille = false, fournisseur, produits, trai
     // 14/10/2026 — Fournisseurs sur plusieurs colonnes (DateBlock) : ouvert, il prend toute la largeur.
     <>
     {/* 14/10/2026 — En grille : la case reste à sa place ; le détail s'ouvre en dessous, sur toute la largeur. */}
-    <div style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: open && enGrille ? "14px 14px 0 0" : 14, marginBottom: open && enGrille ? -10 : 0, paddingBottom: open && enGrille ? 10 : 0, overflow: "hidden", boxShadow: open && enGrille ? "none" : "0 2px 12px rgba(0,0,0,0.06)", border: open && enGrille ? "1.5px solid transparent" : allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent", alignSelf: "stretch", position: "relative", zIndex: open && enGrille ? 1 : undefined }}>
-      <div onClick={() => setOpen(!open)} style={{ minHeight: enGrille ? 52 : undefined, boxSizing: "border-box", height: enGrille ? "100%" : undefined, padding: enGrille ? "7px 14px" : "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: open && enGrille ? "#fff" : headerBg, borderBottom: open ? "1px solid #e8e0d0" : headerBorder }}>
+    {/* 15/10/2026 — Ouverte en grille : contour doré sur 3 côtés ; la case descend de 12 px
+        (écart de la grille + bordure) pour recouvrir le haut du détail → une seule forme. */}
+    <div ref={caseRef} style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: open && enGrille ? "14px 14px 0 0" : 14, marginBottom: open && enGrille ? -12 : 0, paddingBottom: open && enGrille ? 12 : 0, overflow: "hidden", boxShadow: open && enGrille ? "none" : "0 2px 12px rgba(0,0,0,0.06)", border: open && enGrille ? "2px solid #c8a84b" : allDone ? "2px solid #bbf7d0" : "2px solid transparent", borderBottom: open && enGrille ? "none" : undefined, alignSelf: "stretch", position: "relative", zIndex: open && enGrille ? 1 : undefined }}>
+      <div onClick={() => setOpen(!open)} style={{ minHeight: enGrille ? 52 : undefined, boxSizing: "border-box", height: enGrille ? "100%" : undefined, padding: enGrille ? "7px 14px" : "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: open && enGrille ? "#fff" : headerBg, borderBottom: open && enGrille ? "none" : open ? "1px solid #e8e0d0" : headerBorder }}>
         {/* 14/10/2026 — Nom à gauche ; « en attente » / « traités » toujours au même endroit, à droite. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
           <span>{allDone ? "✅" : "🏭"}</span>
@@ -1352,15 +1370,13 @@ export function FournisseurBlock({ enGrille = false, fournisseur, produits, trai
     </div>
     {/* Ouvert : la case et son détail forment une seule forme blanche (pas de double cadre). */}
     {open && enGrille && (
-      <div style={{ gridColumn: "1 / -1", background: "#fff", borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid #e8e0d0", background: "#faf8f3", flexWrap: "wrap" }}>
-          <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: "#6b7280" }}>Pointage de {fournisseur}</span>
-          <span style={{ flex: 1, display: "flex", justifyContent: "center", gap: 6 }}>
-            {produits.length > 0 && <span style={{ fontSize: 12, background: "#fffbeb", color: "#d97706", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{produits.length} en attente</span>}
-            {nbTraites > 0 && <span style={{ fontSize: 12, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{nbTraites} traité{nbTraites > 1 ? "s" : ""}</span>}
-          </span>
-          <span style={{ flex: "0 0 auto", display: "flex", justifyContent: "flex-end" }}>{actionsGroupe}</span>
-          <button type="button" onClick={() => setOpen(false)} title="Fermer" style={{ border: "none", background: "transparent", fontSize: 18, color: "#c8a84b", fontWeight: 800, cursor: "pointer" }}>✕</button>
+      // 15/10/2026 — Même contour que la case ; coin droit du côté où la case touche le bord.
+      // Bandeau gris retiré (nom et « en attente » étaient en double avec la case) :
+      // il ne reste que les boutons d'action et ✕, sur fond blanc.
+      <div style={{ gridColumn: "1 / -1", background: "#fff", border: "2px solid #c8a84b", borderRadius: `${bordsCase.gauche ? 0 : 14}px ${bordsCase.droite ? 0 : 14}px 14px 14px`, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "8px 14px 0", flexWrap: "wrap" }}>
+          <span style={{ display: "flex", justifyContent: "flex-end" }}>{actionsGroupe}</span>
+          <button type="button" onClick={() => setOpen(false)} title="Fermer" style={{ border: "none", background: "transparent", fontSize: 18, color: "#c8a84b", fontWeight: 800, cursor: "pointer", padding: "0 2px" }}>✕</button>
         </div>
         <div style={{ padding: "12px 14px" }}>
           {/* Total de palettes ANNONCÉ pour tout le groupe (pas par arrivage) — voir le calcul
