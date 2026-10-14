@@ -163,6 +163,13 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
             </div>
           </div>
         )}
+        {type === "poids" && c.barquettes.length > 1 && (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {c.barquettes.map((b, i) => (
+              <span key={i} title={b.at ? new Date(b.at).toLocaleString("fr-FR") : ""} style={{ fontSize: 11, fontWeight: 700, color: "#4b5563", background: "#f9fafb", border: "1px solid #eef0f2", borderRadius: 6, padding: "1px 6px" }}>{fmt(b.valeur, 0)} g</span>
+            ))}
+          </div>
+        )}
         {ouvert && (
           <div style={{ borderTop: "1px solid #f0ebe0", paddingTop: 7, display: "flex", flexDirection: "column", gap: 3 }}>
             {(type === "temperature" ? c.temps : c.barquettes).map((m, i) => (
@@ -179,10 +186,28 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
     );
   };
 
+  // 15/10/2026 — « comment 52 mesures et j'ai que ça » : une carte = un arrivage, et chaque carte
+  // regroupe plusieurs pesées. Pour les poids, une moyenne globale n'a pas de sens (barquettes de
+  // 250 g et colis de 5 kg mélangés) : on affiche le nombre de pesées, d'arrivages et la dernière.
+  const nbBarq = cartes.reduce((n, c) => n + c.barquettes.length, 0);
+  const derniere = cartes.flatMap(c => c.barquettes.map(b => b.at)).reduce((m, t) => Math.max(m, t || 0), 0);
+  const resumePoids = (
+    <div style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${bord}`, borderRadius: 14, padding: "10px 14px", display: "flex", gap: 22, alignItems: "center", flexWrap: "wrap" }}>
+      {[["Pesées de barquettes", String(nbBarq)], ["Arrivages pesés", String(cartes.filter(c => c.barquettes.length).length)], ["Poids corrigés", String(cartes.filter(c => c.brut != null || c.net != null).length)], ["Dernière pesée", derniere ? new Date(derniere).toLocaleDateString("fr-FR") : "—"]].map(([lib, v]) => (
+        <div key={lib}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af" }}>{lib}</div>
+          <div style={{ fontSize: 17, fontWeight: 900, color: "#1f2937" }}>{v}</div>
+        </div>
+      ))}
+      <span style={{ fontSize: 11, color: "#9ca3af", flex: "1 1 200px" }}>Chaque carte = un arrivage, avec toutes ses pesées.</span>
+    </div>
+  );
+
   return (
     <div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch", marginBottom: 14 }}>
-        {stats.map(s => (
+        {type === "poids" && cartes.length > 0 && resumePoids}
+        {type === "temperature" && stats.map(s => (
           <div key={s.lib} style={{ flex: "1 1 260px", background: "#fff", border: `1.5px solid ${bord}`, borderRadius: 14, padding: "10px 14px", display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, fontWeight: 800, color: couleur, minWidth: 90 }}>{s.lib}<div style={{ fontSize: 10.5, color: "#9ca3af", fontWeight: 600 }}>{s.n} mesure{s.n > 1 ? "s" : ""}</div></div>
             {[["Moyenne", s.moy], ["Min", s.min], ["Max", s.max]].map(([lib, v]) => (

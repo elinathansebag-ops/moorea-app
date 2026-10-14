@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 63, date: "15/10", pages: ["qualite"], texte: "🧪 Récap qualité › Poids : en haut, nombre de pesées, d'arrivages pesés et date de la dernière pesée (plus de moyenne qui mélangeait 250 g et 5 kg) ; chaque carte montre toutes ses pesées." },
   { id: 62, date: "15/10", pages: ["stock"], texte: "📦 Stock : plus de « Régulariser » IFCO sur les comptages plus anciens qu'un comptage déjà régularisé (marqués « dépassé ») ; lignes rangées (statut et durée en pastilles, avancement sur une ligne, IFCO dans un encadré, boutons à droite)." },
   { id: 61, date: "15/10", pages: ["qualite"], texte: "🧪 Récap qualité › Poids : seulement les pesées saisies à la main au pointage (barquettes, et brut/net quand ils ont été corrigés) — plus les poids venus de l'import Geslot." },
   { id: 60, date: "15/10", pages: ["admin.materiel"], texte: "🖨️ Étiquettes d'arrivage : l'appli peut maintenant les dessiner elle-même (sortie immédiate comme les Lidl). À activer dans Admin › Imprimantes après avoir installé le relais V8.4 sur le PC et essayé l'étiquette d'essai." },
