@@ -140,6 +140,8 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
           {btnOnglet("accueil", "📊 Tableau de bord")}{btnOnglet("jour", "🛒 Commandes")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("config", "⚙️ Configuration")}
+          {/* 14/10/2026 — « Importer une commande » dans la rangée des onglets. */}
+          <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ marginLeft: "auto", padding: "10px 16px", borderRadius: 10, border: "none", background: "#0050aa", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>➕ Importer une commande</button>
         </div>
         {/* 02/10/2026 — Demande d'Elinathan : le commercial voit tout de suite si le mail est bien parti chez Lidl, et à quelle heure. */}
         <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${(envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
@@ -150,6 +152,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
           {/* 14/10/2026 — Onglet « Traçabilité Lidl » retiré (le fichier est dans les commandes) : l'envoi à la main est ici. */}
           {!envoiJour.manuel && <button type="button" disabled={occupe} onClick={envoyerMaintenant} style={{ marginLeft: 10, padding: "4px 10px", borderRadius: 8, border: "1.5px solid #0050aa", background: "#fff", color: "#0050aa", fontWeight: 800, fontSize: 12, cursor: occupe ? "wait" : "pointer" }}>{occupe ? "⏳ Envoi…" : envoiJour.version > 0 ? "📤 Renvoyer à Lidl" : "📤 Envoyer à Lidl maintenant"}</button>}
           {msgTraca && <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: msgTraca.type === "ok" ? "#166534" : "#b91c1c" }}>{msgTraca.texte}</span>}
+          <button type="button" onClick={() => setOnglet("passees")} style={{ float: "right", padding: "3px 10px", borderRadius: 8, border: "1.5px solid #0050aa", background: "#fff", color: "#0050aa", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>🗂️ Commandes passées</button>
           {/* 13/10/2026 — Effacer l'erreur et noter que le tableau a été validé à la main. */}
           {envoiJour.erreur && !envoiJour.manuel && (
             <button type="button" onClick={async () => { if (window.confirm(`Le tableau Lidl du ${dateFr(jourT)} a bien été envoyé / validé autrement ?\n\nL'erreur sera effacée et l'envoi automatique ne repartira pas pour ce jour.`)) await validerTracaManuellement(jourT, userName || ""); }}
@@ -324,13 +327,6 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
 
         {/* 14/10/2026 — Accueil : un bouton pour ajouter une commande, un pour toutes les commandes
             passées ; le tableau de la semaine est cliquable (un jour = sa commande). */}
-        {onglet === "accueil" && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
-            <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "#0050aa", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>➕ Ajouter une commande</button>
-            <button type="button" onClick={() => setOnglet("passees")} style={{ padding: "10px 16px", borderRadius: 10, border: "1.5px solid #0050aa", background: "#fff", color: "#0050aa", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>🗂️ Commandes passées</button>
-            <span style={{ fontSize: 12, color: "#6b7280" }}>· clique sur un jour du tableau pour ouvrir sa commande</span>
-          </div>
-        )}
         {(onglet === "stats" || onglet === "accueil") && (
           <div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>

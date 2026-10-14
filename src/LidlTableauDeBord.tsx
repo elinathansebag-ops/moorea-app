@@ -129,8 +129,8 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
         {tuile("Traçabilité envoyée", jours.length ? `${joursEnvoyes.length}/${jours.length}` : "—", heureMoy != null ? `dernier envoi vers ${String(Math.floor(heureMoy / 60)).padStart(2, "0")}h${String(heureMoy % 60).padStart(2, "0")} en moyenne` : undefined)}
         {tuile("Modifiées après import", nbFr(modifsPeriode.length), `${misesAJour} mise${misesAJour > 1 ? "s" : ""} à jour envoyée${misesAJour > 1 ? "s" : ""} à Lidl`)}
       </div>
-      {carte("Colis par semaine", vueTableau ? tableauSemaines : graphique,
-        <button type="button" onClick={() => setVueTableau(v => !v)} style={{ background: "transparent", border: "none", color: "#0050aa", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{vueTableau ? "Voir le graphique" : "Voir le tableau"}</button>)}
+      {/* 14/10/2026 — Graphique « Colis par semaine » retiré (demande d'Elinathan). */}
+      {false && carte("Colis par semaine", vueTableau ? tableauSemaines : graphique)}
       {carte("Bases qui commandent le plus", bases.length === 0 ? <div style={{ color: "#9ca3af", fontSize: 13 }}>Aucune commande sur la période.</div> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {bases.slice(0, 12).map(b => (
