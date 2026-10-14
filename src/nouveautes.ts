@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 37, date: "14/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : « en attente » et « traités » toujours à droite de chaque case fournisseur." },
   { id: 36, date: "14/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : toutes les cases fournisseurs ont la même hauteur en vue colonnes." },
   { id: 35, date: "14/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : partie haute sur une ligne, page plus large et fournisseurs sur 2-3 colonnes ; bouton « ☰ Vue en liste / ▦ Vue en colonnes » pour basculer." },
   { id: 34, date: "14/10", pages: ["reconditionnement"], texte: "🔄 Reconditionnement › En cours : un tableau d'aide « À reconditionner aujourd'hui » calcule par article fini combien relancer (ventes du même jour la semaine dernière pour demain + la moitié d'après-demain, moins le stock compté et ce qui est déjà chez NLT / Andès)." },

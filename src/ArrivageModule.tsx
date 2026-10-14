@@ -1238,9 +1238,12 @@ export function FournisseurBlock({ fournisseur, produits, traites = [], onValida
     // 14/10/2026 — Fournisseurs sur plusieurs colonnes (DateBlock) : ouvert, il prend toute la largeur.
     <div style={{ gridColumn: open ? "1 / -1" : undefined, background: "#fff", borderRadius: 14, marginBottom: 0, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: allDone ? "1.5px solid #bbf7d0" : "1.5px solid transparent", alignSelf: open ? "start" : "stretch" }}>
       <div onClick={() => setOpen(!open)} style={{ minHeight: open ? undefined : 70, boxSizing: "border-box", height: open ? undefined : "100%", padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: headerBg, borderBottom: open ? "1px solid #e8e0d0" : headerBorder }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* 14/10/2026 — Nom à gauche ; « en attente » / « traités » toujours au même endroit, à droite. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
           <span>{allDone ? "✅" : "🏭"}</span>
           <span style={{ fontWeight: 700, fontSize: 14, color: nomColor, fontFamily: "'Syne', sans-serif" }}>{fournisseur}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, margin: "0 8px 0 10px", flexShrink: 0 }}>
           {produits.length > 0 && <span style={{ fontSize: 12, background: "#fffbeb", color: "#d97706", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{produits.length} en attente</span>}
           {nbTraites > 0 && <span style={{ fontSize: 12, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{nbTraites} traité{nbTraites > 1 ? "s" : ""}</span>}
         </div>
