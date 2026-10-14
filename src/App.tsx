@@ -5245,22 +5245,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   (activité, mouvements de stock, retours traités, etc.) en un seul geste. */}
               {/* 04/09/2026 — Elinathan ne trouvait pas comment revoir l'Historique arrivages
                   (aucun bouton n'y menait depuis cet écran) : ajout d'un accès direct. */}
-              <button onClick={() => { setPageMode("historique_arr"); setVue("__none__" as any); window.scrollTo(0,0); }}
-                title="Voir l'historique des arrivages traités (dont les arrivages archivés)"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fff", color: "#1a2e1a", border: "1px solid #e8e0d0", cursor: "pointer" }}>
-                📁 Voir l'historique
-              </button>
-              <label style={{ padding: "6px 11px", borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+              {/* 15/10/2026 — « Voir l'historique » déplacé en bas, sous les semaines. */}
+              {/* 15/10/2026 — Import mis en avant (le plus important). */}
+              <label style={{ padding: "6px 14px", borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 800, border: "1.5px solid #305a55", background: "#305a55", color: "#fff", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
                 📊 Import
                 <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
               </label>
               <button onClick={detecterDoublonsArr} style={{ padding: "6px 11px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#1a2e1a", whiteSpace: "nowrap" }}>
                 🧹 Doublons
               </button>
-              <button onClick={() => setShowHistoMesures(true)} title="Historique des poids de barquettes et des températures relevés"
-                style={{ padding: "6px 11px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", cursor: "pointer", fontSize: 12.5, fontWeight: 700, color: "#1d4ed8", whiteSpace: "nowrap" }}>
-                🌡 Températures et poids
-              </button>
+              {/* 15/10/2026 — « Températures et poids » retiré d'ici : accessible depuis 🧪 Récap qualité. */}
               {/* 02/09/2026 — Bouton "📲 Récap WA" global retiré à la demande d'Elinathan (jamais
                   utilisé) — celui du jour (dans chaque DateBlock) a été retiré pour la même raison. */}
               {/* 14/10/2026 — recherche déplacée en tête de la ligne */}
@@ -5439,6 +5433,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       </div>
                     );
                   })}
+                  <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+                    <button onClick={() => { setPageMode("historique_arr"); setVue("__none__" as any); window.scrollTo(0,0); }}
+                      title="Voir l'historique des arrivages traités (dont les arrivages archivés)"
+                      style={{ padding: "10px 18px", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>📁 Voir l'historique des arrivages</button>
+                  </div>
                 </>
               );
             })()}
