@@ -1304,9 +1304,9 @@ export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournis
     // 14/10/2026 — Fournisseurs sur plusieurs colonnes (DateBlock) : ouvert, il prend toute la largeur.
     <>
     {/* 14/10/2026 — En grille : la case reste à sa place ; le détail s'ouvre en dessous, sur toute la largeur. */}
-    {/* 15/10/2026 — Ouverte en grille : contour doré sur 3 côtés ; la case descend de 12 px
+    {/* 15/10/2026 — Ouverte en grille : contour vert sur 3 côtés ; la case descend de 12 px
         (écart de la grille + bordure) pour recouvrir le haut du détail → une seule forme. */}
-    <div ref={caseRef} style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: open && enGrille ? "14px 14px 0 0" : 14, marginBottom: open && enGrille ? -12 : 0, paddingBottom: open && enGrille ? 12 : 0, overflow: "hidden", boxShadow: open && enGrille ? "none" : "0 2px 12px rgba(0,0,0,0.06)", border: open && enGrille ? "2px solid #c8a84b" : allDone ? "2px solid #bbf7d0" : "2px solid transparent", borderBottom: open && enGrille ? "none" : undefined, alignSelf: "stretch", position: "relative", zIndex: open && enGrille ? 1 : undefined }}>
+    <div ref={caseRef} style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: open && enGrille ? "14px 14px 0 0" : 14, marginBottom: open && enGrille ? -12 : 0, paddingBottom: open && enGrille ? 12 : 0, overflow: "hidden", boxShadow: open && enGrille ? "none" : "0 2px 12px rgba(0,0,0,0.06)", border: open && enGrille ? "2px solid #22c55e" : allDone ? "2px solid #bbf7d0" : "2px solid transparent", borderBottom: open && enGrille ? "none" : undefined, alignSelf: "stretch", position: "relative", zIndex: open && enGrille ? 1 : undefined }}>
       <div onClick={() => setOpen(!open)} style={{ minHeight: enGrille ? 52 : undefined, boxSizing: "border-box", height: enGrille ? "100%" : undefined, padding: enGrille ? "7px 14px" : "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: open && enGrille ? "#fff" : headerBg, borderBottom: open && enGrille ? "none" : open ? "1px solid #e8e0d0" : headerBorder }}>
         {/* 14/10/2026 — Nom à gauche ; « en attente » / « traités » toujours au même endroit, à droite. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
@@ -1377,7 +1377,7 @@ export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournis
       // 15/10/2026 — Même contour que la case ; coin droit du côté où la case touche le bord.
       // Bandeau gris retiré (nom et « en attente » étaient en double avec la case) :
       // il ne reste que les boutons d'action et ✕, sur fond blanc.
-      <div style={{ gridColumn: "1 / -1", background: "#fff", border: "2px solid #c8a84b", borderRadius: `${bordsCase.gauche ? 0 : 14}px ${bordsCase.droite ? 0 : 14}px 14px 14px`, overflow: "hidden" }}>
+      <div style={{ gridColumn: "1 / -1", background: "#fff", border: "2px solid #22c55e", borderRadius: `${bordsCase.gauche ? 0 : 14}px ${bordsCase.droite ? 0 : 14}px 14px 14px`, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "8px 14px 0", flexWrap: "wrap" }}>
           <span style={{ display: "flex", justifyContent: "flex-end" }}>{actionsGroupe}</span>
           <button type="button" onClick={() => setOpen(false)} title="Fermer" style={{ border: "none", background: "transparent", fontSize: 18, color: "#c8a84b", fontWeight: 800, cursor: "pointer", padding: "0 2px" }}>✕</button>

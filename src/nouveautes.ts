@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 50, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : le contour du fournisseur ouvert passe en vert, bien visible." },
   { id: 49, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : un seul fournisseur ouvert à la fois — en ouvrir un autre referme le premier." },
   { id: 48, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : un fournisseur ouvert forme une seule forme avec un contour doré, jonction propre même à gauche ou à droite. Bandeau gris retiré (nom et « en attente » étaient en double)." },
   { id: 47, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : « Poids barquettes » sur la même ligne que « + Ajouter un poids » ; Traça four., DLC et Poids barquettes font la même hauteur, bien alignés. Le bouton carré « sans étiquette » a un contour plus visible." },
