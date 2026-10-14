@@ -27,8 +27,8 @@ const StatsAchatsModule = lazy(avecRechargement(() => import("./StatsAchatsModul
 const StattModule = lazy(avecRechargement(() => import("./StattModule").then(m => ({ default: m.StattModule }))));
 
 type LigneVente = { d: string; f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number; pc: number; kg: number; sa?: number };
-type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme" | "config" | "fiche";
-type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[]; date?: string; fournisseursMotsCles?: string[]; rapport?: Rapport; fiche?: { type: "client" | "fournisseur"; nom: string } };
+type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme" | "config" | "fiche" | "jour" | "litiges";
+type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[]; date?: string; fournisseursMotsCles?: string[]; rapport?: Rapport; fiche?: { type: "client" | "fournisseur"; nom: string }; vueLitiges?: "clients" | "arrivages" };
 // 14/10/2026 — Rapports enregistrés (« programmes ») : stats_rapports/{id}. Période fixe ou
 // glissante (« 30 derniers jours » recalculée à chaque ouverture), filtres et vue ; partage avec
 // moi seul, tous les comptes ou certains comptes ; favoris par personne.
@@ -94,7 +94,27 @@ async function exporterExcel(nomFichier: string, titre: string, entetes: string[
 
 // ── Recherche intelligente ──
 type Option = { type: string; valeur: string; detail?: string; poids?: number };
-const ICONES: Record<string, string> = { client: "👤", fournisseur: "🏭", article: "🥬", famille: "🗂️" };
+const ICONES: Record<string, string> = { client: "👤", fournisseur: "🏭", article: "🥬", famille: "🗂️", jour: "📅", semaine: "🗓️", litiges: "⛔", reserves: "⚠️" };
+// 14/10/2026 — La recherche comprend aussi : une date (« 15/09 », « 15/09/2026 », « 2026-09-15 »),
+// une semaine (« S42 », « semaine 42 2026 ») et les mots litige / refus / réserve / manquant / avoir.
+const MOIS_COURTS = ["janv", "fevr", "mars", "avr", "mai", "juin", "juil", "aout", "sept", "oct", "nov", "dec"];
+function resultatsSpeciaux(q: string, maxDate: string): Option[] {
+  const t = norm(q).trim(); if (!t) return [];
+  const out: Option[] = [];
+  const annee = (maxDate || iso(new Date())).slice(0, 4);
+  let m = /^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?$/.exec(t), j = "";
+  if (m) { const a = m[3] ? (m[3].length === 2 ? "20" + m[3] : m[3]) : annee; j = `${a}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+  if (!j && (m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t))) j = t;
+  if (!j && (m = /^(\d{1,2})\s+([a-z]+)\.?(?:\s+(\d{4}))?$/.exec(t))) { const k = MOIS_COURTS.findIndex(x => m![2].startsWith(x.slice(0, 3))); if (k >= 0) j = `${m[3] || annee}-${String(k + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+  if (j && !isNaN(new Date(j + "T12:00:00").getTime())) out.push({ type: "jour", valeur: dateLongue(j), detail: `Tout ce qui s'est passé ce jour-là · semaine ${numSemaine(j).n}`, cle: j } as any);
+  const s = /^s(?:em(?:aine)?)?\s*(\d{1,2})(?:\s+(\d{4}))?$/.exec(t);
+  if (s) { const a = Number(s[2] || numSemaine(maxDate || iso(new Date())).annee), n = Number(s[1]); if (n >= 1 && n <= 53) { const l = lundiSemaine(a, n); out.push({ type: "semaine", valeur: `Semaine ${n} · ${a}`, detail: `Ventes du ${dateFr(l)} au ${dateFr(plusJours(l, 6))}`, cle: `${a}-${n}` } as any); } }
+  if (/^(lit|ref|rese|manq|avoi|recl|non.?conf|probl)/.test(t)) {
+    out.push({ type: "litiges", valeur: "Litiges & refus clients", detail: "Refus, manquants, avoirs, non-conformités reçus des clients", cle: t } as any);
+    out.push({ type: "reserves", valeur: "Réserves & refus à l'arrivage", detail: "Produits mis en réserve ou refusés chez nos fournisseurs, avec rapport", cle: t } as any);
+  }
+  return out;
+}
 function chercher(options: Option[], q: string, max = 14): Option[] {
   const mots = norm(q).split(/\s+/).filter(Boolean);
   if (!mots.length) return [];
@@ -110,11 +130,11 @@ function chercher(options: Option[], q: string, max = 14): Option[] {
   }
   return res.sort((a, b) => b.s - a.s || a.o.valeur.localeCompare(b.o.valeur)).slice(0, max).map(x => x.o);
 }
-function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, autoFocus }: { options: Option[]; placeholder: string; onChoisir: (o: Option) => void; c: Couleurs; grand?: boolean; autoFocus?: boolean }) {
+function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, autoFocus, extra }: { options: Option[]; placeholder: string; onChoisir: (o: Option) => void; c: Couleurs; grand?: boolean; autoFocus?: boolean; extra?: (q: string) => Option[] }) {
   const [q, setQ] = useState("");
   const [actif, setActif] = useState(0);
   const [ouvert, setOuvert] = useState(false);
-  const resultats = useMemo(() => chercher(options, q), [options, q]);
+  const resultats = useMemo(() => [...(extra ? extra(q) : []), ...chercher(options, q)].slice(0, 16), [options, q, extra]);
   const choisir = (o: Option) => { onChoisir(o); setQ(""); setOuvert(false); };
   return (
     <div style={{ position: "relative" }}>
@@ -275,6 +295,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
     let min = "9999", max = ""; for (const l of ventes) { if (l.d < min) min = l.d; if (l.d > max) max = l.d; }
     return `Base des ventes : du ${dateFr(min)} au ${dateFr(max)}`;
   }, [ventes]);
+  const maxBase = useMemo(() => (ventes || []).reduce((m, l) => (l.d > m ? l.d : m), ""), [ventes]);
   const retour = () => { setOnglet(null); setPreset({}); };
   const chargement = <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: c.gris }}>Chargement…</div>;
   if (onglet === "analyse" && voirMarge) return <Suspense fallback={chargement}><StatsAchatsModule onClose={retour} userName={userName} /></Suspense>;
@@ -285,12 +306,16 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
     if (o.type === "client") { setPreset({ fiche: { type: "client", nom: o.valeur } }); setOnglet("fiche"); }
     else if (o.type === "fournisseur") { setPreset({ fiche: { type: "fournisseur", nom: o.valeur } }); setOnglet("fiche"); }
     else if (o.type === "famille") { setPreset({ familles: [o.valeur] }); setOnglet("produits"); }
+    else if (o.type === "jour") { setPreset({ date: (o as any).cle }); setOnglet("jour"); }
+    else if (o.type === "semaine") { const [a, n] = String((o as any).cle).split("-").map(Number); const l = lundiSemaine(a, n); setPreset({ rapport: { id: "semaine", nom: `Semaine ${n}`, auteurEmail: "", creeLe: 0, partage: "moi", config: { periode: { type: "fixe", debut: l, fin: plusJours(l, 6) }, articles: [], familles: [], clients: [], fournisseurs: [], compte: "tous", vue: "jour" } } }); setOnglet("produits"); }
+    else if (o.type === "litiges" || o.type === "reserves") { setPreset({ vueLitiges: o.type === "litiges" ? "clients" : "arrivages" }); setOnglet("litiges"); }
     else { setPreset({ articles: [o.valeur] }); setOnglet("produits"); }
   };
   const cartes: { k: Onglet; icone: string; titre: string; detail: string }[] = [
     ...(voirExtractions ? [
       { k: "fiche" as Onglet, icone: "📇", titre: "Fiches clients & fournisseurs", detail: "Ventes, commandes, arrivages, qualité, litiges, retours" },
       { k: "client" as Onglet, icone: "🧾", titre: "Commande d'un client", detail: "Un client et une date → sa commande" },
+      { k: "litiges" as Onglet, icone: "⛔", titre: "Litiges, refus & réserves", detail: "Refus clients et réserves/refus à l'arrivage, par période" },
       { k: "arrivage" as Onglet, icone: "🚚", titre: "Arrivage d'un fournisseur", detail: "Un fournisseur et une date → son arrivage" },
       { k: "produits" as Onglet, icone: "📈", titre: "Ventes de produits", detail: "Période · familles · GMS / Prestige · clients" },
     ] : []),
@@ -305,6 +330,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
       <PageHeader titre={titreOnglet ? `📊 Stats · ${titreOnglet.titre}` : "📊 Stats"} onBack={onglet ? retour : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box" }}>
         {erreur && <p style={{ background: "#fee2e2", color: "#b91c1c", borderRadius: 10, padding: "8px 12px", fontSize: 13, fontWeight: 700 }}>{erreur}</p>}
+        {voirExtractions && <InterrupteurRefus c={c} peutChanger={voirMarge || estAdmin} />}
         {voirExtractions && (ventes === null || arrivages === null) && <BandeauChargement c={c} debut={debutChargement} etapes={[["Base des ventes", ventes !== null, "ventes"], ["Arrivages et archives", arrivages !== null, "arrivages"], ["Comptes GMS / Prestige", equipesOk, ""]]} />}
         {!onglet && (
           <>
@@ -317,8 +343,8 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
                 <div style={{ position: "relative" }}>
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 700, opacity: 0.85 }}>{salutation()}{userName ? ` ${String(userName).split(" ")[0]}` : ""} 👋</p>
                   <p style={{ margin: "2px 0 14px", fontSize: 22, fontWeight: 900, letterSpacing: "-.01em" }}>Qu'est-ce que tu cherches aujourd'hui ?</p>
-                  <RechercheIntelligente options={optionsGlobales} c={c} grand autoFocus onChoisir={ouvrir}
-                    placeholder={ventes === null ? "Chargement de la base…" : "🔍 Un client, un fournisseur, un article, une famille…"} />
+                  <RechercheIntelligente options={optionsGlobales} c={c} grand autoFocus onChoisir={ouvrir} extra={q => resultatsSpeciaux(q, maxBase)}
+                    placeholder={ventes === null ? "Chargement de la base…" : "🔍 Un client, un fournisseur, un article, une famille, une date (15/09), une semaine (S42), « refus »…"} />
                   <p style={{ margin: "8px 2px 0", fontSize: 12, opacity: 0.8 }}>
                     {ventes === null ? "Chargement des ventes et des arrivages…" : `${periodeBase}${periodeBase ? " · " : ""}${ent(index.clients.size)} clients · ${ent(index.fourn.size)} fournisseurs · ${ent(index.arts.size)} articles`}
                   </p>
@@ -346,6 +372,8 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
             </div>
           </>
         )}
+        {onglet === "jour" && <CalendrierJournee c={c} ventes={ventes} arrivages={arrivages} voirEuros={voirEuros} jourInitial={preset.date} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
+        {onglet === "litiges" && <VueLitiges c={c} arrivages={arrivages} vueInitiale={preset.vueLitiges} ouvrirFiche={(f) => { setPreset({ fiche: f }); setOnglet("fiche"); }} />}
         {onglet === "fiche" && <FicheTiers key={(preset.fiche?.type || "") + (preset.fiche?.nom || "")} c={c} ventes={ventes} arrivages={arrivages} voirMarge={voirMarge} voirEuros={voirEuros} fiche={preset.fiche} options={optionsGlobales.filter(o => o.type === "client" || o.type === "fournisseur")}
           choisir={f => setPreset({ fiche: f })} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
         {onglet === "client" && <CommandeClient c={c} arrivages={arrivages} voirMarge={voirMarge} voirEuros={voirEuros} ventes={ventes} preset={preset} />}
@@ -426,7 +454,7 @@ function CommandeClient({ c, voirMarge, voirEuros = true, ventes, preset, arriva
                 const r = pb.map(a => rapportDeArrivage(a, qualite?.rapports)).find(Boolean);
                 const qual = pb.length ? <span key="q" style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><BadgeQualite statut={pb.some(a => a.statut === "refusé") ? "refusé" : "sous réserve"} />{r && <BoutonRapport c={c} onClick={() => setRapportOuvert(r)} />}</span> : arr.length ? <BadgeQualite key="q" statut="validé" /> : "";
                 const lit = litigesDe(l);
-                const litAff = lit.length ? <span key="l" style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>{lit.map(x => <BadgeLitigeClient key={x.id} litige={x} onStatut={st => changerStatutLitige(x.id, st).then(() => chargerLitigesClients().then(setLitigesC))} />)}</span> : "";
+                const litAff = lit.length ? <span key="l" style={{ display: "inline-flex", flexDirection: "column", gap: 3 }}>{lit.map(x => <BadgeLitigeClient key={x.id} litige={x} />)}</span> : "";
                 return [l.a, l.fam, l.f, ent(l.col), l.pc ? ent(l.pc) : "", l.kg ? kg(l.kg) : "", ...ve(eur(l.ven)), ...(voirMarge ? [l.sa ? "—" : eur(l.ach), l.sa ? "—" : eur(l.res), l.sa ? "—" : pct(l.res, l.ven)] : []), qual, litAff];
               })}
               total={["TOTAL", "", "", ent(t.col), t.pc ? ent(t.pc) : "", t.kg ? kg(t.kg) : "", ...ve(eur(t.ven)), ...(voirMarge ? [eur(t.ach), eur(t.res), pct(t.res, t.ven)] : []), "", ""]} />
@@ -706,10 +734,10 @@ function chargerJournee() {
   ]).then(([lidl, recond, retours]) => ({ lidl, recond, retours }));
   return cacheJournee;
 }
-function CalendrierJournee({ c, ventes, arrivages, voirEuros = true, ouvrir }: { c: Couleurs; ventes: LigneVente[] | null; arrivages: any[] | null; voirEuros?: boolean; ouvrir: (o: Onglet, p: Preset) => void }) {
-  const [ouvert, setOuvert] = useState(false);
-  const [mois, setMois] = useState(() => iso(new Date()).slice(0, 7));
-  const [jour, setJour] = useState("");
+function CalendrierJournee({ c, ventes, arrivages, voirEuros = true, ouvrir, jourInitial }: { c: Couleurs; ventes: LigneVente[] | null; arrivages: any[] | null; voirEuros?: boolean; ouvrir: (o: Onglet, p: Preset) => void; jourInitial?: string }) {
+  const [ouvert, setOuvert] = useState(!!jourInitial);
+  const [mois, setMois] = useState(() => (jourInitial || iso(new Date())).slice(0, 7));
+  const [jour, setJour] = useState(jourInitial || "");
   const [autres, setAutres] = useState<{ lidl: any[]; recond: any[]; retours: any[] } | null>(null);
   useEffect(() => { if (ouvert && !autres) chargerJournee().then(setAutres); }, [ouvert]);
   const parJour = useMemo(() => {
@@ -833,7 +861,7 @@ function ConfigImport({ c, ventes, userName, onImporte, estAdmin }: { c: Couleur
 
 // ── Accueil du module : couleurs des cartes, salutation, tableau de bord ──
 const TEINTES: Record<string, { fort: string; doux: string }> = {
-  fiche: { fort: "#0891b2", doux: "#cffafe" }, client: { fort: "#2563eb", doux: "#dbeafe" }, arrivage: { fort: "#d97706", doux: "#fef3c7" }, produits: { fort: "#16a34a", doux: "#dcfce7" },
+  fiche: { fort: "#0891b2", doux: "#cffafe" }, litiges: { fort: "#b91c1c", doux: "#fee2e2" }, client: { fort: "#2563eb", doux: "#dbeafe" }, arrivage: { fort: "#d97706", doux: "#fef3c7" }, produits: { fort: "#16a34a", doux: "#dcfce7" },
   analyse: { fort: "#7c3aed", doux: "#ede9fe" }, programme: { fort: "#ea580c", doux: "#ffedd5" }, config: { fort: "#64748b", doux: "#f1f5f9" },
 };
 function salutation() { const h = new Date().getHours(); return h < 6 ? "Bonne nuit" : h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; }
@@ -1310,7 +1338,7 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
               <div key={x.id} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "7px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
                 <span style={{ minWidth: 86, fontWeight: 800 }}>{dateFr(x.dateLivraison)}</span>
                 <span style={{ flex: 1, minWidth: 200 }}>{x.article}<span style={{ color: c.gris }}>{x.site ? ` · ${x.site}` : ""} · {x.bl}</span></span>
-                <BadgeLitigeClient litige={x} onStatut={st => changerStatutLitige(x.id, st).then(() => chargerLitigesClients().then(setLitigesC))} />
+                <BadgeLitigeClient litige={x} />
               </div>
             ))}
           </Bloc>
@@ -1484,7 +1512,7 @@ function BadgeLitigeClient({ litige: x, onStatut }: { litige: any; onStatut?: (s
       <span style={{ padding: "2px 9px", borderRadius: 999, background: st.f, color: st.c, fontSize: 11.5, fontWeight: 800, whiteSpace: "nowrap" }}>{st.i} {x.type}{Number(x.colisRefuses) ? ` · ${x.colisRefuses} colis` : ""}</span>
       {x.motif && <span style={{ fontSize: 11.5, color: "#6b7280" }}>{String(x.motif).slice(0, 60)}</span>}
       {x.lienMail && <a href={x.lienMail} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 800, color: "#2563eb", whiteSpace: "nowrap" }}>📧 Mail</a>}
-      {x.statut === "confirme" ? <span style={{ fontSize: 11, fontWeight: 800, color: "#15803d" }}>✓ confirmé</span>
+      {!onStatut ? null : x.statut === "confirme" ? <span style={{ fontSize: 11, fontWeight: 800, color: "#15803d" }}>✓ confirmé</span>
         : x.statut === "ecarte" ? <span style={{ fontSize: 11, fontWeight: 800, color: "#6b7280" }}>✗ écarté</span>
         : <span style={{ fontSize: 11, fontWeight: 800, color: "#b45309", border: "1px dashed #f59e0b", borderRadius: 6, padding: "0 5px" }}>à vérifier</span>}
       {onStatut && x.statut !== "confirme" && <button type="button" onClick={() => onStatut("confirme")} style={{ padding: "1px 7px", borderRadius: 6, border: "1.5px solid #16a34a", background: "#fff", color: "#15803d", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>✓ Confirmer</button>}
@@ -1581,5 +1609,77 @@ function ImportLitigesClients({ c, userName }: { c: Couleurs; userName?: string 
         </>
       ) : null}
     </Bloc>
+  );
+}
+
+// ── Interrupteur en haut de 📊 Stats : tenir compte des refus clients ou non ──
+// 14/10/2026 — Demande d'Elinathan : un seul bouton en haut de la page (config/stats/litigesClients).
+function InterrupteurRefus({ c, peutChanger }: { c: Couleurs; peutChanger: boolean }) {
+  const [mode, setMode] = useState<string | null>(null);
+  const [nb, setNb] = useState(0);
+  useEffect(() => onValue(ref(db, "config/stats/litigesClients"), s => setMode(s.val() || "tous")), []);
+  useEffect(() => { chargerLitigesClients(true).then(l => setNb(l.length)); }, [mode]);
+  if (mode === null || !nb) return null;
+  const actif = mode !== "aucun";
+  const basculer = () => { if (!peutChanger) return; oublierLitigesC(); update(ref(db, "config/stats"), { litigesClients: actif ? "aucun" : "tous" }); window.setTimeout(() => window.location.reload(), 300); };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12, padding: "8px 14px", borderRadius: 12, background: actif ? (c.sombre ? "#2a1414" : "#fef2f2") : c.carte, border: `1.5px solid ${actif ? "#fca5a5" : c.bord}` }}>
+      <span style={{ fontSize: 13.5, fontWeight: 800 }}>⛔ Refus clients ({nb})</span>
+      <span style={{ fontSize: 12.5, color: c.gris, flex: 1 }}>{actif ? "pris en compte : affichés sur les commandes, les fiches et dans « Litiges »" : "ignorés : masqués partout (rien n'est effacé)"}</span>
+      <button type="button" onClick={basculer} disabled={!peutChanger} title={peutChanger ? "" : "Réglé par un admin"}
+        style={{ position: "relative", width: 52, height: 28, borderRadius: 14, border: "none", background: actif ? "#16a34a" : "#9ca3af", cursor: peutChanger ? "pointer" : "default" }}>
+        <span style={{ position: "absolute", top: 3, left: actif ? 27 : 3, width: 22, height: 22, borderRadius: 11, background: "#fff", transition: "left .15s" }} />
+      </button>
+      <span style={{ fontSize: 12.5, fontWeight: 800, color: actif ? "#15803d" : c.gris, minWidth: 26 }}>{actif ? "Oui" : "Non"}</span>
+    </div>
+  );
+}
+
+// ── ⛔ Litiges, refus & réserves : vue d'ensemble par période ──
+function VueLitiges({ c, arrivages, vueInitiale, ouvrirFiche }: { c: Couleurs; arrivages: any[] | null; vueInitiale?: "clients" | "arrivages"; ouvrirFiche: (f: { type: "client" | "fournisseur"; nom: string }) => void }) {
+  const [vue, setVue] = useState<"clients" | "arrivages">(vueInitiale || "clients");
+  const [litiges, setLitiges] = useState<any[] | null>(null);
+  const [qualite, setQualite] = useState<{ rapports: any[]; retours: any[] } | null>(null);
+  const [rapportOuvert, setRapportOuvert] = useState<any>(null);
+  const [debut, setDebut] = useState(""); const [fin, setFin] = useState("");
+  const [filtre, setFiltre] = useState(""); const [type, setType] = useState("tous");
+  useEffect(() => { chargerLitigesClients().then(setLitiges); chargerQualite().then(setQualite); }, []);
+  const lc = useMemo(() => (litiges || []).filter(x => (!debut || x.dateLivraison >= debut) && (!fin || x.dateLivraison <= fin) && (type === "tous" || norm(x.type).includes(type)) && (!filtre || norm([x.clientFacture, x.site, x.article, x.bl, x.motif].join(" ")).includes(norm(filtre)))).sort((a, b) => String(b.dateLivraison).localeCompare(String(a.dateLivraison))), [litiges, debut, fin, type, filtre]);
+  const la = useMemo(() => (arrivages || []).filter(a => (a.statut === "sous réserve" || a.statut === "refusé")).map(a => ({ ...a, j: isoArrivage(a.date) })).filter(a => (!debut || a.j >= debut) && (!fin || a.j <= fin) && (type === "tous" || (type === "refus" ? a.statut === "refusé" : type === "reserve" ? a.statut === "sous réserve" : true)) && (!filtre || norm([a.fournisseur, a.produit, a.lot_interne, a.lot_fournisseur].join(" ")).includes(norm(filtre)))).sort((a, b) => b.j.localeCompare(a.j)), [arrivages, debut, fin, type, filtre]);
+  const totalColis = lc.reduce((t, x) => t + (Number(x.colisRefuses) || 0), 0);
+  const typesC = [["tous", "Tous"], ["refus", "Refus"], ["manquant", "Manquants"], ["non-conf", "Non-conformités"], ["avoir", "Avoirs"]];
+  const typesA = [["tous", "Tous"], ["reserve", "Réserves"], ["refus", "Refus"]];
+  return (
+    <>
+      {rapportOuvert && <FicheRapport c={c} rapport={rapportOuvert} onClose={() => setRapportOuvert(null)} />}
+      <Bloc titre="Quoi et quand ?" c={c}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          <button type="button" onClick={() => { setVue("clients"); setType("tous"); }} style={puce(c, vue === "clients")}>⛔ Litiges & refus clients</button>
+          <button type="button" onClick={() => { setVue("arrivages"); setType("tous"); }} style={puce(c, vue === "arrivages")}>⚠️ Réserves & refus à l'arrivage</button>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          {(vue === "clients" ? typesC : typesA).map(([k, lib]) => <button key={k} type="button" onClick={() => setType(k)} style={{ ...puce(c, type === k), padding: "5px 10px", fontSize: 12 }}>{lib}</button>)}
+        </div>
+        <input value={filtre} onChange={e => setFiltre(e.target.value)} placeholder={vue === "clients" ? "🔍 Client, plateforme, article, BL, motif…" : "🔍 Fournisseur, produit, lot…"} style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 14 }} />
+        <ChoixPeriode c={c} debut={debut} fin={fin} min="" max="" onChange={(d, f) => { setDebut(d); setFin(f); }} />
+      </Bloc>
+      {vue === "clients" ? (
+        <Bloc titre={`⛔ ${lc.length} litige${lc.length > 1 ? "s" : ""} clients · ${ent(totalColis)} colis`} c={c}
+          droite={lc.length > 0 && boutonExport(c, () => exporterExcel("Litiges clients", `Litiges & refus clients${debut ? ` — du ${dateFr(debut)} au ${dateFr(fin)}` : ""}`, ["Date livraison", "Client facturé", "Plateforme", "Type", "BL", "Code article", "Article", "Colis livrés", "Colis refusés", "Motif"], lc.map(x => [dateFr(x.dateLivraison), x.clientFacture, x.site || "", x.type, x.bl, x.codeArticle, x.article, Number(x.colisLivres) || 0, Number(x.colisRefuses) || 0, x.motif || ""]), ["TOTAL", "", "", "", "", "", "", lc.reduce((t, x) => t + (Number(x.colisLivres) || 0), 0), totalColis, ""]))}>
+          {litiges === null ? <p style={{ margin: 0, color: c.gris, fontSize: 13 }}>Chargement…</p> : !lc.length ? <p style={{ margin: 0, color: c.gris, fontSize: 13 }}>Aucun litige client (ou les refus clients sont ignorés : interrupteur en haut de la page).</p> : (
+            <Tableau c={c} entetes={["Livraison", "Client", "Article", "Colis refusés", "Litige"]} droite={[3]}
+              lignes={lc.map(x => [dateFr(x.dateLivraison), <button key="c" type="button" onClick={() => ouvrirFiche({ type: "client", nom: x.clientFacture })} style={{ border: "none", background: "none", color: c.texte, fontWeight: 800, cursor: "pointer", padding: 0, textAlign: "left" }}>{x.clientFacture}{x.site ? <span style={{ display: "block", fontSize: 11.5, color: c.gris, fontWeight: 500 }}>{x.site} · {x.bl}</span> : <span style={{ display: "block", fontSize: 11.5, color: c.gris, fontWeight: 500 }}>{x.bl}</span>}</button>, x.article, ent(Number(x.colisRefuses) || 0), <BadgeLitigeClient key="b" litige={x} />])} />
+          )}
+        </Bloc>
+      ) : (
+        <Bloc titre={`⚠️ ${la.length} produit${la.length > 1 ? "s" : ""} en réserve ou refusé${la.length > 1 ? "s" : ""} à l'arrivage`} c={c}
+          droite={la.length > 0 && boutonExport(c, () => exporterExcel("Réserves et refus arrivages", `Réserves & refus à l'arrivage${debut ? ` — du ${dateFr(debut)} au ${dateFr(fin)}` : ""}`, ["Date", "Fournisseur", "Produit", "Lot Moorea", "Lot fournisseur", "Statut", "Attendu", "Reçu"], la.map(a => [dateFr(a.j), a.fournisseur || "", a.produit || "", a.lot_interne ? `MRA.${String(a.lot_interne).padStart(4, "0")}` : "", a.lot_fournisseur || "", a.statut, Number(a.quantite) || 0, typeof a.colisRecus === "number" ? a.colisRecus : ""])))}>
+          {arrivages === null ? <p style={{ margin: 0, color: c.gris, fontSize: 13 }}>Chargement…</p> : !la.length ? <p style={{ margin: 0, color: c.gris, fontSize: 13 }}>Aucun produit en réserve ou refusé sur la période.</p> : (
+            <Tableau c={c} entetes={["Date", "Fournisseur", "Produit", "Lot", "Statut", "Rapport"]}
+              lignes={la.map(a => { const r = rapportDeArrivage(a, qualite?.rapports); return [dateFr(a.j), <button key="f" type="button" onClick={() => ouvrirFiche({ type: "fournisseur", nom: a.fournisseur })} style={{ border: "none", background: "none", color: c.texte, fontWeight: 800, cursor: "pointer", padding: 0, textAlign: "left" }}>{a.fournisseur}</button>, a.produit || "", a.lot_interne ? `MRA.${String(a.lot_interne).padStart(4, "0")}` : "", <BadgeQualite key="s" statut={a.statut} />, r ? <BoutonRapport key="r" c={c} onClick={() => setRapportOuvert(r)} /> : ""]; })} />
+          )}
+        </Bloc>
+      )}
+    </>
   );
 }
