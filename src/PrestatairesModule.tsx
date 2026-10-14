@@ -21,6 +21,7 @@ import type { Depot as DepotRecond, Demande as DemandeRecond, Transporteur as Tr
 // partagés avec le module Factures prestataires.
 import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prestatairesCatalogue";
 import { FormulaireAnalyse } from "./DemandesAnalyse";
+import { FacturesPrestataires } from "./FacturesPrestataires";
 
 // 01/09/2026 — Palettes vierges (bois brut, pas les caisses IFCO réutilisables) : livrées
 // plusieurs fois par jour, à différents moments, en piles de quantité variable selon ce qui
@@ -230,9 +231,9 @@ const COLORS = {
 // tableau de bord, sans les options rares, et retour à l'accueil une fois enregistré. Le module
 // complet (sans raccourci) ne change pas.
 export type RaccourciPresta = "cartons" | "palette-vierge";
-export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne, raccourci, onOuvrirFactures }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[]; raccourci?: RaccourciPresta; onOuvrirFactures?: () => void }) {
+export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne, raccourci, voirFactures = false }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[]; raccourci?: RaccourciPresta; voirFactures?: boolean }) {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap" | "nouvelle-analyse"
+    "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap" | "nouvelle-analyse" | "factures"
   >(raccourci === "cartons" ? "nouvelle-carton" : raccourci === "palette-vierge" ? "palettes-vierges" : initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
   // Raccourci : une fois l'entrée enregistrée, retour à l'accueil (après avoir vu la confirmation).
   const finRaccourci = () => { if (raccourci) setTimeout(onClose, 1400); };
@@ -2200,182 +2201,75 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
           </div>
         )}
 
-        {/* Bouton Configuration / retour au Dashboard (en haut à droite) — 02/09/2026 : agrandi
-            à la demande d'Elinathan, qui le loupait tout le temps (trop petit / trop discret). */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", marginBottom: "16px" }}>
-          {/* 14/10/2026 — Factures prestataires rangées ici (demande d'Elinathan), plus de carte à part sur l'accueil. */}
-          {onOuvrirFactures && !raccourci && activeTab === "dashboard" && (
-            <button onClick={onOuvrirFactures} style={{ padding: "14px 26px", background: "white", color: COLORS.gray700, border: `2.5px solid ${COLORS.gray200}`, cursor: "pointer", borderRadius: "10px", fontSize: "16px", fontWeight: "800" }}>
-              💳 Factures prestataires
-            </button>
-          )}
-          {canConfig && !raccourci && (
-          <button
-            onClick={() => setActiveTab(activeTab === "dashboard" ? "configuration" : "dashboard")}
-            style={{
-              padding: "14px 26px",
-              background: activeTab === "configuration" ? COLORS.primary : "white",
-              color: activeTab === "configuration" ? "white" : COLORS.gray700,
-              border: `2.5px solid ${activeTab === "configuration" ? COLORS.primary : COLORS.gray200}`,
-              cursor: "pointer",
-              borderRadius: "10px",
-              fontSize: "16px",
-              fontWeight: "800",
-            }}
-          >
-            {activeTab === "dashboard" ? "⚙️ Configuration" : "📊 Dashboard"}
-          </button>
-          )}
-        </div>
+        {/* 14/10/2026 — Demande d'Elinathan (« trop d'onglets, pas optimisé ») : une seule barre de
+            navigation par rubrique, des sous-onglets pour Commandes et IFCO, et un seul bouton
+            « ➕ Nouvelle entrée ». Remplace la rangée de gros boutons et le bouton Configuration. */}
+        {!raccourci && (() => {
+          const RUBRIQUES: { k: string; lib: string; onglets: typeof activeTab[]; defaut: typeof activeTab; badge?: number }[] = [
+            { k: "dashboard", lib: "📊 Tableau de bord", onglets: ["dashboard"], defaut: "dashboard" },
+            { k: "commandes", lib: "📦 Commandes", onglets: ["cartons", "palettes", "palettes-vierges", "nouvelle-carton", "nouvelle-palette"], defaut: "cartons" },
+            { k: "ifco", lib: "🟦 IFCO", onglets: ["ifco-rapprochement", "ifco", "ifco-histo", "ifco-stats"], defaut: "ifco-rapprochement", badge: declarationsEntree.filter(d => !d.declare).length },
+            { k: "entretiens", lib: "🔧 Entretiens", onglets: ["entretiens"], defaut: "entretiens", badge: entretiensActifsCount },
+            ...(voirFactures ? [{ k: "factures", lib: "💳 Factures", onglets: ["factures" as typeof activeTab], defaut: "factures" as typeof activeTab }] : []),
+            { k: "fiches", lib: "📋 Fiches prestataires", onglets: ["fiche-recap"], defaut: "fiche-recap" },
+            ...(canConfig ? [{ k: "config", lib: "⚙️ Configuration", onglets: ["configuration" as typeof activeTab], defaut: "configuration" as typeof activeTab }] : []),
+          ];
+          const SOUS: Record<string, { k: typeof activeTab; lib: string }[]> = {
+            commandes: [{ k: "cartons", lib: "Cartons" }, { k: "palettes", lib: "Palettes IFCO" }, { k: "palettes-vierges", lib: "Palettes vierges" }],
+            ifco: [{ k: "ifco-rapprochement", lib: "⚖️ Point de stock" }, { k: "ifco", lib: "📢 Déclarer" }, { k: "ifco-histo", lib: "🗂️ Historique" }, { k: "ifco-stats", lib: "📈 Statistiques" }],
+          };
+          const rubrique = RUBRIQUES.find(r => r.onglets.includes(activeTab))?.k || (activeTab === "nouvelle-analyse" ? "" : "dashboard");
+          return (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: "#fff", border: `1px solid ${COLORS.gray200}`, borderRadius: 14, padding: 6, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+                  {RUBRIQUES.map(r => {
+                    const actif = rubrique === r.k;
+                    return (
+                      <button key={r.k} type="button" onClick={() => setActiveTab(r.defaut)}
+                        style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: actif ? COLORS.primary : "transparent", color: actif ? "#fff" : COLORS.gray700, fontSize: 14, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        {r.lib}
+                        {!!r.badge && <span style={{ minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, background: actif ? "rgba(255,255,255,.25)" : COLORS.tertiary, color: "#fff", fontSize: 11.5, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>{r.badge}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ position: "relative" }}>
+                  <button type="button" onClick={() => setShowNouvelleMenu(v => !v)}
+                    style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: COLORS.tertiary, color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    ➕ Nouvelle entrée {showNouvelleMenu ? "▲" : "▼"}
+                  </button>
+                  {showNouvelleMenu && (
+                    <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 200, minWidth: 220, background: "#fff", border: `1px solid ${COLORS.gray200}`, borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.12)", overflow: "hidden" }}>
+                      {nouvelleCommandeOptions.map(opt => (
+                        <button key={opt.key} type="button" onClick={() => { opt.action(); setShowNouvelleMenu(false); }}
+                          style={{ display: "block", width: "100%", textAlign: "left", padding: "12px 16px", border: "none", borderBottom: `1px solid ${COLORS.gray200}`, background: "#fff", fontSize: 14, fontWeight: 700, color: COLORS.gray700, cursor: "pointer" }}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {SOUS[rubrique] && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                  {SOUS[rubrique].map(o => {
+                    const actif = activeTab === o.k || (o.k === "cartons" && activeTab === "nouvelle-carton") || (o.k === "palettes" && activeTab === "nouvelle-palette");
+                    return <button key={o.k} type="button" onClick={() => setActiveTab(o.k)} style={{ padding: "7px 14px", borderRadius: 999, border: `1.5px solid ${actif ? COLORS.primary : COLORS.gray200}`, background: actif ? COLORS.primaryLight || "#eafaf1" : "#fff", color: actif ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>{o.lib}</button>;
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {activeTab === "factures" && <FacturesPrestataires integre onClose={() => setActiveTab("dashboard")} />}
 
         {/* DASHBOARD TAB */}
         {activeTab === "dashboard" && (
           <div>
             {chargementInitialDashboard && <ChargementEcran texte="Chargement du dashboard…" />}
-            {/* ACTIONS PRINCIPALES */}
-            <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
-              <div style={{ position: "relative" }}>
-                <button
-                  onClick={() => setShowNouvelleMenu(v => !v)}
-                  style={{
-                    padding: "14px 22px",
-                    background: COLORS.primary,
-                    color: "white",
-                    border: "none",
-                    borderRadius: "10px",
-                    cursor: "pointer",
-                    fontSize: "15px",
-                    fontWeight: "700",
-                    boxShadow: "0 2px 8px rgba(39,174,96,0.25)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                >
-                  ➕ Nouvelle entrée {showNouvelleMenu ? "▲" : "▼"}
-                </button>
-                {showNouvelleMenu && (
-                  <div style={{
-                    position: "absolute",
-                    top: "calc(100% + 6px)",
-                    left: 0,
-                    background: "white",
-                    border: `1.5px solid ${COLORS.gray200}`,
-                    borderRadius: "10px",
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                    zIndex: 200,
-                    minWidth: "220px",
-                    overflow: "hidden",
-                  }}>
-                    {nouvelleCommandeOptions.map(opt => (
-                      <button
-                        key={opt.key}
-                        onClick={() => { opt.action(); setShowNouvelleMenu(false); }}
-                        style={{
-                          display: "block",
-                          width: "100%",
-                          textAlign: "left",
-                          padding: "12px 16px",
-                          background: "white",
-                          border: "none",
-                          borderBottom: `1px solid ${COLORS.gray100}`,
-                          cursor: "pointer",
-                          fontSize: "14px",
-                          fontWeight: "600",
-                          color: COLORS.gray700,
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setActiveTab("ifco")}
-                style={{
-                  padding: "14px 22px",
-                  background: "white",
-                  color: COLORS.tertiary,
-                  border: `2px solid ${COLORS.tertiary}`,
-                  borderRadius: "10px",
-                  cursor: "pointer",
-                  fontSize: "15px",
-                  fontWeight: "700",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
-              >
-                📢 Déclarer IFCO
-              </button>
-
-              <button
-                onClick={() => setActiveTab("entretiens")}
-                style={{
-                  padding: "14px 22px",
-                  background: "white",
-                  color: "#8e44ad",
-                  border: "2px solid #8e44ad",
-                  borderRadius: "10px",
-                  cursor: "pointer",
-                  fontSize: "15px",
-                  fontWeight: "700",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
-              >
-                🔧 Entretiens{entretiensActifsCount > 0 ? ` (${entretiensActifsCount})` : ""}
-              </button>
-
-              {/* 02/09/2026 — Demande d'Elinathan : le point de stock hebdomadaire (rapprochement
-                  myIFCO) était noyé dans un petit bouton-pilule au milieu de l'en-tête du
-                  calendrier, difficile à repérer. Remonté ici, au même niveau que les autres
-                  actions principales, pour qu'il saute aux yeux dès l'ouverture de l'onglet. */}
-              <button
-                onClick={() => setActiveTab("ifco-rapprochement")}
-                style={{
-                  padding: "14px 22px",
-                  background: "white",
-                  color: "#2563eb",
-                  border: "2px solid #2563eb",
-                  borderRadius: "10px",
-                  cursor: "pointer",
-                  fontSize: "15px",
-                  fontWeight: "700",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
-              >
-                ⚖️ Point de stock IFCO
-              </button>
-
-              {/* 11/09/2026 — Demande d'Elinathan : fiche récap visuelle (photo + coûts) de
-                  chaque prestataire, pour que les commerciaux aient un aperçu rapide. */}
-              <button
-                onClick={() => setActiveTab("fiche-recap")}
-                style={{
-                  padding: "14px 22px",
-                  background: "white",
-                  color: "#8e44ad",
-                  border: "2px solid #8e44ad",
-                  borderRadius: "10px",
-                  cursor: "pointer",
-                  fontSize: "15px",
-                  fontWeight: "700",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
-              >
-                📋 Fiche récap prestataires{fichesPresta.length > 0 ? ` (${fichesPresta.length})` : ""}
-              </button>
-
-            </div>
-
+            {/* 14/10/2026 — Actions principales déplacées dans la barre de navigation du module. */}
             {/* STOCKS — IFCO Moorea, IFCO NLT, Carton Baby Blanc (Andes) */}
             {/* 01/09/2026 — Refonte de l'affichage (demande d'Elinathan : le détail "palette + X
                 caisses" était en tout petit texte gris clair, difficile à lire/comprendre). Le

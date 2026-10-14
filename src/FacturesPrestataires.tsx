@@ -445,7 +445,8 @@ function NouvelleEntree({ nomsPresta, onFin, couleurs }: { nomsPresta: string[];
   );
 }
 
-export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => void; darkMode?: boolean }) {
+// 14/10/2026 — integre : affiché comme onglet du module Prestataires (sans son propre en-tête).
+export function FacturesPrestataires({ onClose, darkMode, integre = false }: { onClose: () => void; darkMode?: boolean; integre?: boolean }) {
   const [donnees, setDonnees] = useState<Partial<Record<Source, Record<string, any>>>>({});
   const [filtre, setFiltre] = useState<"a_facturer" | "facturees" | "tout">("a_facturer");
   const [sources, setSources] = useState<Record<Source, boolean>>({ cartons: true, ifco: true, vierges: true, entretiens: true, analyses: true, autres: true });
@@ -526,8 +527,8 @@ export function FacturesPrestataires({ onClose, darkMode }: { onClose: () => voi
   const puce = (actif: boolean) => ({ padding: "7px 12px", borderRadius: 999, border: `1.5px solid ${actif ? vert : bord}`, background: actif ? vert : carte, color: actif ? "#fff" : texte, fontSize: 12.5, fontWeight: 700, cursor: "pointer" } as const);
 
   return (
-    <div style={{ minHeight: "100vh", background: fond, color: texte }}>
-      <PageHeader titre="💳 Factures prestataires" onBack={onClose} onHome={onClose} />
+    <div style={{ minHeight: integre ? undefined : "100vh", background: integre ? "transparent" : fond, color: texte, borderRadius: integre ? 14 : undefined }}>
+      {!integre && <PageHeader titre="💳 Factures prestataires" onBack={onClose} onHome={onClose} />}
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box" }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
           <button type="button" onClick={() => setFiltre("a_facturer")} style={puce(filtre === "a_facturer")}>À pointer{charge ? ` (${nbAFacturer})` : ""}</button>

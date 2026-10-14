@@ -3579,7 +3579,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           initialTab={prestatairesInitialTab}
           canConfig={monAcces.hasTab("prestataires.configuration")}
           demandesRecondExterne={reconditionnementDemandesListe}
-          onOuvrirFactures={monAcces.hasModule("factures_prestataires") ? () => { setShowPrestataires(false); setFacturesDepuisPresta(true); setShowFacturesPresta(true); } : undefined}
+          voirFactures={monAcces.hasModule("factures_prestataires")}
           scanLidlId={qrLidlId}
           onScanLidlHandled={() => { setQrLidlId(null); window.history.replaceState({}, "", window.location.pathname); }}
         />
