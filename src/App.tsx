@@ -6115,10 +6115,17 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   const photos4 = (r.photoUrls || []).filter(Boolean).slice(0, 4);
                   return (
                     <div key={r.firebaseKey || r.id} style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.08)", display: "flex", flexDirection: "column" }}>
-                      {/* Mosaïque de 4 photos (2 × 2). */}
-                      <div style={{ aspectRatio: "1/1", background: "#f3f4f6", display: "grid", gridTemplateColumns: photos4.length > 1 ? "1fr 1fr" : "1fr", gridTemplateRows: photos4.length > 2 ? "1fr 1fr" : "1fr", gap: 2, color: "#9ca3af", fontSize: 13 }}>
-                        {photos4.length ? photos4.map((u: string, k: number) => <img key={k} src={srcPhoto(u)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", minHeight: 0, gridColumn: photos4.length === 3 && k === 0 ? "span 2" : undefined }} />)
-                          : <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>📷 Pas de photo</div>}
+                      {/* Mosaïque 2 × 2 : 4 cases carrées identiques (photo recadrée, case grise s'il en manque). */}
+                      <div style={{ display: "grid", gridTemplateColumns: photos4.length > 1 ? "1fr 1fr" : "1fr", gap: 2, background: "#f3f4f6" }}>
+                        {photos4.length > 1 ? [0, 1, 2, 3].map(k => (
+                          <div key={k} style={{ aspectRatio: "1 / 1", overflow: "hidden", background: "#e5e7eb" }}>
+                            {photos4[k] && <img src={srcPhoto(photos4[k])} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+                          </div>
+                        )) : (
+                          <div style={{ aspectRatio: "1 / 1", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 13 }}>
+                            {photos4[0] ? <img src={srcPhoto(photos4[0])} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : "📷 Pas de photo"}
+                          </div>
+                        )}
                       </div>
                       <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
                         <div style={{ fontSize: 14.5, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2 }}>{r.fournisseur || "Fournisseur ?"}</div>
