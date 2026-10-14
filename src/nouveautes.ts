@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 59, date: "15/10", pages: ["extractions"], texte: "📊 Stats plus rapides : les ventes sont gardées sur chaque ordinateur, seuls les jours nouveaux ou réimportés sont téléchargés (1ʳᵉ ouverture encore longue, ensuite rapide). L'Analyse ventes & marge ne retélécharge plus tout. Temps de chargement affiché sous la recherche." },
   { id: 58, date: "15/10", pages: ["rack"], texte: "🗄️ Rack : « Sortir du rack » refonctionne (confirmation dans la fenêtre au lieu d'une boîte du navigateur bloquée) ; nouveau bouton « Vider ce mur » (les palettes restent dans l'historique) ; l'alerte mail DLC ne réessaie plus en boucle." },
   { id: 57, date: "15/10", pages: ["qualite"], texte: "🧪 Récap qualité : onglets « 🌡️ Températures » et « ⚖️ Poids » à côté de la Traçabilité — seulement ces données, en cartes par jour, avec moyenne / min / max et export CSV." },
   { id: 56, date: "15/10", pages: ["admin.apercu", "admin.acces", "admin.mails"], texte: "⚙️ Admin rangé : menu à gauche avec une explication par rubrique, nouvelle « Vue d'ensemble » (imprimante, boîtes mail, comptes en attente, dernière action), Droits d'accès directement dans « Accès & comptes », « Qui envoie quel mail » dans « Mails »." },

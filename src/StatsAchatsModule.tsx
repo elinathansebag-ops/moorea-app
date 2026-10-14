@@ -1,3 +1,4 @@
+import { chargerJoursVentes, oublierJoursVentes } from "./ventesCache";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { db, ref, get, set, update } from "./firebase";
 import { PageHeader } from "./shared";
@@ -66,9 +67,9 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
     setChargement(true);
     setErreur("");
     try {
-      const [sj, sm] = await Promise.all([get(ref(db, "stats_achats/jours")), get(ref(db, "stats_achats/meta"))]);
+      // 15/10/2026 — Même cache que 📊 Stats (ventesCache.ts) : plus de 2ᵉ téléchargement complet.
+      const [jours, sm] = await Promise.all([chargerJoursVentes(), get(ref(db, "stats_achats/meta"))]);
       const out: LigneJour[] = [];
-      const jours = sj.val() || {};
       for (const [d, arr] of Object.entries<any>(jours)) {
         const liste: any[] = Array.isArray(arr) ? arr : Object.values(arr || {});
         for (const r of liste) {
@@ -97,6 +98,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
       const msg = await importerFichierVentes(fichier, userName, (etat, progression) => setImport({ etat, progression }));
       setImport({ etat: msg, progression: 100 });
       setDebut(""); setFin("");
+      oublierJoursVentes();
       await charger();
     } catch (e: any) {
       setImport(null);

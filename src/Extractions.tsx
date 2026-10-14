@@ -1,3 +1,4 @@
+import { chargerJoursVentes, oublierJoursVentes, infoChargementVentes } from "./ventesCache";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { db, ref, get, onValue, update, set, push, srcPhoto } from "./firebase";
 import { Pastille, marquerVu } from "./pastilles";
@@ -52,12 +53,14 @@ const norm = (s: string) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g,
 const lundi = (s: string) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
 
 // ── Données (chargées une fois, gardées en mémoire tant que l'appli est ouverte) ──
+// 15/10/2026 — Les jours viennent du cache partagé sur l'appareil (ventesCache.ts) : seuls les jours
+// nouveaux ou modifiés sont téléchargés.
 let cacheVentes: Promise<LigneVente[]> | null = null;
 function chargerVentes(): Promise<LigneVente[]> {
   if (cacheVentes) return cacheVentes;
-  cacheVentes = get(ref(db, "stats_achats/jours")).then(s => {
+  cacheVentes = chargerJoursVentes().then(joursVentes => {
     const out: LigneVente[] = [];
-    Object.entries(s.val() || {}).forEach(([d, v]: [string, any]) => {
+    Object.entries(joursVentes).forEach(([d, v]: [string, any]) => {
       (Array.isArray(v) ? v : Object.values(v || {})).forEach((r: any) => {
         if (!r) return;
         out.push({ d, f: r.f || "", c: r.c || "", a: r.a || "", fam: r.fam || "", g: r.g || "", col: r.col || 0, ach: r.ach || 0, ven: r.ven || 0, res: typeof r.res === "number" ? r.res : (r.ven || 0) - (r.ach || 0), pc: r.pc || 0, kg: r.kg || 0, sa: r.sa ? 1 : 0 });
@@ -67,7 +70,7 @@ function chargerVentes(): Promise<LigneVente[]> {
   }).catch(e => { cacheVentes = null; throw e; });
   return cacheVentes;
 }
-export function oublierVentes() { cacheVentes = null; }
+export function oublierVentes() { cacheVentes = null; oublierJoursVentes(); }
 let cacheArrivages: Promise<any[]> | null = null;
 function chargerArrivages(): Promise<any[]> {
   if (cacheArrivages) return cacheArrivages;
@@ -434,6 +437,14 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
                   <p style={{ margin: "8px 2px 0", fontSize: 12, opacity: 0.8 }}>
                     {ventes === null ? "Chargement des ventes et des arrivages…" : `${periodeBase}${periodeBase ? " · " : ""}${ent(index.clients.size)} clients · ${ent(index.fourn.size)} fournisseurs · ${ent(index.arts.size)} articles`}
                   </p>
+                  {/* 15/10/2026 — Provenance et durée du chargement des ventes sur cet appareil. */}
+                  {ventes !== null && infoChargementVentes && (
+                    <p style={{ margin: "2px 2px 0", fontSize: 10.5, opacity: 0.6 }}>
+                      {infoChargementVentes.mode === "cache"
+                        ? `⚡ Ventes gardées sur cet appareil · ${infoChargementVentes.joursTelecharges} jour${infoChargementVentes.joursTelecharges > 1 ? "s" : ""} mis à jour · ${(infoChargementVentes.ms / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} s`
+                        : `⬇️ Base complète téléchargée (${infoChargementVentes.joursTelecharges} jours) en ${(infoChargementVentes.ms / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} s${infoChargementVentes.mode === "sans-cache" ? " — ce navigateur ne permet pas de la garder" : " — les prochaines ouvertures seront rapides"}`}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -852,15 +863,16 @@ function CalendrierJournee({ c, ventes, arrivages, voirEuros = true, ouvrir, jou
   useEffect(() => { if (ouvert && !autres) chargerJournee().then(setAutres); }, [ouvert]);
   const parJour = useMemo(() => {
     const m = new Map<string, { arr: number; ven: number; cli: Set<string> }>();
+    if (!ouvert) return m; // 15/10/2026 — calendrier replié : rien à calculer
     const g = (d: string) => { let x = m.get(d); if (!x) { x = { arr: 0, ven: 0, cli: new Set() }; m.set(d, x); } return x; };
     (arrivages || []).forEach(a => { g(isoArrivage(a.date)).arr++; });
     (ventes || []).forEach(l => { const x = g(l.d); x.ven += l.ven; x.cli.add(l.c); });
     return m;
-  }, [ventes, arrivages]);
+  }, [ventes, arrivages, ouvert]);
   const fr = dateFr(jour);
   const arrJour = (arrivages || []).filter(a => a.date === fr);
   const fournJour = [...arrJour.reduce((m, a) => m.set(a.fournisseur || "(sans fournisseur)", (m.get(a.fournisseur || "(sans fournisseur)") || 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
-  const ventesJour = (ventes || []).filter(l => l.d === jour);
+  const ventesJour = useMemo(() => (jour ? (ventes || []).filter(l => l.d === jour) : []), [ventes, jour]);
   const clientsJour = [...ventesJour.reduce((m, l) => m.set(l.c, (m.get(l.c) || 0) + (voirEuros ? l.ven : l.col)), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
   const totV = ventesJour.reduce((a, l) => ({ col: a.col + l.col, ven: a.ven + l.ven }), { col: 0, ven: 0 });
   const lidlJour = (autres?.lidl || []).filter(l => l.date === jour);
@@ -993,7 +1005,8 @@ function TableauBordStats({ c, ventes, voirMarge, voirEuros = true, ouvrir }: { 
     // Même jour de la semaine précédente, pour comparer le dernier jour.
     const jAvant = parJour.get(decale(dernier, -7));
     const serie = Array.from({ length: 30 }, (_, i) => { const j = decale(dernier, i - 29); const x = parJour.get(j); return { j, v: (voirEuros ? x?.ven : x?.col) || 0 }; });
-    const tops = (cle: (l: LigneVente) => string) => { const m = new Map<string, number>(); for (const l of ventes) if (l.d >= decale(dernier, -6)) m.set(cle(l), (m.get(cle(l)) || 0) + (voirEuros ? l.ven : l.col)); return [...m].filter(([k]) => k).sort((a, b) => b[1] - a[1]); };
+    const debut7 = decale(dernier, -6); // 15/10/2026 — calculé une fois (avant : une date par ligne de vente)
+    const tops = (cle: (l: LigneVente) => string) => { const m = new Map<string, number>(); for (const l of ventes) if (l.d >= debut7) { const k = cle(l); m.set(k, (m.get(k) || 0) + (voirEuros ? l.ven : l.col)); } return [...m].filter(([k]) => k).sort((a, b) => b[1] - a[1]); };
     const dates = { d7deb: decale(dernier, -6), d7avDeb: decale(dernier, -13), d7avFin: decale(dernier, -7), jAvant: decale(dernier, -7), moisDeb: mois + "-01", mpDeb: moisPrec + "-01", mpFin: `${moisPrec}-${String(jourDuMois).padStart(2, "0")}` };
     return { dernier, jDernier, jAvant, d7, d7avant, mCourant, mPrecMeme, mois, serie, dates, topClients: tops(l => l.c), topArticles: tops(l => l.a) };
   }, [ventes, voirEuros]);

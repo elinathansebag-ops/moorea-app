@@ -9,6 +9,15 @@ const txt = (v: any): string => (v == null ? "" : String(v).trim());
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const dateFr = (s: string) => (s ? s.split("-").reverse().join("/") : "");
 
+// 15/10/2026 — Numéro de version par jour importé (stats_achats/versions/{jour}) : chaque appareil
+// garde les ventes en cache et ne retélécharge que les jours dont la version a changé (ventesCache.ts).
+// Écrit à part : si ça échouait, l'import reste bon (les appareils retéléchargent alors tout).
+async function marquerVersions(jours: string[]) {
+  const v = Date.now(), maj: Record<string, number> = {};
+  jours.forEach(d => { maj["stats_achats/versions/" + d] = v; });
+  try { await update(ref(db), maj); } catch (e) { console.warn("Versions des jours de ventes non enregistrées :", e); }
+}
+
 // 13/10/2026 — Import sorti du composant : utilisé ici et dans 📊 Stats › Configuration.
 // Renvoie le message final ; lève une erreur si le fichier n'est pas exploitable.
 export async function importerFichierVentes(fichier: File, userName: string | undefined, progres: (etat: string, pct: number) => void): Promise<string> {
@@ -60,6 +69,7 @@ export async function importerFichierVentes(fichier: File, userName: string | un
         const p = datesB.slice(i, i + 8), maj: Record<string, any> = {};
         for (const d of p) maj["stats_achats/jours/" + d] = [...joursB.get(d)!.values()].map(l => ({ ...l, col: arr(l.col), ach: arr(l.ach), ven: arr(l.ven), res: arr(l.res), pc: arr(l.pc), kg: arr(l.kg), sa: l.sa ? 1 : 0 }));
         await update(ref(db), maj);
+        await marquerVersions(p);
         faitsB += p.length;
         progres(`Envoi ${faitsB}/${datesB.length} jours…`, 20 + Math.round((faitsB / datesB.length) * 75));
       }
@@ -114,6 +124,7 @@ export async function importerFichierVentes(fichier: File, userName: string | un
       const maj: Record<string, any> = {};
       for (const d of p) maj["stats_achats/jours/" + d] = [...jours.get(d)!.values()].map(l => ({ ...l, col: arrondi(l.col), ach: arrondi(l.ach), ven: arrondi(l.ven), res: arrondi(l.res), pc: arrondi(l.pc), kg: arrondi(l.kg), sa: l.sa ? 1 : 0 }));
       await update(ref(db), maj);
+      await marquerVersions(p);
       faits += p.length;
       progres(`Envoi ${faits}/${dates.length} jours…`, 20 + Math.round((faits / dates.length) * 75));
     }
