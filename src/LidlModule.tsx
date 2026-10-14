@@ -21,7 +21,9 @@ const nomBase = (c: string) => infoBase(c)?.nom || c;
 const numBase = (c: string) => infoBase(c)?.num ?? 999;
 
 export function LidlModule({ onClose, userName, admin }: { onClose: () => void; userName?: string; admin?: boolean }) {
-  const [onglet, setOnglet] = useState<"jour" | "passees" | "stats" | "bord" | "traca" | "config">("jour");
+  // 14/10/2026 — Demande d'Elinathan : page d'accueil = stats de la semaine + tableau de bord
+  // (fusionnés, ils faisaient doublon), puis un bouton « Commandes » vers la page des commandes.
+  const [onglet, setOnglet] = useState<"accueil" | "jour" | "passees" | "stats" | "bord" | "traca" | "config">("accueil");
   const [lignes, setLignes] = useState<L[]>([]);
   const [jourOuvert, setJourOuvert] = useState("");
   const [semaine, setSemaine] = useState(lundi(iso(new Date())));
@@ -135,7 +137,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
       <PageHeader titre="🛒 Commandes Lidl" couleur="#0050aa" onBack={onClose} onHome={onClose} />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          {btnOnglet("jour", "📥 Commande du jour")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("stats", "📊 Stats de la semaine")}{btnOnglet("bord", "📈 Tableau de bord")}{btnOnglet("traca", "📤 Traçabilité Lidl")}{btnOnglet("config", "⚙️ Configuration")}
+          {btnOnglet("accueil", "📊 Tableau de bord")}{btnOnglet("jour", "🛒 Commandes")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("traca", "📤 Traçabilité Lidl")}{btnOnglet("config", "⚙️ Configuration")}
         </div>
         {/* 02/10/2026 — Demande d'Elinathan : le commercial voit tout de suite si le mail est bien parti chez Lidl, et à quelle heure. */}
         <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${(envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
@@ -201,6 +203,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
         )}
 
         {onglet === "bord" && <LidlTableauDeBord lignes={lignes as any} envois={envois} />}
+        {/* L'accueil affiche aussi le tableau de bord (tendances), sous les stats de la semaine : voir plus bas. */}
 
         {onglet === "traca" && (
           <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 14 }}>
@@ -314,7 +317,21 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
           </div>
         )}
 
-        {onglet === "stats" && (
+        {onglet === "accueil" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: 12, marginBottom: 16 }}>
+            <button type="button" onClick={() => setOnglet("jour")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #0050aa, #1d6fd1)", color: "#fff", cursor: "pointer", textAlign: "left", boxShadow: "0 8px 20px rgba(0,80,170,.25)" }}>
+              <span style={{ fontSize: 34 }}>🛒</span>
+              <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 18, fontWeight: 900 }}>Commandes</span><span style={{ display: "block", fontSize: 12.5, opacity: 0.9 }}>Commandes de la semaine, Geslot, bons, étiquettes · importer une nouvelle commande</span></span>
+              <span style={{ fontSize: 22, fontWeight: 900 }}>›</span>
+            </button>
+            <button type="button" onClick={() => setOnglet("passees")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 16, border: "1.5px solid #e5e7eb", background: "#fff", color: "#111827", cursor: "pointer", textAlign: "left" }}>
+              <span style={{ fontSize: 30 }}>🗂️</span>
+              <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 16, fontWeight: 900 }}>Commandes passées</span><span style={{ display: "block", fontSize: 12.5, color: "#6b7280" }}>Historique jour par jour</span></span>
+              <span style={{ fontSize: 22, fontWeight: 900, color: "#0050aa" }}>›</span>
+            </button>
+          </div>
+        )}
+        {(onglet === "stats" || onglet === "accueil") && (
           <div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
               <button type="button" onClick={() => setSemaine(ajouteJours(semaine, -7))} style={{ border: "1.5px solid #e5e7eb", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 800 }}>‹</button>
@@ -359,6 +376,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
             </div>
           </div>
         )}
+        {onglet === "accueil" && <div style={{ marginTop: 16 }}><LidlTableauDeBord lignes={lignes as any} envois={envois} /></div>}
       </div>
     </div>
   );

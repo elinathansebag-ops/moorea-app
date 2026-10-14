@@ -3352,6 +3352,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         await set(rapportRef, {
           ...r,
           bonRepriseSigné: true,
+          bonPar: nomSignataire(), // 14/10/2026 — qui a fait signer le bon (affiché sur la carte)
           transporteur: {
             nom: sigNom,
             prenom: sigPrenom,
@@ -4978,7 +4979,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               const r = signatureModal;
               if (!r?.firebaseKey) { showToast("Rapport introuvable", "error"); return; }
               try {
-                await update(ref(db, `rapports/${r.firebaseKey}`), { recupereSansSig: true, recuperéLe: new Date().toLocaleDateString("fr-FR") });
+                await update(ref(db, `rapports/${r.firebaseKey}`), { recupereSansSig: true, recuperéLe: new Date().toLocaleDateString("fr-FR"), recuperePar: nomSignataire() });
                 showToast("📦 Marqué comme récupéré sans signature");
                 setSignatureModal(null); setImprimerBonEntrepot(false);
               } catch (e: any) { showToast("Erreur : " + (e?.message || e), "error"); }
@@ -6122,8 +6123,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <span style={{ fontSize: 13, fontWeight: 700, color: "#9a3412" }}>Marquer les {liste.length} refus comme récupérés sans signature ?</span>
                     <button type="button" onClick={async () => {
                       const le = new Date().toLocaleDateString("fr-FR"), maj: Record<string, any> = {};
-                      liste.forEach(r => { if (r.firebaseKey) { maj[`rapports/${r.firebaseKey}/recupereSansSig`] = true; maj[`rapports/${r.firebaseKey}/recuperéLe`] = le; } });
-                      try { await update(ref(db), maj); showToast(`📦 ${Object.keys(maj).length / 2} refus marqués récupérés sans signature`); }
+                      liste.forEach(r => { if (r.firebaseKey) { maj[`rapports/${r.firebaseKey}/recupereSansSig`] = true; maj[`rapports/${r.firebaseKey}/recuperéLe`] = le; maj[`rapports/${r.firebaseKey}/recuperePar`] = nomSignataire(); } });
+                      try { await update(ref(db), maj); showToast(`📦 ${Object.keys(maj).length / 3} refus marqués récupérés sans signature`); }
                       catch (e: any) { showToast("Erreur : " + (e?.message || e), "error"); }
                       setConfirmerToutRecupere(false);
                     }} style={{ padding: "7px 12px", borderRadius: 10, border: "none", background: "#ea580c", color: "#fff", fontWeight: 800, cursor: "pointer" }}>Oui, tout marquer</button>
@@ -6704,7 +6705,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
                           <span style={{ padding: "2px 9px", borderRadius: 999, background: d.c, color: d.f, fontSize: 11.5, fontWeight: 800 }}>{d.t}</span>
-                          <span style={{ fontSize: 11.5, color: "#9ca3af", fontWeight: 700 }}>{r.date}{r.numeroRapport ? ` · ${r.numeroRapport}` : ""}</span>
+                          <span style={{ fontSize: 11.5, color: "#9ca3af", fontWeight: 700 }}>{r.date}{r.numeroRapport ? ` · ${r.numeroRapport}` : ""}{r.agreeur ? ` · 👤 ${String(r.agreeur).split("@")[0]}` : ""}</span>
                         </div>
                         <div style={{ fontSize: 14.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.produit}</div>
                         <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}</div>
@@ -6722,8 +6723,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       </div>
                     ) : r.photosPerdues ? <div style={{ margin: "0 14px", padding: "8px", borderRadius: 8, background: "#fffbeb", color: "#92400e", fontSize: 12, fontWeight: 700, textAlign: "center" }}>📷 Photos perdues — à remettre avec ✏️</div> : null}
                     {r.observations && <div style={{ padding: "8px 14px 0", fontSize: 12.5, fontStyle: "italic", color: "#6b7280", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>« {r.observations} »</div>}
-                    {r.bonRepriseSigné && r.transporteur && <div style={{ padding: "6px 14px 0", fontSize: 11.5, color: "#16a34a", fontWeight: 700 }}>✅ Bon signé par {r.transporteur.nom || "le transporteur"}</div>}
-                    {r.recupereSansSig && <div style={{ padding: "6px 14px 0", fontSize: 11.5, color: "#6b7280", fontWeight: 700 }}>📦 Récupéré sans signature</div>}
+                    {r.bonRepriseSigné && r.transporteur && <div style={{ padding: "6px 14px 0", fontSize: 11.5, color: "#16a34a", fontWeight: 700 }}>✅ Bon signé par {r.transporteur.nom || "le transporteur"}{r.transporteur.signéLe ? ` le ${r.transporteur.signéLe}` : ""}{r.bonPar ? ` · fait par ${r.bonPar}` : ""}</div>}
+                    {r.recupereSansSig && <div style={{ padding: "6px 14px 0", fontSize: 11.5, color: "#6b7280", fontWeight: 700 }}>📦 Récupéré sans signature{r.recuperéLe ? ` le ${r.recuperéLe}` : ""}{r.recuperePar ? ` · ${r.recuperePar}` : ""}</div>}
                     <div style={{ display: "flex", gap: 6, padding: "10px 14px 12px", marginTop: "auto", flexWrap: "wrap" }}>
                       {petitBouton("Voir / télécharger le PDF (français ou anglais)", "📄", () => setChoixLangueRapport(r))}
                       {petitBouton("Envoyer au commercial par mail", envoi ? "⏳" : "✉️", () => envoyerEmail(r), { desactive: envoi })}
