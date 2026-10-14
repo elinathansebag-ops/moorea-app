@@ -4384,7 +4384,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     <>
       {choixLangueRapport && (
         <div onClick={() => !pdfEnCours && setChoixLangueRapport(null)} style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: "20px 20px 16px", width: "min(380px, 100%)", boxShadow: "0 20px 60px rgba(0,0,0,.3)", textAlign: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ position: "relative", background: "#fff", borderRadius: 18, padding: "20px 20px 16px", width: "min(380px, 100%)", boxShadow: "0 20px 60px rgba(0,0,0,.3)", textAlign: "center" }}>
+            <button type="button" aria-label="Fermer" disabled={pdfEnCours} onClick={() => setChoixLangueRapport(null)}
+              style={{ position: "absolute", top: 10, right: 10, width: 32, height: 32, borderRadius: 16, border: "none", background: "#f3f4f6", color: "#374151", fontSize: 18, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>×</button>
             <div style={{ fontSize: 16, fontWeight: 800, color: "#1a2e1a", marginBottom: 4 }}>Télécharger le rapport</div>
             <div style={{ fontSize: 12.5, color: "#6b7280", marginBottom: 14 }}>{choixLangueRapport.produit || ""}{choixLangueRapport.numeroRapport ? ` · ${choixLangueRapport.numeroRapport}` : ""}</div>
             <div style={{ display: "flex", gap: 10 }}>
