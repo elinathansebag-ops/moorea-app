@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 18, date: "14/10", pages: ["admin.acces", "droits.comptes", "droits.modules"], texte: "🔐 Droits d'accès : comptes en cartes (un clic ouvre ses réglages), modules marqués « consultation seule », et droits détaillés (valider, compter, configuration…) réglables personne par personne." },
   { id: 17, date: "14/10", texte: "🔴 Pastilles rouges « nouveau » sur les pages et onglets que je modifie ; elles disparaissent dès que tu les ouvres." },
   { id: 16, date: "14/10", pages: ["admin.acces", "droits.modules"], texte: "🔐 Droits d'accès › Par module : des carrés (avec le nombre de personnes) ; un clic ouvre la fenêtre pour cocher qui a accès. « Refus à faire signer » a sa case sous Rapports d'agréage." },
   { id: 15, date: "14/10", pages: ["lidl_consultation", "qualite", "qualite.lidl", "lidl"], texte: "🛒 Lidl : l'heure d'envoi du mail de traçabilité est affichée (« Envoyée le 14/10 à 13:00 ») dans Commandes Lidl et Traçabilité Lidl." },

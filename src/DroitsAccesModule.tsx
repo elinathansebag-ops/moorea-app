@@ -3,7 +3,7 @@ import { db, ref, onValue, remove, update, auth } from "./firebase";
 import { set } from "firebase/database";
 import { nomSignataire } from "./ProfilGenerique";
 import { Pastille, marquerVu } from "./pastilles";
-import { PageHeader, styles, MODULE_DEFS, modulesParGroupe, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, toutesLesClesModules, AccesRole, AccesUser } from "./shared";
+import { PageHeader, styles, MODULE_DEFS, NATURE_MODULE, modulesParGroupe, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, toutesLesClesModules, AccesRole, AccesUser } from "./shared";
 import { Commercial } from "./MessagerieModule";
 
 // ─── 09/09/2026 — Écran d'administration des droits d'accès (demande d'Elinathan : choisir
@@ -335,6 +335,9 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                           style={{ textAlign: "left", padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, minHeight: 104, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
                           <span style={{ fontSize: 26 }}>{aIcone ? icone : "🧩"}</span>
                           <span style={{ fontSize: 13.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.25 }}>{aIcone ? reste.join(" ") : m.label}</span>
+                          {NATURE_MODULE[m.key] === "consultation" && <span style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8" }}>👁️ Consultation seule</span>}
+                          {NATURE_MODULE[m.key] === "reglage" && <span style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#f5f3ff", color: "#6d28d9" }}>⚙️ Réglage d'affichage</span>}
+                          {m.tabs?.length ? <span style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e" }}>🔧 {m.tabs.length} droit{m.tabs.length > 1 ? "s" : ""} détaillé{m.tabs.length > 1 ? "s" : ""}</span> : null}
                           <span style={{ marginTop: "auto", fontSize: 12, fontWeight: 700, color: nb ? "#305a55" : "#9ca3af" }}>👤 {nb} personne{nb > 1 ? "s" : ""}</span>
                         </button>
                       );
@@ -353,7 +356,10 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                         <button type="button" onClick={() => setModuleOuvert(null)} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 32, height: 32, borderRadius: 16, fontSize: 18, cursor: "pointer" }}>×</button>
                       </div>
                       <div style={{ padding: "8px 14px 14px", overflowY: "auto", display: "grid", gap: 4 }}>
-                        <p style={{ margin: "4px 2px 6px", fontSize: 12, color: "#9ca3af" }}>Coche les personnes qui ont accès à ce module.</p>
+                        <p style={{ margin: "4px 2px 6px", fontSize: 12, color: "#6b7280" }}>
+                          Coche les personnes qui ont accès à ce module.
+                          {NATURE_MODULE[m.key] === "consultation" ? " 👁️ Ce module est en consultation seule : on ne peut rien y modifier." : NATURE_MODULE[m.key] === "reglage" ? " ⚙️ C'est un réglage d'affichage (ce que la personne voit dans 📊 Stats)." : m.tabs?.length ? " Pour chaque personne cochée, les droits détaillés sont juste en dessous de son nom." : " Ce module n'a pas de droit détaillé : qui y a accès peut consulter et modifier."}
+                        </p>
                         {emailsConnus.map(email => {
                           const estAdmin = ADMIN_BOOTSTRAP.includes(email.toLowerCase()) || !!users[cleEmail(email)]?.admin;
                           const visible = estAdmin || calculerAcces(email, roles, users).hasModule(m.key);
@@ -363,8 +369,19 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                                 <input type="checkbox" className="mrq-case-native" checked={visible} disabled={estAdmin} onChange={() => toggleModulePourEmail(m.key, email, visible)} />
                                 <span className="mrq-case-visuelle" />
                               </span>
-                              {email}
-                              {estAdmin && <span style={{ fontSize: 10.5, color: "#9ca3af" }}>(admin — voit tout)</span>}
+                              <span style={{ flex: 1, minWidth: 0 }}>
+                                {email}
+                                {estAdmin && <span style={{ fontSize: 10.5, color: "#9ca3af" }}> (admin — voit tout)</span>}
+                                {visible && !estAdmin && m.tabs?.length ? (
+                                  <span style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }} onClick={e => e.preventDefault()}>
+                                    {m.tabs.map(t => {
+                                      const tk = `${m.key}.${t.key}`, ok = calculerAcces(email, roles, users).hasTab(tk);
+                                      return <button key={tk} type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); toggleTabPourEmail(tk, email, ok); }}
+                                        style={{ padding: "3px 9px", borderRadius: 999, border: `1.5px solid ${ok ? "#305a55" : "#d1d5db"}`, background: ok ? "#305a55" : "#fff", color: ok ? "#fff" : "#6b7280", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{ok ? "✓ " : ""}{t.label}</button>;
+                                    })}
+                                  </span>
+                                ) : null}
+                              </span>
                             </label>
                           );
                         })}
@@ -533,91 +550,90 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
                 Chaque personne qui s'est déjà connectée au moins une fois apparaît ci-dessous, avec sa dernière connexion et si elle a l'appli ouverte en ce moment. Clique sur "⚙️ Choisir ses modules" pour régler ses accès.
               </p>
               {uids.length === 0 && clesJamaisConnectees.length === 0 && <p style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucun compte enregistré pour l'instant.</p>}
-              {uids.map(uid => {
-                const c = comptes[uid];
-                const p = presences[uid];
-                const enLigne = !!p?.online;
-                const cle = cleEmail(c.email);
-                const ouvert = compteOuvert === cle;
-                const enAttente = estEnAttente(c.email);
-                return (
-                  <div key={uid} className="card" style={{ padding: 14, marginBottom: 10, ...(enAttente ? { border: "1.5px solid #fbbf24", background: "#fffbeb" } : {}) }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ width: 9, height: 9, borderRadius: "50%", background: enLigne ? "#16a34a" : "#d1d5db", display: "inline-block" }} />
-                          <span style={{ fontWeight: 700, fontSize: 14, ...(c.email ? {} : { color: "#c1c9d6", fontStyle: "italic" }) }}>
-                            {c.displayName || c.email || "Connexion incomplète"}
-                          </span>
-                          {enAttente && <span className="pill" style={{ background: "#fef3c7", color: "#92400e" }}>🆕 Demande d'accès</span>}
-                        </div>
-                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
-                          {c.email || "aucun e-mail reçu — tentative de connexion interrompue ou incomplète"}
-                        </p>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: enLigne ? "#16a34a" : "#9ca3af" }}>{enLigne ? "🟢 En ligne" : "⚪ Hors ligne"}</p>
-                        <p style={{ margin: "3px 0 0", fontSize: 11, color: "#9ca3af" }}>
-                          {enLigne ? "Depuis le " : "Dernière connexion : "}{formatDateFr(enLigne ? c.derniere_connexion : (p?.lastSeen || c.derniere_connexion))}
-                        </p>
-                        <p style={{ margin: "3px 0 0", fontSize: 10.5, color: "#c1c9d6" }}>Premier accès : {formatDateFr(c.premiere_connexion)}</p>
-                        {c.email ? (
-                          <button
-                            onClick={() => ouvrirPanneau(c.email)}
-                            style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e9d8fd", background: ouvert ? "#7c3aed" : "#faf5ff", color: ouvert ? "#fff" : "#7c3aed", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}
-                          >
-                            {ouvert ? "▲ Fermer" : "⚙️ Choisir ses modules"}
-                          </button>
-                        ) : (
-                          // Fiche sans email : rien à configurer (elle n'a de toute façon aucun
-                          // accès), seule la suppression a un sens.
-                          <button
-                            onClick={() => { if (window.confirm("Retirer cette fiche de connexion incomplète (sans email) ? Elle n'a aucun accès de toute façon.")) remove(ref(db, `comptes/${uid}`)); }}
-                            style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}
-                          >
-                            🗑️ Retirer
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {ouvert && c.email && <PanneauEdition cle={cle} email={c.email} />}
-                  </div>
-                );
-              })}
+              {/* 14/10/2026 — Demande d'Elinathan : des cartes au lieu d'une liste sans fin ; un clic
+                  ouvre la fenêtre de réglage de la personne. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(240px, 100%), 1fr))", gap: 10 }}>
+                {uids.map(uid => {
+                  const c = comptes[uid];
+                  const p = presences[uid];
+                  const enLigne = !!p?.online;
+                  const enAttente = estEnAttente(c.email);
+                  const u = c.email ? users[cleEmail(c.email)] : undefined;
+                  const estAdmin = !!c.email && (ADMIN_BOOTSTRAP.includes(c.email.toLowerCase()) || !!u?.admin);
+                  const nbMod = c.email ? (estAdmin ? MODULE_DEFS.length : MODULE_DEFS.filter(m => calculerAcces(c.email, roles, users).hasModule(m.key)).length) : 0;
+                  return (
+                    <button key={uid} type="button" onClick={() => c.email ? ouvrirPanneau(c.email) : (window.confirm("Retirer cette fiche de connexion incomplète (sans email) ?") && remove(ref(db, `comptes/${uid}`)))}
+                      style={{ textAlign: "left", padding: 14, borderRadius: 14, border: `1.5px solid ${enAttente ? "#fbbf24" : "#e8e0d0"}`, background: enAttente ? "#fffbeb" : "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 4, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ width: 36, height: 36, borderRadius: 18, background: enLigne ? "#dcfce7" : "#f3f4f6", color: enLigne ? "#166534" : "#6b7280", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 15, flexShrink: 0, position: "relative" }}>
+                          {(c.displayName || c.email || "?").charAt(0).toUpperCase()}
+                          <span style={{ position: "absolute", right: 0, bottom: 0, width: 10, height: 10, borderRadius: 5, background: enLigne ? "#16a34a" : "#d1d5db", border: "2px solid #fff" }} />
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "block", fontWeight: 800, fontSize: 14, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.displayName || c.email || "Connexion incomplète"}</span>
+                          <span style={{ display: "block", fontSize: 11.5, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email || "sans e-mail — toucher pour retirer"}</span>
+                        </span>
+                      </span>
+                      <span style={{ fontSize: 11.5, color: enLigne ? "#16a34a" : "#9ca3af", fontWeight: 700, marginTop: 4 }}>{enLigne ? "🟢 En ligne" : `Vu ${formatDateFr(p?.lastSeen || c.derniere_connexion)}`}</span>
+                      <span style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                        {enAttente && <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e" }}>🆕 Demande d'accès</span>}
+                        {estAdmin ? <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#f0fdf4", color: "#16a34a" }}>Admin · voit tout</span>
+                          : c.email && <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#faf5ff", color: "#7c3aed" }}>🧩 {nbMod} module{nbMod > 1 ? "s" : ""}</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
               {clesJamaisConnectees.length > 0 && (
                 <>
                   <p style={{ fontSize: 11.5, fontWeight: 700, color: "#8a6f2e", textTransform: "uppercase", margin: "18px 0 8px" }}>Pré-configurées, jamais connectées</p>
-                  {clesJamaisConnectees.map(cle => {
-                    const u = users[cle];
-                    const ouvert = compteOuvert === cle;
-                    const estBootstrap = ADMIN_BOOTSTRAP.includes((u.email || "").toLowerCase());
-                    return (
-                      <div key={cle} className="card" style={{ padding: 14, marginBottom: 10 }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                          <div>
-                            <span style={{ fontWeight: 700, fontSize: 14 }}>{u.invitation?.prenom ? `${u.invitation.prenom} · ` : ""}{u.email}</span>
-                            {u.admin && <span className="pill" style={{ background: "#f0fdf4", color: "#16a34a", marginLeft: 8 }}>Admin</span>}
-                            {u.invitation && <span className="pill" style={{ background: "#eff6ff", color: "#1d4ed8", marginLeft: 8 }}>✉️ Invitation envoyée · en attente</span>}
-                            {u.invitation && <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 3 }}>Le {u.invitation.dateLabel}{u.invitation.par ? ` par ${u.invitation.par}` : ""}{(u.invitation.nbEnvois || 1) > 1 ? ` · envoyée ${u.invitation.nbEnvois} fois` : ""} — pas encore connecté(e)</div>}
-                          </div>
-                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                            {u.invitation && <button onClick={() => envoyerInvitation(u.email, u.invitation?.prenom || "")} disabled={invitEnCours} style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid #bfdbfe", background: "#fff", color: "#1d4ed8", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}>↻ Renvoyer</button>}
-                            {!estBootstrap && <button onClick={() => supprimerUtilisateur(cle, u.email)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 14 }}>🗑️</button>}
-                            <button
-                              onClick={() => setCompteOuvert(ouvert ? null : cle)}
-                              style={{ padding: "6px 12px", borderRadius: 8, border: "1.5px solid #e9d8fd", background: ouvert ? "#7c3aed" : "#faf5ff", color: ouvert ? "#fff" : "#7c3aed", cursor: "pointer", fontSize: 11.5, fontWeight: 700 }}
-                            >
-                              {ouvert ? "▲ Fermer" : "⚙️ Choisir ses modules"}
-                            </button>
-                          </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(240px, 100%), 1fr))", gap: 10 }}>
+                    {clesJamaisConnectees.map(cle => {
+                      const u = users[cle];
+                      const estBootstrap = ADMIN_BOOTSTRAP.includes((u.email || "").toLowerCase());
+                      return (
+                        <div key={cle} role="button" tabIndex={0} onClick={() => setCompteOuvert(cle)}
+                          style={{ padding: 14, borderRadius: 14, border: "1.5px dashed #e8e0d0", background: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.invitation?.prenom || u.email}</span>
+                          {u.invitation?.prenom && <span style={{ fontSize: 11.5, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</span>}
+                          <span style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+                            {u.admin && <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#f0fdf4", color: "#16a34a" }}>Admin</span>}
+                            {u.invitation && <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8" }}>✉️ Invitée le {u.invitation.dateLabel}</span>}
+                            <span style={{ flex: 1 }} />
+                            {u.invitation && <button type="button" onClick={e => { e.stopPropagation(); envoyerInvitation(u.email, u.invitation?.prenom || ""); }} disabled={invitEnCours} title="Renvoyer l'invitation" style={{ border: "1px solid #e5e7eb", background: "#fff", borderRadius: 8, cursor: "pointer", padding: "3px 7px" }}>↻</button>}
+                            {!estBootstrap && <button type="button" onClick={e => { e.stopPropagation(); supprimerUtilisateur(cle, u.email); }} title="Supprimer" style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 14 }}>🗑️</button>}
+                          </span>
                         </div>
-                        {ouvert && <PanneauEdition cle={cle} email={u.email} />}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </>
               )}
+
+              {/* Fenêtre de réglage de la personne choisie. */}
+              {compteOuvert && (() => {
+                const uidC = uids.find(x => cleEmail(comptes[x].email || "") === compteOuvert);
+                const email = uidC ? comptes[uidC].email : users[compteOuvert]?.email;
+                if (!email) return null;
+                const nom = uidC ? (comptes[uidC].displayName || email) : (users[compteOuvert]?.invitation?.prenom || email);
+                return (
+                  <div onClick={() => setCompteOuvert(null)} style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                    <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "min(640px, 100%)", maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+                      <div style={{ padding: "14px 18px", background: "#305a55", color: "#fff", borderRadius: "18px 18px 0 0", display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: 16, fontWeight: 900 }}>{nom}</span>
+                          <span style={{ display: "block", fontSize: 12, opacity: 0.85 }}>{email}</span>
+                        </span>
+                        <button type="button" onClick={() => setCompteOuvert(null)} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 32, height: 32, borderRadius: 16, fontSize: 18, cursor: "pointer" }}>×</button>
+                      </div>
+                      <div style={{ padding: "0 18px 16px", overflowY: "auto" }}>
+                        <PanneauEdition cle={compteOuvert} email={email} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}

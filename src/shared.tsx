@@ -469,6 +469,13 @@ export const GROUPES_DROITS: { titre: string; detail: string; cles: string[] }[]
   { titre: "🧰 Autres", detail: "Une carte chacun sur l'accueil", cles: ["catalogue", "gencodes", "taches", "dashboard_tv"] },
   { titre: "💤 En veille", detail: "Retirés de l'appli pour l'instant : cocher ne fait rien apparaître", cles: ["etiquettes", "messagerie", "litiges"] },
 ];
+// 14/10/2026 — Nature de chaque module, affichée dans Droits d'accès › Par module :
+// « consultation » = on ne peut rien y modifier ; « reglage » = réglage d'affichage (pas un écran).
+// Les autres se modifient ; leurs droits détaillés (valider, compter, configuration…) sont leurs « tabs ».
+export const NATURE_MODULE: Record<string, "consultation" | "reglage"> = {
+  qualite: "consultation", lidl_consultation: "consultation", dashboard_tv: "consultation",
+  euros: "reglage", marge: "reglage",
+};
 export function modulesParGroupe(): { titre: string; detail: string; modules: ModuleDef[] }[] {
   const pris = new Set(GROUPES_DROITS.flatMap(g => g.cles));
   const groupes = GROUPES_DROITS.map(g => ({ titre: g.titre, detail: g.detail, modules: g.cles.map(k => MODULE_DEFS.find(m => m.key === k)).filter(Boolean) as ModuleDef[] }));
