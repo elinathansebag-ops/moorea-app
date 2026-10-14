@@ -95,6 +95,29 @@ async function exporterExcel(nomFichier: string, titre: string, entetes: string[
 // ── Recherche intelligente ──
 type Option = { type: string; valeur: string; detail?: string; poids?: number };
 const ICONES: Record<string, string> = { client: "👤", fournisseur: "🏭", article: "🥬", famille: "🗂️", jour: "📅", semaine: "🗓️", litiges: "⛔", reserves: "⚠️" };
+// 14/10/2026 — Emoji le plus proche du produit (demande d'Elinathan : « pas une salade pour des cerises »).
+// Premier mot-clé trouvé dans le nom de l'article ou de la famille ; 🥬 si rien ne correspond.
+const EMOJIS_PRODUITS: [RegExp, string][] = [
+  [/tomate/, "🍅"], [/cerise/, "🍒"], [/fraise/, "🍓"], [/framboise|myrtille|mure|groseille|cassis|airelle|cranberr/, "🫐"],
+  [/raisin/, "🍇"], [/mangue/, "🥭"], [/avocat/, "🥑"], [/ananas/, "🍍"], [/banane/, "🍌"], [/noix de coco|coco/, "🥥"],
+  [/citron|lime|yuzu|combava|bergamote/, "🍋"], [/orange|mandarine|clementine|pomelo|pamplemousse|kumquat|agrume|limequat/, "🍊"],
+  [/pomme de terre|patate(?! douce)/, "🥔"], [/patate douce/, "🍠"], [/pomme/, "🍎"], [/poire/, "🍐"], [/peche|nectarine|abricot|prune|mirabelle/, "🍑"],
+  [/kiwi/, "🥝"], [/melon/, "🍈"], [/pasteque/, "🍉"], [/chataigne|marron|noix|noisette|amande|pistache/, "🌰"],
+  [/haricot|pois|sugar snap|snow|mange.?tout|feve|edamame/, "🫛"], [/piment|jalapeno|habanero/, "🌶️"], [/poivron/, "🫑"],
+  [/carotte|panais|navet|radis|betterave|racine/, "🥕"], [/mais|maïs/, "🌽"], [/aubergine/, "🍆"], [/champignon|shiitake|pleurote|eringy|enoki|truffe/, "🍄"],
+  [/brocoli|chou|romanesco|kale|pak choi|bok choy/, "🥦"], [/concombre|cornichon|courgette|patisson/, "🥒"], [/ail(?![a-z])/, "🧄"],
+  [/oignon|echalote|cebette|ciboule|poireau/, "🧅"], [/gingembre|curcuma|galanga/, "🫚"], [/salade|laitue|mache|roquette|epinard|endive|mesclun|cresson|cress/, "🥬"],
+  [/fleur|edible|capucine|pensee/, "🌸"], [/menthe|basilic|coriandre|persil|aneth|thym|romarin|herbe|ciboulette|estragon|sauge|feuille|pandan|citronnelle|shiso/, "🌿"],
+  [/germe|alfalfa|pousse/, "🌱"], [/passion|grenade|figue|datte|litchi|lychee|ramboutan|mangoustan|pitaya|fruit du dragon|physalis|goyave|papaye|kaki|carambole/, "🍑"],
+  [/asperge/, "🎋"], [/potiron|potimarron|courge|butternut|citrouille/, "🎃"], [/olive/, "🫒"], [/artichaut|fenouil|celeri|blette/, "🥬"],
+];
+function emojiProduit(nom: string, famille = ""): string {
+  const t = norm(`${nom} ${famille}`);
+  for (const [re, e] of EMOJIS_PRODUITS) if (re.test(t)) return e;
+  return "🥬";
+}
+const iconeOption = (o: Option) => o.type === "article" || o.type === "famille" ? emojiProduit(o.valeur) : (ICONES[o.type] || "•");
+
 // 14/10/2026 — La recherche comprend aussi : une date (« 15/09 », « 15/09/2026 », « 2026-09-15 »),
 // une semaine (« S42 », « semaine 42 2026 ») et les mots litige / refus / réserve / manquant / avoir.
 const MOIS_COURTS = ["janv", "fevr", "mars", "avr", "mai", "juin", "juil", "aout", "sept", "oct", "nov", "dec"];
@@ -133,7 +156,10 @@ function chercher(options: Option[], q: string, max = Infinity): Option[] {
 }
 // 14/10/2026 — multi : cases à cocher, la liste reste ouverte (plusieurs articles sans retaper)
 // et « Tout cocher » pour prendre tous les résultats d'un coup.
-function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, autoFocus, extra, multi, estChoisi }: { options: Option[]; placeholder: string; onChoisir: (o: Option) => void; c: Couleurs; grand?: boolean; autoFocus?: boolean; extra?: (q: string) => Option[]; multi?: boolean; estChoisi?: (o: Option) => boolean }) {
+// 14/10/2026 — onCocher : case à cocher à part (sélection), le nom garde son action (ouvrir) ;
+// actionSelection : bouton en bas de la liste quand quelque chose est coché.
+const TYPES_COCHABLES = ["article", "famille", "client", "fournisseur"];
+function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, autoFocus, extra, multi, estChoisi, onCocher, actionSelection }: { options: Option[]; placeholder: string; onChoisir: (o: Option) => void; c: Couleurs; grand?: boolean; autoFocus?: boolean; extra?: (q: string) => Option[]; multi?: boolean; estChoisi?: (o: Option) => boolean; onCocher?: (o: Option) => void; actionSelection?: { libelle: string; onClick: () => void } | null }) {
   const [q, setQ] = useState("");
   const [actif, setActif] = useState(0);
   const [ouvert, setOuvert] = useState(false);
@@ -171,22 +197,31 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
               })}
             </div>
           )}
-          {resultats.length > 0 && <div style={{ padding: "6px 14px", fontSize: 11.5, fontWeight: 800, color: c.gris, borderBottom: `1px solid ${c.bord}` }}>{resultats.length} résultat{resultats.length > 1 ? "s" : ""}{multi && estChoisi ? ` · ${resultats.filter(o => estChoisi(o)).length} compris dans le calcul` : ""}</div>}
+          {resultats.length > 0 && <div style={{ padding: "6px 14px", fontSize: 11.5, fontWeight: 800, color: c.gris, borderBottom: `1px solid ${c.bord}` }}>{resultats.length} résultat{resultats.length > 1 ? "s" : ""}{multi && estChoisi ? ` · ${resultats.filter(o => estChoisi(o)).length} compris dans le calcul` : ""}{!multi && onCocher ? " · ☐ coche pour sélectionner plusieurs, touche le nom pour ouvrir" : ""}</div>}
           {!resultats.length && <div style={{ padding: "10px 14px", fontSize: 13, color: c.gris }}>Aucun résultat pour « {q} »</div>}
           {/* 14/10/2026 — Lignes « Tout cocher » retirées (demande d'Elinathan) : les filtres par type suffisent. */}
           {resultats.map((o, i) => (
             <button key={o.type + o.valeur} type="button" onMouseDown={e => { e.preventDefault(); choisir(o); }} onMouseEnter={() => setActif(i)}
-              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", borderLeft: multi && estChoisi?.(o) ? "4px solid #16a34a" : "4px solid transparent",
-                background: multi && estChoisi?.(o) ? (c.sombre ? "#173a24" : "#dcfce7") : i === actif ? (c.sombre ? "#1d2e2b" : "#eaf2ee") : "transparent", color: c.texte, cursor: "pointer", fontSize: 14 }}>
+              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", borderLeft: (multi || onCocher) && estChoisi?.(o) ? "4px solid #16a34a" : "4px solid transparent",
+                background: (multi || onCocher) && estChoisi?.(o) ? (c.sombre ? "#173a24" : "#dcfce7") : i === actif ? (c.sombre ? "#1d2e2b" : "#eaf2ee") : "transparent", color: c.texte, cursor: "pointer", fontSize: 14 }}>
               {multi && <span style={{ fontSize: 17, color: estChoisi?.(o) ? c.vert : c.gris, width: 18 }}>{estChoisi?.(o) ? "☑" : "☐"}</span>}
-              <span style={{ fontSize: 16 }}>{ICONES[o.type] || "•"}</span>
+              {!multi && onCocher && (TYPES_COCHABLES.includes(o.type)
+                ? <span role="checkbox" aria-checked={!!estChoisi?.(o)} title="Ajouter à la sélection" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onCocher(o); }}
+                    style={{ fontSize: 19, color: estChoisi?.(o) ? c.vert : c.gris, width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 6, cursor: "pointer" }}>{estChoisi?.(o) ? "☑" : "☐"}</span>
+                : <span style={{ width: 26 }} />)}
+              <span style={{ fontSize: 16 }}>{iconeOption(o)}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: "block", fontWeight: 700 }}>{o.valeur}</span>
                 {o.detail && <span style={{ display: "block", fontSize: 11.5, color: c.gris }}>{o.detail}</span>}
               </span>
-              {multi && estChoisi?.(o) && <span style={{ fontSize: 11.5, fontWeight: 900, color: "#15803d", whiteSpace: "nowrap" }}>✓ compris dans le calcul</span>}
+              {(multi || onCocher) && estChoisi?.(o) && <span style={{ fontSize: 11.5, fontWeight: 900, color: "#15803d", whiteSpace: "nowrap" }}>✓ {multi ? "compris dans le calcul" : "sélectionné"}</span>}
             </button>
           ))}
+          {!multi && actionSelection && (
+            <div style={{ position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "8px 12px", background: c.carte, borderTop: `1px solid ${c.bord}` }}>
+              <button type="button" onMouseDown={e => { e.preventDefault(); setQ(""); setOuvert(false); actionSelection.onClick(); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontWeight: 800, cursor: "pointer" }}>{actionSelection.libelle}</button>
+            </div>
+          )}
           {multi && resultats.length > 0 && (
             <div style={{ position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "8px 12px", background: c.carte, borderTop: `1px solid ${c.bord}` }}>
               <button type="button" onMouseDown={e => { e.preventDefault(); setQ(""); setOuvert(false); }} style={{ padding: "7px 16px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontWeight: 800, cursor: "pointer" }}>✓ Terminé</button>
@@ -327,6 +362,15 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
     return `Base des ventes : du ${dateFr(min)} au ${dateFr(max)}`;
   }, [ventes]);
   const maxBase = useMemo(() => (ventes || []).reduce((m, l) => (l.d > m ? l.d : m), ""), [ventes]);
+  // 14/10/2026 — Sélection multiple depuis la recherche de l'accueil → Ventes de produits.
+  const [selection, setSelection] = useState<Option[]>([]);
+  const cleOpt = (o: Option) => o.type + "\u0001" + o.valeur;
+  const cocher = (o: Option) => setSelection(l => l.some(x => cleOpt(x) === cleOpt(o)) ? l.filter(x => cleOpt(x) !== cleOpt(o)) : [...l, o]);
+  const ouvrirSelection = () => {
+    const de = (t: string) => selection.filter(o => o.type === t).map(o => o.valeur);
+    setPreset({ rapport: { id: `selection-${Date.now()}`, nom: "Sélection", auteurEmail: "", creeLe: 0, partage: "moi", config: { periode: { type: "glissant", cle: "tout" }, articles: de("article"), familles: de("famille"), clients: de("client"), fournisseurs: de("fournisseur"), compte: "tous", vue: "article" } } });
+    setOnglet("produits"); setSelection([]);
+  };
   const retour = () => { setOnglet(null); setPreset({}); };
   const chargement = <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: c.gris }}>Chargement…</div>;
   if (onglet === "analyse" && voirMarge) return <Suspense fallback={chargement}><StatsAchatsModule onClose={retour} userName={userName} /></Suspense>;
@@ -375,7 +419,15 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
                   <p style={{ margin: 0, fontSize: 13, fontWeight: 700, opacity: 0.85 }}>{salutation()}{userName ? ` ${String(userName).split(" ")[0]}` : ""} 👋</p>
                   <p style={{ margin: "2px 0 14px", fontSize: 22, fontWeight: 900, letterSpacing: "-.01em" }}>Qu'est-ce que tu cherches aujourd'hui ?</p>
                   <RechercheIntelligente options={optionsGlobales} c={c} grand autoFocus onChoisir={ouvrir} extra={q => resultatsSpeciaux(q, maxBase)}
+                    onCocher={cocher} estChoisi={o => selection.some(x => cleOpt(x) === cleOpt(o))}
+                    actionSelection={selection.length ? { libelle: `📈 Voir les ventes de la sélection (${selection.length})`, onClick: ouvrirSelection } : null}
                     placeholder={ventes === null ? "Chargement de la base…" : "🔍 Un client, un fournisseur, un article, une famille, une date (15/09), une semaine (S42), « refus »…"} />
+                  {selection.length > 0 && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+                      {selection.map(o => <span key={cleOpt(o)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 4px 4px 10px", borderRadius: 999, background: "rgba(255,255,255,.18)", fontSize: 12.5, fontWeight: 800 }}>{iconeOption(o)} {o.valeur}<button type="button" onClick={() => cocher(o)} style={{ border: "none", background: "rgba(255,255,255,.25)", color: "#fff", borderRadius: 999, width: 20, height: 20, cursor: "pointer", fontWeight: 900 }}>×</button></span>)}
+                      <button type="button" onClick={ouvrirSelection} style={{ padding: "6px 14px", borderRadius: 999, border: "none", background: "#fff", color: "#1f4440", fontWeight: 900, cursor: "pointer" }}>📈 Voir les ventes ({selection.length})</button>
+                    </div>
+                  )}
                   <p style={{ margin: "8px 2px 0", fontSize: 12, opacity: 0.8 }}>
                     {ventes === null ? "Chargement des ventes et des arrivages…" : `${periodeBase}${periodeBase ? " · " : ""}${ent(index.clients.size)} clients · ${ent(index.fourn.size)} fournisseurs · ${ent(index.arts.size)} articles`}
                   </p>
@@ -685,8 +737,8 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
         </div>
         {!rienChoisi && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-            {familles.map(x => <Choisi key={"f" + x} libelle={`🗂️ ${x}`} onRetirer={() => setFamilles(familles.filter(y => y !== x))} c={c} />)}
-            {articles.map(x => <Choisi key={"a" + x} libelle={`🥬 ${x}`} onRetirer={() => setArticles(articles.filter(y => y !== x))} c={c} />)}
+            {familles.map(x => <Choisi key={"f" + x} libelle={`${emojiProduit(x)} ${x} (famille)`} onRetirer={() => setFamilles(familles.filter(y => y !== x))} c={c} />)}
+            {articles.map(x => <Choisi key={"a" + x} libelle={`${emojiProduit(x)} ${x}`} onRetirer={() => setArticles(articles.filter(y => y !== x))} c={c} />)}
             {clients.map(x => <Choisi key={"c" + x} libelle={`👤 ${x}`} onRetirer={() => setClients(clients.filter(y => y !== x))} c={c} />)}
             {fournisseurs.map(x => <Choisi key={"o" + x} libelle={`🏭 ${x}`} onRetirer={() => setFournisseurs(fournisseurs.filter(y => y !== x))} c={c} />)}
             <button type="button" onClick={() => { setArticles([]); setFamilles([]); setClients([]); setFournisseurs([]); setCompte("tous"); }} style={{ ...puce(c, false), padding: "5px 10px" }}>Tout effacer</button>
