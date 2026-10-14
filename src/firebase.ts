@@ -53,9 +53,10 @@ export async function recopierPhotoImgBB(url: string): Promise<string> {
   for (let essai = 0; essai < 3; essai++) {
     try {
       const rep = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
-      if (!rep.ok) throw new Error(`HTTP ${rep.status}`);
+      if (!rep.ok) throw new Error(`Serveur ${rep.status} : ${(await rep.text().catch(() => "")).slice(0, 80)}`);
       const blob = await rep.blob();
-      if (!blob.type.startsWith("image/") || blob.size < 2000) throw new Error("Pas une photo");
+      if (!blob.type.startsWith("image/")) throw new Error(`Pas une image (${blob.type || "type inconnu"})`);
+      if (blob.size < 2000) throw new Error(`Image vide ou supprimée (${blob.size} octets)`);
       const nom = `rapports/imgbb/${url.split("/").slice(-2).join("-").replace(/[^A-Za-z0-9._-]/g, "_")}`;
       const r = refStockage(stockage, nom);
       await uploadBytes(r, blob, { contentType: blob.type });

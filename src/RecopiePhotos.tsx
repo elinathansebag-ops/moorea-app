@@ -12,10 +12,12 @@ export default function RecopiePhotos() {
   const [etat, setEtat] = useState<{ total: number; faites: number; echecs: number; rapports: number } | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [fini, setFini] = useState("");
+  const [erreurs, setErreurs] = useState<{ url: string; raison: string; rapport: string }[]>([]);
   const stop = useRef(false);
 
   async function lancer() {
-    setEnCours(true); setFini(""); stop.current = false;
+    setEnCours(true); setFini(""); setErreurs([]); stop.current = false;
+    const errs: { url: string; raison: string; rapport: string }[] = [];
     const tous = Object.entries((await get(ref(db, "rapports"))).val() || {}) as [string, any][];
     const aFaire = tous.filter(([, r]) => (r?.photoUrls || []).some(estImgBB) || (r?.produitsGroupe || []).some((p: any) => (p?.photoUrls || []).some(estImgBB)));
     const urls = new Set<string>();
@@ -32,7 +34,7 @@ export default function RecopiePhotos() {
         await Promise.all(siennes.slice(i, i + 4).map(async u => {
           if (nouvelles.has(u)) return;
           try { nouvelles.set(u, await recopierPhotoImgBB(u)); st.faites++; }
-          catch { st.echecs++; }
+          catch (e: any) { st.echecs++; errs.push({ url: u, raison: e?.message || String(e), rapport: [r.numeroRapport, r.produit, r.date].filter(Boolean).join(" · ") }); setErreurs([...errs]); }
           setEtat({ ...st });
         }));
       }
@@ -62,6 +64,19 @@ export default function RecopiePhotos() {
         </div>
       )}
       {fini && <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{fini}</div>}
+      {!enCours && erreurs.length > 0 && (
+        <details style={{ marginBottom: 10, fontSize: 12 }} open>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Détail des échecs ({erreurs.length})</summary>
+          <div style={{ maxHeight: 260, overflowY: "auto", marginTop: 6, display: "grid", gap: 4 }}>
+            {erreurs.map((e, i) => (
+              <div key={i} style={{ background: "#fef2f2", borderRadius: 6, padding: "5px 8px" }}>
+                <b>{e.raison}</b> — {e.rapport || "rapport sans numéro"}<br />
+                <a href={e.url} target="_blank" rel="noreferrer" style={{ color: "#2563eb", wordBreak: "break-all" }}>{e.url}</a>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" disabled={enCours} onClick={lancer} style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: enCours ? "#d1d5db" : "#16a34a", color: "#fff", fontWeight: 800, cursor: enCours ? "wait" : "pointer" }}>
           {enCours ? "⏳ Recopie en cours… (laisse cette page ouverte)" : "📷 Recopier les anciennes photos vers Firebase"}

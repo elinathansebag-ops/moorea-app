@@ -37,7 +37,7 @@ export default async function handler(req: Request) {
     } finally {
       clearTimeout(delai);
     }
-    if (!resp.ok) return new Response('Erreur récupération image', { status: 502, headers: corsHeaders });
+    if (!resp.ok) return new Response(`ImgBB a répondu ${resp.status}`, { status: 502, headers: corsHeaders });
     const buf = await resp.arrayBuffer();
     return new Response(buf, {
       status: 200,
