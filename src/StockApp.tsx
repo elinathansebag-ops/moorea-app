@@ -137,9 +137,11 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
 #stock-root .team-card h2{font-size:17px;font-weight:700;margin-bottom:4px}
 #stock-root .team-card.gms h2{color:#92710a}
 #stock-root .team-card.prestige h2{color:#0ea5e9}
-#stock-root .stock-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e8e0d0;flex-wrap:wrap;gap:8px}
+#stock-root .stock-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e8e0d0;flex-wrap:wrap;gap:8px 14px}
+#stock-root .stock-puce{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
+#stock-root .stock-ifco{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font-size:11.5px;font-weight:700;padding:5px 10px;border-radius:9px;border:1px solid}
 #stock-root .stock-item:last-child{border-bottom:none}
-#stock-root .stock-actions{display:flex;gap:6px}
+#stock-root .stock-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 #stock-root .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;align-items:center;justify-content:center;padding:1rem}
 #stock-root .modal-bg.open{display:flex}
 #stock-root .modal-box{background:#fff;border-radius:20px;padding:2rem;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
@@ -877,6 +879,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       // vides d'un stock. On applique l'écart constaté au comptage au stock IFCO actuel de l'appli
       // (pas le chiffre compté tel quel : les mouvements faits depuis le comptage restent comptés),
       // avec un mouvement « Régularisation inventaire » dans l'historique IFCO.
+      let dernierIfcoRegulariseId = ""; // 15/10/2026 — mis à jour à chaque affichage de la liste
       (window as any).sRegulariserIfco = async (sid: string) => {
         if (!isAdmin) return;
         try {
@@ -884,6 +887,8 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const iv = (snap.data() as any)?.ifcoVides;
           if (!iv || iv.ecart == null || iv.ecart === 0) { toast("Aucun écart IFCO à régulariser"); return; }
           if (iv.regularise) { toast("Écart déjà régularisé"); return; }
+          // 15/10/2026 — Un comptage plus récent a déjà été régularisé : celui-ci est dépassé.
+          if (dernierIfcoRegulariseId && sid < dernierIfcoRegulariseId) { toast("Un comptage IFCO plus récent a déjà été régularisé"); renderStockList(); return; }
           const actuel = (await get(ref(rtdb, "ifco_stock/levels/moorea"))).val();
           const avant = typeof actuel === "number" ? actuel : 0;
           const apres = avant + iv.ecart;
@@ -1368,6 +1373,25 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           };
           // 14/10/2026 — nom affiché (créé / clôturé / rouvert par), échappé car injecté en HTML.
           const echapPar = (t: any) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          // 15/10/2026 — Demande d'Elinathan : une fois un comptage IFCO régularisé, ne plus proposer
+          // de régulariser avec un comptage plus ancien (il est dépassé).
+          dernierIfcoRegulariseId = stocks.filter(x => x.ifcoVides?.regularise).map(x => x.id).sort().pop() || "";
+          const blocIfco = (s: any, sid: string) => {
+            const iv = s.ifcoVides;
+            if (!iv) return `<button class="btn btn-sm" style="margin-top:6px;border-color:#bfdbfe;color:#1d4ed8" onclick="sSaisirIfco('${sid}','${String(s.filename || "").replace(/'/g, "\\'")}')">📦 Saisir caisses IFCO vides</button>`;
+            const ecartTxt = iv.ecart != null ? `appli ${iv.stockAppli} · écart ${iv.ecart > 0 ? "+" : ""}${iv.ecart}` : "";
+            const depasse = !iv.regularise && dernierIfcoRegulariseId && s.id < dernierIfcoRegulariseId;
+            const ok = iv.ecart === 0 || !!iv.regularise;
+            const [fond, bord, coul] = ok ? ["#f0fdf4", "#bbf7d0", "#15803d"] : depasse ? ["#f9fafb", "#e5e7eb", "#9ca3af"] : ["#fffbeb", "#fde68a", "#b45309"];
+            return `<div class="stock-ifco" style="background:${fond};border-color:${bord};color:${coul}">
+              <span style="color:#1d4ed8">📦 IFCO vides : ${iv.caisses}</span>
+              ${ecartTxt ? `<span>(${ecartTxt})</span>` : ""}
+              ${iv.regularise
+                ? `<span>✓ régularisé ${iv.regularise.avant} → ${iv.regularise.apres} · ${echapPar(iv.regularise.par || "?")} · ${echapPar(String(iv.regularise.dateLabel || "").slice(0, 16))}</span>`
+                : depasse ? `<span style="font-weight:600">· dépassé (un comptage plus récent a été régularisé)</span>`
+                : (isAdmin && iv.ecart != null && iv.ecart !== 0 ? `<button class="btn btn-sm" style="padding:2px 8px;font-size:11px;border-color:#b45309;color:#b45309;background:#fff" onclick="sRegulariserIfco('${sid}')">⚖️ Régulariser</button>` : "")}
+            </div>`;
+          };
           const makeItem = (s: any, team: string) => {
             const c = comptages[s.id + "_" + team];
             const done = c && c.data ? Object.keys(c.data).length : 0;
@@ -1376,31 +1400,30 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             const color = team === "GMS" ? "#92710a" : "#0ea5e9";
             const teamLabel = team === "GMS" ? "🌿 GMS" : "✨ Prestige";
             const sid = s.id.replace(/'/g, "\\'");
+            // 15/10/2026 — Ligne rangée : statut (clôturé, durée) en pastilles à côté de la date,
+            // avancement sur une ligne, IFCO dans un encadré, boutons d'action seulement à droite.
+            const noms = compteursDe(Object.values(c?.data || {}).map((d: any) => (d && typeof d === "object" ? d._par || "" : "")));
             return `<div class="stock-item">
-              <div style="flex:1">
-                <div style="font-size:13px;font-weight:700">📅 ${s.dateLabel} <span style="font-size:10px;font-weight:700;color:${color};background:${color}18;padding:2px 7px;border-radius:20px;margin-left:6px">${teamLabel}</span></div>
-                <div style="font-size:12px;color:#6b7280;margin-top:2px">${s.filename} · ${total} articles${s.creePar ? ` <span style="font-size:11px;color:#9ca3af">· créé par ${echapPar(s.creePar)}</span>` : ""}</div>
-                ${s.cloture && (s.cloturePar || s.clotureDate) ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">✓ Clôturé${s.cloturePar ? " · " + echapPar(s.cloturePar) : ""}${s.clotureDate ? " · " + echapPar(String(s.clotureDate).slice(0, 16)) : ""}</div>` : ""}
-                ${!s.cloture && s.rouvertPar ? `<div style="font-size:11px;color:#9ca3af;margin-top:2px">🔓 Rouvert · ${echapPar(s.rouvertPar)}${s.rouvertLe ? " · " + echapPar(String(s.rouvertLe).slice(0, 16)) : ""}</div>` : ""}
-                <div style="margin-top:6px;height:5px;background:#e8e0d0;border-radius:3px;overflow:hidden;max-width:180px">
-                  <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
+              <div style="flex:1;min-width:260px">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="font-size:13.5px;font-weight:800">📅 ${s.dateLabel}</span>
+                  <span class="stock-puce" style="color:${color};background:${color}18">${teamLabel}</span>
+                  ${s.cloture ? `<span class="stock-puce" style="color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0">✓ Clôturé${s.clotureDate ? " · " + echapPar(String(s.clotureDate).slice(0, 16)) : ""}</span>` : (s.rouvertPar ? `<span class="stock-puce" style="color:#b45309;background:#fffbeb;border:1px solid #fde68a">🔓 Rouvert · ${echapPar(s.rouvertPar)}</span>` : `<span class="stock-puce" style="color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe">En cours</span>`)}
+                  ${s.dureeComptageMs ? `<span class="stock-puce" style="color:#8a6f2e;background:#faf8f3;border:1px solid #e8e0d0">⏱ ${formatDuree(s.dureeComptageMs)}</span>` : ""}
                 </div>
-                <div style="font-size:11px;color:#6b7280;margin-top:3px">${done}/${total} · ${pct}%</div>
-                ${(() => { const noms = compteursDe(Object.values(c?.data || {}).map((d: any) => (d && typeof d === "object" ? d._par || "" : ""))); return noms.length ? `<div style="font-size:11px;margin-top:3px;color:#6d28d9;font-weight:700">${noms.length === 1 ? "👤 Compté par " + noms[0] : "👥 Compté par " + noms.join(", ")}</div>` : ""; })()}
-                ${s.ifcoVides
-                  ? `<div style="font-size:11px;margin-top:4px;color:#1d4ed8;font-weight:700">📦 IFCO vides : ${s.ifcoVides.caisses}${s.ifcoVides.ecart != null ? ` <span style="color:${s.ifcoVides.ecart === 0 || s.ifcoVides.regularise ? "#15803d" : "#b45309"}">(appli ${s.ifcoVides.stockAppli} · écart ${s.ifcoVides.ecart > 0 ? "+" : ""}${s.ifcoVides.ecart})</span>` : ""}
-                      ${s.ifcoVides.regularise
-                        ? `<span style="color:#15803d;font-weight:600"> · ✓ régularisé (${s.ifcoVides.regularise.avant} → ${s.ifcoVides.regularise.apres}) par ${s.ifcoVides.regularise.par || "?"} le ${s.ifcoVides.regularise.dateLabel || ""}</span>`
-                        : (isAdmin && s.ifcoVides.ecart != null && s.ifcoVides.ecart !== 0 ? ` <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:11px;border-color:#b45309;color:#b45309" onclick="sRegulariserIfco('${sid}')">⚖️ Régulariser</button>` : "")}</div>`
-                  : `<button class="btn btn-sm" style="margin-top:4px;border-color:#bfdbfe;color:#1d4ed8" onclick="sSaisirIfco('${sid}','${String(s.filename || "").replace(/'/g, "\\'")}')">📦 Saisir caisses IFCO vides</button>`}
+                <div style="font-size:11.5px;color:#9ca3af;margin-top:3px">${s.filename} · ${total} articles${s.creePar ? ` · créé par ${echapPar(s.creePar)}` : ""}${s.cloture && s.cloturePar ? ` · clôturé par ${echapPar(s.cloturePar)}` : ""}</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+                  <div style="width:160px;height:6px;background:#e8e0d0;border-radius:3px;overflow:hidden"><div style="height:100%;width:${Math.min(pct, 100)}%;background:${color};border-radius:3px"></div></div>
+                  <span style="font-size:11.5px;color:#4b5563;font-weight:700">${done}/${total} · ${pct}%</span>
+                  ${noms.length ? `<span style="font-size:11.5px;color:#6d28d9;font-weight:700">${noms.length === 1 ? "👤 " + noms[0] : "👥 " + noms.join(", ")}</span>` : ""}
+                </div>
+                ${blocIfco(s, sid)}
               </div>
               <div class="stock-actions">
                 <button class="btn btn-sm" style="border-color:#bfdbfe;color:#1d4ed8" onclick="sConsulter('${sid}','${team}')">🔍 Consulter</button>
                 ${s.cloture ? "" : (canCompter ? `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>` : `<span style="font-size:11px;background:#f5f6f8;border:1px solid #e5e7eb;color:#9ca3af;padding:4px 10px;border-radius:8px;font-weight:600">🔒 Lecture seule</span>`)}
                 ${s.cloture
-                  ? `<span style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:4px 10px;border-radius:8px;font-weight:600">✓ Clôturé</span>
-                     ${s.dureeComptageMs ? `<span style="font-size:11px;background:#faf8f3;border:1px solid #e8e0d0;color:#8a6f2e;padding:4px 10px;border-radius:8px;font-weight:600">⏱ ${formatDuree(s.dureeComptageMs)}</span>` : ""}
-                     <button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>
+                  ? `<button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>
                      <button class="btn btn-sm" style="border-color:#c8a84b;color:#8a6f2e" onclick="sEnvoyerStockJordan('${sid}','${team}')">📧 Envoyer</button>
                      <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}','${team}')">🔓 Rouvrir</button>`
                   : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>
