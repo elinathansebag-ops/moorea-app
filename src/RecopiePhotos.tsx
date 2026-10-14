@@ -14,6 +14,35 @@ export default function RecopiePhotos() {
   const [fini, setFini] = useState("");
   const [erreurs, setErreurs] = useState<{ url: string; raison: string; rapport: string }[]>([]);
   const stop = useRef(false);
+  const [retrait, setRetrait] = useState("");
+
+  // 14/10/2026 — Photos supprimées chez ImgBB (403 / 404, vérifié une par une) : retirées
+  // définitivement des rapports, pour ne plus afficher de cases vides. Rien d'autre n'est touché.
+  async function retirerSupprimees() {
+    setRetrait("⏳ Vérification des photos une par une…");
+    const mortes = new Set<string>();
+    for (const e of erreurs) {
+      try {
+        const rep = await fetch(`/api/fetch-image?url=${encodeURIComponent(e.url)}`);
+        const txt = rep.ok ? "" : await rep.text();
+        if (/ImgBB a répondu 40[34]/.test(txt)) mortes.add(e.url);
+      } catch { /* dans le doute, on garde */ }
+    }
+    const tous = Object.entries((await get(ref(db, "rapports"))).val() || {}) as [string, any][];
+    let n = 0;
+    for (const [cle, r] of tous) {
+      const garde = (l: any[]) => (l || []).filter(u => !mortes.has(u));
+      const avant = (r?.photoUrls || []).length + (r?.produitsGroupe || []).reduce((t: number, p: any) => t + (p?.photoUrls || []).length, 0);
+      const photoUrls = garde(r?.photoUrls);
+      const produitsGroupe = Array.isArray(r?.produitsGroupe) ? r.produitsGroupe.map((p: any) => ({ ...p, ...(p?.photoUrls ? { photoUrls: garde(p.photoUrls) } : {}) })) : null;
+      const apres = photoUrls.length + (produitsGroupe || []).reduce((t: number, p: any) => t + (p?.photoUrls || []).length, 0);
+      if (apres === avant) continue;
+      await update(ref(db, `rapports/${cle}`), { photoUrls, nbPhotos: photoUrls.length, ...(produitsGroupe ? { produitsGroupe } : {}) });
+      n++;
+    }
+    setErreurs(erreurs.filter(e => !mortes.has(e.url)));
+    setRetrait(`🗑 ${mortes.size} photo(s) supprimée(s) chez ImgBB retirée(s) de ${n} rapport(s).`);
+  }
 
   async function lancer() {
     setEnCours(true); setFini(""); setErreurs([]); stop.current = false;
@@ -75,8 +104,13 @@ export default function RecopiePhotos() {
               </div>
             ))}
           </div>
+          <button type="button" onClick={() => { if (confirm(`Retirer définitivement des rapports les photos supprimées chez ImgBB ?\nChacune est revérifiée avant ; les autres ne sont pas touchées.`)) retirerSupprimees(); }}
+            style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, border: "1.5px solid #fca5a5", background: "#fff", color: "#dc2626", fontWeight: 800, cursor: "pointer" }}>
+            🗑 Retirer définitivement les photos supprimées chez ImgBB
+          </button>
         </details>
       )}
+      {retrait && <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{retrait}</div>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" disabled={enCours} onClick={lancer} style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: enCours ? "#d1d5db" : "#16a34a", color: "#fff", fontWeight: 800, cursor: enCours ? "wait" : "pointer" }}>
           {enCours ? "⏳ Recopie en cours… (laisse cette page ouverte)" : "📷 Recopier les anciennes photos vers Firebase"}
