@@ -151,6 +151,12 @@ export function AReconditionnerAujourdhui({ demandes }: { demandes: Demande[] })
     setOuvert(o => { try { localStorage.setItem("recond_aide_ouvert", o ? "0" : "1"); } catch { /* sans stockage local */ } return !o; });
   };
   const [voirAutres, setVoirAutres] = useState(false);
+  // 15/10/2026 — Nouvelle présentation en cartes ; l'ancien tableau reste disponible (bascule).
+  const [vue, setVue] = useState<"cartes" | "tableau">(() => {
+    try { return localStorage.getItem("recond_aide_vue") === "tableau" ? "tableau" : "cartes"; } catch { return "cartes"; }
+  });
+  const changerVue = (v: "cartes" | "tableau") => { setVue(v); try { localStorage.setItem("recond_aide_vue", v); } catch { /* sans stockage local */ } };
+  const [voirCalcul, setVoirCalcul] = useState(false);
   const [rechargement, setRechargement] = useState(0);
 
   // Dates de référence (heure locale).
@@ -295,12 +301,48 @@ export function AReconditionnerAujourdhui({ demandes }: { demandes: Demande[] })
     </tr>
   );
 
+  // 15/10/2026 — Carte d'un article à reconditionner : le chiffre à faire en grand, le détail du
+  // calcul en petites cases alignées dessous.
+  const caseCalc = (lib: string, val: string, couleur = COUL.gris700) => (
+    <div style={{ flex: 1, minWidth: 0, background: "#f9fafb", border: `1px solid ${COUL.gris200}`, borderRadius: 8, padding: "4px 6px", textAlign: "center" }}>
+      <div style={{ fontSize: 9.5, fontWeight: 700, color: COUL.gris400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lib}</div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: couleur }}>{val}</div>
+    </div>
+  );
+  const rendreCarte = (l: LigneAide) => (
+    <div key={l.cle} style={{ background: "#fff", border: `1.5px solid ${COUL.gris200}`, borderLeft: `4px solid ${COUL.vert}`, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: COUL.gris700, lineHeight: 1.25 }}>{l.articleFini}</div>
+          {l.articleVrac && <div style={{ fontSize: 10.5, color: COUL.gris400, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.articleVrac}>vrac : {l.articleVrac}</div>}
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontSize: 22, fontWeight: 900, color: COUL.vert, lineHeight: 1 }}>{l.aRecond}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: COUL.gris600 }}>colis finis</div>
+          {l.vrac != null && <div style={{ fontSize: 10.5, fontWeight: 700, color: "#7c3aed", marginTop: 2, whiteSpace: "nowrap" }}>≈ {l.vrac} colis vrac</div>}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 5 }}>
+        {caseCalc(`Besoin ${jjmm(j1)}`, fmt(l.besoinJ1))}
+        {caseCalc(`½ ${jjmm(j2)}`, fmt(l.besoinJ2 / 2))}
+        {caseCalc("Stock", l.stock ? `− ${fmt(l.stock)}` : "0", l.stock ? COUL.rouge : COUL.gris400)}
+        {caseCalc("En cours", l.enCours ? `− ${fmt(l.enCours)}` : "0", l.enCours ? COUL.rouge : COUL.gris400)}
+      </div>
+      {(!l.nomVentes || l.nomVentes.mode === "approche") && (
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: !l.nomVentes ? COUL.rouge : "#b45309" }}
+          title={l.nomVentes?.autres.length ? "Autres noms proches : " + l.nomVentes.autres.join(" · ") : undefined}>
+          {!l.nomVentes ? "⚠️ pas trouvé dans les ventes" : `≈ ventes de « ${l.nomVentes.nom} » — à vérifier`}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ background: "#fff", border: `1.5px solid ${COUL.bord}`, borderRadius: 12, marginBottom: 12, overflow: "hidden" }}>
       <div onClick={basculer} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "12px 16px", cursor: "pointer", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 14, fontWeight: 800, color: COUL.gris700 }}>🔄 À reconditionner aujourd'hui</span>
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: COUL.gris600, background: "#f3f4f6", borderRadius: 20, padding: "2px 8px" }}>aide · lecture seule</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: COUL.gris400 }}>pour le {libJour(j1)}</span>
           {charge && (
             <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "2px 9px", color: aFaire.length ? "#166534" : COUL.gris600, background: aFaire.length ? COUL.vertClair : "#f3f4f6" }}>
               {aFaire.length ? `${aFaire.length} article${aFaire.length > 1 ? "s" : ""} à reconditionner` : "rien à reconditionner"}
@@ -308,23 +350,44 @@ export function AReconditionnerAujourdhui({ demandes }: { demandes: Demande[] })
           )}
           {!charge && <span style={{ fontSize: 11, color: COUL.gris400 }}>⏳ chargement…</span>}
         </div>
-        <span style={{ fontSize: 12, color: COUL.gris400 }}>{ouvert ? "▲ Replier" : "▼ Afficher"}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {ouvert && (
+            <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              <span style={{ display: "inline-flex", border: `1px solid ${COUL.gris200}`, borderRadius: 8, overflow: "hidden" }}>
+                {(["cartes", "tableau"] as const).map(v => (
+                  <button key={v} type="button" onClick={() => changerVue(v)}
+                    style={{ padding: "4px 10px", border: "none", background: vue === v ? COUL.gris700 : "#fff", color: vue === v ? "#fff" : COUL.gris600, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    {v === "cartes" ? "▦ Cartes" : "☰ Tableau"}
+                  </button>
+                ))}
+              </span>
+              <button type="button" onClick={() => setVoirCalcul(v => !v)} title="Comment c'est calculé"
+                style={{ padding: "4px 9px", borderRadius: 8, border: `1px solid ${COUL.gris200}`, background: voirCalcul ? "#f3f4f6" : "#fff", color: COUL.gris600, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>ℹ️ Calcul</button>
+              <button type="button" onClick={() => setRechargement(n => n + 1)} title="Relire les ventes et le stock"
+                style={{ padding: "4px 9px", borderRadius: 8, border: `1px solid ${COUL.gris200}`, background: "#fff", color: COUL.gris600, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>↻</button>
+            </span>
+          )}
+          <span style={{ fontSize: 14, color: COUL.gris400, transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .2s", display: "inline-block", padding: "0 4px" }}>›</span>
+        </div>
       </div>
 
       {ouvert && (
         <div style={{ padding: "0 16px 14px" }}>
-          <div style={{ fontSize: 11.5, color: COUL.gris600, background: "#faf8f3", border: `1px solid ${COUL.bord}`, borderRadius: 8, padding: "8px 10px", marginBottom: 8, lineHeight: 1.5 }}>
+          {voirCalcul && <div style={{ fontSize: 11.5, color: COUL.gris600, background: "#faf8f3", border: `1px solid ${COUL.bord}`, borderRadius: 8, padding: "8px 10px", marginBottom: 8, lineHeight: 1.5 }}>
             <div>📅 Besoin du <b>{libJour(j1)}</b> = ventes du <b>{libJour(ref1)}</b> · besoin du <b>{libJour(j2)}</b> = ventes du <b>{libJour(ref2)}</b> · ventes de la veille = <b>{libJour(veille)}</b></div>
             <div style={{ marginTop: 3 }}>
               Un reconditionnement lancé aujourd'hui sert les ventes de demain et la moitié de celles d'après-demain (cette moitié sert de marge).
               {" "}<b>À reconditionner = besoin J+1 + ½ besoin J+2 − stock compté − déjà en cours</b>, arrondi au colis supérieur (minimum 0).
               {" "}Stock compté = dernier comptage du module Stock (GMS + Prestige) ; déjà en cours = demandes chez NLT / Andès pas encore reçues.
             </div>
-          </div>
+            <div style={{ marginTop: 3, color: COUL.gris400 }}>
+              Noms rapprochés avec les ventes et le stock par comparaison (exacte, sinon « contient ») : « ≈ » = rapprochement à vérifier. Colis vrac = colis finis × ratio moyen des demandes passées.
+            </div>
+          </div>}
 
           {manquants.length > 0 && (
-            <div style={{ fontSize: 11.5, color: "#92400e", background: COUL.ambreClair, border: `1px solid ${COUL.ambre}`, borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
-              {manquants.map(m => <div key={m}>⚠️ {m}</div>)}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {manquants.map(m => <span key={m} style={{ fontSize: 11, color: "#92400e", background: COUL.ambreClair, border: `1px solid ${COUL.ambre}`, borderRadius: 8, padding: "3px 8px" }}>⚠️ {m}</span>)}
             </div>
           )}
           {erreurVentes && <div style={{ fontSize: 11.5, color: COUL.rouge, marginBottom: 6 }}>⚠️ Ventes 📊 Stats illisibles ({erreurVentes}) — besoins comptés comme 0.</div>}
@@ -335,6 +398,33 @@ export function AReconditionnerAujourdhui({ demandes }: { demandes: Demande[] })
             <div style={{ fontSize: 12, color: COUL.gris400, padding: "8px 0" }}>⏳ Lecture des ventes et du dernier comptage…</div>
           ) : !lignes.length ? (
             <div style={{ fontSize: 12, color: COUL.gris400, padding: "8px 0" }}>Aucun article fini dans les demandes de reconditionnement passées.</div>
+          ) : vue === "cartes" ? (
+            <>
+              {aFaire.length > 0 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(270px, 100%), 1fr))", gap: 8 }}>
+                  {aFaire.map(rendreCarte)}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#166534", background: COUL.vertClair, borderRadius: 8, padding: "10px 12px" }}>✓ Tout est couvert pour le {libJour(j1)}.</div>
+              )}
+              {autres.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <button type="button" onClick={() => setVoirAutres(v => !v)} style={{ border: "none", background: "none", color: COUL.gris600, fontWeight: 700, fontSize: 11.5, cursor: "pointer", padding: 0 }}>
+                    {voirAutres ? "▾" : "▸"} {autres.length} article{autres.length > 1 ? "s" : ""} déjà couvert{autres.length > 1 ? "s" : ""}
+                  </button>
+                  {voirAutres && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                      {autres.map(l => (
+                        <span key={l.cle} title={`Besoin ${fmt(l.besoinJ1)} + ½ ${fmt(l.besoinJ2 / 2)} · stock ${fmt(l.stock)} · en cours ${fmt(l.enCours)}`}
+                          style={{ fontSize: 11, color: COUL.gris600, background: "#f9fafb", border: `1px solid ${COUL.gris200}`, borderRadius: 8, padding: "3px 8px" }}>
+                          {l.articleFini} <b style={{ color: COUL.vert }}>· stock {fmt(l.stock)}</b>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
             <div style={{ overflowX: "auto", border: `1px solid ${COUL.gris200}`, borderRadius: 8 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
@@ -366,14 +456,6 @@ export function AReconditionnerAujourdhui({ demandes }: { demandes: Demande[] })
             </div>
           )}
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 10.5, color: COUL.gris400 }}>
-              Noms rapprochés avec les ventes et le stock par comparaison (exacte, sinon « contient ») : « ≈ » = rapprochement à vérifier. Colis vrac = colis finis × ratio moyen des demandes passées.
-            </span>
-            <button type="button" onClick={() => setRechargement(n => n + 1)} style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${COUL.gris200}`, background: "#fff", color: COUL.gris600, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-              ↻ Actualiser
-            </button>
-          </div>
         </div>
       )}
     </div>

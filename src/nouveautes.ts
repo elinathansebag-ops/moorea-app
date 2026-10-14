@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 53, date: "15/10", pages: ["reconditionnement"], texte: "🔄 Reconditionnement : « À reconditionner aujourd'hui » en cartes (colis à faire en grand, détail du calcul en petites cases) ; explication derrière « ℹ️ Calcul » ; ancien tableau disponible (☰ Tableau)." },
   { id: 52, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : articles validés sans sous-menu — « Étiquettes (palettes) » et « Re-pointer » sur la ligne du produit (Re-pointer demande confirmation)." },
   { id: 51, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : articles déjà validés — « Rapport de réserve » / « Passer en réserve » sur la ligne du produit, et température, poids brut/net visibles sans ouvrir l'article." },
   { id: 50, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : le contour du fournisseur ouvert passe en vert, bien visible." },
