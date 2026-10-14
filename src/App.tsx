@@ -691,8 +691,9 @@ export default function App() {
   };
   const [showPersonnaliserAccueil, setShowPersonnaliserAccueil] = useState(false);
   // 14/10/2026 — Pointer arrivage : vue en colonnes (fournisseurs sur 2-3 colonnes, page large) ou en liste (comme avant). Par appareil.
-  const [arrivageColonnes, setArrivageColonnes] = useState(() => { try { return localStorage.getItem("moorea-arrivage-vue") !== "liste"; } catch { return true; } });
-  const basculerArrivageVue = () => setArrivageColonnes(v => { const n = !v; try { localStorage.setItem("moorea-arrivage-vue", n ? "colonnes" : "liste"); } catch { /* rien */ } return n; });
+  // 15/10/2026 — Réglage pour TOUT LE MONDE dans Admin › Modules (config/arrivage_vue), colonnes par défaut.
+  const [arrivageColonnes, setArrivageColonnes] = useState(true);
+  useEffect(() => onValue(ref(db, "config/arrivage_vue"), snap => setArrivageColonnes(snap.val() !== "liste")), []);
   // 14/10/2026 — Demande d'Elinathan : ranger soi-même ses modules et leur donner une couleur
   // pastel. Même principe que accueil_masques : par compte, et par prénom sur un compte partagé.
   // { ordre: [clés…], couleurs: { clé: id } }. Un module masqué garde sa place dans « ordre ».
@@ -3956,6 +3957,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <CarteReglage titre="📦 Stock" desc="Répartition GMS/Prestige, qui peut lancer un comptage.">
                       <BoutonReglage label="Ouvrir Stock →" onClick={() => { setShowAdmin(false); setShowStock(true); setStockTeam(null); setStockFilter(""); setStockEcartFilter("tous"); }} />
                     </CarteReglage>
+                    <CarteReglage titre="📋 Pointer arrivage" desc="Présentation des fournisseurs pour tout le monde : en colonnes (2-3 par ligne) ou en liste (une colonne, comme avant).">
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {([["colonnes", "▦ En colonnes"], ["liste", "☰ En liste"]] as const).map(([v, lib]) => {
+                          const actif = (v === "colonnes") === arrivageColonnes;
+                          return <button key={v} type="button" onClick={() => set(ref(db, "config/arrivage_vue"), v)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${actif ? "#305a55" : "#e5e7eb"}`, background: actif ? "#eaf2ee" : "#fff", color: actif ? "#305a55" : "#6b7280", fontWeight: 800, cursor: "pointer" }}>{lib}</button>;
+                        })}
+                      </div>
+                    </CarteReglage>
                     <CarteReglage titre="🗄️ Rack" desc="Mode de placement (manuel/scan) et autres réglages du mur Stockage.">
                       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                         <button onClick={() => majModePlacementRack("manuel")} style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${rackModePlacementAdmin === "manuel" ? "#8b5cf6" : "#e5e7eb"}`, background: rackModePlacementAdmin === "manuel" ? "#f5f3ff" : "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12, color: rackModePlacementAdmin === "manuel" ? "#6d28d9" : "#6b7280" }}>✍️ Manuel</button>
@@ -5262,7 +5271,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               {/* 02/09/2026 — Bouton "📲 Récap WA" global retiré à la demande d'Elinathan (jamais
                   utilisé) — celui du jour (dans chaque DateBlock) a été retiré pour la même raison. */}
               {/* 14/10/2026 — recherche déplacée en tête de la ligne */}
-              <button type="button" onClick={basculerArrivageVue} title="Changer la présentation des fournisseurs" style={{ padding: "6px 11px", borderRadius: 10, border: "1.5px solid #305a55", background: "#eaf2ee", color: "#305a55", fontSize: 12.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>{arrivageColonnes ? "☰ Vue en liste" : "▦ Vue en colonnes"}</button>
+              {/* 15/10/2026 — Bascule liste / colonnes déplacée dans Admin › Modules (pour tout le monde). */}
             </div>
             {/* 05/10/2026 — Second bandeau « Contrôles qualité en retard » retiré : doublon du bandeau fermable du haut de la page. */}
             {showHistoMesures && (
