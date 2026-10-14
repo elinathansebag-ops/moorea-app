@@ -4,6 +4,7 @@
 // La dernière entrée vue est rangée dans comptes/{uid}/nouveautes_vu (même sur un autre appareil).
 export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 export const NOUVEAUTES: { id: number; date: string; texte: string }[] = [
+  { id: 8, date: "14/10", texte: "🎛️ Accueil en grille fixe : chaque module a sa case, on peut laisser des cases vides, et poser un module sur un autre les échange. 🧪 Fiche rapport : PDF (FR/EN), mail, WhatsApp et Modifier directement, et raccourcis en vraies tuiles." },
   { id: 7, date: "14/10", texte: "📋 Fiche rapport refaite (grande photo, chiffres clés, bouton « Voir le rapport complet ») ; les rapports d'un fournisseur ou d'un produit ont un vrai bandeau et n'affichent plus le message d'Alban." },
   { id: 6, date: "14/10", texte: "🎛️ Accueil › Personnaliser : les modules se déplacent en les faisant glisser dans la grille, clic droit (ou appui long) pour la couleur, et un bac « Modules masqués » en bas." },
   { id: 5, date: "14/10", texte: "🔄 Refus à faire signer : une carte par refus (photo, fournisseur, colis) et un bouton qui fait signer le transporteur puis imprime le bon de reprise à l'entrepôt." },

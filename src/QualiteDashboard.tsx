@@ -11,7 +11,7 @@ import { FicheRapport } from "./Extractions";
 // refusé, archives comprises), pas sur les rapports : on ne fait un rapport que quand il y a un
 // souci. Les rapports servent au détail (colis, notes, derniers incidents).
 
-export type RaccourciQualite = { icone: string; titre: string; onClick: () => void };
+export type RaccourciQualite = { icone: string; titre: string; detail?: string; couleur?: string; badge?: number; onClick: () => void };
 type Props = {
   rapports: any[];
   raccourcis: RaccourciQualite[];
@@ -21,6 +21,7 @@ type Props = {
   ouvrirFournisseur: (nom: string) => void;
   ouvrirProduit: (nom: string) => void;
   ouvrirRapport: (r: any) => void;
+  actionsRapport?: (r: any) => { libelle: string; fond: string; texte?: string; onClick: () => void }[];
   darkMode?: boolean;
 };
 
@@ -58,7 +59,7 @@ function chargerArrivagesControles(): Promise<any[]> {
   return cacheArr;
 }
 
-export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrirFournisseur, ouvrirProduit, ouvrirRapport, darkMode }: Props) {
+export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrirFournisseur, ouvrirProduit, ouvrirRapport, actionsRapport, darkMode }: Props) {
   const [ficheOuverte, setFicheOuverte] = useState<any>(null);
   const [arrivageOuvert, setArrivageOuvert] = useState<any>(null);
   const c = darkMode
@@ -189,19 +190,31 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
           </div>
         );
       })()}
-      {ficheOuverte && <FicheRapport c={{ fond: c.fond, carte: c.carte, texte: c.texte, gris: c.gris, bord: c.bord, vert: "#305a55", sombre: !!darkMode }} rapport={ficheOuverte} onClose={() => setFicheOuverte(null)} onVoirRapport={r => { setFicheOuverte(null); ouvrirRapport(r); }} />}
+      {ficheOuverte && <FicheRapport c={{ fond: c.fond, carte: c.carte, texte: c.texte, gris: c.gris, bord: c.bord, vert: "#305a55", sombre: !!darkMode }} rapport={ficheOuverte} onClose={() => setFicheOuverte(null)} onVoirRapport={r => { setFicheOuverte(null); ouvrirRapport(r); }} actions={actionsRapport ? actionsRapport(ficheOuverte).map(a => ({ ...a, onClick: () => { setFicheOuverte(null); a.onClick(); } })) : []} />}
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 16px 70px", boxSizing: "border-box" }}>
 
-        {/* Raccourcis vers les outils */}
+        {/* Raccourcis vers les outils — 14/10/2026 : de vraies tuiles (couleur, sous-titre, flèche)
+            pour qu'on voie tout de suite que chacune ouvre un outil différent. */}
         {raccourcis.length > 0 && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-            {raccourcis.map(x => (
-              <button key={x.titre} type="button" onClick={x.onClick} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 14px", borderRadius: 12, border: `1px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
-                <span style={{ fontSize: 16 }}>{x.icone}</span>{x.titre}<span style={{ color: c.gris }}>→</span>
-              </button>
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(230px, 100%), 1fr))", gap: 12, marginBottom: 18 }}>
+            {raccourcis.map(x => {
+              const col = x.couleur || "#305a55";
+              return (
+                <button key={x.titre} type="button" onClick={x.onClick} className="raccourci-qualite"
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 16, border: "none", borderLeft: `5px solid ${col}`, background: c.carte, color: c.texte, cursor: "pointer", textAlign: "left", boxShadow: darkMode ? "none" : "0 2px 8px rgba(0,0,0,.07)", transition: "transform .12s, box-shadow .12s" }}>
+                  <span style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 12, background: col + "1f", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{x.icone}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 15, fontWeight: 900 }}>{x.titre}</span>
+                    {x.detail && <span style={{ display: "block", fontSize: 12, color: c.gris, marginTop: 1 }}>{x.detail}</span>}
+                  </span>
+                  {!!x.badge && <span style={{ minWidth: 26, height: 26, padding: "0 8px", borderRadius: 13, background: col, color: "#fff", fontSize: 13, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>{x.badge}</span>}
+                  <span style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 15, background: col, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 900 }}>›</span>
+                </button>
+              );
+            })}
           </div>
         )}
+        <style>{`.raccourci-qualite:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.12) !important; }`}</style>
 
         {/* Période */}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>

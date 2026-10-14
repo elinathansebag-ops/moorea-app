@@ -1551,7 +1551,7 @@ function BoutonRapport({ c, onClick }: { c: Couleurs; onClick: () => void }) {
   return <button type="button" onClick={onClick} style={{ padding: "3px 10px", borderRadius: 8, border: `1.5px solid ${c.vert}`, background: c.carte, color: c.vert, fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>📋 Rapport</button>;
 }
 // 14/10/2026 — Exportée : aussi utilisée par 🧪 Récap qualité (QualiteDashboard.tsx), en lecture seule.
-export function FicheRapport({ c, rapport: r, onClose, onVoirRapport }: { c: Couleurs; rapport: any; onClose: () => void; onVoirRapport?: (r: any) => void }) {
+export function FicheRapport({ c, rapport: r, onClose, onVoirRapport, actions = [] }: { c: Couleurs; rapport: any; onClose: () => void; onVoirRapport?: (r: any) => void; actions?: { libelle: string; fond: string; texte?: string; onClick: () => void }[] }) {
   // 14/10/2026 — Fiche refaite (demande d'Elinathan) : photos en grand, chiffres clés en pastilles,
   // détails sur deux colonnes, notes lisibles, et un bouton vers le rapport complet.
   const dec = String(r.decision || "");
@@ -1637,7 +1637,8 @@ export function FicheRapport({ c, rapport: r, onClose, onVoirRapport }: { c: Cou
           </div>
 
           <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-            {onVoirRapport && <button type="button" onClick={() => onVoirRapport(r)} style={{ flex: "1 1 200px", padding: "12px 0", borderRadius: 12, border: "none", background: "#305a55", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>📋 Voir le rapport complet</button>}
+            {onVoirRapport && <button type="button" onClick={() => onVoirRapport(r)} style={{ flex: "1 1 200px", padding: "12px 0", borderRadius: 12, border: "none", background: "#305a55", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>📄 Voir le rapport (PDF)</button>}
+            {actions.map(a => <button key={a.libelle} type="button" onClick={a.onClick} style={{ flex: "1 1 130px", padding: "12px 0", borderRadius: 12, border: "none", background: a.fond, color: a.texte || "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>{a.libelle}</button>)}
             <button type="button" onClick={onClose} style={{ flex: "0 1 140px", padding: "12px 0", borderRadius: 12, border: `1.5px solid ${c.bord}`, background: "transparent", color: c.texte, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Fermer</button>
           </div>
         </div>

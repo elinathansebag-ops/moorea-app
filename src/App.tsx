@@ -689,7 +689,7 @@ export default function App() {
   // 14/10/2026 — Demande d'Elinathan : ranger soi-même ses modules et leur donner une couleur
   // pastel. Même principe que accueil_masques : par compte, et par prénom sur un compte partagé.
   // { ordre: [clés…], couleurs: { clé: id } }. Un module masqué garde sa place dans « ordre ».
-  type MiseEnPage = { ordre?: string[]; couleurs?: Record<string, string> };
+  type MiseEnPage = { ordre?: string[]; couleurs?: Record<string, string>; positions?: Record<string, number> };
   const [miseEnPageCompte, setMiseEnPageCompte] = useState<MiseEnPage>({});
   const [miseEnPageProfil, setMiseEnPageProfil] = useState<MiseEnPage | null>(null);
   useEffect(() => {
@@ -705,7 +705,7 @@ export default function App() {
   const miseEnPage: MiseEnPage = (cleProfilAccueil && miseEnPageProfil) ? miseEnPageProfil : miseEnPageCompte;
   const enregistrerMiseEnPage = (m: MiseEnPage) => {
     if (!user?.uid) return;
-    set(ref(db, cleProfilAccueil ? `comptes/${user.uid}/accueil_mise_en_page_profils/${cleProfilAccueil}` : `comptes/${user.uid}/accueil_mise_en_page`), { ordre: m.ordre || [], couleurs: m.couleurs || {} });
+    set(ref(db, cleProfilAccueil ? `comptes/${user.uid}/accueil_mise_en_page_profils/${cleProfilAccueil}` : `comptes/${user.uid}/accueil_mise_en_page`), { ordre: m.ordre || [], couleurs: m.couleurs || {}, positions: m.positions || {} });
   };
   const monAccesCompte = (permsChargees || ADMIN_BOOTSTRAP.includes((user?.email || "").toLowerCase()))
     ? calculerAcces(user?.email, permRoles, permUsers)
@@ -4301,16 +4301,17 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 {/* 14/10/2026 (bis) — Personnaliser = mode édition directement sur la grille (glisser,
                     clic droit couleur, bac des modules masqués) : voir AccueilModulesV2.tsx. */}
                 {showPersonnaliserAccueil ? (
-                  <AccueilModulesV2 modules={modulesAffiches as any} sombre={darkMode} ordre={miseEnPage.ordre} couleurs={miseEnPage.couleurs}
+                  <AccueilModulesV2 modules={modulesAffiches as any} sombre={darkMode} ordre={miseEnPage.ordre} positions={miseEnPage.positions} couleurs={miseEnPage.couleurs}
                     edition={{
                       tous: modulesMasquables as any,
                       masques: accueilMasques,
-                      onOrdre: cles => enregistrerMiseEnPage({ ...miseEnPage, ordre: cles }),
+                      onPositions: positions => enregistrerMiseEnPage({ ...miseEnPage, positions }),
+                      onReinitialiser: () => enregistrerMiseEnPage({ ...miseEnPage, ordre: [], positions: {} }),
                       onCouleur: (cle, id) => colorer(cle, id),
                       onMasquer: (cle, masquer) => { if (!!accueilMasques[cle] !== masquer) toggleMasqueAccueil(cle); },
                       onTerminer: () => setShowPersonnaliserAccueil(false),
                     }} />
-                ) : modulesAffiches.length > 0 && <AccueilModulesV2 modules={modulesAffiches as any} sombre={darkMode} ordre={miseEnPage.ordre} couleurs={miseEnPage.couleurs} />}
+                ) : modulesAffiches.length > 0 && <AccueilModulesV2 modules={modulesAffiches as any} sombre={darkMode} ordre={miseEnPage.ordre} positions={miseEnPage.positions} couleurs={miseEnPage.couleurs} />}
               </>
             );
           })()}
@@ -4403,57 +4404,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     return <>{fabScanner}{invitationNotif}<Extractions onClose={() => { setStatsDepart(null); fermer(); }} ongletInitial={statsDepart?.onglet} presetInitial={statsDepart?.preset} darkMode={darkMode} voirMarge={!!monAcces.isAdmin || monAcces.hasModule("marge")} voirEuros={!!monAcces.isAdmin || monAcces.hasModule("euros")} estAdmin={!!monAcces.isAdmin} email={(user?.email || "").toLowerCase()} voirExtractions={monAcces.hasModule("extractions") || !!monAcces.isAdmin} voirProgramme={monAcces.hasModule("statt")} userName={nomAfficheGarde} /></>;
   }
 
-  if (showQualiteHub) {
-    const ouvrir = (f: () => void) => () => { setShowQualiteHub(false); setRetourHub("qualite"); f(); };
-    // 14/10/2026 — Tableau de bord qualité (QualiteDashboard.tsx) au lieu d'un sommaire de modules.
-    // 14/10/2026 — Depuis le tableau de bord : filtres exacts (fournisseur / produit) de la page des
-    // rapports, et « Retour » ramène au Récap qualité (retourHub).
-    const nomQ = (x: any) => String(x || "").trim().toUpperCase();
-    const versRapports = (f: { fournisseur?: string; produit?: string; numero?: string } = {}) => {
-      const exact = (champ: "fournisseur" | "produit", v?: string) => v ? (rapports.find(r => nomQ(r[champ]) === nomQ(v))?.[champ] || v) : "";
-      setSearchText(f.numero || ""); setFilterDecision(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(false);
-      setFilterFournisseur(exact("fournisseur", f.fournisseur)); setFilterProduit(exact("produit", f.produit));
-      setShowQualiteHub(false); setRetourHub("qualite"); setVue("historique"); setPageMode("arrivages"); window.scrollTo(0, 0);
-    };
-    const raccourcis = [
-      ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", onClick: () => versRapports() }] : []),
-      ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité, températures, poids", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
-      ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
-      ...(monAcces.hasModule("rapports") ? [{ icone: "🔄", titre: `Refus à faire signer (${rapports.filter(refusASigner).length})`, onClick: () => { setShowQualiteHub(false); setRetourHub("qualite"); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
-      // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
-    ];
-    return <>{fabScanner}{invitationNotif}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirFournisseur={n => monAcces.hasModule("rapports") && versRapports({ fournisseur: n })} ouvrirProduit={n => monAcces.hasModule("rapports") && versRapports({ produit: n })} ouvrirRapport={r => monAcces.hasModule("rapports") && versRapports({ numero: r.numeroRapport || r.produit || "" })} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
-  }
-
-  if (showApproHub) {
-    const ouvrir = (f: () => void) => () => { setShowApproHub(false); setRetourHub("appro"); f(); };
-    const cartes = [
-      ...(monAcces.hasModule("appro") ? [{ icone: "🇰🇪", titre: "Appro Kenya & Tanzanie", detail: "Commandes fournisseurs, statistiques, configuration", onClick: ouvrir(() => setShowAppro(true)) }] : []),
-      ...(monAcces.hasModule("yukon") ? [{ icone: "🇿🇦", titre: "Besoins Yukon", detail: "Légumes Afrique du Sud", onClick: ouvrir(() => setShowYukon(true)) }] : []),
-      ...(monAcces.hasModule("extractions") || monAcces.isAdmin ? [{ icone: "📈", titre: "Ventes des produits Appro", detail: "📊 Stats filtrées sur les fournisseurs Kenya, Tanzanie et Yukon", onClick: () => { setShowApproHub(false); setRetourHub(null); setStatsDepart({ onglet: "produits", preset: { fournisseursMotsCles: ["eaga", "summer", "kenya fresh", "jani", "diallo", "yukon"] } }); setShowExtractions(true); } }] : []),
-    ];
-    return <>{fabScanner}{invitationNotif}<HubModules titre="🌱 Appro" intro="Commandes Kenya / Tanzanie, besoins Yukon et leurs ventes." cartes={cartes} darkMode={darkMode} onClose={() => { setShowApproHub(false); setShowAccueil(true); }} /></>;
-  }
-
-  if (showConsultLidl) {
-    const fermer = () => { setShowConsultLidl(false); versAccueilOuRubrique(); };
-    if (!monAcces.hasModule("lidl_consultation")) return <AccesRefuse onRetour={fermer} />;
-    return <>{fabScanner}{invitationNotif}<ConsultationLidl onClose={fermer} darkMode={darkMode} /></>;
-  }
-
-  if (showFacturesPresta) {
-    // Retour : vers Prestataires si on vient de là (14/10/2026), sinon l'accueil.
-    const fermer = () => { setShowFacturesPresta(false); if (facturesDepuisPresta) { setFacturesDepuisPresta(false); setShowPrestataires(true); } else setShowAccueil(true); };
-    if (!monAcces.hasModule("factures_prestataires")) return <AccesRefuse onRetour={fermer} />;
-    return <>{fabScanner}{invitationNotif}<FacturesPrestataires onClose={fermer} darkMode={darkMode} /></>;
-  }
-
-  // 12/10/2026 — Raccourcis Prestataires (instance à part, le module complet n'est pas touché).
-  if (raccourciPresta) {
-    return <>{fabScanner}{invitationNotif}<PrestatairesModule raccourci={raccourciPresta} userName={nomAfficheGarde}
-      onClose={() => { setRaccourciPresta(null); setShowAccueil(true); }} demandesRecondExterne={reconditionnementDemandesListe} /></>;
-  }
-
   // 14/10/2026 — Choix de la langue + aperçu du PDF du rapport : partagés par l'écran principal et la Recherche.
   const fenetresPdf = (
     <>
@@ -4506,6 +4456,64 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       )}
     </>
   );
+
+  if (showQualiteHub) {
+    const ouvrir = (f: () => void) => () => { setShowQualiteHub(false); setRetourHub("qualite"); f(); };
+    // 14/10/2026 — Tableau de bord qualité (QualiteDashboard.tsx) au lieu d'un sommaire de modules.
+    // 14/10/2026 — Depuis le tableau de bord : filtres exacts (fournisseur / produit) de la page des
+    // rapports, et « Retour » ramène au Récap qualité (retourHub).
+    const nomQ = (x: any) => String(x || "").trim().toUpperCase();
+    const versRapports = (f: { fournisseur?: string; produit?: string; numero?: string } = {}) => {
+      const exact = (champ: "fournisseur" | "produit", v?: string) => v ? (rapports.find(r => nomQ(r[champ]) === nomQ(v))?.[champ] || v) : "";
+      setSearchText(f.numero || ""); setFilterDecision(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(false);
+      setFilterFournisseur(exact("fournisseur", f.fournisseur)); setFilterProduit(exact("produit", f.produit));
+      setShowQualiteHub(false); setRetourHub("qualite"); setVue("historique"); setPageMode("arrivages"); window.scrollTo(0, 0);
+    };
+    const raccourcis = [
+      ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", detail: `${rapports.length} rapports · recherche, filtres, PDF`, couleur: "#305a55", onClick: () => versRapports() }] : []),
+      ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité & mesures", detail: "Lots, températures et poids pesés", couleur: "#0891b2", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
+      ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", detail: "Lots, producteurs, envois à Lidl", couleur: "#0050aa", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
+      ...(monAcces.hasModule("rapports") ? [{ icone: "🔄", titre: "Refus à faire signer", detail: "Bons de reprise transporteur", couleur: "#dc2626", badge: rapports.filter(refusASigner).length, onClick: () => { setShowQualiteHub(false); setRetourHub("qualite"); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
+      // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
+    ];
+    // Messages de confirmation (mail envoyé…) aussi sur le Récap qualité.
+    const toastQualite = toast && <div className="toast" style={{ position: "fixed", top: 20, right: 20, zIndex: 99999, background: toast.type === "error" ? "#fef2f2" : "#f0fdf4", color: toast.type === "error" ? "#dc2626" : "#15803d", border: `1.5px solid ${toast.type === "error" ? "#fca5a5" : "#86efac"}`, borderRadius: 12, padding: "11px 20px", fontWeight: 500, fontSize: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>{toast.msg}</div>;
+    return <>{fabScanner}{invitationNotif}{fenetresPdf}{toastQualite}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirFournisseur={n => monAcces.hasModule("rapports") && versRapports({ fournisseur: n })} ouvrirProduit={n => monAcces.hasModule("rapports") && versRapports({ produit: n })} ouvrirRapport={r => setChoixLangueRapport(r)}
+      actionsRapport={r => [
+        { libelle: "✉ Mail commercial", fond: "#1f4440", onClick: () => envoyerEmail(r) },
+        { libelle: "WhatsApp", fond: "#16a34a", onClick: () => partagerWhatsApp(r) },
+        { libelle: "✏️ Modifier", fond: "#eff6ff", texte: "#1d4ed8", onClick: () => { setShowQualiteHub(false); setRetourHub("qualite"); chargerRapportEdition(r); setPageMode("arrivages"); window.scrollTo(0, 0); } },
+      ]} darkMode={darkMode} onClose={() => { setShowQualiteHub(false); setShowAccueil(true); }} /></>;
+  }
+
+  if (showApproHub) {
+    const ouvrir = (f: () => void) => () => { setShowApproHub(false); setRetourHub("appro"); f(); };
+    const cartes = [
+      ...(monAcces.hasModule("appro") ? [{ icone: "🇰🇪", titre: "Appro Kenya & Tanzanie", detail: "Commandes fournisseurs, statistiques, configuration", onClick: ouvrir(() => setShowAppro(true)) }] : []),
+      ...(monAcces.hasModule("yukon") ? [{ icone: "🇿🇦", titre: "Besoins Yukon", detail: "Légumes Afrique du Sud", onClick: ouvrir(() => setShowYukon(true)) }] : []),
+      ...(monAcces.hasModule("extractions") || monAcces.isAdmin ? [{ icone: "📈", titre: "Ventes des produits Appro", detail: "📊 Stats filtrées sur les fournisseurs Kenya, Tanzanie et Yukon", onClick: () => { setShowApproHub(false); setRetourHub(null); setStatsDepart({ onglet: "produits", preset: { fournisseursMotsCles: ["eaga", "summer", "kenya fresh", "jani", "diallo", "yukon"] } }); setShowExtractions(true); } }] : []),
+    ];
+    return <>{fabScanner}{invitationNotif}<HubModules titre="🌱 Appro" intro="Commandes Kenya / Tanzanie, besoins Yukon et leurs ventes." cartes={cartes} darkMode={darkMode} onClose={() => { setShowApproHub(false); setShowAccueil(true); }} /></>;
+  }
+
+  if (showConsultLidl) {
+    const fermer = () => { setShowConsultLidl(false); versAccueilOuRubrique(); };
+    if (!monAcces.hasModule("lidl_consultation")) return <AccesRefuse onRetour={fermer} />;
+    return <>{fabScanner}{invitationNotif}<ConsultationLidl onClose={fermer} darkMode={darkMode} /></>;
+  }
+
+  if (showFacturesPresta) {
+    // Retour : vers Prestataires si on vient de là (14/10/2026), sinon l'accueil.
+    const fermer = () => { setShowFacturesPresta(false); if (facturesDepuisPresta) { setFacturesDepuisPresta(false); setShowPrestataires(true); } else setShowAccueil(true); };
+    if (!monAcces.hasModule("factures_prestataires")) return <AccesRefuse onRetour={fermer} />;
+    return <>{fabScanner}{invitationNotif}<FacturesPrestataires onClose={fermer} darkMode={darkMode} /></>;
+  }
+
+  // 12/10/2026 — Raccourcis Prestataires (instance à part, le module complet n'est pas touché).
+  if (raccourciPresta) {
+    return <>{fabScanner}{invitationNotif}<PrestatairesModule raccourci={raccourciPresta} userName={nomAfficheGarde}
+      onClose={() => { setRaccourciPresta(null); setShowAccueil(true); }} demandesRecondExterne={reconditionnementDemandesListe} /></>;
+  }
 
   if (showRecherche) {
     if (!monAcces.hasModule("arrivages")) return <AccesRefuse onRetour={() => { setShowRecherche(false); setShowAccueil(true); }} />;

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconeTrait } from "./shared";
 
 // 05/10/2026 — Nouvelle apparence (charte Moorea) : modules de l'accueil rangés par familles, avec
@@ -71,29 +71,45 @@ export function ordonnerModules<T extends { key?: string }>(modules: T[], ordre?
   return parDefaut.map((m, i) => ({ m, i })).sort((a, b) => (pos.get(a.m.key || "") ?? 1000 + a.i) - (pos.get(b.m.key || "") ?? 1000 + b.i)).map(x => x.m);
 }
 
-// 14/10/2026 (bis) — Demande d'Elinathan : personnaliser l'accueil « comme des dossiers sur un
-// bureau d'ordinateur ». En mode édition : on glisse les modules où on veut (souris ou doigt),
-// clic droit / appui long = menu couleur + masquer, et un bac « Modules masqués » en bas d'où on
-// les ressort (ou où on les dépose pour les cacher). Les modules masqués gardent leur place.
+// 14/10/2026 (ter) — Demande d'Elinathan : une vraie grille « bureau d'ordinateur ». Chaque module a
+// SA case (4 colonnes) : en déplacer un ne fait pas bouger les autres, le poser sur une case occupée
+// échange les deux, et on peut laisser des cases vides. Positions rangées par personne
+// (accueil_mise_en_page.positions = { clé: n° de case }). Sur téléphone (écran étroit), les modules
+// gardent cet ordre mais sans les trous.
+const COLS = 4;
+export function placerModules(cles: string[], positions: Record<string, number> = {}): Map<string, number> {
+  const place = new Map<string, number>(), prises = new Set<number>();
+  cles.forEach(k => { const p = positions[k]; if (typeof p === "number" && p >= 0 && !prises.has(p)) { place.set(k, p); prises.add(p); } });
+  let libre = 0;
+  cles.forEach(k => { if (place.has(k)) return; while (prises.has(libre)) libre++; place.set(k, libre); prises.add(libre); });
+  return place;
+}
+function useLargeur() {
+  const [l, setL] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  useEffect(() => { const f = () => setL(window.innerWidth); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
+  return l;
+}
+
 type Edition = {
   tous: Module[];                       // tous les modules disponibles (masqués compris)
   masques: Record<string, boolean>;
-  onOrdre: (cles: string[]) => void;
+  onPositions: (p: Record<string, number>) => void;
   onCouleur: (cle: string, id: string | null) => void;
   onMasquer: (cle: string, masquer: boolean) => void;
+  onReinitialiser: () => void;
   onTerminer: () => void;
 };
 
-export function AccueilModulesV2({ modules, sombre, ordre, couleurs = {}, edition }: { modules: Module[]; sombre: boolean; ordre?: string[]; couleurs?: Record<string, string>; edition?: Edition }) {
-  if (edition) return <AccueilEdition sombre={sombre} ordre={ordre} couleurs={couleurs} e={edition} />;
-  return <AccueilGrille modules={modules} sombre={sombre} ordre={ordre} couleurs={couleurs} />;
+export function AccueilModulesV2({ modules, sombre, ordre, positions, couleurs = {}, edition }: { modules: Module[]; sombre: boolean; ordre?: string[]; positions?: Record<string, number>; couleurs?: Record<string, string>; edition?: Edition }) {
+  if (edition) return <AccueilEdition sombre={sombre} ordre={ordre} positions={positions} couleurs={couleurs} e={edition} />;
+  return <AccueilGrille modules={modules} sombre={sombre} ordre={ordre} positions={positions} couleurs={couleurs} />;
 }
 
 function CarteModule({ m, sombre, coul, edition, badgeOff }: { m: Module; sombre: boolean; coul?: typeof COULEURS_PASTEL[number]; edition?: boolean; badgeOff?: boolean }) {
   const carte = sombre ? "#171b21" : "#ffffff", fondIcone = sombre ? "#1d2e2b" : "#eaf2ee";
   const titre = sombre ? "#8cc79a" : "#305a55", encre = sombre ? "#e6e8eb" : "#1e2b29", gris = sombre ? "#aab1bb" : "#5e6b69";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 64, textAlign: "left", background: coul ? (sombre ? coul.sombre : coul.fond) : carte, borderRadius: 12, padding: "12px 14px", boxShadow: sombre ? "none" : "0 1px 2px rgba(30,43,41,.07)", color: encre, boxSizing: "border-box", width: "100%", outline: edition ? `2px dashed ${sombre ? "#4b5563" : "#c9d6d2"}` : "none", outlineOffset: -2 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 64, height: "100%", textAlign: "left", background: coul ? (sombre ? coul.sombre : coul.fond) : carte, borderRadius: 12, padding: "12px 14px", boxShadow: sombre ? "none" : "0 1px 2px rgba(30,43,41,.07)", color: encre, boxSizing: "border-box", width: "100%", outline: edition ? `2px dashed ${sombre ? "#4b5563" : "#c9d6d2"}` : "none", outlineOffset: -2 }}>
       <span style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, background: coul && !sombre ? coul.icone : fondIcone, color: titre, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <IconeTrait d={ICONES[m.key || ""] || ICONE_DEFAUT} />
       </span>
@@ -106,95 +122,116 @@ function CarteModule({ m, sombre, coul, edition, badgeOff }: { m: Module; sombre
   );
 }
 
-function AccueilEdition({ sombre, ordre, couleurs, e }: { sombre: boolean; ordre?: string[]; couleurs: Record<string, string>; e: Edition }) {
-  const complet = ordonnerModules(e.tous.filter(m => m.key), ordre).map(m => m.key!);
+function AccueilEdition({ sombre, ordre, positions = {}, couleurs, e }: { sombre: boolean; ordre?: string[]; positions?: Record<string, number>; couleurs: Record<string, string>; e: Edition }) {
   const parCle = new Map(e.tous.filter(m => m.key).map(m => [m.key!, m]));
-  const [vivant, setVivant] = useState<string[] | null>(null); // ordre en cours de glissement
-  const ordreAff = vivant || complet;
-  const visibles = ordreAff.filter(k => !e.masques[k]);
-  const caches = complet.filter(k => e.masques[k]);
+  const tousCles = ordonnerModules(e.tous.filter(m => m.key), ordre).map(m => m.key!);
+  const visibles = tousCles.filter(k => !e.masques[k]);
+  const caches = tousCles.filter(k => e.masques[k]);
+  const place = placerModules(visibles, positions);
+  const parCase = new Map([...place].map(([k, c]) => [c, k]));
+  const derniere = Math.max(-1, ...place.values());
+  const nbCases = (Math.floor(derniere / COLS) + 2) * COLS; // toujours une rangée vide en plus
   const [menu, setMenu] = useState<{ cle: string; x: number; y: number } | null>(null);
-  const [glisse, setGlisse] = useState<{ cle: string; x: number; y: number; depuisBac: boolean } | null>(null);
-  const [surBac, setSurBac] = useState(false);
+  const [glisse, setGlisse] = useState<{ cle: string; x: number; y: number } | null>(null);
+  const [cible, setCible] = useState<number | "bac" | null>(null);
   const geste = useRef<{ cle: string; x0: number; y0: number; bouge: boolean; depuisBac: boolean; minuterie: any } | null>(null);
 
-  const deplacerVers = (cle: string, cible: string) => {
-    const base = (vivant || complet).filter(k => k !== cle);
-    const i = base.indexOf(cible);
-    const avant = (vivant || complet).indexOf(cle) > (vivant || complet).indexOf(cible);
-    base.splice(avant ? i : i + 1, 0, cle);
-    setVivant(base);
+  // Toutes les positions à enregistrer : celles affichées + celles gardées pour les modules masqués.
+  const enregistrer = (nouv: Map<string, number>) => {
+    const p: Record<string, number> = { ...positions };
+    nouv.forEach((c, k) => { p[k] = c; });
+    e.onPositions(p);
+  };
+  const poser = (cle: string, cas: number, depuisBac: boolean) => {
+    const nouv = new Map(place);
+    const occupant = parCase.get(cas);
+    const ancienne = nouv.get(cle);
+    if (occupant && occupant !== cle) {
+      if (ancienne !== undefined) nouv.set(occupant, ancienne);       // échange
+      else { nouv.delete(occupant); }                                  // replacé plus bas
+    }
+    nouv.set(cle, cas);
+    if (occupant && occupant !== cle && ancienne === undefined) {
+      const prises = new Set(nouv.values()); let libre = 0; while (prises.has(libre)) libre++; nouv.set(occupant, libre);
+    }
+    if (depuisBac) e.onMasquer(cle, false);
+    enregistrer(nouv);
+  };
+  const montrer = (cle: string) => {
+    const p = positions[cle];
+    const prises = new Set(place.values());
+    let cas = typeof p === "number" && !prises.has(p) ? p : 0;
+    if (prises.has(cas)) { cas = 0; while (prises.has(cas)) cas++; }
+    poser(cle, cas, true);
   };
   const debut = (ev: React.PointerEvent, cle: string, depuisBac: boolean) => {
     if (ev.button === 2) return;
     (ev.target as HTMLElement).setPointerCapture?.(ev.pointerId);
     const g = { cle, x0: ev.clientX, y0: ev.clientY, bouge: false, depuisBac, minuterie: null as any };
-    // Appui long (iPad) = menu couleur.
     if (ev.pointerType !== "mouse" && !depuisBac) g.minuterie = setTimeout(() => { if (!g.bouge) { geste.current = null; setMenu({ cle, x: ev.clientX, y: ev.clientY }); } }, 550);
     geste.current = g;
+  };
+  const sousPointeur = (x: number, y: number): number | "bac" | null => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    if (el?.closest("[data-bac]")) return "bac";
+    const c = el?.closest("[data-case]")?.getAttribute("data-case");
+    return c != null ? Number(c) : null;
   };
   const mouvement = (ev: React.PointerEvent) => {
     const g = geste.current; if (!g) return;
     if (!g.bouge && Math.hypot(ev.clientX - g.x0, ev.clientY - g.y0) < 8) return;
     if (!g.bouge) { g.bouge = true; clearTimeout(g.minuterie); setMenu(null); }
-    setGlisse({ cle: g.cle, x: ev.clientX, y: ev.clientY, depuisBac: g.depuisBac });
-    const sous = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null;
-    setSurBac(!!sous?.closest("[data-bac]"));
-    const cible = sous?.closest("[data-mod]")?.getAttribute("data-mod");
-    if (cible && cible !== g.cle && !e.masques[cible]) {
-      if (g.depuisBac) { e.onMasquer(g.cle, false); g.depuisBac = false; }
-      deplacerVers(g.cle, cible);
-    }
+    setGlisse({ cle: g.cle, x: ev.clientX, y: ev.clientY });
+    setCible(sousPointeur(ev.clientX, ev.clientY));
   };
   const fin = (ev: React.PointerEvent) => {
     const g = geste.current; geste.current = null;
     if (!g) return;
     clearTimeout(g.minuterie);
-    const sous = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null;
-    if (!g.bouge) {
-      if (g.depuisBac) e.onMasquer(g.cle, false); // un simple toucher dans le bac le remet
-    } else if (sous?.closest("[data-bac]") && !e.masques[g.cle]) {
-      e.onMasquer(g.cle, true);
-    } else if (g.depuisBac && sous?.closest("[data-grille]")) {
-      e.onMasquer(g.cle, false);
+    if (!g.bouge) { if (g.depuisBac) montrer(g.cle); }
+    else {
+      const t = sousPointeur(ev.clientX, ev.clientY);
+      if (t === "bac") { if (!g.depuisBac) e.onMasquer(g.cle, true); }
+      else if (typeof t === "number") poser(g.cle, t, g.depuisBac);
     }
-    if (vivant) e.onOrdre(vivant);
-    setVivant(null); setGlisse(null); setSurBac(false);
+    setGlisse(null); setCible(null);
   };
 
   const ligne = sombre ? "#2e3540" : "#dde6e3", gris = sombre ? "#aab1bb" : "#5e6b69";
   const modMenu = menu ? parCle.get(menu.cle) : null;
   return (
-    <div style={{ marginBottom: 16, userSelect: "none", WebkitUserSelect: "none", touchAction: glisse ? "none" : "auto" }} onPointerMove={mouvement} onPointerUp={fin} onPointerCancel={fin}>
+    <div style={{ marginBottom: 16, userSelect: "none", WebkitUserSelect: "none" }} onPointerMove={mouvement} onPointerUp={fin} onPointerCancel={fin}>
       <style>{`@keyframes mrqTremble { 0%,100% { transform: rotate(-.4deg) } 50% { transform: rotate(.4deg) } }`}</style>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10, padding: "10px 14px", borderRadius: 12, background: sombre ? "#1a1808" : "#fffbeb", border: "1.5px solid #f59e0b55" }}>
         <span style={{ flex: 1, fontSize: 12.5, color: sombre ? "#c9a869" : "#8a6f2e", minWidth: 200 }}>
-          <b>Mode personnalisation</b> — glisse les modules où tu veux · <b>clic droit</b> (ou appui long) pour la couleur · glisse-les dans le bac du bas pour les cacher.
+          <b>Mode personnalisation</b> — glisse un module sur n'importe quelle case (vide ou non : il échange sa place) · <b>clic droit</b> (ou appui long) pour la couleur · bac du bas pour cacher.
         </span>
-        <button type="button" onClick={() => e.onOrdre([])} style={{ border: "none", background: "transparent", color: gris, fontSize: 11.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Remettre par défaut</button>
+        <button type="button" onClick={e.onReinitialiser} style={{ border: "none", background: "transparent", color: gris, fontSize: 11.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Remettre par défaut</button>
         <button type="button" onClick={e.onTerminer} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✓ Terminé</button>
       </div>
 
-      <div data-grille style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, minHeight: 70 }}>
-        {visibles.map((k, i) => {
-          const m = parCle.get(k); if (!m) return null;
-          const enCours = glisse?.cle === k;
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`, gap: 10 }}>
+        {Array.from({ length: nbCases }, (_, cas) => {
+          const k = parCase.get(cas), m = k ? parCle.get(k) : null;
+          const survol = cible === cas && glisse;
           return (
-            <div key={k} data-mod={k}
-              onPointerDown={ev => debut(ev, k, false)}
-              onContextMenu={ev => { ev.preventDefault(); setMenu({ cle: k, x: ev.clientX, y: ev.clientY }); }}
-              style={{ position: "relative", cursor: "grab", touchAction: "none", opacity: enCours ? 0.35 : 1, animation: enCours ? "none" : `mrqTremble .35s ease-in-out ${(i % 4) * 0.07}s infinite` }}>
-              <CarteModule m={m} sombre={sombre} coul={COULEURS_PASTEL.find(x => x.id === couleurs[k])} edition />
-              <button type="button" title="Masquer" onPointerDown={ev => ev.stopPropagation()} onClick={() => e.onMasquer(k, true)}
-                style={{ position: "absolute", top: -7, right: -7, width: 22, height: 22, borderRadius: 11, border: "none", background: "#6b7280", color: "#fff", fontSize: 14, lineHeight: 1, cursor: "pointer", padding: 0 }}>–</button>
+            <div key={cas} data-case={cas} style={{ minHeight: 68, borderRadius: 12, background: survol ? (sombre ? "#1d2e2b" : "#d9ebe2") : "transparent", outline: m ? "none" : `1.5px dashed ${survol ? "#305a55" : (sombre ? "#2e3540" : "#e3e0d6")}`, outlineOffset: -1, transition: "background .1s" }}>
+              {m && (
+                <div onPointerDown={ev => debut(ev, k!, false)}
+                  onContextMenu={ev => { ev.preventDefault(); setMenu({ cle: k!, x: ev.clientX, y: ev.clientY }); }}
+                  style={{ position: "relative", height: "100%", cursor: "grab", touchAction: "none", opacity: glisse?.cle === k ? 0.3 : 1, animation: glisse ? "none" : `mrqTremble .35s ease-in-out ${(cas % 4) * 0.07}s infinite` }}>
+                  <CarteModule m={m} sombre={sombre} coul={COULEURS_PASTEL.find(x => x.id === couleurs[k!])} edition />
+                  <button type="button" title="Masquer" onPointerDown={ev => ev.stopPropagation()} onClick={() => e.onMasquer(k!, true)}
+                    style={{ position: "absolute", top: -7, right: -7, width: 22, height: 22, borderRadius: 11, border: "none", background: "#6b7280", color: "#fff", fontSize: 14, lineHeight: 1, cursor: "pointer", padding: 0 }}>–</button>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Bac des modules masqués */}
-      <div data-bac style={{ marginTop: 18, padding: 14, borderRadius: 14, border: `2px dashed ${surBac ? "#305a55" : ligne}`, background: surBac ? (sombre ? "#1d2e2b" : "#eaf2ee") : "transparent", transition: "background .15s" }}>
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: gris, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>🗂️ Modules masqués {caches.length ? `(${caches.length})` : ""} — touche ou glisse vers le haut pour afficher</div>
+      <div data-bac style={{ marginTop: 18, padding: 14, borderRadius: 14, border: `2px dashed ${cible === "bac" ? "#305a55" : ligne}`, background: cible === "bac" ? (sombre ? "#1d2e2b" : "#eaf2ee") : "transparent" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: gris, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Modules masqués {caches.length ? `(${caches.length})` : ""} — touche-en un ou glisse-le sur une case pour l'afficher</div>
         {!caches.length && <div style={{ fontSize: 12.5, color: gris }}>Dépose un module ici pour le masquer.</div>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
           {caches.map(k => { const m = parCle.get(k); if (!m) return null; return (
@@ -205,14 +242,12 @@ function AccueilEdition({ sombre, ordre, couleurs, e }: { sombre: boolean; ordre
         </div>
       </div>
 
-      {/* Fantôme sous le doigt / la souris */}
       {glisse && parCle.get(glisse.cle) && (
         <div style={{ position: "fixed", left: glisse.x - 110, top: glisse.y - 32, width: 220, pointerEvents: "none", zIndex: 4000, transform: "rotate(-2deg) scale(1.04)", boxShadow: "0 12px 30px rgba(0,0,0,.25)", borderRadius: 12 }}>
           <CarteModule m={parCle.get(glisse.cle)!} sombre={sombre} coul={COULEURS_PASTEL.find(x => x.id === couleurs[glisse.cle])} badgeOff />
         </div>
       )}
 
-      {/* Menu clic droit */}
       {menu && modMenu && (
         <div onClick={() => setMenu(null)} onContextMenu={ev => { ev.preventDefault(); setMenu(null); }} style={{ position: "fixed", inset: 0, zIndex: 4100 }}>
           <div onClick={ev => ev.stopPropagation()} style={{ position: "fixed", left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 170), width: 220, background: sombre ? "#171b21" : "#fff", border: `1px solid ${ligne}`, borderRadius: 12, boxShadow: "0 12px 30px rgba(0,0,0,.2)", padding: 10 }}>
@@ -233,37 +268,24 @@ function AccueilEdition({ sombre, ordre, couleurs, e }: { sombre: boolean; ordre
   );
 }
 
-function AccueilGrille({ modules, sombre, ordre, couleurs = {} }: { modules: Module[]; sombre: boolean; ordre?: string[]; couleurs?: Record<string, string> }) {
-  // 10/10/2026 — Toujours une seule grille, sans titres de familles (retour d'Elinathan).
-  // 14/10/2026 — Ordre et couleurs choisis par la personne (🎛️ Personnaliser).
-  const groupes = [{ nom: "", modules: ordonnerModules(modules, ordre) }];
-  const carte = sombre ? "#171b21" : "#ffffff", fondIcone = sombre ? "#1d2e2b" : "#eaf2ee", ligne = sombre ? "#2e3540" : "#dde6e3";
-  const titre = sombre ? "#8cc79a" : "#305a55", encre = sombre ? "#e6e8eb" : "#1e2b29", gris = sombre ? "#aab1bb" : "#5e6b69";
+function AccueilGrille({ modules, sombre, ordre, positions, couleurs = {} }: { modules: Module[]; sombre: boolean; ordre?: string[]; positions?: Record<string, number>; couleurs?: Record<string, string> }) {
+  const largeur = useLargeur();
+  const tries = ordonnerModules(modules, ordre);
+  const avecCle = tries.filter(m => m.key), sansCle = tries.filter(m => !m.key);
+  const place = placerModules(avecCle.map(m => m.key!), positions);
+  const etroit = largeur < 700;
+  const liste = [...avecCle].sort((a, b) => place.get(a.key!)! - place.get(b.key!)!);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20, marginBottom: 16 }}>
-      {groupes.filter(f => f.modules.length).map(f => (
-        <section key={f.nom || "modules"} aria-label={f.nom || "Modules"}>
-          {f.nom && <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: titre, letterSpacing: "0.08em", textTransform: "uppercase" }}>{f.nom}</span>
-            <span style={{ flex: 1, height: 1, background: ligne }} />
-          </div>}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
-            {f.modules.map(m => { const coul = COULEURS_PASTEL.find(x => x.id === couleurs[m.key || ""]); return (
-              <button key={m.key || m.label} type="button" onClick={m.action}
-                style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 64, textAlign: "left", background: coul ? (sombre ? coul.sombre : coul.fond) : carte, border: "none", borderRadius: 12, padding: "12px 14px", boxShadow: sombre ? "none" : "0 1px 2px rgba(30,43,41,.07)", cursor: "pointer", color: encre }}>
-                <span style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, background: coul && !sombre ? coul.icone : fondIcone, color: titre, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <IconeTrait d={ICONES[m.key || ""] || ICONE_DEFAUT} />
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 15, fontWeight: 700 }}>{m.label}</span>
-                  {m.stat && <span style={{ display: "block", fontSize: 12.5, color: gris, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.stat}</span>}
-                </span>
-                {!!m.badge && <span style={{ minWidth: 24, height: 24, padding: "0 7px", boxSizing: "border-box", borderRadius: 12, background: "#74b484", color: "#173430", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{m.badge}</span>}
-              </button>
-            ); })}
-          </div>
-        </section>
-      ))}
+    <div style={{ display: "grid", gridTemplateColumns: etroit ? "repeat(auto-fill, minmax(220px, 1fr))" : `repeat(${COLS}, minmax(0, 1fr))`, gap: 10, marginBottom: 16 }}>
+      {[...liste, ...sansCle].map(m => {
+        const cas = m.key ? place.get(m.key) : undefined;
+        return (
+          <button key={m.key || m.label} type="button" onClick={m.action}
+            style={{ padding: 0, border: "none", background: "none", cursor: "pointer", textAlign: "left", ...(!etroit && cas !== undefined ? { gridColumn: (cas % COLS) + 1, gridRow: Math.floor(cas / COLS) + 1 } : {}) }}>
+            <CarteModule m={m} sombre={sombre} coul={COULEURS_PASTEL.find(x => x.id === couleurs[m.key || ""])} />
+          </button>
+        );
+      })}
     </div>
   );
 }
