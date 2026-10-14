@@ -26,6 +26,8 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
   const [onglet, setOnglet] = useState<"accueil" | "jour" | "passees" | "stats" | "bord" | "traca" | "config">("accueil");
   const [lignes, setLignes] = useState<L[]>([]);
   const [jourOuvert, setJourOuvert] = useState("");
+  const [importDirect, setImportDirect] = useState(false);
+  const ouvrirJour = (j: string) => { setImportDirect(false); setJourOuvert(j); setOnglet("jour"); window.scrollTo(0, 0); };
   const [semaine, setSemaine] = useState(lundi(iso(new Date())));
   const [filtreDepart, setFiltreDepart] = useState<"tous" | "sud" | "paris">("tous");
 
@@ -174,7 +176,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
             ))}
           </div>
         )}
-        {onglet === "jour" && <LidlCommandes userName={userName} mode="commercial" admin={admin} jourForce={jourOuvert || undefined} />}
+        {onglet === "jour" && <LidlCommandes key={importDirect ? "import" : "liste"} userName={userName} mode="commercial" admin={admin} jourForce={jourOuvert || undefined} ouvrirImport={importDirect} />}
 
         {onglet === "passees" && (
           <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 14, boxShadow: "0 2px 8px rgba(0,0,0,.05)" }}>
@@ -320,18 +322,21 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
           </div>
         )}
 
+        {/* 14/10/2026 — Accueil : un bouton pour ajouter une commande, un pour toutes les commandes
+            passées ; le tableau de la semaine est cliquable (un jour = sa commande). */}
         {onglet === "accueil" && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: 12, marginBottom: 16 }}>
-            <button type="button" onClick={() => setOnglet("jour")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #0050aa, #1d6fd1)", color: "#fff", cursor: "pointer", textAlign: "left", boxShadow: "0 8px 20px rgba(0,80,170,.25)" }}>
-              <span style={{ fontSize: 34 }}>🛒</span>
-              <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 18, fontWeight: 900 }}>Commandes</span><span style={{ display: "block", fontSize: 12.5, opacity: 0.9 }}>Commandes de la semaine, Geslot, bons, étiquettes · importer une nouvelle commande</span></span>
+          <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+            <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #0050aa, #1d6fd1)", color: "#fff", cursor: "pointer", textAlign: "left", boxShadow: "0 8px 20px rgba(0,80,170,.25)" }}>
+              <span style={{ fontSize: 30 }}>➕</span>
+              <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 18, fontWeight: 900 }}>Ajouter une commande</span><span style={{ display: "block", fontSize: 12.5, opacity: 0.9 }}>Importer le tableau Lidl reçu</span></span>
               <span style={{ fontSize: 22, fontWeight: 900 }}>›</span>
             </button>
-            <button type="button" onClick={() => setOnglet("passees")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 16, border: "1.5px solid #e5e7eb", background: "#fff", color: "#111827", cursor: "pointer", textAlign: "left" }}>
-              <span style={{ fontSize: 30 }}>🗂️</span>
-              <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 16, fontWeight: 900 }}>Commandes passées</span><span style={{ display: "block", fontSize: 12.5, color: "#6b7280" }}>Historique jour par jour</span></span>
-              <span style={{ fontSize: 22, fontWeight: 900, color: "#0050aa" }}>›</span>
+            <button type="button" onClick={() => setOnglet("passees")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 18px", borderRadius: 14, border: "1.5px solid #e5e7eb", background: "#fff", color: "#111827", cursor: "pointer", textAlign: "left" }}>
+              <span style={{ fontSize: 24 }}>🗂️</span>
+              <span style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>Voir toutes les commandes passées</span>
+              <span style={{ fontSize: 20, fontWeight: 900, color: "#0050aa" }}>›</span>
             </button>
+            <div style={{ fontSize: 12.5, color: "#6b7280" }}>👆 Clique sur un jour du tableau ci-dessous pour ouvrir sa commande (bons, étiquettes, traçabilité).</div>
           </div>
         )}
         {(onglet === "stats" || onglet === "accueil") && (
@@ -356,21 +361,21 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead><tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
                     <th style={{ padding: 8, textAlign: "left" }}>Base</th>
-                    {joursSemaine.map((j, i) => <th key={j} style={{ padding: 8, textAlign: "right", whiteSpace: "nowrap" }}>{JOURS[i]} {j.slice(8)}</th>)}
+                    {joursSemaine.map((j, i) => <th key={j} onClick={() => ouvrirJour(j)} title="Ouvrir la commande de ce jour" style={{ padding: 8, textAlign: "right", whiteSpace: "nowrap", cursor: "pointer", color: "#0050aa", textDecoration: "underline dotted" }}>{JOURS[i]} {j.slice(8)}</th>)}
                     <th style={{ padding: 8, textAlign: "right" }}>Total</th><th style={{ padding: 8, textAlign: "right" }}>Prêtes</th>
                   </tr></thead>
                   <tbody>
                     {matrice.map(g => (
                       <tr key={g.base} style={{ borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "7px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{nomBase(g.base)} <span style={{ color: "#9ca3af", fontWeight: 500 }}>n°{numBase(g.base) === 999 ? "?" : numBase(g.base)}</span></td>
-                        {g.parJour.map((q, i) => <td key={i} style={{ padding: "7px 8px", textAlign: "right", color: q ? "#0b2e63" : "#d1d5db", fontWeight: q ? 700 : 400, background: q ? `rgba(37,99,235,${0.08 + 0.4 * (q / maxCase)})` : "transparent" }}>{q || "·"}</td>)}
+                        {g.parJour.map((q, i) => <td key={i} onClick={() => q && ouvrirJour(joursSemaine[i])} title={q ? "Ouvrir la commande de ce jour" : undefined} style={{ cursor: q ? "pointer" : "default", padding: "7px 8px", textAlign: "right", color: q ? "#0b2e63" : "#d1d5db", fontWeight: q ? 700 : 400, background: q ? `rgba(37,99,235,${0.08 + 0.4 * (q / maxCase)})` : "transparent" }}>{q || "·"}</td>)}
                         <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800 }}>{g.total}</td>
                         <td style={{ padding: "7px 8px", textAlign: "right", color: g.prets === g.nb ? "#15803d" : "#b45309" }}>{g.prets}/{g.nb}</td>
                       </tr>
                     ))}
                     <tr style={{ borderTop: "2px solid #e5e7eb", background: "#f9fafb", fontWeight: 800 }}>
                       <td style={{ padding: 8 }}>Total</td>
-                      {totalParJour.map((q, i) => <td key={i} style={{ padding: 8, textAlign: "right" }}>{q || "·"}</td>)}
+                      {totalParJour.map((q, i) => <td key={i} onClick={() => q && ouvrirJour(joursSemaine[i])} style={{ cursor: q ? "pointer" : "default", padding: 8, textAlign: "right" }}>{q || "·"}</td>)}
                       <td style={{ padding: 8, textAlign: "right" }}>{totalSemaine}</td><td />
                     </tr>
                   </tbody>

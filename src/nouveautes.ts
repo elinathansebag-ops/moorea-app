@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 23, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : « ➕ Ajouter une commande » ouvre directement l'import, « Voir toutes les commandes passées » en dessous, et un clic sur un jour du tableau ouvre sa commande." },
   { id: 22, date: "14/10", pages: ["taches"], texte: "✅ Accueil : à la place des chiffres « Aujourd'hui », tes tâches à faire sur un bandeau qui défile ; une case pour cocher directement." },
   { id: 21, date: "14/10", pages: ["retours", "stock", "reconditionnement", "preparation", "rack", "prestataires"], texte: "👤 Qui a fait quoi : le nom s'affiche à côté des actions dans Retours clients, Stock, Reconditionnement, Préparation, Racks et Prestataires (créé, pointé, reçu, parti, clôturé, déplacé…)." },
   { id: 20, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : onglet Traçabilité retiré ; le bouton « Envoyer / Renvoyer à Lidl » est dans le bandeau d'envoi en haut." },

@@ -232,7 +232,7 @@ const libDepart = (d?: string) => (d === "paris" ? "Départ Paris" : d === "sud"
 // mode « commercial » : module « Commandes Lidl » (import du tableau, vue de TOUTES les commandes,
 // Sud et Paris, lecture seule). mode « preparation » : cellule de Préparation (entrepôt) — pas
 // d'import, uniquement les commandes au départ de Paris, avec saisie du lot et bouton « Prêt ».
-export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparation", jourForce, ficheScan, onFicheScanTraitee, admin }: { userName?: string; couleur?: string; mode?: "commercial" | "preparation"; jourForce?: string; ficheScan?: string | null; onFicheScanTraitee?: () => void; admin?: boolean }) {
+export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparation", jourForce, ficheScan, onFicheScanTraitee, admin, ouvrirImport }: { ouvrirImport?: boolean; userName?: string; couleur?: string; mode?: "commercial" | "preparation"; jourForce?: string; ficheScan?: string | null; onFicheScanTraitee?: () => void; admin?: boolean }) {
   const commercial = mode === "commercial";
   // 13/10/2026 — Demande d'Elinathan : « dans la liste des commandes mets un crayon pour modifier
   // ou supprimer une commande de l'app, que pour les admins ». Commande en cours de modification :
@@ -246,7 +246,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const [import_, setImport] = useState(false);
   // 05/10/2026 — Import en une fenêtre : fichier + départ (Paris / Medina Perpignan) + date (reprise du fichier, modifiable).
   type LigneBrute = Omit<LigneLidl, "id" | "date" | "depart" | "transporteur" | "lot" | "statut">;
-  const [fenetreImport, setFenetreImport] = useState(false);
+  // 14/10/2026 — « ➕ Ajouter une commande » de l'accueil Lidl ouvre directement la fenêtre d'import.
+  const [fenetreImport, setFenetreImport] = useState(!!ouvrirImport);
   const [fichierLu, setFichierLu] = useState<{ nom: string; lignes: LigneBrute[]; dateFichier: string } | null>(null);
   // 13/10/2026 — Départ choisi pour chaque ligne du fichier dans la fenêtre d'import (indice dans
   // fichierLu.lignes) : Paris, Medina (Perpignan), ou « non » = pas importée (ni préparée ni envoyée).
