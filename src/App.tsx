@@ -6653,45 +6653,89 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               </div>
               );
 
-              // Les 3 rapports les plus récents (selon le tri en cours) restent visibles en
-              // liste — le reste de l'historique est classé en accordéons par fournisseur
-              // (repliés par défaut), pour ne pas noyer l'écran sous des mois de rapports.
-              const recents = sorted.slice(0, 3);
-              const reste = sorted.slice(3);
-              const groupesFournisseur: Record<string, any[]> = {};
-              reste.forEach(r => {
-                const f = r.fournisseur || "Sans fournisseur";
-                if (!groupesFournisseur[f]) groupesFournisseur[f] = [];
-                groupesFournisseur[f].push(r);
-              });
-              const nomsFournisseurs = Object.keys(groupesFournisseur).sort((a, b) => a.localeCompare(b));
+              // 14/10/2026 — Demande d'Elinathan : page plus lisible. Sans filtre : les 5 derniers
+              // rapports en cartes, puis les fournisseurs en carrés (un clic = toutes ses cartes).
+              // Avec un filtre / une recherche : toutes les cartes correspondantes en grille.
+              // Cartes compactes : 3 photos max, petits boutons à icônes.
+              const coulDec = (d: string) => d === "refus" ? { f: "#dc2626", c: "#fef2f2", t: "✗ Refus" } : d === "reserve" ? { f: "#d97706", c: "#fffbeb", t: "⚠ Réserve" } : { f: "#16a34a", c: "#f0fdf4", t: "✓ Conforme" };
+              const petitBouton = (titre: string, contenu: any, onClick: () => void, opts: { fond?: string; texte?: string; desactive?: boolean } = {}) => (
+                <button type="button" title={titre} aria-label={titre} disabled={opts.desactive} onClick={e => { e.stopPropagation(); onClick(); }}
+                  style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid #e8e5dc", background: opts.fond || "#fff", color: opts.texte || "#374151", fontSize: 16, cursor: opts.desactive ? "wait" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, padding: 0 }}>{contenu}</button>
+              );
+              const carteCompacte = (r: any) => {
+                const d = coulDec(r.decision), photos = (r.photoUrls?.length ? r.photoUrls : (r.photos || []).map((p: any) => p?.url)).filter(Boolean).slice(0, 3);
+                const envoi = sendingId === (r.id || r.firebaseKey);
+                return (
+                  <div key={r.firebaseKey || r.id} style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.07)", borderTop: `4px solid ${d.f}`, display: "flex", flexDirection: "column" }}>
+                    <div style={{ padding: "12px 14px 8px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
+                          <span style={{ padding: "2px 9px", borderRadius: 999, background: d.c, color: d.f, fontSize: 11.5, fontWeight: 800 }}>{d.t}</span>
+                          <span style={{ fontSize: 11.5, color: "#9ca3af", fontWeight: 700 }}>{r.date}{r.numeroRapport ? ` · ${r.numeroRapport}` : ""}</span>
+                        </div>
+                        <div style={{ fontSize: 14.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.produit}</div>
+                        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}</div>
+                      </div>
+                      {r.score ? <div style={{ flexShrink: 0, width: 46, height: 46, borderRadius: 23, border: `3px solid ${Number(r.score) >= 4 ? "#16a34a" : Number(r.score) >= 3 ? "#d97706" : "#dc2626"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "#1a2e1a" }}>{Number(r.score).toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</div> : null}
+                    </div>
+                    <div style={{ padding: "0 14px 8px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {(r.decision === "reserve" || r.decision === "refus") && r.nbColisRefuses != null && <span style={{ fontSize: 12, fontWeight: 800, color: d.f, background: d.c, borderRadius: 8, padding: "3px 8px" }}>{r.nbColisRefuses} / {r.nbColisTotal} colis</span>}
+                      {r.lotMoorea && <span style={{ fontSize: 11.5, background: "#faf8f0", color: "#8a6f2e", borderRadius: 8, padding: "3px 8px", fontWeight: 700 }}>Lot {r.lotMoorea}</span>}
+                      {r.temperature && <span style={{ fontSize: 11.5, background: "#eff6ff", color: "#1d4ed8", borderRadius: 8, padding: "3px 8px", fontWeight: 700 }}>🌡 {r.temperature}°C</span>}
+                    </div>
+                    {photos.length > 0 ? (
+                      <div style={{ display: "grid", gridTemplateColumns: `repeat(${photos.length}, 1fr)`, gap: 3, padding: "0 14px" }}>
+                        {photos.map((u: string, k: number) => <img key={k} src={srcPhoto(u)} alt="" loading="lazy" style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", borderRadius: 8, display: "block" }} />)}
+                      </div>
+                    ) : r.photosPerdues ? <div style={{ margin: "0 14px", padding: "8px", borderRadius: 8, background: "#fffbeb", color: "#92400e", fontSize: 12, fontWeight: 700, textAlign: "center" }}>📷 Photos perdues — à remettre avec ✏️</div> : null}
+                    {r.observations && <div style={{ padding: "8px 14px 0", fontSize: 12.5, fontStyle: "italic", color: "#6b7280", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>« {r.observations} »</div>}
+                    {r.bonRepriseSigné && r.transporteur && <div style={{ padding: "6px 14px 0", fontSize: 11.5, color: "#16a34a", fontWeight: 700 }}>✅ Bon signé par {r.transporteur.nom || "le transporteur"}</div>}
+                    {r.recupereSansSig && <div style={{ padding: "6px 14px 0", fontSize: 11.5, color: "#6b7280", fontWeight: 700 }}>📦 Récupéré sans signature</div>}
+                    <div style={{ display: "flex", gap: 6, padding: "10px 14px 12px", marginTop: "auto", flexWrap: "wrap" }}>
+                      {petitBouton("Voir / télécharger le PDF (français ou anglais)", "📄", () => setChoixLangueRapport(r))}
+                      {petitBouton("Envoyer au commercial par mail", envoi ? "⏳" : "✉️", () => envoyerEmail(r), { desactive: envoi })}
+                      {petitBouton("Partager sur WhatsApp", <svg width="18" height="18" viewBox="0 0 24 24" fill="#16a34a"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.2.1-.1 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.7 11.7 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>, () => partagerWhatsApp(r))}
+                      {r.decision === "refus" && !r.bonRepriseSigné && !r.recupereSansSig && petitBouton("Bon de retour à faire signer", "🔄", () => genererBonRetour(r), { fond: "#fef2f2", texte: "#dc2626" })}
+                      <span style={{ flex: 1 }} />
+                      {petitBouton("Modifier le rapport", "✏️", () => chargerRapportEdition(r), { fond: "#eff6ff" })}
+                    </div>
+                  </div>
+                );
+              };
+              const grilleCartes = (l: any[]) => <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(270px, 100%), 1fr))", gap: 14 }}>{l.map(carteCompacte)}</div>;
+              const filtreActif = !!(searchText || filterFournisseur || filterProduit || filterDateDebut || filterDateFin || filterDecision);
+              if (filtreActif) return grilleCartes(sorted);
 
+              const parFourn = new Map<string, any[]>();
+              sorted.forEach(r => { const f = r.fournisseur || "Sans fournisseur"; parFourn.set(f, [...(parFourn.get(f) || []), r]); });
+              const fourns = [...parFourn].sort((a, b) => (b[1][0]?.timestamp || 0) - (a[1][0]?.timestamp || 0));
               return (
                 <>
-                  {recents.map((r, i) => renderRapportCard(r, i))}
-                  {nomsFournisseurs.length > 0 && (
-                    <div style={{ marginTop: 18 }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px", margin: "0 0 8px" }}>
-                        📁 Historique par fournisseur
-                      </p>
-                      {nomsFournisseurs.map(f => {
-                        const items = groupesFournisseur[f];
-                        const isOpen = openFournisseurs.has(f);
-                        return (
-                          <div key={f} style={{ marginBottom: 8 }}>
-                            <div onClick={() => setOpenFournisseurs(prev => { const next = new Set(prev); if (next.has(f)) next.delete(f); else next.add(f); return next; })}
-                              style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#faf8f3", border: "1.5px solid #e8e0d0", borderRadius: 10 }}>
-                              <span style={{ fontWeight: 700, fontSize: 13, color: "#1a2e1a" }}>
-                                🏭 {f} <span style={{ fontWeight: 500, color: "#9ca3af", fontSize: 11, marginLeft: 4 }}>({items.length})</span>
-                              </span>
-                              <span style={{ transition: "transform .15s", display: "inline-block", transform: isOpen ? "rotate(90deg)" : "none", color: "#c8a84b", fontSize: 16 }}>›</span>
-                            </div>
-                            {isOpen && <div style={{ paddingTop: 8 }}>{items.map((r, i) => renderRapportCard(r, i))}</div>}
+                  <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: "4px 0 10px" }}>🕒 Derniers rapports</p>
+                  {grilleCartes(sorted.slice(0, 5))}
+                  <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: "26px 0 10px" }}>🏭 Par fournisseur ({fourns.length})</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(210px, 100%), 1fr))", gap: 12 }}>
+                    {fourns.map(([f, l]) => {
+                      const photo = l.map(r => (r.photoUrls || [])[0]).find(Boolean);
+                      const nRes = l.filter(r => r.decision === "reserve").length, nRef = l.filter(r => r.decision === "refus").length;
+                      return (
+                        <button key={f} type="button" onClick={() => { setFilterFournisseur(f); window.scrollTo(0, 0); }}
+                          style={{ padding: 0, border: "none", borderRadius: 16, overflow: "hidden", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.07)", cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column" }}>
+                          <div style={{ aspectRatio: "16/9", background: "#eef2f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>
+                            {photo ? <img src={srcPhoto(photo)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🏭"}
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          <div style={{ padding: "10px 12px 12px" }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{f}</div>
+                            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{l.length} rapport{l.length > 1 ? "s" : ""} · dernier le {l[0]?.date}</div>
+                            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                              {nRes > 0 && <span style={{ fontSize: 11.5, fontWeight: 800, color: "#d97706", background: "#fffbeb", borderRadius: 999, padding: "2px 8px" }}>{nRes} réserve{nRes > 1 ? "s" : ""}</span>}
+                              {nRef > 0 && <span style={{ fontSize: 11.5, fontWeight: 800, color: "#dc2626", background: "#fef2f2", borderRadius: 999, padding: "2px 8px" }}>{nRef} refus</span>}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </>
               );
             })()}
