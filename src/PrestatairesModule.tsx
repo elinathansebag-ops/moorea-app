@@ -22,6 +22,7 @@ import type { Depot as DepotRecond, Demande as DemandeRecond, Transporteur as Tr
 import { CARTONS_CATALOGUE, PALETTES_IFCO, REFS_PALETTES_VIERGES } from "./prestatairesCatalogue";
 import { FormulaireAnalyse } from "./DemandesAnalyse";
 import { FacturesPrestataires } from "./FacturesPrestataires";
+import { Pastille, marquerVu } from "./pastilles";
 
 // 01/09/2026 — Palettes vierges (bois brut, pas les caisses IFCO réutilisables) : livrées
 // plusieurs fois par jour, à différents moments, en piles de quantité variable selon ce qui
@@ -2226,9 +2227,9 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                   {RUBRIQUES.map(r => {
                     const actif = rubrique === r.k;
                     return (
-                      <button key={r.k} type="button" onClick={() => setActiveTab(r.defaut)}
+                      <button key={r.k} type="button" onClick={() => { setActiveTab(r.defaut); marquerVu(`prestataires.${r.k}`); }}
                         style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: actif ? COLORS.primary : "transparent", color: actif ? "#fff" : COLORS.gray700, fontSize: 14, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        {r.lib}
+                        {r.lib}<Pastille cle={`prestataires.${r.k}`} enLigne />
                         {!!r.badge && <span style={{ minWidth: 20, height: 20, padding: "0 6px", borderRadius: 10, background: actif ? "rgba(255,255,255,.25)" : COLORS.tertiary, color: "#fff", fontSize: 11.5, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>{r.badge}</span>}
                       </button>
                     );

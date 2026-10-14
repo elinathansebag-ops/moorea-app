@@ -3,10 +3,15 @@
 // À chaque publication : ajouter une entrée EN HAUT, avec un id plus grand que le précédent.
 // La dernière entrée vue est rangée dans comptes/{uid}/nouveautes_vu (même sur un autre appareil).
 export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
-export const NOUVEAUTES: { id: number; date: string; texte: string }[] = [
-  { id: 16, date: "14/10", texte: "🔐 Droits d'accès › Par module : des carrés (avec le nombre de personnes) ; un clic ouvre la fenêtre pour cocher qui a accès. « Refus à faire signer » a sa case sous Rapports d'agréage." },
-  { id: 15, date: "14/10", texte: "🛒 Lidl : l'heure d'envoi du mail de traçabilité est affichée (« Envoyée le 14/10 à 13:00 ») dans Commandes Lidl et Traçabilité Lidl." },
-  { id: 14, date: "14/10", texte: "🔄 Refus à faire signer : « Récupéré sans signature » marche à chaque fois, et un bouton (admin) marque d'un coup tous les refus en attente comme récupérés." },
+// pages : clés des pages / onglets modifiés → pastille rouge « nouveau » (voir src/pastilles.tsx).
+//   Module de l'accueil : « prestataires », « qualite », « refus_signer », « lidl_consultation »,
+//   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
+//   « admin.acces », « droits.modules », « extractions.produits »…
+export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 17, date: "14/10", texte: "🔴 Pastilles rouges « nouveau » sur les pages et onglets que je modifie ; elles disparaissent dès que tu les ouvres." },
+  { id: 16, date: "14/10", pages: ["admin.acces", "droits.modules"], texte: "🔐 Droits d'accès › Par module : des carrés (avec le nombre de personnes) ; un clic ouvre la fenêtre pour cocher qui a accès. « Refus à faire signer » a sa case sous Rapports d'agréage." },
+  { id: 15, date: "14/10", pages: ["lidl_consultation", "qualite", "qualite.lidl", "lidl"], texte: "🛒 Lidl : l'heure d'envoi du mail de traçabilité est affichée (« Envoyée le 14/10 à 13:00 ») dans Commandes Lidl et Traçabilité Lidl." },
+  { id: 14, date: "14/10", pages: ["refus_signer"], texte: "🔄 Refus à faire signer : « Récupéré sans signature » marche à chaque fois, et un bouton (admin) marque d'un coup tous les refus en attente comme récupérés." },
   { id: 13, date: "14/10", texte: "🔄 Refus à faire signer : les 4 photos de chaque carte sont maintenant des carrés identiques." },
   { id: 12, date: "14/10", texte: "📋 Rapports qualité : 4 derniers rapports en haut (une seule ligne)." },
   { id: 11, date: "14/10", texte: "🔎 Traçabilité Lidl : une carte par commande (bases, départs, avancement, qui l'a préparée, traça envoyée) ; un clic ouvre la commande avec une carte par base." },

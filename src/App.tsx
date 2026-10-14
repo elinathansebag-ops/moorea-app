@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react
 import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
 import { AccueilModulesV2, ordonnerModules, COULEURS_PASTEL } from "./AccueilModulesV2";
 import { NOUVEAUTES, NOUVEAUTES_POUR } from "./nouveautes";
+import { initPastilles, marquerVu, Pastille } from "./pastilles";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
 import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, envoyerPhoto, srcPhoto } from "./firebase";
 import { EnvoisMails } from "./EnvoisMails";
@@ -531,6 +532,8 @@ export default function App() {
   const user = useMemo(() => avecProfil(userCompte, profilGenerique), [userCompte, profilGenerique]);
   // 14/10/2026 — Fenêtre « Nouveautés » après une mise en ligne (src/nouveautes.ts), compte d'Elinathan seulement.
   const [nouveautesVu, setNouveautesVu] = useState<number | null>(null);
+  // 14/10/2026 — Pastilles rouges « nouveau » sur les pages modifiées (src/pastilles.tsx).
+  useEffect(() => { initPastilles(user?.uid || null, user?.email); }, [user?.uid]);
   useEffect(() => {
     if (!user?.uid || !NOUVEAUTES_POUR.includes((user.email || "").toLowerCase())) { setNouveautesVu(null); return; }
     get(ref(db, `comptes/${user.uid}/nouveautes_vu`)).then(snap => setNouveautesVu(Number(snap.val()) || 0)).catch(() => setNouveautesVu(null));
@@ -3899,9 +3902,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     {RUBRIQUES.map(r => {
                       const actif = adminTab === r.cle;
                       return (
-                        <button key={r.cle} type="button" onClick={() => { setAdminTab(r.cle); window.scrollTo(0, 0); }} aria-current={actif ? "page" : undefined}
+                        <button key={r.cle} type="button" onClick={() => { setAdminTab(r.cle); marquerVu(`admin.${r.cle}`); window.scrollTo(0, 0); }} aria-current={actif ? "page" : undefined}
                           style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "9px 13px", borderRadius: 10, border: `1.5px solid ${actif ? "#305a55" : "#e5e7eb"}`, background: actif ? "#305a55" : "#fff", color: actif ? "#fff" : "#374151", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", textAlign: "left" }}>
-                          {r.label}
+                          {r.label}<Pastille cle={`admin.${r.cle}`} enLigne />
                           {!!r.badge && <span style={{ minWidth: 18, height: 18, padding: "0 5px", boxSizing: "border-box", borderRadius: 9, background: "#dc2626", color: "#fff", fontSize: 10.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{r.badge}</span>}
                         </button>
                       );
@@ -4471,9 +4474,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       setShowQualiteHub(false); setRetourHub("qualite"); setVue("historique"); setPageMode("arrivages"); window.scrollTo(0, 0);
     };
     const raccourcis = [
-      ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", detail: `${rapports.length} rapports · recherche, filtres, PDF`, couleur: "#305a55", onClick: () => versRapports() }] : []),
-      ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité & mesures", detail: "Lots, températures et poids pesés", couleur: "#0891b2", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
-      ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", detail: "Lots, producteurs, envois à Lidl", couleur: "#0050aa", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
+      ...(monAcces.hasModule("rapports") ? [{ cle: "qualite.rapports", icone: "📋", titre: "Rapports d'agréage", detail: `${rapports.length} rapports · recherche, filtres, PDF`, couleur: "#305a55", onClick: () => versRapports() }] : []),
+      ...(monAcces.hasModule("qualite") ? [{ cle: "qualite.traca", icone: "🧪", titre: "Traçabilité & mesures", detail: "Lots, températures et poids pesés", couleur: "#0891b2", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
+      ...(monAcces.hasModule("lidl_consultation") ? [{ cle: "qualite.lidl", icone: "🔎", titre: "Traçabilité Lidl", detail: "Lots, producteurs, envois à Lidl", couleur: "#0050aa", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
       // 14/10/2026 — « Refus à faire signer » : module à part (carte d'accueil), plus dans le Récap qualité.
       // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
     ];

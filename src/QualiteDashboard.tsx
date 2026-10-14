@@ -3,6 +3,7 @@ import { PageHeader } from "./shared";
 import { db, ref, get } from "./firebase";
 import { pointePar } from "./ArrivageModule";
 import { FicheRapport } from "./Extractions";
+import { Pastille, marquerVu } from "./pastilles";
 
 // 14/10/2026 — Demande d'Elinathan : « 🧪 Récap qualité » n'est plus un sommaire de modules mais
 // un vrai tableau de bord qualité (chiffres clés, évolution, fournisseurs / produits à problème,
@@ -11,7 +12,7 @@ import { FicheRapport } from "./Extractions";
 // refusé, archives comprises), pas sur les rapports : on ne fait un rapport que quand il y a un
 // souci. Les rapports servent au détail (colis, notes, derniers incidents).
 
-export type RaccourciQualite = { icone: string; titre: string; detail?: string; couleur?: string; badge?: number; onClick: () => void };
+export type RaccourciQualite = { cle?: string; icone: string; titre: string; detail?: string; couleur?: string; badge?: number; onClick: () => void };
 type Props = {
   rapports: any[];
   raccourcis: RaccourciQualite[];
@@ -200,8 +201,9 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
             {raccourcis.map(x => {
               const col = x.couleur || "#305a55";
               return (
-                <button key={x.titre} type="button" onClick={x.onClick} className="raccourci-qualite"
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 16, border: "none", borderLeft: `5px solid ${col}`, background: c.carte, color: c.texte, cursor: "pointer", textAlign: "left", boxShadow: darkMode ? "none" : "0 2px 8px rgba(0,0,0,.07)", transition: "transform .12s, box-shadow .12s" }}>
+                <button key={x.titre} type="button" onClick={() => { if (x.cle) marquerVu(x.cle); x.onClick(); }} className="raccourci-qualite"
+                  style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderRadius: 16, border: "none", borderLeft: `5px solid ${col}`, background: c.carte, color: c.texte, cursor: "pointer", textAlign: "left", boxShadow: darkMode ? "none" : "0 2px 8px rgba(0,0,0,.07)", transition: "transform .12s, box-shadow .12s" }}>
+                  {x.cle && <Pastille cle={x.cle} />}
                   <span style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 12, background: col + "1f", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{x.icone}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 15, fontWeight: 900 }}>{x.titre}</span>

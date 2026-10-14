@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { IconeTrait } from "./shared";
+import { Pastille, marquerVu } from "./pastilles";
 
 // 05/10/2026 — Nouvelle apparence (charte Moorea) : modules de l'accueil rangés par familles, avec
 // une icône fine, le nom, une ligne d'info et une pastille quand il y a quelque chose à faire.
@@ -109,7 +110,7 @@ function CarteModule({ m, sombre, coul, edition, badgeOff }: { m: Module; sombre
   const carte = sombre ? "#171b21" : "#ffffff", fondIcone = sombre ? "#1d2e2b" : "#eaf2ee";
   const titre = sombre ? "#8cc79a" : "#305a55", encre = sombre ? "#e6e8eb" : "#1e2b29", gris = sombre ? "#aab1bb" : "#5e6b69";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 64, height: "100%", textAlign: "left", background: coul ? (sombre ? coul.sombre : coul.fond) : carte, borderRadius: 12, padding: "12px 14px", boxShadow: sombre ? "none" : "0 1px 2px rgba(30,43,41,.07)", color: encre, boxSizing: "border-box", width: "100%", outline: edition ? `2px dashed ${sombre ? "#4b5563" : "#c9d6d2"}` : "none", outlineOffset: -2 }}>
+    <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, minHeight: 64, height: "100%", textAlign: "left", background: coul ? (sombre ? coul.sombre : coul.fond) : carte, borderRadius: 12, padding: "12px 14px", boxShadow: sombre ? "none" : "0 1px 2px rgba(30,43,41,.07)", color: encre, boxSizing: "border-box", width: "100%", outline: edition ? `2px dashed ${sombre ? "#4b5563" : "#c9d6d2"}` : "none", outlineOffset: -2 }}>
       <span style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, background: coul && !sombre ? coul.icone : fondIcone, color: titre, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <IconeTrait d={ICONES[m.key || ""] || ICONE_DEFAUT} />
       </span>
@@ -117,6 +118,7 @@ function CarteModule({ m, sombre, coul, edition, badgeOff }: { m: Module; sombre
         <span style={{ display: "block", fontSize: 15, fontWeight: 700 }}>{m.label}</span>
         {m.stat && <span style={{ display: "block", fontSize: 12.5, color: gris, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.stat}</span>}
       </span>
+      {!edition && m.key && <Pastille cle={m.key} />}
       {!badgeOff && !!m.badge && <span style={{ minWidth: 24, height: 24, padding: "0 7px", boxSizing: "border-box", borderRadius: 12, background: "#74b484", color: "#173430", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{m.badge}</span>}
     </div>
   );
@@ -280,7 +282,7 @@ function AccueilGrille({ modules, sombre, ordre, positions, couleurs = {} }: { m
       {[...liste, ...sansCle].map(m => {
         const cas = m.key ? place.get(m.key) : undefined;
         return (
-          <button key={m.key || m.label} type="button" onClick={m.action}
+          <button key={m.key || m.label} type="button" onClick={() => { if (m.key) marquerVu(m.key); m.action(); }}
             style={{ padding: 0, border: "none", background: "none", cursor: "pointer", textAlign: "left", ...(!etroit && cas !== undefined ? { gridColumn: (cas % COLS) + 1, gridRow: Math.floor(cas / COLS) + 1 } : {}) }}>
             <CarteModule m={m} sombre={sombre} coul={COULEURS_PASTEL.find(x => x.id === couleurs[m.key || ""])} />
           </button>

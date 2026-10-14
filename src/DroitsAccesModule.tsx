@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { db, ref, onValue, remove, update, auth } from "./firebase";
 import { set } from "firebase/database";
 import { nomSignataire } from "./ProfilGenerique";
+import { Pastille, marquerVu } from "./pastilles";
 import { PageHeader, styles, MODULE_DEFS, modulesParGroupe, cleEmail, cleTab, ADMIN_BOOTSTRAP, calculerAcces, compteEnAttente, toutesLesClesModules, AccesRole, AccesUser } from "./shared";
 import { Commercial } from "./MessagerieModule";
 
@@ -264,9 +265,9 @@ export default function DroitsAccesModule({ onClose }: { onClose: () => void }) 
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setTab("comptes")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "comptes" ? "#7c3aed" : "#fff", color: tab === "comptes" ? "#fff" : "#555" }}>📋 Comptes</button>
-          <button onClick={() => setTab("modules")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "modules" ? "#7c3aed" : "#fff", color: tab === "modules" ? "#fff" : "#555" }}>🧩 Par module</button>
-          <button onClick={() => setTab("partages")} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "partages" ? "#7c3aed" : "#fff", color: tab === "partages" ? "#fff" : "#555" }}>👥 Comptes partagés</button>
+          <button onClick={() => { setTab("comptes"); marquerVu("droits.comptes"); }} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "comptes" ? "#7c3aed" : "#fff", color: tab === "comptes" ? "#fff" : "#555" }}>📋 Comptes<Pastille cle="droits.comptes" enLigne /></button>
+          <button onClick={() => { setTab("modules"); marquerVu("droits.modules"); }} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "modules" ? "#7c3aed" : "#fff", color: tab === "modules" ? "#fff" : "#555" }}>🧩 Par module<Pastille cle="droits.modules" enLigne /></button>
+          <button onClick={() => { setTab("partages"); marquerVu("droits.partages"); }} style={{ flex: 1, padding: 10, borderRadius: 10, border: "1.5px solid #e9d8fd", cursor: "pointer", fontWeight: 700, fontSize: 13, background: tab === "partages" ? "#7c3aed" : "#fff", color: tab === "partages" ? "#fff" : "#555" }}>👥 Comptes partagés<Pastille cle="droits.partages" enLigne /></button>
         </div>
 
         {tab === "partages" && (() => {

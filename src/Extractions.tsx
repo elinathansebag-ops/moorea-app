@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { db, ref, get, onValue, update, set, push, srcPhoto } from "./firebase";
+import { Pastille, marquerVu } from "./pastilles";
 import { calculerAcces, cleEmail, type AccesRole, type AccesUser } from "./shared";
 import { PageHeader } from "./shared";
 import { chargerEquipes, equipeArticle } from "./stockEquipes";
@@ -443,13 +444,14 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
               {cartes.map(x => {
                 const t = TEINTES[x.k] || TEINTES.config;
                 return (
-                  <button key={x.k} type="button" onClick={() => { setPreset({}); setOnglet(x.k); }} className="stats-carte"
+                  <button key={x.k} type="button" onClick={() => { setPreset({}); setOnglet(x.k); marquerVu(`extractions.${x.k}`); }} className="stats-carte"
                     style={{ position: "relative", overflow: "hidden", textAlign: "left", padding: "18px 18px 16px", borderRadius: 16, border: `1px solid ${c.bord}`, background: c.carte, color: c.texte, cursor: "pointer", boxShadow: sombre ? "none" : "0 2px 8px rgba(0,0,0,.05)", transition: "transform .15s, box-shadow .15s" }}>
                     <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: t.fort }} />
                     <span style={{ display: "inline-flex", width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", fontSize: 26, background: sombre ? "rgba(255,255,255,.06)" : t.doux }}>{x.icone}</span>
                     <span style={{ display: "block", fontSize: 16.5, fontWeight: 900, marginTop: 10 }}>{x.titre}</span>
                     <span style={{ display: "block", fontSize: 12.5, color: c.gris, marginTop: 3 }}>{x.detail}</span>
                     <span style={{ position: "absolute", right: 16, top: 18, fontSize: 18, color: t.fort, fontWeight: 900 }}>→</span>
+                    <span style={{ position: "absolute", right: 10, top: 10 }}><Pastille cle={`extractions.${x.k}`} /></span>
                   </button>
                 );
               })}
