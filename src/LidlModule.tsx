@@ -106,7 +106,8 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
   const totalParJour = joursSemaine.map((_, i) => matrice.reduce((s, g) => s + g.parJour[i], 0));
   const maxCase = Math.max(1, ...matrice.flatMap(g => g.parJour));
   // 14/10/2026 — Code couleur par référence Lidl (tableau de la semaine).
-  const PALETTE_REFS = [{ fond: "#dbeafe", texte: "#1e40af" }, { fond: "#ffedd5", texte: "#9a3412" }, { fond: "#dcfce7", texte: "#166534" }, { fond: "#ede9fe", texte: "#5b21b6" }, { fond: "#fce7f3", texte: "#9d174d" }];
+  const PALETTE_REFS = [{ fond: "#bfdbfe", texte: "#1e3a8a" }, { fond: "#fed7aa", texte: "#9a3412" }, { fond: "#bbf7d0", texte: "#14532d" }, { fond: "#ddd6fe", texte: "#4c1d95" }, { fond: "#fbcfe8", texte: "#831843" }];
+  const NB_JOURS_AFF = 6; // 14/10/2026 — pas de dimanche (jamais de départ ni de livraison)
   const couleurRef = (k: string) => { const i = REFS_LIDL.findIndex(r => r.k === k); return i >= 0 ? PALETTE_REFS[i % PALETTE_REFS.length] : { fond: "#f3f4f6", texte: "#374151" }; };
   const libRef = (k: string) => { const r = REFS_LIDL.find(x => x.k === k); return r ? `${r.article} — ${r.origine}` : "Référence inconnue"; };
   const refsSemaine = [...new Set(lignesSemaine.map(l => (l as any).refLidl || "?"))];
@@ -365,32 +366,33 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
                 </div>
               )}
               {matrice.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Rien cette semaine</div> : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
+                  <colgroup><col style={{ width: "24%" }} />{Array.from({ length: NB_JOURS_AFF }, (_, n) => <col key={n} />)}<col style={{ width: 70 }} /><col style={{ width: 70 }} /></colgroup>
                   <thead><tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
                     <th style={{ padding: 8, textAlign: "left" }}>Base</th>
-                    {joursSemaine.map((j, i) => <th key={j} onClick={() => ouvrirJour(j)} title="Ouvrir la commande de ce jour" style={{ padding: 8, textAlign: "right", whiteSpace: "nowrap", cursor: "pointer", color: "#0050aa", textDecoration: "underline dotted" }}>{JOURS[i]} {j.slice(8)}</th>)}
+                    {joursSemaine.slice(0, NB_JOURS_AFF).map((j, i) => <th key={j} onClick={() => ouvrirJour(j)} title="Ouvrir la commande de ce jour" style={{ padding: 8, textAlign: "right", whiteSpace: "nowrap", cursor: "pointer", color: "#0050aa", textDecoration: "underline dotted" }}>{JOURS[i]} {j.slice(8)}</th>)}
                     <th style={{ padding: 8, textAlign: "right" }}>Total</th><th style={{ padding: 8, textAlign: "right" }}>Prêtes</th>
                   </tr></thead>
                   <tbody>
                     {matrice.map(g => (
                       <tr key={g.base} style={{ borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "7px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{nomBase(g.base)} <span style={{ color: "#9ca3af", fontWeight: 500 }}>n°{numBase(g.base) === 999 ? "?" : numBase(g.base)}</span></td>
-                        {g.parJour.map((q, i) => <td key={i} onClick={() => q && ouvrirJour(joursSemaine[i])} title={q ? "Ouvrir la commande de ce jour" : undefined} style={{ verticalAlign: "top", cursor: q ? "pointer" : "default", padding: "7px 8px", textAlign: "right", color: q ? "#0b2e63" : "#d1d5db", fontWeight: q ? 700 : 400, background: "transparent" }}>{q ? (
-                          <span style={{ display: "inline-flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
+                        {g.parJour.slice(0, NB_JOURS_AFF).map((q, i) => <td key={i} onClick={() => q && ouvrirJour(joursSemaine[i])} title={q ? "Ouvrir la commande de ce jour" : undefined} style={{ cursor: q ? "pointer" : "default", padding: 0, height: 1, borderLeft: "2px solid #fff" }}>{q ? (
+                          <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 36 }}>
                             {g.detail[i].map((d, k) => { const c = couleurRef(d.ref); return (
-                              <span key={k} title={`${libRef(d.ref)} · ${d.depart === "paris" ? "départ Paris" : "départ Medina"}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, background: c.fond, color: c.texte, fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}>
-                                {d.q}{d.depart !== "paris" && <span style={{ fontSize: 10, fontWeight: 900, padding: "0 4px", borderRadius: 4, background: "#fff", color: "#b45309" }}>M</span>}
-                              </span>
+                              <div key={k} title={`${libRef(d.ref)} · ${d.depart === "paris" ? "départ Paris" : "départ Medina"}`} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 5, padding: "4px 10px", background: c.fond, color: c.texte, fontSize: 13, fontWeight: 800, borderTop: k ? "2px solid #fff" : "none" }}>
+                                {d.depart !== "paris" && <span style={{ fontSize: 10, fontWeight: 900, padding: "0 4px", borderRadius: 4, background: "#fff", color: "#b45309" }}>M</span>}{d.q}
+                              </div>
                             ); })}
-                          </span>
-                        ) : "·"}</td>)}
+                          </div>
+                        ) : <div style={{ textAlign: "center", color: "#d1d5db" }}>·</div>}</td>)}
                         <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800 }}>{g.total}</td>
                         <td style={{ padding: "7px 8px", textAlign: "right", color: g.prets === g.nb ? "#15803d" : "#b45309" }}>{g.prets}/{g.nb}</td>
                       </tr>
                     ))}
                     <tr style={{ borderTop: "2px solid #e5e7eb", background: "#f9fafb", fontWeight: 800 }}>
                       <td style={{ padding: 8 }}>Total</td>
-                      {totalParJour.map((q, i) => <td key={i} onClick={() => q && ouvrirJour(joursSemaine[i])} style={{ cursor: q ? "pointer" : "default", padding: 8, textAlign: "right" }}>{q || "·"}</td>)}
+                      {totalParJour.slice(0, NB_JOURS_AFF).map((q, i) => <td key={i} onClick={() => q && ouvrirJour(joursSemaine[i])} style={{ cursor: q ? "pointer" : "default", padding: 8, textAlign: "right" }}>{q || "·"}</td>)}
                       <td style={{ padding: 8, textAlign: "right" }}>{totalSemaine}</td><td />
                     </tr>
                   </tbody>
