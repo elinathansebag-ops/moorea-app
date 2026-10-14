@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 45, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : recherche plus courte, gros bouton « Import » qui prend la place." },
   { id: 44, date: "15/10", pages: ["admin.modules", "arrivages"], texte: "⚙️ Vue en colonnes / en liste de Pointer arrivage : réglage pour tout le monde dans Admin › Modules (colonnes par défaut) ; le bouton est retiré de la page." },
   { id: 43, date: "15/10", pages: ["arrivages"], texte: "🖨️ « Imprimante PC » retirée de Pointer arrivage ; une alerte rouge s'affiche sur l'accueil des admins si l'imprimante est déconnectée." },
   { id: 42, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : bouton « Import » mis en avant en vert ; « Températures et poids » retiré (dans Récap qualité) ; « Voir l'historique » en bas, sous les semaines." },

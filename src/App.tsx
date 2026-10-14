@@ -5246,7 +5246,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               );
             })()}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-              <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: "1 1 220px", minWidth: 180, padding: "8px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 13.5, background: "#fff" }} />
+              <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: "0 1 380px", minWidth: 180, padding: "8px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 13.5, background: "#fff" }} />
               {/* 15/10/2026 — Pastille imprimante retirée : alerte sur l'accueil des admins si elle est déconnectée. */}
               {/* 09/09/2026 — Bouton "Archiver anciens arrivages" retiré d'ici à la demande
                   d'Elinathan : l'app entière était devenue très lente (3-4 min de chargement,
@@ -5260,7 +5260,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   (aucun bouton n'y menait depuis cet écran) : ajout d'un accès direct. */}
               {/* 15/10/2026 — « Voir l'historique » déplacé en bas, sous les semaines. */}
               {/* 15/10/2026 — Import mis en avant (le plus important). */}
-              <label style={{ padding: "6px 14px", borderRadius: 10, cursor: "pointer", fontSize: 12.5, fontWeight: 800, border: "1.5px solid #305a55", background: "#305a55", color: "#fff", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
+              <label style={{ flex: "1 1 260px", justifyContent: "center", padding: "9px 20px", borderRadius: 10, cursor: "pointer", fontSize: 14.5, fontWeight: 900, border: "1.5px solid #305a55", background: "#305a55", color: "#fff", boxShadow: "0 4px 12px rgba(48,90,85,.25)", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
                 📊 Import
                 <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
               </label>
